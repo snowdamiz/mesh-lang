@@ -77,7 +77,7 @@ impl<'a> CheckOptions<'a> {
         }
     }
 
-    fn read(&self, path: &Path) -> Result<String, String> {
+    fn read(&self, path: &Path) -> Result<String, Diagnostic> {
         if let Read::Overlays(overlays) = self.read {
             let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
             if let Some(text) = overlays.get(&canonical) {
@@ -160,13 +160,6 @@ impl Frontend {
     }
 }
 
-/// A transitional string error as an uncategorized diagnostic (`C0001`),
-/// until its producer gets a code. meshc and the language server convert
-/// their string errors here too, so there is one such conversion.
-pub fn uncategorized(message: impl Into<String>) -> Diagnostic {
-    Diagnostic::uncategorized(message)
-}
-
 /// Checks `target`. One policy holds for every caller:
 /// - A module with a parse error, or importing one that has, is not
 ///   type-checked for diagnostics, so its parse errors are not followed by
@@ -175,9 +168,9 @@ pub fn uncategorized(message: impl Into<String>) -> Diagnostic {
 ///   when the modules they compare are free of errors.
 pub fn check(target: Target<'_>, options: &CheckOptions<'_>) -> Frontend {
     let loaded = match target {
-        Target::Project { root } => load(root, options).map_err(uncategorized),
+        Target::Project { root } => load(root, options),
         Target::TestFile { root, test } => load_test(root, test, options),
-        Target::Source { path, text } => load_source(path, text).map_err(uncategorized),
+        Target::Source { path, text } => load_source(path, text),
     };
     match loaded {
         Ok(loaded) => analyze(loaded, options),
@@ -199,21 +192,26 @@ struct Loaded {
     test_file: Option<(mesh_parser::Parse, SourceFile)>,
 }
 
-fn load(root: &Path, options: &CheckOptions<'_>) -> Result<Loaded, String> {
+fn load(root: &Path, options: &CheckOptions<'_>) -> Result<Loaded, Diagnostic> {
     if !root.exists() {
-        return Err(format!(
-            "Project directory '{}' does not exist",
-            root.display()
-        ));
+        return Err(project::module_unreadable(
+            root,
+            format!("Project directory '{}' does not exist", root.display()),
+        )
+        .with_repair("Pass the path to an existing Mesh project directory or .mpl file."));
     }
     if root.is_file() && root.extension().is_some_and(|ext| ext == "mpl") {
         return load_source(root, &options.read(root)?);
     }
     if !root.is_dir() {
-        return Err(format!(
-            "'{}' is not a directory or a .mpl source file",
-            root.display()
-        ));
+        return Err(project::module_unreadable(
+            root,
+            format!(
+                "'{}' is not a directory or a .mpl source file",
+                root.display()
+            ),
+        )
+        .with_repair("Pass the path to a Mesh project directory or .mpl file."));
     }
     let manifest_path = root.join("mesh.toml");
     let manifest = manifest_path
@@ -253,14 +251,15 @@ fn load(root: &Path, options: &CheckOptions<'_>) -> Result<Loaded, String> {
     })
 }
 
-fn load_source(path: &Path, text: &str) -> Result<Loaded, String> {
+fn load_source(path: &Path, text: &str) -> Result<Loaded, Diagnostic> {
     let name = Path::new(path.file_name().unwrap_or(DEFAULT_ENTRYPOINT.as_ref()));
+    let root = path.parent().unwrap_or(Path::new(""));
     Ok(Loaded {
-        root: path.parent().unwrap_or(Path::new("")).to_path_buf(),
+        root: root.to_path_buf(),
         manifest: None,
         entry: Some(name.to_path_buf()),
         native_bindings: Vec::new(),
-        project: project::single_source_project_at(text, name)?,
+        project: project::single_source_project_in(root, name, text)?,
         test_file: None,
     })
 }
@@ -273,9 +272,9 @@ fn load_test(root: &Path, test: &Path, options: &CheckOptions<'_>) -> Result<Loa
         require_entrypoint: false,
         ..*options
     };
-    let mut loaded = load(root, &options).map_err(uncategorized)?;
+    let mut loaded = load(root, &options)?;
     let path = test.strip_prefix(root).unwrap_or(test).to_path_buf();
-    let source = options.read(test).map_err(uncategorized)?;
+    let source = options.read(test)?;
     let written = SourceFile::new(root.join(&path), source.as_str());
     let program = mesh_parser::test_harness::preprocess_test_source(&source)
         .map_err(|error| error.to_diagnostic(&written))?;
@@ -424,25 +423,34 @@ fn misplaced_native_declarations(
     project
         .compilation_order
         .iter()
-        .map(|id| id.0 as usize)
-        .filter(|&idx| {
-            project.module_parses[idx]
+        .filter_map(|id| {
+            let idx = id.0 as usize;
+            let decl = project.module_parses[idx]
                 .tree()
                 .fn_defs()
-                .any(|function| function.native_decl().is_some())
+                .find_map(|function| function.native_decl())?;
+            Some((&files[idx], decl.syntax().text_range()))
         })
-        .map(|idx| files[idx].path())
-        .filter(|path| seen.insert(*path))
-        .filter(|path| {
-            !path
+        .filter(|(file, _)| seen.insert(file.path()))
+        .filter(|(file, _)| {
+            !file
+                .path()
                 .canonicalize()
                 .is_ok_and(|path| allowed.contains(path.as_path()))
         })
-        .map(|path| {
-            uncategorized(format!(
-                "Native declaration in '{}' is outside a manifest-declared native binding",
-                path.display()
-            ))
+        .map(|(file, range)| {
+            Diagnostic::in_file(
+                Code::NativeDeclarationOutsideBinding,
+                file,
+                format!(
+                    "Native declaration in '{}' is outside a manifest-declared native binding",
+                    file.path().display()
+                ),
+            )
+            .at(
+                Span::new(range.start().into(), range.end().into()),
+                "native declaration",
+            )
         })
         .collect()
 }
@@ -642,12 +650,7 @@ fn cluster_declaration_error(
         .iter()
         .position(|module| module.path == issue.file)
         .expect("an `@cluster` decorator belongs to a project file");
-    Diagnostic::in_file(
-        Code::ClusterDeclarationInvalid,
-        &files[idx],
-        issue.to_string(),
-    )
-    .at(issue.span, &issue.reason)
+    issue.to_diagnostic(&files[idx])
 }
 
 /// By file, in the order its first module is compiled, then by span
@@ -707,6 +710,23 @@ mod tests {
 
     fn found_in(root: &Path) -> Vec<(&'static str, String)> {
         found(&check(Target::Project { root }, &CheckOptions::cli()))
+    }
+
+    #[test]
+    fn native_declaration_outside_a_binding_points_to_the_decorator() {
+        let source = "@native(\"mesh_math_add\")\npub fn add(left :: Int, right :: Int) -> Int\n";
+        let path = Path::new("project/main.mpl");
+        let checked = check(Target::Source { path, text: source }, &CheckOptions::cli());
+        let [error] = checked.diagnostics.as_slice() else {
+            panic!("expected one diagnostic, got {:?}", checked.diagnostics);
+        };
+        assert_eq!(error.code().id(), "M0302");
+        assert_eq!(error.file().unwrap().path(), path);
+        let span = error.span().unwrap();
+        assert_eq!(
+            &source[span.start as usize..span.end as usize],
+            "@native(\"mesh_math_add\")"
+        );
     }
 
     #[test]

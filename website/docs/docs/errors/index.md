@@ -3441,6 +3441,126 @@ end
 
 Docs: https://meshlang.dev/docs/errors/#l0004
 
+## M0001
+
+**manifest-unreadable** · error · project · guide: `meshc guide projects`
+
+The project manifest could not be opened or read as UTF-8.
+
+**Repair:** Create mesh.toml in the project directory or restore read access to it.
+
+Docs: https://meshlang.dev/docs/errors/#m0001
+
+## M0002
+
+**manifest-invalid** · error · project · guide: `meshc guide projects`
+
+The manifest contains invalid TOML or violates the package schema.
+
+**Repair:** Correct the indicated field in mesh.toml. Include a [package] table with string name and version fields.
+
+Docs: https://meshlang.dev/docs/errors/#m0002
+
+## M0003
+
+**entrypoint-not-found** · error · project · guide: `meshc guide projects`
+
+The project does not contain the expected Mesh entrypoint file.
+
+**Repair:** Set [package].entrypoint to an existing project-relative .mpl file or remove it and create main.mpl.
+
+Docs: https://meshlang.dev/docs/errors/#m0003
+
+## M0101
+
+**lockfile-invalid** · error · project · guide: `meshc guide projects`
+
+The mesh.lock file could not be read, parsed, or written.
+
+**Repair:** Fix the indicated TOML or restore access to mesh.lock, then rerun the dependency command.
+
+Docs: https://meshlang.dev/docs/errors/#m0101
+
+## M0102
+
+**dependency-unresolvable** · error · project · guide: `meshc guide projects`
+
+A dependency could not be located, fetched, or checked out.
+
+**Repair:** Correct the dependency path or Git source in mesh.toml and run meshc deps, or run meshpkg install for a registry dependency.
+
+Docs: https://meshlang.dev/docs/errors/#m0102
+
+## M0103
+
+**dependency-cycle** · error · project · guide: `meshc guide projects`
+
+The package dependency chain returns to a package it already visits.
+
+**Repair:** Remove a dependency from the cycle or move shared code into a package both sides can depend on.
+
+Docs: https://meshlang.dev/docs/errors/#m0103
+
+## M0104
+
+**dependency-conflict** · error · project · guide: `meshc guide projects`
+
+The same dependency name is required from different sources.
+
+**Repair:** Update the dependency declarations to use a single source for that name.
+
+Docs: https://meshlang.dev/docs/errors/#m0104
+
+## M0201
+
+**module-cycle** · error · project · guide: `meshc guide projects`
+
+The import chain returns to a module it already visits.
+
+**Repair:** Remove an import from the cycle or move shared definitions to a separate module.
+
+Docs: https://meshlang.dev/docs/errors/#m0201
+
+## M0202
+
+**module-unreadable** · error · project · guide: `meshc guide projects`
+
+A module could not be read or assigned an unambiguous name inside the project.
+
+**Repair:** Check the module path and its read permissions. Use a uniquely named .mpl file inside the project with no symbolic links.
+
+Docs: https://meshlang.dev/docs/errors/#m0202
+
+## M0301
+
+**native-binding-invalid** · error · project · guide: `meshc guide projects`
+
+A manifest-declared native binding could not be loaded as a package file.
+
+**Repair:** Set [native].bindings to package-relative paths to regular .mpl files outside the test tree.
+
+Docs: https://meshlang.dev/docs/errors/#m0301
+
+## M0302
+
+**native-declaration-outside-binding** · error · project · guide: `meshc guide projects`
+
+A native declaration occurs in a module that is not listed as a native binding.
+
+**Repair:** Move the declaration into a file listed in [native].bindings or add its file to that list and provide the native archive.
+
+Docs: https://meshlang.dev/docs/errors/#m0302
+
+## M0303
+
+**native-archive-missing** · error · project · guide: `meshc guide projects`
+
+The requested target has no readable, checksum-verified static archive in the native package.
+
+**Repair:** Provide the static archive for the requested target and record its package-relative path and SHA-256 in [[native.libraries]].
+
+Docs: https://meshlang.dev/docs/errors/#m0303
+
 ## P0001
 
 **unexpected-token** · error · syntax · guide: `meshc guide syntax`

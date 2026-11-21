@@ -1,3 +1,4 @@
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -42,23 +43,46 @@ impl Lockfile {
     }
 
     /// Serialize and write the lockfile to the given path.
-    pub fn write(&self, path: &Path) -> Result<(), String> {
-        let content = toml::to_string_pretty(self)
-            .map_err(|e| format!("Failed to serialize lockfile: {}", e))?;
-        std::fs::write(path, content)
-            .map_err(|e| format!("Failed to write {}: {}", path.display(), e))
+    pub fn write(&self, path: &Path) -> Result<(), Diagnostic> {
+        let content = self.to_string()?;
+        std::fs::write(path, content).map_err(|error| {
+            Diagnostic::in_file(
+                Code::LockfileInvalid,
+                &SourceFile::unread(path),
+                format!("Failed to write {}: {error}", path.display()),
+            )
+            .with_repair("Restore write access to mesh.lock and rerun the dependency command.")
+        })
     }
 
     /// Read and deserialize a lockfile from the given path.
-    pub fn read(path: &Path) -> Result<Lockfile, String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-        toml::from_str(&content).map_err(|e| format!("Failed to parse lockfile: {}", e))
+    pub fn from_file(path: &Path) -> Result<Self, Diagnostic> {
+        let content = std::fs::read_to_string(path).map_err(|error| {
+            Diagnostic::in_file(
+                Code::LockfileInvalid,
+                &SourceFile::unread(path),
+                format!("Failed to read {}: {error}", path.display()),
+            )
+            .with_repair("Restore read access to mesh.lock and rerun the dependency command.")
+        })?;
+        toml::from_str(&content).map_err(|error| {
+            crate::toml_error(
+                Code::LockfileInvalid,
+                &SourceFile::new(path, content),
+                "Failed to parse lockfile",
+                error,
+            )
+        })
     }
 
     /// Serialize the lockfile to a TOML string.
-    pub fn to_string(&self) -> Result<String, String> {
-        toml::to_string_pretty(self).map_err(|e| format!("Failed to serialize lockfile: {}", e))
+    pub fn to_string(&self) -> Result<String, Diagnostic> {
+        toml::to_string_pretty(self).map_err(|error| {
+            Diagnostic::new(
+                Code::LockfileInvalid,
+                format!("Failed to serialize lockfile: {error}"),
+            )
+        })
     }
 }
 
@@ -66,6 +90,25 @@ impl Lockfile {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn invalid_lockfile_reports_the_toml_location_and_io_failures() {
+        let project = tempfile::tempdir().unwrap();
+        let path = project.path().join("mesh.lock");
+        let source = "version = \"one\"\npackages = []\n";
+        std::fs::write(&path, source).unwrap();
+        let error = Lockfile::from_file(&path).unwrap_err();
+        assert_eq!(error.code().id(), "M0101");
+        assert_eq!(error.file().unwrap().path(), path);
+        assert_eq!(error.line(), Some(1));
+        let span = error.span().unwrap();
+        assert_eq!(&source[span.start as usize..span.end as usize], "\"one\"");
+
+        let read = Lockfile::from_file(&project.path().join("absent")).unwrap_err();
+        assert_eq!(read.code().id(), "M0101");
+        let write = Lockfile::new(Vec::new()).write(project.path()).unwrap_err();
+        assert_eq!(write.code().id(), "M0101");
+    }
 
     #[test]
     fn lockfile_round_trip() {
@@ -95,7 +138,7 @@ mod tests {
 
         // Write and read back
         lockfile.write(&lock_path).unwrap();
-        let read_back = Lockfile::read(&lock_path).unwrap();
+        let read_back = Lockfile::from_file(&lock_path).unwrap();
         assert_eq!(lockfile, read_back);
     }
 
@@ -157,7 +200,7 @@ mod tests {
         assert!(lockfile.packages.is_empty());
 
         lockfile.write(&lock_path).unwrap();
-        let read_back = Lockfile::read(&lock_path).unwrap();
+        let read_back = Lockfile::from_file(&lock_path).unwrap();
         assert_eq!(lockfile, read_back);
     }
 

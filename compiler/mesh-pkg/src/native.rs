@@ -1,4 +1,5 @@
 use crate::{Dependency, Lockfile, Manifest};
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs::File;
@@ -25,23 +26,32 @@ pub struct ResolvedNativeBinding {
 pub fn resolve_native_archives(
     project_root: &Path,
     target: &str,
-) -> Result<Vec<ResolvedNativeArchive>, String> {
+) -> Result<Vec<ResolvedNativeArchive>, Diagnostic> {
     resolve_native(project_root, Some(target)).map(|resolution| resolution.archives)
 }
 
-pub fn resolve_native_bindings(project_root: &Path) -> Result<Vec<ResolvedNativeBinding>, String> {
+pub fn resolve_native_bindings(
+    project_root: &Path,
+) -> Result<Vec<ResolvedNativeBinding>, Diagnostic> {
     resolve_native(project_root, None).map(|resolution| resolution.bindings)
 }
 
-fn resolve_native(project_root: &Path, target: Option<&str>) -> Result<NativeResolution, String> {
-    let project_root = project_root
-        .canonicalize()
-        .map_err(|error| format!("Failed to resolve '{}': {error}", project_root.display()))?;
-    let manifest = Manifest::from_file(&project_root.join("mesh.toml"))?;
+fn resolve_native(
+    project_root: &Path,
+    target: Option<&str>,
+) -> Result<NativeResolution, Diagnostic> {
+    let project_root = project_root.canonicalize().map_err(|error| {
+        Diagnostic::in_file(
+            Code::ModuleUnreadable,
+            &SourceFile::unread(project_root),
+            format!("Failed to resolve '{}': {error}", project_root.display()),
+        )
+    })?;
+    let manifest = Manifest::for_native_resolution(&project_root.join("mesh.toml"))?;
     let lock_path = project_root.join("mesh.lock");
     let lockfile = lock_path
         .exists()
-        .then(|| Lockfile::read(&lock_path))
+        .then(|| Lockfile::from_file(&lock_path))
         .transpose()?;
     let mut context = ResolveContext {
         project_root: &project_root,
@@ -73,7 +83,7 @@ struct ResolveContext<'a> {
 }
 
 impl ResolveContext<'_> {
-    fn visit(&mut self, package_root: &Path, manifest: &Manifest) -> Result<(), String> {
+    fn visit(&mut self, package_root: &Path, manifest: &Manifest) -> Result<(), Diagnostic> {
         // An installed git checkout may be reached through a link.
         let package_root = package_root
             .canonicalize()
@@ -86,12 +96,22 @@ impl ResolveContext<'_> {
             for binding in &native.bindings {
                 self.bindings.push(ResolvedNativeBinding {
                     package: manifest.package.name.clone(),
-                    path: checked_package_file(&package_root, binding, "native binding")?,
+                    path: check_file(
+                        &package_root,
+                        binding,
+                        "native binding",
+                        Code::NativeBindingInvalid,
+                    )?,
                     relative_path: binding.clone(),
                 });
             }
 
             if let Some(target) = self.target {
+                let manifest_file = SourceFile::unread(package_root.join("mesh.toml"));
+                let archive_missing = |message| {
+                    Diagnostic::in_file(Code::NativeArchiveMissing, &manifest_file, message)
+                    .with_repair(format!("Provide a readable archive for `{target}` with its package-relative path and actual SHA-256 in [[native.libraries]]."))
+                };
                 let library = native
                     .libraries
                     .iter()
@@ -103,22 +123,37 @@ impl ResolveContext<'_> {
                             .map(|library| library.target.as_str())
                             .collect::<Vec<_>>()
                             .join(", ");
-                        format!(
+                        archive_missing(format!(
                             "Native package `{}` has no archive for target `{}` (available: {})",
                             manifest.package.name, target, available
-                        )
+                        ))
                     })?;
-                let path =
-                    checked_package_file(&package_root, &library.path, "native static archive")?;
-                let actual = sha256_file(&path)?;
+                let path = check_file(
+                    &package_root,
+                    &library.path,
+                    "native static archive",
+                    Code::NativeArchiveMissing,
+                )
+                .map_err(|diagnostic| {
+                    diagnostic.with_note(format!(
+                        "Required by package `{}` for target `{target}`",
+                        manifest.package.name
+                    ))
+                })?;
+                let actual = sha256_file(&path).map_err(|error| {
+                    archive_missing(format!(
+                        "Failed to read native archive '{}': {error}",
+                        path.display()
+                    ))
+                })?;
                 if actual != library.sha256 {
-                    return Err(format!(
+                    return Err(archive_missing(format!(
                         "SHA-256 mismatch for native archive '{}' in package `{}`: expected {}, got {}",
                         library.path.display(),
                         manifest.package.name,
                         library.sha256,
                         actual
-                    ));
+                    )));
                 }
                 self.archives.push(ResolvedNativeArchive {
                     package: manifest.package.name.clone(),
@@ -129,7 +164,8 @@ impl ResolveContext<'_> {
 
         for (name, dependency) in &manifest.dependencies {
             let dependency_root = self.dependency_root(&package_root, name, dependency)?;
-            let dependency_manifest = Manifest::from_file(&dependency_root.join("mesh.toml"))?;
+            let dependency_manifest =
+                Manifest::for_native_resolution(&dependency_root.join("mesh.toml"))?;
             self.visit(&dependency_root, &dependency_manifest)?;
         }
 
@@ -141,47 +177,67 @@ impl ResolveContext<'_> {
         package_root: &Path,
         name: &str,
         dependency: &Dependency,
-    ) -> Result<PathBuf, String> {
+    ) -> Result<PathBuf, Diagnostic> {
+        let failure = |message| {
+            let repair = match dependency {
+                Dependency::Git { .. } => {
+                    "Run `meshc deps` to fetch the Git dependency and refresh mesh.lock."
+                }
+                _ => "Run `meshpkg install` to install the registry package and refresh mesh.lock.",
+            };
+            Diagnostic::in_file(
+                Code::DependencyUnresolvable,
+                &SourceFile::unread(package_root.join("mesh.toml")),
+                message,
+            )
+            .with_repair(repair)
+        };
         match dependency {
-            Dependency::Path { path } => package_root.join(path).canonicalize().map_err(|error| {
-                format!("Failed to resolve path dependency `{name}` ({path}): {error}")
-            }),
+            Dependency::Path { path } => {
+                crate::resolver::resolve_path_dep(package_root, name, path)
+            }
             Dependency::Git { .. } => {
-                let locked = self.locked_package(name)?;
+                let locked = self.locked_package(name).ok_or_else(|| failure(format!(
+                    "Native dependency `{name}` requires an exact mesh.lock entry; run the package resolver first"
+                )))?;
                 if locked.revision == "local" {
-                    return Err(format!(
+                    return Err(failure(format!(
                         "Git dependency `{name}` is not pinned to an exact revision in mesh.lock"
-                    ));
+                    )));
                 }
                 let root = self.project_root.join(".mesh").join("deps").join(name);
                 let repository = git2::Repository::open(&root).map_err(|error| {
-                    format!(
+                    failure(format!(
                         "Git dependency `{name}` is not installed at '{}': {error}; run `meshc deps`",
                         root.display()
-                    )
+                    ))
                 })?;
                 let head = repository
                     .head()
                     .and_then(|head| head.peel_to_commit())
                     .map_err(|error| {
-                        format!("Failed to read installed `{name}` revision: {error}")
+                        failure(format!(
+                            "Failed to read installed `{name}` revision: {error}"
+                        ))
                     })?
                     .id()
                     .to_string();
                 if head != locked.revision {
-                    return Err(format!(
+                    return Err(failure(format!(
                         "Git dependency `{name}` revision mismatch: mesh.lock pins {}, installed checkout is {}",
                         locked.revision, head
-                    ));
+                    )));
                 }
                 Ok(root)
             }
             Dependency::RegistryShorthand(version) | Dependency::Registry { version } => {
-                let locked = self.locked_package(name)?;
+                let locked = self.locked_package(name).ok_or_else(|| failure(format!(
+                    "Native dependency `{name}` requires an exact mesh.lock entry; run the package resolver first"
+                )))?;
                 if locked.version != *version || locked.sha256.is_none() {
-                    return Err(format!(
+                    return Err(failure(format!(
                         "Registry dependency `{name}` is not checksum-pinned at version `{version}` in mesh.lock"
-                    ));
+                    )));
                 }
                 let root = self
                     .project_root
@@ -189,71 +245,78 @@ impl ResolveContext<'_> {
                     .join("packages")
                     .join(format!("{name}@{}", locked.version));
                 if !root.join("mesh.toml").is_file() {
-                    return Err(format!(
+                    return Err(failure(format!(
                         "Registry dependency `{name}` is not installed at '{}'; run `meshpkg install`",
                         root.display()
-                    ));
+                    )));
                 }
                 Ok(root)
             }
         }
     }
 
-    fn locked_package(&self, name: &str) -> Result<&crate::LockedPackage, String> {
-        self.lockfile
-            .and_then(|lockfile| lockfile.packages.iter().find(|package| package.name == name))
-            .ok_or_else(|| {
-                format!(
-                    "Native dependency `{name}` requires an exact mesh.lock entry; run the package resolver first"
-                )
-            })
+    fn locked_package(&self, name: &str) -> Option<&crate::LockedPackage> {
+        self.lockfile?
+            .packages
+            .iter()
+            .find(|package| package.name == name)
     }
 }
 
 /// A file of a package, named by a path inside it: no `..` or absolute part,
 /// no symbolic link on the way (either could lead out of the package), and
 /// every component there. The package root is canonical, so the path is too.
-pub fn checked_package_file(root: &Path, relative: &Path, kind: &str) -> Result<PathBuf, String> {
+pub fn checked_package_file(
+    root: &Path,
+    relative: &Path,
+    kind: &str,
+) -> Result<PathBuf, Diagnostic> {
+    check_file(root, relative, kind, Code::ModuleUnreadable)
+}
+
+fn check_file(root: &Path, relative: &Path, kind: &str, code: Code) -> Result<PathBuf, Diagnostic> {
+    let failure =
+        |message| Diagnostic::in_file(code, &SourceFile::unread(root.join(relative)), message);
     let mut path = root.to_path_buf();
     for component in relative.components() {
         match component {
             std::path::Component::CurDir => continue,
             std::path::Component::Normal(segment) => path.push(segment),
             _ => {
-                return Err(format!(
+                return Err(failure(format!(
                     "{kind} '{}' must be a path inside its package",
                     relative.display()
-                ))
+                )))
             }
         }
         let metadata = std::fs::symlink_metadata(&path).map_err(|error| {
-            format!(
+            failure(format!(
                 "{kind} '{}' does not exist or cannot be read: {error}",
                 path.display()
-            )
+            ))
         })?;
         if metadata.file_type().is_symlink() {
-            return Err(format!(
+            return Err(failure(format!(
                 "{kind} '{}' must not contain a symbolic link",
                 relative.display()
-            ));
+            )));
         }
     }
     if !path.is_file() {
-        return Err(format!("{kind} '{}' is not a file", path.display()));
+        return Err(failure(format!(
+            "{kind} '{}' is not a file",
+            path.display()
+        )));
     }
     Ok(path)
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
-    let mut file = File::open(path)
-        .map_err(|error| format!("Failed to read '{}': {error}", path.display()))?;
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+    let mut file = File::open(path)?;
     let mut digest = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
     loop {
-        let count = file
-            .read(&mut buffer)
-            .map_err(|error| format!("Failed to read '{}': {error}", path.display()))?;
+        let count = file.read(&mut buffer)?;
         if count == 0 {
             break;
         }
@@ -319,17 +382,19 @@ sha256 = "{sha256}"
 
         let target_error =
             resolve_native_archives(project.path(), "x86_64-unknown-linux-gnu").unwrap_err();
+        assert_eq!(target_error.code().id(), "M0303");
         assert!(
-            target_error.contains("x86_64-unknown-linux-gnu"),
-            "unexpected error: {target_error}"
+            target_error.message().contains("x86_64-unknown-linux-gnu"),
+            "unexpected error: {target_error:?}"
         );
 
         fs::write(&archive_path, b"tampered").unwrap();
         let hash_error =
             resolve_native_archives(project.path(), "aarch64-apple-darwin").unwrap_err();
+        assert_eq!(hash_error.code().id(), "M0303");
         assert!(
-            hash_error.contains("SHA-256 mismatch"),
-            "unexpected error: {hash_error}"
+            hash_error.message().contains("SHA-256 mismatch"),
+            "unexpected error: {hash_error:?}"
         );
     }
 
@@ -356,9 +421,11 @@ bindings = ["tests/helper.mpl"]
         .unwrap();
 
         let error = resolve_native_bindings(project.path()).unwrap_err();
+        assert_eq!(error.code().id(), "M0301");
         assert!(
-            error.contains("native binding") && error.contains("tests/helper.mpl"),
-            "unexpected error: {error}"
+            error.message().contains("native binding")
+                && error.message().contains("tests/helper.mpl"),
+            "unexpected error: {error:?}"
         );
     }
 
@@ -403,9 +470,11 @@ bindings = ["bindings/helper.mpl"]
             .unwrap();
 
             let error = resolve_native_bindings(&project).unwrap_err();
+            assert_eq!(error.code().id(), "M0301");
             assert!(
-                error.contains("symbolic link") && error.contains("bindings/helper.mpl"),
-                "unexpected error: {error}"
+                error.message().contains("symbolic link")
+                    && error.message().contains("bindings/helper.mpl"),
+                "unexpected error: {error:?}"
             );
         }
     }
@@ -449,14 +518,24 @@ bindings = ["bindings/helper.mpl"]
             "[package]\nname = \"app\"\nversion = \"0.1.0\"\n\n[dependencies]\nreg = \"1.0.0\"\n",
         );
         assert!(
-            error().contains("requires an exact mesh.lock entry"),
-            "{}",
+            error()
+                .message()
+                .contains("requires an exact mesh.lock entry"),
+            "{:?}",
             error()
         );
         lock(&[locked("reg", "1.0.0", "1.0.0", None)]);
-        assert!(error().contains("is not checksum-pinned"), "{}", error());
+        assert!(
+            error().message().contains("is not checksum-pinned"),
+            "{:?}",
+            error()
+        );
         lock(&[locked("reg", "1.0.0", "1.0.0", Some("ab"))]);
-        assert!(error().contains("run `meshpkg install`"), "{}", error());
+        assert!(
+            error().message().contains("run `meshpkg install`"),
+            "{:?}",
+            error()
+        );
         write_package(
             &app.join(".mesh/packages/reg@1.0.0"),
             &native_package("reg"),
@@ -471,8 +550,10 @@ bindings = ["bindings/helper.mpl"]
         );
         lock(&[locked("remote", "", "local", None)]);
         assert!(
-            error().contains("is not pinned to an exact revision"),
-            "{}",
+            error()
+                .message()
+                .contains("is not pinned to an exact revision"),
+            "{:?}",
             error()
         );
         lock(&[locked(
@@ -481,7 +562,11 @@ bindings = ["bindings/helper.mpl"]
             "0000000000000000000000000000000000000000",
             None,
         )]);
-        assert!(error().contains("run `meshc deps`"), "{}", error());
+        assert!(
+            error().message().contains("run `meshc deps`"),
+            "{:?}",
+            error()
+        );
         let checkout = app.join(".mesh/deps/remote");
         write_package(&checkout, &native_package("remote"));
         let repository = git2::Repository::init(&checkout).unwrap();
@@ -494,27 +579,35 @@ bindings = ["bindings/helper.mpl"]
         let head = repository
             .commit(Some("HEAD"), &signature, &signature, "c", &tree, &[])
             .unwrap();
-        assert!(error().contains("revision mismatch"), "{}", error());
+        assert!(
+            error().message().contains("revision mismatch"),
+            "{:?}",
+            error()
+        );
         lock(&[locked("remote", "", &head.to_string(), None)]);
         assert_eq!(resolve_native_bindings(&app).unwrap()[0].package, "remote");
 
         // A binding the package names must be a file in it.
         fs::remove_file(checkout.join("bindings/n.mpl")).unwrap();
         assert!(
-            error().contains("does not exist or cannot be read"),
-            "{}",
+            error()
+                .message()
+                .contains("does not exist or cannot be read"),
+            "{:?}",
             error()
         );
         fs::create_dir(checkout.join("bindings/n.mpl")).unwrap();
-        assert!(error().contains("is not a file"), "{}", error());
+        assert!(error().message().contains("is not a file"), "{:?}", error());
 
         // A checkout without a commit has no revision to compare.
         fs::remove_dir_all(&checkout).unwrap();
         write_package(&checkout, &native_package("remote"));
         git2::Repository::init(&checkout).unwrap();
         assert!(
-            error().contains("Failed to read installed `remote` revision"),
-            "{}",
+            error()
+                .message()
+                .contains("Failed to read installed `remote` revision"),
+            "{:?}",
             error()
         );
     }
@@ -548,15 +641,19 @@ bindings = ["bindings/helper.mpl"]
         package("app", "bindings/../../outside.mpl", "");
         let error = resolve_native_bindings(&app).unwrap_err();
         assert!(
-            error.contains("must stay within the package root"),
-            "{error}"
+            error
+                .message()
+                .contains("must stay within the package root"),
+            "{error:?}"
         );
         fs::write(root.join("outside.mpl"), "pub fn o() -> Int do\n  1\nend\n").unwrap();
         let error =
             checked_package_file(&app, Path::new("../outside.mpl"), "native binding").unwrap_err();
         assert!(
-            error.contains("must be a path inside its package"),
-            "{error}"
+            error
+                .message()
+                .contains("must be a path inside its package"),
+            "{error:?}"
         );
         assert_eq!(
             checked_package_file(&app, Path::new("./bindings/n.mpl"), "native binding"),
@@ -590,8 +687,10 @@ bindings = ["bindings/helper.mpl"]
         package("app", "bindings/n.mpl", "gone = { path = \"../gone\" }\n");
         let error = resolve_native_bindings(&app).unwrap_err();
         assert!(
-            error.contains("Failed to resolve path dependency `gone`"),
-            "{error}"
+            error
+                .message()
+                .contains("Failed to resolve path dependency `gone`"),
+            "{error:?}"
         );
     }
 }

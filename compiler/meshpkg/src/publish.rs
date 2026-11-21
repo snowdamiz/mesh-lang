@@ -14,7 +14,8 @@ use mesh_pkg::Manifest;
 pub fn run(project_dir: &Path, registry: &str, json_mode: bool) -> Result<(), String> {
     // Read manifest
     let manifest_path = project_dir.join("mesh.toml");
-    let manifest = Manifest::from_file(&manifest_path)?;
+    let manifest =
+        Manifest::from_file(&manifest_path).map_err(|error| error.message().to_owned())?;
 
     let name = &manifest.package.name;
     let version = &manifest.package.version;
@@ -85,7 +86,8 @@ fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, String> {
     let mut archive_members = Vec::with_capacity(source_members.len() + 1);
     archive_members.push(PathBuf::from("mesh.toml"));
     archive_members.extend(source_members);
-    let manifest = Manifest::from_file(&project_dir.join("mesh.toml"))?;
+    let manifest = Manifest::from_file(&project_dir.join("mesh.toml"))
+        .map_err(|error| error.message().to_owned())?;
     let laws = mesh_pkg::project::laws::discover(project_dir, Some(&manifest))?;
     // Preserve explicit roots even when they contain no archive members.
     archive_members.extend(laws.roots.into_iter().filter(|root| root != Path::new(".")));
@@ -122,7 +124,8 @@ fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, String> {
 /// A file the manifest declares, as its archive member: a file inside the
 /// package, reached through no symbolic link.
 fn declared_package_member(project_root: &Path, relative: &Path) -> Result<PathBuf, String> {
-    let source = mesh_pkg::checked_package_file(project_root, relative, "Declared package file")?;
+    let source = mesh_pkg::checked_package_file(project_root, relative, "Declared package file")
+        .map_err(|error| error.message().to_owned())?;
     relative_archive_member_path(project_root, &source)
 }
 

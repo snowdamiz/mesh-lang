@@ -25,7 +25,7 @@ use std::process::Command;
 use std::time::Instant;
 
 use crate::ReportResult;
-use mesh_diagnostics::{Failed, Reporter, SourceFile};
+use mesh_diagnostics::{Code, Diagnostic, Failed, Reporter, SourceFile};
 use mesh_parser::test_harness::preprocess_test_source;
 use mesh_pkg::frontend::{self, CheckOptions, Target};
 use mesh_pkg::manifest::{
@@ -85,12 +85,16 @@ fn resolve_project_dir(target: &Path) -> Result<PathBuf, String> {
         })
 }
 
-fn resolve_test_project(target: &Path) -> Result<ResolvedTestProject, String> {
-    let project_dir = resolve_project_dir(target)?;
+fn resolve_test_project(target: &Path) -> Result<ResolvedTestProject, Diagnostic> {
+    let project_dir = resolve_project_dir(target).map_err(|message| {
+        Diagnostic::in_file(
+            Code::ManifestUnreadable,
+            &SourceFile::unread(target),
+            message,
+        )
+    })?;
     let manifest_path = project_dir.join("mesh.toml");
-    let manifest_source = std::fs::read_to_string(&manifest_path)
-        .map_err(|e| format!("Failed to read '{}': {}", manifest_path.display(), e))?;
-    let manifest = Manifest::from_file(&manifest_path)?;
+    let (manifest, manifest_source) = Manifest::from_file_with_source(&manifest_path)?;
     let entry_relative_path = if manifest.package.entrypoint.is_none()
         && !project_dir.join(DEFAULT_ENTRYPOINT).exists()
     {
@@ -131,16 +135,25 @@ fn prepare_temp_test_project(
     test_project: &ResolvedTestProject,
     tmp_dir: &Path,
     preprocessed_source: &str,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
+    let staging_error = |message| {
+        Diagnostic::in_file(
+            Code::ModuleUnreadable,
+            &SourceFile::unread(&test_project.project_dir),
+            message,
+        )
+        .with_repair("Restore access to the source and temporary directories used by meshc test.")
+    };
     copy_project_sources_to_tmp(
         &test_project.project_dir,
         tmp_dir,
         &test_project.entry_relative_path,
-    )?;
+    )
+    .map_err(staging_error)?;
     let manifest_source =
         rewrite_test_manifest_source(&test_project.manifest_source, &test_project.project_dir)?;
-    write_file(&tmp_dir.join("mesh.toml"), manifest_source)?;
-    write_file(&tmp_dir.join(DEFAULT_ENTRYPOINT), preprocessed_source)
+    write_file(&tmp_dir.join("mesh.toml"), manifest_source).map_err(staging_error)?;
+    write_file(&tmp_dir.join(DEFAULT_ENTRYPOINT), preprocessed_source).map_err(staging_error)
 }
 
 fn read_file(path: &Path) -> Result<Vec<u8>, String> {
@@ -158,9 +171,7 @@ fn with_test_project<T>(
     reporter: &mut Reporter,
     run: impl FnOnce(&Path, &mut Reporter) -> Result<T, Failed>,
 ) -> Result<T, Failed> {
-    let source = std::fs::read_to_string(test_file)
-        .map_err(|e| format!("Failed to read '{}': {e}", test_file.display()))
-        .reported(reporter)?;
+    let source = mesh_pkg::project::read_file(test_file).reported(reporter)?;
     let preprocessed = preprocess_test_source(&source).map_err(|error| {
         report_problem("COMPILE ERROR");
         reporter.fail(error.to_diagnostic(&SourceFile::new(test_file, source.as_str())))
@@ -798,7 +809,11 @@ mod tests {
         let err = prepare_temp_test_project(&test_project, tmp.path(), "fn main() do\nend\n")
             .unwrap_err();
 
-        assert!(err.contains("missing.test-support.mpl"), "{err}");
+        assert_eq!(err.code().id(), "M0202");
+        assert!(
+            err.message().contains("missing.test-support.mpl"),
+            "{err:?}"
+        );
         assert!(!tmp.path().join("mesh.toml").exists());
         assert!(!tmp.path().join(DEFAULT_ENTRYPOINT).exists());
     }

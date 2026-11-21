@@ -48,11 +48,12 @@ pub fn run(
 /// Uses mesh.lock exact pins if it exists; otherwise resolves from registry.
 fn install_all(project_dir: &Path, registry: &str, json_mode: bool) -> Result<(), String> {
     let manifest_path = project_dir.join("mesh.toml");
-    let manifest = Manifest::from_file(&manifest_path)?;
+    let manifest =
+        Manifest::from_file(&manifest_path).map_err(|error| error.message().to_owned())?;
 
     let lock_path = project_dir.join(LOCKFILE_NAME);
     let existing_lock = if lock_path.exists() {
-        Some(Lockfile::read(&lock_path)?)
+        Some(Lockfile::from_file(&lock_path).map_err(|error| error.message().to_owned())?)
     } else {
         None
     };
@@ -98,7 +99,9 @@ fn install_all(project_dir: &Path, registry: &str, json_mode: bool) -> Result<()
             }
         }
         let lockfile = Lockfile::new(all_packages);
-        lockfile.write(&lock_path)?;
+        lockfile
+            .write(&lock_path)
+            .map_err(|error| error.message().to_owned())?;
 
         if json_mode {
             println!(
@@ -127,7 +130,9 @@ fn install_named(
     // Update mesh.lock
     let lock_path = project_dir.join(LOCKFILE_NAME);
     let mut packages = if lock_path.exists() {
-        Lockfile::read(&lock_path)?.packages
+        Lockfile::from_file(&lock_path)
+            .map_err(|error| error.message().to_owned())?
+            .packages
     } else {
         Vec::new()
     };
@@ -135,7 +140,9 @@ fn install_named(
     // Replace or add the entry
     packages.retain(|p| p.name != name);
     packages.push(locked);
-    Lockfile::new(packages).write(&lock_path)?;
+    Lockfile::new(packages)
+        .write(&lock_path)
+        .map_err(|error| error.message().to_owned())?;
 
     if json_mode {
         println!("{}", named_install_result_json(name, &version));

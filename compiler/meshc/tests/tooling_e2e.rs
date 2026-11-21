@@ -2402,7 +2402,11 @@ fn test_deps_resolves_until_the_lockfile_is_fresh() {
     std::fs::create_dir_all(&project).unwrap();
     let (ok, text) = run_meshc(dir.path(), &["deps", "app"], &[]);
     assert!(
-        !ok && text.contains("No 'mesh.toml' found in 'app'"),
+        !ok && text.contains("[M0001] Error: Failed to read"),
+        "{text}"
+    );
+    assert!(
+        text.contains(&Path::new("app").join("mesh.toml").display().to_string()),
         "{text}"
     );
 
@@ -2725,9 +2729,17 @@ fn json_mode_is_pure_ndjson() {
     verify(&["check", "--json"], &["CFG0001"]);
     write_file(&root.join("b.mpl"), "");
 
-    write_file(&root.join("mesh.toml"), "[package\n");
-    verify(&["build", ".", "--json"], &["C0001"]);
-    verify(&["check", "--json"], &["C0001"]);
+    let malformed = "[package\n";
+    write_file(&root.join("mesh.toml"), malformed);
+    for args in [["build", ".", "--json"].as_slice(), &["check", "--json"]] {
+        let diagnostics = verify(args, &["M0002"]);
+        let diagnostic = &diagnostics[0];
+        let span = &diagnostic["spans"][0];
+        assert!(diagnostic["file"].as_str().unwrap().ends_with("mesh.toml"));
+        assert_eq!(span["file"], diagnostic["file"]);
+        assert_eq!(span["line"], 1);
+        assert_eq!(span["start"], malformed.find('\n').unwrap());
+    }
     let standalone = root.join("example.mpl");
     for code in ["E0102", "E0103"] {
         let example = &codes.iter().find(|entry| entry["code"] == code).unwrap()["example"];

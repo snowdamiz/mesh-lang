@@ -7,13 +7,20 @@
 use std::path::{Component, Path, PathBuf};
 
 use mesh_common::module_graph::{self, CycleError, ModuleGraph, ModuleId};
-use mesh_parser::ast::item::{Item, SourceFile};
+use mesh_common::span::Span;
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
+use mesh_parser::ast::item::{Item, SourceFile as SyntaxFile};
+use mesh_parser::ast::AstNode;
 use mesh_parser::syntax_kind::SyntaxKind;
 
 use crate::manifest::DEFAULT_ENTRYPOINT;
 use crate::native::ResolvedNativeBinding;
 
 pub mod laws;
+
+pub(crate) fn module_unreadable(path: &Path, message: impl Into<String>) -> Diagnostic {
+    Diagnostic::in_file(Code::ModuleUnreadable, &SourceFile::unread(path), message)
+}
 
 /// Convert a snake_case string to PascalCase.
 ///
@@ -37,15 +44,16 @@ pub fn to_pascal_case(s: &str) -> String {
 
 /// The module a project file is: `Main` for the default entrypoint, else
 /// its path's module name, which a path not in UTF-8 lacks.
-fn project_module_name(relative_path: &Path) -> Result<String, String> {
+fn project_module_name(root: &Path, relative_path: &Path) -> Result<String, Diagnostic> {
     if relative_path == Path::new(DEFAULT_ENTRYPOINT) {
         return Ok("Main".to_string());
     }
     path_to_module_name(relative_path).ok_or_else(|| {
-        format!(
-            "Cannot determine module name for '{}'",
-            relative_path.display()
+        module_unreadable(
+            &root.join(relative_path),
+            format!("Cannot determine module name for '{}'", relative_path.display()),
         )
+        .with_repair("Rename the file and its parent directories to UTF-8 names that form a Mesh module name.")
     })
 }
 
@@ -81,7 +89,10 @@ pub fn path_to_module_name(relative_path: &Path) -> Option<String> {
         .chain([stem])
         .map(to_pascal_case)
         .collect();
-    Some(parts.join("."))
+    parts
+        .iter()
+        .all(|part| !part.is_empty())
+        .then(|| parts.join("."))
 }
 
 /// Recursively discover all `.mpl` files in a project directory.
@@ -89,24 +100,16 @@ pub fn path_to_module_name(relative_path: &Path) -> Option<String> {
 /// Returns paths relative to `project_root`, sorted alphabetically for
 /// determinism. Hidden directories (names starting with `.`) and the top-level
 /// `tests/` tree are skipped.
-pub fn discover_mesh_files(project_root: &Path) -> Result<Vec<PathBuf>, String> {
+pub fn discover_mesh_files(project_root: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
     discover_mesh_files_with_test_helpers(project_root, false)
 }
 
 fn discover_mesh_files_with_test_helpers(
     project_root: &Path,
     include_test_helpers: bool,
-) -> Result<Vec<PathBuf>, String> {
+) -> Result<Vec<PathBuf>, Diagnostic> {
     let mut files = Vec::new();
-    discover_recursive(project_root, project_root, &mut files, include_test_helpers).map_err(
-        |e| {
-            format!(
-                "Failed to walk directory '{}': {}",
-                project_root.display(),
-                e
-            )
-        },
-    )?;
+    discover_recursive(project_root, project_root, &mut files, include_test_helpers)?;
     files.sort();
     Ok(files)
 }
@@ -117,9 +120,15 @@ fn discover_recursive(
     dir: &Path,
     files: &mut Vec<PathBuf>,
     include_test_helpers: bool,
-) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
+) -> Result<(), Diagnostic> {
+    let walk_error = |error| {
+        module_unreadable(
+            dir,
+            format!("Failed to walk directory '{}': {error}", dir.display()),
+        )
+    };
+    for entry in std::fs::read_dir(dir).map_err(walk_error)? {
+        let entry = entry.map_err(walk_error)?;
         let entry_path = entry.path();
         let file_name = entry.file_name();
         let name_str = file_name.to_string_lossy();
@@ -129,14 +138,17 @@ fn discover_recursive(
             continue;
         }
 
-        let file_type = entry.file_type()?;
+        let file_type = entry.file_type().map_err(walk_error)?;
         if file_type.is_symlink() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
+            return Err(module_unreadable(
+                &entry_path,
                 format!(
                     "Mesh project path '{}' must not be a symbolic link",
                     entry_path.display()
                 ),
+            )
+            .with_repair(
+                "Replace the symbolic link with the actual file or directory inside the project.",
             ));
         }
 
@@ -144,7 +156,7 @@ fn discover_recursive(
             if !include_test_helpers && dir == root && name_str == "tests" {
                 continue;
             }
-            if is_package_boundary(&entry_path)? {
+            if is_package_boundary(&entry_path).map_err(walk_error)? {
                 continue;
             }
             discover_recursive(root, &entry_path, files, include_test_helpers)?;
@@ -175,15 +187,19 @@ pub fn is_package_boundary(dir: &Path) -> std::io::Result<bool> {
     }
 }
 
-fn discover_installed_package_roots(packages_dir: &Path) -> Result<Vec<PathBuf>, String> {
+fn discover_installed_package_roots(packages_dir: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
     let mut package_roots = Vec::new();
-    discover_installed_package_roots_recursive(packages_dir, &mut package_roots).map_err(|e| {
-        format!(
-            "Failed to walk installed packages under '{}': {}",
-            packages_dir.display(),
-            e
+    let walk_error = |e| {
+        module_unreadable(
+            packages_dir,
+            format!(
+                "Failed to walk installed packages under '{}': {e}",
+                packages_dir.display()
+            ),
         )
-    })?;
+    };
+    let root = std::path::absolute(packages_dir).map_err(walk_error)?;
+    discover_installed_package_roots_recursive(&root, &mut package_roots).map_err(walk_error)?;
     package_roots.sort();
     Ok(package_roots)
 }
@@ -205,7 +221,17 @@ fn discover_installed_package_roots_recursive(
             continue;
         }
 
-        if path.is_dir() {
+        let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Installed package path '{}' must not be a symbolic link",
+                    path.display(),
+                ),
+            ));
+        }
+        if kind.is_dir() {
             child_dirs.push(path);
         } else if name == "mesh.toml" {
             has_manifest = true;
@@ -245,17 +271,22 @@ fn module_reaches(graph: &ModuleGraph, from: ModuleId, to: ModuleId) -> bool {
 /// Walks the top-level items and collects module paths from both
 /// `import Foo.Bar` and `from Foo.Bar import { ... }` declarations.
 /// Returns PascalCase dot-separated module names.
-pub fn extract_imports(source_file: &SourceFile) -> Vec<String> {
-    source_file
-        .items()
-        .filter_map(|item| match item {
-            Item::ImportDecl(decl) => decl.module_path(),
-            Item::FromImportDecl(decl) => decl.module_path(),
-            _ => None,
-        })
-        .map(|path| path.segments().join("."))
-        .filter(|name| !name.is_empty())
+pub fn extract_imports(source_file: &SyntaxFile) -> Vec<String> {
+    import_declarations(source_file)
+        .map(|(name, _)| name)
         .collect()
+}
+
+fn import_declarations(source_file: &SyntaxFile) -> impl Iterator<Item = (String, Span)> + '_ {
+    source_file.items().filter_map(|item| {
+        let (path, range) = match item {
+            Item::ImportDecl(decl) => (decl.module_path()?, decl.syntax().text_range()),
+            Item::FromImportDecl(decl) => (decl.module_path()?, decl.syntax().text_range()),
+            _ => return None,
+        };
+        let name = path.segments().join(".");
+        (!name.is_empty()).then(|| (name, Span::new(range.start().into(), range.end().into())))
+    })
 }
 
 /// Complete project data after discovery, parsing, and graph construction.
@@ -274,8 +305,14 @@ pub struct ProjectData {
 }
 
 /// Read a project file from disk.
-pub fn read_file(path: &Path) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path.display(), e))
+pub fn read_file(path: &Path) -> Result<String, Diagnostic> {
+    std::fs::read_to_string(path).map_err(|error| {
+        module_unreadable(
+            path,
+            format!("Failed to read '{}': {error}", path.display()),
+        )
+        .with_repair("Restore the file or its read permissions, and save it as UTF-8.")
+    })
 }
 
 /// Build a complete project: discover files, parse all, build dependency graph.
@@ -299,8 +336,8 @@ pub fn build_project(
     entry_relative_path: &Path,
     native_bindings: &[ResolvedNativeBinding],
     include_test_helpers: bool,
-    read_source: &dyn Fn(&Path) -> Result<String, String>,
-) -> Result<ProjectData, String> {
+    read_source: &dyn Fn(&Path) -> Result<String, Diagnostic>,
+) -> Result<ProjectData, Diagnostic> {
     load_modules(
         project_root,
         Some(entry_relative_path),
@@ -316,8 +353,8 @@ pub fn load_modules(
     entry_relative_path: Option<&Path>,
     native_bindings: &[ResolvedNativeBinding],
     include_test_helpers: bool,
-    read_source: &dyn Fn(&Path) -> Result<String, String>,
-) -> Result<ProjectData, String> {
+    read_source: &dyn Fn(&Path) -> Result<String, Diagnostic>,
+) -> Result<ProjectData, Diagnostic> {
     if let Some(entry) = entry_relative_path {
         if entry.as_os_str().is_empty()
             || entry.components().any(|component| {
@@ -327,21 +364,24 @@ pub fn load_modules(
                 )
             })
         {
-            return Err(format!(
-                "Resolved entrypoint '{}' must stay within project '{}'",
-                entry.display(),
-                project_root.display()
-            ));
+            return Err(module_unreadable(
+                &project_root.join(entry),
+                format!(
+                    "Resolved entrypoint '{}' must stay within project '{}'",
+                    entry.display(),
+                    project_root.display()
+                ),
+            )
+            .with_repair("Set [package].entrypoint to a relative .mpl path inside the project."));
         }
     }
     let files = discover_mesh_files_with_test_helpers(project_root, include_test_helpers)?;
     if let Some(entry) = entry_relative_path.filter(|entry| !files.iter().any(|path| path == entry))
     {
-        return Err(format!(
-            "Resolved entrypoint '{}' was not found under project '{}'",
-            entry.display(),
-            project_root.display()
-        ));
+        return Err(module_unreadable(
+            &project_root.join(entry),
+            format!("Resolved entrypoint '{}' was not found under project '{}'", entry.display(), project_root.display()),
+        ).with_repair("Set [package].entrypoint to an existing .mpl file outside hidden directories, test files, and nested packages."));
     }
     let mut graph = ModuleGraph::new();
     let mut module_sources = Vec::new();
@@ -350,10 +390,16 @@ pub fn load_modules(
     for relative_path in &files {
         let source = read_source(&project_root.join(relative_path))?;
         let is_entry = Some(relative_path.as_path()) == entry_relative_path;
-        let name = project_module_name(relative_path)?;
+        let name = project_module_name(project_root, relative_path)?;
 
         let parse = mesh_parser::parse(&source);
-        add_file_module(&mut graph, name, relative_path.clone(), is_entry)?;
+        add_file_module(
+            project_root,
+            &mut graph,
+            name,
+            relative_path.clone(),
+            is_entry,
+        )?;
 
         module_sources.push(source);
         module_parses.push(parse);
@@ -371,14 +417,14 @@ pub fn load_modules(
     for package_root in package_roots {
         let pkg_files = discover_mesh_files(&package_root)?;
         for relative_path in &pkg_files {
-            let name = match path_to_module_name(relative_path) {
-                Some(n) => n,
-                None => continue, // skip package-root main.mpl
-            };
+            if relative_path == Path::new(DEFAULT_ENTRYPOINT) {
+                continue;
+            }
+            let name = project_module_name(&package_root, relative_path)?;
             let full_path = package_root.join(relative_path);
             let source = read_source(&full_path)?;
             let parse = mesh_parser::parse(&source);
-            add_file_module(&mut graph, name, full_path, false)?;
+            add_file_module(project_root, &mut graph, name, full_path, false)?;
             module_sources.push(source);
             module_parses.push(parse);
         }
@@ -386,9 +432,16 @@ pub fn load_modules(
 
     for extra in native_bindings {
         let name = path_to_module_name(&extra.relative_path).ok_or_else(|| {
-            format!(
-                "Cannot determine native binding module name for '{}'",
-                extra.relative_path.display()
+            Diagnostic::in_file(
+                Code::NativeBindingInvalid,
+                &SourceFile::unread(&extra.path),
+                format!(
+                    "Cannot determine native binding module name for '{}'",
+                    extra.relative_path.display()
+                ),
+            )
+            .with_repair(
+                "Rename the binding to a file that names a module, and update [native].bindings.",
             )
         })?;
         if let Some(existing) = graph.resolve(&name) {
@@ -398,13 +451,23 @@ pub fn load_modules(
             } else {
                 project_root.join(existing_path)
             };
-            if existing_full_path.canonicalize().ok() == extra.path.canonicalize().ok() {
+            if matches!(
+                (existing_full_path.canonicalize(), extra.path.canonicalize()),
+                (Ok(existing), Ok(binding)) if existing == binding
+            ) {
                 continue;
             }
-            return Err(format!(
-                "Native binding module `{name}` from '{}' conflicts with '{}'",
-                extra.path.display(),
-                existing_full_path.display()
+            return Err(Diagnostic::in_file(
+                Code::NativeBindingInvalid,
+                &SourceFile::unread(&extra.path),
+                format!(
+                    "Native binding module `{name}` from '{}' conflicts with '{}'",
+                    extra.path.display(),
+                    existing_full_path.display()
+                ),
+            )
+            .with_repair(
+                "Give the native binding a unique module name and update [native].bindings.",
             ));
         }
         let source = read_source(&extra.path)?;
@@ -420,21 +483,21 @@ pub fn load_modules(
         module_parses.push(parse);
     }
 
-    link(graph, module_sources, module_parses)
+    link(project_root, graph, module_sources, module_parses)
 }
 
 fn add_file_module(
+    root: &Path,
     graph: &mut ModuleGraph,
     name: String,
     path: PathBuf,
     is_entry: bool,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     if let Some(existing) = graph.resolve(&name) {
-        return Err(format!(
-            "Ambiguous module `{name}`: '{}' and '{}'",
-            graph.get(existing).path.display(),
-            path.display()
-        ));
+        return Err(module_unreadable(
+            &root.join(&path),
+            format!("Ambiguous module `{name}`: '{}' and '{}'", graph.get(existing).path.display(), path.display()),
+        ).with_repair(format!("Rename one of the files to give `{name}` a unique module name, then update its imports.")));
     }
     graph.add_module(name, path, is_entry);
     Ok(())
@@ -442,15 +505,24 @@ fn add_file_module(
 
 /// A file outside any project, built as meshc builds a directory holding
 /// only it: the entry module `Main`, with its module blocks and imports.
-pub fn single_source_project(source: &str) -> Result<ProjectData, String> {
+pub fn single_source_project(source: &str) -> Result<ProjectData, Diagnostic> {
     single_source_project_at(source, Path::new(DEFAULT_ENTRYPOINT))
 }
 
 /// Load a standalone source file with its actual path for diagnostics.
-pub fn single_source_project_at(source: &str, path: &Path) -> Result<ProjectData, String> {
+pub fn single_source_project_at(source: &str, path: &Path) -> Result<ProjectData, Diagnostic> {
+    single_source_project_in(Path::new(""), path, source)
+}
+
+pub(crate) fn single_source_project_in(
+    root: &Path,
+    path: &Path,
+    source: &str,
+) -> Result<ProjectData, Diagnostic> {
     let mut graph = ModuleGraph::new();
     graph.add_module("Main".to_string(), path.to_path_buf(), true);
     link(
+        root,
         graph,
         vec![source.to_string()],
         vec![mesh_parser::parse(source)],
@@ -460,10 +532,11 @@ pub fn single_source_project_at(source: &str, path: &Path) -> Result<ProjectData
 /// Make each `module` block a module of its own, connect every module to
 /// those it imports or whose interfaces it uses, and order them.
 fn link(
+    root: &Path,
     mut graph: ModuleGraph,
     mut module_sources: Vec<String>,
     mut module_parses: Vec<mesh_parser::Parse>,
-) -> Result<ProjectData, String> {
+) -> Result<ProjectData, Diagnostic> {
     // Phase 1c: a `module Name do ... end` block is a module of its own,
     // which files import like any other (the file holding it too). Its
     // source is the file with the rest blanked, so diagnostics point into
@@ -482,11 +555,17 @@ fn link(
         for module in inline {
             let path = graph.get(owner).path.clone();
             if let Some(existing) = graph.resolve(&module.name) {
-                return Err(format!(
-                    "Module `{}` declared in '{}' conflicts with the module of '{}'",
-                    module.name,
-                    path.display(),
-                    graph.get(existing).path.display()
+                return Err(module_unreadable(
+                    &root.join(&path),
+                    format!(
+                        "Module `{}` declared in '{}' conflicts with the module of '{}'",
+                        module.name,
+                        path.display(),
+                        graph.get(existing).path.display()
+                    ),
+                )
+                .with_repair(
+                    "Rename the module block or the conflicting file and update its imports.",
                 ));
             }
             let parse = mesh_parser::parse(&module.source);
@@ -510,10 +589,10 @@ fn link(
             let qualifier = path.rsplit('.').next().unwrap_or(&path).to_string();
             if let Some(previous) = qualifiers.insert(qualifier.clone(), path.clone()) {
                 if previous != path {
-                    return Err(format!(
-                        "Ambiguous module qualifier `{qualifier}` in '{}': `{previous}` and `{path}`. Use selective imports.",
-                        graph.get(id).path.display()
-                    ));
+                    return Err(module_unreadable(
+                        &root.join(&graph.get(id).path),
+                        format!("Ambiguous module qualifier `{qualifier}` in '{}': `{previous}` and `{path}`. Use selective imports.", graph.get(id).path.display()),
+                    ).with_repair("Use selective imports to give each imported name an unambiguous qualifier."));
                 }
             }
         }
@@ -524,17 +603,27 @@ fn link(
                     // Unknown import (stdlib or typo) -- skip silently.
                 }
                 Some(dep_id) if dep_id == id => {
-                    return Err(format!("Module '{}' cannot import itself", module_name));
+                    return Err(module_cycle_diagnostic(
+                        root,
+                        &graph,
+                        &module_sources,
+                        &module_parses,
+                        CycleError {
+                            cycle_path: vec![module_name.clone(), module_name],
+                        },
+                    )
+                    .with_repair("Remove the import of this module from its own source."));
                 }
                 Some(dep_id) => {
                     if let Some(&owner) = private_inline.get(&dep_id) {
                         if graph.get(owner).path != graph.get(id).path {
-                            return Err(format!(
-                                "Module `{import_name}` is private to '{}': declare it \
-                                 `pub module` to import it from '{}'",
-                                graph.get(owner).path.display(),
-                                graph.get(id).path.display()
-                            ));
+                            return Err(module_unreadable(
+                                &root.join(&graph.get(id).path),
+                                format!(
+                                    "Module `{import_name}` is private to '{}': declare it `pub module` to import it from '{}'",
+                                    graph.get(owner).path.display(), graph.get(id).path.display()
+                                ),
+                            ).with_repair(format!("Declare `{import_name}` as `pub module` or remove the import.")));
                         }
                     }
                     graph.add_dependency(id, dep_id);
@@ -593,14 +682,60 @@ fn link(
     }
 
     // Phase 3: Topological sort.
-    let compilation_order = module_graph::topological_sort(&graph)
-        .map_err(|e: CycleError| format!("Circular dependency: {}", e))?;
+    let compilation_order = module_graph::topological_sort(&graph).map_err(|cycle| {
+        module_cycle_diagnostic(root, &graph, &module_sources, &module_parses, cycle)
+    })?;
 
     Ok(ProjectData {
         graph,
         compilation_order,
         module_sources,
         module_parses,
+    })
+}
+
+fn module_cycle_diagnostic(
+    root: &Path,
+    graph: &ModuleGraph,
+    sources: &[String],
+    parses: &[mesh_parser::Parse],
+    cycle: CycleError,
+) -> Diagnostic {
+    let mut imports = cycle.cycle_path.windows(2).map(|edge| {
+        let id = graph
+            .resolve(&edge[0])
+            .expect("cycle module is in the graph");
+        let path = &graph.get(id).path;
+        let owner = graph
+            .modules
+            .iter()
+            .position(|module| &module.path == path)
+            .expect("every module has a source file");
+        let file = SourceFile::new(root.join(path), sources[owner].as_str());
+        let tree = parses[id.0 as usize].tree();
+        let (_, span) = import_declarations(&tree)
+            .find(|(name, _)| name == &edge[1])
+            .expect("only explicit import edges can form a cycle");
+        (
+            file,
+            span,
+            format!("`{}` imports `{}` here", edge[0], edge[1]),
+        )
+    });
+    let (file, span, label) = imports.next().expect("a cycle has at least one import");
+    let message = if cycle.cycle_path.len() == 2 {
+        format!(
+            "Module '{}' cannot import itself ({cycle})",
+            cycle.cycle_path[0]
+        )
+    } else {
+        format!("Circular dependency: {cycle}")
+    };
+    let diagnostic = Diagnostic::in_file(Code::ModuleCycle, &file, message)
+        .at(span, "")
+        .with_label(span, label);
+    imports.fold(diagnostic, |diagnostic, (file, span, label)| {
+        diagnostic.with_label_in(&file, span, label)
     })
 }
 
@@ -758,33 +893,34 @@ mod tests {
     #[test]
     fn project_files_name_their_modules() {
         assert_eq!(
-            project_module_name(Path::new("main.mpl")),
+            project_module_name(Path::new(""), Path::new("main.mpl")),
             Ok("Main".to_string())
         );
         assert_eq!(
-            project_module_name(Path::new("api/user_store.mpl")),
+            project_module_name(Path::new(""), Path::new("api/user_store.mpl")),
             Ok("Api.UserStore".to_string())
         );
         #[cfg(unix)]
         {
             use std::os::unix::ffi::OsStrExt as _;
             let not_utf8 = Path::new(std::ffi::OsStr::from_bytes(b"api/\xff.mpl"));
-            assert!(project_module_name(not_utf8)
+            assert!(project_module_name(Path::new(""), not_utf8)
                 .unwrap_err()
+                .message()
                 .starts_with("Cannot determine module name for 'api/"));
         }
     }
     use std::fs;
 
-    fn build_project_with_entrypoint(root: &Path, entry: &Path) -> Result<ProjectData, String> {
+    fn build_project_with_entrypoint(root: &Path, entry: &Path) -> Result<ProjectData, Diagnostic> {
         super::build_project(root, entry, &[], false, &read_file)
     }
 
-    fn build_project(root: &Path) -> Result<ProjectData, String> {
+    fn build_project(root: &Path) -> Result<ProjectData, Diagnostic> {
         build_project_with_entrypoint(root, Path::new(DEFAULT_ENTRYPOINT))
     }
 
-    fn build_module_graph(root: &Path) -> Result<(ModuleGraph, Vec<ModuleId>), String> {
+    fn build_module_graph(root: &Path) -> Result<(ModuleGraph, Vec<ModuleId>), Diagnostic> {
         let project = build_project(root)?;
         Ok((project.graph, project.compilation_order))
     }
@@ -892,10 +1028,13 @@ mod tests {
             symlink(target, &alias).unwrap();
 
             let error = discover_mesh_files(&root).unwrap_err();
+            assert_eq!(error.code().id(), "M0202");
             assert!(
-                error.contains("symbolic link")
-                    && error.contains(alias.file_name().unwrap().to_str().unwrap()),
-                "unexpected error: {error}"
+                error.message().contains("symbolic link")
+                    && error
+                        .message()
+                        .contains(alias.file_name().unwrap().to_str().unwrap()),
+                "unexpected error: {error:?}"
             );
         }
     }
@@ -1030,7 +1169,7 @@ mod tests {
         let error = build_project(&root)
             .err()
             .expect("unfetched git dependency");
-        assert!(error.contains("run `meshc deps`"), "{error}");
+        assert!(error.repair().contains("Run `meshc deps`"), "{error:?}");
 
         let checkout = root.join(".mesh/deps/shared");
         fs::create_dir_all(checkout.join("support")).unwrap();
@@ -1087,19 +1226,32 @@ from Baz.Qux import { name1, name2 }
     fn test_build_module_graph_cycle() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
+        let imports = [
+            ("a.mpl", "\nimport B"),
+            ("b.mpl", "\nfrom C import c"),
+            ("c.mpl", "\nimport A"),
+        ];
+        fs::write(root.join("main.mpl"), "import A\n").unwrap();
+        for (path, import) in imports {
+            fs::write(root.join(path), format!("{import}\n")).unwrap();
+        }
 
-        fs::write(root.join("main.mpl"), "fn main() do\n  1\nend\n").unwrap();
-        fs::write(root.join("a.mpl"), "import B\n").unwrap();
-        fs::write(root.join("b.mpl"), "import A\n").unwrap();
-
-        let result = build_module_graph(root);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(
-            err.contains("Circular dependency"),
-            "Expected cycle error, got: {}",
-            err
-        );
+        let diagnostic = build_module_graph(root).unwrap_err();
+        assert_eq!(diagnostic.code().id(), "M0201");
+        assert!(diagnostic.message().contains("A -> B -> C -> A"));
+        let primary = diagnostic.file().unwrap();
+        assert_eq!(primary.path(), root.join("a.mpl"));
+        assert_eq!(diagnostic.line(), Some(2));
+        assert_eq!(diagnostic.labels().len(), imports.len());
+        for (label, (path, import)) in diagnostic.labels().iter().zip(imports) {
+            let file = label.file().unwrap_or(primary);
+            assert_eq!(file.path(), root.join(path));
+            let span = label.span();
+            assert_eq!(
+                &file.text().unwrap()[span.start as usize..span.end as usize],
+                import.trim()
+            );
+        }
     }
 
     #[test]
@@ -1151,8 +1303,8 @@ from Baz.Qux import { name1, name2 }
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            err.contains("cannot import itself"),
-            "Expected self-import error, got: {}",
+            err.message().contains("cannot import itself"),
+            "Expected self-import error, got: {:?}",
             err
         );
     }
@@ -1233,8 +1385,8 @@ from Baz.Qux import { name1, name2 }
                 .err()
                 .unwrap();
             assert!(
-                error.contains("must stay within project"),
-                "{entry}: {error}"
+                error.message().contains("must stay within project"),
+                "{entry}: {error:?}"
             );
         }
     }
@@ -1296,8 +1448,10 @@ from Baz.Qux import { name1, name2 }
             .err()
             .unwrap();
         assert!(
-            error.contains("Native binding module `Bindings.Own`"),
-            "{error}"
+            error
+                .message()
+                .contains("Native binding module `Bindings.Own`"),
+            "{error:?}"
         );
         // A binding at a package's root `main.mpl` names no module.
         fs::write(
@@ -1307,8 +1461,10 @@ from Baz.Qux import { name1, name2 }
         .unwrap();
         let error = build(&[binding(&dependency, "main.mpl")]).err().unwrap();
         assert!(
-            error.contains("Cannot determine native binding module name"),
-            "{error}"
+            error
+                .message()
+                .contains("Cannot determine native binding module name"),
+            "{error:?}"
         );
     }
 
@@ -1323,7 +1479,10 @@ from Baz.Qux import { name1, name2 }
         )
         .unwrap();
         let error = build_project(root).err().unwrap();
-        assert!(error.contains("Module `Geo` declared in"), "{error}");
+        assert!(
+            error.message().contains("Module `Geo` declared in"),
+            "{error:?}"
+        );
     }
 
     #[test]
@@ -1341,7 +1500,7 @@ from Baz.Qux import { name1, name2 }
         )
         .unwrap();
         let error = build_project(root).err().unwrap();
-        assert!(error.contains("is private to"), "{error}");
+        assert!(error.message().contains("is private to"), "{error:?}");
     }
 
     /// Using an interface adds a dependency on the module defining it,
@@ -1510,7 +1669,10 @@ from Baz.Qux import { name1, name2 }
             Err(err) => err,
         };
 
-        assert!(err.contains("lib/start.mpl"), "unexpected error: {err}");
+        assert!(
+            err.message().contains("lib/start.mpl"),
+            "unexpected error: {err:?}"
+        );
     }
 
     #[test]
@@ -1587,8 +1749,10 @@ from Baz.Qux import { name1, name2 }
         if !listed {
             let error = result.err().expect("the packages cannot be listed");
             assert!(
-                error.contains("Failed to walk installed packages"),
-                "{error}"
+                error
+                    .message()
+                    .contains("Failed to walk installed packages"),
+                "{error:?}"
             );
         }
 
@@ -1600,7 +1764,10 @@ from Baz.Qux import { name1, name2 }
             let error = build_project(tmp.path())
                 .err()
                 .expect("an unnameable module");
-            assert!(error.contains("Cannot determine module name"), "{error}");
+            assert!(
+                error.message().contains("Cannot determine module name"),
+                "{error:?}"
+            );
         }
     }
 }

@@ -4,8 +4,10 @@
 //! git-based and path-based dependencies. Transitive dependencies are resolved
 //! recursively, with diamond conflicts and cycles reported as errors.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 
 use crate::lockfile::{LockedPackage, Lockfile};
 use crate::manifest::{Dependency, Manifest};
@@ -30,17 +32,6 @@ pub enum DepSource {
     Path { path: PathBuf },
 }
 
-impl DepSource {
-    /// Return a canonical string key for conflict detection.
-    /// Two deps with the same name but different source keys are conflicting.
-    fn key(&self) -> String {
-        match self {
-            DepSource::Git { url, .. } => format!("git:{}", url),
-            DepSource::Path { path } => format!("path:{}", path.display()),
-        }
-    }
-}
-
 /// Internal state for the DFS resolver.
 struct ResolveCtx {
     /// Resolved dependencies indexed by name.
@@ -48,7 +39,7 @@ struct ResolveCtx {
     /// Source keys indexed by dep name, for conflict detection.
     source_keys: BTreeMap<String, String>,
     /// Currently in the DFS stack -- for cycle detection.
-    visiting: HashSet<String>,
+    visiting: Vec<String>,
 }
 
 /// Resolve all dependencies from a manifest.
@@ -59,11 +50,11 @@ struct ResolveCtx {
 ///
 /// Git dependencies are cloned/fetched into `project_dir/.mesh/deps/<name>/`.
 /// Path dependencies are resolved relative to the manifest's directory.
-pub fn resolve(manifest: &Manifest, project_dir: &Path) -> Result<Vec<ResolvedDep>, String> {
+pub fn resolve(manifest: &Manifest, project_dir: &Path) -> Result<Vec<ResolvedDep>, Diagnostic> {
     let mut ctx = ResolveCtx {
         resolved: BTreeMap::new(),
         source_keys: BTreeMap::new(),
-        visiting: HashSet::new(),
+        visiting: Vec::new(),
     };
 
     resolve_deps(&manifest.dependencies, project_dir, project_dir, &mut ctx)?;
@@ -81,72 +72,99 @@ fn resolve_deps(
     base_dir: &Path,
     project_dir: &Path,
     ctx: &mut ResolveCtx,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     for (name, dep) in deps {
-        // Cycle detection
-        if ctx.visiting.contains(name) {
-            return Err(format!(
-                "Dependency cycle detected: `{}` is already being resolved",
-                name
-            ));
+        let (source_key, dep_path) = match dep {
+            Dependency::RegistryShorthand(_) | Dependency::Registry { .. } => continue,
+            Dependency::Git {
+                git,
+                rev,
+                branch,
+                tag,
+            } => {
+                let selection = if let Some(rev) = rev {
+                    format!(" (rev {rev})")
+                } else if let Some(tag) = tag {
+                    format!(" (tag {tag})")
+                } else if let Some(branch) = branch {
+                    format!(" (branch {branch})")
+                } else {
+                    String::new()
+                };
+                (
+                    format!("git:{git}{selection}"),
+                    project_dir.join(".mesh").join("deps").join(name),
+                )
+            }
+            Dependency::Path { path } => {
+                let resolved_path = resolve_path_dep(base_dir, name, path)?;
+                (format!("path:{}", resolved_path.display()), resolved_path)
+            }
+        };
+
+        if let Some(existing_key) = ctx.source_keys.get(name) {
+            if *existing_key != source_key {
+                return Err(Diagnostic::in_file(
+                    Code::DependencyConflict,
+                    &SourceFile::unread(base_dir.join("mesh.toml")),
+                    format!("Dependency conflict: `{name}` required from two different sources"),
+                )
+                .with_note(format!("First source: {existing_key}"))
+                .with_note(format!("Conflicting source: {source_key}"))
+                .with_repair(format!(
+                    "Use the same source for `{name}` in both dependency declarations."
+                )));
+            }
+            if let Some(start) = ctx.visiting.iter().position(|dep| dep == name) {
+                let chain = ctx.visiting[start..]
+                    .iter()
+                    .chain([name])
+                    .map(String::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" -> ");
+                return Err(Diagnostic::in_file(
+                    Code::DependencyCycle,
+                    &SourceFile::unread(base_dir.join("mesh.toml")),
+                    format!("Dependency cycle detected: {chain}"),
+                ));
+            }
+            continue;
         }
 
-        // Determine source and resolve
-        let (source, revision, dep_path) = match dep {
-            // `meshpkg install` downloads registry packages into `.mesh/packages`.
-            Dependency::RegistryShorthand(_) | Dependency::Registry { .. } => continue,
+        let (source, revision) = match dep {
             Dependency::Git {
                 git: url,
                 rev,
                 branch,
                 tag,
             } => {
-                let dest = project_dir.join(".mesh").join("deps").join(name);
-                let resolved_rev = fetch_git_dep(
+                let revision = fetch_git_dep(
                     url,
-                    &dest,
+                    &dep_path,
                     rev.as_deref(),
                     branch.as_deref(),
                     tag.as_deref(),
-                )?;
+                )
+                .map_err(|diagnostic| {
+                    diagnostic.with_note(format!(
+                        "While resolving `{name}` from '{}'",
+                        base_dir.join("mesh.toml").display()
+                    ))
+                })?;
                 let source = DepSource::Git {
                     url: url.clone(),
-                    rev: resolved_rev.clone(),
+                    rev: revision.clone(),
                 };
-                (source, resolved_rev, dest)
+                (source, revision)
             }
-            Dependency::Path { path } => {
-                let resolved_path = if Path::new(path).is_absolute() {
-                    PathBuf::from(path)
-                } else {
-                    base_dir.join(path).canonicalize().map_err(|e| {
-                        format!(
-                            "Failed to resolve path dependency `{}` ({}): {}",
-                            name, path, e
-                        )
-                    })?
-                };
-                let source = DepSource::Path {
-                    path: resolved_path.clone(),
-                };
-                (source, "local".to_string(), resolved_path)
-            }
+            _ => (
+                DepSource::Path {
+                    path: dep_path.clone(),
+                },
+                "local".to_string(),
+            ),
         };
 
-        // Conflict detection: same name, different source
-        let source_key = source.key();
-        if let Some(existing_key) = ctx.source_keys.get(name) {
-            if *existing_key != source_key {
-                return Err(format!(
-                    "Dependency conflict: `{}` required from two different sources",
-                    name
-                ));
-            }
-            // Same source -- already resolved, skip
-            continue;
-        }
-
-        // Record this dep
         ctx.source_keys.insert(name.clone(), source_key);
         ctx.resolved.insert(
             name.clone(),
@@ -158,17 +176,36 @@ fn resolve_deps(
             },
         );
 
-        // Check for transitive dependencies
         let sub_manifest_path = dep_path.join("mesh.toml");
         if sub_manifest_path.exists() {
-            ctx.visiting.insert(name.clone());
+            ctx.visiting.push(name.clone());
             let sub_manifest = Manifest::from_file(&sub_manifest_path)?;
             resolve_deps(&sub_manifest.dependencies, &dep_path, project_dir, ctx)?;
-            ctx.visiting.remove(name);
+            ctx.visiting.pop();
         }
     }
 
     Ok(())
+}
+
+pub(crate) fn resolve_path_dep(
+    base_dir: &Path,
+    name: &str,
+    path: &str,
+) -> Result<PathBuf, Diagnostic> {
+    let candidate = base_dir.join(path);
+    let failure = |reason: &dyn std::fmt::Display| {
+        Diagnostic::in_file(
+        Code::DependencyUnresolvable,
+        &SourceFile::unread(base_dir.join("mesh.toml")),
+        format!("Failed to resolve path dependency `{name}` ({}): {reason}", candidate.display()),
+    ).with_repair(format!("Set [dependencies].{name}.path to an existing directory relative to mesh.toml or to an absolute path."))
+    };
+    let resolved = candidate.canonicalize().map_err(|error| failure(&error))?;
+    if !resolved.is_dir() {
+        return Err(failure(&"expected a directory"));
+    }
+    Ok(resolved)
 }
 
 /// Clone or fetch a git repository and check out the specified revision.
@@ -184,40 +221,61 @@ pub fn fetch_git_dep(
     rev: Option<&str>,
     branch: Option<&str>,
     tag: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, Diagnostic> {
+    let failure = |message| {
+        Diagnostic::new(Code::DependencyUnresolvable, message)
+        .with_note(format!("Git source: {url}"))
+        .with_repair("Check access to the Git URL and checkout directory, and use a rev, branch, or tag that exists in the repository.")
+    };
     let repo = if dest.exists() {
         // Open existing repo and fetch
-        let repo = git2::Repository::open(dest)
-            .map_err(|e| format!("Failed to open git repo at {}: {}", dest.display(), e))?;
+        let repo = git2::Repository::open(dest).map_err(|e| {
+            failure(format!(
+                "Failed to open git repo at {}: {}",
+                dest.display(),
+                e
+            ))
+        })?;
 
         // Fetch from origin (scoped to drop Remote before moving repo)
         {
             let mut remote = repo
                 .find_remote("origin")
-                .map_err(|e| format!("Failed to find remote 'origin': {}", e))?;
+                .map_err(|e| failure(format!("Failed to find remote 'origin': {}", e)))?;
             remote
                 .fetch(&[] as &[&str], None, None)
-                .map_err(|e| format!("Failed to fetch from {}: {}", url, e))?;
+                .map_err(|e| failure(format!("Failed to fetch from {}: {}", url, e)))?;
         }
 
         repo
     } else {
         // Clone fresh
         let parent = dest.parent().unwrap_or(Path::new("."));
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory {}: {}", parent.display(), e))?;
-        git2::Repository::clone(url, dest).map_err(|e| format!("Failed to clone {}: {}", url, e))?
+        std::fs::create_dir_all(parent).map_err(|e| {
+            failure(format!(
+                "Failed to create directory {}: {}",
+                parent.display(),
+                e
+            ))
+        })?;
+        git2::Repository::clone(url, dest)
+            .map_err(|e| failure(format!("Failed to clone {}: {}", url, e)))?
     };
 
     // Resolve the target commit
     let oid = if let Some(rev) = rev {
         // Exact revision
-        git2::Oid::from_str(rev).map_err(|e| format!("Invalid revision '{}': {}", rev, e))?
+        git2::Oid::from_str(rev)
+            .map_err(|e| failure(format!("Invalid revision '{}': {}", rev, e)))?
     } else if let Some(tag_name) = tag {
         // Tag -> resolve to commit
         repo.find_reference(&format!("refs/tags/{tag_name}"))
             .and_then(|reference| reference.peel_to_commit())
-            .map_err(|e| format!("Failed to resolve tag '{tag_name}' to a commit: {e}"))?
+            .map_err(|e| {
+                failure(format!(
+                    "Failed to resolve tag '{tag_name}' to a commit: {e}"
+                ))
+            })?
             .id()
     } else if let Some(branch_name) = branch {
         // Branch -> resolve HEAD of branch
@@ -225,27 +283,31 @@ pub fn fetch_git_dep(
         repo.find_reference(&format!("refs/remotes/origin/{branch_name}"))
             .or_else(|_| repo.find_reference(&format!("refs/heads/{branch_name}")))
             .and_then(|reference| reference.peel_to_commit())
-            .map_err(|e| format!("Failed to resolve branch '{branch_name}' to a commit: {e}"))?
+            .map_err(|e| {
+                failure(format!(
+                    "Failed to resolve branch '{branch_name}' to a commit: {e}"
+                ))
+            })?
             .id()
     } else {
         // Default branch HEAD
         let head = repo
             .head()
-            .map_err(|e| format!("Failed to get HEAD of {}: {}", url, e))?;
+            .map_err(|e| failure(format!("Failed to get HEAD of {}: {}", url, e)))?;
         let commit = head
             .peel_to_commit()
-            .map_err(|e| format!("Failed to resolve HEAD to commit: {}", e))?;
+            .map_err(|e| failure(format!("Failed to resolve HEAD to commit: {}", e)))?;
         commit.id()
     };
 
     // Checkout the resolved commit (detached HEAD)
     let obj = repo
         .find_object(oid, None)
-        .map_err(|e| format!("Failed to find object {}: {}", oid, e))?;
+        .map_err(|e| failure(format!("Failed to find object {}: {}", oid, e)))?;
     repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().force()))
-        .map_err(|e| format!("Failed to checkout {}: {}", oid, e))?;
+        .map_err(|e| failure(format!("Failed to checkout {}: {}", oid, e)))?;
     repo.set_head_detached(oid)
-        .map_err(|e| format!("Failed to detach HEAD at {}: {}", oid, e))?;
+        .map_err(|e| failure(format!("Failed to detach HEAD at {}: {}", oid, e)))?;
 
     Ok(oid.to_string())
 }
@@ -254,7 +316,9 @@ pub fn fetch_git_dep(
 ///
 /// Reads mesh.toml from `project_dir`, resolves all dependencies, and produces
 /// a lockfile. Returns the resolved dependencies and lockfile.
-pub fn resolve_dependencies(project_dir: &Path) -> Result<(Vec<ResolvedDep>, Lockfile), String> {
+pub fn resolve_dependencies(
+    project_dir: &Path,
+) -> Result<(Vec<ResolvedDep>, Lockfile), Diagnostic> {
     let manifest_path = project_dir.join("mesh.toml");
     let manifest = Manifest::from_file(&manifest_path)?;
 
@@ -279,7 +343,7 @@ pub fn resolve_dependencies(project_dir: &Path) -> Result<(Vec<ResolvedDep>, Loc
     let lock_path = project_dir.join("mesh.lock");
     if lock_path.exists() {
         locked_packages.extend(
-            Lockfile::read(&lock_path)?
+            Lockfile::from_file(&lock_path)?
                 .packages
                 .into_iter()
                 .filter(|package| package.sha256.is_some()),
@@ -293,6 +357,7 @@ pub fn resolve_dependencies(project_dir: &Path) -> Result<(Vec<ResolvedDep>, Loc
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use tempfile::TempDir;
 
     /// Helper: create a minimal mesh.toml in the given directory.
@@ -419,9 +484,23 @@ version = "0.1.0"
         let result = resolve(&manifest, root.path());
         assert!(result.is_err());
         let err = result.unwrap_err();
+        assert_eq!(err.code().id(), "M0104");
+        assert_eq!(
+            err.notes(),
+            [
+                format!(
+                    "First source: path:{}",
+                    shared_v1.canonicalize().unwrap().display()
+                ),
+                format!(
+                    "Conflicting source: path:{}",
+                    shared_v2.canonicalize().unwrap().display()
+                ),
+            ]
+        );
         assert!(
-            err.contains("Dependency conflict") && err.contains("shared"),
-            "Expected conflict error for 'shared', got: {}",
+            err.message().contains("Dependency conflict") && err.message().contains("shared"),
+            "Expected conflict error for 'shared', got: {:?}",
             err
         );
     }
@@ -462,11 +541,8 @@ version = "0.1.0"
         let result = resolve(&manifest, root.path());
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(
-            err.contains("cycle") || err.contains("Cycle"),
-            "Expected cycle error, got: {}",
-            err
-        );
+        assert_eq!(err.code().id(), "M0103");
+        assert!(err.message().contains("dep-a -> dep-b -> dep-a"));
     }
 
     #[test]
@@ -647,7 +723,8 @@ version = "1.0.0"
             (", branch = \"nope\"", "Failed to resolve branch 'nope'"),
         ] {
             let error = resolve_with(pin).unwrap_err();
-            assert!(error.contains(expected), "{expected}: {error}");
+            assert_eq!(error.code().id(), "M0102");
+            assert!(error.message().contains(expected), "{expected}: {error:?}");
         }
 
         // A checkout that is not a repository is not fetched into.
@@ -655,7 +732,10 @@ version = "1.0.0"
         std::fs::remove_dir_all(&checkout).unwrap();
         std::fs::create_dir_all(&checkout).unwrap();
         let error = resolve_with("").unwrap_err();
-        assert!(error.contains("Failed to open git repo"), "{error}");
+        assert!(
+            error.message().contains("Failed to open git repo"),
+            "{error:?}"
+        );
     }
 
     #[test]
@@ -668,9 +748,12 @@ version = "1.0.0"
         );
         let manifest = Manifest::from_file(&root.path().join("mesh.toml")).unwrap();
         let error = resolve(&manifest, root.path()).unwrap_err();
+        assert_eq!(error.code().id(), "M0102");
         assert!(
-            error.contains("Failed to resolve path dependency `gone`"),
-            "{error}"
+            error
+                .message()
+                .contains("Failed to resolve path dependency `gone`"),
+            "{error:?}"
         );
     }
 

@@ -35,3 +35,23 @@ pub use toolchain_update::{
     run_toolchain_update, run_toolchain_update_with_progress, ToolchainUpdateError,
     ToolchainUpdateMode, ToolchainUpdateOutcome,
 };
+
+fn toml_error(
+    code: mesh_diagnostics::Code,
+    file: &mesh_diagnostics::SourceFile,
+    context: impl std::fmt::Display,
+    error: toml::de::Error,
+) -> mesh_diagnostics::Diagnostic {
+    let diagnostic = mesh_diagnostics::Diagnostic::in_file(
+        code,
+        file,
+        format!("{context}: {}", error.message()),
+    );
+    match error.span() {
+        Some(range) => diagnostic.at(
+            mesh_common::span::Span::new(range.start as u32, range.end as u32),
+            "",
+        ),
+        None => diagnostic,
+    }
+}

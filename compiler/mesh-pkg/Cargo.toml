@@ -10,6 +10,7 @@ mesh-diagnostics = { path = "../mesh-diagnostics" }
 mesh-parser = { path = "../mesh-parser" }
 mesh-typeck = { path = "../mesh-typeck" }
 toml = { workspace = true }
+toml_edit = { version = "0.22", default-features = false, features = ["parse"] }
 git2 = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }

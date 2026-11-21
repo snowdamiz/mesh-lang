@@ -1,4 +1,5 @@
 use mesh_common::{module_graph::ModuleGraph, span::Span};
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 use mesh_parser::ast::item::Item;
 use serde::{Deserialize, Deserializer};
 use std::collections::{BTreeMap, BTreeSet};
@@ -18,7 +19,7 @@ pub struct Manifest {
     #[serde(default)]
     pub verify: VerifyConfig,
     /// Runtime-owned deployment policy parsed from the modern `[cluster]` table.
-    #[serde(skip)]
+    #[serde(default, rename = "cluster", deserialize_with = "deserialize_cluster")]
     pub autonomous_cluster: Option<AutonomousClusterConfig>,
 }
 
@@ -62,17 +63,76 @@ pub struct NativeLibrary {
     pub sha256: String,
 }
 
+struct NativeValidationError {
+    field: &'static str,
+    library: Option<usize>,
+    message: String,
+    repair: String,
+}
+
+impl NativeValidationError {
+    fn to_diagnostic(self, code: Code, file: &SourceFile) -> Diagnostic {
+        let span = self.span(file.text().unwrap_or_default());
+        let diagnostic = Diagnostic::in_file(
+            code,
+            file,
+            format!(
+                "Failed to parse {}: {}",
+                file.path().display(),
+                self.message
+            ),
+        )
+        .with_repair(self.repair);
+        match span {
+            Some(range) => diagnostic.at(Span::new(range.start as u32, range.end as u32), ""),
+            None => diagnostic,
+        }
+    }
+
+    fn span(&self, text: &str) -> Option<std::ops::Range<usize>> {
+        let document = toml_edit::ImDocument::parse(text).ok()?;
+        let native = document.get("native")?;
+        if let Some(index) = self.library {
+            let libraries = native.get("libraries")?;
+            if let Some(tables) = libraries.as_array_of_tables() {
+                return tables.get(index)?.get(self.field)?.span();
+            }
+            return libraries
+                .as_array()?
+                .get(index)?
+                .as_inline_table()?
+                .get(self.field)?
+                .span();
+        }
+        native.get(self.field)?.span()
+    }
+}
+
 impl NativePackage {
-    fn validate(&mut self) -> Result<(), String> {
+    fn validate(&mut self) -> Result<(), NativeValidationError> {
         if self.abi != 1 {
-            return Err(format!(
-                "unsupported native ABI {}; this compiler supports only ABI 1",
-                self.abi
-            ));
+            return Err(NativeValidationError {
+                field: "abi",
+                library: None,
+                message: format!(
+                    "unsupported native ABI {}; this compiler supports only ABI 1",
+                    self.abi
+                ),
+                repair: "Build the native bindings for ABI 1 and set [native].abi to 1.".into(),
+            });
         }
 
         for binding in &mut self.bindings {
-            let normalized = normalize_native_path(binding, "mpl", "native binding")?;
+            let invalid_binding = |message| {
+                NativeValidationError {
+                field: "bindings",
+                library: None,
+                message,
+                repair: "List regular .mpl files relative to the package root in [native].bindings. Move test-only source out of that list.".into(),
+            }
+            };
+            let normalized =
+                normalize_native_path(binding, "mpl", "native binding").map_err(invalid_binding)?;
             if normalized
                 .file_name()
                 .and_then(|name| name.to_str())
@@ -80,31 +140,48 @@ impl NativePackage {
                     name.ends_with(".test.mpl") || name.ends_with(".test-support.mpl")
                 })
             {
-                return Err(format!(
+                return Err(invalid_binding(format!(
                     "native binding path must not name a test-only Mesh source file, got `{}`",
                     normalized.display()
-                ));
+                )));
             }
             *binding = normalized;
         }
 
         let mut targets = BTreeSet::new();
-        for library in &mut self.libraries {
+        for (index, library) in self.libraries.iter_mut().enumerate() {
+            let invalid_library = |field, message, repair: String| NativeValidationError {
+                field,
+                library: Some(index),
+                message,
+                repair,
+            };
             if library.target.is_empty()
                 || !library
                     .target
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
             {
-                return Err(format!(
-                    "native library target must be an exact target triple, got `{}`",
-                    library.target
+                return Err(invalid_library(
+                    "target",
+                    format!(
+                        "native library target must be an exact target triple, got `{}`",
+                        library.target
+                    ),
+                    "Set the library target to the exact triple used to build the archive.".into(),
                 ));
             }
             if !targets.insert(library.target.clone()) {
-                return Err(format!(
-                    "native package declares more than one library for target `{}`",
-                    library.target
+                return Err(invalid_library(
+                    "target",
+                    format!(
+                        "native package declares more than one library for target `{}`",
+                        library.target
+                    ),
+                    format!(
+                        "Keep a single [[native.libraries]] entry for `{}`.",
+                        library.target
+                    ),
                 ));
             }
 
@@ -114,7 +191,9 @@ impl NativePackage {
                 "a"
             };
             library.path =
-                normalize_native_path(&library.path, extension, "native static archive")?;
+                normalize_native_path(&library.path, extension, "native static archive").map_err(|message| {
+                    invalid_library("path", message, format!("Set the library path to a package-relative .{extension} archive outside tests/."))
+                })?;
 
             if library.sha256.len() != 64
                 || !library
@@ -122,9 +201,16 @@ impl NativePackage {
                     .bytes()
                     .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
             {
-                return Err(format!(
-                    "native library `{}` must declare a lowercase 64-character SHA-256",
-                    library.path.display()
+                return Err(invalid_library(
+                    "sha256",
+                    format!(
+                        "native library `{}` must declare a lowercase 64-character SHA-256",
+                        library.path.display()
+                    ),
+                    format!(
+                        "Compute the SHA-256 of '{}' and paste its lowercase hex digest here.",
+                        library.path.display()
+                    ),
                 ));
             }
         }
@@ -203,6 +289,13 @@ pub struct ClusteredDeclarationError {
     pub reason: String,
 }
 
+impl ClusteredDeclarationError {
+    pub fn to_diagnostic(&self, file: &SourceFile) -> Diagnostic {
+        Diagnostic::in_file(Code::ClusterDeclarationInvalid, file, self.to_string())
+            .at(self.span, &self.reason)
+    }
+}
+
 impl fmt::Display for ClusteredDeclarationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -248,6 +341,28 @@ impl Dependency {
             _ => None,
         }
     }
+}
+
+fn deserialize_cluster<'de, D>(deserializer: D) -> Result<Option<AutonomousClusterConfig>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    let cluster = toml::Value::deserialize(deserializer)?;
+    if cluster
+        .as_table()
+        .is_some_and(|table| table.contains_key("enabled") || table.contains_key("declarations"))
+    {
+        return Err(D::Error::custom(
+            "`[cluster]` manifest sections are no longer supported; move clustered declarations into source with `@cluster` or `@cluster(N)`",
+        ));
+    }
+    let config: AutonomousClusterConfig = cluster.try_into().map_err(D::Error::custom)?;
+    config
+        .validate()
+        .map_err(|errors| D::Error::custom(errors.join("; ")))?;
+    Ok(Some(config))
 }
 
 fn deserialize_entrypoint<'de, D>(deserializer: D) -> Result<Option<PathBuf>, D::Error>
@@ -335,7 +450,7 @@ fn normalize_native_path(path: &Path, extension: &str, label: &str) -> Result<Pa
 /// once. A path dependency is read where it is; a git dependency from its
 /// `meshc deps` checkout under `<project>/.mesh/deps/<name>`. Registry
 /// packages live under `.mesh/packages` and are found separately.
-pub fn source_dependency_roots(project_root: &Path) -> Result<Vec<PathBuf>, String> {
+pub fn source_dependency_roots(project_root: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
     let manifest_path = project_root.join("mesh.toml");
     if !manifest_path.is_file() {
         return Ok(Vec::new());
@@ -359,22 +474,34 @@ fn collect_source_dependency_roots(
     manifest: &Manifest,
     visited: &mut BTreeSet<PathBuf>,
     roots: &mut Vec<PathBuf>,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     for (name, dependency) in &manifest.dependencies {
         let root = match dependency {
             Dependency::Path { path } => {
-                package_root.join(path).canonicalize().map_err(|error| {
-                    format!("Failed to resolve path dependency `{name}` ({path}): {error}")
-                })?
+                crate::resolver::resolve_path_dep(package_root, name, path)?
             }
             Dependency::Git { .. } => {
                 let checkout = project_root.join(".mesh").join("deps").join(name);
                 if !checkout.join("mesh.toml").is_file() {
-                    return Err(format!(
-                        "Git dependency `{name}` is not fetched; run `meshc deps`"
-                    ));
+                    return Err(Diagnostic::new(
+                        Code::DependencyUnresolvable,
+                        format!(
+                            "Git dependency `{name}` is not fetched at '{}'",
+                            checkout.display()
+                        ),
+                    )
+                    .with_repair("Run `meshc deps` to fetch the Git dependency."));
                 }
-                checkout
+                checkout.canonicalize().map_err(|error| {
+                    Diagnostic::new(
+                        Code::DependencyUnresolvable,
+                        format!(
+                            "Failed to resolve Git checkout for `{name}` at '{}': {error}",
+                            checkout.display()
+                        ),
+                    )
+                    .with_repair("Restore access to the checkout and rerun `meshc deps`.")
+                })?
             }
             Dependency::RegistryShorthand(_) | Dependency::Registry { .. } => continue,
         };
@@ -391,25 +518,30 @@ fn collect_source_dependency_roots(
 pub fn resolve_entrypoint(
     project_root: &Path,
     manifest: Option<&Manifest>,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, Diagnostic> {
     let entrypoint = manifest
         .and_then(|manifest| manifest.package.entrypoint.clone())
         .unwrap_or_else(|| PathBuf::from(DEFAULT_ENTRYPOINT));
     let entry_full_path = project_root.join(&entrypoint);
 
-    if !entry_full_path.exists() {
-        return Err(format!(
-            "Entrypoint '{}' was not found in project '{}'",
-            entrypoint.display(),
-            project_root.display()
-        ));
-    }
-
     if !entry_full_path.is_file() {
-        return Err(format!(
-            "Entrypoint '{}' in project '{}' is not a file",
-            entrypoint.display(),
-            project_root.display()
+        let message = if entry_full_path.exists() {
+            format!(
+                "Entrypoint '{}' in project '{}' is not a file",
+                entrypoint.display(),
+                project_root.display()
+            )
+        } else {
+            format!(
+                "Entrypoint '{}' was not found in project '{}'",
+                entrypoint.display(),
+                project_root.display()
+            )
+        };
+        return Err(Diagnostic::in_file(
+            Code::EntrypointNotFound,
+            &SourceFile::unread(project_root.join("mesh.toml")),
+            message,
         ));
     }
 
@@ -422,9 +554,16 @@ pub fn resolve_entrypoint(
 pub fn rewrite_test_manifest_source(
     manifest_source: &str,
     project_root: &Path,
-) -> Result<String, String> {
-    let mut manifest_value: toml::Value = toml::from_str(manifest_source)
-        .map_err(|error| format!("Failed to parse manifest for rewrite: {}", error))?;
+) -> Result<String, Diagnostic> {
+    let file = || SourceFile::new(project_root.join("mesh.toml"), manifest_source);
+    let mut manifest_value: toml::Value = toml::from_str(manifest_source).map_err(|error| {
+        crate::toml_error(
+            Code::ManifestInvalid,
+            &file(),
+            "Failed to parse manifest for rewrite",
+            error,
+        )
+    })?;
     let manifest_table = manifest_value
         .as_table_mut()
         .expect("a parsed TOML document is a table");
@@ -432,7 +571,11 @@ pub fn rewrite_test_manifest_source(
         .get_mut("package")
         .and_then(toml::Value::as_table_mut)
         .ok_or_else(|| {
-            "Manifest must contain a [package] table to rewrite entrypoint".to_string()
+            Diagnostic::in_file(
+                Code::ManifestInvalid,
+                &file(),
+                "Manifest must contain a [package] table to rewrite entrypoint",
+            )
         })?;
     package_table.insert(
         "entrypoint".to_string(),
@@ -457,72 +600,80 @@ pub fn rewrite_test_manifest_source(
         else {
             continue;
         };
-        let absolute = project_root.join(&path).canonicalize().map_err(|error| {
-            format!(
-                "Failed to resolve path dependency `{name}` ({path}) for test manifest: {error}"
-            )
-        })?;
+        let absolute = crate::resolver::resolve_path_dep(project_root, name, &path)?;
         *path_value = toml::Value::String(absolute.to_string_lossy().into_owned());
     }
 
-    toml::to_string_pretty(&manifest_value)
-        .map_err(|error| format!("Failed to serialize manifest rewrite: {}", error))
-}
-
-/// Why a manifest failed to parse, naming its file when it has one.
-fn parse_failure(source_path: Option<&Path>, message: impl fmt::Display) -> String {
-    match source_path {
-        Some(path) => format!("Failed to parse {}: {}", path.display(), message),
-        None => format!("Failed to parse manifest: {}", message),
-    }
+    toml::to_string_pretty(&manifest_value).map_err(|error| {
+        Diagnostic::in_file(
+            Code::ManifestInvalid,
+            &file(),
+            format!("Failed to serialize manifest rewrite: {error}"),
+        )
+    })
 }
 
 /// Parse a mesh.toml manifest from a string.
 impl std::str::FromStr for Manifest {
-    type Err = String;
+    type Err = Diagnostic;
 
-    fn from_str(content: &str) -> Result<Manifest, String> {
-        Self::parse(content, None)
+    fn from_str(content: &str) -> Result<Self, Diagnostic> {
+        Self::from_source(Path::new("mesh.toml"), content, Code::ManifestInvalid)
     }
 }
 
 impl Manifest {
     /// Read and parse a mesh.toml manifest from a file path.
-    pub fn from_file(path: &Path) -> Result<Manifest, String> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-        Self::parse(content.as_str(), Some(path))
+    pub fn from_file(path: &Path) -> Result<Self, Diagnostic> {
+        Self::from_file_with_source(path).map(|(manifest, _)| manifest)
     }
 
-    fn parse(content: &str, source_path: Option<&Path>) -> Result<Manifest, String> {
-        let failure = |message: &dyn fmt::Display| parse_failure(source_path, message);
-        let mut value: toml::Value = toml::from_str(content).map_err(|error| failure(&error))?;
+    /// Returns the manifest together with the source that was parsed.
+    pub fn from_file_with_source(path: &Path) -> Result<(Self, String), Diagnostic> {
+        Self::read(path, Code::ManifestInvalid)
+    }
 
-        let autonomous_cluster = if let Some(cluster_value) = value
-            .as_table_mut()
-            .and_then(|table| table.remove("cluster"))
-        {
-            let is_removed_shape = cluster_value.as_table().is_some_and(|cluster| {
-                cluster.contains_key("enabled") || cluster.contains_key("declarations")
-            });
-            if is_removed_shape {
-                return Err(failure(&"`[cluster]` manifest sections are no longer supported; move clustered declarations into source with `@cluster` or `@cluster(N)`"));
+    pub(crate) fn for_native_resolution(path: &Path) -> Result<Self, Diagnostic> {
+        Self::read(path, Code::NativeBindingInvalid).map(|(manifest, _)| manifest)
+    }
+
+    fn read(path: &Path, native_error_code: Code) -> Result<(Self, String), Diagnostic> {
+        let content = std::fs::read_to_string(path).map_err(|error| {
+            Diagnostic::in_file(
+                Code::ManifestUnreadable,
+                &SourceFile::unread(path),
+                format!("Failed to read {}: {error}", path.display()),
+            )
+        })?;
+        let manifest = Self::from_source(path, &content, native_error_code)?;
+        Ok((manifest, content))
+    }
+
+    fn from_source(
+        path: &Path,
+        content: &str,
+        native_error_code: Code,
+    ) -> Result<Self, Diagnostic> {
+        let file = || SourceFile::new(path, content);
+        let mut manifest: Manifest = toml::from_str(content).map_err(|error| {
+            let repair = error.message().starts_with("`[package].entrypoint`")
+                .then_some("Set [package].entrypoint to a project-relative .mpl file, or remove it to use main.mpl.");
+            let diagnostic = crate::toml_error(
+                Code::ManifestInvalid,
+                &file(),
+                format!("Failed to parse manifest {}", path.display()),
+                error,
+            );
+            match repair {
+                Some(repair) => diagnostic.with_repair(repair),
+                None => diagnostic,
             }
-            let config: AutonomousClusterConfig =
-                cluster_value.try_into().map_err(|error| failure(&error))?;
-            config
-                .validate()
-                .map_err(|errors| failure(&errors.join("; ")))?;
-            Some(config)
-        } else {
-            None
-        };
-
-        let mut manifest: Manifest = value.try_into().map_err(|error| failure(&error))?;
+        })?;
         if let Some(native) = &mut manifest.native {
-            native.validate().map_err(|message| failure(&message))?;
+            native
+                .validate()
+                .map_err(|error| error.to_diagnostic(native_error_code, &file()))?;
         }
-        manifest.autonomous_cluster = autonomous_cluster;
         Ok(manifest)
     }
 }
@@ -600,6 +751,39 @@ mod tests {
     use std::str::FromStr;
     use std::{fs, path::PathBuf};
 
+    #[test]
+    fn manifest_diagnostics_locate_invalid_fields_and_syntax_in_the_written_file() {
+        let project = tempfile::tempdir().unwrap();
+        let path = project.path().join("mesh.toml");
+        let error = Manifest::from_file(&path).unwrap_err();
+        assert_eq!(error.code().id(), "M0001");
+        assert_eq!(error.file().unwrap().path(), path);
+
+        let package = "[package]\nname = \"café\"\nversion = \"0.1.0\"\n";
+        for (suffix, marked) in [
+            ("entrypoint = \"../outside.mpl\"\n", "\"../outside.mpl\""),
+            ("[native]\nabi = 2\n", "2"),
+            ("[native]\nabi = 1\nbindings = [\"tests/help.mpl\"]\n", "[\"tests/help.mpl\"]"),
+            ("[native]\nabi = 1\n[[native.libraries]]\ntarget = \"aarch64-apple-darwin\"\npath = \"/bad.a\"\nsha256 = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n", "\"/bad.a\""),
+        ] {
+            let source = format!("{package}{suffix}");
+            fs::write(&path, &source).unwrap();
+            let error = Manifest::from_file(&path).unwrap_err();
+            assert_eq!(error.code().id(), "M0002");
+            assert_eq!(error.file().unwrap().path(), path);
+            let start = source.find(marked).unwrap() as u32;
+            assert_eq!(error.span(), Some(Span::new(start, start + marked.len() as u32)));
+        }
+
+        let malformed = format!("{package}[dependencies\n");
+        fs::write(&path, &malformed).unwrap();
+        let error = Manifest::from_file(&path).unwrap_err();
+        assert_eq!(error.code().id(), "M0002");
+        assert_eq!(error.file().unwrap().text(), Some(malformed.as_str()));
+        assert_eq!(error.span().unwrap().start as usize, malformed.len() - 1);
+        assert_eq!(error.line(), Some(4));
+    }
+
     /// Plans the `@cluster` functions of one module, `Work`.
     fn plan_work(
         source: &str,
@@ -655,6 +839,11 @@ mod tests {
         assert!(reasons[2].1.contains("more than once"));
 
         let hidden = &issues[0];
+        let file = SourceFile::new("work.mpl", source);
+        let diagnostic = hidden.to_diagnostic(&file);
+        assert_eq!(diagnostic.code().id(), "CFG0001");
+        assert_eq!(diagnostic.file(), Some(&file));
+        assert_eq!(diagnostic.span(), Some(hidden.span));
         assert_eq!(hidden.file, PathBuf::from("work.mpl"));
         assert_eq!(
             &source[hidden.span.start as usize..hidden.span.end as usize],
@@ -822,7 +1011,7 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             ),
         ] {
             let error = manifest(&libraries).unwrap_err();
-            assert!(error.contains(expected), "{expected}: {error}");
+            assert!(error.message().contains(expected), "{expected}: {error:?}");
         }
         let native = manifest(&library("x86_64-pc-windows-msvc", "./native/m.lib", SHA))
             .unwrap()
@@ -855,7 +1044,10 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         package(&root.join("b"), "a = { path = \"../a\" }\n");
 
         let error = source_dependency_roots(&app).unwrap_err();
-        assert!(error.contains("`remote` is not fetched"), "{error}");
+        assert!(
+            error.message().contains("`remote` is not fetched"),
+            "{error:?}"
+        );
 
         package(&app.join(".mesh/deps/remote"), "");
         assert_eq!(
@@ -874,8 +1066,10 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         package(&app, "gone = { path = \"../gone\" }\n");
         let error = source_dependency_roots(&app).unwrap_err();
         assert!(
-            error.contains("Failed to resolve path dependency `gone`"),
-            "{error}"
+            error
+                .message()
+                .contains("Failed to resolve path dependency `gone`"),
+            "{error:?}"
         );
     }
 
@@ -884,7 +1078,8 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         let tmp = tempfile::tempdir().unwrap();
         fs::create_dir_all(tmp.path().join("main.mpl")).unwrap();
         let error = resolve_entrypoint(tmp.path(), None).unwrap_err();
-        assert!(error.contains("is not a file"), "{error}");
+        assert_eq!(error.code().id(), "M0003");
+        assert!(error.message().contains("is not a file"), "{error:?}");
     }
 
     #[test]
@@ -893,7 +1088,7 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             "[package]\nname = \"x\"\nversion = \"0.1.0\"\nentrypoint = \"./.\"\n",
         )
         .unwrap_err();
-        assert!(error.contains("must not be blank"), "{error}");
+        assert!(error.message().contains("must not be blank"), "{error:?}");
     }
 
     #[test]
@@ -919,8 +1114,8 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             let error = Manifest::from_str(&source).unwrap_err();
 
             assert!(
-                error.contains(expected) && error.contains(binding),
-                "unexpected error: {error}"
+                error.message().contains(expected) && error.message().contains(binding),
+                "unexpected error: {error:?}"
             );
         }
 
@@ -941,8 +1136,9 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         )
         .unwrap_err();
         assert!(
-            error.contains("native static archive") && error.contains("tests/libtest.a"),
-            "unexpected error: {error}"
+            error.message().contains("native static archive")
+                && error.message().contains("tests/libtest.a"),
+            "unexpected error: {error:?}"
         );
     }
 
@@ -958,7 +1154,10 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             let source =
                 format!("[package]\nname = \"bad\"\nversion = \"0.1.0\"\n\n[native]\n{native}\n");
             let error = Manifest::from_str(&source).unwrap_err();
-            assert!(error.contains(expected), "unexpected error: {error}");
+            assert!(
+                error.message().contains(expected),
+                "unexpected error: {error:?}"
+            );
         }
 
         let error = Manifest::from_str(
@@ -978,8 +1177,8 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         )
         .unwrap_err();
         assert!(
-            error.contains("static archive"),
-            "unexpected error: {error}"
+            error.message().contains("static archive"),
+            "unexpected error: {error:?}"
         );
     }
 
@@ -1010,7 +1209,10 @@ entrypoint = "   "
 "#;
 
         let err = Manifest::from_str(toml).unwrap_err();
-        assert!(err.contains("must not be blank"), "unexpected error: {err}");
+        assert!(
+            err.message().contains("must not be blank"),
+            "unexpected error: {err:?}"
+        );
     }
 
     #[test]
@@ -1024,8 +1226,8 @@ entrypoint = "/tmp/start.mpl"
 
         let err = Manifest::from_str(toml).unwrap_err();
         assert!(
-            err.contains("project-root-relative"),
-            "unexpected error: {err}"
+            err.message().contains("project-root-relative"),
+            "unexpected error: {err:?}"
         );
     }
 
@@ -1040,8 +1242,8 @@ entrypoint = "../escape.mpl"
 
         let err = Manifest::from_str(toml).unwrap_err();
         assert!(
-            err.contains("stay within the project root"),
-            "unexpected error: {err}"
+            err.message().contains("stay within the project root"),
+            "unexpected error: {err:?}"
         );
     }
 
@@ -1056,8 +1258,8 @@ entrypoint = "lib/start.txt"
 
         let err = Manifest::from_str(toml).unwrap_err();
         assert!(
-            err.contains("must end with `.mpl`"),
-            "unexpected error: {err}"
+            err.message().contains("must end with `.mpl`"),
+            "unexpected error: {err:?}"
         );
     }
 
@@ -1110,8 +1312,13 @@ entrypoint = "lib/start.mpl"
         .unwrap();
 
         let err = resolve_entrypoint(temp.path(), Some(&manifest)).unwrap_err();
+        assert_eq!(err.code().id(), "M0003");
+        assert!(err.repair().contains("[package].entrypoint"));
 
-        assert!(err.contains("lib/start.mpl"), "unexpected error: {err}");
+        assert!(
+            err.message().contains("lib/start.mpl"),
+            "unexpected error: {err:?}"
+        );
     }
 
     #[test]
@@ -1163,7 +1370,7 @@ registry = "1.0.0"
             ),
         ] {
             let error = rewrite_test_manifest_source(source, &project).unwrap_err();
-            assert!(error.contains(expected), "{expected}: {error}");
+            assert!(error.message().contains(expected), "{expected}: {error:?}");
         }
     }
 
@@ -1176,7 +1383,11 @@ foo = { path = "./foo" }
         let result = Manifest::from_str(toml);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("Failed to parse manifest"), "Error: {}", err);
+        assert!(
+            err.message().contains("Failed to parse manifest"),
+            "Error: {:?}",
+            err
+        );
     }
 
     #[test]
@@ -1400,10 +1611,11 @@ declarations = [{ kind = "service", target = "Services.Jobs.submit" }]
         for toml in cases {
             let err = Manifest::from_str(toml).unwrap_err();
             assert!(
-                err.contains("`[cluster]` manifest sections are no longer supported")
-                    && err.contains("`@cluster`")
-                    && err.contains("`@cluster(N)`"),
-                "unexpected error: {err}"
+                err.message()
+                    .contains("`[cluster]` manifest sections are no longer supported")
+                    && err.message().contains("`@cluster`")
+                    && err.message().contains("`@cluster(N)`"),
+                "unexpected error: {err:?}"
             );
         }
     }

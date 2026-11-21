@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use rowan::TextRange;
 use tower_lsp::lsp_types::{self, Position, Range, Url};
 
-use mesh_diagnostics::{Diagnostic, SourceFile};
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 use mesh_pkg::frontend::{self, CheckOptions, Frontend, Target};
 use mesh_pkg::manifest::DEFAULT_ENTRYPOINT;
 use mesh_typeck::ty::Ty;
@@ -127,11 +127,12 @@ fn analyze_in_project(
         if loaded {
             diagnostics.insert(
                 0,
-                frontend::uncategorized(format!(
-                    "Document '{}' was not discovered under project root '{}'",
-                    path.display(),
-                    root.display()
-                )),
+                Diagnostic::in_file(
+                    Code::ModuleUnreadable,
+                    &SourceFile::new(path, source),
+                    format!("Document '{}' was not discovered under project root '{}'", path.display(), root.display()),
+                )
+                .with_repair("Place the document in the project outside hidden directories and nested packages."),
             );
         }
         analysis_alone(diagnostics, path, source)
@@ -286,6 +287,18 @@ mod tests {
             parse: result.parse,
             typeck: result.typeck,
         }
+    }
+
+    fn published_on(open_path: &Path, source: &str, target_path: &Path) -> Vec<Diagnostic> {
+        let result = analyze_document(&file_uri(open_path), source, &[]);
+        let uri_for = |path: &Path| Url::from_file_path(path).ok();
+        let target_uri = Url::from_file_path(target_path.canonicalize().unwrap()).unwrap();
+        crate::diagnostics::by_uri(&result.diagnostics, &result.file, &uri_for)
+            .remove(&target_uri)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|diagnostic| diagnostic.lsp)
+            .collect()
     }
 
     fn file(text: &str) -> SourceFile {
@@ -597,7 +610,7 @@ mod tests {
     #[test]
     fn missing_configured_entry_reports_project_diagnostic() {
         let manifest = entrypoint_manifest("broken-entry", "lib/start.mpl");
-        let (_tmp, _project_dir, open_path, source) = write_mesh_project(
+        let (_tmp, project_dir, open_path, source) = write_mesh_project(
             Some(&manifest),
             &[(
                 "app.mpl",
@@ -606,28 +619,22 @@ mod tests {
             "app.mpl",
         );
 
-        let result = published(&file_uri(&open_path), &source, &[]);
-        let messages = diagnostic_messages(&result);
-
-        assert!(
-            messages
-                .iter()
-                .any(|message| message.contains("Entrypoint 'lib/start.mpl'")),
-            "missing configured entry should surface as a project diagnostic, got: {:?}",
-            messages
-        );
+        let diagnostics = published_on(&open_path, &source, &project_dir.join("mesh.toml"));
+        let [diagnostic] = diagnostics.as_slice() else {
+            panic!("expected one manifest diagnostic, got {diagnostics:?}");
+        };
         assert_eq!(
-            messages.len(),
-            1,
-            "clean standalone files should only receive the project diagnostic, got: {:?}",
-            messages
+            diagnostic.code,
+            Some(NumberOrString::String("M0003".into()))
         );
+        assert!(diagnostic.message.contains("Entrypoint 'lib/start.mpl'"));
+        assert_eq!(diagnostic.range.start, Position::new(0, 0));
     }
 
     #[test]
     fn invalid_manifest_entrypoint_reports_project_diagnostic() {
         let manifest = entrypoint_manifest("escaping-entry", "../escape.mpl");
-        let (_tmp, _project_dir, open_path, source) = write_mesh_project(
+        let (_tmp, project_dir, open_path, source) = write_mesh_project(
             Some(&manifest),
             &[(
                 "lib/support.mpl",
@@ -636,22 +643,16 @@ mod tests {
             "lib/support.mpl",
         );
 
-        let result = published(&file_uri(&open_path), &source, &[]);
-        let messages = diagnostic_messages(&result);
-
-        assert!(
-            messages
-                .iter()
-                .any(|message| message.contains("stay within the project root")),
-            "invalid manifest entrypoint should surface as a project diagnostic, got: {:?}",
-            messages
-        );
+        let diagnostics = published_on(&open_path, &source, &project_dir.join("mesh.toml"));
+        let [diagnostic] = diagnostics.as_slice() else {
+            panic!("expected one manifest diagnostic, got {diagnostics:?}");
+        };
         assert_eq!(
-            messages.len(),
-            1,
-            "clean standalone files should only receive the project diagnostic, got: {:?}",
-            messages
+            diagnostic.code,
+            Some(NumberOrString::String("M0002".into()))
         );
+        assert!(diagnostic.message.contains("stay within the project root"));
+        assert_eq!(diagnostic.range.start, Position::new(3, 13));
     }
 
     // ── Clustered cutover contract ────────────────────────────────────
@@ -684,27 +685,18 @@ mod tests {
             source_declared_public_work_source(),
         );
 
-        let result = published(&file_uri(&work_path), &source, &[]);
-        let diag = result
-            .diagnostics
-            .iter()
-            .find(|diag| {
-                diag.message
-                    .contains("`[cluster]` manifest sections are no longer supported")
-                    && diag.message.contains("mesh.toml")
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "expected removed-manifest diagnostic, got: {:?}",
-                    result
-                        .diagnostics
-                        .iter()
-                        .map(|diag| (&diag.message, diag.range))
-                        .collect::<Vec<_>>()
-                )
-            });
-
-        assert_eq!(diag.range.start, Position::new(0, 0));
+        let diagnostics = published_on(&work_path, &source, &work_path.with_file_name("mesh.toml"));
+        let [diagnostic] = diagnostics.as_slice() else {
+            panic!("expected one manifest diagnostic, got {diagnostics:?}");
+        };
+        assert_eq!(
+            diagnostic.code,
+            Some(NumberOrString::String("M0002".into()))
+        );
+        assert!(diagnostic
+            .message
+            .contains("`[cluster]` manifest sections are no longer supported"));
+        assert_eq!(diagnostic.range.start, Position::new(6, 0));
     }
 
     #[test]
@@ -800,27 +792,18 @@ mod tests {
             source_declared_public_work_source(),
         );
 
-        let result = published(&file_uri(&work_path), &source, &[]);
-        let diag = result
-            .diagnostics
-            .iter()
-            .find(|diag| {
-                diag.message
-                    .contains("`[cluster]` manifest sections are no longer supported")
-                    && diag.message.contains("mesh.toml")
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "expected removed-manifest diagnostic, got: {:?}",
-                    result
-                        .diagnostics
-                        .iter()
-                        .map(|diag| (&diag.message, diag.range))
-                        .collect::<Vec<_>>()
-                )
-            });
-
-        assert_eq!(diag.range.start, Position::new(0, 0));
+        let diagnostics = published_on(&work_path, &source, &work_path.with_file_name("mesh.toml"));
+        let [diagnostic] = diagnostics.as_slice() else {
+            panic!("expected one manifest diagnostic, got {diagnostics:?}");
+        };
+        assert_eq!(
+            diagnostic.code,
+            Some(NumberOrString::String("M0002".into()))
+        );
+        assert!(diagnostic
+            .message
+            .contains("`[cluster]` manifest sections are no longer supported"));
+        assert_eq!(diagnostic.range.start, Position::new(6, 0));
     }
 
     // ── The editor sees the program meshc builds ─────────────────────────
@@ -892,14 +875,16 @@ mod tests {
             diagnostic_messages(&result)
         );
 
-        for (files, open, expected) in [
+        for (files, open, target, code, expected) in [
             (
                 vec![
                     ("a.mpl", "import B\n\npub fn a() = 1\n"),
                     ("b.mpl", "import A\n\npub fn b() = 2\n"),
                     ("main.mpl", "fn main() do\n  1\nend\n"),
                 ],
+                "b.mpl",
                 "a.mpl",
+                "M0201",
                 "Circular dependency",
             ),
             (
@@ -908,6 +893,8 @@ mod tests {
                     (".scratch/note.mpl", "fn note() = 1\n"),
                 ],
                 ".scratch/note.mpl",
+                ".scratch/note.mpl",
+                "M0202",
                 "was not discovered",
             ),
             (
@@ -919,6 +906,8 @@ mod tests {
                     ),
                 ],
                 "math.test.mpl",
+                "math.test.mpl",
+                "P0401",
                 "one `teardown`",
             ),
             (
@@ -927,26 +916,31 @@ mod tests {
                     ("mesh.lock", "not a lockfile"),
                 ],
                 "main.mpl",
+                "mesh.lock",
+                "M0101",
                 "Failed to parse lockfile",
             ),
         ] {
-            let (_tmp, _project_dir, open_path, source) =
+            let (_tmp, project_dir, open_path, source) =
                 write_mesh_project(Some(&package_manifest("failing")), &files, open);
-            let result = published(&file_uri(&open_path), &source, &[]);
-            assert!(
-                diagnostic_messages(&result)[0].contains(expected),
-                "{expected}: {:?}",
-                diagnostic_messages(&result)
-            );
-            if open.ends_with(".test.mpl") {
-                // At the second `teardown`, not the top of the file.
-                let diagnostic = &result.diagnostics[0];
-                assert_eq!(
-                    diagnostic.code,
-                    Some(NumberOrString::String("P0401".into()))
-                );
+            let diagnostics = published_on(&open_path, &source, &project_dir.join(target));
+            let [diagnostic] = diagnostics.as_slice() else {
+                panic!("expected one {code} diagnostic in {target}, got {diagnostics:?}");
+            };
+            assert!(diagnostic.message.contains(expected), "{diagnostic:?}");
+            assert_eq!(diagnostic.code, Some(NumberOrString::String(code.into())));
+            if code == "P0401" {
                 assert_eq!(diagnostic.range.start, Position::new(4, 2));
                 assert_eq!(diagnostic.range.end, Position::new(4, 10));
+            }
+            if code == "M0201" {
+                let labels = diagnostic.related_information.as_ref().unwrap();
+                assert_eq!(labels.len(), 2);
+                for (label, file) in labels.iter().zip(["a.mpl", "b.mpl"]) {
+                    let path = project_dir.join(file).canonicalize().unwrap();
+                    assert_eq!(label.location.uri, Url::from_file_path(path).unwrap());
+                    assert_eq!(label.location.range, Range::new(Position::new(0, 0), Position::new(0, 8)));
+                }
             }
         }
     }

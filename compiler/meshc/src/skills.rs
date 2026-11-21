@@ -76,7 +76,7 @@ pub(crate) fn run(command: SkillsCommand, reporter: &mut Reporter) -> Result<(),
         SkillsCommand::Setup => {
             let input = io::stdin();
             if !input.is_terminal() {
-                return Err("Run `meshc skills setup` in an interactive terminal.".into())
+                return Err("Run `meshc skills setup` in an interactive terminal.".to_owned())
                     .reported(reporter);
             }
             setup(&mut input.lock(), &mut io::stdout().lock()).map_err(|err| err.to_string())

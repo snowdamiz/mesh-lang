@@ -63,7 +63,7 @@ use mesh_parser::ast::AstNode;
 use mesh_pkg::frontend::{self, Analysis, CheckOptions, Target};
 use mesh_pkg::manifest::ClusteredExecutionMetadata;
 
-use mesh_diagnostics::{Failed, Format, Reporter, SourceFile};
+use mesh_diagnostics::{Diagnostic, Failed, Format, Reporter, SourceFile};
 use mesh_typeck::ty::Ty;
 
 #[derive(Parser)]
@@ -525,7 +525,13 @@ trait ReportResult<T> {
 
 impl<T> ReportResult<T> for Result<T, String> {
     fn reported(self, reporter: &mut Reporter) -> Result<T, Failed> {
-        self.map_err(|message| reporter.fail(frontend::uncategorized(message)))
+        self.map_err(|message| reporter.fail(Diagnostic::uncategorized(message)))
+    }
+}
+
+impl<T> ReportResult<T> for Result<T, Diagnostic> {
+    fn reported(self, reporter: &mut Reporter) -> Result<T, Failed> {
+        self.map_err(|diagnostic| reporter.fail(diagnostic))
     }
 }
 
@@ -1238,14 +1244,6 @@ fn collect_inferred_fn_usage_types(
 /// If mesh.lock already exists and the manifest hasn't changed, skips resolution.
 fn deps_command(dir: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
     let manifest_path = dir.join("mesh.toml");
-    if !manifest_path.exists() {
-        return Err(format!(
-            "No 'mesh.toml' found in '{}'. Run `meshc init` to create a project.",
-            dir.display()
-        ))
-        .reported(reporter);
-    }
-
     let lock_path = dir.join("mesh.lock");
 
     // The lockfile is fresh when the manifest has not changed since it was
@@ -1264,6 +1262,7 @@ fn deps_command(dir: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
             .zip(modified(&lock_path))
             .is_some_and(|(manifest_time, lock_time)| manifest_time <= lock_time)
     {
+        mesh_pkg::Lockfile::from_file(&lock_path).reported(reporter)?;
         reporter.status(format_args!("Dependencies up to date"));
         return Ok(());
     }

@@ -2235,6 +2235,222 @@
       "status": "active"
     },
     {
+      "code": "M0001",
+      "name": "manifest-unreadable",
+      "severity": "error",
+      "category": "project",
+      "title": "cannot read package manifest",
+      "summary": "The project manifest could not be opened or read as UTF-8.",
+      "repair": "Create mesh.toml in the project directory or restore read access to it.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0001",
+      "guide": {
+        "explain": "meshc explain M0001",
+        "skill": "references/diagnostics.md#m0001",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0002",
+      "name": "manifest-invalid",
+      "severity": "error",
+      "category": "project",
+      "title": "invalid package manifest",
+      "summary": "The manifest contains invalid TOML or violates the package schema.",
+      "repair": "Correct the indicated field in mesh.toml. Include a [package] table with string name and version fields.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0002",
+      "guide": {
+        "explain": "meshc explain M0002",
+        "skill": "references/diagnostics.md#m0002",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0003",
+      "name": "entrypoint-not-found",
+      "severity": "error",
+      "category": "project",
+      "title": "entrypoint not found",
+      "summary": "The project does not contain the expected Mesh entrypoint file.",
+      "repair": "Set [package].entrypoint to an existing project-relative .mpl file or remove it and create main.mpl.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0003",
+      "guide": {
+        "explain": "meshc explain M0003",
+        "skill": "references/diagnostics.md#m0003",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0101",
+      "name": "lockfile-invalid",
+      "severity": "error",
+      "category": "project",
+      "title": "cannot use dependency lockfile",
+      "summary": "The mesh.lock file could not be read, parsed, or written.",
+      "repair": "Fix the indicated TOML or restore access to mesh.lock, then rerun the dependency command.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0101",
+      "guide": {
+        "explain": "meshc explain M0101",
+        "skill": "references/diagnostics.md#m0101",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0102",
+      "name": "dependency-unresolvable",
+      "severity": "error",
+      "category": "project",
+      "title": "cannot resolve dependency",
+      "summary": "A dependency could not be located, fetched, or checked out.",
+      "repair": "Correct the dependency path or Git source in mesh.toml and run meshc deps, or run meshpkg install for a registry dependency.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0102",
+      "guide": {
+        "explain": "meshc explain M0102",
+        "skill": "references/diagnostics.md#m0102",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0103",
+      "name": "dependency-cycle",
+      "severity": "error",
+      "category": "project",
+      "title": "dependency cycle",
+      "summary": "The package dependency chain returns to a package it already visits.",
+      "repair": "Remove a dependency from the cycle or move shared code into a package both sides can depend on.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0103",
+      "guide": {
+        "explain": "meshc explain M0103",
+        "skill": "references/diagnostics.md#m0103",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0104",
+      "name": "dependency-conflict",
+      "severity": "error",
+      "category": "project",
+      "title": "conflicting dependency sources",
+      "summary": "The same dependency name is required from different sources.",
+      "repair": "Update the dependency declarations to use a single source for that name.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0104",
+      "guide": {
+        "explain": "meshc explain M0104",
+        "skill": "references/diagnostics.md#m0104",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0201",
+      "name": "module-cycle",
+      "severity": "error",
+      "category": "project",
+      "title": "module import cycle",
+      "summary": "The import chain returns to a module it already visits.",
+      "repair": "Remove an import from the cycle or move shared definitions to a separate module.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0201",
+      "guide": {
+        "explain": "meshc explain M0201",
+        "skill": "references/diagnostics.md#m0201",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0202",
+      "name": "module-unreadable",
+      "severity": "error",
+      "category": "project",
+      "title": "cannot load project module",
+      "summary": "A module could not be read or assigned an unambiguous name inside the project.",
+      "repair": "Check the module path and its read permissions. Use a uniquely named .mpl file inside the project with no symbolic links.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0202",
+      "guide": {
+        "explain": "meshc explain M0202",
+        "skill": "references/diagnostics.md#m0202",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0301",
+      "name": "native-binding-invalid",
+      "severity": "error",
+      "category": "project",
+      "title": "invalid native binding",
+      "summary": "A manifest-declared native binding could not be loaded as a package file.",
+      "repair": "Set [native].bindings to package-relative paths to regular .mpl files outside the test tree.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0301",
+      "guide": {
+        "explain": "meshc explain M0301",
+        "skill": "references/diagnostics.md#m0301",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0302",
+      "name": "native-declaration-outside-binding",
+      "severity": "error",
+      "category": "project",
+      "title": "native declaration outside a binding file",
+      "summary": "A native declaration occurs in a module that is not listed as a native binding.",
+      "repair": "Move the declaration into a file listed in [native].bindings or add its file to that list and provide the native archive.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0302",
+      "guide": {
+        "explain": "meshc explain M0302",
+        "skill": "references/diagnostics.md#m0302",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0303",
+      "name": "native-archive-missing",
+      "severity": "error",
+      "category": "project",
+      "title": "native archive missing or invalid",
+      "summary": "The requested target has no readable, checksum-verified static archive in the native package.",
+      "repair": "Provide the static archive for the requested target and record its package-relative path and SHA-256 in [[native.libraries]].",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0303",
+      "guide": {
+        "explain": "meshc explain M0303",
+        "skill": "references/diagnostics.md#m0303",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
       "code": "P0001",
       "name": "unexpected-token",
       "severity": "error",
