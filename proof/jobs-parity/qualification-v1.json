@@ -3873,6 +3873,39 @@
       }
     }
   },
+  "batch_claims_local_qualification": {
+    "runtime": "9bd80627830d331aaba09d4a3283bdfa2b810ad2",
+    "baseline": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "poll_ms": 250,
+    "archive": "proof/jobs-parity/j2-batch-qualification-9bd80627.tar.xz",
+    "archive_sha256": "ea7948c75d704d93c54031dae817552c50fa5bb226d18abd36612684b69362df",
+    "sparse": {
+      "harness": "145fd7d0a224a4e4abcd6debb574a360737f346e",
+      "manifest_sha256": "325ca403273e7fe2cd7ec92827188dd205a10997ba35c51cb9b6a773925d520e",
+      "result_sha256": "b78d8ccf4a66d9031a51cf7faaad87b83c506b2c9b7a9a442cb6bd7476debff4",
+      "audit_sha256": "5da683801d53fb955d6f14d598bd57de994f21189923d920627a56725535e3d6",
+      "measured_trials": 70,
+      "jobs_per_engine": 840,
+      "profiles_passed": 7,
+      "max_pickup_p99_ratio": 1.0889623443027898,
+      "pickup_p99_ratio_limit": 1.10,
+      "peak_one_minute_host_load": 28.367
+    },
+    "dense_reference": {
+      "harness": "5dbfe4250060c3e81d6d0259f002bbb92aa4b7d3",
+      "profile": "short-1r-16s",
+      "manifest_sha256": "61a91b9e81dc607df920bf5acd8c8368d211b068366eb77d045eccfb6f1a2895",
+      "result_sha256": "b78d8ccf4a66d9031a51cf7faaad87b83c506b2c9b7a9a442cb6bd7476debff4",
+      "measured_trials": 10,
+      "jobs_per_engine": 640,
+      "claim_calls_per_job": {"mesh": 0.265625, "baseline": 1.015625},
+      "claim_calls_reduction_percent": 73.84615384615384,
+      "within_limit": true
+    }
+  },
   "sparse_identical_binary_control": {
     "harness": "bdb1bd423ceb1d3b5e659a77b559ff8816ce42d1",
     "both_arms": "7c1620563614a04a573aef806a6d019a2af4dfe9",

@@ -1003,6 +1003,18 @@ varied, and peak one-minute load reached 41.0 on 15 logical CPUs.
 The earlier miss and all seven new results remain in the receipt.
 [Sparse rerun receipts](../proof/jobs-parity/qualification-v1.json)
 
+The `9bd80627` release rerun on macOS arm64 used PostgreSQL 17.11 with
+verified TLS, pinned main `7c162056`, and the frozen 250 ms polling
+interval. All seven sparse profiles met the pickup limit. Five pairs per
+profile reconciled 840 jobs per arm with no statement-counter eviction.
+The largest ratio was 1.089×, and the one-slot profile that previously
+missed measured 267.6 ms against 262.0 ms. The dense short reference at
+one runner and 16 slots used 0.266 claim calls per job against 1.016 on
+main, a 73.8% reduction across five pairs. These comparisons cover the
+J2 reference workload and all sparse profiles at that runtime. The
+earlier broader dense comparison results remain above.
+[Qualification receipt](../proof/jobs-parity/qualification-v1.json) · [Raw trials](../proof/jobs-parity/j2-batch-qualification-9bd80627.tar.xz)
+
 An identical-binary control used `7c162056` for both arms of the
 one-runner, one-slot sparse profile. Five alternating pairs gave median
 pickup p99s of 263.4 ms and 259.5 ms, with trial ranges of 261.6–269.1 ms
