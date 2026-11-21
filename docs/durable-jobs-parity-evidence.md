@@ -4122,6 +4122,25 @@ The review fixes and a fault after commit but before receipt
 delivery remain separate gates.
 [Linux compiled smoke and failed preflights](../proof/jobs-parity/qualification-v1.json)
 
+The follow-up at `65f56e17` rebuilt the release compiler and GNU
+runtime and repeated the PostgreSQL 17.11 proof on Linux ARM64.
+Each runner rejected a second local queue and scale-up to two
+slots before admitting jobs. Across all three runs the proof
+counted five connections and eight full resets. After the
+pre-commit disconnect, the handler recorded that it ignored the
+uncertain result. The runtime still reaped the child and settled
+the attempt as retryable. The replacement kept the first effect's
+original transaction ID and committed the second effect.
+
+The same revision passed all 16 selected Linux ARM64 runtime
+tests covering descriptor handoff, session protocol, and the
+named-operation worker. That included a test of the stop cutoff
+at the socket boundary. Native stop timing and loss of a response
+after server commit remain open. The independent review also
+found relay closure and buffered-request lifetime gaps, and the
+timed cutoff still needs explicit send-admission semantics.
+[Linux one-slot follow-up receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`

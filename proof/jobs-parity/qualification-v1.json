@@ -37045,6 +37045,60 @@
       "sha256": "70782c2e398142b437c3c783ec0f94515c52f67098719547b59d3e251c733514"
     }
   },
+  "linux_compiled_jobs_effect_reviewed_smoke": {
+    "revision": "65f56e17e380398e3fae1d637f66ef94c6ac39bb",
+    "scope": "Release Linux ARM64 GNU one-slot smoke on PostgreSQL 17.11 with a child environment witness, and separate native release unit tests. No trace-off profile or post-commit response cut.",
+    "fixture": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/link-r2/link.json",
+      "sha256": "a9493a12b0f70ba54037abde42977c3959af1aa966baf094e0084247a61fb9d2"
+    },
+    "pack": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-r2/pack.json",
+      "sha256": "df07db08881ff60d88cdcd286cc931f7f6ff94e9abc4167bb85a730166bb7069"
+    },
+    "proof_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-r2/extracted/evidence/result.json",
+      "sha256": "8e68541443e2501b7d801cc2ed4d97aaa7bf6fb632c68a4b872de6097969760d"
+    },
+    "observed_connections": 5,
+    "receipts": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-r2/extracted/evidence/receipts.json",
+      "sha256": "f3f501b5d4fa849caeed2e85a9220a3efd44f063c34532cd45cbc0e98f2279c3"
+    },
+    "reset_observations": 8,
+    "resets": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-r2/extracted/evidence/resets.json",
+      "sha256": "746079f336477936373f137f0a80890ec656cf65911df8ab8b9f589b47bbc5f6"
+    },
+    "terminal_states": [
+      "completed:1",
+      "retryable:1",
+      "completed:2"
+    ],
+    "ignored_uncertainty_witness": "Jobs effect outcome is unconfirmed",
+    "original_effect_preserved": true,
+    "unit_build": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/unit-r2-build.jsonl",
+      "sha256": "4b8de36240eccb41bed43667bc09434f0b028455a4e67a906bb4dc907f9a1e88"
+    },
+    "unit_pack": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-unit-r2-counted/pack.json",
+      "sha256": "a2244e007442801d57710420c8625e7bbc77bf520f13d06e1efda8ff780b9b69"
+    },
+    "unit_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-unit-r2-counted/extracted/evidence/result.json",
+      "sha256": "14aec722856f8e742f720b3c47201be3b0f8cd42d0afa6ab75c4494c3d118679"
+    },
+    "unit_passed": {
+      "db::pg::jobs_effect_session::tests": 8,
+      "jobs::effects::tests": 4,
+      "jobs::worker::effect_endpoint::tests": 4
+    },
+    "unit_harness_count_mismatch": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-unit-r2/extracted/evidence/result.json",
+      "sha256": "95d84f33339ad23a73d1a45346ce711bcf40a76a61bd0eda4202a74f9961cfaa"
+    }
+  },
   "linux_compiled_jobs_effect_draft_smoke": {
     "revision": "91722a23be5f56ca7510f742f63735069b8bc1f1",
     "scope": "One ARM64 Linux GNU guest, verified PostgreSQL 17.11, one-slot compiled opt-in smoke. The fixture adds a child environment witness while keeping the exact release runtime.",
