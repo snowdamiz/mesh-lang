@@ -2612,6 +2612,37 @@ The lower statement count did not produce a repeatable
 throughput gain.
 [No-op completion-batch receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Defer the scheduled-work probe until the claim is empty
+
+The `15a6368e` diagnostic moved the due-time query after a
+confirmed empty claim. It used the claim's PostgreSQL statement
+timestamp so a scheduled or retryable job that became due during
+the claim could prompt an immediate retry.
+
+Five matched no-op groups reconciled all 15,360 measured jobs.
+The opt-in arm issued two or three due-time probes per trial,
+versus 66 to 68 in the controls. Median runner SQL fell from
+4.27 and 4.28 calls per job to 4.21. The candidate reached
+1,492 jobs/s versus 1,515 and 1,494. It beat both controls in one
+group. The paired median change against the control mean was
++27 jobs/s, within the 79 jobs/s median absolute control spread.
+The change remains a diagnostic.
+
+At `d43a4d6e`, 26 focused Jobs tests and five PostgreSQL 17.11
+store tests passed. The tests cover scheduled and retryable
+deadline crossings, contention and the ordered context bound.
+That revision changes the benchmark driver's legacy probe counter
+relative to the timed revision. The timing used one binary for all
+three arms.
+
+A separate compiled Linux proof started a scheduled first attempt and
+a retryable second attempt using a due scan before the 60-second
+fallback. Both preserved the job and effect identity, committed the
+two writes and settled once after exact reap. The proof uses the same
+`15a6368e` executable as the timing. A live cut of the claim's
+final ReadyForQuery remains open for this diagnostic.
+[Deferred probe timing and tests](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`

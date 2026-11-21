@@ -8778,6 +8778,406 @@
     ],
     "result": "Fewer SQL calls and no repeatable throughput gain."
   },
+  "linux_fenced_jobs_noop64_deferred_due_probe": {
+    "revision": "15a6368e2701017d78da60c5d5486fdc863784ae",
+    "profile": "noop-1r-64s",
+    "scope": "Five local trace-off groups with identical controls and a deferred-probe arm",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "fixture_sha256": "f91fa5cad5699d9c0d24a4166a10939cc05539c807143947e9bdeba00f72c64f",
+    "scored_jobs": 15360,
+    "median_jobs_per_second": {
+      "mesh": 1515.1469394552298,
+      "mesh-repeat": 1493.6607705648362,
+      "mesh-due": 1492.3634883478485
+    },
+    "median_runner_sql_calls_per_job": {
+      "mesh": 4.2744140625,
+      "mesh-repeat": 4.2763671875,
+      "mesh-due": 4.2138671875
+    },
+    "candidate_wins_against_both_controls": 1,
+    "identical_arm_absolute_median_jobs_per_second": 79.28717821709984,
+    "candidate_minus_mean_control_median_jobs_per_second": 27.47085479973066,
+    "groups": [
+      {
+        "group": 0,
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-deferred-due-r2-0",
+        "order": [
+          "mesh",
+          "mesh-due",
+          "mesh-repeat"
+        ],
+        "receipt_sha256": "483fc0c4e69eb4e29105df50d5f3fb1be8b3dc04eda575a0f89a33fea2550acc",
+        "trials_sha256": "e24d88e4431ab7b31a82113ecf045543e8b24c81d33b175b30595d3d839d004e",
+        "host_load_1m_max": 4.2119140625,
+        "claim_and_probe_sql_calls": {
+          "mesh": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 67,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-repeat": {
+            "raw_claim_calls": 66,
+            "raw_due_probe_sql_calls": 66,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-due": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 3,
+            "raw_deferred_due_probe_sql_calls": 3
+          }
+        },
+        "metrics": {
+          "mesh": {
+            "jobs_per_second": 1461.9424090813714,
+            "runner_sql_calls_per_job": 4.2763671875,
+            "pickup_p99_ms": 693.412841796875,
+            "cpu_seconds_per_job": 0.000636439453125,
+            "peak_rss_bytes": 100020224,
+            "peak_connections": 68,
+            "peak_processes": 7,
+            "peak_threads": 44
+          },
+          "mesh-due": {
+            "jobs_per_second": 1449.7696747725522,
+            "runner_sql_calls_per_job": 4.2138671875,
+            "pickup_p99_ms": 691.420166015625,
+            "cpu_seconds_per_job": 0.000667369140625,
+            "peak_rss_bytes": 99500032,
+            "peak_connections": 68,
+            "peak_processes": 7,
+            "peak_threads": 55
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1382.6552308642715,
+            "runner_sql_calls_per_job": 4.2705078125,
+            "pickup_p99_ms": 733.91796875,
+            "cpu_seconds_per_job": 0.0006755439453125,
+            "peak_rss_bytes": 94994432,
+            "peak_connections": 68,
+            "peak_processes": 6,
+            "peak_threads": 53
+          }
+        }
+      },
+      {
+        "group": 1,
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-deferred-due-r2-1",
+        "order": [
+          "mesh-due",
+          "mesh-repeat",
+          "mesh"
+        ],
+        "receipt_sha256": "c6a7420627b47ec07dd81643df47cfe05f18c4b86fe89f528b2faff9f705737a",
+        "trials_sha256": "77993888a4c5cedb8a861204c719f28f28b3bd1c87f61eeb00ba95ed694f0346",
+        "host_load_1m_max": 4.38037109375,
+        "claim_and_probe_sql_calls": {
+          "mesh": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 67,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-repeat": {
+            "raw_claim_calls": 68,
+            "raw_due_probe_sql_calls": 68,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-due": {
+            "raw_claim_calls": 66,
+            "raw_due_probe_sql_calls": 2,
+            "raw_deferred_due_probe_sql_calls": 2
+          }
+        },
+        "metrics": {
+          "mesh-due": {
+            "jobs_per_second": 1483.50996928501,
+            "runner_sql_calls_per_job": 4.2099609375,
+            "pickup_p99_ms": 682.51904296875,
+            "cpu_seconds_per_job": 0.0006650810546875,
+            "peak_rss_bytes": 112836608,
+            "peak_connections": 68,
+            "peak_processes": 5,
+            "peak_threads": 38
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1540.4242066325255,
+            "runner_sql_calls_per_job": 4.2783203125,
+            "pickup_p99_ms": 648.365966796875,
+            "cpu_seconds_per_job": 0.0006035400390624999,
+            "peak_rss_bytes": 53747712,
+            "peak_connections": 68,
+            "peak_processes": 3,
+            "peak_threads": 20
+          },
+          "mesh": {
+            "jobs_per_second": 1515.1469394552298,
+            "runner_sql_calls_per_job": 4.2744140625,
+            "pickup_p99_ms": 669.50390625,
+            "cpu_seconds_per_job": 0.0006377265625,
+            "peak_rss_bytes": 57421824,
+            "peak_connections": 68,
+            "peak_processes": 3,
+            "peak_threads": 31
+          }
+        }
+      },
+      {
+        "group": 2,
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-deferred-due-r2-2",
+        "order": [
+          "mesh-repeat",
+          "mesh",
+          "mesh-due"
+        ],
+        "receipt_sha256": "db71934404963c87d9daaffedb6e6dada12dac4246248364d288901e01f249a6",
+        "trials_sha256": "3ba3037a611b5c0b981e58d416152670618c89098ea2a7ce21521c4055ca3b96",
+        "host_load_1m_max": 4.4814453125,
+        "claim_and_probe_sql_calls": {
+          "mesh": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 67,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-repeat": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 67,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-due": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 3,
+            "raw_deferred_due_probe_sql_calls": 3
+          }
+        },
+        "metrics": {
+          "mesh-repeat": {
+            "jobs_per_second": 1160.1730452196812,
+            "runner_sql_calls_per_job": 4.2763671875,
+            "pickup_p99_ms": 867.649169921875,
+            "cpu_seconds_per_job": 0.0007780283203124999,
+            "peak_rss_bytes": 147816448,
+            "peak_connections": 68,
+            "peak_processes": 10,
+            "peak_threads": 71
+          },
+          "mesh": {
+            "jobs_per_second": 1546.7199854263367,
+            "runner_sql_calls_per_job": 4.267578125,
+            "pickup_p99_ms": 654.128173828125,
+            "cpu_seconds_per_job": 0.0005988779296875,
+            "peak_rss_bytes": 74354688,
+            "peak_connections": 68,
+            "peak_processes": 4,
+            "peak_threads": 30
+          },
+          "mesh-due": {
+            "jobs_per_second": 1492.3634883478485,
+            "runner_sql_calls_per_job": 4.2138671875,
+            "pickup_p99_ms": 676.238037109375,
+            "cpu_seconds_per_job": 0.0006625009765624999,
+            "peak_rss_bytes": 142454784,
+            "peak_connections": 68,
+            "peak_processes": 11,
+            "peak_threads": 61
+          }
+        }
+      },
+      {
+        "group": 3,
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-deferred-due-r2-3",
+        "order": [
+          "mesh-due",
+          "mesh",
+          "mesh-repeat"
+        ],
+        "receipt_sha256": "32bf05b13b6b3873e7ddf811969d1ebce94f5a8e98c2ee732f140c10c1ff7f3a",
+        "trials_sha256": "d965f16f46a6c7ad5ae41c287b16d891fb45661dea7555b19f2534b9b50a28c2",
+        "host_load_1m_max": 3.9248046875,
+        "claim_and_probe_sql_calls": {
+          "mesh": {
+            "raw_claim_calls": 68,
+            "raw_due_probe_sql_calls": 68,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-repeat": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 67,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-due": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 3,
+            "raw_deferred_due_probe_sql_calls": 3
+          }
+        },
+        "metrics": {
+          "mesh-due": {
+            "jobs_per_second": 1515.4611722835953,
+            "runner_sql_calls_per_job": 4.2138671875,
+            "pickup_p99_ms": 666.60400390625,
+            "cpu_seconds_per_job": 0.0006508056640625,
+            "peak_rss_bytes": 119365632,
+            "peak_connections": 68,
+            "peak_processes": 10,
+            "peak_threads": 77
+          },
+          "mesh": {
+            "jobs_per_second": 1560.1476267314188,
+            "runner_sql_calls_per_job": 4.271484375,
+            "pickup_p99_ms": 645.76416015625,
+            "cpu_seconds_per_job": 0.0006279648437499999,
+            "peak_rss_bytes": 58798080,
+            "peak_connections": 68,
+            "peak_processes": 3,
+            "peak_threads": 22
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1493.6607705648362,
+            "runner_sql_calls_per_job": 4.2763671875,
+            "pickup_p99_ms": 679.510009765625,
+            "cpu_seconds_per_job": 0.0006440068359374999,
+            "peak_rss_bytes": 104288256,
+            "peak_connections": 68,
+            "peak_processes": 7,
+            "peak_threads": 56
+          }
+        }
+      },
+      {
+        "group": 4,
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-deferred-due-r2-4",
+        "order": [
+          "mesh-repeat",
+          "mesh-due",
+          "mesh"
+        ],
+        "receipt_sha256": "4ca2eb1c667fe0654e4bd28e38bc574eee1ad822ab2d04dac6cc7c75e17fbbc2",
+        "trials_sha256": "acc430a2e487a709aedbeef882263ea2bcf0426ce417c02c2ce03c8f8730a72c",
+        "host_load_1m_max": 4.10400390625,
+        "claim_and_probe_sql_calls": {
+          "mesh": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 67,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-repeat": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 67,
+            "raw_deferred_due_probe_sql_calls": 0
+          },
+          "mesh-due": {
+            "raw_claim_calls": 67,
+            "raw_due_probe_sql_calls": 3,
+            "raw_deferred_due_probe_sql_calls": 3
+          }
+        },
+        "metrics": {
+          "mesh-repeat": {
+            "jobs_per_second": 1499.5552428431279,
+            "runner_sql_calls_per_job": 4.2763671875,
+            "pickup_p99_ms": 667.860107421875,
+            "cpu_seconds_per_job": 0.0006269482421875,
+            "peak_rss_bytes": 126017536,
+            "peak_connections": 68,
+            "peak_processes": 9,
+            "peak_threads": 77
+          },
+          "mesh-due": {
+            "jobs_per_second": 1595.8658124038564,
+            "runner_sql_calls_per_job": 4.205078125,
+            "pickup_p99_ms": 635.90283203125,
+            "cpu_seconds_per_job": 0.000631037109375,
+            "peak_rss_bytes": 83755008,
+            "peak_connections": 68,
+            "peak_processes": 5,
+            "peak_threads": 59
+          },
+          "mesh": {
+            "jobs_per_second": 1365.2586707497767,
+            "runner_sql_calls_per_job": 4.2744140625,
+            "pickup_p99_ms": 736.10595703125,
+            "cpu_seconds_per_job": 0.000708517578125,
+            "peak_rss_bytes": 95068160,
+            "peak_connections": 68,
+            "peak_processes": 6,
+            "peak_threads": 57
+          }
+        }
+      }
+    ],
+    "native_tests": {
+      "revision": "d43a4d6e1fde87998c5975f5662a12e0cbb9ee25",
+      "result_sha256": "80c45abc4e48742faa65d17121df683ecc870f45df7ff625e31ea7be7c7b8d52",
+      "directory": "target/jobs-parity/two-write-local/macos/d43a4d6e1fde87998c5975f5662a12e0cbb9ee25/native-due-tests/postgres",
+      "result": {
+        "revision": "d43a4d6e1fde87998c5975f5662a12e0cbb9ee25",
+        "database": {
+          "version": "17.11 (Homebrew)",
+          "ssl": "on",
+          "password_encryption": "scram-sha-256"
+        },
+        "status": "pass",
+        "results": {
+          "jobs::": "test result: ok. 26 passed; 0 failed; 34 ignored; 0 measured; 1554 filtered out; finished in 0.03s",
+          "deferred_due": "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1612 filtered out; finished in 2.08s",
+          "batch_claim_samples_live_due_time": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1613 filtered out; finished in 0.04s",
+          "batch_claim_keeps_the_ordered_prefix": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1613 filtered out; finished in 0.33s",
+          "batch_drain_steps_past_an_oversized_prefix": "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1613 filtered out; finished in 0.36s"
+        }
+      },
+      "log_sha256": {
+        "batch_claim_keeps_the_ordered_prefix.log": "7d2aab4e2f4ef9a0c7f21d46b27d6d5fc96f85213913a7f5fc82547f6ec109ca",
+        "batch_claim_samples_live_due_time.log": "aeaca0517a2e31694bc4d8f2751ae8ab61994a3219630ca1ece80dd3174ff89f",
+        "batch_drain_steps_past_an_oversized_prefix.log": "7020fb024538607ec062725b9aef20c474dd6973fc606dc090af09568135e290",
+        "deferred_due.log": "ec424d41ac26e2ab8849d923996c8c597bfa3cba349459d5af1a8d056f77afc3",
+        "jobs-.log": "332da0f65a9ef21083d204bf1152edde9cc20229e8277293e05bf768e19613b2"
+      }
+    },
+    "compiled_scheduled_retryable_proof": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/deferred-due-scheduled-proof/due-wakes-15a6368e-subxact",
+      "revision": "15a6368e2701017d78da60c5d5486fdc863784ae",
+      "receipt_sha256": "0a6a76e22a858216f7ab9fa19e1cc84856d5aeb3e9d90d17ab4a27a834436d80",
+      "poll_ms": 60000,
+      "cases": {
+        "scheduled": {
+          "receipt_sha256": "2a5e6c5796156873dd0ab09d759d927294e9863790f902f0983fcc643a928158",
+          "attempt": 1,
+          "due_scans": 1,
+          "fallback_scans": 0,
+          "notification_scans": 0,
+          "settlement_calls": 1,
+          "exact_child_reaped_before_stop": true
+        },
+        "retryable": {
+          "receipt_sha256": "7108f24459434722e644e2704d87eaa00dde22f6c87d8c285ad76ce621e98ff3",
+          "attempt": 2,
+          "due_scans": 1,
+          "fallback_scans": 0,
+          "notification_scans": 0,
+          "settlement_calls": 1,
+          "exact_child_reaped_before_stop": true
+        }
+      },
+      "earlier_verifier_failures": [
+        {
+          "run": "target/jobs-parity/linux-arm-ownership-guest/deferred-due-scheduled-proof/due-wakes-15a6368e",
+          "result_sha256": "b7f7c17c845f06e297a1a272f7b3c5d1e8bcf4adc2f234744a284aa0c5d03091",
+          "correction": "Query pg_stat_statements in its control database."
+        },
+        {
+          "run": "target/jobs-parity/linux-arm-ownership-guest/deferred-due-scheduled-proof/due-wakes-15a6368e-control-db",
+          "result_sha256": "c1bd2e914590fa7087c899ae73383ab8b80d13ccd1dac9c9999b63d7bd80fc2a",
+          "correction": "Require the Linux worker's /proc/self/exe argv."
+        },
+        {
+          "run": "target/jobs-parity/linux-arm-ownership-guest/deferred-due-scheduled-proof/due-wakes-15a6368e-exact-argv",
+          "result_sha256": "fbaad2ab14bd13946547e44056e294bbee91ccd22483576e356fcd18397833b2",
+          "correction": "Verify the producer's outer XID and the receipt subtransaction's matching commit."
+        }
+      ]
+    },
+    "result": "Fewer scheduled-work probes and no repeatable throughput gain."
+  },
   "linux_fenced_jobs_noop64_guest_cpu_screen": {
     "profile": "noop-1r-64s",
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
