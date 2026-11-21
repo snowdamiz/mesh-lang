@@ -36583,5 +36583,31 @@
       }
     },
     "scope": "Disposable opt-in SQL fence proof for owner replay and both sides of expiry. Runner integration remains separate."
+  },
+  "macos_integrated_jobs_effect_fence": {
+    "revision": "8dd178820f782b9bc7b25729a90c703e11427d65",
+    "scope": "Integrated macOS ARM64 isolated PostgreSQL proof over verified TLS and SCRAM. The new fence is installed separately from the standard Jobs migration.",
+    "fence_proofs": {
+      "17.11": {
+        "path": "target/jobs-parity/effect-fence-native/8dd17882/pg17.11.log",
+        "sha256": "2aef08a64879a779e5d04a814ae49651692833fd82ebdd6a0e787700002819af"
+      },
+      "18.7": {
+        "path": "target/jobs-parity/effect-fence-native/8dd17882/pg18.7.log",
+        "sha256": "6b0d00632c194a48a227888cedf58b92b67cfae1540267d8c892237406609be0"
+      },
+      "19.0": {
+        "path": "target/jobs-parity/effect-fence-native/8dd17882/pg19.0.log",
+        "sha256": "52d3d74427da2d5ce8d2d0e2a79652f6fb66c639b166b73f566b04c3547a6e1c"
+      }
+    },
+    "legacy_effect_transaction_17_11": {
+      "path": "target/jobs-parity/effect-fence-native/8dd17882/legacy-effect-transaction.log",
+      "sha256": "648380d6bbdcda286bbd3772b2bb068542c1bffa461713575c8613d44e959fd4"
+    },
+    "ordinary_jobs_compatibility_17_11": {
+      "path": "target/jobs-parity/effect-fence-native/8dd17882/stock-pg17.11-compatibility.log",
+      "sha256": "294b8a5a437f31377118b667c8ff33a19836869fa67a30f8dcec87926e400869"
+    }
   }
 }

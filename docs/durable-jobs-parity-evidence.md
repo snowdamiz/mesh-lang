@@ -4028,25 +4028,26 @@ including claim, dispatch, settlement, and observer SQL.
 
 ### Verify the named-operation database fence
 
-The isolated candidate at `b99425cd` installs an opt-in fence in
-its own schema after the ordinary Jobs migration. The application
-routine owner receives access to the fence. Its caller receives
+The opt-in fence installs in its own schema after the ordinary
+Jobs migration. The application routine owner receives access
+to the fence. Its caller receives
 access only to the declared routines. The fence matches the
 current attempt under a job-row lock and checks the database clock
 after acquiring it. The lock orders an admitted write with
 committed cancellation and recovery.
 
 Disposable macOS ARM64 PostgreSQL 17.11, 18.7, and 19.0 runs
-verified scoped grants, owner replay, denial for stale and locked
-attempts, and two separate committed writes. Cancellation waited
-for the first write's lock, then denied the next write. The
-existing standalone effect-transaction proof also passed on 17.11.
-The follow-up at `0687b4a3` passed on all three versions with
-additional cases for expiry while waiting on a relation lock,
-recovery after a rolled-back admitted write, and a permitted call
-after each owner replay.
-This is a database candidate. The ordinary runner still opens a
-connection in each handler. [Scoped fence receipts](../proof/jobs-parity/qualification-v1.json)
+at integrated revision `8dd17882` verified scoped grants,
+two separate durable writes, and denial for stale and locked
+attempts. Cancellation waited for the first write's lock, then
+denied the next call. The proof covers expiry while waiting on
+a relation lock, recovery after a rolled-back admitted write,
+and a permitted call after each owner replay. The existing
+standalone effect-transaction proof also passed on 17.11.
+The compatibility workflow runs the fence proof on both Linux
+and macOS for each pinned PostgreSQL version. The stock parity
+handler still connects once per job while the compiled warm-session
+path is being built. [Scoped fence receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 

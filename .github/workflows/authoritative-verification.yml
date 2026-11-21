@@ -354,6 +354,14 @@ jobs:
           bash scripts/verify-postgres-jobs.sh --compatibility "$POSTGRES_VERSION" --parity-driver-check --j6-roles \
             2>&1 | tee "target/jobs-postgres-proof/postgres-$POSTGRES_VERSION.log"
 
+      - name: Prove the scoped Jobs effect fence
+        shell: bash
+        env:
+          POSTGRES_VERSION: ${{ matrix.version }}
+        run: |
+          bash scripts/verify-postgres-jobs.sh --effect-fence \
+            2>&1 | tee "target/jobs-postgres-proof/effect-fence-$POSTGRES_VERSION.log"
+
       - name: Save PostgreSQL proof
         if: always()
         uses: actions/upload-artifact@v4
