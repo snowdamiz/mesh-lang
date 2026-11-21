@@ -28489,5 +28489,290 @@
       "ignored": 44,
       "passed": 1550
     }
+  },
+  "grouped_postgres_claim_update": {
+    "revision": "0ee8756a37dc2115f16e33e5b12467547f43a90e",
+    "claim_definition_sha256": {
+      "stock": "ee88b0f4986346b5378b91b3d9db8a9aa175ec0a02086734d172b35b5379e132",
+      "treatment": "d67f422989b111b248dd879079687b3cc223906354a23414fd6c985abfa2bd6b"
+    },
+    "source_sha256": {
+      "screen.py": "d7e7f8f51a33857f0e2146fe45e7bf7b65ea2a2739e840784b3fac02cee7e58e",
+      "stage.py": "d1fe0a511a84156634769c51377fca6f9d6f63d0e08a0170ce7f374a97262018",
+      "claim_overlay.py": "4735cbe5480f5dead8247584b6bc909a726dfa92a9204c61a819b137d155a536",
+      "plan.py": "e3588302da851c1a1e8c88c461282d12b1f7a72a397c949f26023d4f219fbfc2",
+      "reset_evidence.py": "1bcbd1e9f29cef2470047566b333e7d1fc2d8ea088996e5c90e7d1e93aa54fc7"
+    },
+    "component": {
+      "platform": "macOS arm64",
+      "postgres": "17.11",
+      "verified_tls_scram": true,
+      "receipt": "target/jobs-parity/linux-arm-ownership-guest/set-based-claim-screen/receipt-01.json",
+      "receipt_sha256": "0136666ccdef3b796a4636a03764f7848568e497891cc2cd0694dd598e9bf3ae",
+      "payloads_sha256": "41179b698929f1dd64f05b15563b8af93ca29f6b1927a39ee4541e622573935e",
+      "scored_batches": 960,
+      "scored_jobs": 15360,
+      "native_checks_by_arm": {
+        "A": [
+          "ordered_prefix",
+          "oversized_tuple",
+          "aggregate_limit",
+          "rollback",
+          "live_lease",
+          "queue_cap",
+          "locked_queue",
+          "locked_job",
+          "paused_queue"
+        ],
+        "B": [
+          "ordered_prefix",
+          "oversized_tuple",
+          "aggregate_limit",
+          "rollback",
+          "live_lease",
+          "queue_cap",
+          "locked_queue",
+          "locked_job",
+          "paused_queue"
+        ]
+      },
+      "through_commit_ms_by_group": [
+        {
+          "A": 3.04329428125,
+          "A-repeat": 3.4195293125,
+          "B": 1.198156796875
+        },
+        {
+          "B": 1.236618515625,
+          "A": 1.928023375,
+          "A-repeat": 1.72278840625
+        },
+        {
+          "A-repeat": 1.783591140625,
+          "B": 1.255943390625,
+          "A": 1.797043
+        },
+        {
+          "A-repeat": 1.66552534375,
+          "A": 1.807719984375,
+          "B": 1.141998671875
+        },
+        {
+          "B": 1.15185878125,
+          "A-repeat": 1.97203065625,
+          "A": 1.8441328750000001
+        }
+      ],
+      "paired_median_saving_ms": 0.5946239921875001,
+      "median_absolute_control_spread_ms": 0.1421946406250001
+    },
+    "linux": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/set-based-claim-screen/runs/set-update-01/noop-8r-64s",
+      "profile": "noop-8r-64s",
+      "guest_cpu_count": 2,
+      "guest_memory_gib": 2,
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "release_fixture_sha256": "15a28510793c7122e81281c87dc0e76f7ccde628f3021be789428835eb5516be",
+      "comparator": "Oban Basic 2.24.2 with Isolated notifier",
+      "mesh_reset": "bounded plan-retaining reset in all three arms",
+      "stage_sha256": {
+        "0": "6abbab9e664a277ea8917227a310ffe16571bbe1df894b02e6cb60a771c37aac",
+        "1": "233b945f0ecabd8ee7af9b9c787896ef21a3b610e6dc72ed308403d48159295e",
+        "2": "4d9cf54d8f3b7ca060492859a1d3ca21e3ed1d353572e449ddb2edd307b9916c",
+        "3": "a96432fad272dedb46a3286f1f7c13f068e7ef655d4cf03be36ee57198291eec",
+        "4": "dc82451de0aff626b7e02c9c2f6da9ead6c9a9c7e4faac805a225ff8f5c25a6d",
+        "pilot": "8376c7228da8b9bf652ed713fe5f2a069eea99618f05b71bd0fab549709a06ab"
+      },
+      "report_sha256": {
+        "gates.json": "c29b97ff58a5fb7b2af9c79e228741483a25e240896363b993800afa81e52474",
+        "observed-ranges.json": "e060e36f2143050fa5ff862b09c1c5beab7513ce22a8da3faf71155ca68050fe",
+        "paired-deltas.json": "12ee3dc5d87d3fbc2d1a6a5f1ef4485cb19700565a5fdf62f222c02559fbb43e",
+        "receipt.json": "94624f57118a289a0b50bdb569791655b5d4743bda0e56f3816f5fe61b85e562",
+        "repeat-vs-oban-summary.json": "3c60989dda8ccd2e96bb3a16512d3c3f27f7dd1d99d5f8ee574f775334b3792b",
+        "set-update-vs-oban-summary.json": "4006425b34406d728dd56313895d629436292307d14db3cca19d22a2ba989226",
+        "summary.json": "7ffa5a2149744a89d1f43678ca0a1d8c4c021d475739408c8a81e0b4d72397b0",
+        "trials.json": "fc119e8e236604bfab663a9a5fe5b0021998a1c99d0d7d2cd55c4777b64221b7"
+      },
+      "pilot_jobs_reconciled": 2048,
+      "scored_jobs_reconciled": 20480,
+      "absolute_host_load_1m_max_by_stage": [
+        6.767578125,
+        5.97119140625,
+        5.810546875,
+        5.06982421875,
+        4.04150390625,
+        3.7197265625
+      ],
+      "jobs_per_second_by_group": [
+        {
+          "mesh": 1293.6905848420927,
+          "mesh-repeat": 1273.2962321177686,
+          "oban": 2605.7630778826883,
+          "mesh-set-update": 1318.00113250639
+        },
+        {
+          "mesh-repeat": 1222.1072917279764,
+          "mesh-set-update": 1310.344504402957,
+          "mesh": 1139.343819208966,
+          "oban": 3056.277630383348
+        },
+        {
+          "mesh-set-update": 1224.0900029097027,
+          "oban": 1887.9756282443007,
+          "mesh-repeat": 1227.9680037099863,
+          "mesh": 1116.2378750330004
+        },
+        {
+          "oban": 2454.7588084572426,
+          "mesh": 1148.0439641050136,
+          "mesh-set-update": 1220.6636331755471,
+          "mesh-repeat": 1196.244964313471
+        },
+        {
+          "mesh-repeat": 839.9831855325085,
+          "oban": 2788.4674579383454,
+          "mesh": 1245.4328530519504,
+          "mesh-set-update": 1263.3502862211726
+        }
+      ],
+      "wins_against_both_controls": 4,
+      "paired_median_gain_jobs_per_second": 51.98706353820921,
+      "median_absolute_control_spread_jobs_per_second": 82.76347251901052,
+      "gates": {
+        "mesh": {
+          "all_canonical_conditions_met": false,
+          "breaches": [
+            {
+              "mesh_median": 1148.0439641050136,
+              "metric": "jobs_per_second",
+              "ratio_limit": 1.0,
+              "reference": "oban",
+              "reference_median": 2605.7630778826883,
+              "scope": "comparison",
+              "within_limit": false
+            },
+            {
+              "mesh_median": 881.52880859375,
+              "metric": "pickup_p99_ms",
+              "ratio_limit": 1.25,
+              "reference": "oban",
+              "reference_median": 388.291015625,
+              "scope": "comparison",
+              "within_limit": false
+            }
+          ],
+          "strict_median_throughput_above_oban": false
+        },
+        "mesh-repeat": {
+          "all_canonical_conditions_met": false,
+          "breaches": [
+            {
+              "mesh_median": 1222.1072917279764,
+              "metric": "jobs_per_second",
+              "ratio_limit": 1.0,
+              "reference": "oban",
+              "reference_median": 2605.7630778826883,
+              "scope": "comparison",
+              "within_limit": false
+            },
+            {
+              "mesh_median": 824.158203125,
+              "metric": "pickup_p99_ms",
+              "ratio_limit": 1.25,
+              "reference": "oban",
+              "reference_median": 388.291015625,
+              "scope": "comparison",
+              "within_limit": false
+            }
+          ],
+          "strict_median_throughput_above_oban": false
+        },
+        "mesh-set-update": {
+          "all_canonical_conditions_met": false,
+          "breaches": [
+            {
+              "mesh_median": 1263.3502862211726,
+              "metric": "jobs_per_second",
+              "ratio_limit": 1.0,
+              "reference": "oban",
+              "reference_median": 2605.7630778826883,
+              "scope": "comparison",
+              "within_limit": false
+            },
+            {
+              "mesh_median": 795.47314453125,
+              "metric": "pickup_p99_ms",
+              "ratio_limit": 1.25,
+              "reference": "oban",
+              "reference_median": 388.291015625,
+              "scope": "comparison",
+              "within_limit": false
+            }
+          ],
+          "strict_median_throughput_above_oban": false
+        }
+      },
+      "medians": {
+        "mesh": {
+          "jobs_per_second": 1148.0439641050136,
+          "pickup_p99_ms": 881.52880859375,
+          "cpu_seconds_per_job": 0.0010366660156249999,
+          "claim_calls_per_job": 0.376953125,
+          "peak_rss_bytes": 364621824,
+          "peak_processes": 14,
+          "peak_threads": 129,
+          "peak_connections": 96
+        },
+        "mesh-repeat": {
+          "jobs_per_second": 1222.1072917279764,
+          "pickup_p99_ms": 824.158203125,
+          "cpu_seconds_per_job": 0.0010263935546875,
+          "claim_calls_per_job": 0.3876953125,
+          "peak_rss_bytes": 352501760,
+          "peak_processes": 12,
+          "peak_threads": 122,
+          "peak_connections": 96
+        },
+        "oban": {
+          "jobs_per_second": 2605.7630778826883,
+          "pickup_p99_ms": 388.291015625,
+          "cpu_seconds_per_job": 0.003398463867187499,
+          "claim_calls_per_job": 0.1396484375,
+          "peak_rss_bytes": 1002266624,
+          "peak_processes": 16,
+          "peak_threads": 96,
+          "peak_connections": 81
+        },
+        "mesh-set-update": {
+          "jobs_per_second": 1263.3502862211726,
+          "pickup_p99_ms": 795.47314453125,
+          "cpu_seconds_per_job": 0.001015119140625,
+          "claim_calls_per_job": 0.3564453125,
+          "peak_rss_bytes": 418164736,
+          "peak_processes": 19,
+          "peak_threads": 164,
+          "peak_connections": 96
+        }
+      },
+      "throughput_range_jobs_per_second": {
+        "mesh": [
+          1116.2378750330004,
+          1293.6905848420927
+        ],
+        "mesh-repeat": [
+          839.9831855325085,
+          1273.2962321177686
+        ],
+        "oban": [
+          1887.9756282443007,
+          3056.277630383348
+        ],
+        "mesh-set-update": [
+          1220.6636331755471,
+          1318.00113250639
+        ]
+      }
+    },
+    "finding": "Component claim latency fell. Linux throughput gain was within identical-control spread and missed the frozen throughput and pickup gates. The SQL remains a disposable overlay."
   }
 }

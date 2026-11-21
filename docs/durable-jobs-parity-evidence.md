@@ -2782,6 +2782,50 @@ The treatment passed resource limits and missed the throughput and
 pickup gates. It remains an opt-in fixture experiment.
 [Bounded compiled reset receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Group PostgreSQL claim updates
+
+A disposable SQL overlay combined the per-row updates in
+`claim_batch_v1` into one update of the selected rows. It kept the
+ordered cursor, queue and candidate row locks, context limits,
+per-row trigger, and confirmed COMMIT before launch. PostgreSQL
+materializes the function result, and an unexpected update count
+aborts the transaction before the caller receives the claims.
+[PostgreSQL 17 set-returning functions](https://www.postgresql.org/docs/17/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING)
+
+The direct component used the pinned claim statement and frozen
+no-op arguments on macOS arm64 with PostgreSQL 17.11, verified TLS,
+and SCRAM. It reconciled 15,360 claimed jobs across 960 scored
+batches in five groups. Native checks covered the ordered prefix across
+oversized rows, the aggregate byte limit, rollback, live tokens,
+queue capacity, lock skips, and queue pause. The median trial mean
+from `BEGIN` through confirmed `COMMIT` was 1.20 ms per 16-job batch,
+versus 1.84 and 1.78 ms in the controls. The grouped update beat both
+controls in all five groups, saving a paired median of 0.59 ms against
+0.14 ms of control spread. This interval includes client round trips
+and row decoding.
+
+The separate Linux pilot reconciled 2,048 attempts, including exact
+worker reaps. Five trace-off `noop-8r-64s` groups reconciled 20,480
+scored jobs. All Mesh arms used the same `0ee8756a` release binary,
+fresh children, and the plan-retaining reset. The runtime and the two
+effect writes were identical across the Mesh arms.
+
+| Arm | Median jobs/s | Range | Pickup p99 | Runner CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control | 1,148 | 1,116–1,294 | 882 ms | 1.04 ms |
+| Mesh repeat | 1,222 | 840–1,273 | 824 ms | 1.03 ms |
+| Mesh with grouped claim updates | 1,263 | 1,221–1,318 | 795 ms | 1.02 ms |
+| Oban Basic 2.24.2, Isolated notifier | 2,606 | 1,888–3,056 | 388 ms | 3.40 ms |
+
+The grouped update beat both Mesh arms in four of five groups. Its
+median gain of 52 jobs/s against the control mean fell within the
+83 jobs/s median absolute control spread. The median claim rate
+was 0.356 calls/job versus 0.377 and 0.388. The treatment passed
+the resource gates and missed throughput and pickup. The measured
+component savings leave the sustained drain gap open. The overlay
+remains a local diagnostic.
+[Grouped claim update receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
