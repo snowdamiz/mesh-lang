@@ -29811,5 +29811,342 @@
       ]
     },
     "finding": "Claim traffic fell. CPU gain reversed, with more WAL and settlement retry cost. This variant stays a disposable component."
+  },
+  "inline_job_row_admission": {
+    "revision": "0ee8756a37dc2115f16e33e5b12467547f43a90e",
+    "postgres": "17.11",
+    "noop_sha256": "41179b698929f1dd64f05b15563b8af93ca29f6b1927a39ee4541e622573935e",
+    "sql_sha256": {
+      "candidate": "9a6627131e5388763cc09c70d277e10dca81721b97db7a0d94bde69fe584f9ea",
+      "claim_inline": "f410c4a69e9cb440765b5ae3511de3d5fe08f8174a4718b2a08b2b5541e9824c",
+      "claim_v1": "1352231cafc7b5a8e72d19a968de45ce1d06435b3b2c1da60003d7defa63ded6",
+      "overlay": "10fa38efa32f64f0fe6bc72b3cc0bf85848ce265c24ac2867ffdec15bbfc8b9c",
+      "recover": "68476dc2e666800d1bcbaf84f22b3e9a01f093a352a3eb6965e6f21f47f12666",
+      "release": "bb599ebf0244b024ca022ea6e7d94e6cdefea0f5883379c8ef3e2be31fb13592",
+      "renew": "13d763eddd4d8fcf19dc139c295d854b82688ff31d65fa10580229477a1863c5",
+      "schema": "6e6c58e9d055d5ceb66139058d42cd05bfef3b70b80beca6cc0b9a4766f2f6f3",
+      "settle": "09880f326cf72c470992b872b5fa35134fad59bd97c5aed76de521c14f499f1c",
+      "stock": "ee88b0f4986346b5378b91b3d9db8a9aa175ec0a02086734d172b35b5379e132"
+    },
+    "untimed_overlap_sql_sha256": "40799c53640a3146d8e21785710ce6d9900d32c5d8a2afd1cdfdc10e70e95996",
+    "native_mac_proof": {
+      "receipt": "target/jobs-parity/linux-arm-ownership-guest/inline-capacity-admission/proof-macos-02.json",
+      "sha256": "b884ae6e9de41ac0672a4866f3266cc0aa9c715d390a4e1f84f670bb1c56c21e"
+    },
+    "linux_component_series": [
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/inline-capacity-admission/inline-01",
+        "reverse": false,
+        "scored_jobs": 10240,
+        "source_archive_sha256": "30db6c0aaec9984547d6e55bd1c44c18b44ffc429b9b04ef79405cf90d2f6977",
+        "component_sha256": "d366a11103b68f8ffece683e50a10cbd0ff4ffe3df9b8712407f3efcf54a50fc",
+        "extraction_sha256": "b00cfec226e15a3637803e0d67483378bcc2bb90eb9121720babfc984b88f1a3",
+        "paired_median_candidate_minus_v1": {
+          "backend_cpu_ms_per_job": -0.04374599707031246,
+          "claim_calls": -158,
+          "claim_misses": -159,
+          "claim_statement_wal_bytes_per_job": 259.720703125,
+          "client_cpu_ms_per_job": -0.013677662109374995,
+          "component_joint_cpu_ms_per_job": -0.05651924511718748,
+          "contention_hints": -162,
+          "postgres_cpu_ms_per_job": -0.0438058935546875,
+          "settle_statement_wal_bytes_per_job": 581.0419921875,
+          "settlement_lock_retries": 0,
+          "wal_bytes_per_job": 844.5234375,
+          "wall_ms_per_job": -0.10672851562500002
+        },
+        "pairs": [
+          {
+            "inline": {
+              "claim_calls": 141,
+              "postgres_cpu_ms_per_job": 0.3577831572265625,
+              "component_joint_cpu_ms_per_job": 0.3946092568359375,
+              "wall_ms_per_job": 0.2000835361328125,
+              "wal_bytes_per_job": 3718.109375,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 304,
+              "postgres_cpu_ms_per_job": 0.40158905078125,
+              "component_joint_cpu_ms_per_job": 0.451128501953125,
+              "wall_ms_per_job": 0.3284427490234375,
+              "wal_bytes_per_job": 2793.15625,
+              "settlement_lock_retries": 0
+            }
+          },
+          {
+            "inline": {
+              "claim_calls": 136,
+              "postgres_cpu_ms_per_job": 0.3376559677734375,
+              "component_joint_cpu_ms_per_job": 0.3728474970703125,
+              "wall_ms_per_job": 0.1887242841796875,
+              "wal_bytes_per_job": 3726.8203125,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 295,
+              "postgres_cpu_ms_per_job": 0.3919553203125,
+              "component_joint_cpu_ms_per_job": 0.44082451171875,
+              "wall_ms_per_job": 0.2954527998046875,
+              "wal_bytes_per_job": 2882.296875,
+              "settlement_lock_retries": 0
+            }
+          },
+          {
+            "inline": {
+              "claim_calls": 138,
+              "postgres_cpu_ms_per_job": 0.340988626953125,
+              "component_joint_cpu_ms_per_job": 0.3774879091796875,
+              "wall_ms_per_job": 0.192565958984375,
+              "wal_bytes_per_job": 3730.3828125,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 296,
+              "postgres_cpu_ms_per_job": 0.411065240234375,
+              "component_joint_cpu_ms_per_job": 0.4638798203125,
+              "wall_ms_per_job": 0.31640828515625,
+              "wal_bytes_per_job": 2847.5,
+              "settlement_lock_retries": 0
+            }
+          },
+          {
+            "inline": {
+              "claim_calls": 141,
+              "postgres_cpu_ms_per_job": 0.369195279296875,
+              "component_joint_cpu_ms_per_job": 0.4076346845703125,
+              "wall_ms_per_job": 0.206539021484375,
+              "wal_bytes_per_job": 3733.640625,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 292,
+              "postgres_cpu_ms_per_job": 0.382496037109375,
+              "component_joint_cpu_ms_per_job": 0.4315834892578125,
+              "wall_ms_per_job": 0.275101603515625,
+              "wal_bytes_per_job": 2976.640625,
+              "settlement_lock_retries": 0
+            }
+          },
+          {
+            "inline": {
+              "claim_calls": 138,
+              "postgres_cpu_ms_per_job": 0.380704537109375,
+              "component_joint_cpu_ms_per_job": 0.4185487841796875,
+              "wall_ms_per_job": 0.2131683759765625,
+              "wal_bytes_per_job": 3691.3359375,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 288,
+              "postgres_cpu_ms_per_job": 0.3666327392578125,
+              "component_joint_cpu_ms_per_job": 0.42373226171875,
+              "wall_ms_per_job": 0.302194091796875,
+              "wal_bytes_per_job": 2892.7578125,
+              "settlement_lock_retries": 0
+            }
+          }
+        ]
+      },
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/inline-capacity-admission/inline-reverse-01",
+        "reverse": true,
+        "scored_jobs": 10240,
+        "source_archive_sha256": "30db6c0aaec9984547d6e55bd1c44c18b44ffc429b9b04ef79405cf90d2f6977",
+        "component_sha256": "53bf52daed679400cee1842ece68a18b9f4b6001cf86774354080c76a69af36a",
+        "extraction_sha256": "d7de978b54cef27928f657bd02bc65542e2b79d6b7fbbd8e70a065ff542dd27a",
+        "paired_median_candidate_minus_v1": {
+          "backend_cpu_ms_per_job": -0.023924,
+          "claim_calls": -146,
+          "claim_misses": -149,
+          "claim_statement_wal_bytes_per_job": 258.1171875,
+          "client_cpu_ms_per_job": -0.012657310546875002,
+          "component_joint_cpu_ms_per_job": -0.0366460478515625,
+          "contention_hints": -151,
+          "postgres_cpu_ms_per_job": -0.023988737304687535,
+          "settle_statement_wal_bytes_per_job": 652.54296875,
+          "settlement_lock_retries": 0,
+          "wal_bytes_per_job": 926.2421875,
+          "wall_ms_per_job": -0.10767456152343749
+        },
+        "pairs": [
+          {
+            "inline": {
+              "claim_calls": 140,
+              "postgres_cpu_ms_per_job": 0.37446512109375,
+              "component_joint_cpu_ms_per_job": 0.414645142578125,
+              "wall_ms_per_job": 0.209080607421875,
+              "wal_bytes_per_job": 3735.1328125,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 286,
+              "postgres_cpu_ms_per_job": 0.353614064453125,
+              "component_joint_cpu_ms_per_job": 0.4023872001953125,
+              "wall_ms_per_job": 0.2785072021484375,
+              "wal_bytes_per_job": 2835.125,
+              "settlement_lock_retries": 0
+            }
+          },
+          {
+            "inline": {
+              "claim_calls": 141,
+              "postgres_cpu_ms_per_job": 0.35987638671875,
+              "component_joint_cpu_ms_per_job": 0.395940103515625,
+              "wall_ms_per_job": 0.2019955654296875,
+              "wal_bytes_per_job": 3700.25,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 300,
+              "postgres_cpu_ms_per_job": 0.36191339453125,
+              "component_joint_cpu_ms_per_job": 0.4130161337890625,
+              "wall_ms_per_job": 0.29275537109375,
+              "wal_bytes_per_job": 2820.0625,
+              "settlement_lock_retries": 0
+            }
+          },
+          {
+            "inline": {
+              "claim_calls": 141,
+              "postgres_cpu_ms_per_job": 0.3454241865234375,
+              "component_joint_cpu_ms_per_job": 0.3827964599609375,
+              "wall_ms_per_job": 0.1933807373046875,
+              "wal_bytes_per_job": 3717.71875,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 279,
+              "postgres_cpu_ms_per_job": 0.369412923828125,
+              "component_joint_cpu_ms_per_job": 0.4194425078125,
+              "wall_ms_per_job": 0.301055298828125,
+              "wal_bytes_per_job": 2791.4765625,
+              "settlement_lock_retries": 0
+            }
+          },
+          {
+            "inline": {
+              "claim_calls": 142,
+              "postgres_cpu_ms_per_job": 0.3529112890625,
+              "component_joint_cpu_ms_per_job": 0.39091768359375,
+              "wall_ms_per_job": 0.1979508876953125,
+              "wal_bytes_per_job": 3686.1171875,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 301,
+              "postgres_cpu_ms_per_job": 0.3873714189453125,
+              "component_joint_cpu_ms_per_job": 0.4534658330078125,
+              "wall_ms_per_job": 0.31582743359375,
+              "wal_bytes_per_job": 2725.0078125,
+              "settlement_lock_retries": 0
+            }
+          },
+          {
+            "inline": {
+              "claim_calls": 137,
+              "postgres_cpu_ms_per_job": 0.41674273046875,
+              "component_joint_cpu_ms_per_job": 0.464189609375,
+              "wall_ms_per_job": 0.2353037509765625,
+              "wal_bytes_per_job": 3724.9375,
+              "settlement_lock_retries": 0
+            },
+            "v1": {
+              "claim_calls": 277,
+              "postgres_cpu_ms_per_job": 0.4469762939453125,
+              "component_joint_cpu_ms_per_job": 0.5031321259765625,
+              "wall_ms_per_job": 0.3885843505859375,
+              "wal_bytes_per_job": 2775.3359375,
+              "settlement_lock_retries": 0
+            }
+          }
+        ]
+      }
+    ],
+    "native_overlap": {
+      "inline": {
+        "cancel_fenced": true,
+        "effect_while_held": "applied",
+        "occupied_slots": [
+          "1",
+          "2"
+        ],
+        "settle_while_held": "completed",
+        "stale_free_slot_rechecked": true,
+        "stale_head_permit_retained": true,
+        "stale_head_seen": true,
+        "tail_unoffered_until_commit": true
+      },
+      "v1": {
+        "effect_after_release": "applied",
+        "effect_while_held": "busy",
+        "old_cursor_rejected_head": true,
+        "settle_after_release": "completed",
+        "settle_while_held": "55P03"
+      }
+    },
+    "finding": "The component showed fewer claim calls and lower time with zero settlement lock retries. WAL increased. Compiled and mixed-version behavior remains to be verified."
+  },
+  "linux_fresh_worker_startup_phases": {
+    "revision": "0ee8756a37dc2115f16e33e5b12467547f43a90e",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/set-based-claim-screen/runs/set-update-cpu-child-startup-01/noop-8r-64s",
+    "scope": "Relinked diagnostic image with wrappers and exact child wait4. One group plus traced pilot. CPU attribution only.",
+    "image": {
+      "instrumented_fixture_sha256": "3737fae91d97607422447fd9b4780142cfeb2d65f957da894d63c7b88d08fe72",
+      "unmodified_fixture_sha256": "15a28510793c7122e81281c87dc0e76f7ccde628f3021be789428835eb5516be",
+      "witness_sha256": "d874e6d46c1794be29ea9724a68a874d17cb81d115a8b72fefd89ee9e3b4055f"
+    },
+    "pilot_stage_sha256": "2fd8a9d0a03d349b12c92f18412cfd388b77652fee3aa14772d9aa0f3b026186",
+    "measured_stage_sha256": "8f72d1b2339347010e190110fb358bd5e9de916a893e97db0166d514a827a7f1",
+    "cpu_report_sha256": "de9eadaf6464dd9dc7be3c3a46e6d50f4296db6f612ecf2298742823aca6da15",
+    "pilot_reaps_matched": 2048,
+    "scored_mesh_reaps_matched": 3072,
+    "scored_mesh_arms": {
+      "mesh": {
+        "jobs": 1024,
+        "through_handler_entry_mean_cpu_ms": 0.3722822265625,
+        "mean_cpu_ms_per_job": {
+          "through_constructor": 0.1488095703125,
+          "constructor_to_runtime": 0.0031064453125,
+          "runtime_init": 0.0423408203125,
+          "configuration": 0.000376953125,
+          "actor_init": 0.08133203125,
+          "registration": 0.004869140625,
+          "worker_bootstrap": 0.091447265625,
+          "handler_entry_to_reap": 0.1543466796875
+        },
+        "full_child_cpu_ms_per_job": 0.52662890625
+      },
+      "mesh-repeat": {
+        "jobs": 1024,
+        "through_handler_entry_mean_cpu_ms": 0.7994091796875,
+        "mean_cpu_ms_per_job": {
+          "through_constructor": 0.3121884765625,
+          "constructor_to_runtime": 0.00512890625,
+          "runtime_init": 0.087466796875,
+          "configuration": 0.0005029296875,
+          "actor_init": 0.178466796875,
+          "registration": 0.013333984375,
+          "worker_bootstrap": 0.2023212890625,
+          "handler_entry_to_reap": 0.300484375
+        },
+        "full_child_cpu_ms_per_job": 1.0998935546875
+      },
+      "mesh-set-update": {
+        "jobs": 1024,
+        "through_handler_entry_mean_cpu_ms": 0.3606123046875,
+        "mean_cpu_ms_per_job": {
+          "through_constructor": 0.1418349609375,
+          "constructor_to_runtime": 0.003015625,
+          "runtime_init": 0.0406806640625,
+          "configuration": 0.0003525390625,
+          "actor_init": 0.0794609375,
+          "registration": 0.0046865234375,
+          "worker_bootstrap": 0.0905810546875,
+          "handler_entry_to_reap": 0.149810546875
+        },
+        "full_child_cpu_ms_per_job": 0.5104228515625
+      }
+    }
   }
 }

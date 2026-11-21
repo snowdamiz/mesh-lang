@@ -2963,6 +2963,69 @@ lock. Both changes need native overlap and WAL evidence before compiled
 dispatch or mixed-version integration.
 [Durable slot admission receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Store the claim slot on the job row
+
+The follow-up stores the slot number on the executing job row. A
+partial unique index protects slot ownership. Settlement releases the
+slot as part of the existing state change. Claimers take a shared
+queue lock and bounded transaction advisory permits. A fresh eligibility
+read under the job permit precedes the physical row lock.
+
+PostgreSQL 17.11 proofs on macOS and Linux staged the stale-cursor
+race. The stock cursor prevented the current claim from settling and
+made its effect report `busy` while the peer transaction stayed open.
+The inline candidate let that current claim apply its effect and settle
+before releasing the peer. The proof also checked the queue cap,
+permit containment, cancellation, lease recovery, and unread COMMIT.
+
+Two Linux series, each with five counterbalanced closed-loop pairs,
+reconciled 20,480 scored jobs. These component lanes claim and settle
+real jobs with a zero-work executor.
+
+| Paired median change per 1,024-job comparison | First series | Reverse series |
+| --- | ---: | ---: |
+| Claim calls | -158 | -146 |
+| PostgreSQL CPU-ms/job | -0.044 | -0.024 |
+| PostgreSQL and client CPU-ms/job | -0.057 | -0.037 |
+| Wall ms/job | -0.107 | -0.108 |
+| WAL bytes/job | +845 | +926 |
+| Settlement lock retries | 0 | 0 |
+
+The variant cut claim calls and wall time in all ten pairs. Both
+arms had zero settlement lock retries. Extra WAL remained despite
+removing the separate slot-table updates. The compiled fixture still
+needs the same admission and effect proof with real child processes.
+The disposable schema fences legacy entry points, and mixed-version
+migration remains open.
+[Inline admission receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute fresh Linux worker startup
+
+The Linux fixture relink used the same `0ee8756a` compiler, runtime
+archive, and handler sources. Native wrappers recorded process CPU at
+constructor, runtime initialization, actor initialization, worker entry,
+and handler entry. A parent `wait4` supplied the terminal count. Host and
+guest joined the phase marks and exact parent and child PIDs to the
+durable outcomes. The traced pilot matched 2,048 workers. One separate
+instrumented group matched 3,072 scored Mesh workers.
+
+| Mean CPU-ms/job by phase | Mesh | Mesh repeat | Grouped claim update |
+| --- | ---: | ---: | ---: |
+| Through constructor mark | 0.149 | 0.312 | 0.142 |
+| Runtime initialization | 0.042 | 0.088 | 0.041 |
+| Actor initialization | 0.081 | 0.179 | 0.080 |
+| Worker entry through bootstrap and watchdog setup | 0.091 | 0.202 | 0.091 |
+| Through handler entry, including intervening work | 0.372 | 0.799 | 0.361 |
+| Full child lifetime | 0.527 | 1.100 | 0.510 |
+
+Actor initialization and worker bootstrap are direct targets for the
+fresh-exec candidate. The phase times include any concurrent worker-thread
+CPU during each interval. The witness writes its log after sampling
+handler entry. The relink and the spread between identical controls limit
+these figures to attribution. The independently toggled changes still
+need fresh Linux correctness and timing runs.
+[Worker startup phase receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
