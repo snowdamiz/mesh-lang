@@ -3600,6 +3600,32 @@ proof did not exercise process creation or reap in the compiled
 runner.
 [Settlement and refill receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Exercise shared completion and refill in compiled Jobs
+
+The fixture-only candidate at `faca9451` groups two to eight
+already-reaped COMPLETE attempts and claims replacements for the
+same queue. Each transaction returns ordered token verdicts.
+The dispatcher launches replacements only after observing the
+COMMIT command tag and idle ReadyForQuery. An unconfirmed shared
+COMMIT leaves zero replacements eligible for dispatch and sends
+each predecessor through one immediate standalone acknowledgement.
+
+Linked tests on macOS and PostgreSQL 17.11 covered the COMMIT
+reply parser, result validation, a locked predecessor, rollback,
+operator cancellation, and one transaction ID for both settlements
+and both replacement claims. The stock compiled effect proof also
+passed seven cases with the refill opt-in off.
+
+A traced Linux ARM64 pilot ran the same release executable with
+refill off and on. Each arm reconciled 1,024 first attempts and
+exact reaps, two fenced writes per job, and all 63 effect backends
+idle after 1,024 resets. The treatment committed 30 shared turns
+with 111 predecessors and 111 replacements. It recorded 45 scalar
+fallbacks and zero uncertain turns. The pilot establishes compiled
+coverage. It did not cut an in-flight shared COMMIT or measure
+performance.
+[Compiled refill pilot](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse recently active effect sessions
 
 Five Linux ARM64 boots compared FIFO and LIFO checkout from the

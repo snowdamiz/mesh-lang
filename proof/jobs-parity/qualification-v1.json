@@ -34448,5 +34448,301 @@
       "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/split-summary.py",
       "sha256": "57d180fa9b72297569b6da9aa6824c9318d8d8fc92c76010c86d1497a7920789"
     }
+  },
+  "jobs_compiled_settle_refill_positive_pilot": {
+    "revision": "faca94514303237b5ce3b6aaace0d6906218b15c",
+    "scope": "Fixture-only compatibility, linked store proof, and traced positive compiled coverage. Shared transaction fault injection through the compiled dispatcher is separate.",
+    "postgres": "17.11",
+    "macos_linked_tests": {
+      "path": "target/jobs-parity/compiled-runtime-proofs/refill-reviewed-native-test.log",
+      "sha256": "4875d9c1133e166f23956f039b4429bf1e9610acbab9778c8feb5f9e408aebe1"
+    },
+    "macos_compiled_effect_default": {
+      "path": "target/jobs-parity/compiled-runtime-proofs/refill-reviewed-native-compiled.log",
+      "sha256": "0733fe7f8701c050a301cbca4b0a444a3898a93e50e627a158a77f8e4d472e4f"
+    },
+    "linux_release_pin_and_preflight": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-refill-guest/preflight-linked.json",
+      "sha256": "73c01879d1c0e7b66db2668cd9eba3c16f5f1a4951256e0e8e0843c8e60e7d30"
+    },
+    "linux_compiled_trace": {
+      "profile": "noop-8r-64s",
+      "stage": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-refill-guest/runs/compiled-refill-01/noop-8r-64s/pilot/stage.json",
+        "sha256": "de6c736b39476203f382c13c5e28f18c0137d5fbb9d3a3686fcc9d3784683f28"
+      },
+      "manifest": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-refill-guest/runs/compiled-refill-01/noop-8r-64s/pilot/proof/evidence/manifest.json",
+        "sha256": "df0b50085bec2e1d164192f29ef289367c22b4f256291822b4680e3a13d742a6"
+      },
+      "arms": {
+        "trace-mesh": {
+          "raw": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-refill-guest/runs/compiled-refill-01/noop-8r-64s/pilot/proof/evidence/trace-mesh/raw.json",
+            "sha256": "43a25d49ccd64e62c2dcfb2795308a79f03e282bd4aee3de5449bc3e853ea7a2"
+          },
+          "exact_attempts": 1024,
+          "completed_resets": 1024
+        },
+        "trace-mesh-refill": {
+          "raw": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-refill-guest/runs/compiled-refill-01/noop-8r-64s/pilot/proof/evidence/trace-mesh-refill/raw.json",
+            "sha256": "31f36e15cd0b781b1c04119912735b46ef26e30044b4f7cafb27a14c98cedd36"
+          },
+          "exact_attempts": 1024,
+          "completed_resets": 1024,
+          "counts_by_runner": [
+            {
+              "committed": 0,
+              "committed_by_width": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "fallback_with_error": 0,
+              "predecessors": 0,
+              "replacements": 0,
+              "reserved_by_width": [
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "scalar_fallbacks": 1,
+              "unconfirmed": 0
+            },
+            {
+              "committed": 5,
+              "committed_by_width": [
+                0,
+                0,
+                2,
+                0,
+                1,
+                2,
+                0,
+                0,
+                0
+              ],
+              "fallback_with_error": 0,
+              "predecessors": 18,
+              "replacements": 18,
+              "reserved_by_width": [
+                0,
+                0,
+                4,
+                2,
+                1,
+                3,
+                0,
+                1,
+                0
+              ],
+              "scalar_fallbacks": 6,
+              "unconfirmed": 0
+            },
+            {
+              "committed": 2,
+              "committed_by_width": [
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              "fallback_with_error": 0,
+              "predecessors": 7,
+              "replacements": 7,
+              "reserved_by_width": [
+                0,
+                0,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              "scalar_fallbacks": 1,
+              "unconfirmed": 0
+            },
+            {
+              "committed": 5,
+              "committed_by_width": [
+                0,
+                0,
+                1,
+                2,
+                1,
+                1,
+                0,
+                0,
+                0
+              ],
+              "fallback_with_error": 0,
+              "predecessors": 17,
+              "replacements": 17,
+              "reserved_by_width": [
+                0,
+                0,
+                3,
+                2,
+                4,
+                4,
+                1,
+                0,
+                2
+              ],
+              "scalar_fallbacks": 11,
+              "unconfirmed": 0
+            },
+            {
+              "committed": 7,
+              "committed_by_width": [
+                0,
+                0,
+                1,
+                3,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "fallback_with_error": 0,
+              "predecessors": 29,
+              "replacements": 29,
+              "reserved_by_width": [
+                0,
+                0,
+                4,
+                7,
+                4,
+                0,
+                2,
+                0,
+                1
+              ],
+              "scalar_fallbacks": 11,
+              "unconfirmed": 0
+            },
+            {
+              "committed": 5,
+              "committed_by_width": [
+                0,
+                0,
+                2,
+                1,
+                1,
+                0,
+                0,
+                1,
+                0
+              ],
+              "fallback_with_error": 0,
+              "predecessors": 18,
+              "replacements": 18,
+              "reserved_by_width": [
+                0,
+                0,
+                3,
+                1,
+                3,
+                1,
+                3,
+                1,
+                0
+              ],
+              "scalar_fallbacks": 7,
+              "unconfirmed": 0
+            },
+            {
+              "committed": 1,
+              "committed_by_width": [
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "fallback_with_error": 0,
+              "predecessors": 2,
+              "replacements": 2,
+              "reserved_by_width": [
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              "scalar_fallbacks": 1,
+              "unconfirmed": 0
+            },
+            {
+              "committed": 5,
+              "committed_by_width": [
+                0,
+                0,
+                1,
+                2,
+                0,
+                1,
+                0,
+                1,
+                0
+              ],
+              "fallback_with_error": 0,
+              "predecessors": 20,
+              "replacements": 20,
+              "reserved_by_width": [
+                0,
+                0,
+                4,
+                4,
+                1,
+                2,
+                0,
+                1,
+                0
+              ],
+              "scalar_fallbacks": 7,
+              "unconfirmed": 0
+            }
+          ],
+          "totals": {
+            "committed": 30,
+            "predecessors": 111,
+            "replacements": 111,
+            "scalar_fallbacks": 45,
+            "fallback_with_error": 0,
+            "unconfirmed": 0
+          }
+        }
+      }
+    }
   }
 }
