@@ -3283,6 +3283,39 @@ an observer admission race from backend teardown. The pilot and
 failed warmup are retained, and the series has no timing verdict.
 [Ordinary held-worker and admission receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Compare worker THP on the ordinary Linux slow-16 path
+
+The replay used the same `25cc1299` release ELF in all Mesh arms,
+with two vCPUs, 1 GiB RAM, PostgreSQL 17.11, and stock Oban Basic
+2.24.2 with the Isolated notifier. One read-only observer stayed
+connected throughout each arm. It occupied one of 21 physical
+database slots, leaving 20 for the workload. A separate PostgreSQL
+check held all 21 TLS sessions and verified that the next workload
+login was rejected. The adapter invalidates an arm if the observer
+disconnects and restores the 20-slot limit before closing it.
+
+The pilot matched 120 control and 118 treatment workers to their
+durable attempts while they held between writes. Both runners kept
+THP enabled. The five counterbalanced groups reconciled 2,560 scored
+jobs with one attempt and one effect each. The workload reached
+20 connections, and each of the 42 pilot, warmup, and scored arms
+drained its observer and workload sessions.
+
+| Arm | Median jobs/s | Median peak RSS | Median pickup p99 | Median CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control | 135.9 | 218.8 MiB | 835 ms | 2.21 ms |
+| Mesh repeat | 135.4 | 216.8 MiB | 840 ms | 2.27 ms |
+| Mesh, worker THP disabled | 132.9 | 114.9 MiB | 850 ms | 2.37 ms |
+| Oban Basic | 120.8 | 124.5 MiB | 955 ms | 4.17 ms |
+
+Only the treatment met the 186.8 MiB RSS cap among the Mesh arms.
+It met every frozen gate for this profile and beat Oban in four of
+five groups. Its median paired RSS savings were 103.9 and 101.8 MiB
+against the two controls. Both controls had higher median throughput.
+The peak one-minute host load ranged from 7.83 to 13.38 across the
+groups. Worker THP disablement remains opt-in at the tested revision.
+[Ordinary matched run](../proof/jobs-parity/qualification-v1.json)
+
 ### Drop cold executable pages before the slow-64 handler
 
 Two Linux boots used the same relinked `f1e2709c` fixture with
