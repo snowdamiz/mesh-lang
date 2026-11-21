@@ -2562,6 +2562,25 @@ can also intervene between the grant and COMMIT. The native rollback
 test covers explicit denial before COMMIT.
 [Claim-ahead comparison and proof](../proof/jobs-parity/qualification-v1.json)
 
+### Compare one and two native launchers
+
+A DB-free screen ran the same compiled Linux worker through
+`posix_spawnp` in 108 measured 16-child waves on two vCPUs.
+Both controls used one launch thread. The candidate used two
+threads in the same parent and overlapped spawn calls in all
+36 of its waves. All 1,728 measured children returned the
+expected reply and were reaped by exact PID.
+
+Two launchers shortened the spawn wave by a paired median of
+0.30 and 0.42 ms against the two controls. The time through
+verified child completion fell by 0.27 and 0.44 ms, with wins
+against both in five of six groups. Total CPU stayed within
+the variation between the identical controls. That launch
+saving accounts for a small part of the observed 10.10 ms
+no-op refill cycle. The screen used release worker `a39447f7`
+and exercised neither PostgreSQL nor the Jobs dispatcher.
+[Parallel launch screen](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare two more short-job topologies on Linux
 
 The staged `c271319e` fixture reconciled all 7,680 measured jobs for
@@ -2592,9 +2611,43 @@ wins. Median pickup p99 was 257.9 and 247.3 ms versus 218.3, within
 the 1.25× limit. CPU and RSS also passed.
 
 The fixed 250 ms sparse gap and poll interval contribute much of
-the elapsed time here. The next experiment uses single-claim
-dispatch to fit a notification connection within the same budget.
+the elapsed time here.
 [One-slot sparse receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Fit one-slot sparse notifications within the connection budget
+
+The `399354ca` fixture reused the ordinary single-claim dispatcher
+with a dedicated listener and one prewarmed effect lane. The runner
+shared one app connection for claims, settlement, and maintenance.
+The four workload sessions fit the five-connection cap with room
+for the separately accounted observer. Both polling controls used
+the same binary with batch claims enabled.
+
+All 480 scored jobs in five local Linux groups reconciled. The
+listener arm reached a median of 2.693 jobs/s (1.805–2.738), versus
+2.023 (1.888–2.024) for stock Oban Basic with the Isolated notifier.
+The identical Mesh polling arms reached 1.974 and 1.978 jobs/s.
+The listener won four of five groups against all three controls
+and recorded 24 notification-triggered scans in every trial.
+Median pickup p99 was 8.9 ms versus Oban's 200.0 ms. CPU, RSS,
+and the hard resource budgets passed.
+
+The listener missed the worst-trial 100 ms claim p99 gate. Claim
+p99 was 147.5 ms in the third group and at most 5.1 ms in the
+other four. The one-minute host load rose from 18.9 to 33.0
+during that listener trial on a 15-logical-CPU host. The result
+includes all five groups.
+
+In a separate traced proof, the verifier terminated the listener's
+PostgreSQL backend and held its reconnect closed using the disposable
+database role limit. The first committed job settled while the
+listener was offline. Restoring the limit produced a new listener
+backend and 23 notification-triggered scans for the remaining jobs.
+All 24 jobs produced two ordered writes, one effect, and an exact
+child reap. The first proof attempt exposed an extra observer
+connection in the verifier. The successful rerun used live runner
+status during the outage and retained durable reconciliation.
+[Listener comparison and outage proof](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 

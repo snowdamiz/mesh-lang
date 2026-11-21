@@ -8919,6 +8919,129 @@
       }
     }
   },
+  "linux_fenced_jobs_parallel_native_launch_screen": {
+    "scope": "DB-free exact Linux fresh-exec worker launch component",
+    "worker_runtime_revision": "a39447f7c86219cb3dd5dcea4ae5d8fa9855e727",
+    "run": "target/jobs-parity/worker-cost-screen/linux-parallel-spawn/run.kSvB9R12",
+    "config": {
+      "slots": "16",
+      "warm": "2",
+      "waves": "6",
+      "groups": "6",
+      "online": "2",
+      "allowed": "2",
+      "wave_ms": "5000",
+      "cleanup_ms": "2000",
+      "kernel": "6.12.115-0-virt",
+      "arch": "aarch64",
+      "glibc": "2.39"
+    },
+    "measured_waves": 108,
+    "reconciled_measured_children": 1728,
+    "overlapping_candidate_waves": 36,
+    "all_six_group_orders": [
+      "ABC",
+      "ACB",
+      "BCA",
+      "BAC",
+      "CAB",
+      "CBA"
+    ],
+    "limits": [
+      "nofile soft=1024 hard=4096",
+      "nproc soft=1834 hard=1834",
+      "as soft=18446744073709551615 hard=18446744073709551615",
+      "stack soft=8388608 hard=18446744073709551615",
+      "memory pages=119772 page_bytes=4096",
+      "/proc/sys/kernel/pid_max 32768",
+      "/proc/sys/kernel/threads-max 3668",
+      "/proc/loadavg 0.00 0.00 0.00 1/56 365"
+    ],
+    "medians_by_arm": {
+      "A": {
+        "train_ns": 6230302.083333333,
+        "reconciled_ns": 7036888.916666666,
+        "total_us": 12993.333333333334
+      },
+      "B": {
+        "train_ns": 6221614.583333334,
+        "reconciled_ns": 7087850.75,
+        "total_us": 13064.166666666668
+      },
+      "C": {
+        "train_ns": 5669034.666666666,
+        "reconciled_ns": 6686010.416666667,
+        "total_us": 12887.583333333332
+      }
+    },
+    "paired_savings": {
+      "A_minus_B": {
+        "train_ns": {
+          "min": -690111.166666667,
+          "median": 8687.499999999534,
+          "max": 399729.166666667
+        },
+        "reconciled_ns": {
+          "min": -929520.833333334,
+          "median": 16861.16666666651,
+          "max": 188840.33333333302
+        },
+        "total_us": {
+          "min": -1145.5,
+          "median": -30.25,
+          "max": 588.0
+        }
+      },
+      "A_minus_C": {
+        "train_ns": {
+          "min": 80090.33333333302,
+          "median": 300649.25,
+          "max": 808201.166666667
+        },
+        "reconciled_ns": {
+          "min": -62604.0,
+          "median": 265288.24999999953,
+          "max": 637347.333333333
+        },
+        "total_us": {
+          "min": -738.1666666666679,
+          "median": -24.33333333333394,
+          "max": 675.1666666666679
+        }
+      },
+      "B_minus_C": {
+        "train_ns": {
+          "min": 78812.5,
+          "median": 416551.9166666665,
+          "max": 911298.5
+        },
+        "reconciled_ns": {
+          "min": -18979.333333333023,
+          "median": 439843.75,
+          "max": 960701.5
+        },
+        "total_us": {
+          "min": -488.83333333333394,
+          "median": 81.58333333333394,
+          "max": 569.1666666666661
+        }
+      }
+    },
+    "median_absolute_control_drift": {
+      "train_ns": 135979.1666666665,
+      "reconciled_ns": 79819.33333333349,
+      "total_us": 222.08333333333303
+    },
+    "evidence_sha256": {
+      "guest.log": "60c9d1f80b769e6717fe1fe680282f895735a6f1e24da82ef8aae90494ec739d",
+      "summary.json": "0bf81212a83d112b95fc2b3ef56a5a0d51b0405564b9d573c28c4c119b492c84",
+      "run.sha256": "190fd5bc25742fd60b501af99227eb6ac5c35479ddf9be9af278e232b17ce328",
+      "host-before.txt": "fad3e4eb3309b8daa04a5df0c5ca60bd87ea4b639c3b967bece2242edf4a6489",
+      "host-after.txt": "7bcaa065cf9feb7445f62731cc54947b8744e8ef3abf9bef36f26019e99e623f"
+    },
+    "input_pins_sha256": "9e21d0b1ba8b6a087832913db1b3c6402e0e050f11857c15eb6705ab589f33f5",
+    "result": "small native launch saving; no full-dispatch change selected"
+  },
   "linux_fenced_jobs_slow64_completion_batch": {
     "revision": "e98650d4bb7955d494a3be0ecd4283309c8ccee0",
     "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/slow-64-completion-batches-01",
@@ -12530,6 +12653,172 @@
         "occupied_slots": 0.012946342022130703,
         "first_pickup_ms": 135.6279296875,
         "first_claim_to_final_settlement_ms": 11818.387939453125
+      }
+    }
+  },
+  "linux_fenced_jobs_sparse_single_listen": {
+    "revision": "399354cad9f609d5276ac6d098484e0f550f1a26",
+    "profile": "sparse-1r-1s",
+    "scope": "local-linux-aarch64-fenced-single-claim-listen",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/single-listen1/sparse-1r-1s",
+    "report_sha256": "060fe6ab7a23620c97ea5fd6d3fc2cd45db55980aef3861f34a00b09df5bd89b",
+    "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+    "scored_jobs": 480,
+    "stock_comparator": "Oban Basic 2.24.2 Isolated",
+    "fixture_sha256": "752d925d2b4926b6d2b14274126d4b625544d12deea61618102c6f4f52c8f7cb",
+    "stage_receipt_sha256": {
+      "0": "af3939c9a6d4e18fea86bbb35a35bb86511d5dc559d39c0a5d47b09d83d1b670",
+      "1": "003d53cfac4e5fc6f5989913979eaa424657b22fea489d56ac0714eb5819b30d",
+      "2": "84d9aae528744220d0ee2168890280ff7d8372e3502dd467b4044b771ec8edb6",
+      "3": "27f92d41bd6ddf43eae82b9d3a5452e19c4cc2a1a3b7bc042bc25eddb40a5501",
+      "4": "2574f888f1592694be76305895ca8391aadf8f993bdbf76cc303f71594dfd5a8",
+      "pilot": "32afe885525f0f0213ab134afdb0fa10b883cd0199adcdaf49fbfe0a3d56514b"
+    },
+    "paired_jobs_per_second": [
+      {
+        "mesh": 1.9741728451946772,
+        "mesh-listen": 2.6925365349056447,
+        "mesh-repeat": 1.9811601552465021,
+        "oban": 2.0240297946475754
+      },
+      {
+        "mesh": 1.977636874816314,
+        "mesh-listen": 2.7108750199584533,
+        "mesh-repeat": 1.9915011134124876,
+        "oban": 2.023181422739193
+      },
+      {
+        "mesh": 1.8679518564595745,
+        "mesh-listen": 1.805110896506094,
+        "mesh-repeat": 1.6133769272033085,
+        "oban": 1.888009413619853
+      },
+      {
+        "mesh": 1.9678563839577987,
+        "mesh-listen": 2.6932067049844433,
+        "mesh-repeat": 1.978313216303125,
+        "oban": 2.022830842951952
+      },
+      {
+        "mesh": 1.9925018901141613,
+        "mesh-listen": 2.7380950424586614,
+        "mesh-repeat": 1.97768871633469,
+        "oban": 2.0226201205889307
+      }
+    ],
+    "job_rate_ranges": {
+      "mesh": {
+        "max": 1.9925018901141613,
+        "median": 1.9741728451946772,
+        "min": 1.8679518564595745
+      },
+      "mesh-listen": {
+        "max": 2.7380950424586614,
+        "median": 2.6932067049844433,
+        "min": 1.805110896506094
+      },
+      "mesh-repeat": {
+        "max": 1.9915011134124876,
+        "median": 1.978313216303125,
+        "min": 1.6133769272033085
+      },
+      "oban": {
+        "max": 2.0240297946475754,
+        "median": 2.022830842951952,
+        "min": 1.888009413619853
+      }
+    },
+    "wins_against_all_three_controls": 4,
+    "median_absolute_control_drift_jobs_per_second": 0.013864238596173584,
+    "candidate_minus_mean_control_median_jobs_per_second": 0.7201219048539813,
+    "candidate_peak_connections": {
+      "limit": 5,
+      "observed": 4,
+      "within_limit": true
+    },
+    "candidate_peak_processes": {
+      "limit": 2,
+      "observed": 2,
+      "within_limit": true
+    },
+    "candidate_peak_threads": {
+      "limit": 84,
+      "observed": 14,
+      "within_limit": true
+    },
+    "comparisons": {
+      "jobs_per_second": {
+        "mesh_median": 2.6932067049844433,
+        "ratio_limit": 1.0,
+        "reference": "oban",
+        "reference_median": 2.022830842951952,
+        "within_limit": true
+      },
+      "listener_claim_p99_ms": {
+        "limit": 100,
+        "observed": 147.5419921875,
+        "within_limit": false
+      },
+      "pickup_p99_ms": {
+        "mesh_median": 8.912109375,
+        "ratio_limit": 1.25,
+        "reference": "oban",
+        "reference_median": 199.97900390625,
+        "within_limit": true
+      }
+    },
+    "relative_resource_comparisons": {
+      "cpu_seconds_per_job": {
+        "mesh_median": 0.008888583333333333,
+        "oban_median": 0.019882583333333332,
+        "relative_limit": 1.25,
+        "within_limit": true
+      },
+      "peak_connections": 5,
+      "peak_processes": 2,
+      "peak_rss_bytes": {
+        "mesh_median": 35266560,
+        "oban_median": 122322944,
+        "relative_limit": 1.5,
+        "within_limit": true
+      },
+      "peak_threads": 84
+    },
+    "candidate_claim_p99_ms_by_group": [
+      4.827880859375,
+      4.7041015625,
+      147.5419921875,
+      5.08203125,
+      3.40087890625
+    ],
+    "candidate_notification_scans_by_group": [
+      24,
+      24,
+      24,
+      24,
+      24
+    ],
+    "host_load_average_1m_max_by_stage": [
+      11.814453125,
+      11.85791015625,
+      8.59228515625,
+      40.95361328125,
+      42.3056640625,
+      9.71533203125
+    ],
+    "outage_proof": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/single-outage2/sparse-1r-1s/pilot",
+      "receipt_sha256": "60abede1f7701e54983eb608388bf02e04afe981c97708b77c47a01fd27e311b",
+      "outage_sha256": "6ede81d98ab99f53afa784b307ca39363a29135e8724e93289101185ff7699c1",
+      "initial_listener_pid": 450,
+      "restored_listener_pid": 610,
+      "jobs_settled_offline": 1,
+      "notification_scans_after_restore": 23,
+      "reconciled_jobs": 24,
+      "earlier_failed_verifier": {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/single-outage1/sparse-1r-1s/pilot",
+        "result_sha256": "5e1660eaa01204fdb1438681bd29378faba3348e8a3eab22d33c0449da16e41c",
+        "reason": "concurrent verifier and sampler opened two observer connections"
       }
     }
   },
