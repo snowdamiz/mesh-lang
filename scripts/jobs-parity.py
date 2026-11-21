@@ -681,12 +681,14 @@ def wait_for_worker_exit(pids, executables=()):
 
 
 def process_sample(processes):
+    root_pids = {process.pid for process in processes}
     for _ in range(3):
         table = process_table()
         remember_workers(processes, table)
-        owned = process_tree(table, {process.pid for process in processes})
+        owned = process_tree(table, root_pids)
         if not owned:
-            return {"processes": 0, "threads": 0, "rss_bytes": 0}
+            return {"processes": 0, "threads": 0, "rss_bytes": 0,
+                    "root_rss_bytes": 0, "descendant_rss_bytes": 0}
         if sys.platform == "darwin":
             command = ["ps", "-M", "-p", ",".join(map(str, sorted(owned)))]
             result = subprocess.run(command, capture_output=True, text=True, timeout=5)
@@ -699,8 +701,11 @@ def process_sample(processes):
             # A process captured by the thread sampler can exit before the
             # second process snapshot. Exclude recycled PIDs, not those exits.
             sampled = {pid for pid in owned if counts.get(pid, 0) > 0 and (pid in stable or pid not in after)}
+            rss_bytes = 1024 * sum(table[pid][1] for pid in sampled)
+            root_rss_bytes = 1024 * sum(table[pid][1] for pid in sampled & root_pids)
             return {"processes": len(sampled), "threads": sum(counts[pid] for pid in sampled),
-                    "rss_bytes": 1024 * sum(table[pid][1] for pid in sampled)}
+                    "rss_bytes": rss_bytes, "root_rss_bytes": root_rss_bytes,
+                    "descendant_rss_bytes": rss_bytes - root_rss_bytes}
     raise FixtureError("runner thread capture omitted a live process")
 
 
@@ -2705,12 +2710,16 @@ print('ready', flush=True)
 sys.stdin.read(1)
 stop.set()
 """
-            with subprocess.Popen([sys.executable, "-c", fixture], stdin=subprocess.PIPE,
-                                  stdout=subprocess.PIPE, text=True) as worker:
+            with RunnerProcess([sys.executable, "-c", fixture], stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, text=True) as worker:
                 try:
                     self.assertEqual(worker.stdout.readline().strip(), "ready")
                     report = checked(["ps", "-M", "-p", str(worker.pid)])
                     self.assertEqual(mac_thread_counts(report, {worker.pid}), {worker.pid: 5})
+                    sample = process_sample([worker])
+                    self.assertGreater(sample["rss_bytes"], 0)
+                    self.assertEqual(sample["root_rss_bytes"], sample["rss_bytes"])
+                    self.assertEqual(sample["descendant_rss_bytes"], 0)
                 finally:
                     worker.communicate("q", timeout=5)
 
