@@ -3593,6 +3593,78 @@ the cost of spreading work across backends. Replacing the compiled
 pool's selection order alone has not been tested.
 [Effect session affinity receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Compare a typed set-based effect statement
+
+Four PostgreSQL 17.11 Linux ARM64 boots compared a set-based effect
+function with the original grouped writes. Two boots used a SQL
+function and two used a PL/pgSQL wrapper around the same set query.
+Each boot compared two identical controls and one candidate. The
+12 arms reconciled 12,288 jobs. Each arm returned 2,048 write-stage
+receipts with two confirmed commits per group and 1,024 resets.
+
+The native prescreen checked current, cancelled, expired, held,
+and stale-token, stale-run and stale-attempt cases. It verified the
+narrow function grant, observed attempt rows before the effect
+stage, and confirmed that replay preserved the original effect rows.
+
+| Candidate | Effect backend CPU change against faster control | Total PostgreSQL CPU change |
+| --- | ---: | ---: |
+| SQL function, controls first | +0.300 ms/job | +0.476 ms/job |
+| SQL function, treatment first | +0.246 ms/job | +0.341 ms/job |
+| PL/pgSQL wrapper, controls first | −0.004 ms/job | −0.045 ms/job |
+| PL/pgSQL wrapper, treatment first | +0.083 ms/job | +0.125 ms/job |
+
+The SQL function regressed in both orders. The PL/pgSQL wrapper
+reduced the observed penalty, but its result still depended on the
+order. The runs measure the whole exchange, including any planning
+inside the driver or server. They do not isolate planning time.
+[Set effect write receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Isolate payload storage during claim and settlement
+
+Two native macOS PostgreSQL 17.11 series used one runner and 4,096
+jobs per arm, derived from the 1 KiB no-op inputs. Each series ran
+five alternating blocks with two stock controls, external storage
+tuning and 70 percent fillfactor. The audit checked every payload,
+lease, attempt and terminal state. Statement counters cover claim and
+settlement, with a checkpoint after each seed. There were no HOT
+updates in any arm.
+
+Setting external storage alone left the payload inline. The second
+series added identical ballast to each arm to induce out-of-line
+storage and verified the heap and TOAST relation sizes. External
+payloads reduced median statement WAL from 4,676–4,680 to 1,668
+bytes/job. Server execution time rose from 0.111–0.139 to 1.246
+ms/job and was higher than both controls in every block. The
+fillfactor arms also reduced WAL without consistently improving the
+elapsed time. These are SQL statement measurements with a synthetic
+executor. The external storage arm used an extra fixture column.
+[Payload storage receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Combine hot effect checkout with settlement and refill
+
+Five Linux ARM64 PostgreSQL 17.11 boots compared the combined
+path with two identical grouped-effect controls. The treatment
+preferred recently used effect backends and settled each completed
+group with a replacement claim when the lane could refill.
+All 15 arms reconciled 1,024 jobs, including the two ordered write
+commits and 1,024 resets. The effect connection budget stayed at
+63, with 7–8 backends active in the treatment and 50–63 in the
+controls.
+
+| CPU scope | Treatment median | Median gain against faster control | Median absolute control spread |
+| --- | ---: | ---: | ---: |
+| PostgreSQL | 0.315 ms/job | 0.190 ms/job | 0.030 ms/job |
+| PostgreSQL and diagnostic client | 0.430 ms/job | 0.215 ms/job | 0.033 ms/job |
+
+The treatment used less CPU than both controls in every boot
+for both scopes. This includes the interactions between ready
+groups, active connections and claim contention on the same runs.
+The test used the pinned SQL workload with synthetic workers.
+Its measured cost excludes fresh process startup, handler
+execution and the production dispatcher.
+[Combined SQL component receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`

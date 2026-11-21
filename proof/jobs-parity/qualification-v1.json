@@ -33374,5 +33374,575 @@
         }
       }
     }
+  },
+  "linux_set_based_grouped_effect_writes": {
+    "postgres": "17.11",
+    "vcpus": 2,
+    "profile": "noop-8r-64s",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "reconciled_jobs": 12288,
+    "synthetic_workers": true,
+    "runs": [
+      {
+        "language": "sql",
+        "order": [
+          "A",
+          "A-repeat",
+          "B"
+        ],
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/set-effect-01/proof/evidence/component-receipt.json",
+          "sha256": "cabd8f55bf134afdd880c6fa28e1f3b0bb5b053de2900389a4716538a821eaac"
+        },
+        "ddl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/set-effect-component/write-set.sql",
+          "sha256": "8c1ca56090dbfe266172fcf4eb24a2333b97b8c5fafc2e5fa2194a86c1b43c67"
+        },
+        "native_cases": [
+          "cancelled",
+          "current_1",
+          "current_2",
+          "expired",
+          "locked",
+          "stale_attempt",
+          "stale_run",
+          "stale_token"
+        ],
+        "effect_backend_cpu": {
+          "control_spread": 0.0513954384765625,
+          "cpu_ms_per_job": {
+            "A": 0.1831645078125,
+            "A-repeat": 0.2345599462890625,
+            "B": 0.4836366787109375
+          },
+          "gain_vs_faster_control": -0.30047217089843753
+        },
+        "postgres_cpu": {
+          "control_spread": 0.145427734375,
+          "cpu_ms_per_job": {
+            "A": 0.4994638671875,
+            "A-repeat": 0.6448916015625,
+            "B": 0.9759140625
+          },
+          "gain_vs_control_mean": -0.40373632812499993,
+          "gain_vs_faster_control": -0.4764501953125
+        },
+        "joint_cpu": {
+          "control_spread": 0.18108582421874997,
+          "cpu_ms_per_job": {
+            "A": 0.635103638671875,
+            "A-repeat": 0.816189462890625,
+            "B": 1.21064398828125
+          },
+          "gain_vs_control_mean": -0.48499743750000013,
+          "gain_vs_faster_control": -0.5755403496093751
+        }
+      },
+      {
+        "language": "sql",
+        "order": [
+          "B",
+          "A-repeat",
+          "A"
+        ],
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/set-effect-02/proof/evidence/component-receipt.json",
+          "sha256": "07b99722a4b89a3a45258cb6517000270f0151e6e287bf1122288401d181d689"
+        },
+        "ddl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/set-effect-component/write-set.sql",
+          "sha256": "8c1ca56090dbfe266172fcf4eb24a2333b97b8c5fafc2e5fa2194a86c1b43c67"
+        },
+        "native_cases": [
+          "cancelled",
+          "current_1",
+          "current_2",
+          "expired",
+          "locked",
+          "stale_attempt",
+          "stale_run",
+          "stale_token"
+        ],
+        "effect_backend_cpu": {
+          "control_spread": 0.053167724609374994,
+          "cpu_ms_per_job": {
+            "A": 0.1779432705078125,
+            "A-repeat": 0.2311109951171875,
+            "B": 0.4234667392578125
+          },
+          "gain_vs_faster_control": -0.24552346874999997
+        },
+        "postgres_cpu": {
+          "control_spread": 0.11848437499999998,
+          "cpu_ms_per_job": {
+            "A": 0.4966982421875,
+            "A-repeat": 0.6151826171875,
+            "B": 0.837728515625
+          },
+          "gain_vs_control_mean": -0.28178808593749993,
+          "gain_vs_faster_control": -0.3410302734374999
+        },
+        "joint_cpu": {
+          "control_spread": 0.1416515166015625,
+          "cpu_ms_per_job": {
+            "A": 0.64095585546875,
+            "A-repeat": 0.7826073720703125,
+            "B": 1.01728485546875
+          },
+          "gain_vs_control_mean": -0.3055032416992187,
+          "gain_vs_faster_control": -0.3763289999999999
+        }
+      },
+      {
+        "language": "plpgsql",
+        "order": [
+          "A",
+          "A-repeat",
+          "B"
+        ],
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/cached-set-effect-01/proof/evidence/component-receipt.json",
+          "sha256": "8609317a00abbe7c148e4a177b8f33664a64793f7e6ab6fcab53ff83ae871ad9"
+        },
+        "ddl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/cached-set-effect-component/write-set.sql",
+          "sha256": "53bcc7a329625d807bb8c1bbf917e742b2c51d830a71defa5335b1c4e371f4e7"
+        },
+        "native_cases": [
+          "cancelled",
+          "current_1",
+          "current_2",
+          "expired",
+          "locked",
+          "stale_attempt",
+          "stale_run",
+          "stale_token"
+        ],
+        "effect_backend_cpu": {
+          "control_spread": 0.0070939873046874935,
+          "cpu_ms_per_job": {
+            "A": 0.217263912109375,
+            "A-repeat": 0.2243578994140625,
+            "B": 0.2136151875
+          },
+          "gain_vs_faster_control": 0.0036487246093750147
+        },
+        "postgres_cpu": {
+          "control_spread": 0.03393652343750009,
+          "cpu_ms_per_job": {
+            "A": 0.5630791015625,
+            "A-repeat": 0.597015625,
+            "B": 0.5183271484375
+          },
+          "gain_vs_control_mean": 0.0617202148437499,
+          "gain_vs_faster_control": 0.04475195312499991
+        },
+        "joint_cpu": {
+          "control_spread": 0.05973345898437499,
+          "cpu_ms_per_job": {
+            "A": 0.7073632216796875,
+            "A-repeat": 0.7670966806640624,
+            "B": 0.6541879052734375
+          },
+          "gain_vs_control_mean": 0.08304204589843744,
+          "gain_vs_faster_control": 0.05317531640624995
+        }
+      },
+      {
+        "language": "plpgsql",
+        "order": [
+          "B",
+          "A-repeat",
+          "A"
+        ],
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/cached-set-effect-02/proof/evidence/component-receipt.json",
+          "sha256": "9e9333011dd4b94ace802c354600efa2aa48a8c0ecfceefa3c7ed4d8ae4a5f5c"
+        },
+        "ddl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/cached-set-effect-component/write-set.sql",
+          "sha256": "53bcc7a329625d807bb8c1bbf917e742b2c51d830a71defa5335b1c4e371f4e7"
+        },
+        "native_cases": [
+          "cancelled",
+          "current_1",
+          "current_2",
+          "expired",
+          "locked",
+          "stale_attempt",
+          "stale_run",
+          "stale_token"
+        ],
+        "effect_backend_cpu": {
+          "control_spread": 0.0014516962890624985,
+          "cpu_ms_per_job": {
+            "A": 0.188683716796875,
+            "A-repeat": 0.1872320205078125,
+            "B": 0.269970107421875
+          },
+          "gain_vs_faster_control": -0.08273808691406248
+        },
+        "postgres_cpu": {
+          "control_spread": 0.0015517578125000542,
+          "cpu_ms_per_job": {
+            "A": 0.5044609375,
+            "A-repeat": 0.5060126953125,
+            "B": 0.6292255859375
+          },
+          "gain_vs_control_mean": -0.12398876953125004,
+          "gain_vs_faster_control": -0.12476464843750001
+        },
+        "joint_cpu": {
+          "control_spread": 0.0036386855468749646,
+          "cpu_ms_per_job": {
+            "A": 0.63662111328125,
+            "A-repeat": 0.640259798828125,
+            "B": 0.7761259501953125
+          },
+          "gain_vs_control_mean": -0.13768549414062503,
+          "gain_vs_faster_control": -0.13950483691406246
+        }
+      }
+    ]
+  },
+  "macos_jobs_payload_storage_component": {
+    "postgres": "17.11",
+    "reconciled_jobs": 163840,
+    "synthetic_workers": true,
+    "runs": [
+      {
+        "forced_toast": false,
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/storage-layout-component/native-storage-01.json",
+          "sha256": "3648377e679fc6f418e8c993bd92162e16e1b956f2915a0e6a08fde25420ca81"
+        },
+        "synthetic_input_sha256": "d72fa7be7b32edfe8ca792e1d3d103bdc0f9454ea64752c3dad3eecba636f263",
+        "arms": {
+          "inline": {
+            "heap_before_bytes": 5595136,
+            "toast_before_bytes": 0,
+            "wal_bytes_per_job": 4611.9619140625,
+            "server_exec_elapsed_ms_per_job": 0.11633390673828126
+          },
+          "repeat": {
+            "heap_before_bytes": 5595136,
+            "toast_before_bytes": 0,
+            "wal_bytes_per_job": 4609.147216796875,
+            "server_exec_elapsed_ms_per_job": 0.11860874365234372
+          },
+          "external": {
+            "heap_before_bytes": 5595136,
+            "toast_before_bytes": 0,
+            "wal_bytes_per_job": 4613.62353515625,
+            "server_exec_elapsed_ms_per_job": 0.11250521191406247
+          },
+          "fillfactor": {
+            "heap_before_bytes": 8388608,
+            "toast_before_bytes": 0,
+            "wal_bytes_per_job": 3387.0537109375,
+            "server_exec_elapsed_ms_per_job": 0.15098165747070322
+          }
+        }
+      },
+      {
+        "forced_toast": true,
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/storage-layout-component/native-forced-toast-01.json",
+          "sha256": "0c548fe5fc332303c1487307720f2616074275834d95b3a33522ace5b20397fd"
+        },
+        "synthetic_input_sha256": "d72fa7be7b32edfe8ca792e1d3d103bdc0f9454ea64752c3dad3eecba636f263",
+        "arms": {
+          "inline": {
+            "heap_before_bytes": 5595136,
+            "toast_before_bytes": 4800512,
+            "wal_bytes_per_job": 4680.013916015625,
+            "server_exec_elapsed_ms_per_job": 0.13916672094726573
+          },
+          "repeat": {
+            "heap_before_bytes": 5595136,
+            "toast_before_bytes": 4800512,
+            "wal_bytes_per_job": 4676.3720703125,
+            "server_exec_elapsed_ms_per_job": 0.11052310131835932
+          },
+          "external": {
+            "heap_before_bytes": 991232,
+            "toast_before_bytes": 9592832,
+            "wal_bytes_per_job": 1667.826416015625,
+            "server_exec_elapsed_ms_per_job": 1.2463610966796894
+          },
+          "fillfactor": {
+            "heap_before_bytes": 8388608,
+            "toast_before_bytes": 4800512,
+            "wal_bytes_per_job": 3483.099365234375,
+            "server_exec_elapsed_ms_per_job": 0.10759895581054685
+          }
+        }
+      }
+    ]
+  },
+  "linux_jobs_affinity_and_settle_refill_component": {
+    "postgres": "17.11",
+    "vcpus": 2,
+    "profile": "noop-8r-64s",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "reconciled_jobs": 15360,
+    "synthetic_workers": true,
+    "runs": [
+      {
+        "order": [
+          "A",
+          "A-repeat",
+          "B"
+        ],
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/affinity-refill-01/proof/evidence/component-receipt.json",
+          "sha256": "fe1bec2b7b6ec51058252af4d278938bf5a77f0db78e479379aff01c6ea01ce8"
+        },
+        "arms": {
+          "A": {
+            "active_backends": 60,
+            "claim_calls": 269,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "A-repeat": {
+            "active_backends": 58,
+            "claim_calls": 277,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "B": {
+            "active_backends": 7,
+            "claim_calls": 253,
+            "replacement_jobs": 624,
+            "settlement_calls": 128
+          }
+        },
+        "postgres": {
+          "control_spread": 0.051371093749999985,
+          "cpu_ms_per_job": {
+            "A": 0.5345458984375,
+            "A-repeat": 0.4831748046875,
+            "B": 0.29449609375
+          },
+          "gain_vs_control_mean": 0.21436425781249996,
+          "gain_vs_faster_control": 0.1886787109375
+        },
+        "joint": {
+          "control_spread": 0.0526116845703124,
+          "cpu_ms_per_job": {
+            "A": 0.663169068359375,
+            "A-repeat": 0.6105573837890625,
+            "B": 0.4026939619140625
+          },
+          "gain_vs_control_mean": 0.23416926416015627,
+          "gain_vs_faster_control": 0.20786342187500007
+        }
+      },
+      {
+        "order": [
+          "B",
+          "A-repeat",
+          "A"
+        ],
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/affinity-refill-02/proof/evidence/component-receipt.json",
+          "sha256": "d3dda51d05bcbe70c9b573e9667f98f13fc46eadeea5bfb1f26cbc95911b09c8"
+        },
+        "arms": {
+          "A": {
+            "active_backends": 63,
+            "claim_calls": 306,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "A-repeat": {
+            "active_backends": 50,
+            "claim_calls": 285,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "B": {
+            "active_backends": 8,
+            "claim_calls": 311,
+            "replacement_jobs": 352,
+            "settlement_calls": 128
+          }
+        },
+        "postgres": {
+          "control_spread": 0.13009082031249997,
+          "cpu_ms_per_job": {
+            "A": 0.7670498046875,
+            "A-repeat": 0.636958984375,
+            "B": 0.4469814453125
+          },
+          "gain_vs_control_mean": 0.25502294921874996,
+          "gain_vs_faster_control": 0.18997753906249998
+        },
+        "joint": {
+          "control_spread": 0.16286175000000003,
+          "cpu_ms_per_job": {
+            "A": 0.9969603818359375,
+            "A-repeat": 0.8340986318359375,
+            "B": 0.6195811708984374
+          },
+          "gain_vs_control_mean": 0.29594833593750003,
+          "gain_vs_faster_control": 0.21451746093750002
+        }
+      },
+      {
+        "order": [
+          "A",
+          "A-repeat",
+          "B"
+        ],
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/affinity-refill-03/proof/evidence/component-receipt.json",
+          "sha256": "98b83ba3fdb9d89a85cfec562eb7892180ed8ebe955a3586eab5324389a45900"
+        },
+        "arms": {
+          "A": {
+            "active_backends": 55,
+            "claim_calls": 264,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "A-repeat": {
+            "active_backends": 60,
+            "claim_calls": 294,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "B": {
+            "active_backends": 7,
+            "claim_calls": 261,
+            "replacement_jobs": 552,
+            "settlement_calls": 128
+          }
+        },
+        "postgres": {
+          "control_spread": 0.0009150390625000115,
+          "cpu_ms_per_job": {
+            "A": 0.5649443359375,
+            "A-repeat": 0.564029296875,
+            "B": 0.2849501953125
+          },
+          "gain_vs_control_mean": 0.27953662109375,
+          "gain_vs_faster_control": 0.27907910156250004
+        },
+        "joint": {
+          "control_spread": 0.006480978515625013,
+          "cpu_ms_per_job": {
+            "A": 0.714926876953125,
+            "A-repeat": 0.72140785546875,
+            "B": 0.393705599609375
+          },
+          "gain_vs_control_mean": 0.32446176660156245,
+          "gain_vs_faster_control": 0.32122127734374994
+        }
+      },
+      {
+        "order": [
+          "B",
+          "A-repeat",
+          "A"
+        ],
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/affinity-refill-04/proof/evidence/component-receipt.json",
+          "sha256": "445fa9365784efe86330f2acc7fa80a5f7ecbbcd57b24da9dd245779a05b1de8"
+        },
+        "arms": {
+          "A": {
+            "active_backends": 63,
+            "claim_calls": 305,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "A-repeat": {
+            "active_backends": 57,
+            "claim_calls": 274,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "B": {
+            "active_backends": 8,
+            "claim_calls": 277,
+            "replacement_jobs": 496,
+            "settlement_calls": 128
+          }
+        },
+        "postgres": {
+          "control_spread": 0.03015820312499995,
+          "cpu_ms_per_job": {
+            "A": 0.50522265625,
+            "A-repeat": 0.475064453125,
+            "B": 0.3148583984375
+          },
+          "gain_vs_control_mean": 0.17528515624999996,
+          "gain_vs_faster_control": 0.1602060546875
+        },
+        "joint": {
+          "control_spread": 0.03264533886718746,
+          "cpu_ms_per_job": {
+            "A": 0.632182578125,
+            "A-repeat": 0.5995372392578125,
+            "B": 0.42973944921875
+          },
+          "gain_vs_control_mean": 0.18612045947265626,
+          "gain_vs_faster_control": 0.16979779003906253
+        }
+      },
+      {
+        "order": [
+          "A",
+          "A-repeat",
+          "B"
+        ],
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/affinity-refill-05/proof/evidence/component-receipt.json",
+          "sha256": "6c6392879a9df8bf3f756ace79e2455ccd00a4af26e7180ca6639861687a9222"
+        },
+        "arms": {
+          "A": {
+            "active_backends": 59,
+            "claim_calls": 269,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "A-repeat": {
+            "active_backends": 55,
+            "claim_calls": 285,
+            "replacement_jobs": 0,
+            "settlement_calls": 1024
+          },
+          "B": {
+            "active_backends": 8,
+            "claim_calls": 307,
+            "replacement_jobs": 408,
+            "settlement_calls": 128
+          }
+        },
+        "postgres": {
+          "control_spread": 0.015184570312499979,
+          "cpu_ms_per_job": {
+            "A": 0.5865166015625,
+            "A-repeat": 0.57133203125,
+            "B": 0.3383310546875
+          },
+          "gain_vs_control_mean": 0.24059326171874995,
+          "gain_vs_faster_control": 0.23300097656249996
+        },
+        "joint": {
+          "control_spread": 0.009123965820312496,
+          "cpu_ms_per_job": {
+            "A": 0.7377462333984375,
+            "A-repeat": 0.728622267578125,
+            "B": 0.4583539521484375
+          },
+          "gain_vs_control_mean": 0.2748302983398438,
+          "gain_vs_faster_control": 0.2702683154296875
+        }
+      }
+    ]
   }
 }
