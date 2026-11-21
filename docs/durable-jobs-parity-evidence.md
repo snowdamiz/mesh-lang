@@ -1264,6 +1264,26 @@ two-process limit even when the sampler sees only two. The comparison
 supports testing reuse inside the runner process with the same isolated
 attempt and durable writes. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
+The same four arms ran five groups on the frozen one-runner, 64-slot
+100 ms profile. All 10,240 jobs reconciled. The warm relay opened 64
+verified sessions and used each one. The median first-write interval
+fell from 10.55 ms with fresh relay sessions to 0.31 ms with reuse.
+
+| Arm | Jobs/s | CPU/job | Sampled peak RSS |
+| --- | ---: | ---: | ---: |
+| Mesh direct | 414.9 | 7.43 ms | 444.0 MiB |
+| Mesh relay, fresh sessions | 364.9 | 7.11 ms | 341.3 MiB |
+| Mesh relay, reused sessions | 410.5 | 6.14 ms | 399.6 MiB |
+| Oban Basic 2.24.2 | 490.7 | 1.95 ms | 118.1 MiB |
+
+The warm relay missed throughput in all five groups and exceeded the
+relative CPU and RSS limits. Two warm trials sampled 64 live isolated
+workers and the two coordinator processes, with tree RSS of 503.9 and
+504.1 MiB. The trial peaks span different active worker counts, so their
+medians describe each workload's observed peak. The 64-worker samples
+show that the RSS limit still requires a smaller worker footprint on this
+host. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
