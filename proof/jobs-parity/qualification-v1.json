@@ -4185,6 +4185,35 @@
     "reused_breaches": ["throughput", "cpu_per_job"],
     "scope": "Fixture-only macOS framework-omitting link and effect relay. CPU by owner comes from getrusage after worker reap, runner join, and pool close. CPU totals exclude producer and PostgreSQL."
   },
+  "worker_launch_prefix": {
+    "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "host": "Darwin arm64",
+    "groups_per_run": 5,
+    "children_per_arm": 512,
+    "arms_per_group": 5,
+    "wave_width": 64,
+    "reaped_measured_children": 25600,
+    "screening_threshold_ms_per_job": 0.9,
+    "full_image_sha256": "12d3905d5fda939eccf5ff35d98438119814ad3f8744a229fc5f0aaf5ed1c2d8",
+    "control_image_sha256": "cca3af811e1c8860f5a5fe829f99a6547297d6a53b6110f1b3a6de6588709921",
+    "fork_exec": {
+      "run": "target/jobs-parity/worker-cost-screen/worker-stage-cutoff-py30v9dh",
+      "manifest_sha256": "2f2ee7c5424c2c1c83186e75cd45a9c757a53b8ffb208214cafd8cb2b2cc5f9a",
+      "result_sha256": "743323e6c5861344e520f43fb061eee7c58326a8b1d7447865f57420acd393fc",
+      "median_cpu_ms_per_job": {"control": 1.602, "mesh_main": 2.249, "bootstrap_eof": 2.075},
+      "paired_image_cpu_delta_ms_per_job": {"min": 0.212, "median": 0.438, "max": 0.937}
+    },
+    "posix_spawn": {
+      "run": "target/jobs-parity/worker-cost-screen/worker-stage-posix-spawn-60oexmiu",
+      "manifest_sha256": "4ed10f7c684675482bdef9be88ac5f3189ba92a788e9987e9fda3b869e0a8075",
+      "result_sha256": "d1b9bbac7fc6c344533d881db88427fcd78f77f2a982e123d5be91af83e35d19",
+      "median_cpu_ms_per_job": {"control": 1.290, "mesh_main": 1.751, "bootstrap_eof": 1.936},
+      "paired_image_cpu_delta_ms_per_job": {"min": 0.362, "median": 0.437, "max": 0.484},
+      "paired_image_system_cpu_delta_ms_per_job": 0.046,
+      "groups_below_screening_threshold": 5
+    },
+    "scope": "Fixture-only launch cutoffs with identical Mach-O images across runs. The bootstrap EOF occurs before either child watchdog and before handler work. Child wait4 CPU covers launch through exit. No PostgreSQL or completed job throughput was measured."
+  },
   "effect_transaction_lease_admission": {
     "test_commit": "acd1d9b0a43ca9dca16b176a8ab90ff28cbc36dd",
     "host": "Darwin arm64",

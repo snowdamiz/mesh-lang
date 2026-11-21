@@ -1358,6 +1358,32 @@ breakdown measures process ownership. It leaves the system CPU split
 among executable loading, thread startup, and I/O unmeasured.
 [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Measure the worker launch prefix
+
+Two local diagnostics compared a small libSystem executable with four
+cutoffs in one framework-omitting Mesh fixture linked against
+`da0a51bc`. Both used five counterbalanced groups, 512 children per arm,
+and waves of 64. Every child returned its expected exit status. The last
+cutoff exercised the real empty-bootstrap pipe error.
+
+| Child CPU/job | Fork and exec | `posix_spawn` |
+| --- | ---: | ---: |
+| Small executable, exit at main | 1.60 ms | 1.29 ms |
+| Mesh executable, exit at main | 2.25 ms | 1.75 ms |
+| Mesh worker, exit on bootstrap EOF | 2.07 ms | 1.94 ms |
+| Paired Mesh-minus-small difference at main | 0.44 ms | 0.44 ms |
+
+The paired `posix_spawn` difference ranged from 0.36 to 0.48 ms/job.
+Every group fell below the 0.9 ms/job screening threshold for a
+linker-ordering experiment. The paired system CPU difference was
+0.05 ms/job. The 1.94 ms/job prefix is close to the 2.06 ms/job budget
+observed for the entire runner tree in the separate 64-slot workload.
+The cutoff occurs before a handler runs or either child watchdog starts.
+It measures child CPU on this macOS host. The paired stages use an
+inherited diagnostic descriptor and do not exercise PostgreSQL or
+measure completed jobs/s.
+[Launch screen receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse effect sessions inside the runner
 
 The local `02afc9e2` diagnostic moved the helper into a thread in the Jobs
