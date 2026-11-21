@@ -185,6 +185,9 @@ impl WorkerProcess {
                 {
                     return;
                 }
+                // Renewal writes only need the deadline. Release the bootstrap
+                // context while the child is still running.
+                drop(context);
                 while renewal_requests.recv().is_ok() {
                     let lease = latest.load(Ordering::Acquire);
                     if input.write_all(&lease.to_le_bytes()).is_err() {
@@ -403,18 +406,19 @@ fn run_worker() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     remaining(deadline, lease);
 
-    let reply = invoke(&context, |input| unsafe { handler(input) });
+    let reply = invoke(context, |input| unsafe { handler(input) });
     remaining(deadline, u64::MAX);
     write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
     Ok(())
 }
 
 pub(super) fn invoke(
-    context: &str,
+    context: String,
     handler: impl FnOnce(*const MeshString) -> *const MeshString,
 ) -> Reply {
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let input = mesh_str(context);
+        let input = mesh_str(&context);
+        drop(context);
         let output = unsafe { handler(input).as_ref() }.ok_or("job handler returned no outcome")?;
         let bytes = unsafe { output.as_bytes() };
         if bytes.len() > MAX_OUTCOME {

@@ -190,7 +190,7 @@ pub unsafe fn perform_job(
     }
     let context = build_job(spec, clock_ms)?;
     let reply = crate::panic::quietly(|| {
-        worker::invoke(&context, |input| {
+        worker::invoke(context, |input| {
             crate::callback::call1(handler, env, input as u64) as *const MeshString
         })
     });
