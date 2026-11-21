@@ -2315,14 +2315,36 @@ eight runners, with 63 prewarmed effect sessions and 96 workload clients.
 Five matched groups at `c271319e` reconciled 640 measured jobs per arm.
 The two identical warm Mesh arms reached 57.0 and 53.3 jobs/s versus
 89.2 for stock Oban. The medians missed throughput, pickup, and
-CPU/job. Median entry-to-first-write time was 0.47 and 0.50 ms in Mesh.
-The medians of trial-mean claim-to-entry times were 6.73 and 7.09 ms
+CPU/job. The medians of trial-mean entry-to-first-write times were
+0.47 and 0.50 ms in Mesh. Claim-to-entry was 6.73 and 7.09 ms
 versus 0.77 ms for Oban. Effect-to-settlement was 5.58 and 5.40 ms
 versus 0.29 ms. Mesh refilled its sole slot faster after settlement,
 with 0.34 and 0.39 ms versus 6.95 ms. This leaves worker startup and
 post-effect settlement as the main measured gaps in this local
 profile. The same candidate still needs a Linux one-slot comparison.
 [One-slot comparison](../proof/jobs-parity/qualification-v1.json)
+
+### Compare four-runner short and one-runner slow on macOS
+
+Five matched groups at `c271319e` reconciled 640 measured jobs per arm
+for short four-runner at 16 slots and 2,560 for slow one-runner at 64
+slots. The identical Mesh arms used prewarmed fenced sessions.
+
+| Profile | Mesh jobs/s | Identical Mesh repeat | Stock Oban jobs/s | Result |
+| --- | ---: | ---: | ---: | --- |
+| Short, 4 runners and 16 slots | 692.2 | 699.4 | 602.3 | Both Mesh arms beat Oban in four groups |
+| Slow, 1 runner and 64 slots | 324.3 | 321.4 | 456.8 | Missed throughput, pickup, CPU and RSS |
+
+The four-runner case passed the scored limits. Its median absolute gap
+between identical arms was 70.9 jobs/s. In slow-64, median CPU was 8.40
+and 8.39 ms/job for Mesh versus 2.03 for Oban. Median peak RSS was 191.8
+and 191.6 MiB versus 117.9. The durable claim-to-settlement intervals
+occupied 76% of available slot-time for both Mesh arms versus 93% for
+Oban. Mesh trial-mean handler entry took 26–27 ms from claim and
+settlement took 17–18 ms after effect commit, versus about 8 and 2 ms
+for Oban. Linux has a separate run because these costs include
+platform-specific process startup and supervision.
+[Four-runner and slow-64 receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 

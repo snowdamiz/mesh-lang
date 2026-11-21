@@ -8194,6 +8194,566 @@
     "stage_reducer": "Means per trial, then range and median of trial means",
     "scope": "Local macOS ARM64 fenced effect fixture, two identical prewarmed Mesh arms compared with stock Oban. Linux single-slot measurement still required. Sampled process counts can miss short-lived attempt children."
   },
+  "macos_fenced_jobs_short_four_runner_and_slow64_comparisons": {
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "platform": "macOS ARM64",
+    "postgres": "17.11 verified TLS/SCRAM",
+    "comparator": "stock Oban Basic 2.24.2 with Isolated",
+    "profiles": {
+      "short-4r-16s": {
+        "run": "target/jobs-parity/two-write-local/startup-deadline-source/target/jobs-parity/c271319e84624bd00b0a62a7bb07a45602ee948b/j1-two-write-compare-gommoon0",
+        "manifest_sha256": "5555a4a3e70ba16fffc2b1ae06ed111eeaf18c864cdf26a89700ad63212d0de0",
+        "result_sha256": "4f76925093cf7941a4f2b3db36e9c3fffd1dc10e1af23f36326ae8c12382c4a2",
+        "summary_sha256": "f4b76b60989a4e8631e61d7464302b89bba3deb8f2d1ceb25112c9562c2b4390",
+        "trials_sha256": "7d5f940e1ceb87e3f373fdf30521fde3a511cd6f8f3fb87bf9ff49befe3b3f93",
+        "raw_sha256": {
+          "0-mesh": "57601315866b73e452c5b05caa05f6ef13587734e4561388794f28efc30c4a66",
+          "0-mesh-aa": "96e79c498ff6a7604dd4390865dbb6be0419a6079798a820d097af7bcb9e397b",
+          "0-oban": "89036e7c9e6c98b720a922dc149c6a0828c2540c6589b74c652247c44909a0bb",
+          "1-oban": "c78199cf6797b4b2719c1e5889ac870effdc976b4fa609945b02389785ae4fc8",
+          "1-mesh-aa": "9710214360584d8875eaacfe6f615ac8063c26ad8b16a24d9724d9b8ebb0d750",
+          "1-mesh": "0506f9fd892277ff27245d9165b31c491a2585f433613e012c465155b386c06a",
+          "2-mesh-aa": "8a9b2b992ce098b2ff1be40fe2846da7db66c896eaa20b92caf8c799a49c22f3",
+          "2-oban": "fe727af0a351b8c2e9313cf6038366529ab7ee1bb75f4c2f1d04ce4ebd678501",
+          "2-mesh": "cdf40a91075e6040d75e6362770d00110d215ac47c7751b042c106dcd0474c92",
+          "3-mesh-aa": "f6a25746e2e3a6bf2137b4b7e155d80497c656f6387bcad96be916bab9d31224",
+          "3-mesh": "7f0e1af89dbd420037ef50def57ff24008dc571923fad166d0630e85d2f10b6b",
+          "3-oban": "31d9ddb03135bbf5fc0a4cd64f33a5284f5fd69a5be0dedfaed895c8396ad337",
+          "4-oban": "3246045c2131e866f9d3f45fb079ed74f9d1831c2aa7afe80a4465ef247fc4cf",
+          "4-mesh": "9f1a54e95b7a2e3793e88e5b8e157e9b1936f68287102a3fa9b68f307d4c59d6",
+          "4-mesh-aa": "37cf83b7cfd4821b04f6acff6736a065e2995051f5a089f45aaf744f4d671df8"
+        },
+        "status": "passed",
+        "budget_breaches": [],
+        "measured_jobs_per_arm": 640,
+        "scores": {
+          "mesh": {
+            "jobs_per_second": {
+              "min": 671.715431103071,
+              "median": 692.1723196026685,
+              "max": 756.5188657873358
+            },
+            "pickup_p99_ms": {
+              "min": 154.93115234375,
+              "median": 169.18701171875,
+              "max": 177.173828125
+            },
+            "cpu_seconds_per_job": {
+              "min": 0.008139062499999999,
+              "median": 0.008254156249999998,
+              "max": 0.008817249999999999
+            },
+            "peak_rss_bytes": {
+              "min": 55083008,
+              "median": 55197696,
+              "max": 55296000
+            },
+            "peak_connections": {
+              "min": 32,
+              "median": 32,
+              "max": 32
+            },
+            "peak_threads": {
+              "min": 49,
+              "median": 53,
+              "max": 63
+            },
+            "peak_processes": {
+              "min": 4,
+              "median": 4,
+              "max": 4
+            },
+            "peak_host_load_average_1m": {
+              "min": 7.73828125,
+              "median": 8.25146484375,
+              "max": 8.70556640625
+            },
+            "claim_to_entry_ms": {
+              "min": 8.638975143432617,
+              "median": 8.729360580444336,
+              "max": 9.780130386352539
+            },
+            "entry_to_attempt_commit_ms": {
+              "min": 0.7901420593261719,
+              "median": 0.7975368499755859,
+              "max": 0.9259414672851562
+            },
+            "attempt_to_effect_commit_ms": {
+              "min": 1.9950790405273438,
+              "median": 2.0293540954589844,
+              "max": 2.2092628479003906
+            },
+            "effect_commit_to_settlement_ms": {
+              "min": 3.8976078033447266,
+              "median": 4.434579849243164,
+              "max": 4.900524139404297
+            },
+            "sampled_interval_occupancy_fraction": {
+              "min": 0.7024096476172037,
+              "median": 0.7420565784935584,
+              "max": 0.7514100771797813
+            },
+            "enqueue_to_first_claim_ms": {
+              "min": 0.56201171875,
+              "median": 1.14404296875,
+              "max": 1.60400390625
+            },
+            "first_claim_to_final_settlement_ms": {
+              "min": 168.634033203125,
+              "median": 183.616943359375,
+              "max": 189.47998046875
+            }
+          },
+          "mesh-aa": {
+            "jobs_per_second": {
+              "min": 468.7273978909913,
+              "median": 699.4236926360726,
+              "max": 750.9707840898836
+            },
+            "pickup_p99_ms": {
+              "min": 157.110107421875,
+              "median": 167.718994140625,
+              "max": 255.98486328125
+            },
+            "cpu_seconds_per_job": {
+              "min": 0.00818021875,
+              "median": 0.008354609374999999,
+              "max": 0.00943075
+            },
+            "peak_rss_bytes": {
+              "min": 55115776,
+              "median": 55181312,
+              "max": 55312384
+            },
+            "peak_connections": {
+              "min": 32,
+              "median": 32,
+              "max": 32
+            },
+            "peak_threads": {
+              "min": 32,
+              "median": 49,
+              "max": 69
+            },
+            "peak_processes": {
+              "min": 4,
+              "median": 4,
+              "max": 4
+            },
+            "peak_host_load_average_1m": {
+              "min": 7.802734375,
+              "median": 8.31103515625,
+              "max": 8.88916015625
+            },
+            "claim_to_entry_ms": {
+              "min": 8.962966918945312,
+              "median": 8.985733032226562,
+              "max": 14.218549728393555
+            },
+            "entry_to_attempt_commit_ms": {
+              "min": 0.7913551330566406,
+              "median": 0.8312778472900391,
+              "max": 1.3504352569580078
+            },
+            "attempt_to_effect_commit_ms": {
+              "min": 2.0678024291992188,
+              "median": 2.1375370025634766,
+              "max": 3.0820541381835938
+            },
+            "effect_commit_to_settlement_ms": {
+              "min": 4.267099380493164,
+              "median": 4.627326965332031,
+              "max": 5.932392120361328
+            },
+            "sampled_interval_occupancy_fraction": {
+              "min": 0.7187990653910716,
+              "median": 0.73227866650713,
+              "max": 0.7632646251733045
+            },
+            "enqueue_to_first_claim_ms": {
+              "min": 0.693115234375,
+              "median": 0.962890625,
+              "max": 3.033935546875
+            },
+            "first_claim_to_final_settlement_ms": {
+              "min": 169.7529296875,
+              "median": 181.596923828125,
+              "max": 270.0458984375
+            }
+          },
+          "oban": {
+            "jobs_per_second": {
+              "min": 436.4029848882748,
+              "median": 602.3301046720426,
+              "max": 800.1306365632817
+            },
+            "pickup_p99_ms": {
+              "min": 157.536865234375,
+              "median": 209.426025390625,
+              "max": 286.037841796875
+            },
+            "cpu_seconds_per_job": {
+              "min": 0.014695,
+              "median": 0.015200984375,
+              "max": 0.0198524765625
+            },
+            "peak_rss_bytes": {
+              "min": 436781056,
+              "median": 437796864,
+              "max": 438894592
+            },
+            "peak_connections": {
+              "min": 24,
+              "median": 26,
+              "max": 26
+            },
+            "peak_threads": {
+              "min": 48,
+              "median": 48,
+              "max": 48
+            },
+            "peak_processes": {
+              "min": 8,
+              "median": 8,
+              "max": 8
+            },
+            "peak_host_load_average_1m": {
+              "min": 7.8544921875,
+              "median": 8.36083984375,
+              "max": 8.73779296875
+            },
+            "claim_to_entry_ms": {
+              "min": 1.2918205261230469,
+              "median": 1.4768638610839844,
+              "max": 3.1398887634277344
+            },
+            "entry_to_attempt_commit_ms": {
+              "min": 0.3217887878417969,
+              "median": 0.3308067321777344,
+              "max": 0.7093429565429688
+            },
+            "attempt_to_effect_commit_ms": {
+              "min": 1.9608592987060547,
+              "median": 2.0430908203125,
+              "max": 2.571653366088867
+            },
+            "effect_commit_to_settlement_ms": {
+              "min": 0.33658790588378906,
+              "median": 0.35236358642578125,
+              "max": 0.9704189300537109
+            },
+            "sampled_interval_occupancy_fraction": {
+              "min": 0.17655509403190459,
+              "median": 0.22740969665689872,
+              "max": 0.312679288397733
+            },
+            "enqueue_to_first_claim_ms": {
+              "min": 17.5908203125,
+              "median": 52.0810546875,
+              "max": 104.197998046875
+            },
+            "first_claim_to_final_settlement_ms": {
+              "min": 142.383056640625,
+              "median": 153.18310546875,
+              "max": 189.10888671875
+            }
+          }
+        },
+        "median_absolute_aa_jobs_per_second_delta": 70.93041914512605,
+        "paired_wins_vs_oban": {
+          "mesh": 4,
+          "mesh-aa": 4
+        }
+      },
+      "slow-1r-64s": {
+        "run": "target/jobs-parity/two-write-local/startup-deadline-source/target/jobs-parity/c271319e84624bd00b0a62a7bb07a45602ee948b/j1-two-write-compare-dyevvvoi",
+        "manifest_sha256": "29a1aa60389696077315103fcd0fcf43b056f5e1876604dbc69c6d174e96f0e7",
+        "result_sha256": "63d423141e9379afb13d8b517f7735d57249b2fe45ee69aa385196d0edcfeaf1",
+        "summary_sha256": "9ab4cf0664ee4e40689d56a54996419d4b772ea7d5f3d55acbed4b94f6d700e7",
+        "trials_sha256": "91a438c42af08242a06ce8daaa826967bee73bad344a71bcb64afca0287422cb",
+        "raw_sha256": {
+          "0-mesh": "7c68df9ed9f447e110b71c3a6e88c03ca34816a83802615504c8cb971b2654c4",
+          "0-mesh-aa": "b56e1cd4433f846b949fb954c67e9d556c3c920e9dcf3a6f8eb124b536cbff3b",
+          "0-oban": "2fcb4ba96e29f43a656947c5e9d5086d0503a1eeb7d5ef314c85a5032601bffc",
+          "1-oban": "dea5b260c3c5c4a9ba44e1e2e3262794aa3e77e3d32133e0658e43e5556d6dd6",
+          "1-mesh-aa": "cc5626d4b3a5c5058f60be021ce2d8476aafb805991aa71e9cba8a4840371405",
+          "1-mesh": "700aff3c74eb3ad23164fc0ceebfd44810505733d6314e4a4803cb70dd6e09ea",
+          "2-mesh-aa": "3bf5322fddafca466dc02f3f352ac7c6e58a7a32744be90233c88b7895c73ba2",
+          "2-oban": "e0cc58584b0fa309f4bf5085647b00ad9f3401487742b734142bdefce84bb1e4",
+          "2-mesh": "1967851d8a529c8cadb336a5331f97d2dce6d49750fc6a08675739285833dd17",
+          "3-mesh-aa": "783ade13ab5a937171e92c167cb0f3d1f27497cbcac9d526030834ca21fc9e2f",
+          "3-mesh": "2fe8e67e9bfd0c67ac7196d2dce56404e55a99aa9d95a854d444691e01321770",
+          "3-oban": "0d955fc6871cfb9b459c2d9149655fe0dc4abc586772a4cb76be06bcdbdb7f20",
+          "4-oban": "8c774f61c096d330f771e74ff199e0060ea5c17cbf2b3e17148c408eafd15917",
+          "4-mesh": "ae72beac66e1f5d7c99858e2523ff7fbf5c85854dd79f9362084e2c7f52d6ba4",
+          "4-mesh-aa": "797ad135f73fee5bbddafd8c21a28f1f8cbee48863bf0ea680175c437a2d5e9b"
+        },
+        "status": "budget-breached",
+        "budget_breaches": [
+          {
+            "metric": "cpu_seconds_per_job",
+            "profile": "slow-1r-64s",
+            "scope": "budgets"
+          },
+          {
+            "metric": "peak_rss_bytes",
+            "profile": "slow-1r-64s",
+            "scope": "budgets"
+          },
+          {
+            "metric": "jobs_per_second",
+            "profile": "slow-1r-64s",
+            "scope": "comparison"
+          },
+          {
+            "metric": "pickup_p99_ms",
+            "profile": "slow-1r-64s",
+            "scope": "comparison"
+          }
+        ],
+        "measured_jobs_per_arm": 2560,
+        "scores": {
+          "mesh": {
+            "jobs_per_second": {
+              "min": 281.0212889352772,
+              "median": 324.32591262826145,
+              "max": 411.2536089938195
+            },
+            "pickup_p99_ms": {
+              "min": 1110.601806640625,
+              "median": 1448.533935546875,
+              "max": 1694.849853515625
+            },
+            "cpu_seconds_per_job": {
+              "min": 0.006590421875,
+              "median": 0.008400962890624999,
+              "max": 0.00865564453125
+            },
+            "peak_rss_bytes": {
+              "min": 186925056,
+              "median": 201080832,
+              "max": 301662208
+            },
+            "peak_connections": {
+              "min": 68,
+              "median": 68,
+              "max": 68
+            },
+            "peak_threads": {
+              "min": 219,
+              "median": 231,
+              "max": 323
+            },
+            "peak_processes": {
+              "min": 24,
+              "median": 25,
+              "max": 39
+            },
+            "peak_host_load_average_1m": {
+              "min": 7.94287109375,
+              "median": 9.7060546875,
+              "max": 12.39990234375
+            },
+            "claim_to_entry_ms": {
+              "min": 13.21497917175293,
+              "median": 26.188618183135986,
+              "max": 33.27138662338257
+            },
+            "entry_to_attempt_commit_ms": {
+              "min": 0.8324065208435059,
+              "median": 1.1255497932434082,
+              "max": 1.4090266227722168
+            },
+            "attempt_to_effect_commit_ms": {
+              "min": 105.15515184402466,
+              "median": 105.56743574142456,
+              "max": 106.12604093551636
+            },
+            "effect_commit_to_settlement_ms": {
+              "min": 8.104668140411377,
+              "median": 17.359349727630615,
+              "max": 21.064520359039307
+            },
+            "sampled_interval_occupancy_fraction": {
+              "min": 0.7117667202552715,
+              "median": 0.7641291782849627,
+              "max": 0.8219861824342041
+            },
+            "enqueue_to_first_claim_ms": {
+              "min": 1.43994140625,
+              "median": 2.156982421875,
+              "max": 3.699951171875
+            },
+            "first_claim_to_final_settlement_ms": {
+              "min": 1243.032958984375,
+              "median": 1574.958984375,
+              "max": 1819.37109375
+            }
+          },
+          "mesh-aa": {
+            "jobs_per_second": {
+              "min": 128.36236671051606,
+              "median": 321.3555224705775,
+              "max": 431.63878506913846
+            },
+            "pickup_p99_ms": {
+              "min": 1063.52001953125,
+              "median": 1465.468017578125,
+              "max": 3781.989013671875
+            },
+            "cpu_seconds_per_job": {
+              "min": 0.006557744140625,
+              "median": 0.008389291015625,
+              "max": 0.009677041015624999
+            },
+            "peak_rss_bytes": {
+              "min": 136790016,
+              "median": 200884224,
+              "max": 474972160
+            },
+            "peak_connections": {
+              "min": 68,
+              "median": 68,
+              "max": 68
+            },
+            "peak_threads": {
+              "min": 150,
+              "median": 228,
+              "max": 432
+            },
+            "peak_processes": {
+              "min": 16,
+              "median": 26,
+              "max": 59
+            },
+            "peak_host_load_average_1m": {
+              "min": 7.21484375,
+              "median": 8.876953125,
+              "max": 17.96533203125
+            },
+            "claim_to_entry_ms": {
+              "min": 12.815816402435303,
+              "median": 26.982311725616455,
+              "max": 78.6350326538086
+            },
+            "entry_to_attempt_commit_ms": {
+              "min": 0.7918834686279297,
+              "median": 1.1806039810180664,
+              "max": 4.437855243682861
+            },
+            "attempt_to_effect_commit_ms": {
+              "min": 105.09703302383423,
+              "median": 105.43342733383179,
+              "max": 110.63575506210327
+            },
+            "effect_commit_to_settlement_ms": {
+              "min": 7.6782379150390625,
+              "median": 17.887237071990967,
+              "max": 60.7322793006897
+            },
+            "sampled_interval_occupancy_fraction": {
+              "min": 0.5070004727864054,
+              "median": 0.7607421961701919,
+              "max": 0.853990234923154
+            },
+            "enqueue_to_first_claim_ms": {
+              "min": 2.134033203125,
+              "median": 3.323974609375,
+              "max": 4.138916015625
+            },
+            "first_claim_to_final_settlement_ms": {
+              "min": 1183.928955078125,
+              "median": 1591.116943359375,
+              "max": 3984.569091796875
+            }
+          },
+          "oban": {
+            "jobs_per_second": {
+              "min": 389.0288099753336,
+              "median": 456.8027086415494,
+              "max": 487.87791513261084
+            },
+            "pickup_p99_ms": {
+              "min": 944.883056640625,
+              "median": 1016.763916015625,
+              "max": 1213.532958984375
+            },
+            "cpu_seconds_per_job": {
+              "min": 0.0013266875,
+              "median": 0.0020287265625,
+              "max": 0.002126515625
+            },
+            "peak_rss_bytes": {
+              "min": 122552320,
+              "median": 123650048,
+              "max": 127025152
+            },
+            "peak_connections": {
+              "min": 68,
+              "median": 68,
+              "max": 68
+            },
+            "peak_threads": {
+              "min": 12,
+              "median": 12,
+              "max": 12
+            },
+            "peak_processes": {
+              "min": 2,
+              "median": 2,
+              "max": 2
+            },
+            "peak_host_load_average_1m": {
+              "min": 7.21484375,
+              "median": 9.767578125,
+              "max": 11.54345703125
+            },
+            "claim_to_entry_ms": {
+              "min": 6.6046223640441895,
+              "median": 7.67465877532959,
+              "max": 9.510622024536133
+            },
+            "entry_to_attempt_commit_ms": {
+              "min": 0.8015789985656738,
+              "median": 1.6027464866638184,
+              "max": 1.862175464630127
+            },
+            "attempt_to_effect_commit_ms": {
+              "min": 101.84399271011353,
+              "median": 102.85662269592285,
+              "max": 106.77011060714722
+            },
+            "effect_commit_to_settlement_ms": {
+              "min": 1.8157358169555664,
+              "median": 2.3542118072509766,
+              "max": 2.999879837036133
+            },
+            "sampled_interval_occupancy_fraction": {
+              "min": 0.8838288047482701,
+              "median": 0.92962093661394,
+              "max": 0.9606903035164583
+            },
+            "enqueue_to_first_claim_ms": {
+              "min": 54.114990234375,
+              "median": 139.843017578125,
+              "max": 244.177978515625
+            },
+            "first_claim_to_final_settlement_ms": {
+              "min": 927.523193359375,
+              "median": 987.52294921875,
+              "max": 1078.528076171875
+            }
+          }
+        },
+        "median_absolute_aa_jobs_per_second_delta": 40.334233535300314,
+        "paired_wins_vs_oban": {
+          "mesh": 0,
+          "mesh-aa": 0
+        }
+      }
+    },
+    "scope": "Local matched profile diagnostics with two identical prewarmed Mesh arms. Stage medians use trial means. Occupancy is the area under reconciled durable claim-to-settlement intervals divided by the full slot-time from first claim to last settlement."
+  },
   "linux_worker_phase_residency_and_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "postgres": "17.11 verified TLS and SCRAM",
