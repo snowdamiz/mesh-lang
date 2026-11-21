@@ -8,4 +8,7 @@ expression: output
  1 │ x + 1
    │ ┬
    │ ╰── not found in this scope
+   │
+   │ Help: Define the name before this use, import the module that defines it, or correct the spelling to a name in scope.
 ───╯
+  = E0004: meshc explain E0004 · skill diagnostics.md#e0004 · https://meshlang.dev/docs/errors/#e0004

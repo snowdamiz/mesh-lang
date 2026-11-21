@@ -37,6 +37,7 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod cluster;
+mod diagnostic_options;
 mod explain;
 mod guide;
 mod library_bindings;
@@ -65,7 +66,8 @@ use mesh_pkg::manifest::{
     ClusteredExecutionMetadata, Manifest,
 };
 
-use mesh_typeck::diagnostics::DiagnosticOptions;
+use diagnostic_options::DiagnosticOptions;
+use mesh_diagnostics::{Format, SourceFile};
 use mesh_typeck::ty::Ty;
 
 #[derive(Parser)]
@@ -392,17 +394,7 @@ fn run() {
             no_color,
             plaintext_report,
         } => {
-            // Diagnostics go to stderr: color them only for a terminal, and
-            // not when `NO_COLOR` is set.
-            let color = !no_color
-                && !json
-                && std::env::var_os("NO_COLOR").is_none()
-                && std::io::IsTerminal::is_terminal(&std::io::stderr());
-            let diag_opts = DiagnosticOptions {
-                color,
-                json,
-                display_paths: Vec::new(),
-            };
+            let diag_opts = DiagnosticOptions::new(Format::for_cli(json, no_color));
             if let Err(e) = build_with_report(
                 &dir,
                 opt_level,
@@ -503,7 +495,7 @@ fn run() {
             let prepared = or_exit(prepare_project_build(
                 &dir,
                 false,
-                &DiagnosticOptions::colorless(),
+                &DiagnosticOptions::new(Format::Human { color: false }),
             ));
             or_exit(plaintext_report::run(
                 &prepared.plaintext_report,
@@ -937,7 +929,7 @@ fn load_checked_project(
         for error in parse.errors() {
             has_errors = true;
             let file_name = diag_opts.display_path(&module_path);
-            if diag_opts.json {
+            if diag_opts.json() {
                 let start = error.span.start as usize;
                 let end = (error.span.end as usize).max(start + 1);
                 let json_diag = serde_json::json!({
@@ -955,11 +947,11 @@ fn load_checked_project(
                 eprintln!("{}", json_diag);
             } else {
                 use ariadne::{Label, Report, ReportKind, Source};
-                let range = mesh_typeck::diagnostics::report_span(
-                    source,
-                    error.span.start as usize..error.span.end as usize,
+                let clamped = SourceFile::new(&module_path, source.as_str()).clamp(error.span);
+                let span = (
+                    file_name.clone(),
+                    clamped.start as usize..clamped.end as usize,
                 );
-                let span = (file_name.clone(), range);
                 let _ = Report::build(ReportKind::Error, span.clone())
                     .with_message("Parse error")
                     .with_config(diag_opts.report_config())
@@ -1009,21 +1001,17 @@ fn load_checked_project(
     // Type-check every module in compilation order, and report each one's
     // errors and warnings.
     let checked = mesh_pkg::project::check_project(&project, test_builtins);
+    let mut reporter = diag_opts.reporter();
     let mut has_type_errors = false;
     for &id in &project.compilation_order {
         let idx = id.0 as usize;
-        let source = &project.module_sources[idx];
-        let file_name = diag_opts.display_path(&dir.join(&project.graph.get(id).path));
-        let typeck = &checked.typeck[idx];
-        has_type_errors |= !typeck.errors.is_empty();
-        for diagnostic in typeck.errors.iter().chain(&typeck.warnings) {
-            eprint!(
-                "{}",
-                mesh_typeck::diagnostics::render_diagnostic(
-                    diagnostic, source, &file_name, diag_opts, None,
-                )
-            );
-        }
+        let file = SourceFile::new(
+            dir.join(&project.graph.get(id).path),
+            project.module_sources[idx].as_str(),
+        );
+        has_type_errors |= reporter
+            .emit_all(checked.typeck[idx].diagnostics(&file))
+            .is_err();
     }
 
     if has_type_errors {
@@ -1568,7 +1556,7 @@ fn emit_clustered_declaration_diagnostics(
         let file_name = dir.join(&issue.file).display().to_string();
         let span = issue.span.start as usize..issue.span.end as usize;
 
-        if diag_opts.json {
+        if diag_opts.json() {
             let json_diag = serde_json::json!({
                 "code": "CFG0001",
                 "severity": "error",

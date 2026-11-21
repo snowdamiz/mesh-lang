@@ -12,11 +12,11 @@ use rowan::TextRange;
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range, Url};
 
 use mesh_common::module_graph::ModuleId;
+use mesh_diagnostics::SourceFile;
 use mesh_pkg::manifest::{plan_cluster_declarations, resolve_entrypoint, Manifest};
 use mesh_pkg::project::{
     build_import_context, build_project, check_project, single_source_project, ProjectData,
 };
-use mesh_typeck::diagnostics::{error_code, repair_hint};
 use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::Ty;
 use mesh_typeck::TypeckResult;
@@ -172,22 +172,20 @@ pub fn position_to_offset(source: &str, position: &Position) -> Option<usize> {
     Some(line_start + line.len())
 }
 
-/// Convert a TypeError into an LSP Diagnostic.
+/// Convert a TypeError in `file`, the checked source, into an LSP
+/// Diagnostic: its message and then its repair.
 fn type_error_to_diagnostic(
-    source: &str,
+    file: &SourceFile,
     error: &TypeError,
     severity: DiagnosticSeverity,
 ) -> Option<Diagnostic> {
+    let source = file.text()?;
     let range = text_range_to_range(source, error.span()?);
-    let mut message = error.to_string();
-    if let Some(hint) = repair_hint(error) {
-        message.push('\n');
-        message.push_str(&hint);
-    }
+    let message = format!("{error}\n{}", error.to_diagnostic(file).repair());
     Some(Diagnostic {
         range,
         severity: Some(severity),
-        code: Some(NumberOrString::String(error_code(error).to_string())),
+        code: Some(NumberOrString::String(error.code().id().to_string())),
         source: Some("mesh".to_string()),
         message,
         ..Default::default()
@@ -200,6 +198,9 @@ fn diagnostics_from_parse_and_typeck(
     typeck: &TypeckResult,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    // Only a diagnostic's repair is read here, and it does not depend on
+    // the file's path.
+    let file = SourceFile::new("", source);
 
     for error in parse.errors() {
         let start = offset_to_position(source, error.span.start as usize);
@@ -214,13 +215,13 @@ fn diagnostics_from_parse_and_typeck(
     }
 
     for error in &typeck.errors {
-        if let Some(diag) = type_error_to_diagnostic(source, error, DiagnosticSeverity::ERROR) {
+        if let Some(diag) = type_error_to_diagnostic(&file, error, DiagnosticSeverity::ERROR) {
             diagnostics.push(diag);
         }
     }
 
     for warning in &typeck.warnings {
-        if let Some(diag) = type_error_to_diagnostic(source, warning, DiagnosticSeverity::WARNING) {
+        if let Some(diag) = type_error_to_diagnostic(&file, warning, DiagnosticSeverity::WARNING) {
             diagnostics.push(diag);
         }
     }
@@ -1001,7 +1002,7 @@ mod tests {
         let result = analyze_document("file:///nowhere/main.mpl", "let x = 1\n", &[]);
         assert_eq!(
             diagnostic_messages(&result),
-            ["`let x` outside a function is not supported"]
+            ["`let x` outside a function is not supported\nmove it into the function that uses it, or make it a function: `fn x() do ... end`"]
         );
     }
 

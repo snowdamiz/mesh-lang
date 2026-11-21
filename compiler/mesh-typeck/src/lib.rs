@@ -25,7 +25,7 @@
 #![allow(clippy::result_large_err, clippy::too_many_arguments)]
 
 pub mod builtins;
-pub mod diagnostics;
+mod diagnostics;
 pub mod env;
 pub mod error;
 pub mod exhaustiveness;
@@ -42,7 +42,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use mesh_parser::ast::item::ParamOwnership;
 
-use crate::diagnostics::DiagnosticOptions;
 use crate::error::TypeError;
 use crate::traits::{ImplDef as TraitImplDef, TraitDef};
 use crate::ty::{Scheme, Ty};
@@ -412,21 +411,16 @@ pub struct TypeckResult {
 }
 
 impl TypeckResult {
-    /// Render all type errors as formatted diagnostic strings.
-    ///
-    /// Accepts `DiagnosticOptions` to control color and output format.
-    /// Each error is rendered with labeled source spans, error codes, and
-    /// fix suggestions when applicable.
-    pub fn render_errors(
-        &self,
-        source: &str,
-        filename: &str,
-        options: &DiagnosticOptions,
-    ) -> Vec<String> {
+    /// Every error and then every warning, as diagnostics in `file`, the
+    /// source that was checked.
+    pub fn diagnostics<'a>(
+        &'a self,
+        file: &'a mesh_diagnostics::SourceFile,
+    ) -> impl Iterator<Item = mesh_diagnostics::Diagnostic> + 'a {
         self.errors
             .iter()
-            .map(|err| diagnostics::render_diagnostic(err, source, filename, options, None))
-            .collect()
+            .chain(&self.warnings)
+            .map(move |error| error.to_diagnostic(file))
     }
 }
 

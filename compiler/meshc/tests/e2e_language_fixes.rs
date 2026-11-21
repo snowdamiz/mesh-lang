@@ -142,7 +142,12 @@ fn diagnostic_repair_pipe_placeholder_preserves_argument_order() {
         serde_json::json!([{
             "start": 149,
             "end": 181,
-            "label": "expected 3 argument(s)"
+            "label": "expected 3 argument(s)",
+            "file": diagnostic["file"],
+            "line": 6,
+            "col": 31,
+            "end_line": 6,
+            "end_col": 63
         }])
     );
     assert_eq!(
@@ -4404,7 +4409,7 @@ end
     );
     let bad = "fn main() do\n  let a = 1e\n  let b = 2e+\n  let c = 0x\n  let d = 9223372036854775808\n  let e = 0xffffffffffffffff\n  let f = 1e999\n  let g = case 0 do\n    99999999999999999999 -> 1\n    _ -> 0\n  end\n  println(\"#{a} #{b} #{c} #{d} #{e} #{f} #{g}\")\nend\n";
     let err = build_error(bad);
-    assert_eq!(err.matches("E0072").count(), 7, "{err}");
+    assert_eq!(err.matches("[E0072] Error").count(), 7, "{err}");
     assert!(err.contains("expected digits after the exponent"), "{err}");
     assert!(err.contains("expected digits after `0x`"), "{err}");
     assert!(
@@ -4631,13 +4636,16 @@ fn a_pattern_of_the_wrong_type_is_reported_at_the_pattern() {
         mismatch["spans"][0]["start"].as_u64().unwrap() as usize,
         source.find("\"a\"").unwrap()
     );
-    assert_eq!(mismatch["fix"], serde_json::Value::Null);
+    assert_eq!(
+        mismatch["fix"],
+        mesh_diagnostics::Code::TypeMismatch.info().repair
+    );
     let err = build_error(source);
     assert!(
         err.contains("this pattern matches String, but the value is Int"),
         "{err}"
     );
-    assert_eq!(err.matches("E0001").count(), 1, "{err}");
+    assert_eq!(err.matches("[E0001] Error").count(), 1, "{err}");
 }
 
 #[test]

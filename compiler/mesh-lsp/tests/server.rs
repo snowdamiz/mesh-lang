@@ -265,7 +265,7 @@ end
     assert_eq!(ordinary["code"], "E0003");
     assert_eq!(
         ordinary["message"],
-        "arity mismatch: expected 3 arguments, found 4"
+        "arity mismatch: expected 3 arguments, found 4\n1 extra argument(s)"
     );
 
     let repaired = source

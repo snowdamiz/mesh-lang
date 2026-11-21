@@ -3,6 +3,7 @@ use std::fmt;
 use std::fs;
 use std::path::Path;
 
+use crate::diagnostic_options::DiagnosticOptions;
 use mesh_codegen::mir::{MirFunction, MirModule, MirSourceId, MirSourceSpan};
 use mesh_common::module_graph::ModuleId;
 use mesh_common::span::{LineIndex, Span};
@@ -10,7 +11,6 @@ use mesh_parser::ast::item::FnDef;
 use mesh_parser::law::{LawDeclaration, LawFile, LawImport, LawProof, ProofTerm};
 use mesh_parser::{AstNode, SyntaxNode};
 use mesh_pkg::project::{laws, CheckedProject, ProjectData};
-use mesh_typeck::diagnostics::DiagnosticOptions;
 use mesh_typeck::ty::Ty;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -209,11 +209,7 @@ pub(crate) fn run(
             project_dir.display()
         )
     })?;
-    let opts = DiagnosticOptions {
-        color: !json,
-        json,
-        ..Default::default()
-    };
+    let opts = DiagnosticOptions::new(mesh_diagnostics::Format::for_cli(json, false));
     let crate::CheckedBuild {
         manifest,
         project,

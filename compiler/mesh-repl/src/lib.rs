@@ -240,12 +240,11 @@ fn load_file(path: &str, session: &mut ReplSession) -> CommandResult {
 
             let typeck = mesh_typeck::check(&parse);
             if !typeck.errors.is_empty() {
-                let rendered = typeck.render_errors(
+                return CommandResult::Error(jit::render_type_errors(
+                    &typeck,
                     &full_with_file,
                     path,
-                    &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
-                );
-                return CommandResult::Error(rendered.join("\n"));
+                ));
             }
 
             // Add the file contents as a definition block

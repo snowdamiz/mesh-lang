@@ -8,4 +8,7 @@ expression: output
  1 │ let me = self()
    │          ───┬──
    │             ╰──── self() is only available inside an actor block
+   │
+   │ Help: Move the `self()` call into an `actor` body, or pass the pid it should name in as an argument.
 ───╯
+  = E0015: meshc explain E0015 · skill diagnostics.md#e0015 · https://meshlang.dev/docs/errors/#e0015

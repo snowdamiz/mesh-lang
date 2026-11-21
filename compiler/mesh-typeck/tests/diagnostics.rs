@@ -1,25 +1,32 @@
 //! Snapshot tests for Mesh type error diagnostics.
 //!
-//! Each test triggers a specific type error, renders it through the ariadne
-//! diagnostic pipeline, and snapshots the output with insta. These verify
+//! Each test triggers a specific type error, renders it as `meshc` does
+//! (through a `Reporter`), and snapshots the output with insta. These verify
 //! that error messages are terse, include dual-span labels, and show fix
 //! suggestions when plausible.
 
-use mesh_typeck::diagnostics::{render_diagnostic, DiagnosticOptions};
+use mesh_diagnostics::{Format, Reporter, SourceFile};
 use mesh_typeck::error::TypeError;
 use mesh_typeck::TypeckResult;
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/// Colorless options for deterministic snapshot output.
-fn opts() -> DiagnosticOptions {
-    DiagnosticOptions::colorless()
-}
-
 /// Parse Mesh source and run the type checker.
 fn check_source(src: &str) -> TypeckResult {
     let parse = mesh_parser::parse(src);
     mesh_typeck::check(&parse)
+}
+
+/// `error` in `src`, a file named `test.mpl`, as a reporter writes it.
+fn render_as(format: Format, error: &TypeError, src: &str) -> String {
+    let mut out = Vec::new();
+    Reporter::new(format, &mut out).emit(error.to_diagnostic(&SourceFile::new("test.mpl", src)));
+    String::from_utf8(out).unwrap()
+}
+
+/// `error` in `src` as the terminal shows it, without colour.
+fn render(error: &TypeError, src: &str) -> String {
+    render_as(Format::Human { color: false }, error, src)
 }
 
 /// Render the first error from a type check result as a diagnostic string.
@@ -30,13 +37,7 @@ fn render_first_error(src: &str) -> String {
         "expected at least one error for source: {:?}",
         src
     );
-    render_diagnostic(&result.errors[0], src, "test.mpl", &opts(), None)
-}
-
-/// Render all errors from a type check result as diagnostic strings.
-fn render_all_errors(src: &str) -> Vec<String> {
-    let result = check_source(src);
-    result.render_errors(src, "test.mpl", &opts())
+    render(&result.errors[0], src)
 }
 
 // ── Diagnostic Snapshot Tests ──────────────────────────────────────────
@@ -115,19 +116,23 @@ fn test_diag_trait_not_satisfied() {
     insta::assert_snapshot!(output);
 }
 
-/// Render errors method returns Vec of rendered diagnostics.
+/// A module's diagnostics are its errors, each rendered.
 #[test]
-fn test_render_errors_multiple() {
+fn test_every_error_of_a_module_renders() {
     let src = "x + y";
-    let errors = render_all_errors(src);
-    assert!(!errors.is_empty(), "expected at least one rendered error");
-    for e in &errors {
-        assert!(
-            e.contains("Error"),
-            "rendered error should contain 'Error': {}",
-            e
-        );
-    }
+    let result = check_source(src);
+    let file = SourceFile::new("test.mpl", src);
+    let mut out = Vec::new();
+    let mut reporter = Reporter::new(Format::Human { color: false }, &mut out);
+    assert!(reporter.emit_all(result.diagnostics(&file)).is_err());
+    let summary = reporter.finish();
+    assert_eq!(summary.errors as usize, result.errors.len());
+    let output = String::from_utf8(out).unwrap();
+    assert_eq!(
+        output.matches("] Error: ").count(),
+        result.errors.len(),
+        "{output}"
+    );
 }
 
 /// Error code appears in diagnostic output.
@@ -160,7 +165,7 @@ fn test_diag_non_exhaustive_match() {
         missing_patterns: vec!["None".to_string()],
         span: rowan::TextRange::new(0.into(), 26.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     insta::assert_snapshot!(output);
 }
 
@@ -172,7 +177,7 @@ fn test_diag_non_exhaustive_match_multiple() {
         missing_patterns: vec!["Rect".to_string(), "Point".to_string()],
         span: rowan::TextRange::new(0.into(), 28.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     assert!(output.contains("E0012"), "expected E0012 code: {}", output);
     assert!(
         output.contains("Rect"),
@@ -198,7 +203,7 @@ fn test_diag_redundant_arm() {
         arm_index: 1,
         span: rowan::TextRange::new(18.into(), 24.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     insta::assert_snapshot!(output);
 }
 
@@ -209,7 +214,7 @@ fn test_diag_redundant_arm_is_warning() {
         arm_index: 1,
         span: rowan::TextRange::new(18.into(), 27.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     assert!(
         output.contains("Warning"),
         "expected Warning kind: {}",
@@ -232,7 +237,7 @@ fn test_diag_unknown_variant() {
         suggestion: None,
         cons_tail: false,
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     assert!(output.contains("E0010"), "expected E0010 code: {}", output);
     assert!(
         output.contains("Triangle"),
@@ -250,7 +255,7 @@ fn test_diag_or_pattern_binding_mismatch() {
         list_tail: false,
         span: rowan::TextRange::new(10.into(), 20.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     assert!(output.contains("E0011"), "expected E0011 code: {}", output);
     assert!(
         output.contains("bind"),
@@ -337,7 +342,7 @@ fn test_diag_send_type_mismatch() {
         found: mesh_typeck::ty::Ty::int(),
         span: rowan::TextRange::new(0.into(), 13.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     insta::assert_snapshot!(output);
 }
 
@@ -346,7 +351,7 @@ fn test_diag_self_outside_actor() {
     let src = "let me = self()";
     let result = check_source(src);
     assert!(!result.errors.is_empty(), "expected SelfOutsideActor error");
-    let output = render_diagnostic(&result.errors[0], src, "test.mpl", &opts(), None);
+    let output = render(&result.errors[0], src);
     assert!(output.contains("E0015"), "expected E0015 code: {}", output);
     assert!(
         output.contains("self()"),
@@ -363,7 +368,7 @@ fn test_diag_spawn_non_function() {
         found: mesh_typeck::ty::Ty::int(),
         span: rowan::TextRange::new(0.into(), 9.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     assert!(output.contains("E0016"), "expected E0016 code: {}", output);
     assert!(
         output.contains("function"),
@@ -381,7 +386,7 @@ fn test_diag_receive_outside_actor() {
         !result.errors.is_empty(),
         "expected ReceiveOutsideActor error"
     );
-    let output = render_diagnostic(&result.errors[0], src, "test.mpl", &opts(), None);
+    let output = render(&result.errors[0], src);
     assert!(output.contains("E0017"), "expected E0017 code: {}", output);
     assert!(
         output.contains("receive"),
@@ -413,7 +418,7 @@ fn test_diag_send_type_mismatch_details() {
         found: mesh_typeck::ty::Ty::string(),
         span: rowan::TextRange::new(0.into(), 18.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     assert!(
         output.contains("Int"),
         "expected 'Int' type in output: {}",
@@ -438,8 +443,7 @@ fn test_json_output_mode() {
     let src = "let x :: Int = \"hello\"";
     let result = check_source(src);
     assert!(!result.errors.is_empty());
-    let json_opts = DiagnosticOptions::json_mode();
-    let output = render_diagnostic(&result.errors[0], src, "test.mpl", &json_opts, None);
+    let output = render_as(Format::Json, &result.errors[0], src);
     let parsed: serde_json::Value = serde_json::from_str(&output)
         .unwrap_or_else(|e| panic!("invalid JSON output: {}\n{}", e, output));
     assert_eq!(parsed["code"], "E0001");
@@ -453,8 +457,7 @@ fn test_json_one_line() {
     let src = "x + 1";
     let result = check_source(src);
     assert!(!result.errors.is_empty());
-    let json_opts = DiagnosticOptions::json_mode();
-    let output = render_diagnostic(&result.errors[0], src, "test.mpl", &json_opts, None);
+    let output = render_as(Format::Json, &result.errors[0], src);
     // One object per line: a single trailing newline and none inside.
     assert!(
         output.ends_with('\n') && !output.trim_end().contains('\n'),
@@ -474,7 +477,7 @@ fn test_a_struct_without_display_is_told_to_derive_it() {
         .iter()
         .find(|error| matches!(error, TypeError::TraitNotSatisfied { .. }))
         .unwrap_or_else(|| panic!("{:?}", result.errors));
-    let output = render_diagnostic(err, src, "test.mpl", &opts(), None);
+    let output = render(err, src);
     assert!(
         output.contains("add `deriving(Display)` to the definition of `Box`"),
         "{output}"
@@ -496,7 +499,7 @@ fn test_calling_a_value_is_not_a_function() {
     };
     assert_eq!(ty.to_string(), "Int");
     assert_eq!(&src[span.start().into()..span.end().into()], "x");
-    let output = render_diagnostic(err, src, "test.mpl", &opts(), None);
+    let output = render(err, src);
     assert!(output.contains("`Int` is not a function"), "{output}");
     assert!(output.contains("remove the parentheses"), "{output}");
 }
@@ -514,7 +517,7 @@ fn test_diag_ambiguous_method_deterministic_order() {
         ty: Ty::int(),
         span: rowan::TextRange::new(0.into(), 13.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     insta::assert_snapshot!(output);
 }
 
@@ -529,7 +532,7 @@ fn test_diag_ambiguous_method_help_text() {
         ty: Ty::Con(mesh_typeck::ty::TyCon::new("Point")),
         span: rowan::TextRange::new(0.into(), 17.into()),
     };
-    let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
+    let output = render(&err, src);
     insta::assert_snapshot!(output);
 }
 
@@ -549,4 +552,31 @@ fn diag_indexing_is_unsupported() {
     let rendered = render_first_error(src);
     assert!(rendered.contains("E0078"), "{rendered}");
     assert!(rendered.contains("List.get(list, index)"), "{rendered}");
+}
+
+/// A misspelled name gets the closest name in scope as its repair, with an
+/// edit that a tool applies only after review.
+#[test]
+fn a_misspelled_name_suggests_an_edit() {
+    let src = "fn main() do\n  let count = 1\n  println(\"#{cuont}\")\nend\n";
+    let result = check_source(src);
+    let error = result
+        .errors
+        .iter()
+        .find(|error| matches!(error, TypeError::UnboundVariable { .. }))
+        .unwrap_or_else(|| panic!("{:?}", result.errors));
+    let json: serde_json::Value =
+        serde_json::from_str(&render_as(Format::Json, error, src)).unwrap();
+    let start = src.find("cuont").unwrap();
+    assert_eq!(json["fix"], "did you mean `count`?");
+    assert_eq!(
+        json["edits"],
+        serde_json::json!([{
+            "file": "test.mpl",
+            "start": start,
+            "end": start + 5,
+            "replacement": "count",
+            "applicability": "maybe-incorrect"
+        }])
+    );
 }

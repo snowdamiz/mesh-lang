@@ -8,4 +8,7 @@ expression: output
  1 │ spawn(42)
    │ ────┬────
    │     ╰────── expected a function, found Int
+   │
+   │ Help: Pass the actor to start as the first argument, followed by its arguments: `spawn(worker, arg)`.
 ───╯
+  = E0016: meshc explain E0016 · skill diagnostics.md#e0016 · https://meshlang.dev/docs/errors/#e0016

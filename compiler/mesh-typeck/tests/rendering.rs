@@ -2,7 +2,7 @@
 //! of each kind (and a mismatch from each origin), so a change to how
 //! errors render is a snapshot change to review.
 
-use mesh_typeck::diagnostics::{render_diagnostic, DiagnosticOptions};
+use mesh_diagnostics::{Format, Reporter, SourceFile};
 use mesh_typeck::error::{ConstraintOrigin, TypeError};
 use mesh_typeck::ty::{Ty, TyVar};
 use rowan::TextRange;
@@ -568,7 +568,157 @@ fn one_of_each() -> Vec<TypeError> {
             found: Ty::string(),
             origin: ConstraintOrigin::Builtin,
         },
+        TypeError::JobsStartInvalid {
+            reason: "pass a named function with type fn(String) -> String as the handler",
+            span: span(27, 40),
+        },
+        TypeError::InvalidIndex {
+            reason: "reason".to_string(),
+            span: span(19, 24),
+        },
     ]
+}
+
+/// Names every `TypeError` variant, in one list that makes both
+/// `variant_name`, an exhaustive `match`, and `VARIANTS`: a new variant does
+/// not compile until it is listed, and `one_of_each_covers_every_variant`
+/// then fails until `one_of_each` has an example of it.
+macro_rules! variants {
+    ($($variant:ident),* $(,)?) => {
+        fn variant_name(error: &TypeError) -> &'static str {
+            match error {
+                $(TypeError::$variant { .. } => stringify!($variant),)*
+            }
+        }
+
+        const VARIANTS: &[&str] = &[$(stringify!($variant)),*];
+    };
+}
+
+variants!(
+    Mismatch,
+    InfiniteType,
+    ArityMismatch,
+    TupleParameterSplit,
+    SlotPipeOutOfRange,
+    UnboundVariable,
+    NotAFunction,
+    TraitNotSatisfied,
+    MissingTraitMethod,
+    TraitMethodSignatureMismatch,
+    MissingField,
+    UnknownField,
+    NoSuchField,
+    NoSuchMethod,
+    ManualContinuityPromotionDisabled,
+    UnknownVariant,
+    OrPatternBindingMismatch,
+    NonExhaustiveMatch,
+    NonExhaustiveClauses,
+    RedundantArm,
+    SendTypeMismatch,
+    SelfOutsideActor,
+    MonitorOutsideActor,
+    SpawnNonFunction,
+    SpawnByName,
+    SpawnNotActor,
+    UnderivableFieldType,
+    DecodeTypeUnknown,
+    ReceiveOutsideActor,
+    InvalidChildStart,
+    InvalidStrategy,
+    InvalidRestartType,
+    InvalidShutdownValue,
+    CatchAllNotLast,
+    NonConsecutiveClauses,
+    NonFirstClauseAnnotation,
+    DuplicateImpl,
+    AmbiguousMethod,
+    UnsupportedDerive,
+    MissingDerivePrerequisite,
+    BreakOutsideLoop,
+    ContinueOutsideLoop,
+    ImportModuleNotFound,
+    ImportNameNotFound,
+    PrivateItem,
+    HttpClusteredInvalidArguments,
+    JobsStartInvalid,
+    HttpClusteredPrivateHandler,
+    HttpClusteredOutsideRouteHandlerPosition,
+    HttpClusteredConflictingReplicationCount,
+    HttpClusteredImportedOriginMissing,
+    TryIncompatibleReturn,
+    TryOnNonResultOption,
+    NonSerializableField,
+    NonMappableField,
+    MissingAssocType,
+    ExtraAssocType,
+    UnresolvedAssocType,
+    UndefinedType,
+    NativeDeclarationInvalid,
+    ExportDeclarationInvalid,
+    InvalidLetPattern,
+    InvalidPassThroughArm,
+    DuplicateBinding,
+    UnboundedTypeParam,
+    AmbiguousImplMethod,
+    DuplicateDefinition,
+    UnknownType,
+    UnknownFieldOwner,
+    TypeNotValue,
+    NestedDefinition,
+    TypeArgumentCount,
+    UntypedMethodParam,
+    MethodReturnUnknown,
+    UnknownInterface,
+    InvalidLiteral,
+    InvalidIndex,
+    NoSuchModuleFunction,
+    AssertReceiveOutsideTest,
+    GenericImplTarget,
+    OverloadedFunctionValue,
+    IndexingUnsupported,
+    ActorMessageTypeUnknown,
+    TopLevelLet,
+    TopLevelStatement,
+    ModuleNotImported,
+    InvalidConcat,
+    RigidTypeParam,
+    AmbiguousStaticMethod,
+    AmbiguousDefault,
+    CyclicAlias,
+    DuplicateVariant,
+    UnderivableField,
+    DuplicateField,
+    NotAStruct,
+    ResourceViolation,
+    PlaintextViolation,
+);
+
+#[test]
+fn one_of_each_covers_every_variant() {
+    let covered: std::collections::BTreeSet<&str> =
+        one_of_each().iter().map(variant_name).collect();
+    let missing: Vec<&str> = VARIANTS
+        .iter()
+        .copied()
+        .filter(|variant| !covered.contains(variant))
+        .collect();
+    assert!(missing.is_empty(), "no example of {missing:?}");
+}
+
+const HUMAN: Format = Format::Human { color: false };
+
+/// `error` in `SOURCE`, a file named `main.mpl`, as a reporter of its own
+/// writes it: a report, then the footer for its code.
+fn render(format: Format, error: &TypeError) -> String {
+    let mut out = Vec::new();
+    Reporter::new(format, &mut out).emit(error.to_diagnostic(&SourceFile::new("main.mpl", SOURCE)));
+    String::from_utf8(out).unwrap()
+}
+
+fn render_json(error: &TypeError) -> serde_json::Value {
+    serde_json::from_str(&render(Format::Json, error)).unwrap()
 }
 
 /// Each error is worded once: the terminal report's headline is the JSON
@@ -576,63 +726,59 @@ fn one_of_each() -> Vec<TypeError> {
 /// server shows too. They used to be written twice, and most differed.
 #[test]
 fn every_type_error_has_one_headline() {
-    let terminal = DiagnosticOptions::colorless();
-    let json = DiagnosticOptions {
-        json: true,
-        ..DiagnosticOptions::colorless()
-    };
     for error in one_of_each() {
-        let report = render_diagnostic(&error, SOURCE, "main.mpl", &terminal, None);
+        let report = render(HUMAN, &error);
         let headline = report.lines().next().unwrap_or_default();
         let message = error.to_string();
         assert!(
             headline.ends_with(&format!(": {message}")),
             "{headline} / {message}"
         );
-        let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
-        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
-        assert_eq!(parsed["message"], message.as_str());
+        assert_eq!(render_json(&error)["message"], message.as_str());
     }
 }
 
 /// Each error is at one place: where the terminal report and the JSON
 /// diagnostic put it (their first span) is `TypeError::span`, where the
-/// language server shows it. An error at no one place covers the source.
+/// language server shows it. An error at no one place is about the file,
+/// and has no span.
 #[test]
 fn every_type_error_is_at_one_place() {
-    let json = DiagnosticOptions {
-        json: true,
-        ..DiagnosticOptions::colorless()
-    };
     for error in one_of_each() {
-        let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
-        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
-        let first = &parsed["spans"][0];
-        let (start, end) = match error.span() {
-            Some(span) => (u32::from(span.start()), u32::from(span.end())),
-            None => (0, SOURCE.len() as u32),
-        };
-        assert_eq!(
-            (first["start"].as_u64(), first["end"].as_u64()),
-            (Some(start.into()), Some(end.into())),
-            "{error:?}"
-        );
+        let parsed = render_json(&error);
+        let spans = parsed["spans"].as_array().unwrap();
+        match error.span() {
+            Some(span) => assert_eq!(
+                (spans[0]["start"].as_u64(), spans[0]["end"].as_u64()),
+                (
+                    Some(u32::from(span.start()).into()),
+                    Some(u32::from(span.end()).into())
+                ),
+                "{error:?}"
+            ),
+            None => {
+                assert!(spans.is_empty(), "{error:?}");
+                assert_eq!(parsed["file"], "main.mpl", "{error:?}");
+            }
+        }
+    }
+}
+
+/// Each error has a repair: its own, or its code's.
+#[test]
+fn every_type_error_has_a_repair() {
+    for error in one_of_each() {
+        let fix = render_json(&error)["fix"].clone();
+        assert!(fix.as_str().is_some_and(|fix| !fix.is_empty()), "{error:?}");
     }
 }
 
 #[test]
 fn every_type_error_renders() {
-    let terminal = DiagnosticOptions::colorless();
-    let json = DiagnosticOptions {
-        json: true,
-        ..DiagnosticOptions::colorless()
-    };
     let mut rendered = String::new();
     for error in one_of_each() {
-        rendered.push_str(&render_diagnostic(
-            &error, SOURCE, "main.mpl", &terminal, None,
-        ));
-        rendered.push_str(&render_diagnostic(&error, SOURCE, "main.mpl", &json, None));
+        rendered.push_str(&render(HUMAN, &error));
+        rendered.push_str(&render(Format::Json, &error));
         rendered.push('\n');
     }
     insta::assert_snapshot!(rendered);
@@ -643,18 +789,11 @@ fn every_type_error_renders() {
 /// given to a second, unrelated error.
 #[test]
 fn every_error_code_names_one_kind() {
-    let json = DiagnosticOptions {
-        json: true,
-        ..DiagnosticOptions::colorless()
-    };
     let mut kinds: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
         Default::default();
     for error in one_of_each() {
-        let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
-        let code = rendered
-            .split("\"code\":\"")
-            .nth(1)
-            .and_then(|rest| rest.split('"').next())
+        let code = render_json(&error)["code"]
+            .as_str()
             .expect("a JSON diagnostic has a code")
             .to_string();
         let kind = format!("{error:?}")

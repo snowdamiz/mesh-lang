@@ -12,10 +12,10 @@
 
 use std::path::Path;
 
+use crate::diagnostic_options::DiagnosticOptions;
 use mesh_rt::db::pg::{
     native_pg_close, native_pg_connect, native_pg_execute, native_pg_query, NativePgConn,
 };
-use mesh_typeck::diagnostics::DiagnosticOptions;
 
 // ── Migration Info ──────────────────────────────────────────────────────
 
@@ -222,11 +222,7 @@ fn compile_and_run_migration(
         None,
         crate::BuildArtifact::Executable,
         false,
-        &DiagnosticOptions {
-            color: std::env::var_os("NO_COLOR").is_none()
-                && std::io::IsTerminal::is_terminal(&std::io::stderr()),
-            ..DiagnosticOptions::default()
-        },
+        &DiagnosticOptions::new(mesh_diagnostics::Format::for_cli(false, false)),
     )
     .map_err(|e| {
         format!(

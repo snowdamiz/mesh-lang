@@ -11,3 +11,4 @@ expression: output
    │
    │ Help: only functions can be called; remove the parentheses to use the value
 ───╯
+  = E0005: meshc explain E0005 · skill diagnostics.md#e0005 · https://meshlang.dev/docs/errors/#e0005

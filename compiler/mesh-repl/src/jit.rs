@@ -2672,14 +2672,23 @@ pub(crate) fn check_source(
     }
     let typeck = mesh_typeck::check(&parse);
     if !typeck.errors.is_empty() {
-        let rendered = typeck.render_errors(
-            source,
-            "<repl>",
-            &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
-        );
-        return Err(rendered.join("\n"));
+        return Err(render_type_errors(&typeck, source, "<repl>"));
     }
     Ok((parse, typeck))
+}
+
+/// The type errors of `source`, named `name`, as the REPL shows them.
+pub(crate) fn render_type_errors(
+    typeck: &mesh_typeck::TypeckResult,
+    source: &str,
+    name: &str,
+) -> String {
+    let file = mesh_diagnostics::SourceFile::new(name, source);
+    let mut out = Vec::new();
+    let _ =
+        mesh_diagnostics::Reporter::new(mesh_diagnostics::Format::Human { color: false }, &mut out)
+            .emit_all(typeck.errors.iter().map(|error| error.to_diagnostic(&file)));
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// What the wrapper function checked last (`() -> T`) returns: T. A source

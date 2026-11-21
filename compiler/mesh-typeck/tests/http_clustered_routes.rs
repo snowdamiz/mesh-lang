@@ -1,4 +1,4 @@
-use mesh_typeck::diagnostics::DiagnosticOptions;
+use mesh_diagnostics::{Format, Reporter, SourceFile};
 use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::{Scheme, Ty, TyCon};
 use mesh_typeck::{
@@ -188,7 +188,17 @@ end
         result.errors
     );
 
-    let rendered = result.render_errors(src, "test.mpl", &DiagnosticOptions::colorless());
+    let file = SourceFile::new("test.mpl", src);
+    let rendered: Vec<String> = result
+        .errors
+        .iter()
+        .map(|error| {
+            let mut out = Vec::new();
+            Reporter::new(Format::Human { color: false }, &mut out)
+                .emit(error.to_diagnostic(&file));
+            String::from_utf8(out).unwrap()
+        })
+        .collect();
     assert!(
         rendered
             .iter()

@@ -1656,6 +1656,7 @@ name = "mesh-lsp"
 version = "0.1.8"
 dependencies = [
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-fmt",
  "mesh-lexer",
  "mesh-parser",
@@ -1705,6 +1706,7 @@ dependencies = [
  "inkwell",
  "mesh-codegen",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-lexer",
  "mesh-parser",
  "mesh-rt",
@@ -1773,7 +1775,6 @@ dependencies = [
 name = "mesh-typeck"
 version = "0.1.8"
 dependencies = [
- "ariadne",
  "ena",
  "insta",
  "mesh-common",
@@ -1781,7 +1782,6 @@ dependencies = [
  "mesh-parser",
  "rowan",
  "rustc-hash 2.1.1",
- "serde",
  "serde_json",
 ]
 

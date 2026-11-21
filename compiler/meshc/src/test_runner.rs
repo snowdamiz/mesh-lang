@@ -24,11 +24,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
+use crate::diagnostic_options::DiagnosticOptions;
 use mesh_parser::test_harness::preprocess_test_source;
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
 };
-use mesh_typeck::diagnostics::DiagnosticOptions;
 
 /// Whether output goes to a color terminal (and `NO_COLOR` is unset). The
 /// test binaries learn it through `MESH_TEST_COLOR`: their stdout is a pipe.
@@ -229,8 +229,7 @@ pub fn run_tests(
         // Diagnostics name the test file and the project's files, not
         // their copies in the temporary project.
         let diag_opts = DiagnosticOptions {
-            color,
-            json: false,
+            format: mesh_diagnostics::Format::Human { color },
             display_paths: vec![
                 (tmp_dir.path().join(DEFAULT_ENTRYPOINT), test_file.clone()),
                 (tmp_dir.path().to_path_buf(), project_dir.to_path_buf()),
