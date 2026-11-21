@@ -3509,6 +3509,90 @@ close the dense gap. The next SQL screen targets the remaining claim
 and settlement work together.
 [Grouped full SQL receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Reset each grouped effect checkout once
+
+Five Linux ARM64 boots on PostgreSQL 17.11 compared two identical
+prepared, grouped controls with a treatment that reset the session
+once before returning it to the pool. Both controls reset once per
+job on the same group socket. All arms committed the attempt and
+effect stages separately and waited for reset before settlement.
+The 15 arms reconciled 15,360 jobs. The statement counters showed
+1,024 reset exchanges in each control and 128 in each treatment.
+
+| CPU scope | Median saving against faster control | Median absolute control spread |
+| --- | ---: | ---: |
+| PostgreSQL | 0.004 ms/job | 0.083 ms/job |
+| Effect backends | 0.012 ms/job | 0.044 ms/job |
+| PostgreSQL and diagnostic client | 0.041 ms/job | 0.116 ms/job |
+
+The fewer reset exchanges did not produce a repeatable reduction
+large enough to change the dense-profile CPU budget. These runs use
+synthetic workers. The component leaves release throughput open.
+[Grouped reset receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Settle and refill in one transaction
+
+Two reverse-order PostgreSQL 17.11 Linux ARM64 boots compared
+set-based completion and refill with identical grouped-effect
+controls. Both boots reconciled every job and kept the separate
+effect commits and one reset per job. The treatment used 128
+settlement statements for 1,024 jobs in each boot. It shared the
+settlement transaction with 128 and 127 stock claim calls,
+respectively. Those calls claimed 448 and 536 replacements.
+
+| Boot | Treatment PostgreSQL CPU | Claim and lifecycle CPU saving against faster control | PostgreSQL and diagnostic client CPU change against faster control |
+| --- | ---: | ---: | ---: |
+| Controls first | 0.450 ms/job | 0.043 ms/job | +0.008 ms/job |
+| Treatment first | 0.375 ms/job | 0.064 ms/job | −0.054 ms/job |
+
+The combined claim and lifecycle CPU savings exceeded the within-boot
+control spreads of 0.036 and 0.004 ms/job. The effect backends used
+more CPU in both treatment arms. Total component CPU improved in
+one boot and left at most 0.244 CPU-ms/job for omitted work against
+the earlier two-vCPU budget. These runs did not exercise native
+worker startup, termination or reap.
+
+A separate native macOS proof on PostgreSQL 17.11 held a job row
+locked while submitting live, cancelled, expired and stale-token
+cases. The batch finished the live and cancelled attempts, preserved
+the other rows, and wrote the canonical cancellation history. An
+independent observer saw neither the settlement nor replacement
+claim before commit, saw both rows unchanged after rollback, and
+verified that the successful retry used one transaction ID. The
+native proof did not cut the commit reply.
+[Settlement and refill receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Reuse recently active effect sessions
+
+Five Linux ARM64 boots compared FIFO and LIFO checkout from the
+same pre-admitted pool of 63 effect connections. Each boot ran
+two identical FIFO controls and one LIFO treatment. Every arm
+reconciled 1,024 jobs with two separately committed effect stages
+and 1,024 resets. The treatment used 7–8 effect backends and the
+controls used 54–62. All groups contained eight jobs.
+
+| CPU scope | Median saving against faster control | Median absolute control spread |
+| --- | ---: | ---: |
+| PostgreSQL | 0.062 ms/job | 0.036 ms/job |
+| Effect backends | 0.073 ms/job | 0.012 ms/job |
+| PostgreSQL and diagnostic client | 0.060 ms/job | 0.053 ms/job |
+
+PostgreSQL and the effect backends used less CPU than both controls
+in all five boots. The joint component used less CPU in four.
+Two boots had wide control spreads. The active-backend census
+confirms that checkout order changed where work ran without
+changing the number of admitted sessions. The test used synthetic
+workers, and the gain with compiled handlers and smaller groups
+remains open.
+
+The compiled fixture at `0ee8756a` already selects the first idle
+slot and returns a session to its original slot. The compiled named
+statement pilot at `fc4983db` used 50 and 51 effect backends with
+individual attempts. The grouped component therefore measures
+the cost of spreading work across backends. Replacing the compiled
+pool's selection order alone has not been tested.
+[Effect session affinity receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
