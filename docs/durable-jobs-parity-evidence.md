@@ -3626,6 +3626,22 @@ coverage. It did not cut an in-flight shared COMMIT or measure
 performance.
 [Compiled refill pilot](../proof/jobs-parity/qualification-v1.json)
 
+A separate compiled fault fixture at `b4cf4a4a` ran both cuts on
+macOS and PostgreSQL 17.11. A loopback relay carried the runner's
+SCRAM session in plaintext so it could withhold protocol replies.
+The effect, producer, and observer connections used verified TLS.
+Each cut verified both exact predecessor reaps and zero replacement
+starts before the relay closed. Before COMMIT the original rows
+remained executing, the standalone retries committed, and both
+replacements ran on attempt one. After COMMIT an independent
+observer saw all four rows share one transaction ID. The relay
+forwarded the COMMIT tag and withheld idle ReadyForQuery for just
+over three seconds, past the local predecessor leases. The original
+tokens returned stale through standalone replay and both replacements
+ran on attempt two after lease recovery. All jobs reconciled one
+durable effect.
+[Compiled COMMIT cut receipts](../proof/jobs-parity/qualification-v1.json)
+
 Five trace-off Linux groups then compared the opt-in against two
 identical Mesh controls and Oban Basic 2.24.2 Isolated. All 20,480
 scored jobs reconciled on the same frozen two-vCPU profile.
@@ -3773,6 +3789,18 @@ one parent and the release worker from `a39447f7`. It did not
 exercise the production dispatcher, effect relay, database or
 lease renewals.
 [Parent I/O receipts](../proof/jobs-parity/qualification-v1.json)
+
+A compiled Linux ARM64 pilot then enabled the shared I/O owner
+at `276a7a3d`. The same release ELF ran with the flag off and
+on. Admission observed exactly one owner thread in each of the
+eight enabled runners and none in the controls. Both arms
+reconciled 1,024 exact child reaps, two fenced writes per job,
+and every prewarmed backend idle after reset. The first boot
+stopped in the observer because its count shadowed the workload's
+expected-job map. The corrected pilot used the same ELF. This
+run establishes coverage with the real relay and PostgreSQL.
+The injected rearm-failure tests remain separate.
+[Compiled parent I/O pilot](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 

@@ -35118,5 +35118,82 @@
       "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-refill-guest/runs/compiled-refill-01/noop-8r-64s/report/receipt.json",
       "sha256": "40f28c2ef0187e3097dd11553e1ce7789ceebaa867943402889e7f5ca8907bff"
     }
+  },
+  "jobs_compiled_refill_commit_faults": {
+    "revision": "b4cf4a4a4b1a6f8407d3792eed3b91e4cd005e68",
+    "postgres": "17.11",
+    "scope": "Compiled loopback proof. Runner uses plaintext SCRAM through the cut relay; producer, observer, and scoped effect connections use TLS.",
+    "manifest": {
+      "path": "target/jobs-parity/compiled-runtime-proofs/refill-compiled-boundary/manifest.json",
+      "sha256": "707f197f39562f2c6914b3a681c8f7aa79ae8f3d60f959e53f6cd50676706b69"
+    },
+    "result": {
+      "path": "target/jobs-parity/compiled-runtime-proofs/refill-compiled-boundary/result.json",
+      "sha256": "f2794b73d200dd9c33c60865d71b5619d819e899ed7b078fbef88c63f5a84862"
+    },
+    "cases": {
+      "before_commit": {
+        "receipt": {
+          "path": "target/jobs-parity/compiled-runtime-proofs/refill-compiled-boundary/before_commit.json",
+          "sha256": "d5ab2225a8c55f45282b7aadae2c65d8091e74d726c7d804a28436b308df95c8"
+        },
+        "only_predecessors_started_before_close": 2,
+        "replacement_attempt": 1,
+        "hold_ms": 91.88658400671557,
+        "standalone_ack_calls": 4
+      },
+      "after_command_complete": {
+        "receipt": {
+          "path": "target/jobs-parity/compiled-runtime-proofs/refill-compiled-boundary/after_command_complete.json",
+          "sha256": "c95e3cef40a41665a50c6b28b83283f1ca89c5b9490dbeca6b1abaf32c7cfdd8"
+        },
+        "only_predecessors_started_before_close": 2,
+        "replacement_attempt": 2,
+        "hold_ms": 3033.5427499958314,
+        "standalone_ack_calls": 4
+      }
+    }
+  },
+  "linux_jobs_compiled_parent_io_pilot": {
+    "revision": "276a7a3d795b1bf1c087f2da2c15f90cffd1e7dc",
+    "postgres": "17.11",
+    "profile": "noop-8r-64s",
+    "scope": "Untimed Linux ARM64 coverage with one release ELF and fenced workers. The pilot verifies successful operation and active runner threads. It does not inject a renewal failure.",
+    "build": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/preflight-linked.json",
+      "sha256": "813352de3e0da60e85989da6508ee68e4b46157c10aeae2d430d10232d54f172"
+    },
+    "stage": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/pilot/stage.json",
+      "sha256": "27592df5e64ac27866ec850d10489141b180efade465363eaf38ddfd0e78df59"
+    },
+    "arms": {
+      "trace-mesh": {
+        "owners_per_runner": 0,
+        "raw": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/pilot/proof/evidence/trace-mesh/raw.json",
+          "sha256": "9d9f0a3c992b833a1b624326068b220a7324d79bd73d5dd1bcd237399b40791a"
+        },
+        "observed_threads": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/pilot/proof/evidence/trace-mesh/parent-io-admission.json",
+          "sha256": "77bdeb7601782505ea0d323aa1807d117e1e89cbd5dcc71b6cf3cc478e9967d4"
+        }
+      },
+      "trace-mesh-parent-io": {
+        "owners_per_runner": 1,
+        "raw": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/pilot/proof/evidence/trace-mesh-parent-io/raw.json",
+          "sha256": "7a1da11e9103e7a279505d14d5c4cf3e3615b0f147a8e0842358d4f6fabc61c8"
+        },
+        "observed_threads": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/pilot/proof/evidence/trace-mesh-parent-io/parent-io-admission.json",
+          "sha256": "9e1d6ab04b0b337ffa31a652a330109d11013ad6f6382aa48714d86afe9e0f9e"
+        }
+      }
+    },
+    "observer_retry": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/pilot-observer-name-shadow/proof/evidence/result.json",
+      "sha256": "b46c6b78ff7ee443903ab86d432633cdcfe30058a765c3909e7e3f37ba4d057d"
+    }
   }
 }
