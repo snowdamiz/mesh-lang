@@ -12690,6 +12690,185 @@
       }
     }
   },
+  "compiled_effect_reset_plan_retention_initial": {
+    "revision": "952a2c5c0939e46642b150ba69ed138096f81f43",
+    "scope": "Initial compiled reset fixture. Native and Linux data predate the whole-exchange deadline correction.",
+    "reset_frame_test": {
+      "log": "target/jobs-parity/exact-head-native/952a2c5c0939e46642b150ba69ed138096f81f43-reset-frames.log",
+      "sha256": "fa212e38a153f2fbd6968df429dc3ec3d943438109be2e009b0a735bf533a456",
+      "passed": true
+    },
+    "compiled_two_write_proof": {
+      "run": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-7dfae1b2/target/jobs-parity/effect-reset-plans-source/target/jobs-parity/952a2c5c0939e46642b150ba69ed138096f81f43/j1-two-write-proof-4rmosduh",
+      "result_sha256": "2d1cec2e70225aae69502c024a37a85758b6481aaf365c373b349089c33437eb",
+      "manifest_sha256": "937de6709a4ddf16776be559e0d9b49925236c9d2fb7b2cb3be57f71a5f6a9d3"
+    },
+    "native": {
+      "run": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-7dfae1b2/target/jobs-parity/effect-reset-plans-source/target/jobs-parity/952a2c5c0939e46642b150ba69ed138096f81f43/j1-two-write-reset-ab-lorojdn5",
+      "result_sha256": "d618cd42d64ace9e29f94c0ec204a0422de335d0b80b57d85ab7bfe4708e83d3",
+      "manifest_sha256": "b4af9fd77063040d8192212e4f87318ea95e525ee926201b035a1e13c340881b",
+      "trials_sha256": "97cd49c150d4212e52486b593fdcae03d649af62047cc98e4b4d6f42d4935319",
+      "scored_jobs": 15360,
+      "medians": {
+        "mesh": {
+          "jobs_per_second": 1238.9909424924188,
+          "cpu_seconds_per_job": 0.0070094814453125,
+          "pickup_p99_ms": 805.3359375,
+          "effect_reset_drain_seconds": 0.35869312500290107
+        },
+        "mesh-aa": {
+          "jobs_per_second": 1253.465608101929,
+          "cpu_seconds_per_job": 0.0069926171875,
+          "pickup_p99_ms": 795.259033203125,
+          "effect_reset_drain_seconds": 0.4011351250082953
+        },
+        "mesh-no-plans": {
+          "jobs_per_second": 1310.2237527536445,
+          "cpu_seconds_per_job": 0.0070566679687499995,
+          "pickup_p99_ms": 759.2099609375,
+          "effect_reset_drain_seconds": 0.39049800000793766
+        }
+      },
+      "paired": [
+        {
+          "pair": 0,
+          "arm_jobs_per_sec": {
+            "mesh": 1223.2474837604814,
+            "mesh-aa": 1275.5227469982988,
+            "mesh-no-plans": 1293.2785225255893
+          },
+          "treatment_above_both": true,
+          "treatment_minus_control_mean": 43.89340714619925,
+          "control_abs_spread": 52.2752632378174
+        },
+        {
+          "pair": 1,
+          "arm_jobs_per_sec": {
+            "mesh-no-plans": 1313.0592972041752,
+            "mesh-aa": 1190.906945914199,
+            "mesh": 1257.11127535695
+          },
+          "treatment_above_both": true,
+          "treatment_minus_control_mean": 89.0501865686008,
+          "control_abs_spread": 66.20432944275103
+        },
+        {
+          "pair": 2,
+          "arm_jobs_per_sec": {
+            "mesh-aa": 1253.465608101929,
+            "mesh-no-plans": 1330.1016594622072,
+            "mesh": 1212.4988761927173
+          },
+          "treatment_above_both": true,
+          "treatment_minus_control_mean": 97.119417314884,
+          "control_abs_spread": 40.96673190921183
+        },
+        {
+          "pair": 3,
+          "arm_jobs_per_sec": {
+            "mesh-aa": 1294.2510597185378,
+            "mesh": 1294.421613854554,
+            "mesh-no-plans": 1310.2237527536445
+          },
+          "treatment_above_both": true,
+          "treatment_minus_control_mean": 15.887415967098605,
+          "control_abs_spread": 0.1705541360161078
+        },
+        {
+          "pair": 4,
+          "arm_jobs_per_sec": {
+            "mesh-no-plans": 1163.1355462181145,
+            "mesh": 1238.9909424924188,
+            "mesh-aa": 1039.744926467052
+          },
+          "treatment_above_both": false,
+          "treatment_minus_control_mean": 23.767611738379173,
+          "control_abs_spread": 199.24601602536677
+        }
+      ],
+      "median_paired_delta_jobs_per_sec": 43.89340714619925,
+      "median_absolute_control_difference_jobs_per_sec": 52.2752632378174
+    },
+    "linux": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/effect-reset-plans-952a2c5c/runs/reset-plans-linux-screen-1/noop-8r-64s",
+      "groups": [
+        {
+          "group": 0,
+          "stage_sha256": "18128a426a0babc3befa15d1638e53249ef9a93cc5f5abcbedc9ec937f1bcf17",
+          "trials_sha256": "98dad5a237aa53686cf3e6b12f8e80e5da620d50a8c8e9058ea80c1700018f4a",
+          "arms": {
+            "mesh": {
+              "jobs_per_second": 1102.5024255135372,
+              "cpu_seconds_per_job": 0.0010741982421875,
+              "pickup_p99_ms": 917.64599609375,
+              "effect_reset_drain_seconds": 0.23495004200000125,
+              "completed_resets": 1024,
+              "reset_sql_calls": 1024
+            },
+            "mesh-repeat": {
+              "jobs_per_second": 1217.221772238153,
+              "cpu_seconds_per_job": 0.0010193662109375,
+              "pickup_p99_ms": 831.639892578125,
+              "effect_reset_drain_seconds": 0.2234538339999972,
+              "completed_resets": 1024,
+              "reset_sql_calls": 1024
+            },
+            "oban": {
+              "jobs_per_second": 2741.120758726968,
+              "cpu_seconds_per_job": 0.003188221679687499,
+              "pickup_p99_ms": 368.161865234375
+            },
+            "mesh-no-plans": {
+              "jobs_per_second": 1056.6908574397082,
+              "cpu_seconds_per_job": 0.0010708447265624999,
+              "pickup_p99_ms": 956.703857421875,
+              "effect_reset_drain_seconds": 0.23344633399999992,
+              "completed_resets": 1024,
+              "reset_sql_calls": 8192
+            }
+          }
+        },
+        {
+          "group": 1,
+          "stage_sha256": "3ec84e991ebb9aa59fde1e94259faea4aa8891eded9afb6382a67d6fee290f9f",
+          "trials_sha256": "29c39d9b6eb8808721fd1d3af072b6349d579caa101beb4242a849c45a73b2a8",
+          "arms": {
+            "mesh-repeat": {
+              "jobs_per_second": 1147.2065057265909,
+              "cpu_seconds_per_job": 0.001053509765625,
+              "pickup_p99_ms": 877.40185546875,
+              "effect_reset_drain_seconds": 0.2297994170000024,
+              "completed_resets": 1024,
+              "reset_sql_calls": 1024
+            },
+            "mesh-no-plans": {
+              "jobs_per_second": 1253.0177494994566,
+              "cpu_seconds_per_job": 0.0010041054687500001,
+              "pickup_p99_ms": 806.27099609375,
+              "effect_reset_drain_seconds": 0.23491416699999945,
+              "completed_resets": 1024,
+              "reset_sql_calls": 8192
+            },
+            "mesh": {
+              "jobs_per_second": 1158.5742227908788,
+              "cpu_seconds_per_job": 0.00104663671875,
+              "pickup_p99_ms": 872.3349609375,
+              "effect_reset_drain_seconds": 0.23043599999999742,
+              "completed_resets": 1024,
+              "reset_sql_calls": 1024
+            },
+            "oban": {
+              "jobs_per_second": 2285.7553917628306,
+              "cpu_seconds_per_job": 0.0032414726562499997,
+              "pickup_p99_ms": 442.69287109375
+            }
+          }
+        }
+      ],
+      "pilot_stage_sha256": "ae222ed50a2f7ce3f5bcbbdce1a50a14e0bc6fdf612d83799e5d9f63f726a378",
+      "scored_jobs": 8192
+    }
+  },
   "postgres17_fixed_effect_plan_retention_component": {
     "scope": "Direct fenced PostgreSQL component on Darwin arm64. One backend per cohort.",
     "baseline": "DISCARD ALL",

@@ -2742,6 +2742,21 @@ compiled runner, contention, and end-to-end throughput require
 separate measurements.
 [Plan retention component receipts](../proof/jobs-parity/qualification-v1.json)
 
+The compiled `952a2c5c` fixture passed its reset-frame and traced
+two-write proofs. On macOS it reconciled 15,360 scored no-op jobs
+at eight runners and 64 slots. Plan retention reached 1,310 jobs/s
+versus 1,239 and 1,253 for the two controls and beat both in four
+groups. The median paired gain of 44 jobs/s fell within the 52
+jobs/s median absolute control spread.
+
+The Linux pilot and two scored groups also verified one full reset
+per job and return of all original warm backends. Treatment ran at
+1,057 and 1,253 jobs/s, versus roughly 1,100–1,220 for the Mesh
+controls and 2,741 and 2,286 for Oban. It lost to both controls in
+one group and beat both in the other. Both platform runs predate
+the review correction for a deadline across the full reset exchange.
+[Initial compiled reset receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
