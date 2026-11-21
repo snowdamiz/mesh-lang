@@ -1,125 +1,73 @@
-# Mesh Syntax
+# Mesh syntax
 
-## Functions
-1. Functions defined with `fn name(params) -> ReturnType do ... end`.
-2. Type annotations on params use `::` separator: `fn add(a :: Int, b :: Int) -> Int do`.
-3. Return type optional for Unit-returning functions: `fn main() do`.
-4. Last expression in a `do...end` block is implicitly returned.
-5. Explicit early return with `return value`.
+## Files, modules, and visibility
+
+- Source files use `.mpl`. An executable starts at `fn main()` in `main.mpl` by default. `[package].entrypoint` in `mesh.toml` can select another file.
+- A path such as `geo/points.mpl` gives the file module `Geo.Points`. `import Geo.Points` exposes qualified calls such as `Points.distance(p)`. `from Geo.Points import Point, distance` brings selected names into scope. Use parentheses around a selective import list that spans lines.
+- `pub` exports a declaration. A named `module Name do ... end` is local to its file unless declared `pub module`. Standard-library modules such as `List` and `File` are in scope without imports.
+- `#` starts a line comment, `##` documents a declaration, `##!` documents a module, and `#= ... =#` is a nestable block comment. Newlines usually end statements. Separate statements on one line with `;`. A line continues inside delimiters or after `=` or an infix operator. A leading infix operator also continues the previous line, except `-` and `%`.
+
+See [projects](projects.md) for builds and package layout, the [module and file reference](https://meshlang.dev/docs/reference/#source-files-and-modules) for visibility rules, and the [Hello World walkthrough](https://meshlang.dev/docs/getting-started/#hello-world) for a first executable.
+
+## Bindings, functions, and calls
+
+- `let x = expr` and `let x :: Type = expr` create immutable local bindings. A later `let x = ...` shadows the prior name. Define a zero-argument function for a shared constant. Module-level `let` is error E0080.
+- A named function uses `fn` or `def` and has a `do ... end` body or a single expression after `=`. Parameter and return types can be inferred. The final expression supplies the return value. `return value` or bare `return` exits early.
+- Consecutive clauses of the same name and arity can dispatch by pattern and `when` guard. Put the catch-all last. The first clause carries the group's visibility, generic parameters, return type, and bounds. See [pattern matching](pattern-matching.md).
+- Closures capture lexical bindings. Forms include `fn(x :: Int) -> x + n end`, `fn x -> x + n end`, `fn x do ... end`, and `fn -> 42 end`. `Fun(Int) -> Int` names a function type. `f(args) do |x| ... end` supplies a closure as the last argument.
+- Keyword arguments form one final map argument. `request("/events", method: "POST")` passes `%{"method" => "POST"}` as the second argument. On values such as a `String` or `List`, calls like `text.trim()` and `xs.map(f)` can resolve to module functions with the receiver first.
 
 ```mesh
-fn add(a :: Int, b :: Int) -> Int do
-  a + b
-end
+fn label(0 :: Int) -> String = "zero"
+fn label(n) when n < 0 = "negative"
+fn label(n) = "positive: #{n}"
 
-fn describe_number(n :: Int) -> String do
-  case n do
-    0 -> "zero"
-    1 -> "one"
-    _ -> "other"
+fn main() do
+  let offset = 2
+  let labels = [-2, -1, 0] |> List.map() do |n|
+    label(n + offset)
   end
+  println(String.join(labels, ", "))  # zero, positive: 1, positive: 2
 end
+```
 
+## Control flow
+
+- `if condition do ... else ... end` yields the selected branch value. The condition must be a `Bool` and the branches share a type. An `else if` chain closes with one `end`. An `if` without `else` has type `()`.
+- `case` and `match` select the first matching arm. See [pattern matching](pattern-matching.md).
+- `for pattern in source when guard do ... end` yields a list of body results. The `when` filter is optional. Sources include lists, maps, sets, ranges, and values implementing `Iterable` or `Iterator`. A map loop can bind `{key, value}` or `(key, value)`.
+- `while condition do ... end` returns `()`. `break` exits the enclosing loop and `continue` skips to its next iteration. A binding shadowed inside a loop does not update the condition's binding. For a counter, use an end-exclusive range such as `0..10`. For evolving state, a direct tail call to the current function runs as a loop.
+
+```mesh
 fn main() do
-  println("#{add(10, 20)}")
+  let squares = for n in 0..6 when n % 2 == 0 do
+    n * n
+  end
+  println("#{squares}")  # [0, 4, 16]
 end
 ```
 
-## Decorator-Style Clustered Declarations
-Rules:
-1. `@cluster` and `@cluster(N)` are decorator forms attached directly to function declarations.
-2. Use them in source (`work.mpl`) for the canonical clustered-runtime surface rather than treating clustering as manifest-owned config.
-3. `Node.start_from_env()` is the matching bootstrap entrypoint for packages that participate in the clustered runtime.
-4. For scaffold, operator, or routed clustered-runtime guidance, load [clustering](clustering.md); this syntax skill only calls out the decorator surface.
+## Pipes and operators
 
-Code example:
-```mesh
-@cluster pub fn add() -> Int do
-  1 + 1
-end
-```
-
-## Closures
-1. Anonymous functions: `fn(params) -> expr end` (single expression) or `fn(params) do ... end`.
-2. Closures capture variables from the enclosing scope (lexical capture).
-3. Type annotations on closure params are optional when types can be inferred.
-4. Closures are first-class values — assignable to `let` bindings, passable as arguments.
+`value |> f(a)` calls `f(value, a)`. `value |N> f(a, ...)` inserts the value into one-based argument position `N`, starting at `2`. Omit the inserted argument from the call. Both pipes can start or end a continued line.
 
 ```mesh
-let n = 5
-let add_n = fn(x :: Int) -> x + n end
-println("#{add_n(3)}")   # 8
-
-# Short closure form for higher-order functions:
-let doubled = List.map(list, fn(x) -> x * 2 end)
-let filtered = List.filter(doubled, fn(x) -> x > 10 end)
-```
-
-## Pipe Operator (|>)
-1. `expr |> func` passes expr as the first argument to func.
-2. Chains read left-to-right: `3 |> double |> println`.
-3. Works with any function call: `list |> List.map(fn x -> x * 2 end)`.
-4. Used heavily with Iter, List, and stdlib modules for readable pipelines.
-
-```mesh
-let result = Iter.from(list)
-  |> Iter.map(fn x -> x * 2 end)
-  |> Iter.filter(fn x -> x > 10 end)
-  |> Iter.take(3)
-  |> Iter.count()
-```
-
-## Slot Pipe Operator (|N>)
-1. `expr |N> func(a, b, ...)` routes expr to argument position N (1-based, N >= 2).
-2. `value |2> func(a)` desugars to `func(a, value)` — value inserted at position 2.
-3. `value |2> func(a, c)` desugars to `func(a, value, c)` — value inserted at slot 2.
-4. Chainable with regular pipe: `a |2> f(b) |> g()`.
-5. Compiler error if slot N exceeds the function's arity.
-6. Use when the natural "subject" argument is not in position 1.
-
-```mesh
-fn format_three(left :: String, middle :: String, right :: String) -> String do
+fn format_three(left :: String, middle :: String, right :: String) -> String =
   left <> ":" <> middle <> ":" <> right
-end
 
 fn main() do
-  println("middle" |2> format_three("left", "right"))
+  "middle"
+    |2> format_three("left", "right")
+    |> println()  # left:middle:right
 end
 ```
 
-Save this as `main.mpl` in a new project. Run `meshc build . -o output && ./output`.
-The program prints `left:middle:right`. The slot pipe inserts the value among
-the written arguments. An underscore in the argument list does not select a
-slot.
+From lowest to highest precedence, the groups are pipes, `or` or `||`, `and` or `&&`, equality (`==`, `!=`), ordering (`<`, `>`, `<=`, `>=`), range (`..`), concatenation (`<>`, `++`), addition and subtraction, multiplication and division (`*`, `/`, `%`), prefix (`-`, `not`, `!`), and postfix (calls, field access, `?`). Both concatenation operators work on strings and lists. Integer division truncates toward zero.
 
-## Let Bindings
-1. `let name = expr` binds a value. Bindings are immutable by default.
-2. Rebinding with the same name shadows the previous binding: `let x = 1` then `let x = x + 1`.
-3. Type inference is automatic — explicit type annotation rarely needed.
-4. Destructure tuples with `let (left, right) = pair`. Use `case` to bind a sum-type variant's payload.
+See [error handling](error-handling.md) for postfix `?` and [traits](traits.md) for operator dispatch and conversions.
 
-## Control Flow
-1. `if condition do ... else ... end` — condition is a Bool expression.
-2. `if` is an expression: both branches return a value of the same type.
-3. `case expr do pattern -> value ... end` for pattern matching (see [pattern matching](pattern-matching.md)).
-4. `for item in collection do ... end` for iteration over lists, maps, sets, ranges.
-5. `while condition do ... end` for imperative loops.
-6. `break` and `continue` work inside `for` and `while`.
+## Function decorators
 
-```mesh
-for item in list do
-  println("#{item}")
-end
+`@cluster pub fn ...` uses the default copy count. `@cluster(N) pub fn ...` sets the total copy count. Packages participating in the clustered runtime bootstrap with `Node.start_from_env()`. See [clustering](clustering.md).
 
-let i = 0
-while i < 10 do
-  let i = i + 1
-end
-```
-
-## Operators
-1. Arithmetic: `+`, `-`, `*`, `/`, `%`
-2. Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
-3. Boolean: `and`, `or`, `not`
-4. String concatenation: `<>`
-5. Type cast/conversion: use `to_string()`, `to_int()`, `to_float()` methods on values.
+`@native` declares a native binding, and `@export("c_symbol")` declares a C ABI export for library builds. See [native packages](https://meshlang.dev/docs/native-packages/) and [library builds](https://meshlang.dev/docs/library-builds/).

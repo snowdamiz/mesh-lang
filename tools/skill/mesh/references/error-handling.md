@@ -1,123 +1,73 @@
-# Mesh Error Handling
+# Mesh error handling
 
-See also: skills/types for Result/Option type definitions.
+`Result<T, E>` (`T!E`) carries `Ok(value)` or `Err(error)`. The error can be a string, a struct, or a sum type. `Option<T>` (`T?`) carries `Some(value)` or `None` and represents absence. See [types](types.md) and [pattern matching](pattern-matching.md).
 
-## Result<T, E> Fundamentals
-1. `Result<T, E>` (shorthand `T!E`) represents success `Ok(T)` or failure `Err(E)`.
-2. Functions that can fail return `T!E`; callers must handle both variants.
-3. Construct with `Ok(value)` or `Err(message)`.
-4. Consume with `case` for exhaustive handling.
-5. The error type `E` is commonly `String` for simple error messages.
+## Handling and propagation
 
-```mesh
-fn validate_positive(x :: Int) -> Int!String do
-  if x <= 0 do
-    return Err("must be positive")
-  end
-  Ok(x)
-end
+A `case` handles the variants explicitly. Postfix `?` unwraps `Ok` or `Some`, or exits the enclosing function or closure immediately with `Err` or `None`. The enclosing return type must be the corresponding `Result` or `Option`, and can be inferred. Handle failures explicitly in `main`, which returns unit.
 
-fn validate_small(x :: Int) -> Int!String do
-  if x > 100 do
-    return Err("too large")
-  end
-  Ok(x)
-end
-
-case validate_positive(42) do
-  Ok(v) -> println("valid: #{v}")
-  Err(e) -> println("error: #{e}")
-end
-```
-
-## The ? Operator
-1. `expr?` on a `Result`: if `Err(e)`, immediately returns `Err(e)` from the current function.
-2. `expr?` on an `Option`: if `None`, immediately returns `None` from the current function.
-3. The surrounding function's return type must match — `T!E` for Result, `Option<T>` for Option.
-4. Replaces verbose nested `case` expressions with flat, readable code.
-5. Can only be used inside functions that return `Result` or `Option`.
-6. After a pipe, `?` applies to the call the value goes into: `x |> parse()?` is `(x |> parse())?`.
+Multiple `?` operations stop at the first failure or absence. After a pipe, `x |> parse()?` means `(x |> parse())?`. If the error type changes during propagation, the compiler uses a matching `From<SourceError>` implementation for the destination error type. `Result.map_err` can supply a conversion or add context before propagation.
 
 ```mesh
-fn process(x :: Int) -> String!String do
-  # ? propagates Err upward — no nested case needed
-  let v = validate_positive(x)?
-  let w = validate_small(v)?
-  Ok("valid: #{w}")
+struct InputError do
+  message :: String
+end
+
+impl From<String> for InputError do
+  fn from(message :: String) -> InputError do
+    InputError { message: message }
+  end
+end
+
+fn check_positive(n :: Int) -> Int!String do
+  if n <= 0 do
+    return Err("expected a positive number")
+  end
+  Ok(n)
+end
+
+fn parse_positive(text :: String) -> Int!InputError do
+  let n = text |> String.to_int() |> Option.ok_or("expected an integer")?
+  let value = check_positive(n) |> Result.map_err(fn e -> "#{text}: #{e}" end)?
+  Ok(value)
+end
+
+fn first_label(values :: List<Int>) -> String? do
+  let n = List.find(values, fn n -> n > 0 end)?
+  Some("first positive: #{n}")
 end
 
 fn main() do
-  let r1 = process(42)    # Ok("valid: 42")
-  let r2 = process(-5)    # Err("must be positive")
-  let r3 = process(200)   # Err("too large")
-  case r1 do
-    Ok(s) -> println(s)
-    Err(e) -> println("error: #{e}")
+  for text in ["42", "oops", "-5"] do
+    case parse_positive(text) do
+      Ok(n) -> println("#{n}")
+      Err(e) -> println(e.message)
+    end
+  end
+
+  for values in [[-3, 2], [-1, 0]] do
+    println(first_label(values) |> Option.unwrap_or("no positive values"))
   end
 end
 ```
 
-## Chaining Results
-1. Chain multiple fallible operations with consecutive `?` on each line.
-2. The chain short-circuits on first `Err` — subsequent lines do not execute.
-3. Wrap the entire chain in a helper function returning `T!E` for clean separation.
-4. Outer callers see only the final `Ok` or the first `Err`.
+The program prints `42`, `expected an integer`, `-5: expected a positive number`, `first positive: 2`, and `no positive values` on separate lines.
 
-```mesh
-fn run_pipeline(input :: Int) -> String!String do
-  let a = step_one(input)?
-  let b = step_two(a)?
-  let c = step_three(b)?
-  Ok("result: #{c}")
-end
-```
+## Option and Result helpers
 
-## Option and Result Functions
-1. `Option.map`, `Option.and_then`, `Option.unwrap_or`, `Option.is_some`, `Option.is_none`, `Option.ok_or`.
-2. `Result.map`, `Result.map_err`, `Result.and_then`, `Result.unwrap_or`, `Result.is_ok`, `Result.is_err`, `Result.ok`.
-3. Each takes the value first: call it by module, through a pipe, or as a method (`r.map_err(f)`).
-4. `map_err` adds context to an error before `?` returns it.
+Each helper takes the option or result first and can be called by module, through a pipe, or as a method.
 
-```mesh
-fn load(path :: String) -> String!String do
-  let text = File.read(path) |> Result.map_err(fn e -> "#{path}: #{e}" end)?
-  Ok(String.trim(text))
-end
+| Helper | Behavior |
+| --- | --- |
+| `Option.map`, `Result.map` | Transform the value inside `Some` or `Ok`. |
+| `Option.and_then`, `Result.and_then` | Run a function that itself returns an `Option` or `Result`. The Result error type stays the same. |
+| `Result.map_err` | Transform the value inside `Err`, possibly changing its type. |
+| `Option.unwrap_or`, `Result.unwrap_or` | Return the value or a default. The default is evaluated before the call. |
+| `Option.ok_or`, `Result.ok` | Supply an error for `None`, or turn an `Err` into `None`. |
+| `Option.is_some`, `Option.is_none`, `Result.is_ok`, `Result.is_err` | Test the variant. |
 
-fn port_or_default(text :: String) -> Int do
-  String.to_int(text) |> Option.unwrap_or(8080)
-end
-```
+## Panics
 
-## Option<T> and the ? Operator
-1. `Option<T>` with `Some(v)` / `None` for nullable values.
-2. `?` on Option: `None` propagates up, `Some(v)` unwraps to `v`.
-3. Use `case` when both `Some` and `None` paths have meaningful logic.
-4. Use `?` inside an Option-returning function to propagate absence.
+`panic(message)` has return type `Never`, so it fits any branch. It prints `Mesh panic: message` and ends the current actor, which a supervisor can restart. In `main` it ends the program with status 101. A missing `Map.get` key, an out-of-range `List.get`, and integer division by zero also panic.
 
-```mesh
-fn find_and_process(list :: List<Int>, target :: Int) -> Option<String> do
-  let v = List.find(list, fn(x) -> x == target end)?
-  Some("found: #{v}")
-end
-```
-
-## Error Type Conversion (From / Try traits)
-1. The `From` trait enables converting one error type to another.
-2. `impl From<SourceError> for TargetError` defines the conversion.
-3. `?` automatically applies the `From` conversion when error types differ.
-4. Use when a function calls multiple subfunctions with different error types.
-
-```mesh
-# With From impl, ? converts errors automatically:
-fn run() -> Int!AppError do
-  let db = open_db()?       # DbError -> AppError via From
-  let data = fetch(db)?     # NetworkError -> AppError via From
-  Ok(data.len())
-end
-```
-
-## Gotchas
-1. `?` only works inside functions returning `Result` or `Option` — compiler rejects it elsewhere.
-2. Mismatched error types without a `From` impl produce a type error — add the impl or use `map_err`.
-3. Avoid discarding errors with `let _ = fallible_call()` — always propagate or handle explicitly.
+See [traits](traits.md) for `From` and `TryFrom`, the [error handling walkthrough](https://meshlang.dev/docs/language-basics/#error-handling), and the [standard-library helper signatures](https://meshlang.dev/docs/stdlib/#option-and-result).

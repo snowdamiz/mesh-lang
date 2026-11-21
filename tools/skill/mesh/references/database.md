@@ -1,157 +1,64 @@
 # Mesh database access
 
-## SQLite
+## SQLite and PostgreSQL drivers
 
-Rules:
-1. `Sqlite.open(path) -> Result<Db, String>` — opens a database file; use `":memory:"` for in-memory.
-2. `Sqlite.execute(db, sql, params) -> Result<Int, String>` — DDL and DML; returns rows affected.
-3. `Sqlite.query(db, sql, params) -> Result<List<Map<String, String>>, String>` — SELECT; returns list of row maps.
-4. `Sqlite.close(db)` — closes the connection.
-5. Parameters are passed as `List<String>` using `?` placeholders in SQL.
-6. All result map values are `String` — use `deriving(Row)` to coerce types (see below).
-7. The `?` operator on results propagates errors up cleanly.
+Use `Sqlite` for local storage and `Pg` or `Pool` for shared PostgreSQL storage. Bind parameters separately from SQL. SQLite uses `?` placeholders and PostgreSQL uses `$1`, `$2`, and so on. `execute(connection, sql, params)` returns an affected-row count in a `Result`. `query` returns `Result<List<Map<String, String>>, String>`. Use `query` for row-producing statements, including writes with `RETURNING`. String row maps represent SQL `NULL` as `""`. [SQLite](https://meshlang.dev/docs/databases/#sqlite) · [Direct PostgreSQL API](https://meshlang.dev/docs/databases/#direct-postgresql-api)
 
-Code example (from tests/e2e/stdlib_sqlite.mpl):
+- `Sqlite.open(path)` returns `Result<SqliteConn, String>`. It accepts a file path or `":memory:"`. Release the connection with `Sqlite.close(conn)`. `Sqlite.begin`, `Sqlite.commit`, and `Sqlite.rollback` return `Result<Unit, String>`.
+- `Pg.connect(url)` returns `Result<PgConn, String>`. `PgConn` is affine. Assignments and ordinary parameters move it, database operations borrow it, and `Pg.close(conn)` consumes it. It cannot cross an actor boundary. `Pg.begin`, `Pg.commit`, and `Pg.rollback` support manual transactions. `Pg.transaction(conn, fn)` takes a callback with a `borrow PgConn` parameter and a `Result<Unit, String>` return. It commits on `Ok` and rolls back on `Err` or panic. An aborted PostgreSQL transaction still fails to commit if the callback ignores a statement error.
+- `Pool.open(url, min, max, checkout_timeout_ms)` returns `Result<PoolHandle, String>` and opens the minimum connections eagerly. `Pool.query` and `Pool.execute` manage their own checkouts. `Pool.close` releases the pool. The PostgreSQL connection guide covers verified TLS and private CAs. [Connection URLs and pool functions](https://meshlang.dev/docs/databases/#postgresql-connections-and-pools)
+
+## Binary values and typed rows
+
+`Sqlite`, `Pg`, and `Pool` offer `execute_values` and `query_values` for `List<DbValue>` parameters. `DbValue` has `Text(String)`, `Binary(Bytes)`, and `Null` variants. `query_values` returns row maps of `DbValue`. An empty binary value is distinct from SQL `NULL`. Result rows and values have size limits. [Binary and NULL values](https://meshlang.dev/docs/databases/#binary-and-null-values)
+
 ```mesh
-fn run_db() -> Int!String do
-  let db = Sqlite.open(":memory:")?
-
-  let _ = Sqlite.execute(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age TEXT)", [])?
-
-  let _ = Sqlite.execute(db, "INSERT INTO users (name, age) VALUES (?, ?)", ["Alice", "30"])?
-  let _ = Sqlite.execute(db, "INSERT INTO users (name, age) VALUES (?, ?)", ["Bob", "25"])?
-
-  let rows = Sqlite.query(db, "SELECT name, age FROM users ORDER BY name", [])?
-  List.map(rows, fn(row) do
-    let name = Map.get(row, "name")
-    let age = Map.get(row, "age")
-    println("#{name}:#{age}")
-  end)
-
-  Sqlite.close(db)
-  Ok(0)
+fn round_trip(db :: SqliteConn) -> String!String do
+	Sqlite.execute(db, "CREATE TABLE notes (id INTEGER PRIMARY KEY, body BLOB, caption TEXT)", [])?
+	let body = Bytes.from_hex("00ff")?
+	Sqlite.execute_values(db, "INSERT INTO notes VALUES (?, ?, ?)", [Text("1"), Binary(body), Null])?
+	let rows = Sqlite.query_values(db, "SELECT body, caption FROM notes WHERE id = ?", [Text("1")])?
+	case rows do
+		[] -> Err("no note")
+		row :: _ ->
+			case (Map.get(row, "body"), Map.get(row, "caption")) do
+				(Binary(value), Null) -> Ok(Bytes.to_hex(value))
+				_ -> Err("unexpected note values")
+			end
+	end
 end
 
 fn main() do
-  case run_db() do
-    Ok(_) -> println("done")
-    Err(msg) -> println("error: #{msg}")
-  end
+	case Sqlite.open(":memory:") do
+		Ok(db) ->
+			let result = round_trip(db)
+			Sqlite.close(db)
+			case result do
+				Ok(value) -> println(value)
+				Err(error) -> println(error)
+			end
+		Err(error) -> println(error)
+	end
 end
 ```
 
-## PostgreSQL
+`deriving(Row)` generates `Type.from_row(row)` for a `Map<String, String>`. Fields use the result column names, including SQL aliases. The decoder returns `Result<Type, String>` and handles scalar `String`, `Int`, `Float`, `Bool`, and their optional forms. Pass the decoder to `Pg.query_as` or `Pool.query_as` for `Result<List<Result<Type, String>>, String>`. With SQLite, use `List.map(rows, Type.from_row)` after a successful query. [Struct row decoding](https://meshlang.dev/docs/databases/#struct-row-decoding)
 
-Rules:
-1. `Pg.connect(connection_string) -> Result<Conn, String>` — connects to PostgreSQL.
-2. `Pg.execute(conn, sql, params) -> Result<Int, String>` — DDL and DML.
-3. `Pg.query(conn, sql, params) -> Result<List<Map<String, String>>, String>` — SELECT.
-4. `Pg.close(conn)` — consumes and closes the affine connection capability.
-5. Parameters use `$1`, `$2`, ... placeholders (PostgreSQL syntax).
-6. Params passed as `List<String>`.
-7. Same row map pattern as SQLite: all values are String.
+## PostgreSQL queries and schema
 
-Code example (from tests/e2e/stdlib_pg.mpl):
-```mesh
-fn run_db() -> Int!String do
-  let conn = Pg.connect("postgres://mesh_test:mesh_test@localhost:5432/mesh_test")?
+| Module or derive | Use |
+| --- | --- |
+| `deriving(Schema)` | Read table, key, field, and relationship metadata. It can be combined with `Row`. [Schema metadata](https://meshlang.dev/docs/databases/#schema-metadata) |
+| `Query` and `Expr` | Compose immutable queries with filters, joins, subqueries, aggregates, and ordering. `Expr.value` binds a parameter. `Expr.column` references an identifier. [Query builder](https://meshlang.dev/docs/databases/#query-builder) · [Structured expressions](https://meshlang.dev/docs/databases/#structured-sql-expressions) |
+| `Repo` | Execute queries against a `PoolHandle` with `all`, `one`, `get`, `count`, and other reads. Write through insert, update, delete, or upsert helpers. Use `Repo.preload` for associations and `Repo.query_raw` or `Repo.execute_raw` for parameterized SQL. [Repository operations](https://meshlang.dev/docs/databases/#repository-operations) |
+| `Changeset` | Whitelist and validate input fields before `Repo.insert_changeset` or `Repo.update_changeset`. Failures return a changeset with errors. [Changesets](https://meshlang.dev/docs/databases/#changesets) |
+| `Migration` | Run PostgreSQL DDL through a pool. `meshc migrate generate <name>` creates a timestamped file with `up(pool)` and `down(pool)`. The `up`, `down`, and `status` commands read `DATABASE_URL`. [Migrations](https://meshlang.dev/docs/databases/#migrations) |
+| `Pg` and `Orm` helpers | Use `Pg` for casts, JSONB, full-text search, extensions, and partition management. Use `Orm` when you need generated SQL text. [PostgreSQL-specific helpers](https://meshlang.dev/docs/databases/#postgresql-specific-helpers) · [Low-level SQL builders](https://meshlang.dev/docs/databases/#low-level-sql-builders) |
 
-  let _ = Pg.execute(conn, "CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, name TEXT, age INTEGER)", [])?
-  let _ = Pg.execute(conn, "INSERT INTO users (name, age) VALUES ($1, $2)", ["Alice", "30"])?
+`Repo.transaction(pool, fn)` passes a `borrow PgConn` to its callback and returns the connection to the pool. The callback returns a `Result`. `Ok` commits, and `Err` or a panic rolls back. [Repository writes and transactions](https://meshlang.dev/docs/databases/#writes)
 
-  let rows = Pg.query(conn, "SELECT name FROM users WHERE age > $1", ["26"])?
-  List.map(rows, fn(row) do
-    println(Map.get(row, "name"))
-  end)
+## Durable jobs
 
-  Pg.close(conn)
-  Ok(0)
-end
-```
+`Jobs.migrate(pool)` prepares the queue schema. `Jobs.enqueue` commits separately. Use `Jobs.enqueue_in(conn, namespace, spec)` on a borrowed connection inside a transaction to commit the enqueue together with an application write. Reuse the same enqueue `request_key` and spec when the commit outcome is uncertain. [Enqueue and transaction semantics](https://meshlang.dev/docs/concurrency/#durable-jobs)
 
-## Deriving Row (ORM Pattern)
-
-Rules:
-1. `end deriving(Row)` on a struct generates `TypeName.from_row(map) -> Result<TypeName, String>`.
-2. The map is a `Map<String, String>` (as returned by Sqlite.query / Pg.query).
-3. Automatic type coercion: `Int` fields parse from string, `Float` from string, `Bool` from "t"/"true"/"1".
-4. Field names in the struct must match column names in the query result.
-5. Combine with `List.map` to convert rows to typed structs.
-6. See skills/traits for the full deriving system — Row is one of several available derives.
-
-Code example (from tests/e2e/deriving_row_basic.mpl):
-```mesh
-struct User do
-  name :: String
-  age :: Int
-  score :: Float
-  active :: Bool
-end deriving(Row)
-
-let rows = Sqlite.query(db, "SELECT name, age, score, active FROM users", [])?
-let users = List.map(rows, fn(row) do
-  case User.from_row(row) do
-    Ok(u) -> u
-    Err(e) -> panic("row conversion failed: #{e}")
-  end
-end)
-```
-
-## Advanced Queries (Upserts, RETURNING, Subqueries)
-
-Rules:
-1. Upsert with `ON CONFLICT ... DO UPDATE SET ... RETURNING` uses `Sqlite.query` (not execute) to get results.
-2. `DELETE ... RETURNING` similarly uses `Sqlite.query` to capture deleted rows.
-3. Subqueries are plain SQL — embed with `IN (SELECT ...)`.
-4. `RETURNING` gives back the affected row data as a query result.
-
-Code example (from tests/e2e/sqlite_upsert_subquery_runtime.mpl):
-```mesh
-# Upsert (insert-or-update):
-let rows = Sqlite.query(db,
-  "INSERT INTO projects (id, name, status) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name RETURNING id, name",
-  ["p1", "Alpha", "active"])?
-let row = List.head(rows)
-println("upserted: #{Map.get(row, "name")}")
-
-# DELETE RETURNING:
-let deleted = Sqlite.query(db,
-  "DELETE FROM projects WHERE id = ? RETURNING id, name",
-  ["p3"])?
-let del_row = List.head(deleted)
-println("deleted: #{Map.get(del_row, "name")}")
-
-# Subquery:
-let results = Sqlite.query(db,
-  "SELECT name FROM projects WHERE org_id IN (SELECT id FROM organizations WHERE name = ?)",
-  ["Acme Corp"])?
-```
-
-## JOINs and Aggregations
-
-Rules:
-1. JOINs are plain SQL — `INNER JOIN`, `LEFT JOIN`, etc. — no special Mesh syntax.
-2. Aggregations (`COUNT`, `SUM`, `AVG`, `MAX`, `MIN`) use SQL directly.
-3. `GROUP BY` and `ORDER BY` are plain SQL.
-4. Results are always `List<Map<String, String>>` — column aliases work as map keys.
-
-Code example (from tests/e2e/sqlite_join_runtime.mpl):
-```mesh
-let rows = Sqlite.query(db,
-  "SELECT u.name, COUNT(p.id) AS project_count FROM users u LEFT JOIN projects p ON u.id = p.user_id GROUP BY u.id ORDER BY u.name",
-  [])?
-List.map(rows, fn(row) do
-  let name = Map.get(row, "name")
-  let count = Map.get(row, "project_count")
-  println("#{name}: #{count} projects")
-end)
-```
-
-## Gotchas
-
-Rules:
-1. Always close SQLite connections with `Sqlite.close(db)`. `PgConn` is affine and closes automatically at scope exit; use `Pg.close(conn)` to release it earlier.
-2. SQLite parameters use `?` placeholders; PostgreSQL uses `$1`, `$2`, ...
-3. Row map values are always `String` — no implicit type conversion without `deriving(Row)`.
-4. For `INSERT`/`UPDATE`/`DELETE` without `RETURNING`, use `execute` (not `query`).
-5. For `INSERT ... RETURNING` or `DELETE ... RETURNING`, use `query` to receive the rows.
+`Jobs.start` runs named handlers in separate attempt processes. Retries keep the same `effect_key` for deduplication. `Jobs.control` inspects and manages queues, including recurring schedules. Stop and join runners before closing their pool. [Workers and retries](https://meshlang.dev/docs/concurrency/#run-workers-and-handle-retries) · [Queue operations](https://meshlang.dev/docs/concurrency/#inspect-and-operate-queues) · [Recurring jobs](https://meshlang.dev/docs/concurrency/#recurring-jobs)

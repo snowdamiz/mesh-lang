@@ -56,8 +56,8 @@ end
 
 impl Iterable for EvenNumbers do
   type Item = Int
-  type Iter = ListIterator
-  fn iter(self) -> ListIterator do
+  type Iter = Iter<Int>
+  fn iter(self) -> Iter<Int> do
     Iter.from(self.items)
   end
 end
@@ -404,12 +404,12 @@ end
 
 ### Set.collect
 
-`Set.collect` gathers integer elements into a set, automatically removing
-duplicates:
+`Set.collect` gathers the remaining elements of an `Iter<T>` into a `Set<T>`
+and removes duplicates.
 
 ```mesh
 fn main() do
-  let list = [1, 2, 2, 3, 3, 3]
+  let list = ["retry", "ok", "retry"]
   let s = Iter.from(list) |> Set.collect()
   println("${Set.size(s)}")
 
@@ -454,7 +454,7 @@ end
 | `Iter.reduce(iter, initial, fn)` | `T` | `initial` and the function's result have the element type |
 | `List.collect(iter)` | `List<T>` | Materializes all remaining values |
 | `Map.collect(iter)` | `Map<K, V>` | Takes an `Iter<(K, V)>` |
-| `Set.collect(iter)` | `Set` | Takes an `Iter<Int>`; removes duplicates |
+| `Set.collect(iter)` | `Set<T>` | Takes an `Iter<T>` and removes duplicates |
 | `String.collect(iter)` | `String` | Takes an `Iter<String>` |
 
 ## Building Pipelines

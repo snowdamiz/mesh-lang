@@ -1,240 +1,78 @@
 # Mesh actors
 
-## What are Actors
+## Spawn, send, and receive
 
-Rules:
-1. Actors are lightweight concurrent processes — each has its own heap and mailbox.
-2. Actors communicate only by message passing (no shared mutable state).
-3. The Mesh runtime schedules actors cooperatively with preemption.
-4. Actors are defined statically with `actor name(params) do ... end`.
+An actor has its own heap and mailbox. `spawn(actor_name, args...)` runs a named actor concurrently and returns a `Pid<T>`, where `T` is the mailbox's message type. Give the spawned PID an explicit type if the receive arms and typed send sites leave the type ambiguous. Inside an actor, `self()` returns its own PID. Pass it in a message when the receiver needs a reply address. [Spawning actors](https://meshlang.dev/docs/concurrency/#spawning-actors)
 
-## Defining an Actor
+`receive` waits for the next message. Its arms support patterns and `when` guards and must cover the message type. An optional `after milliseconds -> value` arm runs if the wait times out. The actor exits when its body returns. Tail-call the actor with updated arguments to keep receiving.
 
-Rules:
-1. `actor name(params) do receive do pattern -> action ... end end`
-2. The `receive` block matches against incoming messages — patterns work like `case`.
-3. Actors can accept initial state via parameters: `actor counter(n :: Int) do`.
-4. An actor terminates when its `receive` block finishes without looping.
-5. To loop (keep alive), have the receive handler call back into the actor or use tail-call recursion.
-
-Code example (from tests/e2e/actors_basic.mpl):
 ```mesh
-actor greeter() do
-  receive do
-    msg -> println("actor received")
-  end
+type CountCommand do
+	Add(amount :: Int)
+	Stop
 end
-```
 
-Code example with args (from tests/e2e/actors_with_args.mpl):
-```mesh
-actor counter(n :: Int) do
-  receive do
-    _ -> println("count: #{n}")
-  end
-end
-```
-
-## Spawning Actors
-
-Rules:
-1. `spawn(actor_name)` starts a new actor instance and returns its `Pid`.
-2. `spawn(actor_name, args...)` passes initial arguments.
-3. `Pid` is typed: `spawn(int_receiver)` returns `Pid<Int>` — message type enforced.
-4. The spawned actor runs concurrently from this point.
-
-Code example (from tests/e2e/actors_typed_pid.mpl):
-```mesh
-actor int_receiver() do
-  receive do
-    n -> println("typed pid ok")
-  end
+actor counter(total :: Int) do
+	receive do
+		Add(amount) -> counter(total + amount)
+		Stop -> println("total=#{total}")
+		after 1_000 -> println("idle=#{total}")
+	end
 end
 
 fn main() do
-  let pid = spawn(int_receiver)  # Pid<Int> — only Int messages accepted
-  send(pid, 42)
-  println("typed pid sent")
+	let pid = spawn(counter, 0)
+	send(pid, Add(5))
+	send(pid, Stop)
 end
 ```
 
-## Sending and Receiving Messages
+`send(pid, message)` is asynchronous and returns an `Int`. A status of `0` means the message was enqueued locally or written to the remote connection. Codes `1`, `2`, and `3` mean missing PID, full mailbox, and message too large. Codes `4`, `5`, `6`, and `7` mean unavailable remote node, failed remote write, nontransferable value, and a remote send from a grouped actor. [Message passing](https://meshlang.dev/docs/concurrency/#message-passing)
 
-Rules:
-1. `send(pid, message)` — delivers message to actor's mailbox asynchronously.
-2. Messages are type-checked against the Pid's type parameter: `Pid<Int>` only accepts Int.
-3. `receive do ... end` inside an actor processes the next message from the mailbox.
-4. The actor blocks at `receive` until a matching message arrives.
-5. `self()` inside an actor returns the actor's own Pid — used for self-messaging in loops.
+The scheduler yields at waits and reduction checkpoints. Use `spawn grouped(actor_name, args...)` for actors that exchange frequent messages on the same node. An actor spawned from inside a group joins its worker. Each actor keeps its own mailbox and heap. Grouped code must use operations the compiler can verify will yield or return without blocking that worker. [Grouped actors](https://meshlang.dev/docs/concurrency/#keep-communicating-actors-on-one-worker)
 
-Code example with actor loop (from tests/e2e/tce_actor_loop.mpl):
-```mesh
-actor countdown() do
-  receive do
-    n ->
-      if n > 0 do
-        println("#{n}")
-        send(self(), n - 1)
-      else
-        println("done")
-      end
-  end
-end
+## Lifecycle and process names
 
-fn main() do
-  let pid = spawn(countdown)
-  send(pid, 5)
-end
-```
+- `link(pid)` propagates abnormal exits in both directions. Normal and shutdown exits remove the link. Link exit signals are internal to the runtime and supervisors.
+- `Process.monitor(pid, message)` sends the calling actor a message of its own mailbox type when the target exits for any reason. A missing target fires the monitor immediately. `Process.demonitor(ref)` removes an outstanding monitor owned by the caller. It returns `0` on success or `1` if the caller no longer holds the reference.
+- A `terminate do ... end` block in an actor declaration provides a cleanup callback for spawned actors. See [child specifications](supervisors.md#child-specifications) for the current supervised-child limitation. [Links, monitors, and termination](https://meshlang.dev/docs/concurrency/#linking-and-monitoring)
+- `Process.register(name, pid)` registers a local name and returns `0` on success or `1` on failure. `Process.whereis(name)` returns an untyped PID and uses PID `0` for an absent name. Keep a typed spawn site for the registered actor.
+- `Process.install_shutdown_signals()` turns `SIGINT` and `SIGTERM` into a process-wide shutdown request. `Process.request_shutdown()` sets the same flag, and `Process.shutdown_requested()` reads it. `Process.exit(status)` exits the native process. [Process names and shutdown](https://meshlang.dev/docs/concurrency/#process-names-and-shutdown)
 
-## Typed PIDs
+## Stateful services
 
-Rules:
-1. `Pid<T>` is the type of a process identifier that accepts messages of type T.
-2. `spawn` infers the Pid type from the actor's receive pattern type.
-3. `send(pid, value)` is type-checked: value must match T.
-4. Typed PIDs make actor communication safe — wrong message types are compile errors.
+A `service` is an actor with generated methods. `init` returns its initial state. A `call` handler returns `(new_state, reply)` and the caller waits for that reply. A `cast` handler returns the new state and its caller continues without waiting for it to run. Both kinds of handler generate snake-case methods.
 
-## Linking Actors
-
-Rules:
-1. `link(pid)` establishes a bidirectional crash link between the current actor and `pid`.
-2. If the linked actor crashes, the current actor also receives an exit signal.
-3. Used to build supervision trees at a low level (prefer `supervisor` blocks for structured supervision).
-
-Code example (from tests/e2e/actors_linking.mpl):
-```mesh
-# link(pid) -- links caller to pid; if pid crashes, caller also crashes
-fn main() do
-  let pid = spawn(worker)
-  link(pid)
-  send(pid, "hello")
-end
-```
-
-## Actor Preemption
-
-Rules:
-1. The Mesh runtime can preempt long-running actors to prevent starvation.
-2. Actors yield at receive points and at reduction checkpoints.
-3. No manual yield needed in normal code — the runtime handles scheduling.
-
-## Concurrent Messaging Pattern
-
-Rules:
-1. For request-reply, pass the sender's Pid as part of the message.
-2. The receiving actor sends a response to the provided Pid.
-3. For fire-and-forget, just call `send` without waiting for a response.
-
-Code example (from tests/e2e/actors_basic.mpl):
-```mesh
-actor greeter() do
-  receive do
-    msg -> println("actor received")
-  end
-end
-
-fn main() do
-  let pid = spawn(greeter)
-  send(pid, 1)
-  println("main done")
-end
-```
-
-## Services (Stateful OTP-style Processes)
-
-Rules:
-1. `service Name do init ... call ... cast ... end` defines a stateful, message-handling process (gen_server pattern).
-2. `fn init(params...) -> State do ... end` — initializes state; return type defines the state type.
-3. `call OpName(params) :: ReturnType do |state| ... end` — synchronous handler; body returns `(new_state, return_value)`.
-4. `cast OpName(params) do |state| ... end` — asynchronous handler (fire-and-forget); body returns just `new_state`.
-5. `Name.start(init_args...)` — spawns the service actor and returns its Pid.
-6. `Name.op_name(pid, args...)` — calls an operation synchronously (snake_case of the defined OpName).
-7. `Name.cast_op_name(pid, args...)` — fires a cast operation asynchronously (no return value captured).
-8. State is private — external code only interacts through call/cast operations.
-
-Code example (from tests/e2e/service_counter.mpl):
 ```mesh
 service Counter do
-  fn init(start_val :: Int) -> Int do
-    start_val
-  end
+	fn init(initial :: Int) -> Int do
+		initial
+	end
 
-  call GetCount() :: Int do |count|
-    (count, count)
-  end
+	call GetCount() :: Int do |count|
+		(count, count)
+	end
 
-  call Increment(amount :: Int) :: Int do |count|
-    (count + amount, count + amount)
-  end
-
-  cast Reset() do |_count|
-    0
-  end
+	cast ResetCount() do |_count|
+		0
+	end
 end
 
 fn main() do
-  let pid = Counter.start(10)
-  let c1 = Counter.get_count(pid)    # sync call, returns Int
-  println("${c1}")                   # 10
-  let c2 = Counter.increment(pid, 5) # sync call, returns Int
-  println("${c2}")                   # 15
-  Counter.reset(pid)                 # async cast, no return
-  let c3 = Counter.get_count(pid)    # 0
-  println("${c3}")
+	let pid = Counter.start(10)
+	println("#{Counter.get_count(pid)}")
+	Counter.reset_count(pid)
+	println("#{Counter.get_count(pid)}")
 end
 ```
 
-Code example with struct state (from tests/e2e/service_bool_return.mpl):
-```mesh
-struct LimitState do
-  count :: Int
-  max :: Int
-end
+A call waits for its own reply and leaves ordinary mailbox messages queued. The caller panics if the service is gone, stops before replying, or cannot accept the call because its mailbox is full. Keep synchronous service dependencies acyclic. [Services and generated methods](https://meshlang.dev/docs/concurrency/#services-genserver)
 
-service Limiter do
-  fn init(max :: Int) -> LimitState do
-    LimitState { count: 0, max: max }
-  end
+## Jobs, timers, and bounded channels
 
-  call Check() :: Bool do |state|
-    if state.count >= state.max do
-      (state, false)
-    else
-      let new_state = LimitState { count: state.count + 1, max: state.max }
-      (new_state, true)
-    end
-  end
-end
+- `Job.async(fn)` runs a zero-argument function in an actor and returns a job PID. The starting actor reads the result once through `Job.await(job)` or `Job.await_timeout(job, milliseconds)`. Both return `Result<T, String>`. A panic becomes `Err`. A timeout leaves the job running. `Job.map(values, fn)` returns one result per input in input order. The runtime bounds uncollected replies. [In-process jobs and reply limits](https://meshlang.dev/docs/concurrency/#jobs)
+- `Jobs` persists queued work in PostgreSQL. It supports scheduled and recurring work, retries, and leased attempts with at-least-once delivery. See [database access](database.md#durable-jobs) for transaction boundaries. [Durable jobs](https://meshlang.dev/docs/concurrency/#durable-jobs)
+- `Timer.sleep(ms)` suspends the caller cooperatively. `Timer.send_after(pid, ms, message)` sends a typed actor message. To invoke a service cast later, use `Timer.apply_after(ms, fn)` with a zero-argument function that calls the generated cast method. Timers use monotonic deadlines. [Timers](https://meshlang.dev/docs/concurrency/#timers)
+- `Channel.bounded(items, policy)` or `Channel.bounded_bytes(items, bytes, policy)` returns a typed in-process queue in a `Result`. Policies are `:reject_newest`, `:drop_oldest`, and `:latest_only`. `Channel.try_send` returns immediately. `Channel.recv(channel, timeout_nanos)` yields while waiting and polls with `0`. `Duration.millis` and `Duration.seconds` construct the timeout. Inspect occupancy and drops with `Channel.depth`, `Channel.byte_depth`, and `Channel.dropped`. [Bounded channels](https://meshlang.dev/docs/concurrency/#bounded-channels)
 
-fn main() do
-  let pid = Limiter.start(2)
-  let ok = Limiter.check(pid)   # true (first call)
-  println("${ok}")
-end
-```
-
-## Job Module (Async Tasks)
-
-Rules:
-1. `Job.async(fn() -> expr end)` — spawns a function on the actor runtime and returns a Job handle immediately.
-2. `Job.await(job) -> Result<T, String>` — blocks until the job completes and returns `Ok(result)` or `Err(message)` on panic.
-3. Use for fire-and-collect concurrency: submit multiple jobs, then await each.
-4. The closure passed to `Job.async` must take no arguments: `fn() -> ... end`.
-
-Code example (from tests/e2e/job_async_await.mpl):
-```mesh
-fn main() do
-  let job = Job.async(fn() -> 42 end)
-  let result = Job.await(job)
-  case result do
-    Ok(val) -> println("${val}")   # 42
-    Err(msg) -> println(msg)
-  end
-end
-```
-
-## See Also
-
-- [supervisors](supervisors.md) — supervisors manage and restart crashed actors
-- [types](types.md) — Pid<T> and typed message patterns
+See [supervisors](supervisors.md) for child restarts and [clustering](clustering.md#distributed-actors-and-names) for remote messaging.

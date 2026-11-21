@@ -1,147 +1,55 @@
 # Mesh collections
 
-## List<T>
+Lists, maps, sets, and queues are immutable. Update functions return the updated collection. Rebind with `let` to use the new value. Map keys and set elements compare using their type's `Eq`.
 
-Rules:
-1. `List.new()` creates an empty list. Literal syntax: `[1, 2, 3]`.
-2. `List.append(list, value)` appends an element (returns new list — rebind with `let list =`).
-3. `List.map(list, fn)` transforms every element.
-4. `List.filter(list, fn)` keeps elements where fn returns true.
-5. `List.find(list, fn)` returns `Option<T>` — `Some(first_match)` or `None`.
-6. `List.sort(list)` sorts in ascending order.
-7. `List.any(list, fn)` / `List.all(list, fn)` — boolean predicates.
-8. `List.contains(list, value)` — membership test.
-9. `List.head(list)` returns the first element (panics on empty — use `List.find` for safe access).
-10. `List.take(list, n)` / `List.drop(list, n)` — prefix/suffix slicing.
-11. `List.zip(list1, list2)` — pairs elements into `List<(A, B)>`.
-12. `List.enumerate(list)` — wraps each element with its index `(index, value)`.
-13. `List.flat_map(list, fn)` — map then flatten (fn returns a List).
-14. `List.get(list, index)` — returns element at zero-based index (panics if out of bounds).
-15. `List.length(list)` — returns the number of elements as Int.
-16. `list1 ++ list2` — concatenates two lists into a new list (the `++` infix operator).
+## Lists and tuples
 
-Code example (from tests/e2e/stdlib_list_pipe_chain.mpl):
+`[1, 2, 3]` is a `List<Int>`. `List.new()` makes an empty list. `List.append(xs, x)` appends one value, and either `xs ++ ys` or `xs <> ys` concatenates lists of the same element type.
+
+- `List.length` counts elements. `List.get` and `List.nth` use zero-based indices and panic out of bounds. `List.head`, `List.tail`, and `List.last` require a non-empty list. `List.find(xs, predicate)` returns `Some(first_match)` or `None`. `List.contains` tests membership, and `List.any` and `List.all` take predicates.
+- `List.map`, `List.filter`, `List.flat_map`, and `List.reduce` are eager. `List.reduce(xs, initial, fn acc, x -> ... end)` folds the list. The prelude also exposes `map`, `filter`, `reduce`, `head`, and `tail`.
+- `List.sort(xs, cmp)` takes a comparator returning a negative, zero, or positive `Int`. `List.take` and `List.drop` operate on a prefix. `List.zip(xs, ys)` pairs values up to the shorter length, and `List.enumerate(xs)` produces `(index, value)` pairs from index zero.
+- Tuples can mix types. `let (name, age) = pair` destructures one. `Tuple.first`, `Tuple.second`, and `Tuple.nth(pair, index)` return the selected element's type when the tuple type is known. With a known tuple type, a computed index requires all elements to share a type.
+
+## Maps, sets, ranges, and queues
+
+| Type | Construction and access |
+| --- | --- |
+| `Map<K, V>` | `%{"name" => "Ada"}` or `Map.new()`. Update with `Map.put` and `Map.delete`. Check `Map.has_key(m, k)` before `Map.get(m, k)` when the key may be absent. A missing key panics. `Map.size` counts entries. `Map.to_list` and `Map.from_list` convert `(key, value)` tuples. |
+| `Set<T>` | `Set.new()` or `Set.from_list(xs)`. Use `Set.add`, `Set.remove`, `Set.contains`, and `Set.size`. `Set.union`, `Set.intersection`, and `Set.difference` combine sets. |
+| `Range` | `start..end` or `Range.new(start, end)`. The upper bound is exclusive. `Range.to_list` materializes the integers. A range is empty when the end is at or below the start. |
+| `Queue<T>` | `Queue.new()` and `Queue.push(q, x)` create and append. `Queue.size(q)` counts items. On a non-empty queue, `Queue.peek(q)` reads the front and `Queue.pop(q)` returns `(front, rest)`. Check `Queue.is_empty(q)` before reading a queue that may be empty. |
+
 ```mesh
-# Note: bare map/filter/reduce are global aliases — prefer module-qualified List.map,
-# List.filter, List.reduce in new code for clarity.
-let list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-let doubled = map(list, fn(x) -> x * 2 end)
-let filtered = filter(doubled, fn(x) -> x > 10 end)
-let sum = reduce(filtered, 0, fn(acc, x) -> acc + x end)
-println("#{sum}")
-```
+fn main() do
+  let ordered = [3, 1, 2] |> List.sort(fn a, b -> a - b end)
+  let names = %{"name" => "Ada"}
+  if Map.has_key(names, "name") do
+    println(Map.get(names, "name"))
+  end
 
-Code example — indexing and concat (from tests/e2e/list_append_string.mpl and tests/e2e/list_concat.mpl):
-```mesh
-# Indexing and length:
-let ss = ["hello"]
-let ss = List.append(ss, "world")
-let len = List.length(ss)       # 2
-let second = List.get(ss, 1)    # "world"
-println("${len}")
-println(second)
-
-# List concatenation with ++:
-let a = [1, 2]
-let b = [3, 4]
-let combined = a ++ b           # [1, 2, 3, 4]
-let first = List.get(combined, 0)  # 1
-```
-
-## Map<K, V>
-
-Rules:
-1. `Map.new()` creates an empty map.
-2. `Map.put(map, key, value)` inserts or updates (returns new map — rebind).
-3. `Map.get(map, key)` returns the value directly (panics if key absent — use carefully).
-4. `Map.contains(map, key)` — membership test.
-5. Key type: typically `String` in practice; Map<String, String> is common for database rows.
-
-Code example (from tests/e2e/stdlib_map_basic.mpl):
-```mesh
-let m = Map.new()
-let m = Map.put(m, "name", "Alice")
-let m = Map.put(m, "age", "30")
-let name = Map.get(m, "name")
-println(name)
-```
-
-## Set<T>
-
-Rules:
-1. `Set.new()` creates an empty set.
-2. `Set.insert(set, value)` adds an element (duplicates ignored).
-3. `Set.contains(set, value)` — membership test.
-4. `Set.remove(set, value)` removes an element.
-5. Convert from List: `Set.from_list(list)` or `list |> collect(Set)`.
-6. Convert to List: `Set.to_list(set)`.
-
-## Range
-
-Rules:
-1. `Range.new(start, end)` creates an integer range (inclusive start, exclusive end).
-2. Use with `for item in range do` for counted loops.
-3. `Iter.from(range)` converts to an iterator for pipeline operations.
-
-Code example (from tests/e2e/stdlib_range_basic.mpl and tests/e2e/for_in_range.mpl):
-```mesh
-let r = Range.new(0, 10)
-for i in r do
-  println("#{i}")
+  let queue = Queue.new() |> Queue.push(List.head(ordered)) |> Queue.push(9)
+  let (front, rest) = Queue.pop(queue)
+  println("#{front}, #{Queue.peek(rest)}")  # 1, 9
 end
 ```
 
-## Queue<T>
+## Lazy iterators
 
-Rules:
-1. `Queue.new()` creates an empty FIFO queue.
-2. `Queue.push(q, value)` enqueues at back.
-3. `Queue.pop(q)` returns `Option<(T, Queue<T>)>` — `Some((value, new_queue))` or `None`.
-4. Used for ordered workloads and actor mailbox-style processing.
+`Iter.from(source)` takes a list, map, set, or range. It produces an `Iter<T>` over elements, `(K, V)` tuples for maps, and `Int` values for ranges. `Iter.map`, `Iter.filter`, `Iter.take`, `Iter.skip`, `Iter.enumerate`, and `Iter.zip` produce lazy adapters.
 
-## Iter Pipelines
+An iterator is single-pass. `Iter.next` advances one element and returns `None` when exhausted. Terminals such as `Iter.count`, `Iter.sum` (integers), `Iter.reduce`, `Iter.any`, `Iter.all`, and `Iter.find` pull elements as needed. Create a fresh iterator to start over. `List.collect`, `Set.collect`, `Map.collect`, and `String.collect` materialize the remaining values. Map collection takes an iterator of pairs, and string collection takes an iterator of strings.
 
-Rules:
-1. `Iter.from(collection)` converts any collection (List, Range, Set) to a lazy iterator.
-2. Chain operations: `|> Iter.map(fn)`, `|> Iter.filter(fn)`, `|> Iter.take(n)`, `|> Iter.skip(n)`.
-3. Terminal operations: `|> Iter.count()`, `|> Iter.sum()`, `|> Iter.collect()`.
-4. Iterators are lazy — no work done until a terminal operation is called.
-5. Significantly more efficient than chaining List operations (avoids intermediate allocations).
-
-Code example (from tests/e2e/iter_pipeline.mpl):
 ```mesh
-let list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+fn main() do
+  let unique = Iter.from(["b", "a", "b", "skip"])
+    |> Iter.filter(fn word -> word != "skip" end)
+    |> Set.collect()
+  println("#{Set.size(unique)}")  # 2
 
-# map -> filter -> take -> count
-let result = Iter.from(list)
-  |> Iter.map(fn x -> x * 2 end)
-  |> Iter.filter(fn x -> x > 10 end)
-  |> Iter.take(3)
-  |> Iter.count()
-println(result.to_string())
-
-# filter -> map -> sum
-let result2 = Iter.from(list)
-  |> Iter.filter(fn x -> x > 5 end)
-  |> Iter.map(fn x -> x * 10 end)
-  |> Iter.sum()
-println(result2.to_string())
-
-# Windowing with skip + take
-let window = Iter.from(list)
-  |> Iter.skip(2)
-  |> Iter.take(5)
-  |> Iter.count()
+  let indexed = Iter.from(["a", "b"]) |> Iter.enumerate() |> Map.collect()
+  println(Map.get(indexed, 1))  # b
+end
 ```
 
-## Global Collection Functions
-
-Rules:
-1. `map(collection, fn)`, `filter(collection, fn)`, `reduce(collection, init, fn)` are available globally (no module prefix needed).
-2. These are the same as `List.map`, `List.filter` etc. — prefer module-qualified form in new code for clarity.
-3. `collect(List)` / `collect(Set)` / `collect(Map)` terminates a pipeline into the target collection type.
-
-## See Also
-
-- [types](types.md) — List<T>, Map<K,V>, Set<T> type signatures
-- [syntax](syntax.md) — |> pipe operator used in Iter pipelines
+See [syntax](syntax.md) for filtered `for` and pipes, the [standard-library collection APIs](https://meshlang.dev/docs/stdlib/#eager-collections), and the [iterator guide](https://meshlang.dev/docs/iterators/) for terminals and user-defined iterables.
