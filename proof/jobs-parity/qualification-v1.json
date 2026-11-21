@@ -6402,6 +6402,64 @@
     "test": "jobs::runner::effect_proof::exact_child_effect_uses_confirmed_claim_and_reaps",
     "scope": "Isolated runtime test drives confirmed launch, restricted fixture grants, revocation, recovery, exact reap, and settlement. The fixture child uses a native test entry point and the test owns the lifecycle calls."
   },
+  "compiled_handler_fenced_effect_proof": {
+    "revision": "c88c238cbef5cc83f47fb44f95ccdbea60568907",
+    "base": "0f30fde70d2135d7b3da4bfc10d4de51f7d11631",
+    "host": "macOS arm64",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "toolchain": {
+      "source": "c88c238cbef5cc83f47fb44f95ccdbea60568907",
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+      "runtime_features": [
+        "jobs-effect-fixture"
+      ],
+      "sha256": {
+        "meshc": "a6db273e3c4425a946618bd24e7224c5ebfe4b745ba15d0547b491056d2d201d",
+        "libmesh_rt.a": "e0f139db4009d32f4df8c711ee626884a4a7a030ee3117c1936205d09c5ba95b",
+        "libworker_identity.a": "cd0374065e68bb2b074762efdb40d05975d978dd8f9bda8a98938c4da4911a09",
+        "mesh-effect-fixture": "de3e36ded311c58d9ee1743cb5f7065e759603545ba90cb28e51d225bedf58e2"
+      }
+    },
+    "lanes": {
+      "effect-compiled": {
+        "log": "target/jobs-parity/c88c238cbef5cc83f47fb44f95ccdbea60568907/compiled-effect-local/effect-compiled.log",
+        "log_sha256": "40fe83ffc88c23b63d1e407e0fdb2af8d13f02d8d4ef688512d2e358333f7675",
+        "cases_passed": 2
+      },
+      "effect-wire": {
+        "log": "target/jobs-parity/c88c238cbef5cc83f47fb44f95ccdbea60568907/compiled-effect-local/effect-wire.log",
+        "log_sha256": "8d31f4553510013a3400d638afec9bfc3264b311e9d7fc875f86ed3b848e3784",
+        "cases_passed": 3
+      },
+      "effect-worker": {
+        "log": "target/jobs-parity/c88c238cbef5cc83f47fb44f95ccdbea60568907/compiled-effect-local/effect-worker.log",
+        "log_sha256": "8aa417a5b3cbcee286ad0f0773bbb02d8b6b2fd9e1e7a755aac96c2a3f6700ca",
+        "cases_passed": 1
+      }
+    },
+    "compiled_cases": [
+      {
+        "case": "initial_success",
+        "run": 1,
+        "handler_pids": [
+          71300
+        ],
+        "effect_id": 3,
+        "settled": "completed"
+      },
+      {
+        "case": "revoked_receipt",
+        "run": 1,
+        "handler_pids": [
+          71321,
+          71333
+        ],
+        "effect_id": 4,
+        "settled": "completed"
+      }
+    ],
+    "scope": "Feature-gated compiled syntax and normal Jobs dispatcher. One fixed SQL operation with scoped login and fresh effect sessions. The first committed receipt can be withheld and recovered under a fresh lease on the next exact child. No warm session or timing claim."
+  },
   "linux_worker_phase_residency_and_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "postgres": "17.11 verified TLS and SCRAM",

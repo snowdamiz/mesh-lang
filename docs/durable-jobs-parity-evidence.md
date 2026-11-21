@@ -2104,9 +2104,23 @@ revocation before send, a stale generation, a grant presented by a
 different child, confirmed renewal, EOF, and a committed result held
 across revocation. It verified receipt recovery, exact reap, and durable
 settlement by the successor. The test owned the lifecycle calls and used
-a native fixture child. Compiled handler and dispatcher integration
-remain open.
+a native fixture child.
 [Exact-child effect receipt](../proof/jobs-parity/qualification-v1.json)
+
+The separate feature-gated `c88c238c` fixture ran a compiled Mesh
+handler through `Jobs.start` and the normal dispatcher. Two cases
+passed on macOS arm64 with PostgreSQL 17.11 over verified TLS and
+SCRAM. In the second case the parent held a committed effect receipt
+and revoked its permit before returning it to the child. The first
+attempt reaped and settled as retryable. A fresh child completed the
+same job on attempt two and returned the original effect ID. The
+independent PostgreSQL check observed one effect and one receipt for
+the job. The three wire tests and the earlier exact-child test also
+passed at this revision. The compiled route used one fixed operation,
+one dispatcher slot, and fresh sessions. Prewarmed reuse, renewal and
+watchdog coverage through the compiled route, and performance
+qualification remain open.
+[Compiled effect receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 
