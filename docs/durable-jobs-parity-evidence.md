@@ -4183,11 +4183,15 @@ The same `30a0432c` executable and libc observer passed all 12
 native fault cases on Linux ARM64 with PostgreSQL 19.0. The 18.7
 run reached the reset-loss case and timed out waiting for the
 retryable row after the consuming wait. The shutdown report
-recorded one retryable outcome. The run remains a failed proof,
-and the archived results retain both the wait and shutdown evidence.
+recorded one retryable outcome and the session retirement error.
+At this revision, that error is set by running-phase admission
+after the prior attempt leaves the single slot. Maintenance can
+promote an immediately due retryable row to available between
+observer polls. The capture lacks the last observed row, so that
+explanation remains a hypothesis and the proof remains failed.
 [Versioned native fault receipts](../proof/jobs-parity/qualification-v1.json)
 
-The corrected bounded-pool draft at `ee686882` passed 35 sampled
+The corrected bounded-pool draft at `ee686882` passed 35 focused
 Linux ARM64 runtime tests. The three-worker PostgreSQL 17.11 gate
 proved that two operations held exclusive connections, a third
 worker acquired the released session, and the surviving session
@@ -4205,6 +4209,50 @@ each at 20 connections. The large repeat spread leaves the throughput
 ordering unresolved. Process samples missed peak occupancy in the
 shortest arm, so this run cannot qualify the full-slot RSS budget.
 [Bounded-pool native and timing receipts](../proof/jobs-parity/qualification-v1.json)
+
+Five fresh-boot groups repeated the LISTEN-off comparison with
+rotated order and one warmup per arm per boot. The measured arms
+reconciled 2,560 jobs, 5,120 separately committed writes, 5,120 full
+resets, and 2,560 consuming waits matched to their worker PIDs.
+
+| Warm sessions | Median jobs/s | Median pickup p99 (ms) | Peak database connections |
+| --- | ---: | ---: | ---: |
+| 4 | 939 | 133 | 8 |
+| 8 | 343 | 362 | 12 |
+| 16 | 968 | 127 | 20 |
+| 16, identical repeat | 463 | 272 | 20 |
+
+Four sessions beat both 16-session runs in three groups. The median
+paired gain over the faster control was 20 jobs/s, within the median
+146 jobs/s spread between the identical controls. Several slow arms
+spent 229–254 ms before first claim. Others spent longer draining
+after claim. These timings leave throughput ordering unresolved.
+Four sessions use the fewest connections of the tested configurations.
+The series omits Oban and full-occupancy RSS measurement.
+[Matched bounded-pool receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Prove one-slot LISTEN under five connections
+
+The separate `21c4ad7a` draft used the same Linux GNU ARM64
+executable for polling, LISTEN, and a listener outage on
+PostgreSQL 17.11. LISTEN used one backend for claim, renewal,
+and settlement. Maintenance, LISTEN, the application session,
+and the producer/observer occupied the other four connections.
+All seven jobs had two separately committed operations on the
+warm application session, a full reset after each operation,
+and an exact consuming wait before settlement.
+
+The first LISTEN claim followed a real notification and its
+matching scan counter. With the listener disconnected, the
+runner claimed through fallback, found work committed during
+the outage on resubscription, then used a notification again.
+The other four backend identities stayed stable. The producer
+and application sessions used verified TLS with SCRAM. The Jobs
+sessions used plaintext SCRAM on loopback to expose the frames
+to the observer. The proof used a 2,500 ms poll interval and did
+not run the frozen sparse performance workload or native claim
+confirmation-loss cases.
+[One-slot LISTEN receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 
