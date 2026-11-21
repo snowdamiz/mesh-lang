@@ -2472,6 +2472,25 @@ The scored guest boots took 102–106 seconds each. The initial
 pilot and five groups used less than 186 KiB of gzip evidence per boot.
 [Staged sparse receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare 512 KiB payloads with eight runners
+
+The first 2 GiB guest ran both Mesh pilots. During the first scored
+group the guest kernel killed the PostgreSQL backend serving Oban's
+large enqueue, and PostgreSQL entered recovery. The receipt preserves
+that failed group. A separate 4 GiB guest series kept the same two
+vCPUs, binaries, pending-context cap, and scored resource limits for
+both engines.
+
+All five groups and both traced pilots completed in the 4 GiB series
+at `c271319e`. The two identical Mesh arms reached 320.5 and 334.8
+jobs/s versus 258.8 for Oban, with four and three group wins. Pickup
+p99 was 192.6 and 184.2 ms versus 237.2. Both Mesh arms passed all
+scored limits, with at most 4,196,960 queued context bytes per runner
+against 32 MiB. All 960 scored jobs reconciled one attempt and one
+effect each. The staged comparison used a new PostgreSQL 17.11
+cluster and the full warmup in each boot.
+[Large-payload and guest failure receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
