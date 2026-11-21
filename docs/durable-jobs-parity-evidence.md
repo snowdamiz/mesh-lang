@@ -2691,6 +2691,21 @@ and pickup. The smaller effect interval leaves a repeatable
 end-to-end gain open.
 [Effect lock experiment](../proof/jobs-parity/qualification-v1.json)
 
+### Retest the effect lock change in five groups
+
+The same SQL and executable passed the untimed native pilot and
+reconciled all 20,480 scored jobs in five new matched groups.
+The treatment beat both Mesh controls in two groups for throughput
+and in two for effect executor time. Its median paired throughput
+was 88% of the control geometric mean. The identical controls
+differed by a median of 3.4%.
+
+The treatment reached 970 jobs/s, the controls reached 1,011 and
+985, and Oban reached 2,699. The treatment also missed pickup p99.
+The wider comparison did not reproduce the two-group improvement.
+The SQL change remains experimental.
+[Five-group effect lock receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360

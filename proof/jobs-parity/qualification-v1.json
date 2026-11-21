@@ -12340,6 +12340,311 @@
       }
     }
   },
+  "linux_fenced_jobs_noop64_effect_lock_savepoint_five_groups": {
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "scope": "local-linux-aarch64-noop64-effect-lock-savepoint-ab",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "effect_lock_ab": {
+      "fixture_sha256": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812",
+      "parent_fingerprint_sha256": "1c6c784f2fe8b38531ae68cb92d362f115509acd6dc1dea59a8be5cc39802b2d",
+      "parent_pack_sha256": "624ce92a0488d4c68d87cea781c7f432fa0463265592a41697020740841827b1",
+      "stock_body": "e4f1b67b897740fcedd2785201d6aed5edb60c41c0c0fbb40d9d74529685545f",
+      "stock_ddl": "30119c16dbf550d528e69ff5a77c1bc4bc165ffb02ce8d1124df5cb7ba7a8bb3",
+      "treatment_body": "92f71da03ea91a5db4b8fb0327dc8a700ff8aec301e0fd04ebf2e36740979367",
+      "treatment_ddl": "b51aaef846159088fdaf64692916d8fc0b141b60f02fcae38b03281803b20f9b"
+    },
+    "pilot_stage_sha256": "40a8d0f30b171330e222c793fc2fba1c815c27b4fa2d324b123c1edc1ac6d512",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/effect-lock-savepoint-ab/runs/effect-lock-ab-five-01",
+    "report_sha256": "539b89c5436e1dc10d76b39a871548e42e70db9724932718e5bfaf838d274f28",
+    "scored_jobs": 20480,
+    "groups": [
+      {
+        "group": 0,
+        "order": [
+          "stock-a",
+          "stock-b",
+          "oban",
+          "skip-locked"
+        ],
+        "stage_sha256": "0bd93c9fd1c5f34cceb3a4395be251bd81eda73c4a962c3364e50d2fba75ae24",
+        "stock_high_over_low": 1.1237932285371603,
+        "treatment_over_stock_geomean": 0.589616964451421,
+        "treatment_over_oban": 0.18899548484047454,
+        "peak_host_load_1m": 17.14599609375,
+        "arms": {
+          "stock-a": {
+            "jobs_per_second": 970.974054370143,
+            "pickup_p99_ms": 1037.1650390625,
+            "cpu_seconds_per_job": 0.0009859804687500002,
+            "peak_rss_bytes": 327987200,
+            "claim_calls_per_job": 0.3974609375,
+            "effect_executor_ms_per_job": 0.9861013642578115,
+            "postgres_observed_cpu_ms_per_job": 1.3445634765625
+          },
+          "stock-b": {
+            "jobs_per_second": 864.0148647576906,
+            "pickup_p99_ms": 1171.349853515625,
+            "cpu_seconds_per_job": 0.0012178505859374998,
+            "peak_rss_bytes": 363261952,
+            "claim_calls_per_job": 0.3955078125,
+            "effect_executor_ms_per_job": 1.0687297070312487,
+            "postgres_observed_cpu_ms_per_job": 1.451796875
+          },
+          "oban": {
+            "jobs_per_second": 2857.478434209863,
+            "pickup_p99_ms": 351.956787109375,
+            "cpu_seconds_per_job": 0.0032416376953124998,
+            "peak_rss_bytes": 1000706048,
+            "claim_calls_per_job": 0.1357421875,
+            "effect_executor_ms_per_job": 0.033416802734375015,
+            "postgres_observed_cpu_ms_per_job": 0.3159189453125
+          },
+          "skip-locked": {
+            "jobs_per_second": 540.0505220946931,
+            "pickup_p99_ms": 1865.152099609375,
+            "cpu_seconds_per_job": 0.001758849609375,
+            "peak_rss_bytes": 376627200,
+            "claim_calls_per_job": 0.4072265625,
+            "effect_executor_ms_per_job": 1.9223488730468783,
+            "postgres_observed_cpu_ms_per_job": 2.3756689453125
+          }
+        }
+      },
+      {
+        "group": 1,
+        "order": [
+          "skip-locked",
+          "oban",
+          "stock-b",
+          "stock-a"
+        ],
+        "stage_sha256": "e674444f581fb07acecde179959a4cf3aaf079f2fdef4e88a2230b366d1fc25a",
+        "stock_high_over_low": 1.0335231159648857,
+        "treatment_over_stock_geomean": 0.8788482706392968,
+        "treatment_over_oban": 0.319027742764963,
+        "peak_host_load_1m": 11.89990234375,
+        "arms": {
+          "skip-locked": {
+            "jobs_per_second": 928.3157160161809,
+            "pickup_p99_ms": 1082.123046875,
+            "cpu_seconds_per_job": 0.0011316220703125,
+            "peak_rss_bytes": 373501952,
+            "claim_calls_per_job": 0.3984375,
+            "effect_executor_ms_per_job": 0.9987736982421863,
+            "postgres_observed_cpu_ms_per_job": 1.371982421875
+          },
+          "oban": {
+            "jobs_per_second": 2909.8275528347954,
+            "pickup_p99_ms": 344.73583984375,
+            "cpu_seconds_per_job": 0.0035902958984375,
+            "peak_rss_bytes": 997339136,
+            "claim_calls_per_job": 0.1376953125,
+            "effect_executor_ms_per_job": 0.06501523632812498,
+            "postgres_observed_cpu_ms_per_job": 0.3148662109375
+          },
+          "stock-b": {
+            "jobs_per_second": 1073.8457379043655,
+            "pickup_p99_ms": 932.27001953125,
+            "cpu_seconds_per_job": 0.001053740234375,
+            "peak_rss_bytes": 372318208,
+            "claim_calls_per_job": 0.3740234375,
+            "effect_executor_ms_per_job": 0.7909730537109377,
+            "postgres_observed_cpu_ms_per_job": 1.1673134765625
+          },
+          "stock-a": {
+            "jobs_per_second": 1039.01472673094,
+            "pickup_p99_ms": 967.14111328125,
+            "cpu_seconds_per_job": 0.001013982421875,
+            "peak_rss_bytes": 353841152,
+            "claim_calls_per_job": 0.380859375,
+            "effect_executor_ms_per_job": 0.915544916992189,
+            "postgres_observed_cpu_ms_per_job": 1.2204033203125
+          }
+        }
+      },
+      {
+        "group": 2,
+        "order": [
+          "stock-b",
+          "stock-a",
+          "skip-locked",
+          "oban"
+        ],
+        "stage_sha256": "23d133b7a579ed338960fe6c89aab6b1fe5beaa18d9fd08339e4b4b80bd679db",
+        "stock_high_over_low": 1.0438649537635598,
+        "treatment_over_stock_geomean": 1.1774475827827315,
+        "treatment_over_oban": 0.5124442312150161,
+        "peak_host_load_1m": 8.357421875,
+        "arms": {
+          "stock-b": {
+            "jobs_per_second": 904.2486473364651,
+            "pickup_p99_ms": 1112.31103515625,
+            "cpu_seconds_per_job": 0.0010644296874999998,
+            "peak_rss_bytes": 339836928,
+            "claim_calls_per_job": 0.3837890625,
+            "effect_executor_ms_per_job": 0.984419202148435,
+            "postgres_observed_cpu_ms_per_job": 1.395654296875
+          },
+          "stock-a": {
+            "jobs_per_second": 866.2506046172726,
+            "pickup_p99_ms": 1161.0830078125,
+            "cpu_seconds_per_job": 0.0011541748046875,
+            "peak_rss_bytes": 398450688,
+            "claim_calls_per_job": 0.41015625,
+            "effect_executor_ms_per_job": 1.0937530849609394,
+            "postgres_observed_cpu_ms_per_job": 1.4546728515625
+          },
+          "skip-locked": {
+            "jobs_per_second": 1042.0949509761417,
+            "pickup_p99_ms": 968.7138671875,
+            "cpu_seconds_per_job": 0.0009608339843749998,
+            "peak_rss_bytes": 321871872,
+            "claim_calls_per_job": 0.390625,
+            "effect_executor_ms_per_job": 0.7858522617187494,
+            "postgres_observed_cpu_ms_per_job": 1.210279296875
+          },
+          "oban": {
+            "jobs_per_second": 2033.5772899722426,
+            "pickup_p99_ms": 497.77001953125,
+            "cpu_seconds_per_job": 0.0034886552734375003,
+            "peak_rss_bytes": 992845824,
+            "claim_calls_per_job": 0.146484375,
+            "effect_executor_ms_per_job": 0.0850828359375,
+            "postgres_observed_cpu_ms_per_job": 0.4070166015625
+          }
+        }
+      },
+      {
+        "group": 3,
+        "order": [
+          "oban",
+          "skip-locked",
+          "stock-a",
+          "stock-b"
+        ],
+        "stage_sha256": "3381da1cebddeba6ae1d0a51d283cab53bd29af997bfb26408904589862f6e68",
+        "stock_high_over_low": 1.0063430029111151,
+        "treatment_over_stock_geomean": 0.8812872867203042,
+        "treatment_over_oban": 0.35944447528379914,
+        "peak_host_load_1m": 7.453125,
+        "arms": {
+          "oban": {
+            "jobs_per_second": 2698.948747499278,
+            "pickup_p99_ms": 374.682861328125,
+            "cpu_seconds_per_job": 0.0035018349609375,
+            "peak_rss_bytes": 987963392,
+            "claim_calls_per_job": 0.1337890625,
+            "effect_executor_ms_per_job": 0.031459866210937465,
+            "postgres_observed_cpu_ms_per_job": 0.303431640625
+          },
+          "skip-locked": {
+            "jobs_per_second": 970.1222163627449,
+            "pickup_p99_ms": 1045.79296875,
+            "cpu_seconds_per_job": 0.0011134931640625,
+            "peak_rss_bytes": 337121280,
+            "claim_calls_per_job": 0.404296875,
+            "effect_executor_ms_per_job": 0.9751234726562484,
+            "postgres_observed_cpu_ms_per_job": 1.3244521484375
+          },
+          "stock-a": {
+            "jobs_per_second": 1104.287003241798,
+            "pickup_p99_ms": 904.843994140625,
+            "cpu_seconds_per_job": 0.0010096123046875,
+            "peak_rss_bytes": 352149504,
+            "claim_calls_per_job": 0.37890625,
+            "effect_executor_ms_per_job": 0.7499038642578125,
+            "postgres_observed_cpu_ms_per_job": 1.1446767578125
+          },
+          "stock-b": {
+            "jobs_per_second": 1097.326657061612,
+            "pickup_p99_ms": 919.856201171875,
+            "cpu_seconds_per_job": 0.0009763681640624999,
+            "peak_rss_bytes": 331288576,
+            "claim_calls_per_job": 0.390625,
+            "effect_executor_ms_per_job": 0.7054314775390613,
+            "postgres_observed_cpu_ms_per_job": 1.1526171875
+          }
+        }
+      },
+      {
+        "group": 4,
+        "order": [
+          "skip-locked",
+          "stock-b",
+          "oban",
+          "stock-a"
+        ],
+        "stage_sha256": "053df714537c32e4fa9b6032c21831f184d818ab12282bba51cfde27f18ce94d",
+        "stock_high_over_low": 1.026779087652549,
+        "treatment_over_stock_geomean": 1.0706277597215406,
+        "treatment_over_oban": 0.6348644751298759,
+        "peak_host_load_1m": 7.2626953125,
+        "arms": {
+          "skip-locked": {
+            "jobs_per_second": 1068.2211205168653,
+            "pickup_p99_ms": 946.39892578125,
+            "cpu_seconds_per_job": 0.0010473417968749998,
+            "peak_rss_bytes": 404426752,
+            "claim_calls_per_job": 0.376953125,
+            "effect_executor_ms_per_job": 0.8360150009765616,
+            "postgres_observed_cpu_ms_per_job": 1.175900390625
+          },
+          "stock-b": {
+            "jobs_per_second": 984.6551421378381,
+            "pickup_p99_ms": 1025.474853515625,
+            "cpu_seconds_per_job": 0.00110400390625,
+            "peak_rss_bytes": 344555520,
+            "claim_calls_per_job": 0.38671875,
+            "effect_executor_ms_per_job": 1.03900479980469,
+            "postgres_observed_cpu_ms_per_job": 1.302951171875
+          },
+          "oban": {
+            "jobs_per_second": 1682.5970933376552,
+            "pickup_p99_ms": 600.029052734375,
+            "cpu_seconds_per_job": 0.0038469101562499997,
+            "peak_rss_bytes": 999792640,
+            "claim_calls_per_job": 0.1708984375,
+            "effect_executor_ms_per_job": 0.06581721386718749,
+            "postgres_observed_cpu_ms_per_job": 0.549173828125
+          },
+          "stock-a": {
+            "jobs_per_second": 1011.0233084966806,
+            "pickup_p99_ms": 996.41015625,
+            "cpu_seconds_per_job": 0.001113306640625,
+            "peak_rss_bytes": 342634496,
+            "claim_calls_per_job": 0.3818359375,
+            "effect_executor_ms_per_job": 0.974936802734375,
+            "postgres_observed_cpu_ms_per_job": 1.2431318359375
+          }
+        }
+      }
+    ],
+    "runtime_metrics_sha256": {
+      "run.py": "99674953f965d4c7f05c57b22eea84f3c553a4d0a9e0c7846f785188e642d73c",
+      "pilot.py": "aac99492690b308ddd4fd0dd32e52cd5c04c1a71067e99a75b0709d307387fe8",
+      "guest_hooks.py": "dcb699c88207208f0158abffb37436d562672ab5ad9a54bbccc6dacce251b08e",
+      "parity-writes-skip-locked.sql": "b51aaef846159088fdaf64692916d8fc0b141b60f02fcae38b03281803b20f9b"
+    },
+    "gates": {
+      "skip-locked": [
+        "jobs_per_second",
+        "pickup_p99_ms"
+      ],
+      "stock-a": [
+        "jobs_per_second",
+        "pickup_p99_ms"
+      ],
+      "stock-b": [
+        "jobs_per_second",
+        "pickup_p99_ms"
+      ]
+    },
+    "median_throughput_over_stock_geomean": 0.8812872867203042,
+    "median_stock_high_over_low": 1.0335231159648857,
+    "throughput_wins_vs_both_controls": 2,
+    "effect_executor_time_wins_vs_both_controls": 2,
+    "result": "The five-group run did not reproduce the two-group improvement. Treatment missed the Oban throughput and pickup gates."
+  },
   "linux_fenced_jobs_noop64_effect_lock_savepoint_screen": {
     "scope": "local-linux-aarch64-noop64-effect-lock-savepoint-ab",
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
