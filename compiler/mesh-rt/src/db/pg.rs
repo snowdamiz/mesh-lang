@@ -1462,6 +1462,8 @@ pub(super) fn connect_with_socket(
         })
         .next();
     let stream = stream.ok_or(failure)?;
+    #[cfg(target_os = "linux")]
+    let _ = stream.set_nodelay(true);
     register(&stream)?;
     // Set before TLS wrapping (StreamOwned inherits them).
     let _ = stream.set_read_timeout(Some(ANSWER_TIMEOUT));
@@ -2716,6 +2718,20 @@ mod tests {
         server.join().unwrap();
         assert_eq!(result.tag, 0);
         mesh_pg_close(unsafe { *(result.value as *const u64) });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_postgres_connect_enables_tcp_nodelay() {
+        let (url, server) = scram_test_server(None);
+        let mut nodelay = false;
+        let result = connect_with_socket(&url, |socket| {
+            nodelay = socket.nodelay().unwrap();
+            Ok(())
+        });
+        server.join().unwrap();
+        assert!(result.is_ok());
+        assert!(nodelay);
     }
 
     #[test]
