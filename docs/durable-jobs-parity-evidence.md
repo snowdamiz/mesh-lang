@@ -4320,6 +4320,30 @@ and launcher policy applied across all arms. The one-slot and
 operations. The 64-slot case and frozen performance gates remain open.
 [THP selection receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Verify LISTEN and worker-local THP on the same release ELF
+
+Revision `b38e23e8` combined the LISTEN and worker THP changes.
+A Linux ARM64 gate on PostgreSQL 17.11 used one queue, 16 slots,
+and eight warm app sessions. A PostgreSQL notification triggered
+the first claim before fallback. Every held worker reported
+`THP_enabled: 0` while the launcher and runner retained their
+default policy.
+
+The 16 jobs renewed and completed on their first attempts. The
+gate reconciled 32 separately committed effects and 16 consuming
+waits before settlement. The four distinct Jobs backends, eight
+app sessions, and shared producer and observer peaked at 13
+connections under a hard cap of 20. The producer and app used
+verified TLS. The Jobs sessions used loopback plaintext SCRAM
+to expose the notification frame to the observer.
+
+All 68 Jobs runtime tests also passed on the same source against
+PostgreSQL 17.11 over verified TLS on macOS ARM64. The Linux
+gate used instrumented holds and a 2.5-second fallback interval.
+It establishes that the settings work together on the same ELF.
+The frozen scored comparison with Oban remains open.
+[Combined gate receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`

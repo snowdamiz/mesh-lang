@@ -37220,6 +37220,61 @@
       }
     }
   },
+  "linux_compiled_jobs_effect_combined_gate": {
+    "revision": "b38e23e8868bc25aabb972fb36babca94ad64dea",
+    "qualification": false,
+    "scope": "Untimed one-arm PostgreSQL 17.11 Linux ARM64 gate for both settings on one release ELF. Jobs use loopback plaintext SCRAM for the notification trace. The producer and app sessions use verified TLS. No Oban comparison.",
+    "linux_build": {
+      "path": "target/jobs-parity/stock-linux/linux/b38e23e8868bc25aabb972fb36babca94ad64dea/build.sha256",
+      "sha256": "d4c855240bb773dc8d2f2113bab923b02bc55aaff9389117e43d72074541aaef"
+    },
+    "macos_postgres17_11_runtime_tests": {
+      "path": "target/jobs-parity/stock-linux/macos/b38e23e8868bc25aabb972fb36babca94ad64dea/jobs-pg17.11/jobs-runtime.log",
+      "sha256": "dcadba8f39d5aa0e0e7510b6b199da8369916c00b4fbde323688a4c846eb8c99"
+    },
+    "pack": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/pack.json",
+      "sha256": "c8a768c85cf909708a470eee161b1f30c01ecfff712a91390de98d847752ddd7"
+    },
+    "extraction": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/extracted/extraction.json",
+      "sha256": "3dfd66e6931beb041112aa630dbd43de2570fa584a1e746877dde03b00e241a9"
+    },
+    "result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/extracted/evidence/result.json",
+      "sha256": "08576a63f6889034cfb644d7a8ad3598c73c5fac8e93dc07b0861acc906cb2f4"
+    },
+    "combined_gate": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/extracted/evidence/combined-gate.json",
+      "sha256": "d7e44e3639387ae043557f10725bd3bc220acf39c9d9a97000f1908c3a83bb56"
+    },
+    "cohort": {
+      "workers.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/extracted/evidence/combined/workers.json",
+        "sha256": "c5e15f871294bf66ae712b2f27f5e0c23d7c639f8012e4f83ffc9344d24369f5"
+      },
+      "renewed.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/extracted/evidence/combined/renewed.json",
+        "sha256": "abb144aa10b2fe718802fc76dc07d6a920e99f37dda47f117294c82012582708"
+      },
+      "writes.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/extracted/evidence/combined/writes.json",
+        "sha256": "c9633f8a47877279b121286124533a93abdf7ba41cb89dd76fd602d1a39fcd81"
+      },
+      "events": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/extracted/evidence/combined/events",
+        "sha256": "2afd16d05e6dab0330ab454c3cfe9aec52497558c8dc1d099937126f1d11a5c8"
+      },
+      "held-status.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/extracted/evidence/combined/held-status.json",
+        "sha256": "2b77a8eb6f9ba1860c9cdd74797d4d311bcff9f199c3b01f99ea16d1bbc1bbaf"
+      },
+      "tree-series.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-combined-gate/run-01/extracted/evidence/combined/tree-series.json",
+        "sha256": "341375cf4980170b27cc4477b84b315963161cdee75f59e9a7dfb428ca1662f1"
+      }
+    }
+  },
   "linux_compiled_jobs_effect_worker_thp": {
     "revision": "62ece84c9c3ade3713af7fc2ae1edd463db77925",
     "scope": "Two Linux GNU ARM64 unit tests for exact selectors and environment forwarding. Policy readback and held-worker RSS require a separate live witness.",
