@@ -4026,6 +4026,42 @@ These windows run from runner start through terminal observation,
 including claim, dispatch, settlement, and observer SQL.
 [Linux connection and failed anchor receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Measure the scoped SQL fence with a reset after each write
+
+Six counterbalanced blocks ran on one local two-vCPU ARM64
+Linux guest with PostgreSQL 17.11 and verified TLS and SCRAM.
+At 16 lanes, each arm processed 256 measured jobs. Two warm
+controls ran the stock INSERTs. The fenced arm used an
+execute-only login and two named routines with the reviewed
+attempt fence. It acknowledged each durable commit and each
+full `DISCARD ALL` before reuse. Setup, including the real
+committed claims, and observation SQL ran outside the CPU window.
+
+The comparison reconciled 4,608 jobs, 9,216 separate write
+commits, and 3,072 resets. A separate pilot joined the retained
+backends to their sessions, checked caller denials, and verified
+that resets cleared seeded state. Two early pilot captures
+failed on privilege-inspection SQL. The corrected probe checked
+role settings in `pg_db_role_setting` and preserved the same
+admission and privilege assertions.
+
+The fenced arm used a median 0.808 client-plus-PostgreSQL
+CPU-ms/job. The warm controls measured 0.118 and 0.193. The
+median paired increase was 0.675 CPU-ms/job, with 0.610
+in PostgreSQL. The six paired increases ranged from 0.241
+to 1.482 ms/job. Subtracting the paired median from the earlier
+3.46 ms/job fresh-connection gap gives a cross-run estimate of
+2.79 CPU-ms/job retained. This measures independent session lanes
+and app operations. The compiled runner and frozen profile
+comparisons will add claim, dispatch, worker, and settlement costs.
+[Component receipts](../proof/jobs-parity/qualification-v1.json)
+
+A separate compiled-driver witness used `DISCARD ALL` through
+`Pg.execute` on PostgreSQL 17.11, 18.7, and 19.0. The same
+verified TLS backend cleared a temporary table, prepared statement,
+LISTEN registration, advisory lock, and application setting.
+[Reset witness](../proof/jobs-parity/qualification-v1.json)
+
 ### Verify the named-operation database fence
 
 The opt-in fence installs in its own schema after the ordinary

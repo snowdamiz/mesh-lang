@@ -36609,5 +36609,199 @@
       "path": "target/jobs-parity/effect-fence-native/8dd17882/stock-pg17.11-compatibility.log",
       "sha256": "294b8a5a437f31377118b667c8ff33a19836869fa67a30f8dcec87926e400869"
     }
+  },
+  "linux_stock_scoped_effect_fence_reset_component": {
+    "scope": "One local two-vCPU Linux ARM64 guest, PostgreSQL 17.11 with verified TLS and SCRAM, 16 exclusive warm lanes, six counterbalanced R/A/P blocks. Claims and observation remain outside the measured interval.",
+    "runtime_revision": "25cc1299275a9e0e87e58135178b4fe961225d8f",
+    "root": "0404c5fae015035305540dc1d349c318e9403353",
+    "reviewed_fence": "0687b4a3ed87848fc80000286f1de5df87514b52",
+    "runbook": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-cost/README.md",
+      "sha256": "59b4a65f84849817f4c9670b7392ba8c63243ba6c3a0cbe5a8225577f9b324ab"
+    },
+    "pilot_capture": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-cost/runs/ops-cost-live-03/pilot/proof/receipt.json",
+      "sha256": "989f15f8acf61d9f9d11d8622b6c8922af14c3872ad1a0ab90b9428ec1216ca1"
+    },
+    "compare_capture": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-cost/runs/ops-cost-live-03/compare/proof/receipt.json",
+      "sha256": "25a1af2ee0682b71221e09f8a457518981a456298979b6dce15ef8d9c5feb273"
+    },
+    "compare_summary": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-cost/runs/ops-cost-live-03/compare/proof/evidence/summary.json",
+      "sha256": "41ae9657d586246ad5a95abf5b5f841771f080ecfeffa8844375a76fe676002e"
+    },
+    "host_trace": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-cost/runs/ops-cost-live-03/compare/host-trace.jsonl",
+      "sha256": "36d33a56752f108a59b713fb11d2f45b8ea9cfde5499cc5f4686cb202de8840c"
+    },
+    "measured_counts": {
+      "A": {
+        "app_writes": 3072,
+        "commit_acks": 3072,
+        "jobs": 1536,
+        "reset_acks": 0
+      },
+      "P": {
+        "app_writes": 3072,
+        "commit_acks": 3072,
+        "jobs": 1536,
+        "reset_acks": 3072
+      },
+      "R": {
+        "app_writes": 3072,
+        "commit_acks": 3072,
+        "jobs": 1536,
+        "reset_acks": 0
+      }
+    },
+    "initial_privilege_query_failures": [
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-cost/runs/ops-cost-live-01/pilot/proof/evidence/result.json",
+        "sha256": "6806df26c20b0335b174eb339dffe5be8d9e8011fdbc322852893c7ea2ccb7f7"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-cost/runs/ops-cost-live-02/pilot/proof/evidence/result.json",
+        "sha256": "cccda0ea171df34a1d3dbcb418a007f2906c00430daff82ca0c1d3541c3ff9b5"
+      }
+    ],
+    "arm_medians_cpu_usec_per_job": {
+      "r": {
+        "client_plus_postgres": 118.138671875,
+        "postgres": 100.021484375,
+        "runners": 18.1171875
+      },
+      "a": {
+        "client_plus_postgres": 192.921875,
+        "postgres": 163.884765625,
+        "runners": 28.60546875
+      },
+      "p": {
+        "client_plus_postgres": 808.44140625,
+        "postgres": 724.87890625,
+        "runners": 83.5625
+      }
+    },
+    "p_minus_r": {
+      "client_plus_postgres": {
+        "edge_envelope": [
+          204.63868749999995,
+          1520.42871875
+        ],
+        "median": 674.576171875,
+        "range": [
+          240.9921875,
+          1481.60546875
+        ]
+      },
+      "driver": {
+        "edge_envelope": [
+          -10.06640625,
+          11.34375
+        ],
+        "median": 0.140625,
+        "range": [
+          -0.44921875,
+          2.515625
+        ]
+      },
+      "postgres": {
+        "edge_envelope": [
+          210.72657031249997,
+          1106.591796875
+        ],
+        "median": 610.015625,
+        "range": [
+          228.96484375,
+          1087.12109375
+        ]
+      },
+      "runners": {
+        "edge_envelope": [
+          -6.087882812499998,
+          413.836921875
+        ],
+        "median": 64.560546875,
+        "range": [
+          12.02734375,
+          394.484375
+        ]
+      }
+    },
+    "a_minus_r": {
+      "client_plus_postgres": {
+        "edge_envelope": [
+          -47.2978515625,
+          214.378921875
+        ],
+        "median": 35.14453125,
+        "range": [
+          -10.04296875,
+          175.7109375
+        ]
+      },
+      "driver": {
+        "edge_envelope": [
+          -10.06640625,
+          27.5
+        ],
+        "median": 0.04296875,
+        "range": [
+          -0.62109375,
+          18.140625
+        ]
+      },
+      "postgres": {
+        "edge_envelope": [
+          -25.3134765625,
+          125.79428125
+        ],
+        "median": 32.544921875,
+        "range": [
+          -6.609375,
+          106.640625
+        ]
+      },
+      "runners": {
+        "edge_envelope": [
+          -22.1380234375,
+          88.584640625
+        ],
+        "median": 3.587890625,
+        "range": [
+          -3.43359375,
+          69.0703125
+        ]
+      }
+    },
+    "p_median_trial_mean_elapsed_ms_per_job_step": {
+      "attempt_write": 1.883246263671875,
+      "attempt_reset": 1.37890431640625,
+      "effect_write": 1.566366140625,
+      "effect_reset": 1.225530263671875
+    },
+    "historical_residual_estimate_usec_per_job": 2785.423828125,
+    "historical_residual_sensitivity_usec_per_job": [
+      1669.57128125,
+      3605.3613125
+    ],
+    "stock_promotion_supported": false
+  },
+  "macos_stock_compiled_pg_discard_all_witness": {
+    "revision": "25cc1299275a9e0e87e58135178b4fe961225d8f",
+    "server_versions": [
+      "17.11",
+      "18.7",
+      "19.0"
+    ],
+    "scope": "Compiled stock Pg.execute over TLS on a single backend. Five seeded session state classes removed without reconnecting.",
+    "result": {
+      "path": "target/jobs-parity/stock-linux/pg-reset-witness/result.json",
+      "sha256": "12d77a896db79d2a7a2270c212eea3bd367cf6f857ff0a6b44a383b9ec34ffd3"
+    },
+    "fixture": {
+      "path": "target/jobs-parity/stock-linux/pg-reset-witness/main.mpl",
+      "sha256": "87592621075f905159e14392db396570e446e33b47105ed3e8b37255f39fb813"
+    }
   }
 }
