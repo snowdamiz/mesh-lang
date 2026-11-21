@@ -2491,6 +2491,20 @@ effect each. The staged comparison used a new PostgreSQL 17.11
 cluster and the full warmup in each boot.
 [Large-payload and guest failure receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Compare 512 KiB payloads with one runner and 16 slots
+
+The 2 GiB guest completed five groups at `c271319e`. Each arm
+handled a 16-job burst, for 240 reconciled measured jobs. Both
+Mesh arms cleared the scored gates and won all five groups. They
+reached 286 and 288 jobs/s versus Oban's 57. Mesh queued at most
+8,393,920 context bytes against 32 MiB.
+
+Median first claim arrived in 3.2–3.3 ms for Mesh and 217 ms for
+Oban. After the first claim, the median drain took 52–53 ms for
+Mesh and 65 ms for Oban. Earlier pickup accounts for most of the
+end-to-end throughput difference on this short burst.
+[One-runner large-payload receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Measure one-runner no-op drain at 64 slots
 
 The `c271319e` release fixture reconciled 15,360 scored jobs across
