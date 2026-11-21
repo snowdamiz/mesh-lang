@@ -2529,6 +2529,22 @@ and 218 ms for Mesh and 175 ms for Oban. The throughput win on
 this 256-job burst came from earlier pickup.
 [16-slot no-op receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare eight runners on the 64-slot no-op profile
+
+All 15,360 measured jobs reconciled at `c271319e`. Both Mesh
+controls passed the resource gates. They reached 1,035 and 1,103
+jobs/s versus 2,444 for Oban and missed the throughput and pickup
+gates in this profile. Median pickup p99 was 975 and 914 ms
+versus 411 ms.
+
+Mesh made 374 to 459 claim calls per 1,024-job trial. Between
+185 and 264 of those calls returned contention hints. The smallest
+possible call count at eight slots per runner is 128. Mesh recorded
+the first claim in about 3 ms versus 37 ms for Oban and took
+926 to 987 ms from first claim to final settlement on the two
+arm medians, versus 382 ms for Oban.
+[Eight-runner no-op receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Trace the no-op claim and launch cycle
 
 One warmed and one measured matched group at `1d9d7e41` recorded

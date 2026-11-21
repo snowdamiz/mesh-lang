@@ -11706,6 +11706,545 @@
     },
     "identical_arm_absolute_median_jobs_per_second": 30.555872392131675
   },
+  "linux_fenced_jobs_staged_noop_eight_runner_64": {
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "profile": "noop-8r-64s",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/stock1/noop-8r-64s",
+    "scope": "Local Linux ARM64 staged comparison, a full warmup and fresh database per scored group",
+    "guest_memory_gib": 2,
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "scored_jobs": 15360,
+    "report_receipt_sha256": "955a1423f39345da2527f982255dacf86225d47136249956b62e43c5efb2ee84",
+    "report_trials_sha256": "e82758e2244d2019ff9146dbdd0f101cf1446124f38078057a20398dfa98bfb5",
+    "stages": {
+      "pilot": {
+        "archive_sha256": "979aa6875f42865990972276dbc768a9bec4d1a33c3f3b510dcfa8d966b189d0",
+        "extraction_sha256": "722e210189a6af28bfaaa39002b9413928fdedbaea7f3948f521252c6d345d8c",
+        "host_load_average_1m_max": 4.81591796875,
+        "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+        "jobs": 1024,
+        "pack_sha256": "7e60a549654a0dbc757da46b5fa3d25e72778583abb22cb1256b20f2c47f120c",
+        "transport": {
+          "evidence_files": 59,
+          "expanded_evidence_bytes": 4168658,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 950757,
+          "gzip_limit": 4194304,
+          "serial_bytes": 1282471,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 18.353304459000356,
+        "stage_sha256": "35514e05d13e4cd0c05c3470dead8447598a72f74ffc9bd5c675d40bf597fe85"
+      },
+      "0": {
+        "archive_sha256": "513a61a9500fbfe886c8f45951374d746510923b487108db975fcca7740f0c6f",
+        "extraction_sha256": "26e4a741391a3a54c3a240e48660c7c6d841848fd2063430a44ee2dcc518c63b",
+        "host_load_average_1m_max": 5.3544921875,
+        "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+        "jobs": 1024,
+        "pack_sha256": "0923cce2db7c5094522e38b52b6dec086d348b10f7112ba468f7b8319a750a84",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 8696329,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 1865684,
+          "gzip_limit": 4194304,
+          "serial_bytes": 2518106,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 50.432048041999224,
+        "stage_sha256": "e3017b73e771b6f8643fc6db67faafa619eff8cddcfa883a64858330899089ef"
+      },
+      "1": {
+        "archive_sha256": "7e10576f1a69ad0aee00128145eea527cc58471ad37e97145f3899af57b82ce5",
+        "extraction_sha256": "659310d9f2c1967ce6a5f74ded22e55d29944b97d338d6f2f1783449f0bb9c16",
+        "host_load_average_1m_max": 6.0625,
+        "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+        "jobs": 1024,
+        "pack_sha256": "776699ac588b087de0abd9ce3d385dd8975a3768a4ba93dad6d79875f1a84015",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 8700872,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 1866463,
+          "gzip_limit": 4194304,
+          "serial_bytes": 2519161,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 50.37167008301185,
+        "stage_sha256": "57829cb1972b4f527c55bfe6c023faa2effd569447e99e141ea0353a693eff04"
+      },
+      "2": {
+        "archive_sha256": "b8587e009fb6613d21269898f655f6cb84d4e861c276621c6b75b886c53f7387",
+        "extraction_sha256": "5bf05d5220d76e97375940bf44415934acc75ac059910b6032fc245c92716f6e",
+        "host_load_average_1m_max": 5.21728515625,
+        "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+        "jobs": 1024,
+        "pack_sha256": "e17296a61492e024574d3a596c19ae66dcb8232771d79959dedb867afa0e1d89",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 8695460,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 1867078,
+          "gzip_limit": 4194304,
+          "serial_bytes": 2519983,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 49.25107566699444,
+        "stage_sha256": "34e06bedfe14869cb5ad31317316486ed2e191e284ce8416b2e01b24c29db5a7"
+      },
+      "3": {
+        "archive_sha256": "c001761b072838b2b4d7a30d6d2cad1622e7fd0e844e552d15dfc9759437009d",
+        "extraction_sha256": "0a66784bc8e17efc087e8ef6060da0fdeab09c1d2efff647ab258e4191806299",
+        "host_load_average_1m_max": 4.9189453125,
+        "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+        "jobs": 1024,
+        "pack_sha256": "37b71e2aaea6103be87616ea7dfc902d74cb056dca149c52a2633616fb754973",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 8700876,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 1871327,
+          "gzip_limit": 4194304,
+          "serial_bytes": 2525713,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 51.39685645799909,
+        "stage_sha256": "af71bdf0769e2f382aad99eadfa718266938d34007c9cf659197114eb44f317b"
+      },
+      "4": {
+        "archive_sha256": "0edc47ff3ec59f04ee13635236f104524b1aa591456f8599eedd1d42dc3d83dd",
+        "extraction_sha256": "0d63e6599ec0320299fd0fa2393da26c964526a99d2e1915f0a1ad1ef7227b08",
+        "host_load_average_1m_max": 4.9599609375,
+        "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+        "jobs": 1024,
+        "pack_sha256": "694b96f834fa5493523fa340ebb0e4df53e0bd5d2a9c94ed6c068b2866f94c66",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 8698781,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 1867618,
+          "gzip_limit": 4194304,
+          "serial_bytes": 2520741,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 49.37593795900466,
+        "stage_sha256": "7a327f1af4a1c6ebe8fa6c959b6a3672f9fd9a8e4e65c7cca4be2dd3e2604ea7"
+      }
+    },
+    "gates": {
+      "mesh": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1035.409218670773,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2444.08354966625,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 974.81103515625,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 411.10302734375,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-repeat": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1102.579807690791,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2444.08354966625,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 913.68408203125,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 411.10302734375,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      }
+    },
+    "observed_ranges": {
+      "mesh": {
+        "claim_calls_per_job": {
+          "max": 0.4482421875,
+          "median": 0.3935546875,
+          "min": 0.365234375
+        },
+        "claim_p99_ms": {
+          "max": 2678.85107421875,
+          "median": 967.404052734375,
+          "min": 872.9169921875
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0023367060546874998,
+          "median": 0.001102244140625,
+          "min": 0.0010054501953124999
+        },
+        "idle_queries_per_minute": {
+          "max": 13968.751678889073,
+          "median": 13910.5578091166,
+          "min": 13834.64504818478
+        },
+        "jobs_per_second": {
+          "max": 1148.3991616253297,
+          "median": 1035.409218670773,
+          "min": 377.7293107326967
+        },
+        "peak_connections": {
+          "max": 96,
+          "median": 96,
+          "min": 96
+        },
+        "peak_processes": {
+          "max": 22,
+          "median": 16,
+          "min": 11
+        },
+        "peak_rss_bytes": {
+          "max": 412930048,
+          "median": 376209408,
+          "min": 340549632
+        },
+        "peak_threads": {
+          "max": 166,
+          "median": 153,
+          "min": 114
+        },
+        "pickup_p99_ms": {
+          "max": 2696.045166015625,
+          "median": 974.81103515625,
+          "min": 881.60302734375
+        },
+        "settlement_p99_ms": {
+          "max": 2707.55615234375,
+          "median": 982.300048828125,
+          "min": 890.2060546875
+        },
+        "sql_calls_per_job": {
+          "max": 7.1865234375,
+          "median": 6.7451171875,
+          "min": 6.6298828125
+        }
+      },
+      "mesh-repeat": {
+        "claim_calls_per_job": {
+          "max": 0.3876953125,
+          "median": 0.3779296875,
+          "min": 0.375
+        },
+        "claim_p99_ms": {
+          "max": 936.306884765625,
+          "median": 906.93408203125,
+          "min": 882.320068359375
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0011059921875,
+          "median": 0.0010376962890625,
+          "min": 0.0009073574218749999
+        },
+        "idle_queries_per_minute": {
+          "max": 13998.837787355607,
+          "median": 13932.117152386709,
+          "min": 13829.264850376512
+        },
+        "jobs_per_second": {
+          "max": 1118.9566978603705,
+          "median": 1102.579807690791,
+          "min": 1055.789948772475
+        },
+        "peak_connections": {
+          "max": 96,
+          "median": 96,
+          "min": 96
+        },
+        "peak_processes": {
+          "max": 16,
+          "median": 15,
+          "min": 12
+        },
+        "peak_rss_bytes": {
+          "max": 387104768,
+          "median": 366456832,
+          "min": 337248256
+        },
+        "peak_threads": {
+          "max": 142,
+          "median": 136,
+          "min": 93
+        },
+        "pickup_p99_ms": {
+          "max": 948.8349609375,
+          "median": 913.68408203125,
+          "min": 891.859130859375
+        },
+        "settlement_p99_ms": {
+          "max": 956.93896484375,
+          "median": 919.671142578125,
+          "min": 907.8720703125
+        },
+        "sql_calls_per_job": {
+          "max": 6.7255859375,
+          "median": 6.6787109375,
+          "min": 6.658203125
+        }
+      },
+      "oban": {
+        "claim_calls_per_job": {
+          "max": 0.185546875,
+          "median": 0.138671875,
+          "min": 0.1357421875
+        },
+        "claim_p99_ms": {
+          "max": 594.06298828125,
+          "median": 407.635986328125,
+          "min": 360.93603515625
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0044215869140625,
+          "median": 0.0033875224609374996,
+          "min": 0.00326490234375
+        },
+        "idle_queries_per_minute": {
+          "max": 7599.598043669908,
+          "median": 7567.52337290439,
+          "min": 7442.038850652518
+        },
+        "jobs_per_second": {
+          "max": 2780.1076965090106,
+          "median": 2444.08354966625,
+          "min": 1655.4929648622021
+        },
+        "peak_connections": {
+          "max": 82,
+          "median": 80,
+          "min": 80
+        },
+        "peak_processes": {
+          "max": 16,
+          "median": 16,
+          "min": 16
+        },
+        "peak_rss_bytes": {
+          "max": 1005928448,
+          "median": 999862272,
+          "min": 990810112
+        },
+        "peak_threads": {
+          "max": 96,
+          "median": 96,
+          "min": 96
+        },
+        "pickup_p99_ms": {
+          "max": 605.799072265625,
+          "median": 411.10302734375,
+          "min": 364.2080078125
+        },
+        "settlement_p99_ms": {
+          "max": 616.9638671875,
+          "median": 418.057861328125,
+          "min": 367.118896484375
+        },
+        "sql_calls_per_job": {
+          "max": 3.7373046875,
+          "median": 3.5419921875,
+          "min": 3.533203125
+        }
+      }
+    },
+    "throughput_pair_wins": {
+      "mesh": 0,
+      "mesh-repeat": 0
+    },
+    "identical_arm_absolute_median_jobs_per_second": 29.442463764959257,
+    "median_occupancy_and_pickup": {
+      "mesh": {
+        "occupied_slots": 25.242985670617788,
+        "first_pickup_ms": 2.843017578125,
+        "first_claim_to_final_settlement_ms": 986.576904296875
+      },
+      "mesh-repeat": {
+        "occupied_slots": 21.119352851428474,
+        "first_pickup_ms": 3.320068359375,
+        "first_claim_to_final_settlement_ms": 926.10009765625
+      },
+      "oban": {
+        "occupied_slots": 27.49657900240777,
+        "first_pickup_ms": 36.677978515625,
+        "first_claim_to_final_settlement_ms": 381.822021484375
+      }
+    },
+    "claim_contention_witnesses_by_group": [
+      {
+        "mesh": {
+          "claim_calls": 374,
+          "contention_hints": 201,
+          "confirmed_claims_per_runner": [
+            221,
+            102,
+            40,
+            24,
+            147,
+            184,
+            178,
+            128
+          ]
+        },
+        "mesh-repeat": {
+          "claim_calls": 386,
+          "contention_hints": 187,
+          "confirmed_claims_per_runner": [
+            32,
+            219,
+            27,
+            98,
+            45,
+            178,
+            171,
+            254
+          ]
+        }
+      },
+      {
+        "mesh": {
+          "claim_calls": 403,
+          "contention_hints": 225,
+          "confirmed_claims_per_runner": [
+            181,
+            24,
+            178,
+            19,
+            172,
+            160,
+            172,
+            118
+          ]
+        },
+        "mesh-repeat": {
+          "claim_calls": 397,
+          "contention_hints": 206,
+          "confirmed_claims_per_runner": [
+            187,
+            71,
+            69,
+            193,
+            153,
+            70,
+            138,
+            143
+          ]
+        }
+      },
+      {
+        "mesh": {
+          "claim_calls": 383,
+          "contention_hints": 206,
+          "confirmed_claims_per_runner": [
+            85,
+            71,
+            76,
+            164,
+            150,
+            183,
+            163,
+            132
+          ]
+        },
+        "mesh-repeat": {
+          "claim_calls": 387,
+          "contention_hints": 202,
+          "confirmed_claims_per_runner": [
+            57,
+            176,
+            38,
+            198,
+            112,
+            197,
+            201,
+            45
+          ]
+        }
+      },
+      {
+        "mesh": {
+          "claim_calls": 459,
+          "contention_hints": 264,
+          "confirmed_claims_per_runner": [
+            82,
+            165,
+            105,
+            145,
+            165,
+            160,
+            107,
+            95
+          ]
+        },
+        "mesh-repeat": {
+          "claim_calls": 384,
+          "contention_hints": 185,
+          "confirmed_claims_per_runner": [
+            177,
+            90,
+            38,
+            195,
+            216,
+            8,
+            89,
+            211
+          ]
+        }
+      },
+      {
+        "mesh": {
+          "claim_calls": 410,
+          "contention_hints": 236,
+          "confirmed_claims_per_runner": [
+            47,
+            115,
+            145,
+            188,
+            117,
+            145,
+            147,
+            120
+          ]
+        },
+        "mesh-repeat": {
+          "claim_calls": 389,
+          "contention_hints": 216,
+          "confirmed_claims_per_runner": [
+            140,
+            129,
+            117,
+            165,
+            127,
+            16,
+            186,
+            144
+          ]
+        }
+      }
+    ]
+  },
   "linux_fenced_jobs_staged_noop_one_runner_16": {
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
     "profile": "noop-1r-16s",
