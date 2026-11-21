@@ -50,6 +50,7 @@ struct Documents {
     open: HashMap<Url, DocumentState>,
     diagnostics: HashMap<DiagnosticScope, ScopeDiagnostics>,
     last_revision: u64,
+    last_generation: u64,
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]
@@ -71,51 +72,80 @@ enum AnalysisOwner {
 struct OwnerDiagnostics {
     revision: u64,
     published_revision: u64,
+    published_generation: u64,
     by_uri: HashMap<Url, Vec<PublishedDiagnostic>>,
 }
 
 #[derive(Default)]
 struct ScopeDiagnostics {
+    entry: Option<Url>,
     owners: HashMap<AnalysisOwner, OwnerDiagnostics>,
     by_uri: HashMap<Url, Vec<PublishedDiagnostic>>,
 }
 
+fn owner_covers_uri(
+    scope: &DiagnosticScope,
+    entry: Option<&Url>,
+    owner: &AnalysisOwner,
+    uri: &Url,
+) -> bool {
+    let DiagnosticScope::Project(root) = scope else {
+        return true;
+    };
+    let role =
+        analysis::canonical_file_path(uri.as_str()).map(|path| analysis::project_role(root, &path));
+    match owner {
+        AnalysisOwner::Loose(_) => true,
+        AnalysisOwner::Project => !matches!(
+            role,
+            Some(analysis::ProjectRole::TestFile | analysis::ProjectRole::TestHelper)
+        ),
+        AnalysisOwner::TestHelpers => role != Some(analysis::ProjectRole::TestFile),
+        AnalysisOwner::TestFile(test_uri) => {
+            if role == Some(analysis::ProjectRole::TestFile) {
+                test_uri == uri
+            } else {
+                entry != Some(uri)
+            }
+        }
+    }
+}
+
+fn owner_priority(owner: &AnalysisOwner, uri: &Url) -> u8 {
+    match owner {
+        AnalysisOwner::TestFile(test_uri) if test_uri == uri => 4,
+        AnalysisOwner::Project => 3,
+        AnalysisOwner::TestHelpers => 2,
+        AnalysisOwner::Loose(_) => 2,
+        AnalysisOwner::TestFile(_) => 1,
+    }
+}
+
 impl ScopeDiagnostics {
-    fn recompute_effective(&mut self) -> HashMap<Url, Vec<PublishedDiagnostic>> {
+    fn recompute_effective(
+        &mut self,
+        scope: &DiagnosticScope,
+    ) -> HashMap<Url, Vec<PublishedDiagnostic>> {
         let mut uris = HashSet::new();
         for owner in self.owners.values() {
             uris.extend(owner.by_uri.keys().cloned());
         }
         let mut next = HashMap::with_capacity(uris.len());
+        let entry = self.entry.as_ref();
         for uri in uris {
-            let diagnostics = self
+            let best = self
                 .owners
-                .get(&AnalysisOwner::TestFile(uri.clone()))
-                .and_then(|owner| owner.by_uri.get(&uri))
-                .or_else(|| {
-                    self.owners
-                        .get(&AnalysisOwner::Project)
-                        .and_then(|owner| owner.by_uri.get(&uri))
+                .iter()
+                .filter(|(owner, state)| {
+                    state.published_generation > 0 && owner_covers_uri(scope, entry, owner, &uri)
                 })
-                .or_else(|| {
-                    self.owners
-                        .get(&AnalysisOwner::TestHelpers)
-                        .and_then(|owner| owner.by_uri.get(&uri))
-                })
-                .or_else(|| {
-                    self.owners
-                        .values()
-                        .filter_map(|owner| {
-                            owner
-                                .by_uri
-                                .get(&uri)
-                                .map(|diags| (owner.published_revision, diags))
-                        })
-                        .max_by_key(|(revision, _)| *revision)
-                        .map(|(_, diags)| diags)
+                .max_by_key(|(owner, state)| {
+                    (state.published_generation, owner_priority(owner, &uri))
                 });
-            if let Some(diagnostics) = diagnostics {
-                next.insert(uri, diagnostics.clone());
+            if let Some((_, state)) = best {
+                if let Some(diagnostics) = state.by_uri.get(&uri) {
+                    next.insert(uri, diagnostics.clone());
+                }
             }
         }
         std::mem::replace(&mut self.by_uri, next)
@@ -134,6 +164,7 @@ struct Publication {
 struct Pending {
     uri: Url,
     revision: u64,
+    generation: u64,
     source: String,
     open_documents: Vec<(String, String)>,
 }
@@ -176,12 +207,14 @@ impl Documents {
         state.version = version;
         let scope = state.scope.clone();
         let owner = state.owner.clone();
-        let mut pending = vec![self.start_analysis(uri)];
-        pending.extend(self.dependent_pending(&scope, &owner));
+        self.last_generation += 1;
+        let generation = self.last_generation;
+        let mut pending = vec![self.start_analysis(uri, generation)];
+        pending.extend(self.dependent_pending(&scope, &owner, generation));
         pending
     }
 
-    fn start_analysis(&mut self, uri: &Url) -> Pending {
+    fn start_analysis(&mut self, uri: &Url, generation: u64) -> Pending {
         self.last_revision += 1;
         let revision = self.last_revision;
         let state = self.open.get_mut(uri).expect("analyzing an open document");
@@ -199,12 +232,27 @@ impl Documents {
         Pending {
             uri: uri.clone(),
             revision,
+            generation,
             source,
             open_documents: open
                 .into_iter()
                 .map(|(uri, state)| (uri.to_string(), state.source.clone()))
                 .collect(),
         }
+    }
+
+    fn is_current(&self, pending: &Pending) -> bool {
+        let Some(state) = self
+            .open
+            .get(&pending.uri)
+            .filter(|state| state.revision == pending.revision)
+        else {
+            return false;
+        };
+        self.diagnostics
+            .get(&state.scope)
+            .and_then(|scope| scope.owners.get(&state.owner))
+            .is_some_and(|owner| owner.revision == pending.revision)
     }
 
     /// Other analyses in `scope` whose results depend on files owned by
@@ -214,6 +262,7 @@ impl Documents {
         &mut self,
         scope: &DiagnosticScope,
         changed_owner: &AnalysisOwner,
+        generation: u64,
     ) -> Vec<Pending> {
         let mut targets = Vec::new();
         match changed_owner {
@@ -256,7 +305,7 @@ impl Documents {
         }
         targets
             .into_iter()
-            .map(|uri| self.start_analysis(&uri))
+            .map(|uri| self.start_analysis(&uri, generation))
             .collect()
     }
 
@@ -275,6 +324,8 @@ impl Documents {
             return (vec![], clears);
         }
 
+        self.last_generation += 1;
+        let generation = self.last_generation;
         let same_owner = self
             .open
             .iter()
@@ -282,27 +333,26 @@ impl Documents {
             .max_by_key(|(_, other)| other.revision)
             .map(|(uri, _)| uri.clone());
         let mut pending = Vec::new();
-        let mut clears = Vec::new();
+        let mut updates = Vec::new();
         if let Some(remaining) = same_owner {
-            pending.push(self.start_analysis(&remaining));
-        } else if let Some(scope_diagnostics) = self.diagnostics.get_mut(&state.scope) {
-            scope_diagnostics.owners.remove(&state.owner);
-            let previous = scope_diagnostics.recompute_effective();
-            let cleared_uris: Vec<Url> = previous
-                .into_keys()
-                .filter(|old_uri| !scope_diagnostics.by_uri.contains_key(old_uri))
-                .collect();
-            for old_uri in cleared_uris {
-                clears.push(self.publication(old_uri, vec![]));
-            }
+            pending.push(self.start_analysis(&remaining, generation));
+        } else if let Some(prev_effective) = self.diagnostics.get_mut(&state.scope).map(|scope| {
+            scope.owners.remove(&state.owner);
+            scope.recompute_effective(&state.scope)
+        }) {
+            updates = self.diff_publications(
+                &prev_effective,
+                &self.diagnostics[&state.scope].by_uri,
+                None,
+            );
         }
-        pending.extend(self.dependent_pending(&state.scope, &state.owner));
-        (pending, clears)
+        pending.extend(self.dependent_pending(&state.scope, &state.owner, generation));
+        (pending, updates)
     }
 
     /// Keeps the active document's analysis for queries. Each analysis owns
-    /// the diagnostics it reports: a file disappears only when every owner
-    /// that reported it stops reporting it or closes.
+    /// the diagnostics it reports: a fresher analysis supersedes older owners
+    /// on every file it covers, and closing an owner clears what only it owned.
     fn finish(&mut self, pending: &Pending, analysis: AnalysisResult) -> Option<Vec<Publication>> {
         let state = self
             .open
@@ -333,38 +383,66 @@ impl Documents {
                     .or_else(|| Url::from_file_path(path).ok())
             }
         };
+        let entry_uri = analysis.entry.as_deref().and_then(&uri_for);
         let owner_by_uri = diagnostics::by_uri(&analysis.diagnostics, &analysis.file, &uri_for);
         let prev_effective = {
             let scope_diagnostics = self.diagnostics.get_mut(&scope)?;
+            if entry_uri.is_some() {
+                scope_diagnostics.entry = entry_uri;
+            }
+            let entry = scope_diagnostics.entry.clone();
+            for (other_owner, other_state) in &mut scope_diagnostics.owners {
+                if other_owner != &owner && other_state.published_generation < pending.generation {
+                    other_state
+                        .by_uri
+                        .retain(|uri, _| !owner_covers_uri(&scope, entry.as_ref(), &owner, uri));
+                }
+            }
             let owner_diagnostics = scope_diagnostics.owners.get_mut(&owner)?;
             owner_diagnostics.published_revision = pending.revision;
+            owner_diagnostics.published_generation = pending.generation;
             owner_diagnostics.by_uri = owner_by_uri;
-            scope_diagnostics.recompute_effective()
+            scope_diagnostics.recompute_effective(&scope)
         };
 
-        let current_effective = &self.diagnostics[&scope].by_uri;
+        let updates = self.diff_publications(
+            &prev_effective,
+            &self.diagnostics[&scope].by_uri,
+            Some(&pending.uri),
+        );
+        Some(updates)
+    }
+
+    fn diff_publications(
+        &self,
+        prev_effective: &HashMap<Url, Vec<PublishedDiagnostic>>,
+        current_effective: &HashMap<Url, Vec<PublishedDiagnostic>>,
+        force_uri: Option<&Url>,
+    ) -> Vec<Publication> {
         let mut updates = Vec::new();
         for (uri, diagnostics) in current_effective {
             let changed = prev_effective
                 .get(uri)
                 .map(|prev| prev.iter().map(|d| &d.lsp).collect::<Vec<_>>())
                 != Some(diagnostics.iter().map(|d| &d.lsp).collect::<Vec<_>>());
-            if uri == &pending.uri || changed {
+            if force_uri == Some(uri) || changed {
                 updates.push(self.publication(
                     uri.clone(),
                     diagnostics.iter().map(|d| d.lsp.clone()).collect(),
                 ));
             }
         }
-        if !current_effective.contains_key(&pending.uri) {
-            updates.push(self.publication(pending.uri.clone(), vec![]));
+        if let Some(uri) = force_uri {
+            if !current_effective.contains_key(uri) {
+                updates.push(self.publication(uri.clone(), vec![]));
+            }
         }
         for old_uri in prev_effective.keys() {
-            if !current_effective.contains_key(old_uri) && old_uri != &pending.uri {
+            if !current_effective.contains_key(old_uri) && force_uri != Some(old_uri) {
                 updates.push(self.publication(old_uri.clone(), vec![]));
             }
         }
-        Some(updates)
+        updates
     }
 
     fn publication(&self, uri: Url, diagnostics: Vec<Diagnostic>) -> Publication {
@@ -466,6 +544,9 @@ impl MeshBackend {
     }
 
     async fn publish_analysis(&self, pending: Pending) {
+        if !self.documents.lock().unwrap().is_current(&pending) {
+            return;
+        }
         let uri = pending.uri.clone();
         let Some((pending, analysis)) = analyze(pending).await else {
             self.client
@@ -1254,6 +1335,155 @@ mod tests {
             .expect("open test file is refreshed when an imported module changes");
         assert!(refreshed.diagnostics.is_empty(), "{published:?}");
         assert!(published_codes(&documents, test_uri).is_empty());
+    }
+
+    #[test]
+    fn editing_a_test_clears_fixed_manifest_and_unopened_modules_and_helpers() {
+        let broken_util = "pub fn size() -> Int do\n  missing_name\nend\n";
+        let fixed_util = "pub fn size() -> Int do\n  1\nend\n";
+        let broken_helper = "pub fn help() -> Int do\n  missing_helper\nend\n";
+        let fixed_helper = "pub fn help() -> Int do\n  1\nend\n";
+        let test_a = "test(\"a\") do\n  assert(true)\nend\n";
+        let test_b = "test(\"b\") do\n  assert(true)\nend\n";
+        let (temp, uris) = test_project(&[
+            ("main.mpl", MAIN),
+            ("util.mpl", broken_util),
+            ("tests/helper.mpl", broken_helper),
+            ("tests/a.test.mpl", test_a),
+            ("tests/b.test.mpl", test_b),
+        ]);
+        let root = temp.path().canonicalize().unwrap();
+        let manifest_path = root.join("mesh.toml");
+        let manifest_uri = Url::from_file_path(&manifest_path).unwrap();
+        let [main, util, helper, a, b] = &uris[..] else {
+            unreachable!()
+        };
+        let mut documents = Documents::default();
+
+        open(&mut documents, main, MAIN);
+        open(&mut documents, a, test_a);
+        open(&mut documents, b, test_b);
+        assert_eq!(published_codes(&documents, util), ["E0004"]);
+        assert_eq!(published_codes(&documents, helper), ["E0004"]);
+
+        // Fix unopened util.mpl and helper.mpl on disk, then edit only a.test.mpl.
+        std::fs::write(root.join("util.mpl"), fixed_util).unwrap();
+        std::fs::write(root.join("tests/helper.mpl"), fixed_helper).unwrap();
+        let published = edit_and_finish(&mut documents, a, 2, test_a);
+        assert!(
+            published
+                .iter()
+                .any(|p| &p.uri == util && p.diagnostics.is_empty()),
+            "{published:?}"
+        );
+        assert!(
+            published
+                .iter()
+                .any(|p| &p.uri == helper && p.diagnostics.is_empty()),
+            "{published:?}"
+        );
+        assert!(published_codes(&documents, util).is_empty());
+        assert!(published_codes(&documents, helper).is_empty());
+
+        // Break and delete util.mpl, then edit only a.test.mpl.
+        std::fs::write(root.join("util.mpl"), broken_util).unwrap();
+        edit_and_finish(&mut documents, main, 2, MAIN);
+        assert_eq!(published_codes(&documents, util), ["E0004"]);
+        std::fs::remove_file(root.join("util.mpl")).unwrap();
+        let published = edit_and_finish(&mut documents, a, 3, test_a);
+        assert!(
+            published
+                .iter()
+                .any(|p| &p.uri == util && p.diagnostics.is_empty()),
+            "{published:?}"
+        );
+        assert!(published_codes(&documents, util).is_empty());
+
+        // Break and fix mesh.toml, then edit only a.test.mpl.
+        std::fs::write(
+            &manifest_path,
+            "[package]\nname = \"project\"\nversion = 5\n",
+        )
+        .unwrap();
+        edit_and_finish(&mut documents, main, 3, MAIN);
+        assert_eq!(published_codes(&documents, &manifest_uri), ["M0002"]);
+        std::fs::write(
+            &manifest_path,
+            "[package]\nname = \"project\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let published = edit_and_finish(&mut documents, a, 4, test_a);
+        assert!(
+            published
+                .iter()
+                .any(|p| p.uri == manifest_uri && p.diagnostics.is_empty()),
+            "{published:?}"
+        );
+        assert!(published_codes(&documents, &manifest_uri).is_empty());
+
+        // Closing a.test.mpl afterwards does not resurrect pruned stale errors.
+        let (_, updates) = documents.close(a);
+        assert!(updates.is_empty(), "{updates:?}");
+        assert!(published_codes(&documents, &manifest_uri).is_empty());
+        assert!(published_codes(&documents, util).is_empty());
+        assert!(published_codes(&documents, helper).is_empty());
+    }
+
+    #[test]
+    fn fixing_a_module_with_an_open_test_clears_immediately_without_stale_republish() {
+        let broken_util = "pub fn size() -> Int do\n  missing_name\nend\n";
+        let fixed_util = "pub fn size() -> Int do\n  1\nend\n";
+        let test = "test(\"a\") do\n  assert(true)\nend\n";
+        let (_temp, uris) = test_project(&[
+            ("main.mpl", MAIN),
+            ("util.mpl", broken_util),
+            ("tests/a.test.mpl", test),
+        ]);
+        let [_main, util, test_uri] = &uris[..] else {
+            unreachable!()
+        };
+        let mut documents = Documents::default();
+
+        open(&mut documents, util, broken_util);
+        open(&mut documents, test_uri, test);
+        assert_eq!(published_codes(&documents, util), ["E0004"]);
+
+        let mut pending = documents.edit(util, 2, fixed_util.to_string());
+        assert_eq!(pending.len(), 2);
+        let first = pending.remove(0);
+        let updates = documents
+            .finish(&first, analyzed(&first))
+            .expect("project analysis publishes");
+        let util_pub = updates.iter().find(|p| &p.uri == util).unwrap();
+        assert!(util_pub.diagnostics.is_empty(), "{updates:?}");
+        assert!(published_codes(&documents, util).is_empty());
+
+        let second = pending.remove(0);
+        let updates = documents
+            .finish(&second, analyzed(&second))
+            .expect("test analysis publishes");
+        assert!(
+            updates.iter().all(|p| &p.uri != util),
+            "test refresh should not republish unchanged util: {updates:?}"
+        );
+    }
+
+    #[test]
+    fn opening_a_test_keeps_entry_module_diagnostics() {
+        let broken_main = "fn main() do\n  missing_entry_name\nend\n";
+        let test = "test(\"a\") do\n  assert(true)\nend\n";
+        let (_temp, uris) = test_project(&[("main.mpl", broken_main), ("tests/a.test.mpl", test)]);
+        let [main, test_uri] = &uris[..] else {
+            unreachable!()
+        };
+        let mut documents = Documents::default();
+
+        open(&mut documents, main, broken_main);
+        assert_eq!(published_codes(&documents, main), ["E0004"]);
+
+        let published = open(&mut documents, test_uri, test);
+        assert!(published.iter().all(|p| &p.uri != main), "{published:?}");
+        assert_eq!(published_codes(&documents, main), ["E0004"]);
     }
 
     /// Verify that the server advertises the expected capabilities, and

@@ -33,6 +33,8 @@ pub struct AnalysisResult {
     pub parse: mesh_parser::Parse,
     /// The type-check result, kept for hover queries.
     pub typeck: TypeckResult,
+    /// The project's entry file path when a project analysis loaded it.
+    pub entry: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -108,7 +110,7 @@ pub fn analyze_document(
     let checked = check_and_lint(target, &CheckOptions::cli());
     // A lone file's module is named by its file name.
     let module = Path::new(path.file_name().unwrap_or(DEFAULT_ENTRYPOINT.as_ref()));
-    module_analysis(checked, module)
+    module_analysis(checked, None, module)
         .unwrap_or_else(|diagnostics| analysis_alone(diagnostics, &path, source))
 }
 
@@ -144,7 +146,8 @@ fn analyze_in_project(
     };
     let checked = check_and_lint(target, &options);
     let loaded = checked.analysis.is_some();
-    module_analysis(checked, relative).unwrap_or_else(|mut diagnostics| {
+    let entry_root = (role != ProjectRole::TestFile).then_some(root);
+    module_analysis(checked, entry_root, relative).unwrap_or_else(|mut diagnostics| {
         if loaded {
             diagnostics.insert(
                 0,
@@ -175,7 +178,11 @@ fn check_and_lint(target: Target<'_>, options: &CheckOptions<'_>) -> Frontend {
 /// The module at `relative` (to the project root) of the checked project;
 /// the diagnostics alone when the project did not load or has no such
 /// module.
-fn module_analysis(checked: Frontend, relative: &Path) -> Result<AnalysisResult, Vec<Diagnostic>> {
+fn module_analysis(
+    checked: Frontend,
+    entry_root: Option<&Path>,
+    relative: &Path,
+) -> Result<AnalysisResult, Vec<Diagnostic>> {
     let Frontend {
         diagnostics,
         analysis,
@@ -183,6 +190,12 @@ fn module_analysis(checked: Frontend, relative: &Path) -> Result<AnalysisResult,
     let Some(mut analysis) = analysis else {
         return Err(diagnostics);
     };
+    let entry = entry_root.and_then(|root| {
+        analysis.entry.as_ref().map(|rel| {
+            let path = root.join(rel);
+            std::fs::canonicalize(&path).unwrap_or(path)
+        })
+    });
     let Some(idx) = analysis
         .project
         .graph
@@ -197,6 +210,7 @@ fn module_analysis(checked: Frontend, relative: &Path) -> Result<AnalysisResult,
         file: analysis.files.swap_remove(idx),
         parse: analysis.project.module_parses.swap_remove(idx),
         typeck: analysis.checked.typeck.swap_remove(idx),
+        entry,
     })
 }
 
@@ -210,6 +224,7 @@ fn analysis_alone(diagnostics: Vec<Diagnostic>, path: &Path, source: &str) -> An
         file: SourceFile::new(path, source),
         parse,
         typeck,
+        entry: None,
     }
 }
 
