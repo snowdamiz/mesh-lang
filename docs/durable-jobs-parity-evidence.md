@@ -3097,6 +3097,33 @@ spread. The treatment passed the resource gates and missed throughput
 and pickup. This result leaves each switch's individual effect open.
 [Matched bootstrap receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Isolate the two worker bootstrap switches
+
+Six instrumented two-vCPU Linux ARM64 groups used one pinned
+`f82c66b4` ELF on `noop-8r-64s`. Three groups enabled scheduler
+thread deferral and three enabled one watchdog. Each compared a
+single switch against two identical flag-off Mesh controls and stock
+Oban. The traced pilots and all 24,576 scored jobs reconciled.
+The scored Mesh arms accounted for 18,432 exact child reaps.
+
+| Switch | Median child CPU gain against lower-CPU control | Median child A/A spread | Median runner CPU gain | Median runner A/A spread |
+| --- | ---: | ---: | ---: | ---: |
+| Scheduler thread deferral | 218 µs/job | 182 µs/job | 315 µs/job | 566 µs/job |
+| Single watchdog | 66 µs/job | 193 µs/job | 70 µs/job | 641 µs/job |
+
+Each switch used less child CPU than both controls in two groups.
+The host's maximum one-minute load per group ranged from 18.9 to
+30.4 across 15 logical CPUs. Neither runner CPU gain exceeded its
+control spread. Both treatments trailed Oban in every group, so
+the series leaves the individual runtime gains inconclusive.
+
+The first watchdog group-one boot stopped in Oban warmup when a
+PostgreSQL backend exited during the observer's membership read.
+The retry classifies the vanished PID as exited and retains the
+membership checks on live processes. The failed receipt and all
+completed groups are retained.
+[Separate bootstrap receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Bound the CPU available for combined settlement and refill
 
 Three instrumented groups used the same `f82c66b4` ELF, stock claims,

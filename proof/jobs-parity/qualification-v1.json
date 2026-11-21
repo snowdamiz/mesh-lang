@@ -34125,5 +34125,328 @@
         }
       }
     ]
+  },
+  "linux_jobs_bootstrap_switch_cpu_split": {
+    "scope": "Instrumented local ARM64 Linux diagnostic. Both switches were tested separately against the same two flag-off controls, with three complete groups per switch. Host load and control spread limit causality.",
+    "revision": "f82c66b4ff1898c04b92b291bd493479def7a036",
+    "profile": "noop-8r-64s",
+    "postgres": "17.11",
+    "jobs_scored": 24576,
+    "measured_mesh_children": 18432,
+    "build_elf_sha256": "3059d99af70ceeec872fd510e7c245bdbbf97c8d02bbe1832f353579b632b65a",
+    "modes": {
+      "scheduler": {
+        "pilot": {
+          "stage": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/pilot/stage.json",
+            "sha256": "7c2d33bf9eb08e95656efa4d39951fdc50cd1b8b9c882e48851b75bfdbc9dba2"
+          },
+          "arms": {
+            "mesh": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/pilot/proof/evidence/trace-mesh/raw.json",
+              "sha256": "49ab4b334388ff79ec2a50bc40361136e382e2b4c10ee01a57e13aab404b21f5"
+            },
+            "mesh-bootstrap": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/pilot/proof/evidence/trace-mesh-bootstrap/raw.json",
+              "sha256": "1aafb0ec977313490913c07aca76833195f5a16228f917bf927f0bd826761dfd"
+            }
+          }
+        },
+        "groups": [
+          {
+            "group": 0,
+            "host_load_average_1m_max": 21.54833984375,
+            "arms": {
+              "mesh": {
+                "jobs_per_second": 250.8740778772974,
+                "exact_child_cpu_usec_per_job": 1538.7001953125,
+                "runner_cgroup_cpu_usec_per_job": 3513.8701171875
+              },
+              "mesh-repeat": {
+                "jobs_per_second": 220.73180287920977,
+                "exact_child_cpu_usec_per_job": 1709.537109375,
+                "runner_cgroup_cpu_usec_per_job": 3932.951171875
+              },
+              "oban": {
+                "jobs_per_second": 832.4648063994715
+              },
+              "mesh-bootstrap": {
+                "jobs_per_second": 284.3274786725784,
+                "exact_child_cpu_usec_per_job": 1211.232421875,
+                "runner_cgroup_cpu_usec_per_job": 2893.115234375
+              }
+            },
+            "stage": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/0/stage.json",
+              "sha256": "5ef25ea90ed48b6a05eb6a55c40f22985ca3902584dfe3f0ae930e96b9fe50e2"
+            },
+            "attribution": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/0/cpu-attribution.json",
+              "sha256": "1e3cabdd2fa83c958bfd938d617856c58aacd524709d2deb46a9acfa8df1981b"
+            },
+            "trials": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/0/proof/evidence/trials.json",
+              "sha256": "c28562e4d4d2de8d6159b15d7d04b9602eeae1d0266b5adfefd3f904a1385cb5"
+            }
+          },
+          {
+            "group": 1,
+            "host_load_average_1m_max": 30.36865234375,
+            "arms": {
+              "mesh-repeat": {
+                "jobs_per_second": 216.1598436175753,
+                "exact_child_cpu_usec_per_job": 1622.6796875,
+                "runner_cgroup_cpu_usec_per_job": 3980.60546875
+              },
+              "mesh-bootstrap": {
+                "jobs_per_second": 196.7238149984611,
+                "exact_child_cpu_usec_per_job": 1893.58984375,
+                "runner_cgroup_cpu_usec_per_job": 4027.6015625
+              },
+              "mesh": {
+                "jobs_per_second": 208.03823499345302,
+                "exact_child_cpu_usec_per_job": 1805.0859375,
+                "runner_cgroup_cpu_usec_per_job": 4546.791015625
+              },
+              "oban": {
+                "jobs_per_second": 993.9247965789095
+              }
+            },
+            "stage": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/1/stage.json",
+              "sha256": "fa5946f46a8ebea9d7f952f4782fb87794334a064bdcda4023c5293f3eb96f84"
+            },
+            "attribution": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/1/cpu-attribution.json",
+              "sha256": "9e6ac4aaec8631796e5a5f8eb434caa05955e740107ab5ff507d39a81afc6dd9"
+            },
+            "trials": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/1/proof/evidence/trials.json",
+              "sha256": "cf1a7329cc9a7a2b5acf8d1da8ee2df10eeda7758d4fca299e5aa407e7d23f89"
+            }
+          },
+          {
+            "group": 2,
+            "host_load_average_1m_max": 30.15771484375,
+            "arms": {
+              "mesh-bootstrap": {
+                "jobs_per_second": 454.01523774266644,
+                "exact_child_cpu_usec_per_job": 948.966796875,
+                "runner_cgroup_cpu_usec_per_job": 1706.755859375
+              },
+              "oban": {
+                "jobs_per_second": 582.8530771967271
+              },
+              "mesh-repeat": {
+                "jobs_per_second": 325.4283662189493,
+                "exact_child_cpu_usec_per_job": 1394.3935546875,
+                "runner_cgroup_cpu_usec_per_job": 2775.3056640625
+              },
+              "mesh": {
+                "jobs_per_second": 409.157279037916,
+                "exact_child_cpu_usec_per_job": 1166.5068359375,
+                "runner_cgroup_cpu_usec_per_job": 2022.08984375
+              }
+            },
+            "stage": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/2/stage.json",
+              "sha256": "2100ee68c54117c8545cb9c43dce73a1bf97b04328ac5a9f70717a8889ae7bf3"
+            },
+            "attribution": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/2/cpu-attribution.json",
+              "sha256": "323e2aa23f82e2baeab2ae791b277c0fd42eacfb6dabd84582414af936751f76"
+            },
+            "trials": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-scheduler-01/noop-8r-64s/2/proof/evidence/trials.json",
+              "sha256": "3ebc74dc268756c4d330ed70a913f46cb69e829f97b42297cfb6f8c76536318a"
+            }
+          }
+        ],
+        "comparison": {
+          "exact_child_cpu_usec_per_job": {
+            "medians": {
+              "mesh": 1538.7001953125,
+              "mesh-repeat": 1622.6796875,
+              "mesh-bootstrap": 1211.232421875
+            },
+            "median_gain_vs_lower_cpu_control": 217.5400390625,
+            "median_absolute_control_spread": 182.40625,
+            "treatment_uses_less_than_both": 2
+          },
+          "runner_cgroup_cpu_usec_per_job": {
+            "medians": {
+              "mesh": 3513.8701171875,
+              "mesh-repeat": 3932.951171875,
+              "mesh-bootstrap": 2893.115234375
+            },
+            "median_gain_vs_lower_cpu_control": 315.333984375,
+            "median_absolute_control_spread": 566.185546875,
+            "treatment_uses_less_than_both": 2
+          }
+        }
+      },
+      "watchdog": {
+        "pilot": {
+          "stage": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/pilot/stage.json",
+            "sha256": "e1e176e4aa9988a05df45b566a2b7597629feebc8e37096341e9af9f702bb8ad"
+          },
+          "arms": {
+            "mesh": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/pilot/proof/evidence/trace-mesh/raw.json",
+              "sha256": "872f866f3f40a3cc055a857910704d5322af87e13e37922eb71a7bd289970424"
+            },
+            "mesh-bootstrap": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/pilot/proof/evidence/trace-mesh-bootstrap/raw.json",
+              "sha256": "657db448c966eb33cb719a83b6dfff67a1c638a0750953bfebba9dd593041526"
+            }
+          }
+        },
+        "groups": [
+          {
+            "group": 0,
+            "host_load_average_1m_max": 25.40087890625,
+            "arms": {
+              "mesh": {
+                "jobs_per_second": 365.51493652971595,
+                "exact_child_cpu_usec_per_job": 1227.587890625,
+                "runner_cgroup_cpu_usec_per_job": 2239.08203125
+              },
+              "mesh-repeat": {
+                "jobs_per_second": 232.9202269946861,
+                "exact_child_cpu_usec_per_job": 1420.86328125,
+                "runner_cgroup_cpu_usec_per_job": 4063.6376953125
+              },
+              "oban": {
+                "jobs_per_second": 925.9425484798667
+              },
+              "mesh-bootstrap": {
+                "jobs_per_second": 380.831248779912,
+                "exact_child_cpu_usec_per_job": 1161.6240234375,
+                "runner_cgroup_cpu_usec_per_job": 2169.33203125
+              }
+            },
+            "stage": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/0/stage.json",
+              "sha256": "6ddc272ee8f3f13ac131f6aff0131e4f14cf3c5ae61032911bfb3455e5fb51bb"
+            },
+            "attribution": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/0/cpu-attribution.json",
+              "sha256": "c4b2d4966fd2711eac8a9558b83dcb634c9331c1e8a5839db21165cb938d9227"
+            },
+            "trials": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/0/proof/evidence/trials.json",
+              "sha256": "1290a02a675f522d9f14a8294169478685684ba80168ad44cbd9aa4b373583c0"
+            }
+          },
+          {
+            "group": 1,
+            "host_load_average_1m_max": 20.271484375,
+            "arms": {
+              "mesh-repeat": {
+                "jobs_per_second": 450.57969526089835,
+                "exact_child_cpu_usec_per_job": 1019.5546875,
+                "runner_cgroup_cpu_usec_per_job": 1771.8271484375
+              },
+              "mesh-bootstrap": {
+                "jobs_per_second": 279.2309628582497,
+                "exact_child_cpu_usec_per_job": 1273.8857421875,
+                "runner_cgroup_cpu_usec_per_job": 2899.283203125
+              },
+              "mesh": {
+                "jobs_per_second": 374.6425567027842,
+                "exact_child_cpu_usec_per_job": 1235.28515625,
+                "runner_cgroup_cpu_usec_per_job": 2237.001953125
+              },
+              "oban": {
+                "jobs_per_second": 1035.8574828610613
+              }
+            },
+            "stage": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/1/stage.json",
+              "sha256": "1c4a4275d39122c6377a5773e8fe13103cb6bf8355b0fa70846292db30aebe91"
+            },
+            "attribution": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/1/cpu-attribution.json",
+              "sha256": "a12860eda45e15bc7f335f9c01130e94e0d63ad0d821306acada8a1626e6d132"
+            },
+            "trials": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/1/proof/evidence/trials.json",
+              "sha256": "35c8b6ff493a996ea5964734b57a01525250b07b3dc5384cd3f828b964f06d97"
+            }
+          },
+          {
+            "group": 2,
+            "host_load_average_1m_max": 18.861328125,
+            "arms": {
+              "mesh-bootstrap": {
+                "jobs_per_second": 450.01827731455336,
+                "exact_child_cpu_usec_per_job": 976.44140625,
+                "runner_cgroup_cpu_usec_per_job": 1740.484375
+              },
+              "oban": {
+                "jobs_per_second": 690.262361325991
+              },
+              "mesh-repeat": {
+                "jobs_per_second": 304.8246745611068,
+                "exact_child_cpu_usec_per_job": 1315.0771484375,
+                "runner_cgroup_cpu_usec_per_job": 2679.548828125
+              },
+              "mesh": {
+                "jobs_per_second": 403.3341410970971,
+                "exact_child_cpu_usec_per_job": 1191.353515625,
+                "runner_cgroup_cpu_usec_per_job": 2038.1923828125
+              }
+            },
+            "stage": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/2/stage.json",
+              "sha256": "91e0fed6533da3a0be41a8f9be1d5979618c45c0951d4c20a7dd7be54b566027"
+            },
+            "attribution": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/2/cpu-attribution.json",
+              "sha256": "0c20f197de0bbd5c48e0c46ad83dbe6dbef7146909004093bae18911501300da"
+            },
+            "trials": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/2/proof/evidence/trials.json",
+              "sha256": "ee1b47ca56402148f00572171dedfe67feae68374711566842a1205e16d09768"
+            }
+          }
+        ],
+        "comparison": {
+          "exact_child_cpu_usec_per_job": {
+            "medians": {
+              "mesh": 1227.587890625,
+              "mesh-repeat": 1315.0771484375,
+              "mesh-bootstrap": 1161.6240234375
+            },
+            "median_gain_vs_lower_cpu_control": 65.9638671875,
+            "median_absolute_control_spread": 193.275390625,
+            "treatment_uses_less_than_both": 2
+          },
+          "runner_cgroup_cpu_usec_per_job": {
+            "medians": {
+              "mesh": 2237.001953125,
+              "mesh-repeat": 2679.548828125,
+              "mesh-bootstrap": 2169.33203125
+            },
+            "median_gain_vs_lower_cpu_control": 69.75,
+            "median_absolute_control_spread": 641.3564453125,
+            "treatment_uses_less_than_both": 2
+          }
+        }
+      }
+    },
+    "observer_retry": {
+      "group": 1,
+      "scope": "Failed in Oban warmup inventory reading a PostgreSQL member that exited. Retried with the observer's disappearing-process handler covering ESRCH as well as ENOENT. The runtime and workloads kept their pins.",
+      "failure": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-watchdog-01/noop-8r-64s/1-observer-race/proof/evidence/result.json",
+        "sha256": "82f10cf481c50ff2c752267b8ec358a9eabbceba0bca3a51c97b5c4a55091b2d"
+      }
+    },
+    "reducer": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/split-summary.py",
+      "sha256": "57d180fa9b72297569b6da9aa6824c9318d8d8fc92c76010c86d1497a7920789"
+    }
   }
 }
