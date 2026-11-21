@@ -11,11 +11,13 @@ use tower_lsp::lsp_types::{
     DiagnosticSeverity, Location, NumberOrString, Position, Range, TextEdit, Url, WorkspaceEdit,
 };
 
+#[derive(Clone)]
 pub(crate) struct PublishedDiagnostic {
     pub lsp: lsp_types::Diagnostic,
     repair: Option<Repair>,
 }
 
+#[derive(Clone)]
 struct Repair {
     title: String,
     changes: HashMap<Url, Vec<TextEdit>>,

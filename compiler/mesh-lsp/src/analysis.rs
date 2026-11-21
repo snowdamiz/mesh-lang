@@ -7,7 +7,7 @@
 //! outside any project. LSP positions are 0-based lines and UTF-16 code
 //! units, converted against the analyzed text.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rowan::TextRange;
@@ -33,8 +33,30 @@ pub struct AnalysisResult {
     pub parse: mesh_parser::Parse,
     /// The type-check result, kept for hover queries.
     pub typeck: TypeckResult,
-    /// The files checked: their diagnostics are all in `diagnostics`.
-    pub checked: HashSet<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum ProjectRole {
+    Project,
+    TestHelper,
+    TestFile,
+}
+
+pub(crate) fn project_role(root: &Path, path: &Path) -> ProjectRole {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return ProjectRole::Project;
+    };
+    let is_test_file = relative
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".test.mpl"));
+    if is_test_file {
+        ProjectRole::TestFile
+    } else if relative.starts_with("tests") {
+        ProjectRole::TestHelper
+    } else {
+        ProjectRole::Project
+    }
 }
 
 impl AnalysisResult {
@@ -110,15 +132,12 @@ fn analyze_in_project(
     // A test file is not a module: `meshc test` compiles it on its own,
     // with the project's modules, the helpers under `tests/` and the test
     // builtins.
-    let is_test_file = relative
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".test.mpl"));
+    let role = project_role(root, path);
     let options = CheckOptions {
-        test_builtins: is_test_file || relative.starts_with("tests"),
+        test_builtins: matches!(role, ProjectRole::TestFile | ProjectRole::TestHelper),
         ..CheckOptions::editor(&overlays)
     };
-    let target = if is_test_file {
+    let target = if role == ProjectRole::TestFile {
         Target::TestFile { root, test: path }
     } else {
         Target::Project { root }
@@ -164,11 +183,6 @@ fn module_analysis(checked: Frontend, relative: &Path) -> Result<AnalysisResult,
     let Some(mut analysis) = analysis else {
         return Err(diagnostics);
     };
-    let checked = analysis
-        .files
-        .iter()
-        .map(|file| file.path().to_path_buf())
-        .collect();
     let Some(idx) = analysis
         .project
         .graph
@@ -183,7 +197,6 @@ fn module_analysis(checked: Frontend, relative: &Path) -> Result<AnalysisResult,
         file: analysis.files.swap_remove(idx),
         parse: analysis.project.module_parses.swap_remove(idx),
         typeck: analysis.checked.typeck.swap_remove(idx),
-        checked,
     })
 }
 
@@ -197,7 +210,6 @@ fn analysis_alone(diagnostics: Vec<Diagnostic>, path: &Path, source: &str) -> An
         file: SourceFile::new(path, source),
         parse,
         typeck,
-        checked: HashSet::from([path.to_path_buf()]),
     }
 }
 
