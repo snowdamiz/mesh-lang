@@ -6576,6 +6576,195 @@
     "postgres": "17.11 verified TLS and SCRAM",
     "scope": "Feature-gated fixture through normal Jobs.start. Relay wakes only after runner registration. A live exact child holds its valid reply until an independent query confirms executing state and current lease. Release then requires exact reap and durable settlement."
   },
+  "compiled_effect_integrated_pool_proof": {
+    "revision": "43f11812579556ec4aa699e4ebb320fbeb82d2d8",
+    "base": "209bcaba7109cd5a3d793bdf134d4ae75e0dbc09",
+    "host": "macOS arm64",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "artifact_hashes": {
+      "meshc": "8ef9499cda64b60c3bf8e71305ee8c4f9b089c6249df8eb62dc2f597c59b9d01",
+      "libmesh_rt.a": "65713762f8908ea85df1bbddf48605c9606d7fd9b9a797f3fb888765502fdf0a",
+      "libworker_identity.a": "534984d311a7527a1e90cc4660867879f28b1b9c7b4d6f2475d1584a1ab7c269",
+      "mesh-effect-fixture": "6314c5fee6775d12983d1005bebeed714e75a38663bffe3ad211b8ea19714eac"
+    },
+    "receipts": {
+      "pool-unit": {
+        "log": "target/jobs-parity/43f11812579556ec4aa699e4ebb320fbeb82d2d8/effect-pool-integrated/pool-unit.log",
+        "log_sha256": "29954ed26d7f3efcada856a2b8a3bfec4071ef489601da00af0bed45a52db651",
+        "passed": 6
+      },
+      "effect-compiled": {
+        "log": "target/jobs-parity/43f11812579556ec4aa699e4ebb320fbeb82d2d8/effect-pool-integrated/effect-compiled.log",
+        "log_sha256": "84ce47021278d4d185958aa90272b060b9fa63e7be1f63a3cfe1074ebde07252",
+        "passed": 7
+      },
+      "effect-wire": {
+        "log": "target/jobs-parity/43f11812579556ec4aa699e4ebb320fbeb82d2d8/effect-pool-integrated/effect-wire.log",
+        "log_sha256": "e6cf9cdfed1bda722adbb40456327dd3113da34a9bec8ddeb97389b2e0155ebf",
+        "passed": 5
+      },
+      "effect-worker": {
+        "log": "target/jobs-parity/43f11812579556ec4aa699e4ebb320fbeb82d2d8/effect-pool-integrated/effect-worker.log",
+        "log_sha256": "35a10d12a6b5ba4105873c15da838d7b7233ef45c450c16e879e01ba320c6ae5",
+        "passed": 1
+      }
+    },
+    "compiled_cases": [
+      {
+        "case": "initial_success",
+        "mode": "fresh",
+        "lanes": 1,
+        "prewarmed_backend_pids": [],
+        "run": 1,
+        "handler_pids": [
+          25712
+        ],
+        "backend_pids": [
+          25713
+        ],
+        "effect_id": 3,
+        "pre_reap_pid": 25712,
+        "effect_backend_pid": 25713,
+        "settled": "completed"
+      },
+      {
+        "case": "revoked_receipt",
+        "mode": "fresh",
+        "lanes": 2,
+        "prewarmed_backend_pids": [],
+        "run": 1,
+        "handler_pids": [
+          25742,
+          25761
+        ],
+        "backend_pids": [
+          25745,
+          25767
+        ],
+        "effect_id": 4,
+        "pre_reap_pid": null,
+        "effect_backend_pid": 25745,
+        "settled": "completed"
+      },
+      {
+        "case": "initial_success",
+        "mode": "prewarmed",
+        "lanes": 1,
+        "prewarmed_backend_pids": [
+          25841
+        ],
+        "run": 1,
+        "handler_pids": [
+          25894
+        ],
+        "backend_pids": [
+          25841
+        ],
+        "effect_id": 5,
+        "pre_reap_pid": null,
+        "effect_backend_pid": 25841,
+        "settled": "completed"
+      },
+      {
+        "case": "initial_success",
+        "mode": "prewarmed",
+        "lanes": 1,
+        "prewarmed_backend_pids": [
+          25841
+        ],
+        "run": 1,
+        "handler_pids": [
+          25905
+        ],
+        "backend_pids": [
+          25841
+        ],
+        "effect_id": 6,
+        "pre_reap_pid": null,
+        "effect_backend_pid": 25841,
+        "settled": "completed"
+      },
+      {
+        "case": "poisoned_session",
+        "mode": "prewarmed",
+        "lanes": 1,
+        "prewarmed_backend_pids": [
+          25841
+        ],
+        "run": 1,
+        "handler_pids": [
+          25972
+        ],
+        "backend_pids": [
+          25841
+        ],
+        "effect_id": null,
+        "pre_reap_pid": null,
+        "effect_backend_pid": null,
+        "settled": "discarded"
+      },
+      {
+        "case": "exhausted_pool",
+        "mode": "prewarmed",
+        "lanes": 1,
+        "prewarmed_backend_pids": [
+          25841
+        ],
+        "run": 1,
+        "handler_pids": [
+          25980
+        ],
+        "backend_pids": [],
+        "effect_id": null,
+        "pre_reap_pid": null,
+        "effect_backend_pid": null,
+        "settled": "discarded"
+      },
+      {
+        "case": "revoked_receipt",
+        "mode": "prewarmed",
+        "lanes": 2,
+        "prewarmed_backend_pids": [
+          25998,
+          25999
+        ],
+        "run": 1,
+        "handler_pids": [
+          26020,
+          26040
+        ],
+        "backend_pids": [
+          25998,
+          25999
+        ],
+        "effect_id": 7,
+        "pre_reap_pid": null,
+        "effect_backend_pid": 25998,
+        "settled": "completed"
+      }
+    ],
+    "scope": "Feature-gated fixture. Native tests cover prewarmed reuse, discarded idle and exhausted lanes, clean join, one runner per process, and exact held-reply settlement. The loopback waiter test checks that a discarded permit leaves an untouched session eligible for its successor. One fixed effect statement; no performance qualification."
+  },
+  "linux_effect_descriptor_transport_proof": {
+    "revision": "64352a8abdcad7b3e76707887afcb224a07b56bb",
+    "base": "43f11812579556ec4aa699e4ebb320fbeb82d2d8",
+    "guest": "Linux ARM64 GNU, 6.12.115-0-virt",
+    "build_profile": "release",
+    "runtime_features": [
+      "jobs-effect-fixture"
+    ],
+    "test_binary_sha256": "d4346244982d653afd30c42c3bc19b948936d5430d4659eb1a382ab69c587a7f",
+    "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+    "guest_archive_sha256": "972d195ba8ad12d36a884ae26dafc128fd775d24780edddf003f75bbe348fea1",
+    "serial": "target/jobs-parity/linux-arm-ownership-guest/gnu-effect-transport/64352a8abdcad7b3e76707887afcb224a07b56bb/transport-tests.serial",
+    "serial_sha256": "e17b1e1f456577e50986649439a4386d0c9ee515fc8bd3d483af986fe486e128",
+    "passed": {
+      "descriptor_transport": 4,
+      "effect_admission": 6,
+      "stock_reply_reap": 1
+    },
+    "scope": "Local pinned Linux guest runs the integrated candidate unit executable. No native compiled PostgreSQL or launch backend proof in this receipt."
+  },
   "linux_worker_phase_residency_and_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "postgres": "17.11 verified TLS and SCRAM",

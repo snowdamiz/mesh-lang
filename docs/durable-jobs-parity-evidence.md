@@ -2166,6 +2166,32 @@ reap and the committed settlement. The same-ID revocation and replay
 case also passed. The fixture still used fresh effect sessions.
 [Registration and held-reply receipts](../proof/jobs-parity/qualification-v1.json)
 
+The integrated `43f11812` fixture passed seven compiled cases on macOS
+arm64 and PostgreSQL 17.11. Distinct fresh children used the same
+prewarmed backend after reset. The verifier terminated the idle backend,
+then observed a discarded attempt and a later exhausted-pool attempt
+without an extra write or replacement session. The revoked receipt case
+replayed the same effect under a replacement attempt. `Jobs.join` closed
+the sessions while the coordinator process was still alive. The compiled
+fixture also rejected a second runner in the same process before it
+could open another pool.
+
+The focused socket test revoked a waiter while the only lane was busy.
+Its successor acquired that untouched lane. The integrated head also
+passed the wire and exact-child proof commands. These runs used one fixed
+effect operation and at most two lanes. The frozen workload's two
+writes and its multi-slot performance remain separate work.
+[Integrated session pool receipts](../proof/jobs-parity/qualification-v1.json)
+
+The Linux-only fixture at `64352a8a` maps a private control socket
+through stdin and sends the effect endpoint before the normal bootstrap
+frames. This removes the fixture's pre-exec hook, which disqualifies
+Rust's `posix_spawn` path. The ARM64 guest passed four descriptor
+transport tests, six effect-admission tests, and the stock
+reply-before-reap test. The actual spawn backend and compiled PostgreSQL
+execution on Linux still require separate verification.
+[Linux transport receipt](../proof/jobs-parity/qualification-v1.json) · [Pinned Rust launcher](https://github.com/rust-lang/rust/blob/b940084d7/library/std/src/sys/process/unix/unix.rs#L427-L445)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
