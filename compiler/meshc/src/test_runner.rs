@@ -27,7 +27,7 @@ use std::time::Instant;
 use crate::{ReportResult, ReportText};
 use mesh_diagnostics::{Code, Diagnostic, Failed, Lookup, Reporter, Severity, SourceFile};
 
-use mesh_parser::test_harness::preprocess_test_source;
+use mesh_parser::test_harness::{preprocess_test_source, TestProgram};
 use mesh_pkg::frontend::{self, CheckOptions, Target};
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
@@ -180,24 +180,28 @@ fn with_test_project<T>(
     run: impl FnOnce(&Path, &mut Reporter) -> Result<T, Failed>,
 ) -> Result<T, Failed> {
     let source = mesh_pkg::project::read_file(test_file).reported(reporter)?;
-    let preprocessed = preprocess_test_source(&source).map_err(|error| {
+    let written = SourceFile::new(test_file, source.as_str());
+    let TestProgram { text, map } = preprocess_test_source(&source).map_err(|error| {
         report_problem("COMPILE ERROR");
-        reporter.fail(error.to_diagnostic(&SourceFile::new(test_file, source.as_str())))
+        reporter.fail(error.to_diagnostic(&written))
     })?;
     let temporary = tempfile::tempdir()
         .map_err(|e| format!("Failed to create temp dir: {e}"))
         .reported_as(Code::PathNotFound, reporter)?;
     let root = temporary.path();
+    let program = root.join(DEFAULT_ENTRYPOINT);
     reporter.with_path_aliases(
         [
-            (root.join(DEFAULT_ENTRYPOINT), test_file.to_path_buf()),
+            (program.clone(), test_file.to_path_buf()),
             (root.to_path_buf(), test_project.project_dir.clone()),
         ],
         |reporter| {
-            prepare_temp_test_project(test_project, root, &preprocessed)
-                .inspect_err(|_| report_problem("SETUP ERROR"))
-                .reported(reporter)?;
-            run(root, reporter)
+            reporter.with_generated_file(program, written, map, |reporter| {
+                prepare_temp_test_project(test_project, root, &text)
+                    .inspect_err(|_| report_problem("SETUP ERROR"))
+                    .reported(reporter)?;
+                run(root, reporter)
+            })
         },
     )
 }
@@ -307,11 +311,18 @@ pub fn run_tests(
                     .reported_as(Code::PathNotFound, reporter)?;
 
                 print!("{}", String::from_utf8_lossy(&output.stdout));
-                let mut reported = None;
+                // The proof of the first failure that ends a test: a failed
+                // assertion, a panic, a stack overflow. An error a test
+                // handled (a `Node.connect` that failed) explains nothing.
+                let mut ended = None;
                 for line in String::from_utf8_lossy(&output.stderr).lines() {
                     match runtime_diagnostic(line, root) {
                         Some(diagnostic) if diagnostic.severity() == Severity::Error => {
-                            reported.get_or_insert(reporter.fail(diagnostic));
+                            let ends_a_test = ends_a_test(diagnostic.code());
+                            let failed = reporter.fail(diagnostic);
+                            if ends_a_test {
+                                ended.get_or_insert(failed);
+                            }
                         }
                         Some(diagnostic) => reporter.emit(diagnostic),
                         None if json => println!("{line}"),
@@ -328,7 +339,7 @@ pub fn run_tests(
                 }
                 // A failure is reported as it happens, a stack overflow's
                 // too; a program that ended without reporting one crashed.
-                if let Some(failed) = reported {
+                if let Some(failed) = ended {
                     return Err(failed);
                 }
                 let how = if killed {
@@ -366,6 +377,22 @@ pub fn run_tests(
         );
         Ok(())
     }
+}
+
+/// Whether a test program reporting `code` has a test that failed by it,
+/// which explains the program failing.
+fn ends_a_test(code: Code) -> bool {
+    matches!(
+        code,
+        Code::Panic
+            | Code::StackOverflow
+            | Code::AssertFailed
+            | Code::AssertEqFailed
+            | Code::AssertNeFailed
+            | Code::AssertRaisesFailed
+            | Code::AssertReceiveFailed
+            | Code::TestPanicked
+    )
 }
 
 /// The diagnostic one line of a test program's stderr is: a JSON object

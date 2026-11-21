@@ -3172,7 +3172,7 @@ impl<'a> Lowerer<'a> {
                 Box::new(MirType::Ptr),
             ),
         );
-        // ── Test runtime functions (Phase 138) ─────────────────────────
+        // ── Test runtime functions ─────────────────────────────────────
         // mesh_test_begin(name: ptr) -> void
         self.known_functions.insert(
             "mesh_test_begin".to_string(),
@@ -3183,9 +3183,14 @@ impl<'a> Lowerer<'a> {
             "mesh_test_pass".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::Unit)),
         );
-        // mesh_test_fail_msg(msg: ptr, file: ptr, file_len: i64, line: i64) -> void
+        // mesh_test_fail_msg(msg: ptr) -> void
         self.known_functions.insert(
             "mesh_test_fail_msg".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Unit)),
+        );
+        // mesh_test_fail_msg_at(msg: ptr, file: ptr, file_len: i64, line: i64) -> void
+        self.known_functions.insert(
+            "mesh_test_fail_msg_at".to_string(),
             MirType::FnPtr(
                 vec![MirType::Ptr, MirType::Ptr, MirType::Int, MirType::Int],
                 Box::new(MirType::Unit),
@@ -9037,7 +9042,8 @@ impl<'a> Lowerer<'a> {
         if let Some(lowered) = self.lower_plaintext_call(call) {
             return lowered;
         }
-        // `panic(message)`: the runtime raises it, and nothing runs after it.
+        // `panic(message)`: the runtime raises it at the call, and nothing
+        // runs after it.
         if let Some(Expr::NameRef(callee)) = call.callee() {
             if callee.text().as_deref() == Some("panic") && self.lookup_var("panic").is_none() {
                 let message = call
@@ -9046,9 +9052,9 @@ impl<'a> Lowerer<'a> {
                     .map(|arg| self.lower_expr(arg))
                     .unwrap_or(MirExpr::Unit);
                 let raise = MirExpr::Call {
-                    source_span: None,
+                    source_span: self.source_location(call.syntax().text_range()),
                     func: Box::new(MirExpr::Var(
-                        "mesh_panic_str".to_string(),
+                        "mesh_panic_str_at".to_string(),
                         MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
                     )),
                     args: vec![message],
@@ -9163,7 +9169,6 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // ── Test DSL special lowering (Phase 138) ────────────────────────────
         // In test mode, the assertions are expanded to their runtime checks,
         // before the normal lowering path would count their arguments.
         if self.is_test_mode {
@@ -14552,10 +14557,11 @@ impl<'a> Lowerer<'a> {
         (names, types, shapes)
     }
 
-    /// `assert(cond)`, `assert_eq(a, b)`, `assert_ne(a, b)` or
-    /// `assert_raises(f)` in a test (the type checker gives each its
-    /// arguments): the runtime check, given the asserted source and an empty
-    /// location. `None` for any other call.
+    /// `assert(cond)`, `assert_eq(a, b)`, `assert_ne(a, b)`,
+    /// `assert_raises(f)` or `test_fail_msg(msg)` called in a test (the type
+    /// checker gives each its arguments): the runtime check, given the
+    /// asserted source and the call's file and line. `None` for any other
+    /// call.
     fn lower_test_assertion(&mut self, call: &CallExpr, name: &str) -> Option<MirExpr> {
         let args = call.args();
         let text = |text: String| MirExpr::StringLit(text, MirType::String, None);
@@ -14593,7 +14599,7 @@ impl<'a> Lowerer<'a> {
             ),
             // What a missed `assert_receive` becomes.
             "test_fail_msg" => (
-                "mesh_test_fail_msg",
+                "mesh_test_fail_msg_at",
                 vec![MirType::Ptr],
                 vec![self.lower_expr(&args[0])],
             ),
@@ -15163,7 +15169,7 @@ fn map_builtin_name(name: &str) -> String {
         | "ws_client_recv"
         | "ws_client_close"
         | "ws_client_reconnect_delay" => format!("mesh_{name}"),
-        // Test DSL assertion builtins (Phase 138) — lowercase with test_ prefix
+        // Test DSL builtins, prefixed with test_
         "test_assert" => "mesh_test_assert".to_string(),
         "test_assert_eq" => "mesh_test_assert_eq".to_string(),
         "test_assert_ne" => "mesh_test_assert_ne".to_string(),
@@ -17440,7 +17446,9 @@ fn examples() = (rebuild(Node([1])), rebuild(Node([true])))
     #[test]
     fn lowered_signatures_exclude_the_generated_test_harness() {
         let source = "fn value() -> Int = 7\ntest(\"value\") do\n  assert(value() == 7)\nend\n";
-        let source = mesh_parser::test_harness::preprocess_test_source(source).unwrap();
+        let source = mesh_parser::test_harness::preprocess_test_source(source)
+            .unwrap()
+            .text;
         let parse = mesh_parser::parse(&source);
         assert!(parse.errors().is_empty(), "{:?}", parse.errors());
         let typeck = mesh_typeck::check(&parse);

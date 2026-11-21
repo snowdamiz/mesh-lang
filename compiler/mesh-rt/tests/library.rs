@@ -9,8 +9,9 @@ use mesh_rt::library::{
     mesh_library_free_returned_bytes, mesh_library_host_call, mesh_library_init,
     mesh_library_invoke, mesh_library_register_host_callbacks, mesh_library_shutdown,
     MeshLibraryBytes, MeshLibraryCallResult, MeshLibraryHostCallbacksV1, MESH_LIBRARY_ABI_VERSION,
-    MESH_LIBRARY_ERR_ABI, MESH_LIBRARY_ERR_APPLICATION, MESH_LIBRARY_ERR_NOT_INITIALIZED,
-    MESH_LIBRARY_ERR_PANIC, MESH_LIBRARY_OK,
+    MESH_LIBRARY_ERR_ABI, MESH_LIBRARY_ERR_APPLICATION, MESH_LIBRARY_ERR_BUSY,
+    MESH_LIBRARY_ERR_INVALID_ARGUMENT, MESH_LIBRARY_ERR_NOT_INITIALIZED,
+    MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE, MESH_LIBRARY_ERR_PANIC, MESH_LIBRARY_OK,
 };
 use mesh_rt::string::mesh_string_new;
 use mesh_rt::{
@@ -92,6 +93,16 @@ unsafe extern "C-unwind" fn panic_entry(
     _output: *mut MeshLibraryCallResult,
 ) {
     panic!("contained")
+}
+
+static NESTED_STATUS: AtomicI32 = AtomicI32::new(-1);
+
+/// An entry point that calls the library again while its own call runs.
+unsafe extern "C-unwind" fn reenter(input: *mut MeshBytes, output: *mut MeshLibraryCallResult) {
+    let mut nested = MeshLibraryBytes::default();
+    let status = mesh_library_invoke(echo, ptr::null(), 0, &mut nested);
+    NESTED_STATUS.store(status, Ordering::SeqCst);
+    echo(input, output);
 }
 
 unsafe extern "C" fn secure_store_get(
@@ -342,5 +353,67 @@ fn embedded_lifecycle_contains_failures_and_bounds_callback_ownership() {
     assert_eq!(
         unsafe { mesh_library_invoke(echo, ptr::null(), 0, &mut output) },
         MESH_LIBRARY_ERR_NOT_INITIALIZED
+    );
+}
+
+/// Each call the runtime refuses returns its status, and reports on stderr
+/// the code that explains it.
+#[test]
+fn refused_calls_report_the_code_for_their_status() {
+    const CHILD: &str = "MESH_LIBRARY_REFUSALS_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        let mut output = MeshLibraryBytes::default();
+        let null_table = mesh_library_register_host_callbacks(ptr::null());
+        let before_init = unsafe { mesh_library_invoke(echo, ptr::null(), 0, &mut output) };
+        assert_eq!(mesh_library_init(), MESH_LIBRARY_OK);
+        let other_abi = mesh_library_register_host_callbacks(&MeshLibraryHostCallbacksV1 {
+            abi_version: MESH_LIBRARY_ABI_VERSION + 1,
+            ..Default::default()
+        });
+        let byte = [0u8];
+        let oversized = unsafe { mesh_library_invoke(echo, byte.as_ptr(), 2 << 20, &mut output) };
+        let outer = unsafe { mesh_library_invoke(reenter, ptr::null(), 0, &mut output) };
+        assert_eq!(outer, MESH_LIBRARY_OK);
+        mesh_library_free_returned_bytes(&mut output);
+        assert_eq!(
+            [
+                null_table,
+                before_init,
+                other_abi,
+                oversized,
+                NESTED_STATUS.load(Ordering::SeqCst)
+            ],
+            [
+                MESH_LIBRARY_ERR_INVALID_ARGUMENT,
+                MESH_LIBRARY_ERR_NOT_INITIALIZED,
+                MESH_LIBRARY_ERR_ABI,
+                MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE,
+                MESH_LIBRARY_ERR_BUSY,
+            ]
+        );
+        assert_eq!(mesh_library_shutdown(), MESH_LIBRARY_OK);
+        return;
+    }
+
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "refused_calls_report_the_code_for_their_status"])
+        .env(CHILD, "1")
+        .env("MESH_DIAGNOSTICS", "json")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let codes: Vec<String> = stderr
+        .lines()
+        .map(|line| {
+            let diagnostic: serde_json::Value =
+                serde_json::from_str(line).unwrap_or_else(|error| panic!("{error}: {line}"));
+            diagnostic["code"].as_str().unwrap().to_string()
+        })
+        .collect();
+    assert_eq!(
+        codes,
+        ["R0201", "R0202", "R0207", "R0206", "R0203"],
+        "{stderr}"
     );
 }

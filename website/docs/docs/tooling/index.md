@@ -70,6 +70,9 @@ meshpkg update
 ```
 
 Both commands rerun the canonical installer path and refresh both `meshc` and `meshpkg` together.
+`meshc update --json` runs the installer without showing its output, and a
+failed installer is an `X0301` whose note holds the last lines the installer
+wrote.
 
 For the clustered release proof behind this install contract, see [Distributed Proof](/docs/distributed-proof/).
 
@@ -848,7 +851,9 @@ columns are one-based, and columns count Unicode scalar values. Apply
 
 Every failure reports its specific code. A failed build exits with status 1,
 and the stream contains the individual diagnostics without a final summary
-object. The [diagnostic catalog](/docs/errors/) covers syntax (`P`),
+object. A command that fails exits with status 1. A command line that `meshc`
+or `meshpkg` cannot parse is an `X0001` in either format, and exits with
+status 2. `--help` and `--version` print to standard output and exit 0. The [diagnostic catalog](/docs/errors/) covers syntax (`P`),
 semantic errors and warnings (`E`, `W`), lint (`L`), project and cluster
 configuration (`M`, `CFG`), verification (`V`), build and linking (`B`),
 internal compiler diagnostics (`I`), runtime (`R`), tests (`T`), and
@@ -1137,7 +1142,7 @@ is merged into `foo.mpl` only in the temporary test project. Tests can import
 fragment. See the [Testing guide](/docs/testing/#private-module-test-support)
 for the exact naming and isolation rules.
 
-Exit code is 1 if any test fails or a test file does not compile, making `meshc test` suitable for CI pipelines; a run that finds no test files reports `T0103` and exits 1, so a CI step pointed at the wrong directory fails. Each test failure is also a diagnostic on standard error at its line of the test file (`T0001` to `T0005` for the assertions, a panic's own `R0001`), and `meshc test --json` writes them as JSON lines there.
+Exit code is 1 if any test fails or a test file does not compile, making `meshc test` suitable for CI pipelines; a run that finds no test files reports `T0103` and exits 1, so a CI step pointed at the wrong directory fails. Each test failure is also a diagnostic on standard error at its line of the test file (`T0001` to `T0005` for the assertions, a panic's own `R0001`), and `meshc test --json` writes them as JSON lines there. A run whose tests all pass exits 0 even when a test crashes an actor on purpose: the crash is still reported, without an error tally under the passing summary.
 
 Use compact output for a large suite, a `.` per passing test and an `F` per failing one, with the failures listed after them:
 
@@ -1193,14 +1198,14 @@ The formatter uses the **Wadler-Lindig** pretty-printing algorithm with a CST-ba
 
 Beyond whitespace, the formatter puts `;`-separated statements on lines of
 their own and may drop trailing commas. It never changes what the code means:
-it refuses a file it cannot reproduce exactly, and a file with parse errors.
-Either refusal (`Cannot format '<file>': ...`) fails the whole run before any
+it refuses a file it cannot reproduce exactly (an `I0001`), and a file with
+parse errors (its `P` codes). Either refusal fails the whole run before any
 file is written.
 
 `meshc fmt` prints `Formatted N file(s)`, counting every file it read. With
-`--check`, it lists each file as `  would reformat: <path>`, prints
-`N file(s) would be reformatted`, and exits with status 1 when any would
-change.
+`--check`, it writes no file: each file that would change is an `X0201`
+diagnostic on standard error, a JSON line under `--json`, and the run exits
+with status 1 when any would change.
 
 ### Example
 
@@ -1456,8 +1461,11 @@ meshpkg --json install
 | `publish` | `{"status": "ok", "name", "version", "sha256"}` |
 | `login` | `{"status": "ok", "message"}` |
 
-A failure prints `{"error": "..."}` on standard error and exits with status 1.
-`meshpkg update` refuses `--json`, because it hands over to the installer.
+A failure is one catalog diagnostic on standard error, a JSON line in the
+shape `meshc --json` writes, and exits with status 1. A command line meshpkg
+cannot parse is an `X0001` and exits with status 2. `meshpkg update` refuses
+`--json` with an `X0001` and exits with status 1, because it hands over to
+the installer.
 
 ### mesh.toml with Registry Dependencies
 

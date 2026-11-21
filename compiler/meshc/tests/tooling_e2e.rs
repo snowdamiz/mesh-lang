@@ -2261,8 +2261,151 @@ end
     assert_eq!(diagnostics[1]["col"], 10);
 }
 
+/// `test_fail_msg` passed as a value takes the one argument its type says
+/// and fails its test at no place; `panic(message)` is an `R0001` at its
+/// call.
+#[test]
+fn test_fail_msg_as_a_value_and_panic_fail_their_tests_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"values\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/values.test.mpl"),
+        "test(\"fails through a value\") do\n  let fail = test_fail_msg\n  fail(\"boom\")\nend\n\ntest(\"panics\") do\n  panic(\"kaboom\")\nend\n\ntest(\"passes\") do\n  assert(true)\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", "--json"])
+        .arg(&project)
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stdout}{stderr}");
+    assert!(stdout.contains("  ✗ fails through a value\n"), "{stdout}");
+    assert!(stdout.contains("2 failed, 1 passed"), "{stdout}");
+    let diagnostics: Vec<serde_json::Value> = stderr
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}")))
+        .collect();
+    let codes: Vec<&str> = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["T0005", "R0001"], "{stderr}");
+    assert_eq!(diagnostics[0]["message"], "boom");
+    assert_eq!(
+        (&diagnostics[0]["file"], &diagnostics[0]["line"]),
+        (&serde_json::json!(""), &serde_json::Value::Null),
+        "{}",
+        diagnostics[0]
+    );
+    assert_eq!(diagnostics[1]["message"], "kaboom");
+    assert!(
+        diagnostics[1]["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("tests/values.test.mpl"),
+        "{}",
+        diagnostics[1]
+    );
+    assert_eq!(
+        (
+            diagnostics[1]["line"].as_u64(),
+            diagnostics[1]["col"].as_u64()
+        ),
+        (Some(7), Some(3))
+    );
+}
+
+/// An error a test handles explains no crash: a program that reported a
+/// failed `Node.connect` and then died is still a `T0101`.
+#[test]
+fn test_a_handled_error_does_not_explain_a_later_crash() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"handled\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/handled.test.mpl"),
+        "test(\"connects, then dies\") do\n  assert(Node.connect(\"absent@127.0.0.1:1\") == -1)\n  Process.exit(3)\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", "--json"])
+        .arg(&project)
+        .output()
+        .expect("failed to run meshc test");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let codes: Vec<String> = stderr
+        .lines()
+        .map(|line| {
+            let diagnostic: serde_json::Value = serde_json::from_str(line).unwrap();
+            diagnostic["code"].as_str().unwrap().to_string()
+        })
+        .collect();
+    assert_eq!(codes, ["R0301", "T0101"], "{stderr}");
+}
+
+/// A test file's JSON spans and edits are byte offsets into the file as
+/// written, not into the program `meshc test` makes of it, whose rewritten
+/// header moved them: an editor applying the edit fixes the typo.
+#[test]
+fn test_file_spans_and_edits_index_the_file_as_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"spans\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    let path = project.join("tests/typo.test.mpl");
+    let source = "test(\"typo\") do\n  let count = 1\n  assert(cuont == 1)\nend\n";
+    write_file(&path, source);
+    for args in [&["test", "--json"][..], &["check", "--tests", "--json"]] {
+        let output = Command::new(meshc_bin())
+            .args(args)
+            .arg(&project)
+            .output()
+            .expect("failed to run meshc");
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let diagnostic: serde_json::Value = serde_json::from_str(stderr.trim_end())
+            .unwrap_or_else(|e| panic!("{args:?}: {e}: {stderr}"));
+        assert_eq!(diagnostic["code"], "E0004", "{diagnostic}");
+        assert!(
+            Path::new(diagnostic["file"].as_str().unwrap()).ends_with("tests/typo.test.mpl"),
+            "{diagnostic}"
+        );
+        let slice = |value: &serde_json::Value| {
+            let start = value["start"].as_u64().unwrap() as usize;
+            let end = value["end"].as_u64().unwrap() as usize;
+            &source[start..end]
+        };
+        assert_eq!(
+            slice(&diagnostic["spans"][0]),
+            "cuont",
+            "{args:?}: {diagnostic}"
+        );
+        let edit = &diagnostic["edits"][0];
+        assert_eq!(slice(edit), "cuont", "{args:?}: {diagnostic}");
+        assert_eq!(edit["replacement"], "count", "{diagnostic}");
+        assert_eq!(
+            (diagnostic["line"].as_u64(), diagnostic["col"].as_u64()),
+            (Some(3), Some(10))
+        );
+    }
+}
+
 /// A passing run is a success even when its tests crash actors on purpose;
-/// those panics are still reported.
+/// those panics are still reported, and no error tally contradicts the
+/// passing summary.
 #[test]
 fn test_a_crash_a_passing_test_provokes_fails_nothing() {
     let dir = tempfile::tempdir().unwrap();
@@ -2286,6 +2429,22 @@ fn test_a_crash_a_passing_test_provokes_fails_nothing() {
     let diagnostic: serde_json::Value = serde_json::from_str(stderr.trim_end()).unwrap();
     assert_eq!(diagnostic["code"], "R0001");
     assert_eq!(diagnostic["message"], "deliberate crash");
+
+    let output = Command::new(meshc_bin())
+        .arg("test")
+        .arg(&project)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{output:?}");
+    assert!(stdout.contains("1 test file passed"), "{stdout}");
+    assert!(
+        stderr.contains("[R0001] Error: deliberate crash"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("error: 1 error"), "{stderr}");
 }
 
 #[test]
@@ -2788,6 +2947,36 @@ fn test_test_reports_targets_it_cannot_run() {
             && text.contains("Failed to resolve path dependency `gone`"),
         "{text}"
     );
+}
+
+/// A bad command line is an `X0001` for a person too, exiting 2, with
+/// Clap's tip and usage as notes; help and the version still print to
+/// stdout and exit 0.
+#[test]
+fn argument_errors_are_coded_for_people_too() {
+    let run = |args: &[&str]| {
+        Command::new(meshc_bin())
+            .args(args)
+            .env("NO_COLOR", "1")
+            .output()
+            .unwrap()
+    };
+    let bad = run(&["check", "--bogus"]);
+    assert_eq!(bad.status.code(), Some(2), "{bad:?}");
+    assert!(bad.stdout.is_empty(), "{bad:?}");
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    assert!(
+        stderr.starts_with("[X0001] Error: unexpected argument '--bogus' found\n"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("  Note: Usage: meshc check"), "{stderr}");
+    assert!(stderr.contains("meshc explain X0001"), "{stderr}");
+    for args in [&["check", "--help"][..], &["--version"]] {
+        let output = run(args);
+        assert!(output.status.success(), "{output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+        assert!(!output.stdout.is_empty(), "{output:?}");
+    }
 }
 
 #[test]

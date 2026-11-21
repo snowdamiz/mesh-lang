@@ -59,7 +59,10 @@ fn safe_helper(f: FunctionValue<'_>, natives: &FxHashSet<&str>) -> bool {
                             && !natives.contains(name.as_ref())
                             && matches!(
                                 name.as_ref(),
-                                "mesh_panic_str" | "mesh_panic" | "mesh_panic_at"
+                                "mesh_panic_str"
+                                    | "mesh_panic_str_at"
+                                    | "mesh_panic"
+                                    | "mesh_panic_at"
                             )
                     }),
                 _ => false,
@@ -397,7 +400,7 @@ fn segment_bound(f: FunctionValue<'_>, natives: &FxHashSet<&str>) -> Option<u32>
                 match name.as_ref() {
                     "mesh_step_charge" => charges = charges.checked_add(1)?,
                     "mesh_actor_self" | "mesh_actor_send" | "mesh_panic" | "mesh_panic_at"
-                    | "mesh_panic_str" => (),
+                    | "mesh_panic_str" | "mesh_panic_str_at" => (),
                     _ if safe_helper(callee, natives) => (),
                     _ => return None,
                 }

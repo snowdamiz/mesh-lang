@@ -221,6 +221,13 @@ jobs:
             -p mesh-typeck -p mesh-pkg -p mesh-codegen -p mesh-fmt -p mesh-lint \
             -p mesh-lsp -p mesh-repl -p mesh-test-rt -p meshpkg
           cargo check --locked -p mesh-diagnostics --no-default-features
+          # Compiled programs render diagnostics without Ariadne: the runtime
+          # links mesh-diagnostics without its terminal feature.
+          runtime_dependencies="$(cargo tree --locked -p mesh-rt -p mesh-test-rt -e normal,build --prefix none)"
+          if grep -q '^ariadne ' <<<"$runtime_dependencies"; then
+            echo "mesh-rt or mesh-test-rt depends on ariadne" >&2
+            exit 1
+          fi
           cargo test --locked -p mesh-rt --lib --test library --test library_memory
           cargo build --workspace --locked
           # The fuzz crate is its own workspace and only runs at release:

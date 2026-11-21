@@ -1,9 +1,9 @@
-//! Test runtime support functions for the Mesh testing framework (Phase 138).
+//! Test runtime support functions for the Mesh testing framework.
 //!
 //! Provides `extern "C"` functions called by compiled `*.test.mpl` programs.
-//! The test harness (lowered by Plan 03) calls these functions to:
+//! The generated test harness calls these functions to:
 //!   - Begin each test (`mesh_test_begin`)
-//!   - Record pass/fail outcomes (`mesh_test_pass`, `mesh_test_fail_msg`)
+//!   - Record pass/fail outcomes (`mesh_test_pass`, `mesh_test_fail_msg_at`)
 //!   - Assert conditions (`mesh_test_assert`, `mesh_test_assert_eq`,
 //!     `mesh_test_assert_ne`, `mesh_test_assert_raises`)
 //!   - Print summary at the end of the run (`mesh_test_summary`)
@@ -239,14 +239,26 @@ pub extern "C" fn mesh_test_pass() {
     }
 }
 
-/// `test_fail_msg(msg)` (what `assert_receive` expands to on a miss): fail
-/// the current test with `msg` at `line` of `file`.
+/// `test_fail_msg` used as a value (`let fail = test_fail_msg`): fail the
+/// current test with `msg`, at no known location.
 ///
 /// # Safety
 ///
-/// `msg` and `file` must point to live `MeshString`s.
+/// `msg` must point to a live `MeshString`.
 #[no_mangle]
-pub unsafe extern "C-unwind" fn mesh_test_fail_msg(
+pub unsafe extern "C-unwind" fn mesh_test_fail_msg(msg: *const MeshString) {
+    mesh_test_fail_msg_at(msg, std::ptr::null(), 0, 0)
+}
+
+/// `test_fail_msg(msg)` called by name (what `assert_receive` expands to on
+/// a miss): fail the current test with `msg` at `line` of `file`.
+///
+/// # Safety
+///
+/// `msg` must point to a live `MeshString`, and `file` must be null or
+/// point to one.
+#[no_mangle]
+pub unsafe extern "C-unwind" fn mesh_test_fail_msg_at(
     msg: *const MeshString,
     file: *const MeshString,
     _file_len: i64,

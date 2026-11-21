@@ -11,7 +11,7 @@
 //! - textDocument/signatureHelp (parameter info and active parameter tracking)
 //! - Server capabilities advertisement
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -142,7 +142,22 @@ impl Documents {
             .max_by_key(|(_, other)| other.revision)
             .map(|(uri, _)| uri.clone());
         if let Some(remaining) = remaining {
-            return (Some(self.start_analysis(&remaining)), vec![]);
+            // The remaining document's analysis replaces the diagnostics of
+            // the files it checks; any other file's, such as a closed test
+            // file's, were only the closed document's analysis's to give.
+            let checked = self.open[&remaining]
+                .analysis
+                .as_ref()
+                .zip(state.path.as_ref())
+                .is_some_and(|(analysis, path)| analysis.checked.contains(path));
+            let mut clears = Vec::new();
+            if !checked {
+                if let Some(published) = self.diagnostics.get_mut(&state.scope) {
+                    published.by_uri.remove(uri);
+                }
+                clears.push(self.publication(uri.clone(), vec![]));
+            }
+            return (Some(self.start_analysis(&remaining)), clears);
         }
 
         let mut by_uri = self.diagnostics.remove(&state.scope).unwrap().by_uri;
@@ -155,7 +170,10 @@ impl Documents {
     }
 
     /// Keeps the active document's analysis for queries. A project-wide
-    /// publication also requires every sibling overlay to be current.
+    /// publication also requires every sibling overlay to be current. It
+    /// replaces the diagnostics of the files the analysis checked; another
+    /// file keeps those an analysis that checked it published, as a test
+    /// file is checked only with itself.
     fn finish(&mut self, pending: &Pending, analysis: AnalysisResult) -> Option<Vec<Publication>> {
         let state = self
             .open
@@ -163,8 +181,7 @@ impl Documents {
             .filter(|state| state.revision == pending.revision)?;
         let scope = state.scope.clone();
         state.analysis = Some(analysis);
-        let published = self.diagnostics.get(&scope)?;
-        if published.revision != pending.revision {
+        if self.diagnostics.get(&scope)?.revision != pending.revision {
             return None;
         }
 
@@ -186,7 +203,13 @@ impl Documents {
                     .or_else(|| Url::from_file_path(path).ok())
             }
         };
-        let by_uri = diagnostics::by_uri(&analysis.diagnostics, &analysis.file, &uri_for);
+        let mut by_uri = diagnostics::by_uri(&analysis.diagnostics, &analysis.file, &uri_for);
+        let checked: HashSet<Url> = analysis
+            .checked
+            .iter()
+            .filter_map(|path| uri_for(path))
+            .chain([pending.uri.clone()])
+            .collect();
         let mut updates: Vec<_> = by_uri
             .iter()
             .map(|(uri, diagnostics)| {
@@ -199,9 +222,17 @@ impl Documents {
         if !by_uri.contains_key(&pending.uri) {
             updates.push(self.publication(pending.uri.clone(), vec![]));
         }
-        for uri in published.by_uri.keys() {
-            if uri != &pending.uri && !by_uri.contains_key(uri) {
-                updates.push(self.publication(uri.clone(), vec![]));
+        let published = std::mem::take(&mut self.diagnostics.get_mut(&scope)?.by_uri);
+        for (uri, diagnostics) in published {
+            if by_uri.contains_key(&uri) {
+                continue;
+            }
+            if checked.contains(&uri) {
+                if uri != pending.uri {
+                    updates.push(self.publication(uri, vec![]));
+                }
+            } else {
+                by_uri.insert(uri, diagnostics);
             }
         }
         self.diagnostics.insert(
@@ -816,6 +847,148 @@ mod tests {
         assert_eq!(documents.finish(&pending, analyzed(&pending)), None);
         let refreshed = refreshed.unwrap();
         assert!(documents.finish(&refreshed, analyzed(&refreshed)).is_some());
+    }
+
+    /// A project in a temporary directory: its canonical root, and a URI
+    /// for each file written.
+    fn test_project(files: &[(&str, &str)]) -> (tempfile::TempDir, Vec<Url>) {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        std::fs::write(
+            root.join("mesh.toml"),
+            "[package]\nname = \"project\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let uris = files
+            .iter()
+            .map(|(path, text)| {
+                let path = root.join(path);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(&path, text).unwrap();
+                Url::from_file_path(path).unwrap()
+            })
+            .collect();
+        (temp, uris)
+    }
+
+    /// Opens `uri` with `text`, and returns what its analysis publishes.
+    fn open(documents: &mut Documents, uri: &Url, text: &str) -> Vec<Publication> {
+        let pending = documents.edit(uri, 1, text.to_string());
+        documents
+            .finish(&pending, analyzed(&pending))
+            .expect("the latest analysis is published")
+    }
+
+    fn codes(publication: &Publication) -> Vec<String> {
+        publication
+            .diagnostics
+            .iter()
+            .filter_map(|diagnostic| match &diagnostic.code {
+                Some(NumberOrString::String(code)) => Some(code.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn published_codes(documents: &Documents, uri: &Url) -> Vec<String> {
+        documents
+            .published_diagnostics(uri)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|diagnostic| match &diagnostic.lsp.code {
+                Some(NumberOrString::String(code)) => Some(code.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    const MAIN: &str = "fn main() do\nend\n";
+    const BROKEN_TEST: &str = "test(\"a\") do\n  assert(cuont == 1)\nend\n";
+
+    /// A project analysis does not check test files or the helpers under
+    /// `tests/`: what their analyses published stays.
+    #[test]
+    fn a_project_analysis_keeps_a_test_files_diagnostics() {
+        let helper = "pub fn help() -> Int do\n  undefined_name\nend\n";
+        let (_temp, uris) = test_project(&[
+            ("main.mpl", MAIN),
+            ("tests/a.test.mpl", BROKEN_TEST),
+            ("tests/helper.mpl", helper),
+        ]);
+        let [main, test, helper_uri] = &uris[..] else {
+            unreachable!()
+        };
+        let mut documents = Documents::default();
+
+        let published = open(&mut documents, test, BROKEN_TEST);
+        let ours = published.iter().find(|p| &p.uri == test).unwrap();
+        assert_eq!(codes(ours), ["E0004"], "{published:?}");
+        let helper_codes = open(&mut documents, helper_uri, helper)
+            .iter()
+            .filter(|p| &p.uri == helper_uri)
+            .flat_map(codes)
+            .collect::<Vec<_>>();
+        assert_eq!(helper_codes, ["E0004"]);
+
+        let published = open(&mut documents, main, MAIN);
+        assert!(
+            published
+                .iter()
+                .all(|p| &p.uri != test && &p.uri != helper_uri),
+            "the project analysis cleared a file it did not check: {published:?}"
+        );
+        assert_eq!(published_codes(&documents, test), ["E0004"]);
+        assert_eq!(published_codes(&documents, helper_uri), ["E0004"]);
+
+        // Closed while the project stays open, the test file's diagnostics
+        // go with it: no remaining analysis checks it.
+        let (_, clears) = documents.close(test);
+        assert_eq!(
+            clears,
+            [Publication {
+                uri: test.clone(),
+                version: None,
+                diagnostics: vec![]
+            }]
+        );
+    }
+
+    /// Each test file is checked as a program of its own, so one test
+    /// file's analysis leaves another's diagnostics.
+    #[test]
+    fn test_files_keep_each_others_diagnostics() {
+        let other = "test(\"b\") do\n  assert(totl == 1)\nend\n";
+        let (_temp, uris) = test_project(&[
+            ("main.mpl", MAIN),
+            ("tests/a.test.mpl", BROKEN_TEST),
+            ("tests/b.test.mpl", other),
+        ]);
+        let [_, a, b] = &uris[..] else { unreachable!() };
+        let mut documents = Documents::default();
+
+        open(&mut documents, a, BROKEN_TEST);
+        let published = open(&mut documents, b, other);
+        assert!(published.iter().all(|p| &p.uri != a), "{published:?}");
+        assert_eq!(published_codes(&documents, a), ["E0004"]);
+        assert_eq!(published_codes(&documents, b), ["E0004"]);
+    }
+
+    /// The test program replaces the project's entry, as `meshc test`
+    /// builds it: a type both define is no `E0102`.
+    #[test]
+    fn a_test_file_replaces_the_entry_it_shares_names_with() {
+        let main = "struct Point do\n  x :: Int\nend\n\nfn main() do\nend\n";
+        let test = "struct Point do\n  y :: Int\nend\n\ntest(\"point\") do\n  let p = Point { y: 1 }\n  assert(p.y == 1)\nend\n";
+        let (_temp, uris) = test_project(&[("main.mpl", main), ("tests/point.test.mpl", test)]);
+        let [main_uri, test_uri] = &uris[..] else {
+            unreachable!()
+        };
+        let mut documents = Documents::default();
+
+        open(&mut documents, main_uri, main);
+        let published = open(&mut documents, test_uri, test);
+        let codes: Vec<_> = published.iter().flat_map(codes).collect();
+        assert!(codes.is_empty(), "{published:?}");
     }
 
     /// Verify that the server advertises the expected capabilities, and

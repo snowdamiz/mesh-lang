@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -13,6 +14,10 @@ const DEFAULT_WINDOWS_INSTALLER_URL: &str = "https://meshlang.dev/install.ps1";
 const DEFAULT_DOWNLOAD_TIMEOUT_SEC: u64 = 120;
 const WINDOWS_BOOTSTRAP_SETTLE_MS: u64 = 50;
 const WAIT_FAILED: &str = "failed while waiting for installer process";
+/// How much of a failed installer's output an error keeps: its last lines,
+/// at most this many bytes of them.
+const INSTALLER_OUTPUT_BYTES: usize = 4096;
+const INSTALLER_OUTPUT_LINES: usize = 20;
 const FORWARDED_INSTALLER_ENV_KEYS: [&str; 4] = [
     "MESH_INSTALL_RELEASE_API_URL",
     "MESH_INSTALL_RELEASE_BASE_URL",
@@ -49,6 +54,9 @@ pub struct ToolchainUpdateError {
     installer_url: String,
     launcher: Option<String>,
     detail: String,
+    /// The end of what the installer wrote, when it ran without a person
+    /// watching its output.
+    output: Option<String>,
 }
 
 impl fmt::Display for ToolchainUpdateError {
@@ -70,7 +78,16 @@ impl fmt::Display for ToolchainUpdateError {
 
 impl ToolchainUpdateError {
     pub fn to_diagnostic(&self) -> mesh_diagnostics::Diagnostic {
-        mesh_diagnostics::Diagnostic::new(mesh_diagnostics::Code::UpdateFailed, self.to_string())
+        let diagnostic = mesh_diagnostics::Diagnostic::new(
+            mesh_diagnostics::Code::UpdateFailed,
+            self.to_string(),
+        );
+        match &self.output {
+            Some(output) => {
+                diagnostic.with_note(format!("the installer's output ended with:\n{output}"))
+            }
+            None => diagnostic,
+        }
     }
 }
 
@@ -107,6 +124,7 @@ impl<'a> Attempt<'a> {
             installer_url: self.installer_url.to_string(),
             launcher: self.launcher.map(str::to_string),
             detail: detail.into(),
+            output: None,
         }
     }
 
@@ -335,6 +353,50 @@ fn installer_output(progress: bool) -> Stdio {
     }
 }
 
+/// The last `INSTALLER_OUTPUT_BYTES` a child writes to `pipe`, read on a
+/// thread of its own so the child never blocks on a full pipe, and sent
+/// when the pipe closes.
+fn read_tail(mut pipe: impl Read + Send + 'static) -> mpsc::Receiver<Vec<u8>> {
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let mut tail = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            match pipe.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => {
+                    tail.extend_from_slice(&chunk[..read]);
+                    if tail.len() > 2 * INSTALLER_OUTPUT_BYTES {
+                        tail.drain(..tail.len() - INSTALLER_OUTPUT_BYTES);
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(_) => break,
+            }
+        }
+        tail.drain(..tail.len().saturating_sub(INSTALLER_OUTPUT_BYTES));
+        let _ = sender.send(tail);
+    });
+    receiver
+}
+
+/// The last lines a failed installer wrote, to stderr or else to stdout;
+/// `None` when it wrote nothing, or a process it started still holds its
+/// output open.
+fn installer_said(
+    stderr: Option<mpsc::Receiver<Vec<u8>>>,
+    stdout: Option<mpsc::Receiver<Vec<u8>>>,
+) -> Option<String> {
+    let read = |tail: Option<mpsc::Receiver<Vec<u8>>>| {
+        let bytes = tail?.recv_timeout(Duration::from_secs(1)).ok()?;
+        let text = String::from_utf8_lossy(&bytes).trim().to_string();
+        (!text.is_empty()).then_some(text)
+    };
+    let text = read(stderr).or_else(|| read(stdout))?;
+    let lines: Vec<&str> = text.lines().collect();
+    Some(lines[lines.len().saturating_sub(INSTALLER_OUTPUT_LINES)..].join("\n"))
+}
+
 pub(crate) fn run_unix_installer_with_command(
     installer_text: &str,
     forwarded_env: &[(String, String)],
@@ -344,14 +406,25 @@ pub(crate) fn run_unix_installer_with_command(
 ) -> Result<ToolchainUpdateOutcome, ToolchainUpdateError> {
     let attempt = Attempt::new(&ToolchainUpdatePlatform::Unix, installer_url)
         .with_launcher(&launcher.program);
+    // A person watches the installer's output; otherwise its end explains
+    // a failure.
+    let output = || {
+        if progress {
+            Stdio::inherit()
+        } else {
+            Stdio::piped()
+        }
+    };
     let mut child = Command::new(&launcher.program)
         .args(&launcher.args)
         .envs(forwarded_env.iter().cloned())
         .stdin(Stdio::piped())
-        .stdout(installer_output(progress))
-        .stderr(installer_output(progress))
+        .stdout(output())
+        .stderr(output())
         .spawn()
         .map_err(attempt.failed("spawn-launcher", "failed to spawn launcher"))?;
+    let stdout = child.stdout.take().map(read_tail);
+    let stderr = child.stderr.take().map(read_tail);
 
     // Dropped once written, so the launcher sees the script end.
     let written = child
@@ -363,10 +436,13 @@ pub(crate) fn run_unix_installer_with_command(
         .wait()
         .map_err(attempt.failed("wait-launcher", WAIT_FAILED))?;
     if !status.success() {
-        return Err(attempt.error(
-            "wait-launcher",
-            format!("installer exited with status {}", status),
-        ));
+        return Err(ToolchainUpdateError {
+            output: installer_said(stderr, stdout),
+            ..attempt.error(
+                "wait-launcher",
+                format!("installer exited with status {}", status),
+            )
+        });
     }
     // A launcher that succeeded without reading all of the script ran
     // something else.
@@ -738,6 +814,26 @@ mod tests {
             error.to_string().contains("installer exited with status"),
             "{error}"
         );
+
+        // Run for a tool (`--json`), the installer's output is not shown:
+        // its last lines are a note on the X0301.
+        let noisy = format!(
+            "{}echo 'mesh: cannot write /usr/local/bin/meshc' >&2\nexit 3\n",
+            "echo progress\n".repeat(5000)
+        );
+        let error =
+            run_unix_installer_with_command(&noisy, &[], url, &unix_launcher_command(), false)
+                .expect_err("a failed installer is an error");
+        let diagnostic = error.to_diagnostic();
+        assert_eq!(diagnostic.code(), mesh_diagnostics::Code::UpdateFailed);
+        assert_eq!(
+            diagnostic.notes(),
+            ["the installer's output ended with:\nmesh: cannot write /usr/local/bin/meshc"]
+        );
+        let quiet =
+            run_unix_installer_with_command("exit 3\n", &[], url, &unix_launcher_command(), false)
+                .expect_err("a failed installer is an error");
+        assert!(quiet.to_diagnostic().notes().is_empty());
 
         // A launcher that ends without reading the script did not run it.
         let script = "#".repeat(1 << 20);

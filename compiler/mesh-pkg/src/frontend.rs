@@ -28,7 +28,8 @@ pub enum Target<'a> {
     /// `meshc build` take them.
     Project { root: &'a Path },
     /// A `*.test.mpl` file of the project at `root`: the program `meshc test`
-    /// makes of it, checked after the project's modules and test helpers.
+    /// makes of it, in place of the project's entry, checked with the
+    /// project's other modules and its test helpers.
     TestFile { root: &'a Path, test: &'a Path },
     /// A document outside any project, by the path it is known by (which
     /// need not exist) and its text.
@@ -168,7 +169,7 @@ impl Frontend {
 ///   when the modules they compare are free of errors.
 pub fn check(target: Target<'_>, options: &CheckOptions<'_>) -> Frontend {
     let loaded = match target {
-        Target::Project { root } => load(root, options),
+        Target::Project { root } => load(root, options, None),
         Target::TestFile { root, test } => load_test(root, test, options),
         Target::Source { path, text } => load_source(path, text),
     };
@@ -190,9 +191,17 @@ struct Loaded {
     native_bindings: Vec<ResolvedNativeBinding>,
     project: ProjectData,
     test_file: Option<(mesh_parser::Parse, SourceFile)>,
+    /// Where the test program's spans are in the test file as written.
+    test_map: Option<mesh_diagnostics::SourceMap>,
 }
 
-fn load(root: &Path, options: &CheckOptions<'_>) -> Result<Loaded, Diagnostic> {
+/// The project at `root`; with `entry_text`, its entry module read as that
+/// text.
+fn load(
+    root: &Path,
+    options: &CheckOptions<'_>,
+    entry_text: Option<&str>,
+) -> Result<Loaded, Diagnostic> {
     if !root.exists() {
         return Err(project::module_unreadable(
             root,
@@ -234,12 +243,16 @@ fn load(root: &Path, options: &CheckOptions<'_>) -> Result<Loaded, Diagnostic> {
     } else {
         None
     };
+    let entry_file = entry.as_ref().map(|entry| root.join(entry));
     let project = project::load_modules(
         root,
         entry.as_deref(),
         &native_bindings,
         options.test_builtins,
-        &|path| options.read(path),
+        &|path| match (entry_text, &entry_file) {
+            (Some(text), Some(entry)) if path == entry => Ok(text.to_string()),
+            _ => options.read(path),
+        },
     )?;
     Ok(Loaded {
         root: root.to_path_buf(),
@@ -248,6 +261,7 @@ fn load(root: &Path, options: &CheckOptions<'_>) -> Result<Loaded, Diagnostic> {
         native_bindings,
         project,
         test_file: None,
+        test_map: None,
     })
 }
 
@@ -261,26 +275,40 @@ fn load_source(path: &Path, text: &str) -> Result<Loaded, Diagnostic> {
         native_bindings: Vec::new(),
         project: project::single_source_project_in(root, name, text)?,
         test_file: None,
+        test_map: None,
     })
 }
 
-/// The project with its test helpers, and the test program as the module
-/// `Main` (as `meshc test` names it), compiled last.
+/// The project with its test helpers, and the test program in place of its
+/// entry module, at the test file's path, as `meshc test` builds it. A
+/// project without an entry gets the program as the module `Main`,
+/// compiled last.
 fn load_test(root: &Path, test: &Path, options: &CheckOptions<'_>) -> Result<Loaded, Diagnostic> {
     let options = CheckOptions {
         test_builtins: true,
         require_entrypoint: false,
         ..*options
     };
-    let mut loaded = load(root, &options)?;
     let path = test.strip_prefix(root).unwrap_or(test).to_path_buf();
     let source = options.read(test)?;
     let written = SourceFile::new(root.join(&path), source.as_str());
     let program = mesh_parser::test_harness::preprocess_test_source(&source)
         .map_err(|error| error.to_diagnostic(&written))?;
+    let mut loaded = load(root, &options, Some(&program.text))?;
     loaded.test_file = Some((mesh_parser::parse(&source), written));
-    let parse = mesh_parser::parse(&program);
+    loaded.test_map = Some(program.map);
     let project = &mut loaded.project;
+    if let Some(entry) = &loaded.entry {
+        // The entry's module, and those of the module blocks in it, are
+        // the program's now.
+        for module in &mut project.graph.modules {
+            if module.path == *entry {
+                module.path = path.clone();
+            }
+        }
+        return Ok(loaded);
+    }
+    let parse = mesh_parser::parse(&program.text);
     let id = project.graph.add_module("Main".to_string(), path, false);
     for import in project::extract_imports(&parse.tree()) {
         if let Some(dependency) = project.graph.resolve(&import) {
@@ -288,7 +316,7 @@ fn load_test(root: &Path, test: &Path, options: &CheckOptions<'_>) -> Result<Loa
         }
     }
     project.compilation_order.push(id);
-    project.module_sources.push(program);
+    project.module_sources.push(program.text);
     project.module_parses.push(parse);
     Ok(loaded)
 }
@@ -301,6 +329,7 @@ fn analyze(loaded: Loaded, options: &CheckOptions<'_>) -> Frontend {
         native_bindings,
         project,
         test_file,
+        test_map,
     } = loaded;
     let files = project_files(&root, &project);
     let mut diagnostics = syntax_errors(&project, &files);
@@ -335,6 +364,12 @@ fn analyze(loaded: Loaded, options: &CheckOptions<'_>) -> Frontend {
                     .map(|issue| cluster_declaration_error(&project, &files, issue)),
             ),
         }
+    }
+    if let (Some((_, written)), Some(map)) = (&test_file, &test_map) {
+        diagnostics = diagnostics
+            .into_iter()
+            .map(|diagnostic| diagnostic.relocated(written.path(), written, map))
+            .collect();
     }
     sort(&mut diagnostics, &project, &files);
     Frontend {
@@ -916,8 +951,44 @@ mod tests {
         assert_eq!(d.file().unwrap().path(), path);
         assert_eq!(d.line(), Some(4));
         let analysis = frontend.analysis.unwrap();
-        let module = analysis.project.graph.modules.last().unwrap();
-        assert_eq!(module.path, Path::new("tests/greeting.test.mpl"));
+        let modules = &analysis.project.graph.modules;
+        assert!(modules
+            .iter()
+            .all(|module| module.path != Path::new("main.mpl")));
+        let program = modules
+            .iter()
+            .find(|module| module.path == Path::new("tests/greeting.test.mpl"))
+            .unwrap();
+        assert!(program.is_entry);
+    }
+
+    /// A test file's diagnostics index it as written, though the program
+    /// checked rewrote the header before the typo, moving its bytes: the
+    /// span is the typo, and so is the edit's.
+    #[test]
+    fn a_test_files_spans_index_it_as_written() {
+        let test = "fn count() -> Int = 1\n\ntest(\"typo\") do\n  assert(cuont() == 1)\nend\n";
+        let dir = project(&[
+            ("main.mpl", "fn main() do\nend\n"),
+            ("tests/typo.test.mpl", test),
+        ]);
+        let path = dir.path().join("tests/typo.test.mpl");
+        let frontend = check(
+            Target::TestFile {
+                root: dir.path(),
+                test: &path,
+            },
+            &CheckOptions::cli(),
+        );
+        let [d] = frontend.diagnostics.as_slice() else {
+            panic!("{:?}", frontend.diagnostics);
+        };
+        assert_eq!(d.code(), Code::UnboundVariable);
+        assert_eq!(d.file().unwrap().text(), Some(test));
+        let text = |span: Span| &test[span.start as usize..span.end as usize];
+        assert_eq!(text(d.span().unwrap()), "cuont");
+        assert_eq!(text(d.edits()[0].span()), "cuont");
+        assert_eq!((d.line(), d.col()), (Some(4), Some(10)));
     }
 
     #[test]
@@ -998,17 +1069,9 @@ mod tests {
                 )
             })
             .collect();
-        assert_eq!(
-            files,
-            [
-                (
-                    dir.path().join("main.mpl"),
-                    Some("fn main() do\nend\n"),
-                    "fn main() do\nend\n".to_owned()
-                ),
-                (path, Some(test), test.to_owned()),
-            ]
-        );
+        // The test program takes the entry's place, as `meshc test` builds
+        // it: `main.mpl` is not checked with it.
+        assert_eq!(files, [(path, Some(test), test.to_owned())]);
     }
 
     #[test]

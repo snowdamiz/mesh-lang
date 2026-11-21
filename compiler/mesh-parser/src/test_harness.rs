@@ -8,7 +8,7 @@
 use std::ops::Range;
 
 use mesh_common::span::Span;
-use mesh_diagnostics::Code;
+use mesh_diagnostics::{Code, SourceMap};
 
 use crate::{ParseError, SyntaxKind, SyntaxNode};
 
@@ -31,10 +31,13 @@ use crate::{ParseError, SyntaxKind, SyntaxNode};
 /// A file that does not parse is returned as it is, for the build to report
 /// its errors where they are. A `describe` whose `setup` follows a test, or
 /// that has a second `teardown`, is a `P0401` error at that block.
-pub fn preprocess_test_source(source: &str) -> Result<String, ParseError> {
+///
+/// The program's map places its spans in the file: a header rewritten on
+/// its line has moved what follows it there, and every line after it.
+pub fn preprocess_test_source(source: &str) -> Result<TestProgram, ParseError> {
     let parse = crate::parse(source);
     if !parse.errors().is_empty() {
-        return Ok(source.to_string());
+        return Ok(TestProgram::unchanged(source));
     }
 
     let mut edits: Vec<(Range<usize>, String)> = Vec::new();
@@ -79,12 +82,18 @@ pub fn preprocess_test_source(source: &str) -> Result<String, ParseError> {
 
     if tests.is_empty() {
         // Not a test file or no test blocks — pass through unchanged.
-        return Ok(source.to_string());
+        return Ok(TestProgram::unchanged(source));
     }
 
+    edits.sort_by_key(|(range, _)| range.start);
+    let map = SourceMap::new(
+        source.len(),
+        edits
+            .iter()
+            .map(|(range, text)| (range.clone(), text.len())),
+    );
     let mut out = source.to_string();
-    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
-    for (range, text) in edits {
+    for (range, text) in edits.into_iter().rev() {
         out.replace_range(range, &text);
     }
     if !out.ends_with('\n') {
@@ -102,7 +111,24 @@ pub fn preprocess_test_source(source: &str) -> Result<String, ParseError> {
     // Pass 0 for elapsed_ms; accurate timing is cosmetic and can be added later.
     out.push_str("  test_summary(test_pass_count(), test_fail_count(), 0)\n");
     out.push_str("end\n");
-    Ok(out)
+    Ok(TestProgram { text: out, map })
+}
+
+/// A `.test.mpl` file as the program `meshc test` compiles.
+#[derive(Debug)]
+pub struct TestProgram {
+    pub text: String,
+    /// Where the program's spans are in the file.
+    pub map: SourceMap,
+}
+
+impl TestProgram {
+    fn unchanged(source: &str) -> Self {
+        TestProgram {
+            text: source.to_string(),
+            map: SourceMap::new(source.len(), []),
+        }
+    }
 }
 
 /// The tests of one top-level `describe`: cases of one function.
@@ -321,7 +347,7 @@ mod tests {
         // tests were emitted after the other items, re-indented.
         let source = "fn pick(n :: Int) -> Int do\n  if n < 0 do\n    0\n  else if n > 9 do\n    9\n  else\n    n\n  end\nend\n\ntest(\"pick\") do\n  if pick(3) == 3 do\n    assert(true)\n  else if pick(3) == 0 do\n    assert(false)\n  else\n    assert(false)\n  end\nend\n\nfn later() -> Int do\n  1\nend\n";
 
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
 
         let out_lines: Vec<&str> = out.lines().collect();
         for (i, line) in source.lines().enumerate() {
@@ -339,11 +365,28 @@ mod tests {
         );
     }
 
+    /// The program's map places a span of copied text on the same text of
+    /// the file, and a rewritten header on the header as written.
+    #[test]
+    fn preprocess_test_source_maps_spans_back_to_the_file() {
+        use mesh_diagnostics::Origin;
+        let source = "describe(\"group\") do\n  test(\"one\") do assert(cuont == 1) end\nend\n\ntest(\"two\") do\n  assert_receive 40, 50\n  assert(totl)\nend\n";
+        let program = preprocess_test_source(source).unwrap();
+        for needle in ["cuont", "totl"] {
+            let Origin::Exact(at) = program.map.origin(span_of(&program.text, needle)) else {
+                panic!("{needle} is copied text");
+            };
+            assert_eq!(&source[at.start as usize..at.end as usize], needle);
+        }
+        let header = program.map.origin(span_of(&program.text, "__test_body_"));
+        assert_eq!(header, Origin::Near(span_of(source, "test(\"two\") do")));
+    }
+
     #[test]
     fn preprocess_test_source_reads_strings_in_interpolations() {
         // The text scanner took the `end` in `" end "` for the test's own.
         let source = "test(\"interp\") do\n  let s = \"#{String.join([\"a\"], \" end \")}\"\n  assert_eq(s, \"a\")\nend\n";
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
         assert!(
             out.starts_with(&source.replace("test(\"interp\") do", "fn __test_body_0() do")),
             "{out}"
@@ -354,7 +397,7 @@ mod tests {
     fn preprocess_test_source_runs_a_describe_by_case() {
         let source = "describe(\"group\") do\n  setup() do\n    let base = if true do\n      1\n    else if false do\n      2\n    else\n      3\n    end\n  end\n  teardown do\n    println(\"#{base}\")\n  end\n  test(\"one\") do\n    assert_receive 40, 50\n  end\nend\n\ntest(\"two\") do\n  assert(true)\nend\n";
 
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
 
         let out_lines: Vec<&str> = out.lines().collect();
         assert_eq!(
@@ -396,7 +439,7 @@ mod tests {
         // A describe in a describe was left as it was: `test` was undefined.
         let source = "describe(\"outer\") do\n  setup do\n    let x = 1\n  end\n  test(\"a\") do\n    assert(x == 1)\n  end\n  describe(\"inner\") do\n    teardown do\n      println(\"t\")\n    end\n    test(\"b\") do\n      assert(x == 1)\n    end\n    test(\"c\") do\n      assert(true)\n    end\n  end\nend\n";
 
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
 
         let lines: Vec<&str> = out.lines().collect();
         assert_eq!(lines[7], "  if __case >= 1 && __case < 3 do", "{out}");
@@ -434,19 +477,19 @@ mod tests {
 
         // The build reports the parse error where it is.
         let broken = "test(\"a\") do\n  let x = (1\nend\n";
-        assert_eq!(preprocess_test_source(broken).unwrap(), broken);
+        assert_eq!(preprocess_test_source(broken).unwrap().text, broken);
     }
 
     #[test]
     fn preprocess_test_source_leaves_what_is_not_a_test() {
         // No tests: the file is returned as it is.
         let plain = "fn f() -> Int do\n  1\nend\n";
-        assert_eq!(preprocess_test_source(plain).unwrap(), plain);
+        assert_eq!(preprocess_test_source(plain).unwrap().text, plain);
         // A block call other than a test or a describe, at the top or in a
         // describe, and a statement in a describe, stay as they are; a file
         // that does not end with a new line gets one before `main`.
         let source = "run() do\n  1\nend\ndescribe(\"g\") do\n  let x = 1\n  run() do\n    x\n  end\n  test(\"a\") do\n    assert(x == 1)\n  end\nend";
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
         assert!(out.starts_with("run() do\n  1\nend\n"), "{out}");
         assert!(
             out.contains("\n  let x = 1\n  run() do\n    x\n  end\n"),

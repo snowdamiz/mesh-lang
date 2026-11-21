@@ -492,8 +492,8 @@ end";
         );
         let deep_body = format!(
             "law count() -> Bool do {}true{} end\n",
-            "(".repeat(200),
-            ")".repeat(200)
+            "(".repeat(300),
+            ")".repeat(300)
         );
         for source in [deep_proof, deep_body] {
             let error = parse(&source).err().expect("a deep law parsed");

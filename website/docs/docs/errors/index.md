@@ -4190,26 +4190,6 @@ A host called an exported function while another exported call was running in th
 
 Docs: https://meshlang.dev/docs/errors/#r0203
 
-## R0204
-
-**library-panic** · error · runtime · guide: `meshc guide projects`
-
-The exported Mesh function panicked; the runtime reported the panic on standard error, and the call returned status 4 (`MESH_LIBRARY_ERR_PANIC`) with an empty response.
-
-**Repair:** Fix the panic the runtime reported (an `R0001`), or return an `Err` from the exported function for a failure the host should handle.
-
-Docs: https://meshlang.dev/docs/errors/#r0204
-
-## R0205
-
-**library-host-callback-failed** · error · runtime · guide: `meshc guide projects`
-
-Status 5 (`MESH_LIBRARY_ERR_HOST_CALLBACK`) is reserved in library ABI 1 and no runtime function returns it: a failing host callback reaches Mesh code as `Err("host_callback_failed:<capability>:<status>")` instead.
-
-**Repair:** Check that the host was built against the header generated with the library it links. To learn why a host callback failed, handle the `Err` the Mesh code receives from it.
-
-Docs: https://meshlang.dev/docs/errors/#r0205
-
 ## R0206
 
 **library-output-too-large** · error · runtime · guide: `meshc guide projects`
@@ -4229,26 +4209,6 @@ The host's callback table has an `abi_version` other than the runtime's (1), or 
 **Repair:** Build the callback table from the header generated with the library: set `abi_version` to `MESH_LIBRARY_ABI_VERSION` and `struct_size` to `sizeof(MeshLibraryHostCallbacksV1)`, and rebuild the host after regenerating the library.
 
 Docs: https://meshlang.dev/docs/errors/#r0207
-
-## R0208
-
-**library-callback-missing** · error · runtime · guide: `meshc guide projects`
-
-Mesh code used a host capability, such as the secure store, with no callback registered for it; it receives `Err("host_callback_missing")`, and status 8 (`MESH_LIBRARY_ERR_CALLBACK_MISSING`) is reserved for the host side.
-
-**Repair:** Register a callback for the capability with `mesh_library_register_host_callbacks` after `mesh_library_init`, or handle the `Err` in the Mesh code that uses it.
-
-Docs: https://meshlang.dev/docs/errors/#r0208
-
-## R0209
-
-**library-application-error** · error · runtime · guide: `meshc guide projects`
-
-The exported Mesh function returned `Err`; the call returned status 9 (`MESH_LIBRARY_ERR_APPLICATION`) and the response holds the error's message.
-
-**Repair:** Handle the message in the host as the function's error result, or change the input so the function returns `Ok`.
-
-Docs: https://meshlang.dev/docs/errors/#r0209
 
 ## R0301
 

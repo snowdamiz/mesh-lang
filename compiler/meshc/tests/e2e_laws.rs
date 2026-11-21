@@ -285,6 +285,49 @@ fn dotted_imports_build_in_either_order_and_list_both_checked_targets() {
     );
 }
 
+/// A program that does not lower leaves every law unverified, and its own
+/// diagnostic, at its place, says why once.
+#[test]
+fn a_lowering_failure_is_reported_once_as_itself() {
+    let dir = project();
+    let root = dir.path();
+    write(
+        root,
+        "main.mpl",
+        "actor worker() do\n  receive do\n    _ -> ()\n  end\nend\n\nsupervisor Sup do\n  strategy: one_for_one\n  max_restarts: 3\n  max_seconds: 5\n\n  child w do\n    start: fn -> spawn grouped(worker) end\n    restart: permanent\n    shutdown: 5000\n  end\nend\n\nfn main() do\n  let sup = spawn(Sup)\nend\n",
+    );
+    write(root, "policy.law", RETRY_LAW);
+    let out = on_cli("verify", root)
+        .arg("--json")
+        .env("MESH_VERIFY_Z3", root.join("unavailable-solver"))
+        .output()
+        .unwrap();
+    let report = read_json(&out, false);
+    let laws = report["laws"].as_array().unwrap();
+    assert!(!laws.is_empty(), "{report}");
+    for law in laws {
+        assert_eq!(law["status"], "unverified", "{law}");
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let diagnostics: Vec<Value> = stderr
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}")))
+        .collect();
+    let codes: Vec<&str> = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["E0106"], "{stderr}");
+    assert!(
+        diagnostics[0]["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("main.mpl"),
+        "{stderr}"
+    );
+    assert_eq!(diagnostics[0]["line"], 13, "{stderr}");
+}
+
 #[test]
 fn rejects_ambiguous_module_names() {
     let dir = project();

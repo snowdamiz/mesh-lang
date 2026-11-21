@@ -36,10 +36,11 @@ impl PublishedDiagnostic {
     }
 }
 
-/// `d`, found while analyzing `document`, as an LSP diagnostic. Nothing is
-/// dropped:
+/// `d`, found while analyzing `document`, as an LSP diagnostic:
 /// - `range`: the primary span. Without one, the whole first line of the
 ///   diagnostic's file, or of `document` for a diagnostic about no file.
+///   The primary span's label is left out: an editor marks the range, and
+///   the message says what is wrong there.
 /// - `code` and `code_description`: the catalog ID and its docs page.
 /// - `message`: the observation, then `help:` and the repair, then a
 ///   `note:` line per note.

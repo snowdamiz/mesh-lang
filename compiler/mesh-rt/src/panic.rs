@@ -43,15 +43,34 @@ fn unwind(reason: String, diagnostic: Diagnostic) -> ! {
     std::panic::panic_any(MeshPanic { reason, diagnostic })
 }
 
-/// `message`, or [`WITHHELD`] when the panic comes from a computation on
-/// plaintext. Every Mesh panic passes its message through here before it
+/// `message`, or `None` when the panic comes from a computation on
+/// plaintext: the message may carry what the content made of it, and where
+/// the panic was raised may be a branch the content chose, so both are
+/// withheld. Every Mesh panic passes its message through here before it
 /// builds a reason or a diagnostic.
-fn redacted(message: impl FnOnce() -> String) -> String {
-    if computing_on_plaintext() {
-        WITHHELD.to_string()
-    } else {
-        message()
-    }
+fn disclosed(message: impl FnOnce() -> String) -> Option<String> {
+    (!computing_on_plaintext()).then(message)
+}
+
+/// Unwind with the panic of a computation on plaintext: [`WITHHELD`], at
+/// no place.
+fn withheld() -> ! {
+    unwind(
+        format!("Mesh panic: {WITHHELD}"),
+        Diagnostic::new(Code::Panic, WITHHELD),
+    )
+}
+
+/// Raise `message` at 1-based `line` and `col` of `file`; at no place for
+/// an empty `file` or line 0.
+fn raise_at(message: impl FnOnce() -> String, file: &str, line: u32, col: u32) -> ! {
+    let Some(message) = disclosed(message) else {
+        withheld()
+    };
+    unwind(
+        format!("Mesh panic: {message}"),
+        located(Code::Panic, file, line, col, message),
+    )
 }
 
 /// `code` at 1-based `line` and `col` of `file`; a location compiled code
@@ -95,7 +114,9 @@ pub extern "C-unwind" fn mesh_panic(
     _line: u32,
 ) -> ! {
     let (msg, function) = unsafe { (text(msg, msg_len), text(file, file_len)) };
-    let message = redacted(|| msg.to_string());
+    let Some(message) = disclosed(|| msg.to_string()) else {
+        withheld()
+    };
     unwind(
         format!("Mesh panic in {function}: {message}"),
         Diagnostic::new(Code::Panic, message).with_note(format!("raised in `{function}`")),
@@ -120,11 +141,7 @@ pub extern "C-unwind" fn mesh_panic_at(
     col: u32,
 ) -> ! {
     let (msg, file) = unsafe { (text(msg, msg_len), text(file, file_len)) };
-    let message = redacted(|| msg.to_string());
-    unwind(
-        format!("Mesh panic: {message}"),
-        located(Code::Panic, file, line, col, message),
-    )
+    raise_at(|| msg.to_string(), file, line, col)
 }
 
 /// Raise a Mesh panic from runtime code: a runtime function was given a
@@ -132,11 +149,7 @@ pub extern "C-unwind" fn mesh_panic_at(
 /// `mesh_panic` does, so an actor crashes alone and a test fails alone; the
 /// runtime function raising it must be `extern "C-unwind"`.
 pub(crate) fn raise(message: std::fmt::Arguments<'_>) -> ! {
-    let message = redacted(|| message.to_string());
-    unwind(
-        format!("Mesh panic: {message}"),
-        Diagnostic::new(Code::Panic, message),
-    )
+    raise_at(|| message.to_string(), "", 0, 0)
 }
 
 /// What a panic inside `Plaintext.map` says instead of its message, which
@@ -166,10 +179,38 @@ fn computing_on_plaintext() -> bool {
     PLAINTEXT_DEPTH.with(|depth| depth.replace(0) > 0)
 }
 
-/// `panic(message)`: end the actor, or the program with status 101.
+/// `panic(message)` at no known place: end the actor, or the program with
+/// status 101.
+///
+/// # Safety
+///
+/// `message` must point to a live `MeshString`.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_panic_str(message: *const crate::string::MeshString) -> ! {
     raise(format_args!("{}", unsafe { (*message).as_str() }))
+}
+
+/// `panic(message)` at 1-based `line` and `col` of the source `file`.
+///
+/// # Safety
+///
+/// `message` must point to a live `MeshString`, and `file` to `file_len`
+/// valid UTF-8 bytes.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_panic_str_at(
+    message: *const crate::string::MeshString,
+    file: *const u8,
+    file_len: u64,
+    line: u32,
+    col: u32,
+) -> ! {
+    let file = unsafe { text(file, file_len) };
+    raise_at(
+        || unsafe { (*message).as_str() }.to_string(),
+        file,
+        line,
+        col,
+    )
 }
 
 thread_local! {
@@ -241,15 +282,35 @@ pub(crate) fn format() -> Format {
 /// `diagnostic` as `format` writes it: a person's lines with the footer
 /// for its code, or one JSON object and a newline.
 pub(crate) fn render_as(format: Format, diagnostic: &Diagnostic) -> String {
+    rendered(format, diagnostic, true)
+}
+
+fn rendered(format: Format, diagnostic: &Diagnostic, footer: bool) -> String {
     let mut out = Vec::new();
-    Reporter::new(format, &mut out).emit(diagnostic.clone());
+    let reporter = Reporter::new(format, &mut out);
+    let mut reporter = if footer {
+        reporter
+    } else {
+        reporter.without_footers()
+    };
+    reporter.emit(diagnostic.clone());
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Whether this process reports `code` for the first time: a person is
+/// shown its footer once, as one reporter shows it.
+fn first_report_of(code: Code) -> bool {
+    static REPORTED: std::sync::OnceLock<parking_lot::Mutex<std::collections::HashSet<Code>>> =
+        std::sync::OnceLock::new();
+    REPORTED.get_or_init(Default::default).lock().insert(code)
 }
 
 /// Report `diagnostic` on standard error, in the program's [`format`]; on a
 /// grouped actor's worker, through the writer thread.
 pub(crate) fn report(diagnostic: &Diagnostic) {
-    let text = render_as(format(), diagnostic);
+    let format = format();
+    let footer = matches!(format, Format::Human { .. }) && first_report_of(diagnostic.code());
+    let text = rendered(format, diagnostic, footer);
     if DEFER_DIAGNOSTICS.get() {
         enqueue_diagnostic(text);
     } else {
@@ -419,35 +480,112 @@ mod tests {
 
     /// A panic inside `Plaintext.map` is redacted before its diagnostic is
     /// built, so neither the exit reason nor any rendering of its `R0001`
-    /// shows what the content made of the message.
+    /// shows what the content made of the message, or where it was raised:
+    /// a branch on the content picks the place.
     #[test]
-    fn a_panic_on_plaintext_withholds_its_message_from_every_format() {
+    fn a_panic_on_plaintext_withholds_its_message_and_place_from_every_format() {
+        crate::gc::mesh_rt_init();
         let message = format!("List.get: index {} is out of bounds", SECRET.len());
-        let raises: [Box<dyn Fn()>; 3] = [
+        let shown = crate::string::mesh_string_new(message.as_ptr(), message.len() as u64)
+            as *const crate::string::MeshString;
+        let file = "secret_branch.mpl";
+        let function = "Main__secret_branch";
+        let raises: [Box<dyn Fn()>; 4] = [
             Box::new(|| raise(format_args!("{message}"))),
             Box::new(|| {
                 mesh_panic_at(
                     message.as_ptr(),
                     message.len() as u64,
-                    "main.mpl".as_ptr(),
-                    8,
-                    4,
-                    3,
+                    file.as_ptr(),
+                    file.len() as u64,
+                    41,
+                    39,
                 )
             }),
-            Box::new(|| mesh_panic(message.as_ptr(), message.len() as u64, "f".as_ptr(), 1, 0)),
+            Box::new(|| mesh_panic_str_at(shown, file.as_ptr(), file.len() as u64, 41, 39)),
+            Box::new(|| {
+                mesh_panic(
+                    message.as_ptr(),
+                    message.len() as u64,
+                    function.as_ptr(),
+                    function.len() as u64,
+                    0,
+                )
+            }),
         ];
         for raise in raises {
             mesh_plaintext_enter();
             let payload = caught(raise);
             let panic = MeshPanic::of(&*payload).expect("a Mesh panic");
-            assert_eq!(panic.diagnostic().code(), Code::Panic);
+            let diagnostic = panic.diagnostic();
+            assert_eq!(diagnostic.code(), Code::Panic);
+            assert_eq!(
+                (diagnostic.file(), diagnostic.line(), diagnostic.col()),
+                (None, None, None)
+            );
+            assert!(diagnostic.notes().is_empty(), "{:?}", diagnostic.notes());
             for text in rendered(panic) {
                 assert!(!text.contains("27"), "the index leaked: {text}");
+                assert!(!text.contains("secret_branch"), "the place leaked: {text}");
+                assert!(!text.contains("41"), "the line leaked: {text}");
                 assert!(text.contains(WITHHELD), "{text}");
             }
             assert!(!computing_on_plaintext(), "the panic left the computation");
         }
+    }
+
+    /// `panic(message)` compiled where its call is known is an `R0001` at
+    /// that call.
+    #[test]
+    fn a_panic_call_is_an_r0001_at_the_call() {
+        crate::gc::mesh_rt_init();
+        let message = "boom";
+        let boom = crate::string::mesh_string_new(message.as_ptr(), message.len() as u64)
+            as *const crate::string::MeshString;
+        let payload = caught(|| mesh_panic_str_at(boom, "src/main.mpl".as_ptr(), 12, 3, 5));
+        let panic = MeshPanic::of(&*payload).unwrap();
+        assert_eq!(panic.reason(), "Mesh panic: boom");
+        let json: serde_json::Value =
+            serde_json::from_str(&render_as(Format::Json, panic.diagnostic())).unwrap();
+        assert_eq!(json["code"], "R0001");
+        assert_eq!(json["message"], "boom");
+        assert_eq!(json["file"], "src/main.mpl");
+        assert_eq!(
+            (json["line"].as_u64(), json["col"].as_u64()),
+            (Some(3), Some(5))
+        );
+    }
+
+    /// A process reports many diagnostics, each through a fresh reporter:
+    /// a person still sees the footer of a code once.
+    #[test]
+    fn a_codes_footer_is_shown_once_per_process() {
+        const CHILD: &str = "MESH_RUNTIME_FOOTER_TEST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            for crash in ["one", "two", "three"] {
+                report(&Diagnostic::new(Code::Panic, crash));
+            }
+            report(&Diagnostic::new(Code::ActorCrashed, "four"));
+            return;
+        }
+
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "panic::tests::a_codes_footer_is_shown_once_per_process",
+            ])
+            .env(CHILD, "1")
+            .env_remove("MESH_DIAGNOSTICS")
+            .env("NO_COLOR", "1")
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        for crash in ["one", "two", "three", "four"] {
+            assert!(stderr.contains(crash), "{stderr}");
+        }
+        assert_eq!(stderr.matches("meshc explain R0001").count(), 1, "{stderr}");
+        assert_eq!(stderr.matches("meshc explain R0101").count(), 1, "{stderr}");
     }
 
     /// Outside `Plaintext.map` the message is the diagnostic's, and a

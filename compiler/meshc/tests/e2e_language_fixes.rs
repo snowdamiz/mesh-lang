@@ -1685,22 +1685,25 @@ fn receive_arms_must_cover_the_message_type() {
 /// What a program writes on stderr for runtime panics with `messages`,
 /// raised where compiled code does not know the place (`List.get`): one
 /// `R0001` report each, in order.
+/// What a program's runtime writes for `diagnostics`, one process showing
+/// each code's footer once.
+fn runtime_report(diagnostics: impl IntoIterator<Item = mesh_diagnostics::Diagnostic>) -> String {
+    let mut out = Vec::new();
+    let mut reporter =
+        mesh_diagnostics::Reporter::new(mesh_diagnostics::Format::Human { color: false }, &mut out);
+    for diagnostic in diagnostics {
+        reporter.emit(diagnostic);
+    }
+    drop(reporter);
+    String::from_utf8(out).unwrap()
+}
+
 fn panic_report(messages: &[&str]) -> String {
-    messages
-        .iter()
-        .map(|message| {
-            let mut out = Vec::new();
-            mesh_diagnostics::Reporter::new(
-                mesh_diagnostics::Format::Human { color: false },
-                &mut out,
-            )
-            .emit(mesh_diagnostics::Diagnostic::new(
-                mesh_diagnostics::Code::Panic,
-                *message,
-            ));
-            String::from_utf8(out).unwrap()
-        })
-        .collect()
+    runtime_report(
+        messages.iter().map(|message| {
+            mesh_diagnostics::Diagnostic::new(mesh_diagnostics::Code::Panic, *message)
+        }),
+    )
 }
 
 fn run_status(source: &str, args: &[&str]) -> (Option<i32>, String, String) {
@@ -5202,7 +5205,7 @@ end
 #[test]
 fn panic_ends_the_actor_or_the_program() {
     // The Mesh skill docs used `panic("...")`, which did not exist.
-    let (code, out, err) = run_status(
+    let built = build_with_args(
         r##"fn parse_port(text :: String) -> Int do
   case String.to_int(text) do
     Some(port) -> port
@@ -5227,9 +5230,28 @@ end
 "##,
         &[],
     );
-    assert_eq!(code, Some(101), "{err}");
-    assert_eq!(out, "8080\n");
-    assert_eq!(err, panic_report(&["deliberate crash", "not a port: x"]));
+    assert!(built.ok, "build failed:\n{}", built.stderr);
+    let output = Command::new(built.dir.path().join("project/project"))
+        .output()
+        .expect("run binary");
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(101), "{err}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "8080\n");
+    // Each panic is at its call.
+    let main = mesh_diagnostics::SourceFile::unread(built.dir.path().join("project/main.mpl"));
+    let at = |line, col, message| {
+        mesh_diagnostics::Diagnostic::at_line(
+            mesh_diagnostics::Code::Panic,
+            main.clone(),
+            line,
+            message,
+        )
+        .at_column(col)
+    };
+    assert_eq!(
+        err,
+        runtime_report([at(10, 10, "deliberate crash"), at(4, 13, "not a port: x")])
+    );
 }
 
 #[test]

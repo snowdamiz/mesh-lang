@@ -29,24 +29,45 @@ struct Cli {
 }
 
 impl Cli {
+    /// The command line. Help and `--version` print to stdout and exit 0;
+    /// a bad command line is an `X0001` in the format asked for, exiting 2.
+    /// Run without a command, the tool shows a person its help instead.
     fn parse_or_report() -> Self {
         Self::try_parse().unwrap_or_else(|error| {
-            let json = std::env::args_os()
-                .skip(1)
-                .take_while(|arg| arg != "--")
-                .any(|arg| arg == "--json");
-            if !json || !error.use_stderr() {
+            let given = |flag: &str| {
+                std::env::args_os()
+                    .skip(1)
+                    .take_while(|arg| arg != "--")
+                    .any(|arg| arg == flag)
+            };
+            let json = given("--json");
+            let wants_help =
+                error.kind() == clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand;
+            if !error.use_stderr() || (wants_help && !json) {
                 error.exit();
             }
-            let mut reporter = Reporter::stderr(Format::Json);
-            reporter.emit(Diagnostic::new(
-                Code::InvalidArguments,
-                error.to_string().trim(),
-            ));
+            let mut reporter = Reporter::stderr(Format::for_cli(json, given("--no-color")));
+            reporter.emit(argument_error(&error));
             reporter.finish();
             process::exit(error.exit_code());
         })
     }
+}
+
+/// Clap's report of a bad command line as an `X0001`: its first paragraph
+/// is the message, and each paragraph after it (a tip, the usage) a note.
+fn argument_error(error: &clap::Error) -> Diagnostic {
+    let text = error.to_string();
+    let mut paragraphs = text
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|paragraph| !paragraph.is_empty());
+    let message = paragraphs.next().unwrap_or_default();
+    let message = message.strip_prefix("error: ").unwrap_or(message);
+    paragraphs.fold(
+        Diagnostic::new(Code::InvalidArguments, message),
+        Diagnostic::with_note,
+    )
 }
 
 #[derive(Subcommand)]

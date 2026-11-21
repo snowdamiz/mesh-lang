@@ -25,20 +25,79 @@ fn compiler() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
-fn rust_files(dir: &Path, visit: &mut impl FnMut(&Path, TokenStream)) {
+/// Each Rust file under `dir`, parsed, and whether only tests compile it:
+/// the file of a module a `#[cfg(test)] mod name;` declares, or a module
+/// under it.
+fn rust_files(dir: &Path, visit: &mut impl FnMut(&Path, TokenStream, bool)) {
+    let mut files = Vec::new();
+    collect_rust_files(dir, &mut files);
+    let mut test_modules = Vec::new();
+    for (path, tokens) in &files {
+        walk(tokens.clone(), false, &mut |tokens, test_only| {
+            if test_only {
+                test_modules.extend(test_module_file(path, tokens));
+            }
+        })
+        .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    }
+    for (path, tokens) in files {
+        let test_only = test_modules
+            .iter()
+            .any(|module| path == module.with_extension("rs") || path.starts_with(module));
+        visit(&path, tokens, test_only);
+    }
+}
+
+fn collect_rust_files(dir: &Path, files: &mut Vec<(PathBuf, TokenStream)>) {
     for entry in fs::read_dir(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display())) {
         let entry = entry.unwrap();
         let path = entry.path();
         let kind = entry.file_type().unwrap();
         if kind.is_dir() {
-            rust_files(&path, visit);
+            collect_rust_files(&path, files);
         } else if path.extension().is_some_and(|ext| ext == "rs") {
             let source = fs::read_to_string(&path).unwrap();
             let tokens = source
                 .parse()
                 .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-            visit(&path, tokens);
+            files.push((path, tokens));
         }
+    }
+}
+
+/// The module `tokens` start declaring in `file`, without its extension:
+/// `mod name;`, beside `lib.rs`, `main.rs` and `mod.rs` and in a directory
+/// named for any other file, or a `#[path = "..."]` beside `file`.
+fn test_module_file(file: &Path, tokens: &[TokenTree]) -> Option<PathBuf> {
+    let dir = file.parent()?;
+    match tokens {
+        [TokenTree::Ident(keyword), TokenTree::Ident(name), semi, ..]
+            if keyword == "mod" && is_punct(semi, ';') =>
+        {
+            let parent = match file.file_stem()?.to_str()? {
+                "lib" | "main" | "mod" => dir.to_path_buf(),
+                stem => dir.join(stem),
+            };
+            Some(parent.join(name.to_string()))
+        }
+        [hash, TokenTree::Group(attr), ..]
+            if is_punct(hash, '#') && attr.delimiter() == Delimiter::Bracket =>
+        {
+            let Ok(Meta::NameValue(path)) = syn::parse2::<Meta>(attr.stream()) else {
+                return None;
+            };
+            let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(target),
+                ..
+            }) = path.value
+            else {
+                return None;
+            };
+            path.path
+                .is_ident("path")
+                .then(|| dir.join(target.value()).with_extension(""))
+        }
+        _ => None,
     }
 }
 
@@ -135,31 +194,48 @@ fn code_variant(tokens: &[TokenTree]) -> Option<String> {
     }
 }
 
+/// A write to the process's own stdout or stderr that `tokens` start: a
+/// print macro, a `write!`/`writeln!` to `stdout()` or `stderr()`, or a
+/// call of either. Its name and line.
+fn print_site(tokens: &[TokenTree]) -> Option<(String, usize)> {
+    match tokens {
+        [TokenTree::Ident(name), bang, ..]
+            if ["println", "eprintln", "print", "eprint"]
+                .iter()
+                .any(|mac| name == mac)
+                && is_punct(bang, '!') =>
+        {
+            Some((format!("{name}!"), name.span().start().line))
+        }
+        [TokenTree::Ident(name), TokenTree::Group(args), ..]
+            if (name == "stdout" || name == "stderr")
+                && args.delimiter() == Delimiter::Parenthesis
+                && args.stream().is_empty() =>
+        {
+            Some((format!("{name}()"), name.span().start().line))
+        }
+        _ => None,
+    }
+}
+
 #[test]
 fn libraries_do_not_print() {
     let mut sites = Vec::new();
     for name in LIBRARIES {
-        rust_files(&compiler().join(name).join("src"), &mut |path, tokens| {
-            walk(tokens, false, &mut |tokens, test_only| {
-                if test_only {
-                    return;
-                }
-                if let [TokenTree::Ident(name), bang, ..] = tokens {
-                    if ["println", "eprintln", "print", "eprint"]
-                        .iter()
-                        .any(|mac| name == mac)
-                        && is_punct(bang, '!')
-                    {
-                        sites.push(format!(
-                            "{}:{}: {name}!",
-                            path.display(),
-                            name.span().start().line
-                        ));
+        rust_files(
+            &compiler().join(name).join("src"),
+            &mut |path, tokens, test_file| {
+                walk(tokens, test_file, &mut |tokens, test_only| {
+                    if test_only {
+                        return;
                     }
-                }
-            })
-            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        });
+                    if let Some((name, line)) = print_site(tokens) {
+                        sites.push(format!("{}:{line}: {name}", path.display()));
+                    }
+                })
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            },
+        );
     }
     sites.sort();
     assert!(
@@ -173,8 +249,8 @@ fn libraries_do_not_print() {
 fn every_active_code_has_an_emitter() {
     let mut emitted = HashSet::new();
     for krate in diagnostic_crates() {
-        rust_files(&krate.join("src"), &mut |path, tokens| {
-            walk(tokens, false, &mut |tokens, test_only| {
+        rust_files(&krate.join("src"), &mut |path, tokens, test_file| {
+            walk(tokens, test_file, &mut |tokens, test_only| {
                 if test_only {
                     return;
                 }
@@ -214,8 +290,8 @@ fn every_active_code_has_a_witness() {
             if !dir.is_dir() {
                 continue;
             }
-            rust_files(&dir, &mut |path, tokens| {
-                walk(tokens, test_only, &mut |tokens, test_only| {
+            rust_files(&dir, &mut |path, tokens, test_file| {
+                walk(tokens, test_only || test_file, &mut |tokens, test_only| {
                     if !test_only {
                         return;
                     }
@@ -249,4 +325,53 @@ fn every_active_code_has_a_witness() {
         missing, UNWITNESSED,
         "UNWITNESSED must match the active codes without examples or test references"
     );
+}
+
+/// A module only tests compile is test code wherever its file is: one a
+/// `#[cfg(test)] mod name;` or a `#[cfg(test)] #[path = ".."]` declares,
+/// and the modules under it.
+#[test]
+fn out_of_line_test_modules_are_test_code() {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join("emitters-test-modules");
+    let _ = fs::remove_dir_all(&root);
+    let files = [
+        (
+            "lib.rs",
+            "#[cfg(test)]\nmod helpers;\n#[cfg(test)]\n#[path = \"store_tests.rs\"]\nmod store_tests;\nmod live;\n",
+        ),
+        ("helpers.rs", "mod nested;\n"),
+        ("helpers/nested.rs", "fn f() { println!(\"t\"); }\n"),
+        ("store_tests.rs", "fn f() { eprintln!(\"t\"); }\n"),
+        ("live.rs", "fn f() { std::io::stderr(); }\n"),
+    ];
+    for (path, text) in files {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+    let mut seen = Vec::new();
+    let mut sites = Vec::new();
+    rust_files(&root, &mut |path, tokens, test_file| {
+        let name = path.strip_prefix(&root).unwrap().display().to_string();
+        seen.push((name.clone(), test_file));
+        walk(tokens, test_file, &mut |tokens, test_only| {
+            if let Some((site, _)) = print_site(tokens).filter(|_| !test_only) {
+                sites.push(format!("{name}: {site}"));
+            }
+        })
+        .unwrap();
+    });
+    fs::remove_dir_all(&root).unwrap();
+    seen.sort();
+    assert_eq!(
+        seen,
+        [
+            ("helpers.rs".to_string(), true),
+            ("helpers/nested.rs".to_string(), true),
+            ("lib.rs".to_string(), false),
+            ("live.rs".to_string(), false),
+            ("store_tests.rs".to_string(), true),
+        ]
+    );
+    assert_eq!(sites, ["live.rs: stderr()"]);
 }

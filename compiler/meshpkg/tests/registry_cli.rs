@@ -224,6 +224,16 @@ fn json_login_and_argument_failures_use_diagnostics() {
         assert_eq!(diagnostic["code"], code);
         assert_eq!(diagnostic["severity"], "error");
     }
+
+    // A person gets the same X0001, exiting 2, with Clap's usage as a note.
+    let output = meshpkg(&["login", "--bogus", "--no-color"], dir, dir);
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("[X0001] Error: unexpected argument '--bogus' found\n"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("  Note: Usage: meshpkg login"), "{stderr}");
 }
 
 #[test]

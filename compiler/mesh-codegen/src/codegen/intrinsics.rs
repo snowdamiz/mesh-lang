@@ -1647,8 +1647,16 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_test_fail_msg(msg: ptr, file: ptr, file_len: i64, line: i64) -> void
-    let test_fail_msg_ty = void_type.fn_type(
+    // mesh_test_fail_msg(msg: ptr) -> void
+    let test_fail_msg_ty = void_type.fn_type(&[ptr_type.into()], false);
+    module.add_function(
+        "mesh_test_fail_msg",
+        test_fail_msg_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_test_fail_msg_at(msg: ptr, file: ptr, file_len: i64, line: i64) -> void
+    let test_fail_msg_at_ty = void_type.fn_type(
         &[
             ptr_type.into(),
             ptr_type.into(),
@@ -1658,8 +1666,8 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         false,
     );
     module.add_function(
-        "mesh_test_fail_msg",
-        test_fail_msg_ty,
+        "mesh_test_fail_msg_at",
+        test_fail_msg_at_ty,
         Some(inkwell::module::Linkage::External),
     );
 
@@ -3815,6 +3823,29 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             0,
         ),
     );
+    // mesh_panic_str_at(message: ptr, file: ptr, file_len: u64, line: u32, col: u32) -> !
+    // (`panic(message)` whose source location compiled code knows)
+    let panic_str_at = module.add_function(
+        "mesh_panic_str_at",
+        void_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                i32_type.into(),
+                i32_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+    panic_str_at.add_attribute(
+        inkwell::attributes::AttributeLoc::Function,
+        context.create_enum_attribute(
+            inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn"),
+            0,
+        ),
+    );
     let process_exit = module.add_function(
         "mesh_process_exit",
         void_type.fn_type(&[i64_type.into()], false),
@@ -5654,6 +5685,7 @@ mod tests {
             "mesh_panic",
             "mesh_panic_at",
             "mesh_panic_str",
+            "mesh_panic_str_at",
             "mesh_process_exit",
         ] {
             let function = get_intrinsic(&module, name);

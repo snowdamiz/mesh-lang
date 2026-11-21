@@ -12,7 +12,7 @@ use inkwell::values::{
     StructValue,
 };
 use inkwell::IntPredicate;
-use mesh_diagnostics::{Code, Diagnostic};
+use mesh_diagnostics::{Code, Diagnostic, LineCol};
 
 use super::group_safety::GroupedSpawn;
 use super::intrinsics::get_intrinsic;
@@ -1130,6 +1130,7 @@ impl<'ctx> CodeGen<'ctx> {
             // (`send` is `ActorSend`): `mesh_actor_send(pid, tag, args...)`.
             "mesh_actor_send" => self.codegen_service_cast_helper(args)?,
             "mesh_node_start" => self.codegen_node_start(args)?,
+            "mesh_panic_str_at" => self.codegen_panic_str(&args[0], at)?,
             "mesh_node_monitor" | "mesh_process_monitor" => self.codegen_monitor(args, name)?,
             "mesh_node_connect" | "mesh_global_whereis" | "mesh_global_unregister" => {
                 self.codegen_node_string_call(args, name)?
@@ -3899,6 +3900,51 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Panic ────────────────────────────────────────────────────────
 
+    /// `text` as a constant global's bytes: their address and length.
+    fn const_text(&self, text: &str, name: &str) -> (PointerValue<'ctx>, IntValue<'ctx>) {
+        let value = self.context.const_string(text.as_bytes(), false);
+        let global = self.module.add_global(value.get_type(), None, name);
+        global.set_initializer(&value);
+        global.set_constant(true);
+        let len = self.context.i64_type().const_int(text.len() as u64, false);
+        (global.as_pointer_value(), len)
+    }
+
+    /// The 1-based line and column of `at` as `i32` arguments.
+    fn line_col_args(&self, at: LineCol) -> [BasicMetadataValueEnum<'ctx>; 2] {
+        let i32_ty = self.context.i32_type();
+        [
+            i32_ty.const_int(u64::from(at.line), false).into(),
+            i32_ty.const_int(u64::from(at.col), false).into(),
+        ]
+    }
+
+    /// `panic(message)` at `at`, through `mesh_panic_str_at`; where the
+    /// place is not known, through `mesh_panic_str`.
+    fn codegen_panic_str(
+        &mut self,
+        message: &MirExpr,
+        at: Option<MirSourceSpan>,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
+        let message = self.codegen_expr(message)?;
+        let (panic_fn, args) = match runtime_location(&self.files, at) {
+            Some((file, at)) => {
+                let (file_ptr, file_len) = self.const_text(&file, ".panic_file");
+                let mut args = vec![message.into(), file_ptr.into(), file_len.into()];
+                args.extend(self.line_col_args(at));
+                (get_intrinsic(&self.module, "mesh_panic_str_at"), args)
+            }
+            None => (
+                get_intrinsic(&self.module, "mesh_panic_str"),
+                vec![message.into()],
+            ),
+        };
+        self.builder
+            .build_call(panic_fn, &args, "")
+            .map_err(Diagnostic::internal)?;
+        Ok(self.context.struct_type(&[], false).const_zero().into())
+    }
+
     /// Panic with `message` at `at`, through `mesh_panic_at`; where the
     /// place is not known, through `mesh_panic`, naming `function`.
     pub(crate) fn codegen_panic(
@@ -3917,42 +3963,18 @@ impl<'ctx> CodeGen<'ctx> {
             None => (get_intrinsic(&self.module, "mesh_panic"), function, None),
         };
 
-        // Create global constants for message and file strings
-        let msg_val = self.context.const_string(message.as_bytes(), false);
-        let msg_global = self
-            .module
-            .add_global(msg_val.get_type(), None, ".panic_msg");
-        msg_global.set_initializer(&msg_val);
-        msg_global.set_constant(true);
-
-        let file_val = self.context.const_string(file.as_bytes(), false);
-        let file_global = self
-            .module
-            .add_global(file_val.get_type(), None, ".panic_file");
-        file_global.set_initializer(&file_val);
-        file_global.set_constant(true);
-
-        let msg_ptr = msg_global.as_pointer_value();
-        let msg_len = self
-            .context
-            .i64_type()
-            .const_int(message.len() as u64, false);
-        let file_ptr = file_global.as_pointer_value();
-        let file_len = self.context.i64_type().const_int(file.len() as u64, false);
-        let i32_ty = self.context.i32_type();
-        let mut args: Vec<inkwell::values::BasicMetadataValueEnum<'ctx>> = vec![
+        let (msg_ptr, msg_len) = self.const_text(message, ".panic_msg");
+        let (file_ptr, file_len) = self.const_text(file, ".panic_file");
+        let mut args: Vec<BasicMetadataValueEnum<'ctx>> = vec![
             msg_ptr.into(),
             msg_len.into(),
             file_ptr.into(),
             file_len.into(),
         ];
         match place {
-            Some(at) => {
-                args.push(i32_ty.const_int(u64::from(at.line), false).into());
-                args.push(i32_ty.const_int(u64::from(at.col), false).into());
-            }
+            Some(at) => args.extend(self.line_col_args(at)),
             // The function's name is not a file: line 0 says so.
-            None => args.push(i32_ty.const_zero().into()),
+            None => args.push(self.context.i32_type().const_zero().into()),
         }
 
         self.builder

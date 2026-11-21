@@ -1566,6 +1566,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_panic_str",
             mesh_rt::panic::mesh_panic_str as *const (),
         ),
+        (
+            "mesh_panic_str_at",
+            mesh_rt::panic::mesh_panic_str_at as *const (),
+        ),
         ("mesh_pg_begin", mesh_rt::db::pg::mesh_pg_begin as *const ()),
         ("mesh_pg_cast", mesh_rt::db::expr::mesh_pg_cast as *const ()),
         ("mesh_pg_close", mesh_rt::db::pg::mesh_pg_close as *const ()),
@@ -2372,6 +2376,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_test_fail_msg",
             mesh_rt::test::mesh_test_fail_msg as *const (),
+        ),
+        (
+            "mesh_test_fail_msg_at",
+            mesh_rt::test::mesh_test_fail_msg_at as *const (),
         ),
         (
             "mesh_test_mock_actor",

@@ -532,9 +532,16 @@ fn verify_laws(
     }
 
     let mut failure = None;
-    for law in &reports {
-        if let Some(diagnostic) = verdict_diagnostic(law, &diagnostic_sources) {
-            failure = Some(reporter.fail(diagnostic));
+    match &program {
+        // The program did not lower: its own diagnostic says why every law
+        // went unverified, once.
+        Some(Err(error)) => failure = Some(reporter.fail(error.clone())),
+        _ => {
+            for law in &reports {
+                if let Some(diagnostic) = verdict_diagnostic(law, &diagnostic_sources) {
+                    failure = Some(reporter.fail(diagnostic));
+                }
+            }
         }
     }
     if changes.is_some_and(|changes| !changes.is_empty()) {

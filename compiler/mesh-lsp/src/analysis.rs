@@ -7,7 +7,7 @@
 //! outside any project. LSP positions are 0-based lines and UTF-16 code
 //! units, converted against the analyzed text.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use rowan::TextRange;
@@ -33,6 +33,8 @@ pub struct AnalysisResult {
     pub parse: mesh_parser::Parse,
     /// The type-check result, kept for hover queries.
     pub typeck: TypeckResult,
+    /// The files checked: their diagnostics are all in `diagnostics`.
+    pub checked: HashSet<PathBuf>,
 }
 
 impl AnalysisResult {
@@ -162,6 +164,11 @@ fn module_analysis(checked: Frontend, relative: &Path) -> Result<AnalysisResult,
     let Some(mut analysis) = analysis else {
         return Err(diagnostics);
     };
+    let checked = analysis
+        .files
+        .iter()
+        .map(|file| file.path().to_path_buf())
+        .collect();
     let Some(idx) = analysis
         .project
         .graph
@@ -176,6 +183,7 @@ fn module_analysis(checked: Frontend, relative: &Path) -> Result<AnalysisResult,
         file: analysis.files.swap_remove(idx),
         parse: analysis.project.module_parses.swap_remove(idx),
         typeck: analysis.checked.typeck.swap_remove(idx),
+        checked,
     })
 }
 
@@ -189,6 +197,7 @@ fn analysis_alone(diagnostics: Vec<Diagnostic>, path: &Path, source: &str) -> An
         file: SourceFile::new(path, source),
         parse,
         typeck,
+        checked: HashSet::from([path.to_path_buf()]),
     }
 }
 

@@ -73,11 +73,13 @@ pub(crate) struct MarkClosed {
 }
 
 const MAX_PARSE_ERRORS: usize = 20;
-const MAX_PARSE_DEPTH: usize = 64;
+/// Deep enough for about 125 nested blocks or 250 nested parentheses,
+/// shallow enough that pathological input cannot overflow the stack.
+const MAX_PARSE_DEPTH: usize = 256;
 /// The message of the error at the depth limit, which a law file reports
 /// as too large rather than as malformed.
 pub(crate) const NESTED_TOO_DEEPLY: &str = "syntax nested too deeply";
-const MAX_WRAPPED_NODE_HEIGHT: usize = 1024;
+const MAX_WRAPPED_NODE_HEIGHT: usize = 4096;
 
 /// An aligned declaration seen inside a block may belong at the top level
 /// if that block turns out to be missing its `end`.
@@ -287,7 +289,7 @@ impl<'src> Parser<'src> {
         // Repeated wrapping, such as a long chain of additions, can build a
         // deep tree even without recursing in the grammar.
         if completed.height >= MAX_WRAPPED_NODE_HEIGHT {
-            self.error(NESTED_TOO_DEEPLY);
+            self.nested_too_deeply();
         }
         self.child_heights.push(completed.height);
         let mark = MarkOpened {
@@ -361,7 +363,7 @@ impl<'src> Parser<'src> {
 
     fn with_nesting<T: Default>(&mut self, parse: impl FnOnce(&mut Self) -> T) -> T {
         if self.depth == MAX_PARSE_DEPTH {
-            self.error(NESTED_TOO_DEEPLY);
+            self.nested_too_deeply();
             return T::default();
         }
         self.depth += 1;
@@ -543,6 +545,15 @@ impl<'src> Parser<'src> {
 
     /// Record an unexpected-token error at the current token. Sets the
     /// error flag.
+    fn nested_too_deeply(&mut self) {
+        self.report_here(
+            ParseError::new(Code::UnexpectedToken, NESTED_TOO_DEEPLY, self.current_span())
+                .with_repair(
+                    "Break this deeply nested expression or block into helper functions or `let` bindings.",
+                ),
+        );
+    }
+
     pub(crate) fn error(&mut self, message: &str) {
         self.report_here(ParseError::new(
             Code::UnexpectedToken,

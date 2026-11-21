@@ -1528,7 +1528,26 @@ fn recovery_bounds_adversarial_nesting() {
         let parsed = parse(&source);
         assert_eq!(parsed.errors().len(), 1);
         assert!(parsed.errors()[0].message.contains("nested too deeply"));
+        assert_eq!(
+            parsed.errors()[0].repair.as_deref(),
+            Some("Break this deeply nested expression or block into helper functions or `let` bindings.")
+        );
         assert_eq!(parsed.syntax().text().to_string(), source);
+    }
+}
+
+#[test]
+fn deep_but_reasonable_nesting_parses() {
+    let parens = format!("fn f() = {}1{}\n", "(".repeat(250), ")".repeat(250));
+    let blocks = format!(
+        "fn f() do\n{}1\n{}end\n",
+        "if true do\n".repeat(125),
+        "end\n".repeat(125)
+    );
+    let chain = format!("fn f() = a{}\n", " + a".repeat(4000));
+    for source in [parens, blocks, chain] {
+        let parsed = parse(&source);
+        assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
     }
 }
 

@@ -32,29 +32,48 @@ pub const MESH_LIBRARY_ERR_APPLICATION: i32 = 9;
 // ponytail: one fixed 1 MiB host buffer; add negotiated sizing if mobile payloads exceed it.
 const MAX_BOUNDARY_BYTES: usize = 1024 * 1024;
 
-/// The diagnostic code that explains a library status: `R0201` for status
-/// 1 through `R0209` for status 9.
-fn status_code(status: i32) -> Code {
-    match status {
-        MESH_LIBRARY_ERR_INVALID_ARGUMENT => Code::LibraryInvalidArgument,
-        MESH_LIBRARY_ERR_NOT_INITIALIZED => Code::LibraryNotInitialized,
-        MESH_LIBRARY_ERR_BUSY => Code::LibraryBusy,
-        MESH_LIBRARY_ERR_PANIC => Code::LibraryPanic,
-        MESH_LIBRARY_ERR_HOST_CALLBACK => Code::LibraryHostCallbackFailed,
-        MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE => Code::LibraryOutputTooLarge,
-        MESH_LIBRARY_ERR_ABI => Code::LibraryAbiMismatch,
-        MESH_LIBRARY_ERR_CALLBACK_MISSING => Code::LibraryCallbackMissing,
-        MESH_LIBRARY_ERR_APPLICATION => Code::LibraryApplicationError,
-        _ => unreachable!("library status {status} is not an error"),
+/// A call the host made wrongly, which the runtime refuses. A panic was
+/// reported as it was raised, and an `Err` result is the function's
+/// answer, so neither is one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Refusal {
+    InvalidArgument,
+    NotInitialized,
+    Busy,
+    OutputTooLarge,
+    AbiMismatch,
+}
+
+impl Refusal {
+    /// The status the call returns.
+    fn status(self) -> i32 {
+        match self {
+            Refusal::InvalidArgument => MESH_LIBRARY_ERR_INVALID_ARGUMENT,
+            Refusal::NotInitialized => MESH_LIBRARY_ERR_NOT_INITIALIZED,
+            Refusal::Busy => MESH_LIBRARY_ERR_BUSY,
+            Refusal::OutputTooLarge => MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE,
+            Refusal::AbiMismatch => MESH_LIBRARY_ERR_ABI,
+        }
+    }
+
+    /// The diagnostic code that explains it.
+    fn code(self) -> Code {
+        match self {
+            Refusal::InvalidArgument => Code::LibraryInvalidArgument,
+            Refusal::NotInitialized => Code::LibraryNotInitialized,
+            Refusal::Busy => Code::LibraryBusy,
+            Refusal::OutputTooLarge => Code::LibraryOutputTooLarge,
+            Refusal::AbiMismatch => Code::LibraryAbiMismatch,
+        }
     }
 }
 
-/// Refuse a call the host made wrongly with `status`, saying why on stderr.
-/// A panic was reported as it was raised, and an `Err` result is the
-/// function's answer, so neither comes through here.
-fn refused(status: i32, message: impl Into<String>) -> i32 {
-    crate::panic::report(&Diagnostic::new(status_code(status), message));
-    status
+/// Refuse a call, saying why on stderr, and return its status. The caller
+/// holds no lock: a host whose stderr blocks must not stall another call
+/// or the shutdown.
+fn refused(refusal: Refusal, message: impl Into<String>) -> i32 {
+    crate::panic::report(&Diagnostic::new(refusal.code(), message));
+    refusal.status()
 }
 
 #[repr(C)]
@@ -179,11 +198,14 @@ impl Drop for CallContext {
 pub extern "C" fn mesh_library_init() -> i32 {
     let mut lifecycle = LIFECYCLE.lock();
     match *lifecycle {
-        Lifecycle::Running(_) => MESH_LIBRARY_OK,
-        Lifecycle::Shutdown => refused(
-            MESH_LIBRARY_ERR_NOT_INITIALIZED,
-            "mesh_library_init: the library was shut down, and cannot start again in this process",
-        ),
+        Lifecycle::Running(_) => {}
+        Lifecycle::Shutdown => {
+            drop(lifecycle);
+            return refused(
+                Refusal::NotInitialized,
+                "mesh_library_init: the library was shut down, and cannot start again in this process",
+            );
+        }
         Lifecycle::New => {
             mesh_rt_init();
             actor::mesh_rt_init_actor(1);
@@ -195,9 +217,9 @@ pub extern "C" fn mesh_library_init() -> i32 {
                 pid
             });
             *lifecycle = Lifecycle::Running(pid);
-            MESH_LIBRARY_OK
         }
     }
+    MESH_LIBRARY_OK
 }
 
 #[no_mangle]
@@ -227,7 +249,7 @@ pub extern "C" fn mesh_library_register_host_callbacks(
 ) -> i32 {
     if callbacks.is_null() {
         return refused(
-            MESH_LIBRARY_ERR_INVALID_ARGUMENT,
+            Refusal::InvalidArgument,
             "mesh_library_register_host_callbacks: the callback table is NULL",
         );
     }
@@ -235,16 +257,16 @@ pub extern "C" fn mesh_library_register_host_callbacks(
     let size = std::mem::size_of::<MeshLibraryHostCallbacksV1>();
     if callbacks.abi_version != MESH_LIBRARY_ABI_VERSION || callbacks.struct_size as usize != size {
         return refused(
-            MESH_LIBRARY_ERR_ABI,
+            Refusal::AbiMismatch,
             format!(
                 "mesh_library_register_host_callbacks: the callback table has abi_version {} and struct_size {}; this runtime takes abi_version {MESH_LIBRARY_ABI_VERSION} and struct_size {size}",
                 callbacks.abi_version, callbacks.struct_size
             ),
         );
     }
-    if !matches!(*LIFECYCLE.lock(), Lifecycle::Running(_)) {
+    if !running() {
         return refused(
-            MESH_LIBRARY_ERR_NOT_INITIALIZED,
+            Refusal::NotInitialized,
             "mesh_library_register_host_callbacks: mesh_library_init has not started the library",
         );
     }
@@ -324,37 +346,66 @@ pub unsafe extern "C" fn mesh_library_invoke(
 ) -> i32 {
     if output.is_null() {
         return refused(
-            MESH_LIBRARY_ERR_INVALID_ARGUMENT,
+            Refusal::InvalidArgument,
             "an exported function was called with a NULL response pointer",
         );
     }
     if input.is_null() && input_len != 0 {
         return refused(
-            MESH_LIBRARY_ERR_INVALID_ARGUMENT,
+            Refusal::InvalidArgument,
             format!("an exported function was called with a NULL request of {input_len} bytes"),
         );
     }
     (*output) = MeshLibraryBytes::default();
     if input_len > MAX_BOUNDARY_BYTES as u64 {
         return refused(
-            MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE,
+            Refusal::OutputTooLarge,
             format!(
                 "the request is {input_len} bytes; a call carries at most {MAX_BOUNDARY_BYTES}"
             ),
         );
     }
-    let Some(_call) = CALL_LOCK.try_lock() else {
+    let Some(call) = CALL_LOCK.try_lock() else {
         return refused(
-            MESH_LIBRARY_ERR_BUSY,
+            Refusal::Busy,
             "an exported function was called while another call was in progress",
         );
     };
-    if !matches!(*LIFECYCLE.lock(), Lifecycle::Running(_)) {
+    if !running() {
+        drop(call);
         return refused(
-            MESH_LIBRARY_ERR_NOT_INITIALIZED,
+            Refusal::NotInitialized,
             "an exported function was called before mesh_library_init started the library",
         );
     }
+    let status = run_exported(entrypoint, input, input_len, output);
+    drop(call);
+    if status == MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE {
+        return refused(
+            Refusal::OutputTooLarge,
+            format!("the result is larger than {MAX_BOUNDARY_BYTES} bytes, or the host could not allocate it"),
+        );
+    }
+    status
+}
+
+fn running() -> bool {
+    matches!(*LIFECYCLE.lock(), Lifecycle::Running(_))
+}
+
+/// Run `entrypoint` on the request as a process of its own, finalized
+/// before this returns the call's status.
+///
+/// # Safety
+///
+/// As [`mesh_library_invoke`], with the library running and the call lock
+/// held.
+unsafe fn run_exported(
+    entrypoint: MeshLibraryEntrypoint,
+    input: *const u8,
+    input_len: u64,
+    output: *mut MeshLibraryBytes,
+) -> i32 {
     // Running: mesh_library_init started the scheduler.
     let scheduler = actor::global_scheduler();
 
@@ -378,7 +429,7 @@ pub unsafe extern "C" fn mesh_library_invoke(
         entrypoint(managed_input, &mut result);
         result
     }));
-    let status = match result {
+    match result {
         Ok(result) if result.tag == 0 => copy_mesh_value(result.value, true, output, malloc),
         Ok(result) if result.tag == 1 => {
             let status = copy_mesh_value(result.value, false, output, malloc);
@@ -390,14 +441,7 @@ pub unsafe extern "C" fn mesh_library_invoke(
         }
         Ok(_) => MESH_LIBRARY_ERR_INVALID_ARGUMENT,
         Err(_) => MESH_LIBRARY_ERR_PANIC,
-    };
-    if status == MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE {
-        return refused(
-            status,
-            format!("the result is larger than {MAX_BOUNDARY_BYTES} bytes, or the host could not allocate it"),
-        );
     }
-    status
 }
 
 /// The C allocator the host frees returned bytes with
@@ -532,14 +576,17 @@ mod tests {
         assert!(output.data.is_null());
     }
 
-    /// Each error status is explained by the code numbered after it.
+    /// A refusal is explained by the code numbered after its status.
     #[test]
-    fn every_status_has_its_code() {
-        let ids = [
-            "R0201", "R0202", "R0203", "R0204", "R0205", "R0206", "R0207", "R0208", "R0209",
-        ];
-        for (status, id) in (1..=9).zip(ids) {
-            assert_eq!(status_code(status).id(), id);
+    fn a_refusals_code_is_numbered_after_its_status() {
+        for refusal in [
+            Refusal::InvalidArgument,
+            Refusal::NotInitialized,
+            Refusal::Busy,
+            Refusal::OutputTooLarge,
+            Refusal::AbiMismatch,
+        ] {
+            assert_eq!(refusal.code().id(), format!("R02{:02}", refusal.status()));
         }
     }
 

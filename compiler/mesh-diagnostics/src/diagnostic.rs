@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::num::NonZeroU32;
+use std::path::Path;
 
 use mesh_common::span::Span;
 
-use crate::{Code, Severity, SourceFile};
+use crate::{Code, Origin, Severity, SourceFile, SourceMap};
 
 /// One diagnostic: an observation at a place, with a repair.
 ///
@@ -210,6 +211,47 @@ impl Diagnostic {
             replacement: replacement.into(),
             applicability,
         });
+        self
+    }
+
+    /// What the diagnostic says about the generated file at `generated`
+    /// said about `source`, the file it was generated from, each span
+    /// placed through `map`. Its edits stay only if each lands on text of
+    /// `source` exactly: applied anywhere else, they would change text the
+    /// diagnostic is not about.
+    pub fn relocated(mut self, generated: &Path, source: &SourceFile, map: &SourceMap) -> Self {
+        let is_generated = |file: &SourceFile| file.path() == generated;
+        let own = self.file.as_ref().is_some_and(is_generated);
+        let moves = |file: &Option<SourceFile>| file.as_ref().map_or(own, is_generated);
+        if own {
+            self.file = Some(source.clone());
+            if let Some(Primary::Span { span, .. }) = &mut self.primary {
+                *span = map.origin(*span).span();
+            }
+        }
+        for label in &mut self.labels {
+            if moves(&label.file) {
+                label.span = map.origin(label.span).span();
+                if label.file.is_some() {
+                    label.file = Some(source.clone());
+                }
+            }
+        }
+        let mut exact = true;
+        for edit in &mut self.edits {
+            if moves(&edit.file) {
+                match map.origin(edit.span) {
+                    Origin::Exact(span) => edit.span = span,
+                    Origin::Near(_) => exact = false,
+                }
+                if edit.file.is_some() {
+                    edit.file = Some(source.clone());
+                }
+            }
+        }
+        if !exact {
+            self.edits.clear();
+        }
         self
     }
 

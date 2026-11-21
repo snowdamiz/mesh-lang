@@ -7,7 +7,7 @@ use std::fmt;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
-use crate::{Code, Diagnostic, Severity};
+use crate::{Code, Diagnostic, Severity, SourceFile, SourceMap};
 
 /// How a [`Reporter`] writes: Ariadne reports for a person, or one JSON
 /// object per line for a tool.
@@ -72,6 +72,11 @@ pub struct Reporter<W: Write = io::Stderr> {
     paths: Paths,
     /// Each code reported, in first-seen order, with how often.
     codes: Vec<(Code, u32)>,
+    /// Generated files whose diagnostics are reported in the files they
+    /// were generated from: `(generated, source, map)`.
+    generated: Vec<(PathBuf, SourceFile, SourceMap)>,
+    /// Whether a code's first diagnostic is followed by its footer.
+    footers: bool,
     summary: Summary,
 }
 
@@ -89,6 +94,8 @@ impl<W: Write> Reporter<W> {
             out,
             paths: Paths::default(),
             codes: Vec::new(),
+            generated: Vec::new(),
+            footers: true,
             summary: Summary {
                 errors: 0,
                 warnings: 0,
@@ -96,15 +103,18 @@ impl<W: Write> Reporter<W> {
         }
     }
 
-    /// Names `to` in place of `from` in every path written, messages
-    /// included: a file, or a directory for the files under it. `meshc
-    /// test` builds a copy of the project in a temporary directory, and
-    /// names the user's files.
-    pub fn show_path_as(&mut self, from: impl Into<PathBuf>, to: impl Into<PathBuf>) {
-        self.paths.0.push((from.into(), to.into()));
+    /// Leaves the footer out of every diagnostic: a process that reports
+    /// each diagnostic through a fresh reporter decides itself which code's
+    /// footer it has shown.
+    pub fn without_footers(mut self) -> Self {
+        self.footers = false;
+        self
     }
 
-    /// Apply path aliases while a copied project is being compiled.
+    /// Runs `run` naming `to` in place of `from`, for each alias, in every
+    /// path written, messages included: a file, or a directory for the
+    /// files under it. `meshc test` builds a copy of the project in a
+    /// temporary directory, and names the user's files.
     pub fn with_path_aliases<T>(
         &mut self,
         aliases: impl IntoIterator<Item = (PathBuf, PathBuf)>,
@@ -117,7 +127,30 @@ impl<W: Write> Reporter<W> {
         result
     }
 
+    /// Runs `run` reporting what diagnostics say about the file at
+    /// `generated` in `source`, the file it was generated from, each span
+    /// placed through `map`: `meshc test` compiles the program it makes of
+    /// a `.test.mpl` file, and reports the file as written.
+    pub fn with_generated_file<T>(
+        &mut self,
+        generated: impl Into<PathBuf>,
+        source: SourceFile,
+        map: SourceMap,
+        run: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        self.generated.push((generated.into(), source, map));
+        let result = run(self);
+        self.generated.pop();
+        result
+    }
+
     pub fn emit(&mut self, diagnostic: Diagnostic) {
+        let diagnostic = self
+            .generated
+            .iter()
+            .fold(diagnostic, |diagnostic, (generated, source, map)| {
+                diagnostic.relocated(generated, source, map)
+            });
         match diagnostic.severity() {
             Severity::Error => self.summary.errors += 1,
             Severity::Warning => self.summary.warnings += 1,
@@ -136,7 +169,7 @@ impl<W: Write> Reporter<W> {
         let text = match self.format {
             Format::Human { color } => {
                 let mut text = human::render(&diagnostic, color, &self.paths);
-                if first {
+                if first && self.footers {
                     text.push_str(&human::footer(code, color));
                 }
                 text
@@ -188,6 +221,13 @@ impl<W: Write> Reporter<W> {
         self.summary
     }
 
+    /// Ends the run without the tally, where the command's own result says
+    /// what the diagnostics came to: `meshc test` passed although a test
+    /// crashed an actor on purpose.
+    pub fn finish_untallied(self) -> Summary {
+        self.summary
+    }
+
     /// One write per diagnostic keeps its lines together. A closed stderr
     /// leaves nowhere to say that writing failed.
     fn write(&mut self, text: &str) {
@@ -196,7 +236,7 @@ impl<W: Write> Reporter<W> {
     }
 }
 
-/// The `show_path_as` mappings, `(from, to)`.
+/// The `with_path_aliases` mappings, `(from, to)`.
 #[derive(Default)]
 struct Paths(Vec<(PathBuf, PathBuf)>);
 

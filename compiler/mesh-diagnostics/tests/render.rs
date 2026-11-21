@@ -2,6 +2,8 @@
 //! hand, plain lines where it is not, a footer once per code, a tally) and
 //! for a tool (one JSON object per line).
 
+use std::path::PathBuf;
+
 use mesh_common::span::Span;
 use mesh_diagnostics::{
     Applicability, Code, Diagnostic, Failed, Format, Reporter, SourceFile, Summary,
@@ -188,6 +190,19 @@ fn the_footer_is_shown_once_per_code() {
     insta::assert_snapshot!(output);
 }
 
+/// A reporter told its footers were shown writes none.
+#[test]
+fn a_reporter_without_footers_writes_none() {
+    let mut out = Vec::new();
+    let mut reporter = Reporter::new(HUMAN, &mut out).without_footers();
+    reporter.emit(unbound());
+    reporter.finish();
+    let output = String::from_utf8(out).unwrap();
+    assert!(output.contains("undefined variable `cuont`"), "{output}");
+    assert!(!output.contains("meshc explain"), "{output}");
+    assert!(output.ends_with("error: 1 error (E0004)\n"), "{output}");
+}
+
 #[test]
 fn the_tally_counts_errors_and_warnings() {
     let tally = |diagnostics: Vec<Diagnostic>| {
@@ -225,6 +240,10 @@ fn json_is_one_object_per_line_with_no_tally() {
     insta::assert_snapshot!(output);
 }
 
+fn alias(from: &str, to: &str) -> [(PathBuf, PathBuf); 1] {
+    [(PathBuf::from(from), PathBuf::from(to))]
+}
+
 #[test]
 fn shown_paths_apply_to_every_file_named() {
     let copy = SourceFile::new("/tmp/copy/src/main.mpl", MAIN);
@@ -242,8 +261,9 @@ fn shown_paths_apply_to_every_file_named() {
 
     let mut out = Vec::new();
     let mut reporter = Reporter::new(Format::Json, &mut out);
-    reporter.show_path_as("/tmp/copy", "project");
-    reporter.emit(diagnostic.clone());
+    reporter.with_path_aliases(alias("/tmp/copy", "project"), |reporter| {
+        reporter.emit(diagnostic.clone())
+    });
     reporter.finish();
     let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
     assert_eq!(json["file"], "project/src/main.mpl");
@@ -253,8 +273,10 @@ fn shown_paths_apply_to_every_file_named() {
 
     let mut out = Vec::new();
     let mut reporter = Reporter::new(HUMAN, &mut out);
-    reporter.show_path_as("/tmp/copy/src/main.mpl", "tests/main.test.mpl");
-    reporter.emit(diagnostic);
+    reporter.with_path_aliases(
+        alias("/tmp/copy/src/main.mpl", "tests/main.test.mpl"),
+        |reporter| reporter.emit(diagnostic),
+    );
     reporter.finish();
     let human = String::from_utf8(out).unwrap();
     assert!(human.contains("tests/main.test.mpl"), "{human}");
@@ -270,8 +292,9 @@ fn shown_paths_apply_to_paths_a_message_names() {
     for format in [HUMAN, Format::Json] {
         let mut out = Vec::new();
         let mut reporter = Reporter::new(format, &mut out);
-        reporter.show_path_as("/tmp/copy", "project");
-        reporter.emit(diagnostic.clone());
+        reporter.with_path_aliases(alias("/tmp/copy", "project"), |reporter| {
+            reporter.emit(diagnostic.clone())
+        });
         reporter.finish();
         let written = String::from_utf8(out).unwrap();
         assert!(

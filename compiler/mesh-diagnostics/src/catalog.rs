@@ -1391,18 +1391,6 @@ catalog! {
         repair: "Make the calls one at a time, from one serial queue or behind a lock, or retry the call after the one in progress returns.",
         topic: "projects",
     },
-    LibraryPanic = R0204 "library-panic" Error {
-        title: "exported function panicked",
-        summary: "The exported Mesh function panicked; the runtime reported the panic on standard error, and the call returned status 4 (`MESH_LIBRARY_ERR_PANIC`) with an empty response.",
-        repair: "Fix the panic the runtime reported (an `R0001`), or return an `Err` from the exported function for a failure the host should handle.",
-        topic: "projects",
-    },
-    LibraryHostCallbackFailed = R0205 "library-host-callback-failed" Error {
-        title: "host callback status reserved",
-        summary: "Status 5 (`MESH_LIBRARY_ERR_HOST_CALLBACK`) is reserved in library ABI 1 and no runtime function returns it: a failing host callback reaches Mesh code as `Err(\"host_callback_failed:<capability>:<status>\")` instead.",
-        repair: "Check that the host was built against the header generated with the library it links. To learn why a host callback failed, handle the `Err` the Mesh code receives from it.",
-        topic: "projects",
-    },
     LibraryOutputTooLarge = R0206 "library-output-too-large" Error {
         title: "library payload too large",
         summary: "A request or a result crossing the library boundary was larger than 1 MiB, or the host's allocator could not allocate the response; the call returned status 6 (`MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE`).",
@@ -1413,18 +1401,6 @@ catalog! {
         title: "library ABI mismatch",
         summary: "The host's callback table has an `abi_version` other than the runtime's (1), or a `struct_size` other than the size of `MeshLibraryHostCallbacksV1`; registration returned status 7 (`MESH_LIBRARY_ERR_ABI`).",
         repair: "Build the callback table from the header generated with the library: set `abi_version` to `MESH_LIBRARY_ABI_VERSION` and `struct_size` to `sizeof(MeshLibraryHostCallbacksV1)`, and rebuild the host after regenerating the library.",
-        topic: "projects",
-    },
-    LibraryCallbackMissing = R0208 "library-callback-missing" Error {
-        title: "host callback missing",
-        summary: "Mesh code used a host capability, such as the secure store, with no callback registered for it; it receives `Err(\"host_callback_missing\")`, and status 8 (`MESH_LIBRARY_ERR_CALLBACK_MISSING`) is reserved for the host side.",
-        repair: "Register a callback for the capability with `mesh_library_register_host_callbacks` after `mesh_library_init`, or handle the `Err` in the Mesh code that uses it.",
-        topic: "projects",
-    },
-    LibraryApplicationError = R0209 "library-application-error" Error {
-        title: "exported function returned an error",
-        summary: "The exported Mesh function returned `Err`; the call returned status 9 (`MESH_LIBRARY_ERR_APPLICATION`) and the response holds the error's message.",
-        repair: "Handle the message in the host as the function's error result, or change the input so the function returns `Ok`.",
         topic: "projects",
     },
     NodeConnectFailed = R0301 "node-connect-failed" Error {

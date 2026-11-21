@@ -3096,42 +3096,6 @@
       "status": "active"
     },
     {
-      "code": "R0204",
-      "name": "library-panic",
-      "severity": "error",
-      "category": "runtime",
-      "title": "exported function panicked",
-      "summary": "The exported Mesh function panicked; the runtime reported the panic on standard error, and the call returned status 4 (`MESH_LIBRARY_ERR_PANIC`) with an empty response.",
-      "repair": "Fix the panic the runtime reported (an `R0001`), or return an `Err` from the exported function for a failure the host should handle.",
-      "topic": "projects",
-      "docs_url": "https://meshlang.dev/docs/errors/#r0204",
-      "guide": {
-        "explain": "meshc explain R0204",
-        "skill": "references/diagnostics.md#r0204",
-        "topic": "projects"
-      },
-      "example": null,
-      "status": "active"
-    },
-    {
-      "code": "R0205",
-      "name": "library-host-callback-failed",
-      "severity": "error",
-      "category": "runtime",
-      "title": "host callback status reserved",
-      "summary": "Status 5 (`MESH_LIBRARY_ERR_HOST_CALLBACK`) is reserved in library ABI 1 and no runtime function returns it: a failing host callback reaches Mesh code as `Err(\"host_callback_failed:<capability>:<status>\")` instead.",
-      "repair": "Check that the host was built against the header generated with the library it links. To learn why a host callback failed, handle the `Err` the Mesh code receives from it.",
-      "topic": "projects",
-      "docs_url": "https://meshlang.dev/docs/errors/#r0205",
-      "guide": {
-        "explain": "meshc explain R0205",
-        "skill": "references/diagnostics.md#r0205",
-        "topic": "projects"
-      },
-      "example": null,
-      "status": "active"
-    },
-    {
       "code": "R0206",
       "name": "library-output-too-large",
       "severity": "error",
@@ -3162,42 +3126,6 @@
       "guide": {
         "explain": "meshc explain R0207",
         "skill": "references/diagnostics.md#r0207",
-        "topic": "projects"
-      },
-      "example": null,
-      "status": "active"
-    },
-    {
-      "code": "R0208",
-      "name": "library-callback-missing",
-      "severity": "error",
-      "category": "runtime",
-      "title": "host callback missing",
-      "summary": "Mesh code used a host capability, such as the secure store, with no callback registered for it; it receives `Err(\"host_callback_missing\")`, and status 8 (`MESH_LIBRARY_ERR_CALLBACK_MISSING`) is reserved for the host side.",
-      "repair": "Register a callback for the capability with `mesh_library_register_host_callbacks` after `mesh_library_init`, or handle the `Err` in the Mesh code that uses it.",
-      "topic": "projects",
-      "docs_url": "https://meshlang.dev/docs/errors/#r0208",
-      "guide": {
-        "explain": "meshc explain R0208",
-        "skill": "references/diagnostics.md#r0208",
-        "topic": "projects"
-      },
-      "example": null,
-      "status": "active"
-    },
-    {
-      "code": "R0209",
-      "name": "library-application-error",
-      "severity": "error",
-      "category": "runtime",
-      "title": "exported function returned an error",
-      "summary": "The exported Mesh function returned `Err`; the call returned status 9 (`MESH_LIBRARY_ERR_APPLICATION`) and the response holds the error's message.",
-      "repair": "Handle the message in the host as the function's error result, or change the input so the function returns `Ok`.",
-      "topic": "projects",
-      "docs_url": "https://meshlang.dev/docs/errors/#r0209",
-      "guide": {
-        "explain": "meshc explain R0209",
-        "skill": "references/diagnostics.md#r0209",
         "topic": "projects"
       },
       "example": null,

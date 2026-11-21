@@ -5,8 +5,9 @@ use std::sync::{Arc, OnceLock};
 use mesh_common::span::{LineIndex, Span};
 
 /// A file a diagnostic points into: its path and, when it was read, the exact
-/// text its spans index. Cloning shares one copy. For a `.test.mpl` file the
-/// text is the preprocessed program, which keeps every line and column.
+/// text its spans index. Cloning shares one copy. A diagnostic about the
+/// program `meshc test` makes of a `.test.mpl` file is
+/// [relocated](crate::Diagnostic::relocated) to the file as written.
 #[derive(Clone)]
 pub struct SourceFile(Arc<Inner>);
 

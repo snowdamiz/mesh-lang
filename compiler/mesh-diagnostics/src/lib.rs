@@ -17,9 +17,11 @@ mod diagnostic;
 pub mod docs;
 mod render;
 mod source;
+mod source_map;
 
 pub use catalog::Code;
 pub use code::{closest, CodeInfo, Example, Family, Lookup, Severity, Status, DOCS_BASE};
 pub use diagnostic::{Applicability, Diagnostic, Edit, Label};
 pub use render::{Failed, Format, Reporter, Summary};
 pub use source::{LineCol, SourceFile};
+pub use source_map::{Origin, SourceMap};
