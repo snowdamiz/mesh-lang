@@ -4306,7 +4306,19 @@
       "guest-4.log": "c7ee89f1903037cec00015ed8685125a950ef5e2d4febd5ecbe3b0ffd8cc6591",
       "guest-5.log": "55872dd716a6849aafd5b8a173a6806a9058034736f6ccf75f9d07876ab5a264"
     },
-    "scope": "Fixture runner with clone3, exact pidfd reaping, and gated execve of a compiled Jobs worker. It exercises the real worker frames and parent-disconnect watchdog. It uses no PostgreSQL and makes no durable settlement or throughput claim."
+    "deadline_follow_up": {
+      "run": "target/jobs-parity/worker-cost-screen/linux-launch-ownership/exec-deadlines.2GP3rBpj",
+      "source_sha256": "a2096581e2552a5c459b4cd4be969ab46b535b4588ecdb821fa67f9b0e37dc1a",
+      "runner_sha256": "88738bc8bd64fd80179ad188c79ffca956170ab25035d7508358011b66f55e0f",
+      "initramfs_sha256": "0082186aea80bd58456b8e673f544db6c3bc2398bc5a0e8db547fea9921b72ce",
+      "identical_passing_boots": 3,
+      "cases_per_boot": 5,
+      "case_log_sha256": "62cea6bf21eeba4462f3e72d33a08054bee6fac9c245a3d50071268cb9557275",
+      "control_writer_held_open_until_exact_reap": true,
+      "handler_deadline": {"constructors": 1, "handlers": 1, "replies": 0, "pidfd_exit": 171},
+      "lease_deadline": {"constructors": 1, "handlers": 1, "replies": 0, "pidfd_exit": 172}
+    },
+    "scope": "Fixture runner with clone3, exact pidfd reaping, and gated execve of a compiled Jobs worker. It exercises the real worker frames and the parent-disconnect, handler-deadline, and lease-deadline watchdog exits. It uses no PostgreSQL and makes no durable settlement or throughput claim."
   },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",

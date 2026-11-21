@@ -1446,9 +1446,13 @@ left no constructor, handler, or reply output. After transfer and grant,
 the compiled handler returned its exact framed reply. Closing the
 control pipe during a separate running handler produced native exit
 173 with no reply. Both granted cases consumed the exit status through
-the runner's exact pidfd. The proof used the normal worker startup ABI
-and a cached Linux debug runtime. Database claims, settlement, and
-throughput remain open for this launcher.
+the runner's exact pidfd. Three further boots added short handler and
+lease deadlines with the control writer held open. The same worker
+entered the handler, then exited 171 and 172 respectively without a
+reply. The runner consumed both statuses through the exact pidfds.
+The proof used the normal worker startup ABI and a cached Linux debug
+runtime. Database claims, settlement, and throughput remain open for
+this launcher.
 [Compiled Linux ownership receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Run the compiled handler through the fork template
