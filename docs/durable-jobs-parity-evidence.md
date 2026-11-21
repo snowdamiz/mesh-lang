@@ -1805,6 +1805,24 @@ affect timing. The samples identify anonymous memory as a sizable part
 of the remaining worker footprint.
 [Linux residency receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Measure transparent huge pages in Linux attempt children
+
+A separate diagnostic captured five `/proc/self/smaps` snapshots for
+each of 64 direct and 64 warm effect workers using the pinned release
+runtime. Every PID matched its durable attempt and effect. Median warm
+anonymous RSS grew from 0.11 MiB at the native constructor to 2.40 MiB
+at handler entry and 6.41 MiB after the 100 ms hold.
+
+A follow-up used the same fixture image and 64 prewarmed sessions in
+both arms. Each worker verified its process-local huge-page setting in
+the constructor. After the hold, median anonymous RSS was 6.41 MiB
+with the guest's default, including 6.00 MiB of anonymous huge pages.
+Disabling huge pages reduced anonymous RSS to 0.42 MiB and total RSS
+from 10.17 to 4.18 MiB per worker. The two arms reconciled all 128
+jobs. The snapshots were taken in separate diagnostic runs. They
+establish the source of most anonymous residency on this guest.
+[Phase and huge-page receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64

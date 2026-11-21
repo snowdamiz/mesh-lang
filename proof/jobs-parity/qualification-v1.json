@@ -5980,6 +5980,351 @@
     "passed": 3,
     "scope": "Isolated test-only revision. The proof combines loopback transport cuts and a real PostgreSQL lease and receipt transaction. Runner and child handoff remain open."
   },
+  "linux_worker_phase_residency_and_thp": {
+    "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "scope": "Separate diagnostic one-wave boots with full durable attempt PID and phase reconciliation. No throughput claims.",
+    "direct_and_warm_phases": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-phases/phase-live-64",
+      "archive_sha256": "a019fbdd0d3b95df32d4076eed3cc5c38f421db038eea49a3e9dcf559061e909",
+      "serial_sha256": "c74e56c0259ff26a1d5d0a8e7cd00b968eceb7237e4d4333288478a9df7151f9",
+      "summary_sha256": "71c32e313603a4c6ff0fd4c3c8bc78909675dd89f889ad47e0bf128d8b7bb23c",
+      "receipt_sha256": "d8779c89fe1135ea57dae06e6b27303437fa82c3529ca7b1e83ba05be84757c3",
+      "manifest_sha256": "1fdfa2d0c4bf7a8d277231807fe9b4afb6d50890281792f54eaf8f451bcfcc64",
+      "fixture_sha256": "ac9e48f159eab24e416738b1e30600926c8cc097ff47457a08591ca61c93d353",
+      "files_sha256": {
+        "bundle-sha256": "d97e377be7fba9d7e4ad80f2e7f608f7daa03ba432cdb43ad551cbd4413de556",
+        "direct-durable.json": "6d071be3e089b5e6b823e96e590064c5a940904707d594e4d59dd8079e3cc040",
+        "direct-samples.txt": "c0077c210baf9752e7935de3fda7195b29098117d75dc077f578292961e7a700",
+        "guest.json": "e4ad99fe4ef59e5fae543b9b03a0e1258c32b3f13b76f78429feb605a52a7550",
+        "result.json": "c541fea368feff32add3cc649de134c1cebb548aa4897e1e0eaf7c2a5c6a13d9",
+        "warm-durable.json": "baa106d1e8c11d11bc5404db24b19c5206fb07cad82000d13a181de91ea3aa2f",
+        "warm-samples.txt": "a68252606dc12f72fdd8ad11f28e3088be24d26acf5413b5e9feeda0e7e8b354"
+      },
+      "durable_job_count": 128,
+      "phase_distributions": {
+        "direct": {
+          "after_hold": {
+            "rss_bytes": {
+              "max": 13340672,
+              "median": 11280384.0,
+              "min": 11243520
+            },
+            "anonymous_bytes": {
+              "max": 8814592,
+              "median": 6748160.0,
+              "min": 6725632
+            }
+          },
+          "attempt_commit_ack": {
+            "rss_bytes": {
+              "max": 13340672,
+              "median": 11280384.0,
+              "min": 7086080
+            },
+            "anonymous_bytes": {
+              "max": 8814592,
+              "median": 6748160.0,
+              "min": 2551808
+            }
+          },
+          "before_effect_io": {
+            "rss_bytes": {
+              "max": 12587008,
+              "median": 6332416.0,
+              "min": 4079616
+            },
+            "anonymous_bytes": {
+              "max": 8773632,
+              "median": 2519040.0,
+              "min": 417792
+            }
+          },
+          "handler_entry": {
+            "rss_bytes": {
+              "max": 12521472,
+              "median": 6262784.0,
+              "min": 4014080
+            },
+            "anonymous_bytes": {
+              "max": 8773632,
+              "median": 2519040.0,
+              "min": 417792
+            }
+          },
+          "native_constructor": {
+            "rss_bytes": {
+              "max": 1921024,
+              "median": 1916928.0,
+              "min": 1896448
+            },
+            "anonymous_bytes": {
+              "max": 114688,
+              "median": 114688.0,
+              "min": 110592
+            }
+          }
+        },
+        "warm": {
+          "after_hold": {
+            "rss_bytes": {
+              "max": 12681216,
+              "median": 10665984.0,
+              "min": 10620928
+            },
+            "anonymous_bytes": {
+              "max": 8749056,
+              "median": 6721536.0,
+              "min": 6696960
+            }
+          },
+          "attempt_commit_ack": {
+            "rss_bytes": {
+              "max": 12648448,
+              "median": 10600448.0,
+              "min": 4177920
+            },
+            "anonymous_bytes": {
+              "max": 8749056,
+              "median": 6721536.0,
+              "min": 430080
+            }
+          },
+          "before_effect_io": {
+            "rss_bytes": {
+              "max": 12541952,
+              "median": 6332416.0,
+              "min": 4079616
+            },
+            "anonymous_bytes": {
+              "max": 8749056,
+              "median": 2519040.0,
+              "min": 417792
+            }
+          },
+          "handler_entry": {
+            "rss_bytes": {
+              "max": 10510336,
+              "median": 6266880.0,
+              "min": 4014080
+            },
+            "anonymous_bytes": {
+              "max": 6721536,
+              "median": 2519040.0,
+              "min": 417792
+            }
+          },
+          "native_constructor": {
+            "rss_bytes": {
+              "max": 1921024,
+              "median": 1921024.0,
+              "min": 1900544
+            },
+            "anonymous_bytes": {
+              "max": 114688,
+              "median": 114688.0,
+              "min": 110592
+            }
+          }
+        }
+      }
+    },
+    "worker_thp_toggle": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-thp-study/thp-wave",
+      "archive_sha256": "d0ea2c607a306b0693e5c77ea2e763dff2a1f0b1e60dcc4800d1a7849c26c8bb",
+      "serial_sha256": "97d785da416b398741015a4aed7cfcfe7b5eda1c1f6e064891e3097ef0356933",
+      "summary_sha256": "0620bead7a6bcfff8a87676b8c9831fe70262f182c501ad99537f36f35864cc9",
+      "receipt_sha256": "bcbd9527f7c348ce9b0ed39bc3bcc3a9cb54115d35c55b558a88ad5119e889c3",
+      "manifest_sha256": "53193fb541e9350b39f3bbd990d003a551bff60ba8434fa6d19c7f3cb5b8ea29",
+      "fixture_sha256": "b197ee4d7704a293f694c3101eef7cc8369d8aea759b7465099c8c0afd1bb1eb",
+      "files_sha256": {
+        "bundle-sha256": "1505c77992311b01be211412dc21b113d6e4ac3f6c8ea26c1d2a07a1bbe9b533",
+        "default-thp-durable.json": "9591b3e15434f733b6b0a875fd078341be5b42146f116457c20843c521654e41",
+        "default-thp-samples.txt": "2dee0d0c9e2b24a1f5891d18bbfff885ee94c0d537a127c2b0afd3c42821abf4",
+        "disabled-thp-durable.json": "ae4bde6760863b3f245768cddfaf205d416bf5e593c0b55dea9c727bd4bf9c51",
+        "disabled-thp-samples.txt": "336f7a370cdca715264e9c2f5c8c4e4377e506860386aa19e85db71803965338",
+        "guest.json": "e4ad99fe4ef59e5fae543b9b03a0e1258c32b3f13b76f78429feb605a52a7550",
+        "result.json": "a9add07f382c3eb6f13b1249260fafa722b5f4fcf127b648aacab32261bdd5f9"
+      },
+      "durable_job_count": 128,
+      "phase_distributions": {
+        "default-thp": {
+          "after_hold": {
+            "rss_bytes": {
+              "max": 12709888,
+              "median": 10665984.0,
+              "min": 10620928
+            },
+            "anonymous_bytes": {
+              "max": 8781824,
+              "median": 6721536.0,
+              "min": 6696960
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 8388608,
+              "median": 6291456.0,
+              "min": 6291456
+            }
+          },
+          "attempt_commit_ack": {
+            "rss_bytes": {
+              "max": 12644352,
+              "median": 10600448.0,
+              "min": 6332416
+            },
+            "anonymous_bytes": {
+              "max": 8781824,
+              "median": 6721536.0,
+              "min": 2502656
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 8388608,
+              "median": 6291456.0,
+              "min": 2097152
+            }
+          },
+          "before_effect_io": {
+            "rss_bytes": {
+              "max": 12558336,
+              "median": 8327168.0,
+              "min": 4091904
+            },
+            "anonymous_bytes": {
+              "max": 8744960,
+              "median": 4524032.0,
+              "min": 417792
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 8388608,
+              "median": 4194304.0,
+              "min": 0
+            }
+          },
+          "handler_entry": {
+            "rss_bytes": {
+              "max": 10489856,
+              "median": 6260736.0,
+              "min": 4026368
+            },
+            "anonymous_bytes": {
+              "max": 6721536,
+              "median": 2521088.0,
+              "min": 417792
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 6291456,
+              "median": 2097152.0,
+              "min": 0
+            }
+          },
+          "native_constructor": {
+            "rss_bytes": {
+              "max": 1921024,
+              "median": 1921024.0,
+              "min": 1896448
+            },
+            "anonymous_bytes": {
+              "max": 114688,
+              "median": 114688.0,
+              "min": 110592
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 0,
+              "median": 0.0,
+              "min": 0
+            }
+          }
+        },
+        "disabled-thp": {
+          "after_hold": {
+            "rss_bytes": {
+              "max": 4403200,
+              "median": 4386816.0,
+              "min": 4366336
+            },
+            "anonymous_bytes": {
+              "max": 458752,
+              "median": 442368.0,
+              "min": 430080
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 0,
+              "median": 0.0,
+              "min": 0
+            }
+          },
+          "attempt_commit_ack": {
+            "rss_bytes": {
+              "max": 4403200,
+              "median": 4331520.0,
+              "min": 4300800
+            },
+            "anonymous_bytes": {
+              "max": 458752,
+              "median": 442368.0,
+              "min": 430080
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 0,
+              "median": 0.0,
+              "min": 0
+            }
+          },
+          "before_effect_io": {
+            "rss_bytes": {
+              "max": 4333568,
+              "median": 4247552.0,
+              "min": 4079616
+            },
+            "anonymous_bytes": {
+              "max": 458752,
+              "median": 438272.0,
+              "min": 413696
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 0,
+              "median": 0.0,
+              "min": 0
+            }
+          },
+          "handler_entry": {
+            "rss_bytes": {
+              "max": 4268032,
+              "median": 4182016.0,
+              "min": 4014080
+            },
+            "anonymous_bytes": {
+              "max": 454656,
+              "median": 438272.0,
+              "min": 409600
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 0,
+              "median": 0.0,
+              "min": 0
+            }
+          },
+          "native_constructor": {
+            "rss_bytes": {
+              "max": 1921024,
+              "median": 1921024.0,
+              "min": 1900544
+            },
+            "anonymous_bytes": {
+              "max": 114688,
+              "median": 114688.0,
+              "min": 110592
+            },
+            "anonymous_huge_page_bytes": {
+              "max": 0,
+              "median": 0.0,
+              "min": 0
+            }
+          }
+        }
+      }
+    }
+  },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "host": "Darwin arm64",
