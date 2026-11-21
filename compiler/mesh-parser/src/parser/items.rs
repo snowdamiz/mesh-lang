@@ -643,7 +643,7 @@ fn parse_struct_def_tail(p: &mut Parser, m: MarkOpened) {
         loop {
             p.eat_separators();
 
-            if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
+            if p.at_item_boundary() || p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
                 break;
             }
 
@@ -868,6 +868,10 @@ fn parse_generic_param(p: &mut Parser) {
 /// - Option sugar: `Int?` (desugars to `Option<Int>`)
 /// - Result sugar: `T!E` (desugars to `Result<T, E>`)
 pub(crate) fn parse_type(p: &mut Parser) {
+    p.with_nesting(parse_type_inner);
+}
+
+fn parse_type_inner(p: &mut Parser) {
     // Tuple type: (A, B, C)
     if p.at(SyntaxKind::L_PAREN) {
         p.advance(); // (
@@ -1010,7 +1014,7 @@ pub(crate) fn parse_interface_def(p: &mut Parser) {
         loop {
             p.eat_separators();
 
-            if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
+            if p.at_item_boundary() || p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
                 break;
             }
 
@@ -1212,6 +1216,9 @@ fn parse_impl_body(p: &mut Parser) {
 
     loop {
         p.eat_separators();
+        if p.at_item_boundary() {
+            break;
+        }
 
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::EOF => break,
@@ -1256,27 +1263,28 @@ fn parse_impl_body(p: &mut Parser) {
 /// `type Name[<...>] do ... end` is a sum type, anything else (`= ...`) an
 /// alias. A missing name is reported by the declaration it would be.
 pub(crate) fn parse_type_decl(p: &mut Parser, at: usize) {
-    let mut lookahead = at + 1;
-    if p.nth(lookahead) == SyntaxKind::IDENT {
-        lookahead += 1;
-    }
-    if p.nth(lookahead) == SyntaxKind::LT {
-        // Skip generic params, including nested type applications in kinds.
-        let mut depth = 0u32;
-        loop {
-            match p.nth(lookahead) {
-                SyntaxKind::LT => depth += 1,
-                SyntaxKind::GT => depth -= 1,
-                SyntaxKind::EOF => break,
-                _ => {}
-            }
-            lookahead += 1;
-            if depth == 0 {
-                break;
+    let head = {
+        let mut kinds = p.significant_kinds().skip(at + 1).peekable();
+        if kinds.peek() == Some(&SyntaxKind::IDENT) {
+            kinds.next();
+        }
+        if kinds.peek() == Some(&SyntaxKind::LT) {
+            let mut depth = 0;
+            for kind in kinds.by_ref() {
+                match kind {
+                    SyntaxKind::LT => depth += 1,
+                    SyntaxKind::GT => depth -= 1,
+                    SyntaxKind::EOF => break,
+                    _ => {}
+                }
+                if depth == 0 {
+                    break;
+                }
             }
         }
-    }
-    if p.nth(lookahead) == SyntaxKind::DO_KW {
+        kinds.next()
+    };
+    if head == Some(SyntaxKind::DO_KW) {
         parse_sum_type_def(p);
     } else {
         parse_type_alias(p);
@@ -1322,7 +1330,7 @@ pub(crate) fn parse_sum_type_def(p: &mut Parser) {
         loop {
             p.eat_separators();
 
-            if p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
+            if p.at_item_boundary() || p.at(SyntaxKind::END_KW) || p.at(SyntaxKind::EOF) {
                 break;
             }
 
@@ -1554,6 +1562,9 @@ fn parse_actor_body(p: &mut Parser) {
 
     loop {
         p.eat_separators();
+        if p.at_item_boundary() {
+            break;
+        }
 
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::EOF => break,
@@ -1652,6 +1663,9 @@ fn parse_supervisor_body(p: &mut Parser) {
 
     loop {
         p.eat_separators();
+        if p.at_item_boundary() {
+            break;
+        }
 
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::EOF => break,
@@ -1888,6 +1902,9 @@ fn parse_service_body(p: &mut Parser) {
 
     loop {
         p.eat_separators();
+        if p.at_item_boundary() {
+            break;
+        }
 
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::EOF => break,

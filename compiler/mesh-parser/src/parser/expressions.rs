@@ -85,6 +85,13 @@ pub(crate) fn expr(p: &mut Parser) {
 /// expression (the LHS), then loops over postfix and infix operators,
 /// consuming them as long as their binding power exceeds `min_bp`.
 fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
+    p.with_nesting(|p| expr_bp_inner(p, min_bp))
+}
+
+fn expr_bp_inner(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
+    if p.is_newline_insignificant() && p.at_item_boundary() {
+        return None;
+    }
     // Parse the left-hand side (atom or prefix).
     let mut lhs = lhs(p)?;
 
@@ -817,6 +824,10 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
     loop {
         p.eat_separators();
 
+        if p.at_item_boundary() {
+            break;
+        }
+
         // Check if we've reached a block terminator.
         match p.current() {
             SyntaxKind::END_KW | SyntaxKind::ELSE_KW | SyntaxKind::EOF => break,
@@ -967,7 +978,9 @@ fn parse_if_expr(p: &mut Parser) -> MarkClosed {
 
         if p.at(SyntaxKind::IF_KW) {
             // else-if chain: parse nested if expression.
-            parse_if_expr(p);
+            p.with_nesting(|p| {
+                parse_if_expr(p);
+            });
         } else {
             // else block.
             parse_block_body(p);

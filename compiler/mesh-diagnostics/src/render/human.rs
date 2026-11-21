@@ -136,17 +136,17 @@ mod ariadne_report {
                 labels.push((
                     label_file,
                     label_file.clamp(label.span()),
-                    Some(label.message()),
+                    label.message(),
                     Color::Blue,
                 ));
             }
         }
-        // A primary span without a label is underlined only when no other
-        // label is in its file: those show where the error is, and a line
-        // through all of them would hide theirs.
+        // Same-file secondary labels can mark the span on their own, as
+        // with branch labels inside an `if` expression.
         let primary_label = diagnostic.primary_label();
         if primary_label.is_some() || !labels.iter().any(|(f, ..)| *f == file) {
-            labels.insert(0, (file, span, primary_label, primary_color));
+            // Ariadne needs a message to draw an inline marker.
+            labels.insert(0, (file, span, primary_label.unwrap_or(""), primary_color));
         }
         // Ariadne draws labels of one file in one box only while their
         // lines ascend, so each file's go in order of where they end, the
@@ -172,11 +172,10 @@ mod ariadne_report {
                     .with_index_type(IndexType::Byte),
             );
         for (label_file, span, message, label_color) in labels {
-            let mut label: Label<(String, Range<usize>)> =
-                Label::new((paths.display(label_file.path()), range(span))).with_color(label_color);
-            if let Some(message) = message {
-                label = label.with_message(message);
-            }
+            let label: Label<(String, Range<usize>)> =
+                Label::new((paths.display(label_file.path()), range(span)))
+                    .with_color(label_color)
+                    .with_message(message);
             report.add_label(label);
         }
         report.add_help(diagnostic.repair());

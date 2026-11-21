@@ -155,19 +155,21 @@ fn test_self_item_return_type() {
 /// 6. Self.Item in parameter type resolves to the bound type.
 #[test]
 fn test_self_item_param_type() {
-    let result = check_source(
+    let parsed = mesh_parser::parse(
         "interface Sink do\n\
          \x20 type Item\n\
-         \x20 fn push(self, val: Int) -> Int\n\
+         \x20 fn push(self, val :: String) -> Int\n\
          end\n\
          impl Sink for Int do\n\
          \x20 type Item = String\n\
-         \x20 fn push(self, val: Self.Item) -> Int do\n\
+         \x20 fn push(self, val :: Self.Item) -> Int do\n\
          \x20\x20  42\n\
          \x20 end\n\
          end\n\
          42",
     );
+    assert!(parsed.ok(), "parse errors: {:?}", parsed.errors());
+    let result = mesh_typeck::check(&parsed);
     assert!(
         result.errors.is_empty(),
         "Self.Item in param type should resolve, got: {:?}",

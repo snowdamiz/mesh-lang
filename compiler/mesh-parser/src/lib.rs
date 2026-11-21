@@ -22,8 +22,8 @@ pub use syntax_kind::SyntaxKind;
 /// Result of parsing a Mesh source file.
 ///
 /// Contains the green tree (the immutable, cheap-to-clone CST) and any
-/// parse errors encountered. Only the first syntax error is reported, after
-/// any unknown escapes in strings before it.
+/// parse errors encountered. Source file parsing recovers at item boundaries
+/// and limits diagnostics per file.
 pub struct Parse {
     green: rowan::GreenNode,
     errors: Vec<ParseError>,

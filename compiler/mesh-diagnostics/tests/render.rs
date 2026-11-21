@@ -88,6 +88,38 @@ fn a_spanned_diagnostic_is_an_ariadne_report() {
 
 #[cfg(feature = "terminal")]
 #[test]
+fn an_unlabeled_primary_span_has_a_marker() {
+    let text = "fn main() = \"unfinished";
+    let file = SourceFile::new("main.mpl", text);
+    let quote = span_of(text, "\"");
+    let diagnostic =
+        Diagnostic::in_file(Code::UnterminatedString, &file, "unterminated string").at(quote, "");
+
+    let output = report(HUMAN, [diagnostic]);
+    assert!(output.contains("main.mpl:1:13"), "{output}");
+    assert!(output.contains('┬'), "{output}");
+}
+
+#[cfg(feature = "terminal")]
+#[test]
+fn an_explicit_primary_marker_is_drawn_with_a_related_span() {
+    let text = "fn main() do\n  println(1\nend\n";
+    let file = SourceFile::new("main.mpl", text);
+    let diagnostic = Diagnostic::in_file(Code::UnclosedDelimiter, &file, "expected `)`")
+        .at(span_of(text, "end"), "closing delimiter expected here")
+        .with_label(span_of(text, "(1"), "opened here");
+
+    let output = report(HUMAN, [diagnostic]);
+    assert!(output.contains("opened here"), "{output}");
+    assert!(
+        output.contains("closing delimiter expected here"),
+        "{output}"
+    );
+    assert_eq!(output.matches('┬').count(), 2, "{output}");
+}
+
+#[cfg(feature = "terminal")]
+#[test]
 fn labels_in_other_files_get_their_own_block() {
     insta::assert_snapshot!(report(HUMAN, [duplicate_across_files()]));
 }

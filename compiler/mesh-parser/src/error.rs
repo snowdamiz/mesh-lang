@@ -48,7 +48,13 @@ impl ParseError {
 
     /// The diagnostic every tool reports for this error in `file`.
     pub fn to_diagnostic(&self, file: &SourceFile) -> Diagnostic {
-        let mut diagnostic = Diagnostic::in_file(self.code, file, &self.message).at(self.span, "");
+        let primary_label = match self.code {
+            Code::UnclosedDelimiter => "closing delimiter expected here",
+            Code::MissingEnd => "expected `end` here",
+            _ => "",
+        };
+        let mut diagnostic =
+            Diagnostic::in_file(self.code, file, &self.message).at(self.span, primary_label);
         if let Some((message, span)) = &self.related {
             diagnostic = diagnostic.with_label(*span, message);
         }
@@ -85,6 +91,7 @@ mod tests {
         assert_eq!(diagnostic.code(), Code::MissingEnd);
         assert_eq!(diagnostic.message(), error.message);
         assert_eq!(diagnostic.span(), Some(Span::new(17, 17)));
+        assert_eq!(diagnostic.primary_label(), Some("expected `end` here"));
         let [label] = diagnostic.labels() else {
             panic!("{diagnostic:?}");
         };
