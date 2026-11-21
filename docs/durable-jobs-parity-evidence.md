@@ -103,6 +103,10 @@ uses drain process loss on the same primary. The walkthrough and reference
 snippets also passed with the exact `aa40fa5d` release compiler and runtime
 after integrating main. [Integrated guide receipt](../proof/jobs-parity/j7-lane-9-main-integration.log)
 
+The `39b472f2` replay passed with release artifacts from `5d45b53b` after
+verifying the artifact hashes and confirming that the production sources
+and Cargo inputs matched the checkout. [Bootstrap release guide receipt](../proof/jobs-parity/j7-lane-9-bootstrap-release.log)
+
 The same fresh-application walkthrough passed with release runtime
 `1b12243b`. [Latest guide receipt](../proof/jobs-parity/qualification-v1.json)
 
@@ -1113,6 +1117,15 @@ controls in four of five groups on each profile. Throughput varied by group,
 and sampled peak RSS on the 100 ms profile was between the two controls.
 The deferral stays experimental. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
+The `603265aa` retest fixed the reply-pipe exit wake on in all three arms
+and toggled scheduler deferral only for the candidate. Five groups on the
+one-runner, one-slot short profile reconciled 1,920 jobs over verified TLS
+on macOS arm64 and PostgreSQL 17.11. Median claim-to-handler-entry time
+was 4.71 ms with deferral and 4.98 and 5.09 ms in the two controls. Median
+CPU per job was 5.90 ms versus 6.26 and 6.37 ms. Deferral beat both controls
+in two groups on each of those metrics and in zero groups on throughput.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Smaller worker image screen
 
 Two macOS arm64 fixture images used the same compiled handler, native
@@ -1219,6 +1232,37 @@ median 4.72 ms from claim to handler entry and 4.44 ms from entry to the
 first durable write, versus 0.69 and 0.21 ms for Oban. The combined release
 passed the 12 recovery and commit-loss cases. Linux and dense refill
 resource behavior remain unverified. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+A time-budget calculation from the five saved pairs subtracts each job's
+entry-to-first-write interval while holding all other recorded time fixed.
+The resulting median would be 87.9 jobs/s against Oban's measured 91.3.
+Substituting the corresponding Oban intervals for both claim-to-entry and
+entry-to-first-write would yield about 141 jobs/s under the same assumption.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Combine the exit wake with effect-session reuse
+
+Five counterbalanced groups ran the frozen one-runner, one-slot short
+profile on macOS arm64 and PostgreSQL 17.11 with verified TLS. All Mesh
+arms used the same `da0a51bc` release fixture with the reply-pipe wake
+enabled. The relay used the PostgreSQL driver from that same release.
+Across 2,560 jobs, the trial reconciled every attempt and effect after
+shutdown. Both writes confirmed 128 distinct backends per fresh-session
+trial and one per reused-session trial.
+
+| Arm | Jobs/s | Entry to first write | Pickup p99 | CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh direct | 60.6 | 5.53 ms | 2,085 ms | 7.13 ms |
+| Mesh relay, fresh sessions | 60.0 | 5.01 ms | 2,110 ms | 6.54 ms |
+| Mesh relay, reused session | 95.1 | 0.28 ms | 1,334 ms | 5.64 ms |
+| Oban Basic 2.24.2 | 83.6 | 0.35 ms | 1,520 ms | 5.34 ms |
+
+The reused arm beat Oban on throughput in all five groups. Its CPU total
+includes the helper and prewarming. Both relay arms require the runner,
+the relay, and one isolated attempt process to overlap. This exceeds the
+two-process limit even when the sampler sees only two. The comparison
+supports testing reuse inside the runner process with the same isolated
+attempt and durable writes. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 

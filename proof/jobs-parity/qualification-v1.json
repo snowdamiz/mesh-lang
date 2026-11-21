@@ -3937,6 +3937,14 @@
       "postgres_driver_tests_passed": 36,
       "runtime_tests_passed": 53,
       "compiled_proofs_passed": 3
+    },
+    "fresh_application_guide": {
+      "checkout": "39b472f23542e68179bb07ebeb3c5c33c4636fa7",
+      "runtime": "5d45b53b7b3b66f2d39a8774e58b5f39619784c5",
+      "receipt": "proof/jobs-parity/j7-lane-9-bootstrap-release.log",
+      "sha256": "d137c78cbdcdfad12e42faa7b56d40b82834260db04840dd99120787cf228a55",
+      "transport": "loopback SCRAM",
+      "result": "passed"
     }
   },
   "reply_pipe_exit_wake_diagnostic": {
@@ -3985,6 +3993,14 @@
       "median_effect_commit_to_settlement_ms": {"mesh": 1.127, "oban": 0.243},
       "comparison_gate_passed": false,
       "breaches": ["throughput", "pickup_p99", "cpu_per_job"],
+      "serial_phase_projection": {
+        "method": "Subtract the sum of the chosen Mesh intervals from elapsed enqueue-commit-to-final-settlement time, optionally add the matching Oban sum, then divide each pair's 128 jobs by that projected duration. Claim-to-first-write intervals are disjoint in every trial.",
+        "median_jobs_per_second": {
+          "zero_entry_to_first_write": 87.88,
+          "substitute_oban_entry_to_first_write": 85.69,
+          "substitute_oban_claim_to_entry_and_entry_to_first_write": 140.55
+        }
+      },
       "release_faults": {
         "run": "target/jobs-parity/da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0/j1-fault-k4qkdmqw",
         "manifest_sha256": "aedbfe88fcabd0b1babc907905321d15e0fd73969166fb0d15cb09e2a4527032",
@@ -3993,6 +4009,49 @@
         "passed_cases": 12
       }
     }
+  },
+  "scheduler_deferral_with_reply_pipe_wake": {
+    "runtime_all_arms": "603265aa190c2b76f88cb636912bf2c5ec74a06f",
+    "base": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "harness": "39b472f23542e68179bb07ebeb3c5c33c4636fa7",
+    "profile": "short-1r-1s",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "run": "target/jobs-parity/reply-reap-integration/comparison-t0sj6rsp",
+    "manifest_sha256": "25ec556a0dcaf5871e87e96b9e391fbfa4908fc857a19f57bd169fe6e31f2ae5",
+    "result_sha256": "4d2b2c5a1d49ac45b024bdfd8114c8aa6523b27776f1f0d770fab58a0cabdc4b",
+    "measured_groups": 5,
+    "reconciled_jobs": 1920,
+    "peak_one_minute_host_load": 9.373,
+    "jobs_per_second": {"baseline": 59.888, "baseline_repeat": 66.139, "candidate": 63.050},
+    "median_claim_to_entry_ms": {"baseline": 4.975, "baseline_repeat": 5.091, "candidate": 4.707},
+    "cpu_ms_per_job": {"baseline": 6.261, "baseline_repeat": 6.372, "candidate": 5.899},
+    "groups_better_than_both_controls": {"throughput": 0, "claim_to_entry": 2, "cpu_per_job": 2}
+  },
+  "effect_session_reuse_with_reply_pipe_wake": {
+    "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "harness": "39b472f23542e68179bb07ebeb3c5c33c4636fa7",
+    "oban": "2.24.2",
+    "profile": "short-1r-1s",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "run": "target/jobs-parity/effect-session-study/one-slot-comparison-w9flex07",
+    "manifest_sha256": "1bc6152ccf359d1c649eadd91043375df592a090bea5e930ffacca7d496089ad",
+    "result_sha256": "30bb56b8822abfd7f6ad7069c667e4dc595f47dc0b8611035561198f652c848e",
+    "measured_groups": 5,
+    "jobs_per_trial": 128,
+    "reconciled_jobs": 2560,
+    "peak_one_minute_host_load": 11.823,
+    "jobs_per_second": {"direct": 60.553, "relay_fresh": 60.037, "relay_reused": 95.083, "oban": 83.601},
+    "entry_to_first_write_ms": {"direct": 5.528, "relay_fresh": 5.006, "relay_reused": 0.276, "oban": 0.345},
+    "pickup_p99_ms": {"direct": 2085.406, "relay_fresh": 2109.574, "relay_reused": 1333.753, "oban": 1520.392},
+    "cpu_ms_per_job": {"direct": 7.133, "relay_fresh": 6.543, "relay_reused": 5.643, "oban": 5.342},
+    "effect_backends_per_trial": {"direct": 128, "relay_fresh": 128, "relay_reused": 1, "oban_observed": 3},
+    "relay_reuse_throughput_wins": {"direct": 5, "relay_fresh": 4, "oban": 5},
+    "relay_reuse_vs_oban_throughput_ratios": [1.137, 1.128, 1.276, 1.050, 1.090],
+    "relay_process_cap": {"observed_topology_floor": 3, "limit": 2, "within_limit": false}
   },
   "batch_claims_local_qualification": {
     "runtime": "9bd80627830d331aaba09d4a3283bdfa2b810ad2",
