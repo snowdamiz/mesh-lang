@@ -3363,6 +3363,44 @@ two writes and settled once after exact reap. The proof uses the same
 final ReadyForQuery remains open for this diagnostic.
 [Deferred probe timing and tests](../proof/jobs-parity/qualification-v1.json)
 
+### Give the pre-claim due query an index range
+
+The `fba10162` diagnostic kept the pre-claim probe and its single
+materialized PostgreSQL clock. The range arm used the clock as a
+scalar bound on `scheduled_at_ms`. Both arms kept the same query
+filters, schema, claim transaction, and worker lifecycle.
+
+On macOS arm64 with PostgreSQL 17.11, the stock plan scanned all
+1,024 queue-index rows and applied the time condition as a join
+filter. The range plan put the time condition in the index scan.
+It visited zero rows with a ready-only backlog and one row with a
+future job. Both queries returned the expected delay in each case.
+
+The first Linux pilot stopped in the after-run statement check, which
+queried the workload database for an extension installed in the
+control database. The rerun read the cluster-wide counters from the
+control database. Each pilot arm reconciled 1,024 jobs, two writes per
+job, and exact child reaps. The control executed 540 stock probes.
+The range arm executed 528 range probes.
+
+Five matched Linux groups used one release executable across the
+three Mesh arms and reconciled 20,480 scored jobs.
+
+| Arm | Median jobs/s | Jobs/s range | Pickup p99 |
+| --- | ---: | ---: | ---: |
+| Mesh | 509 | 479–693 | 1,947 ms |
+| Mesh repeat | 698 | 480–925 | 1,450 ms |
+| Mesh with range probe | 519 | 362–1,063 | 1,930 ms |
+| Oban Basic 2.24.2 | 2,140 | 1,146–2,304 | 467 ms |
+
+The range arm beat both controls twice. Its median paired change
+against the control mean was −105 jobs/s, with 29 jobs/s median
+absolute control spread and a maximum control difference of
+447 jobs/s. The median resource gates passed. Throughput and pickup
+missed. The plan witness establishes the smaller index scan, and the
+compiled groups leave its end-to-end benefit unproven.
+[Index-range diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`

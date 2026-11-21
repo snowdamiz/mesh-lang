@@ -31107,5 +31107,492 @@
         }
       }
     ]
+  },
+  "linux_jobs_due_index_range": {
+    "scope": "local-linux-due-range",
+    "revision": "fba101623f4a2dd72ad359d8bf346ab9275ea7ba",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "build": {
+      "artifacts_sha256": {
+        "libmesh_rt.a": "0d41cd6157c585d8ae23b407561495c3db6ee778572f36fdccadccc96925a987",
+        "libworker_identity.a": "01b82016bc86b6725fd2df7ee5c045bd98c547798a967102919dcb371e352e8f",
+        "mesh-parity-fixture": "f89a4f439e903049e041eb1c95d4bd0fa70d4a8f52fb20dc1978211b8bc9acaa",
+        "meshc": "f4643edb44d0d6867f928bd95db02f2c88140d8e020430b63a9cafd620edcae1"
+      },
+      "generated_mesh_toml_sha256": "8e0ae887e7ef110ce719f6085c73739ca3cfa05a17d80a021494b8717f42a858",
+      "macos_toolchain_sha256": "90cfac665e79275a2dec50988ee0b7a7ff758924d24199e6ecd294a935422058",
+      "native_source_sha256": {
+        "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+        "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+        "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+        "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+      },
+      "parent_manifest_sha256": "006d61cabb3ad019feb5eb6e70230666a3e656ce5a2f118d0f07a6d6c293385a",
+      "profile": "release",
+      "requested_runtime_features": [
+        "jobs-effect-fixture"
+      ],
+      "revision": "fba101623f4a2dd72ad359d8bf346ab9275ea7ba",
+      "target": "aarch64-unknown-linux-gnu"
+    },
+    "profile": "noop-8r-64s",
+    "host_load_average_1m_max_by_stage": [
+      11.4033203125,
+      11.19970703125,
+      9.3291015625,
+      9.06005859375,
+      16.64697265625,
+      20.8212890625
+    ],
+    "pilot": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/pilot/stage.json",
+      "sha256": "c6b4c844a79fabec558116e2f4d52da94d14bf405faf547082ac7dc406fa8091"
+    },
+    "groups": [
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/0/proof/evidence/trials.json",
+          "sha256": "6dd38b4b0d71aeeae68640d737e4110aec2eabd1822376501eca03d544cfa190"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/0/stage.json",
+          "sha256": "3e7135d5af4bf63e43d3eca35df116f58ba3e9b6b4cb839c8223a529141af377"
+        },
+        "arms": {
+          "mesh": {
+            "jobs_per_second": 497.1184862523633,
+            "pickup_p99_ms": 1947.213134765625,
+            "claim_calls_per_job": 0.3994140625,
+            "cpu_seconds_per_job": 0.002258435546875,
+            "peak_rss_bytes": 337268736
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 856.7997885324618,
+            "pickup_p99_ms": 1181.56103515625,
+            "claim_calls_per_job": 0.41015625,
+            "cpu_seconds_per_job": 0.0015607314453124999,
+            "peak_rss_bytes": 367185920
+          },
+          "oban": {
+            "jobs_per_second": 2304.319544311809,
+            "pickup_p99_ms": 436.15087890625,
+            "claim_calls_per_job": 0.1484375,
+            "cpu_seconds_per_job": 0.0035895498046875,
+            "peak_rss_bytes": 996757504
+          },
+          "mesh-range": {
+            "jobs_per_second": 1063.283065541808,
+            "pickup_p99_ms": 947.324951171875,
+            "claim_calls_per_job": 0.37890625,
+            "cpu_seconds_per_job": 0.001063974609375,
+            "peak_rss_bytes": 394670080
+          }
+        },
+        "due_statement_calls": {
+          "mesh": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/0/proof/evidence/0-mesh/due-range-statement.json",
+              "sha256": "47280bf2a9dc19147ac789633cdba59a3a223f9b84a8881b6ac52b38a07ccdb9"
+            },
+            "range": 0,
+            "stock": 534
+          },
+          "mesh-repeat": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/0/proof/evidence/0-mesh-repeat/due-range-statement.json",
+              "sha256": "88c1e865cd5fc685bed823d3513a304c537a7aa71f710c14a278758cbba78e55"
+            },
+            "range": 0,
+            "stock": 547
+          },
+          "mesh-range": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/0/proof/evidence/0-mesh-range/due-range-statement.json",
+              "sha256": "ee8951c6665c6eedbc03a757bb67468fe4369e9407e4afcb2e636907a9343f28"
+            },
+            "range": 512,
+            "stock": 0
+          }
+        }
+      },
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/1/proof/evidence/trials.json",
+          "sha256": "d2970fa61963871d7166de59170ece5bb613a7e3b4cc48606b27d1b8a07bbcd3"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/1/stage.json",
+          "sha256": "3a59611c618b0d928168a3f7b40b667ed91fe1cf3212b1be752189e168fd5c2b"
+        },
+        "arms": {
+          "mesh-repeat": {
+            "jobs_per_second": 925.0274797496742,
+            "pickup_p99_ms": 1095.027099609375,
+            "claim_calls_per_job": 0.3916015625,
+            "cpu_seconds_per_job": 0.001221361328125,
+            "peak_rss_bytes": 376008704
+          },
+          "mesh-range": {
+            "jobs_per_second": 362.4908141511895,
+            "pickup_p99_ms": 2802.95703125,
+            "claim_calls_per_job": 0.4482421875,
+            "cpu_seconds_per_job": 0.0030214355468749995,
+            "peak_rss_bytes": 371367936
+          },
+          "mesh": {
+            "jobs_per_second": 478.5035811012771,
+            "pickup_p99_ms": 2131.575927734375,
+            "claim_calls_per_job": 0.431640625,
+            "cpu_seconds_per_job": 0.002167068359375,
+            "peak_rss_bytes": 361467904
+          },
+          "oban": {
+            "jobs_per_second": 2299.2743064577844,
+            "pickup_p99_ms": 436.238037109375,
+            "claim_calls_per_job": 0.146484375,
+            "cpu_seconds_per_job": 0.004613466796875,
+            "peak_rss_bytes": 985759744
+          }
+        },
+        "due_statement_calls": {
+          "mesh": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/1/proof/evidence/1-mesh/due-range-statement.json",
+              "sha256": "23273123bee156682d76002bf637a7c4968eadeb9fa5bf490365f905e20d5b0c"
+            },
+            "range": 0,
+            "stock": 568
+          },
+          "mesh-repeat": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/1/proof/evidence/1-mesh-repeat/due-range-statement.json",
+              "sha256": "b0027ca0c9b96909bc40b13591f1240a7ca0c489135d770df488230e86451bc2"
+            },
+            "range": 0,
+            "stock": 527
+          },
+          "mesh-range": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/1/proof/evidence/1-mesh-range/due-range-statement.json",
+              "sha256": "075368099960712ef45de6d4544163676d8cc94666ea3c2076e8569a795e0b54"
+            },
+            "range": 586,
+            "stock": 0
+          }
+        }
+      },
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/2/proof/evidence/trials.json",
+          "sha256": "7b8804ea5a720c7f6d2a5f4053a1864524c0bd8e78724999c99ac89874e7b62d"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/2/stage.json",
+          "sha256": "ceba2d04326c60e010cd3f387cd2bc1b4f7977b242185f6e89e4c8abad89ed32"
+        },
+        "arms": {
+          "mesh-range": {
+            "jobs_per_second": 564.8511622714313,
+            "pickup_p99_ms": 1796.694091796875,
+            "claim_calls_per_job": 0.41796875,
+            "cpu_seconds_per_job": 0.00220136328125,
+            "peak_rss_bytes": 372224000
+          },
+          "oban": {
+            "jobs_per_second": 2140.2403896445185,
+            "pickup_p99_ms": 467.02099609375,
+            "claim_calls_per_job": 0.1533203125,
+            "cpu_seconds_per_job": 0.003908645507812499,
+            "peak_rss_bytes": 1010171904
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 697.7801253550826,
+            "pickup_p99_ms": 1449.5810546875,
+            "claim_calls_per_job": 0.3896484375,
+            "cpu_seconds_per_job": 0.0014964951171875,
+            "peak_rss_bytes": 329617408
+          },
+          "mesh": {
+            "jobs_per_second": 692.5039650160599,
+            "pickup_p99_ms": 1451.5029296875,
+            "claim_calls_per_job": 0.4140625,
+            "cpu_seconds_per_job": 0.0015332548828125,
+            "peak_rss_bytes": 350486528
+          }
+        },
+        "due_statement_calls": {
+          "mesh": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/2/proof/evidence/2-mesh/due-range-statement.json",
+              "sha256": "1642d6036880e40f6731b3f0ed665ff9efce164a8a5c4463b80beb13883db2a7"
+            },
+            "range": 0,
+            "stock": 550
+          },
+          "mesh-repeat": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/2/proof/evidence/2-mesh-repeat/due-range-statement.json",
+              "sha256": "b8c4da4f32e9102c396a3a12e1f0ec696dfa946258dea1ef94542ec24ff491cc"
+            },
+            "range": 0,
+            "stock": 526
+          },
+          "mesh-range": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/2/proof/evidence/2-mesh-range/due-range-statement.json",
+              "sha256": "813f7d38da03ff12c7f5602f3a685f0f4fbd5e035c12f1d46c48ed78f5d5fa79"
+            },
+            "range": 558,
+            "stock": 0
+          }
+        }
+      },
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/3/proof/evidence/trials.json",
+          "sha256": "b1f74c779e2b326f7a72c7794043d165e94fe726988a19767abb887962700c9d"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/3/stage.json",
+          "sha256": "e9ebcbe2960a17d05c1491bf2aba4e2c2832b5c270efd7be868fc42842aba1b9"
+        },
+        "arms": {
+          "oban": {
+            "jobs_per_second": 1146.4887159409695,
+            "pickup_p99_ms": 865.406982421875,
+            "claim_calls_per_job": 0.2294921875,
+            "cpu_seconds_per_job": 0.00877723046875,
+            "peak_rss_bytes": 986218496
+          },
+          "mesh": {
+            "jobs_per_second": 508.86512496804653,
+            "pickup_p99_ms": 1976.463134765625,
+            "claim_calls_per_job": 0.4130859375,
+            "cpu_seconds_per_job": 0.0022951591796875,
+            "peak_rss_bytes": 374308864
+          },
+          "mesh-range": {
+            "jobs_per_second": 518.9952860726313,
+            "pickup_p99_ms": 1930.031005859375,
+            "claim_calls_per_job": 0.41796875,
+            "cpu_seconds_per_job": 0.0024467080078125,
+            "peak_rss_bytes": 376930304
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 480.27609866359177,
+            "pickup_p99_ms": 2102.958984375,
+            "claim_calls_per_job": 0.4189453125,
+            "cpu_seconds_per_job": 0.0023374716796874997,
+            "peak_rss_bytes": 364748800
+          }
+        },
+        "due_statement_calls": {
+          "mesh": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/3/proof/evidence/3-mesh/due-range-statement.json",
+              "sha256": "e1676a6e507951293607e79fe957bb42ad9a4e8f3e354bae817ae13a5135485b"
+            },
+            "range": 0,
+            "stock": 552
+          },
+          "mesh-repeat": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/3/proof/evidence/3-mesh-repeat/due-range-statement.json",
+              "sha256": "42612dd000ef9c59a73fe7091762c4ad0b76168b4c3d096e894ec72f1cd1c93c"
+            },
+            "range": 0,
+            "stock": 558
+          },
+          "mesh-range": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/3/proof/evidence/3-mesh-range/due-range-statement.json",
+              "sha256": "cc6ecf39cf52ec0a070bb9669f191f9bc64d136e7d2f6b784f62792d9fb9c9d7"
+            },
+            "range": 561,
+            "stock": 0
+          }
+        }
+      },
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/4/proof/evidence/trials.json",
+          "sha256": "9493c1b7b264f84470b911eb25bd78c7b3d50e428138c16ec4fd2f62af514a5d"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/4/stage.json",
+          "sha256": "4d76ad4d91cd3b7fbd85faa3ccc1584017fa577ae59b6a736938eacba7ba2359"
+        },
+        "arms": {
+          "mesh-repeat": {
+            "jobs_per_second": 563.4587356843291,
+            "pickup_p99_ms": 1786.639892578125,
+            "claim_calls_per_job": 0.4072265625,
+            "cpu_seconds_per_job": 0.0018217861328124996,
+            "peak_rss_bytes": 373039104
+          },
+          "oban": {
+            "jobs_per_second": 1326.1690404657759,
+            "pickup_p99_ms": 749.912109375,
+            "claim_calls_per_job": 0.212890625,
+            "cpu_seconds_per_job": 0.0060762978515625,
+            "peak_rss_bytes": 999505920
+          },
+          "mesh": {
+            "jobs_per_second": 567.064204753476,
+            "pickup_p99_ms": 1781.920166015625,
+            "claim_calls_per_job": 0.41015625,
+            "cpu_seconds_per_job": 0.0019367509765624998,
+            "peak_rss_bytes": 393383936
+          },
+          "mesh-range": {
+            "jobs_per_second": 460.720442488044,
+            "pickup_p99_ms": 2189.316162109375,
+            "claim_calls_per_job": 0.419921875,
+            "cpu_seconds_per_job": 0.0025607041015624993,
+            "peak_rss_bytes": 449163264
+          }
+        },
+        "due_statement_calls": {
+          "mesh": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/4/proof/evidence/4-mesh/due-range-statement.json",
+              "sha256": "baf9d67ce49c311330dc71a3c1cd5fd73dd8515cd90b07ab017edeeecfb40eb3"
+            },
+            "range": 0,
+            "stock": 548
+          },
+          "mesh-repeat": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/4/proof/evidence/4-mesh-repeat/due-range-statement.json",
+              "sha256": "d994d0d3c63335e492b455d4d469fd854819462da068576a383de1af6f4b20d7"
+            },
+            "range": 0,
+            "stock": 545
+          },
+          "mesh-range": {
+            "evidence": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/4/proof/evidence/4-mesh-range/due-range-statement.json",
+              "sha256": "d740f302bcd7c9a96cb137a4c08918f96c341e86aba274e51bb1776cf0b914df"
+            },
+            "range": 563,
+            "stock": 0
+          }
+        }
+      }
+    ],
+    "reconciled_scored_jobs": 20480,
+    "median_paired_throughput_gain_jobs_per_second": -104.54102773085856,
+    "median_absolute_control_spread_jobs_per_second": 28.589026304454762,
+    "groups_treatment_beat_both_controls": 2,
+    "report": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/due-range-guest/runs/due-range-linux-02/noop-8r-64s/report/gates.json",
+      "sha256": "651d329674f4a939fce24ea147644f4e4dbeb6cdfec5736d97b9d83c9d8b66d7"
+    },
+    "canonical_gates": {
+      "mesh": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 508.86512496804653,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2140.2403896445185,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1947.213134765625,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 467.02099609375,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-range": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 518.9952860726313,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2140.2403896445185,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1930.031005859375,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 467.02099609375,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-repeat": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 697.7801253550826,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2140.2403896445185,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1449.5810546875,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 467.02099609375,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      }
+    },
+    "macos_postgres_plan": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/due-range-macos.json",
+      "sha256": "a5a4d208990a5aca1fe9bffa77690efa846ca0eff856530bcf1da06dac6d6ff1",
+      "postgres_version": "17.11",
+      "revision": "0ee8756a37dc2115f16e33e5b12467547f43a90e",
+      "cases": {
+        "future_sentinel": {
+          "scalar": {
+            "actual_rows": 1,
+            "index_condition": "((namespace = 'parity_9dfa02bf25e14bcb'::text) AND (queue = 'default'::text) AND (scheduled_at_ms > (InitPlan 4).col1))",
+            "delay_ms": 59971
+          },
+          "stock": {
+            "actual_rows": 1024,
+            "index_condition": "((namespace = 'parity_9dfa02bf25e14bcb'::text) AND (queue = 'default'::text))",
+            "delay_ms": 59972
+          }
+        },
+        "ready_only": {
+          "scalar": {
+            "actual_rows": 0,
+            "index_condition": "((namespace = 'parity_9dfa02bf25e14bcb'::text) AND (queue = 'default'::text) AND (scheduled_at_ms > (InitPlan 4).col1))",
+            "delay_ms": null
+          },
+          "stock": {
+            "actual_rows": 1024,
+            "index_condition": "((namespace = 'parity_9dfa02bf25e14bcb'::text) AND (queue = 'default'::text))",
+            "delay_ms": null
+          }
+        }
+      }
+    }
   }
 }
