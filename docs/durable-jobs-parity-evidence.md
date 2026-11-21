@@ -2205,6 +2205,38 @@ the dispatcher thread to its runner and recorded zero lost events. Both
 runs used one fixed operation and at most two effect sessions.
 [Compiled Linux proof and trace receipt](../proof/jobs-parity/qualification-v1.json) · [Linux uprobe documentation](https://github.com/gregkh/linux/blob/v6.12.115/Documentation/trace/uprobetracer.rst)
 
+### Run two fenced commits on the frozen short workload
+
+The opt-in release fixture at `206d443a` used one PostgreSQL checkout
+through the attempt write, the original handler delay, and the effect
+write. The traced macOS ARM64 run matched two ordered transaction
+commits, one durable effect, and one exact child reap for each of 128 jobs
+in each mode. Fresh mode used 128 backends. Prewarmed mode reused the
+original 15. Four revocation cases recovered with one durable effect each,
+including a replacement claim that confirmed the effect after its first
+receipt was withheld. The seven one-write regression cases passed on
+PostgreSQL 17.11 with verified TLS and SCRAM.
+[Correctness receipts](../proof/jobs-parity/qualification-v1.json)
+
+Five alternating trace-off pairs reconciled 640 measured jobs in each
+mode. Median entry-to-first-commit time fell from 8.12 ms to 0.53 ms,
+with a reduction in every pair. End-to-end throughput was 333.1 jobs/s
+fresh and 425.7 jobs/s prewarmed. Fresh trials ranged from 128.0 to
+463.1 jobs/s. Prewarmed trials ranged from 381.5 to 591.8 jobs/s and
+were faster in four of five pairs. Peak one-minute host load went up to
+14.61 on 15 logical CPUs. The trial used a single shared binary. The
+paired throughput still needs an identical-mode control and a matched
+Oban arm. Sampled process peaks missed the short-lived children.
+[Timing receipts](../proof/jobs-parity/qualification-v1.json)
+
+A separate admission test held 15 effect backends, four runner backends,
+and one observer. PostgreSQL rejected the producer at a database cap of
+20 and admitted it when the cap rose to 21. The effect role still rejected
+a 16th session. The next run needs explicit observer headroom, handling
+for fresh backend teardown racing admission, and verification that all
+warm sessions finish reset before the final SQL counter sample.
+[Admission receipt](../proof/jobs-parity/qualification-v1.json) · [PostgreSQL database admission](https://github.com/postgres/postgres/blob/REL_17_11/src/backend/utils/init/postinit.c#L344-L363)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs

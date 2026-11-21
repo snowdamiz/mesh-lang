@@ -6886,6 +6886,174 @@
     },
     "scope": "Two local disposable Linux ARM64 guest runs of the compiled fixed-operation proof. One or two effect lanes. The untimed trace joins successful libc calls, matching worker execs, and the compiled proof's exact handler PIDs. No frozen workload timing or release qualification."
   },
+  "macos_fenced_two_write_short_profile": {
+    "revision": "206d443ad9d29cc8208165ded7c5fedd3494d8e9",
+    "base": "64352a8abdcad7b3e76707887afcb224a07b56bb",
+    "host": "macOS ARM64",
+    "postgres": "17.11 with verified TLS and SCRAM",
+    "frozen_profile": "short-1r-16s",
+    "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+    "correctness": {
+      "path": "target/jobs-parity/two-write-local/macos/206d443ad9d29cc8208165ded7c5fedd3494d8e9/j1-two-write-proof-6i348xe2",
+      "sha256": {
+        "result.json": "2d1cec2e70225aae69502c024a37a85758b6481aaf365c373b349089c33437eb",
+        "manifest.json": "b3781e2c0501fe90a8a9ae27d2586adaf00e8f06ffa242ede5f73d1196777838",
+        "mesh-toolchain.json": "7e3ed91619ccf21d8568184200517f82f005313314847ff659fbe06610f59f8f",
+        "short-1r-16s/summary.json": "7cca90701e88059dcaa3cea0a023439105ab8cf3d2a11084f5c3946b5ae3ce2f",
+        "short-1r-16s/trials.json": "21cbafae84a52f8fc6515398de8e1aafb031a9b76e3803e6ad28b9b12a070b2b",
+        "short-1r-16s/0-fresh/raw.json": "c626b4dc8c1f92817277a5c0aab6cb0c795a2716a6004faf30b44a65c273ea38",
+        "short-1r-16s/0-prewarmed/raw.json": "36944ebf396b07a351e505102a481bd7f0120d8cbbe4bca9cc329602809407ff",
+        "fresh-between/result.json": "1ba9e8de97177a5f29a3fad997faf1ff4bdc1a579e600ef996ec75678a6bf278",
+        "fresh-final/result.json": "d7cb42fc9ddc80369d7aa38101b736312741a762c9243b73edf68e98b5ce3284",
+        "prewarmed-between/result.json": "af4906da5d2de2e3719f2370d8abff8a598714e350f5565a7142ff3947bcad9f",
+        "prewarmed-final/result.json": "532bcfef230d0671e453f35e58f934bdb3086389b9bbf871ed786abc8816842f"
+      },
+      "positive_traces": {
+        "fresh": {
+          "jobs": 128,
+          "native_children": 128,
+          "initial_effect_connections": 0,
+          "distinct_used_effect_backends": 128
+        },
+        "prewarmed": {
+          "jobs": 128,
+          "native_children": 128,
+          "initial_effect_connections": 15,
+          "distinct_used_effect_backends": 6
+        }
+      },
+      "revocations": {
+        "fresh-between": {
+          "attempts": 2,
+          "durable_effects": 1,
+          "replacement_receipt": 1
+        },
+        "fresh-final": {
+          "attempts": 2,
+          "durable_effects": 1,
+          "replacement_receipt": -1
+        },
+        "prewarmed-between": {
+          "attempts": 2,
+          "durable_effects": 1,
+          "replacement_receipt": 1
+        },
+        "prewarmed-final": {
+          "attempts": 2,
+          "durable_effects": 1,
+          "replacement_receipt": -1
+        }
+      }
+    },
+    "timing": {
+      "path": "target/jobs-parity/two-write-local/macos/206d443ad9d29cc8208165ded7c5fedd3494d8e9/j1-two-write-7sz0cg6l",
+      "sha256": {
+        "result.json": "737d232782265e8e559e83adc62fa6b6f3bfbfbafd0d988185268cb8eec54998",
+        "manifest.json": "ef8c5b1f52ce4cb829c255d52a15fbb2258c3a9d8a870322071127023291472b",
+        "mesh-toolchain.json": "7e3ed91619ccf21d8568184200517f82f005313314847ff659fbe06610f59f8f",
+        "short-1r-16s/summary.json": "0fe6cb1e73736a84fe9e6468c5549a885e13c866eacecb400b105578298915d6",
+        "short-1r-16s/trials.json": "e68bd0b67188ff1eee2638cf0c5c7e589e3229dcce9651817d54f01bcd6cb06b",
+        "short-1r-16s/0-fresh/raw.json": "c457239c5c2188fc863b61b2fb1944ee8d6d4478a68c4ef6d84e7bd26f97c836",
+        "short-1r-16s/0-prewarmed/raw.json": "4a63a1f23ccf4169ef7b0f480d95cde7a08e3a11cba7fabae98230a5906ce262",
+        "short-1r-16s/1-fresh/raw.json": "845d3270f319f53f5d201860deb4ad2191a0c268d131c0f4bab58ce114f4c623",
+        "short-1r-16s/1-prewarmed/raw.json": "668677d9147b732ccfdbcbc3db68e3453c9e5a811db9180da3575e5afbb95fe3",
+        "short-1r-16s/2-fresh/raw.json": "f09b35f5cfd76caaeaf061ee193b36d85c0708e7975cf2d0329fde3850968fb8",
+        "short-1r-16s/2-prewarmed/raw.json": "964744864a0a67a29829769b403bb953849c20a1975081c60c9f3f091c750d84",
+        "short-1r-16s/3-fresh/raw.json": "b1b069a6d421f20dd921ae87a6e4d5bea78fff58827724d9317ef2d46f8aa7b4",
+        "short-1r-16s/3-prewarmed/raw.json": "a014357bba86af79f0de0da56dc421749b3d127c32711f991685c2bb6e3fb64c",
+        "short-1r-16s/4-fresh/raw.json": "8c6f8935e99b18c0de01864769dbb687b5f403937732eaa201bd7c18d8deef6c",
+        "short-1r-16s/4-prewarmed/raw.json": "6e8588f5e019d4c386982c51cee1a8da1ac611ffdd6605618a281ea624e08983",
+        "short-1r-16s/warmup-fresh/raw.json": "8ac8d637833d9796874d85c895bc86dd8d107addc03feab2720ffd0a09f79f4f",
+        "short-1r-16s/warmup-prewarmed/raw.json": "bfd0847799cdc28012f180e09c35d9e1feb7833ccde71857be82a21fc6451c9b"
+      },
+      "reduction": "target/jobs-parity/two-write-local/macos/206d443ad9d29cc8208165ded7c5fedd3494d8e9/two-write-timing-reduced.json",
+      "reduction_sha256": "732d64040d59f6b376e77feb66ce25c04ebd8a7ddc316479ae1840bcc23e5be2",
+      "measured_pairs": 5,
+      "reconciled_jobs_per_mode": 640,
+      "distributions": {
+        "fresh": {
+          "cpu_seconds_per_job": {
+            "max": 0.008772249999999999,
+            "median": 0.0076013125,
+            "min": 0.007263593749999999
+          },
+          "entry_to_attempt_commit_ms": {
+            "max": 12.2259521484375,
+            "median": 8.12353515625,
+            "min": 7.8365478515625
+          },
+          "jobs_per_second": {
+            "max": 463.132305343943,
+            "median": 333.09487353795134,
+            "min": 128.02572391864868
+          },
+          "peak_host_load_average_1m": {
+            "max": 14.6103515625,
+            "median": 13.0390625,
+            "min": 9.33642578125
+          },
+          "pickup_p99_ms": {
+            "max": 972.59912109375,
+            "median": 360.863037109375,
+            "min": 255.7880859375
+          }
+        },
+        "prewarmed": {
+          "cpu_seconds_per_job": {
+            "max": 0.0071330390625,
+            "median": 0.006839859375,
+            "min": 0.0056542265625
+          },
+          "entry_to_attempt_commit_ms": {
+            "max": 0.6175537109375,
+            "median": 0.5294189453125,
+            "min": 0.345458984375
+          },
+          "jobs_per_second": {
+            "max": 591.7925980775049,
+            "median": 425.72603662967964,
+            "min": 381.51428910319896
+          },
+          "peak_host_load_average_1m": {
+            "max": 14.6103515625,
+            "median": 12.31494140625,
+            "min": 9.30908203125
+          },
+          "pickup_p99_ms": {
+            "max": 319.951904296875,
+            "median": 287.0400390625,
+            "min": 207.555908203125
+          }
+        }
+      },
+      "paired_throughput_deltas": [
+        92.6311630917283,
+        293.11687342511215,
+        458.97214969499754,
+        81.74983314800488,
+        -81.61801624074405
+      ]
+    },
+    "one_write_regression": {
+      "log": "target/jobs-parity/two-write-local/macos/206d443ad9d29cc8208165ded7c5fedd3494d8e9/one-write-regression.log",
+      "log_sha256": "7f4c9ad351b7ab9da49a2d3f89a0759c65934e0ea1800f5bf5878548f4e9b74e",
+      "compiled_cases": 7
+    },
+    "connection_admission_probe": {
+      "log": "target/jobs-parity/two-write-local/macos/206d443ad9d29cc8208165ded7c5fedd3494d8e9/connection-admission-proof.json",
+      "log_sha256": "6c43a1c1c98214ee4db6b475c89753a071584445c0b538eb4571f7102256a6e5",
+      "postgres_version_num": 170011,
+      "roles_held": {
+        "mesh_effect_caller": 15,
+        "parity_subject": 4,
+        "parity_owner": 1
+      },
+      "observer_rejection_at_db_limit_20": true,
+      "producer_succeeded_at_db_limit_21": true,
+      "effect_login_still_capped_at_15": true
+    },
+    "scope": "Correctness and directional same-binary mechanism measurement. Fresh connection teardown may race the PostgreSQL role cap. Connection observer headroom probe used synthetic sessions. Final SQL snapshot can omit trailing resets. No identical-arm timing control or Oban arm. No release qualification."
+  },
   "linux_worker_phase_residency_and_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "postgres": "17.11 verified TLS and SCRAM",
