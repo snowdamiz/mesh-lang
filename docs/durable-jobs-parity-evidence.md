@@ -3432,8 +3432,11 @@ client reply validation, and confirmed COMMIT boundary.
 The named statements beat both controls on database CPU in both
 orders. Savings against the faster controls were 0.169 and
 0.096 CPU-ms/job. The second difference fell within that boot's
-control spread. All six prepared-comparison arms also reconciled
-1,024 jobs each. The component isolates the database and client path.
+control spread. On the admitted claim sessions, the prepared arm
+used 0.212 and 0.237 CPU-ms/job versus 0.374 and 0.379 on the faster
+controls. Lifecycle CPU fell by 0.015 in the first comparison and
+was within 0.001 in the second. All six prepared-comparison arms
+reconciled 1,024 jobs each. The component isolates the database and client path.
 It leaves compiled runner performance and the 35-profile qualification
 open.
 [Full SQL and prepared statement receipts](../proof/jobs-parity/qualification-v1.json)
@@ -3834,3 +3837,25 @@ The seven compiled suites passed 690 tests. Workspace formatting,
 the locked workspace build, fuzz-target compilation, and the example
 and package lint and format checks also passed.
 [Native workspace receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Reconcile the Jobs branch with the main diagnostics catalog
+
+Merge `ee7e099b` integrates main `4f9fdd8d` with the Jobs parity
+branch. Jobs.start and Jobs.drain retain named handler registration
+and use the typed diagnostic introduced by main. The guide build
+keeps relative include paths and reruns when individual guide files
+change. A native relocation test embedded all 18 guide files from
+the consumer checkout and verified 19 relative Cargo watch entries.
+
+On macOS arm64, `02c799f0` passed the verified-TLS PostgreSQL 17.11
+proof after the first review fixes. The run passed 36 PostgreSQL
+driver tests, 53 Jobs runtime tests, all three compiled Jobs suites,
+and the fresh and upgraded scoped-role proofs. The parity driver
+passed 18 self-checks and all 12 fault-driver tests.
+
+The follow-up at `3df8657a` describes both Jobs calls in E0094 and
+updates the generated reference files. It passed eight Jobs type
+checker tests, nine diagnostic rendering tests, and the catalog
+artifact check. These receipts cover the reviewed merge on macOS
+and leave release qualification open.
+[Main diagnostics integration receipts](../proof/jobs-parity/qualification-v1.json)

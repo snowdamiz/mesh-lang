@@ -31960,5 +31960,51 @@
         }
       ]
     }
+  },
+  "macos_jobs_main_diagnostics_integration": {
+    "integrated_main": "4f9fdd8dc945e23fe62407c86f4bdc732955dc2e",
+    "merge": "ee7e099b880d495b88c671a9083dbcb61dab8a07",
+    "scope": "macos_arm64_main_diagnostics_integration",
+    "guide_relocation": {
+      "embedded_files": 18,
+      "relative_watch_entries": 19,
+      "output": {
+        "path": "target/jobs-parity/main-4f9fdd8-integration/proof.6jVYQS/guide-relocation/result.log",
+        "sha256": "d06296e41e366b8de6fe813d98aa47a197fe6be623b72876c19e79c2e95a35e3"
+      },
+      "watch_directives": {
+        "path": "target/jobs-parity/main-4f9fdd8-integration/proof.6jVYQS/guide-relocation/cargo-directives.log",
+        "sha256": "07319a4ce2433ad7eeefd998b3f2eca52cb08c8c6147050cf101511121d84ee4"
+      }
+    },
+    "postgres_17_11": {
+      "revision": "02c799f0df2416360a743bb1b7f1e8ab5ee2f337",
+      "verified_tls": true,
+      "compiled_jobs_suites_passed": 3,
+      "jobs_runtime_tests_passed": 53,
+      "postgres_driver_tests_passed": 36,
+      "scoped_roles": [
+        "fresh",
+        "upgrade"
+      ],
+      "log": {
+        "path": "target/jobs-parity/main-4f9fdd8-integration/reviewed-proof/postgres-17.11.log",
+        "sha256": "d7036ef455a3d6b42b430770dae832201bd3d9b7645c210e61ffd442d23bd874"
+      }
+    },
+    "typed_diagnostics": {
+      "revision": "3df8657aad9dcee43c1ea471a9ddade30cdee19c",
+      "type_tests_passed": 8,
+      "rendering_tests_passed": 9,
+      "artifact_checks_passed": 1,
+      "type_and_rendering_log": {
+        "path": "target/jobs-parity/main-4f9fdd8-integration/reviewed-proof/jobs-rendering-and-typeck.log",
+        "sha256": "97da2751764c4b37fa32a1f84bd05b18405101a0af99d481407762c8777d6dde"
+      },
+      "catalog_artifacts_log": {
+        "path": "target/jobs-parity/main-4f9fdd8-integration/reviewed-proof/diagnostics-artifacts.log",
+        "sha256": "334285201c5d80860d0583f19f795ced614ff7d0cdaff6630e72f48fa5bfcb19"
+      }
+    }
   }
 }
