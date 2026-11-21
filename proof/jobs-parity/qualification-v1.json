@@ -36804,6 +36804,41 @@
       "sha256": "87592621075f905159e14392db396570e446e33b47105ed3e8b37255f39fb813"
     }
   },
+  "linux_stock_effect_fence_plan_fingerprint": {
+    "scope": "Local two-vCPU Linux ARM64 PostgreSQL 17.11 C16 nested plan and CPU component. Keep uses eight independently acknowledged reset exchanges. High host load and planning instrumentation. No scored compiled profile.",
+    "stock_driver": "25cc1299275a9e0e87e58135178b4fe961225d8f",
+    "fence": "0687b4a3ed87848fc80000286f1de5df87514b52",
+    "host_cores": 15,
+    "max_host_1m_load": 19.21240234375,
+    "measured_blocks": 6,
+    "measured_jobs": 4608,
+    "durable_writes": 9216,
+    "pack": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-fingerprint/runs/first-local/compare/pack.json",
+      "sha256": "f9ba91cf4145f64e9143de6851ee2247f6811fefe0265014ed329dbcaf889f8e"
+    },
+    "host_capture": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-fingerprint/runs/first-local/compare/host-result.json",
+      "sha256": "916b4da21d7bb48ca13c761d6c860d13556b5c31cf77c28505431f555211a461"
+    },
+    "guest_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-fingerprint/runs/first-local/compare/proof/evidence/result.json",
+      "sha256": "fe33301656ae9e543bd40753543840f5dce27166f942ce9b0869b441228b9711"
+    },
+    "summary": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-fenced-operation-fingerprint/runs/first-local/compare/proof/evidence/summary.json",
+      "sha256": "d03e6bc33befe5757421190bf2fb84dcf6b5d1fe4ea68907b98ef7f2de544a94"
+    },
+    "joint_keep_minus_p_median_usec_per_job": 284.546875,
+    "joint_keep_minus_p_repeat_median_usec_per_job": 318.564453125,
+    "nested_plan_reduction_families": [
+      "nested_attempt_insert",
+      "nested_effect_insert",
+      "nested_fence_call",
+      "nested_fence_lock"
+    ],
+    "eligible_for_trace_off_confirmation": false
+  },
   "linux_stock_effect_fence_reset_ablation": {
     "scope": "Four C16 mirrored blocks on one two-vCPU Linux ARM64 stock guest. R direct SQL, D direct SQL plus two full resets, and P scoped fence and the same resets. D is always the middle arm.",
     "runbook": {
@@ -37043,6 +37078,93 @@
     "legacy_named_link": {
       "path": "target/jobs-parity/stock-named-effect-compat/91722a23be5f56ca7510f742f63735069b8bc1f1/named-link.log",
       "sha256": "70782c2e398142b437c3c783ec0f94515c52f67098719547b59d3e251c733514"
+    }
+  },
+  "linux_compiled_jobs_effect_relay_faults": {
+    "revision": "30a0432c402993f3de6c7b545c4b7c7af8820c12",
+    "scope": "One-slot Linux GNU ARM64 release, PostgreSQL 17.11, cap five. Transport and exact wait witness is fixture-only. No scored profiles.",
+    "smoke_link": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/link-r3/link.json",
+      "sha256": "46c86de13e31ca368ce616386d99d702c5938616f41daf8d3b06e13b0ae035d6"
+    },
+    "smoke_initial_timeout": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-r3/extracted/evidence/result.json",
+      "sha256": "b792c538c11f633950586d8d134e9f483ff7fd85d6a3ee74848c7e03359921e4"
+    },
+    "smoke_reconciliation_reruns": [
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-r3-disconnect-retry/extracted/evidence/receipts.json",
+        "sha256": "8fc9f660375df723b812579be35ad2d0c95de9b0e39b27408571bfded4d810f0"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-r3-disconnect-repeat-2/extracted/evidence/receipts.json",
+        "sha256": "aec51237aaf38a78d3595cb3760405ab081f64a3f44a27781c19c5991c60eb8b"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-r3-disconnect-repeat-3/extracted/evidence/receipts.json",
+        "sha256": "cc7e00e90c0c9cef36100dac05538313a3d98262919a9ce6bd30fc86adaeb770"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-r3-disconnect-repeat-4/extracted/evidence/receipts.json",
+        "sha256": "a254f3baaaabe5450de96ed2071485d2223a84fb8678152609d8066c8de60adb"
+      }
+    ],
+    "unit_build": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/unit-r3-build.jsonl",
+      "sha256": "4ce3936403999aa8b553450421a42c01db2c6ceb560b1d3f993efa33e50553f2"
+    },
+    "unit_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-unit-r3/extracted/evidence/result.json",
+      "sha256": "24d876551fe025f3f38b9c994f9e49312df07982f4579ef44b7959e8236bcdf9"
+    },
+    "unit_passed": {
+      "db::pg::jobs_effect_session::tests": 8,
+      "jobs::effects::tests": 7,
+      "jobs::worker::effect_endpoint::tests": 4
+    },
+    "fault_link": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-fault-proof/link-r3/link.json",
+      "sha256": "2f7d7424033458ea920d0845a2484a3f65915555d0c218d052572ec004b6fe65"
+    },
+    "fault_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-fault-proof/relay-eof-r3/extracted/evidence/result.json",
+      "sha256": "51dd136c0ab565a5d6a351a0d655dc49b4d717306997456984283f2f10c4d846"
+    },
+    "fault_pack": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-fault-proof/relay-eof-r3/pack.json",
+      "sha256": "40a492d3c94098defd698f7d24c35fb7c828593512dbd045196b4091a5f508a2"
+    },
+    "fault_rows": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-fault-proof/relay-eof-r3/extracted/evidence/faults.json",
+      "sha256": "73d2d5904a425056df4c81b1a4aee27ae098054b981fd50813a8b6d15213ab5d"
+    },
+    "fault_states": {
+      "sql-control": "completed:1",
+      "reset-control": "completed:1",
+      "wire": "retryable:1",
+      "wire-replacement": "completed:2",
+      "reset-loss": "retryable:1",
+      "reset-loss-replacement": "completed:2",
+      "receipt": "retryable:1",
+      "receipt-replacement": "completed:2",
+      "runner-zero-sql": "discarded:1",
+      "runner-zero-reset": "discarded:1",
+      "queue-zero-sql": "discarded:1",
+      "queue-zero-reset": "discarded:1"
+    },
+    "fault_earlier_harness_failures": [
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-fault-proof/exact-guest/extracted/evidence/result.json",
+        "sha256": "17f9c9caf6f142efbf998809fd8108fff15f628ebb434ab0e9e6743f90a40e0a"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-fault-proof/guest-r3/extracted/evidence/result.json",
+        "sha256": "0081b8ee7890faa61d992617b37a7b85b9e2f40885b3ac5c2aa638ed65fb3a86"
+      }
+    ],
+    "previous_revision_fault_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-fault-proof/replacement-ready/extracted/evidence/result.json",
+      "sha256": "94bdcb2d75828f3b335ad3443f1f8872e6e289b026a7284773946db302edda8c"
     }
   },
   "linux_compiled_jobs_effect_reviewed_smoke": {

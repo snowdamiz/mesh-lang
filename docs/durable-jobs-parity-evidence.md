@@ -4067,6 +4067,18 @@ reset control occupied the middle position in every block,
 which leaves it sensitive to changes in host load across arms.
 [Reset attribution receipts](../proof/jobs-parity/qualification-v1.json)
 
+Six instrumented follow-up blocks compared two full reset controls
+with a plan-retaining reset on the same 16 warm lanes. All 4,608
+measured jobs reconciled two separate commits. The treatment ran the
+eight reset commands as separate acknowledged exchanges. It reduced
+nested fence and insert planning in every block, while adding a median
+0.285 and 0.319 joint CPU-ms/job against the two controls. Host one-minute
+load reached 19.21 on a 15-core host. The separate exchanges and planning
+instrumentation limit what the timing says about plan retention itself.
+The treatment missed the CPU and control-drift gates. The compiled draft
+continues to use one `DISCARD ALL` exchange after each operation.
+[Plan fingerprint receipts](../proof/jobs-parity/qualification-v1.json)
+
 A separate compiled-driver witness used `DISCARD ALL` through
 `Pg.execute` on PostgreSQL 17.11, 18.7, and 19.0. The same
 verified TLS backend cleared a temporary table, prepared statement,
@@ -4140,6 +4152,32 @@ after server commit remain open. The independent review also
 found relay closure and buffered-request lifetime gaps, and the
 timed cutoff still needs explicit send-admission semantics.
 [Linux one-slot follow-up receipts](../proof/jobs-parity/qualification-v1.json)
+
+The relay follow-up at `30a0432c` passed 19 focused Linux ARM64
+runtime tests. It denies a buffered request from a closed worker
+endpoint before checkout and closes the channel when the relay
+exits. A send admitted before a positive-grace cutoff can still
+reach the kernel afterward. Zero grace serializes with admitted
+sends and closes admission before returning.
+
+The release PostgreSQL 17.11 smoke passed four reruns after an
+initial disconnect case timed out waiting for retryability. The
+timeout's cause was unresolved, and both the failure and reruns
+are retained. A separate 12-case compiled fault run passed under
+the same five-connection budget. A fixture-only transport witness
+joined the returned spawn PID to child identity and consuming wait.
+It verified that the durable job still said `executing` at the
+exact wait return, before the supervisor settled it.
+
+Loss of the committed operation response, reset response, or
+child receipt each produced an uncertain outcome. The handler
+asked to complete, but the exact child was reaped and the first
+attempt became retryable. Each replacement used a fresh warm
+backend and reported the committed effect using its original XID.
+Runner and queue zero-grace cases blocked an unsubmitted write
+and blocked receipt publication for a previously committed write.
+The native result applies to the one-slot Linux GNU ARM64 draft.
+[Relay and fault proof receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 
