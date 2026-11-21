@@ -1751,6 +1751,33 @@ with overlap. Median time from first claim to final settlement was
 overlap prototype stays outside the product branch.
 [Warm launch overlap receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Trace the warm 16-slot Linux worker lifecycle
+
+Five alternating pairs used the same `1abc0b2c` release fixture and
+serial dispatcher with tracing off and on. Each arm completed and
+reconciled 640 measured jobs using 15 warm effect sessions, PostgreSQL
+notifications, and a 250 ms fallback. The local ARM64 guest had two
+vCPUs and 1 GiB of RAM. Host one-minute load ranged from 6.11 to 9.23.
+
+| Stage | Median of five traced trial medians |
+| --- | ---: |
+| Confirmed claim to launch | 1.93 ms |
+| Spawn call | 0.29 ms |
+| Spawn return to handler entry | 0.35 ms |
+| Reply frame written to observed reap | 0.73 ms |
+| Observed reap to settlement submission | 1.14 ms |
+| PostgreSQL settlement call through confirmation | 0.14 ms |
+
+The first batch member launched within 0.03 ms in each trial's median.
+The 13 jobs at ordinal 16 gave trial medians from 5.73 to 10.60 ms.
+This run places more of the observed wait in dispatch and lifecycle
+scheduling than in the PostgreSQL acknowledgement call. The trace
+itself slowed four of five pairs. Median throughput was 1,283 jobs/s
+with tracing off and 1,163 with it on, with overlapping ranges of
+1,009–1,408 and 750–1,371 jobs/s. The reap timestamp records the
+supervisor observing the child's wait status. Both arms used Mesh.
+[Warm lifecycle trace receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Measure stock Linux Jobs with 64 slow-job slots
 
 The frozen `slow-1r-64s` workload ran five alternating pairs against
@@ -1847,6 +1874,16 @@ The disabled arm won three of five groups against default Mesh and two
 against Oban. Pickup, CPU, and absolute resource limits passed. The
 throughput and RSS gates for this profile remain open.
 [Timed huge-page receipts](../proof/jobs-parity/qualification-v1.json)
+
+The separate `242702e1` runtime prototype passed eight startup cases in
+the local ARM64 guest using a release fixture linked against that
+runtime. Only the exact internal worker invocation with the opt-in set
+to `1` reported `THP_enabled = 0` after scheduler startup. Unset and
+nonmatching values, ordinary application launches, and worker-like
+argument lists reported `THP_enabled = 1`. This run exercised startup
+without a database. The timed result above used a fixture constructor
+to apply the same policy.
+[Runtime opt-in receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Run the compiled handler through the fork template
 

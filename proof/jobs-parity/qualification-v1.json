@@ -5980,6 +5980,281 @@
     "passed": 3,
     "scope": "Isolated test-only revision. The proof combines loopback transport cuts and a real PostgreSQL lease and receipt transaction. Runner and child handoff remain open."
   },
+  "linux_warm_short_causal_trace": {
+    "revision": "1abc0b2c3311f137c28ec9c063b181e2f28dbc81",
+    "base": "1b8d7b129b982b5931226043f77a263721244b35",
+    "runtime_sha256": "e99c95b81f5b0f8cc2ee165d920d462cf7dbe75133bb2552f10a3572dfbce64f",
+    "fixture_sha256": "066a7944d7838fd433ddbb66fa5dd31ae38b0deea88764ea947c1d0f808087eb",
+    "profile": "short-1r-16s",
+    "run_worktree": "t3-3da1d135",
+    "run": "target/jobs-parity/warm-short-linux-causal-trace/source/target/jobs-causal-trace/short-16-causal-01",
+    "guest": "Linux ARM64 with 2 vCPUs and 1 GiB RAM",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "warm_effect_lanes": 15,
+    "settings": {
+      "dispatcher": "serial",
+      "listen": true,
+      "poll_ms": 250,
+      "workload_client_limit": 20
+    },
+    "jobs_reconciled_per_arm": 640,
+    "archive_sha256": "f8a50111d5c484e88a819dec7c026ab33e8432e17ed8e4de102e344f899c4676",
+    "host_trace_sha256": "38d7119e980ac917e09496cf6489067402ac8b3093459476387b3ca285c645cf",
+    "serial_sha256": "44f7d8e305761a9306da9369a62e97ee5788fa3ba0149876c35017c008da56a3",
+    "vm_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "proof_sha256": "90d36720dde5c991ec234ef6d88bf8979a3ffbce25481815ae13369fb8e6ae9e",
+    "receipt_sha256": "bd0d4a98b06636c4b99d6a00201c7fdcf1c58fc34b6dab90b17c5a7ec38e30f3",
+    "summary_sha256": "83abbf70556ce1a1d0e09e7c35f025e44e8fd6f1d7899a29b08e6c39977765b2",
+    "host_one_minute_load_range": [
+      6.10595703125,
+      9.23046875
+    ],
+    "observed_ranges": {
+      "off": {
+        "jobs_per_second": {
+          "median": 1282.9128636797416,
+          "range": [
+            1008.5331979101745,
+            1407.6319399883478
+          ]
+        },
+        "pickup_p99_ms": {
+          "median": 88.16796875,
+          "range": [
+            86.784912109375,
+            123.2919921875
+          ]
+        },
+        "cpu_seconds_per_job": {
+          "median": 0.0012131718749999998,
+          "range": [
+            0.0012014687499999998,
+            0.0017273671875
+          ]
+        }
+      },
+      "on": {
+        "jobs_per_second": {
+          "median": 1163.3187850440331,
+          "range": [
+            749.8794987721031,
+            1371.1105648278424
+          ]
+        },
+        "pickup_p99_ms": {
+          "median": 105.721923828125,
+          "range": [
+            91.37109375,
+            154.9130859375
+          ]
+        },
+        "cpu_seconds_per_job": {
+          "median": 0.001217203125,
+          "range": [
+            0.0010095859374999998,
+            0.0018995781249999998
+          ]
+        }
+      }
+    },
+    "observer_cost_pairs": [
+      {
+        "pair": 0,
+        "on_minus_off": {
+          "jobs_per_second": -205.512804125569,
+          "cpu_seconds_per_job": 0.00017221093749999984,
+          "pickup_p99_ms": 30.13720703125
+        }
+      },
+      {
+        "pair": 1,
+        "on_minus_off": {
+          "jobs_per_second": -233.75802529505154,
+          "cpu_seconds_per_job": -6.042187499999993e-05,
+          "pickup_p99_ms": 5.84619140625
+        }
+      },
+      {
+        "pair": 2,
+        "on_minus_off": {
+          "jobs_per_second": 95.0266718918574,
+          "cpu_seconds_per_job": -0.0001918828125,
+          "pickup_p99_ms": 3.203125
+        }
+      },
+      {
+        "pair": 3,
+        "on_minus_off": {
+          "jobs_per_second": -221.39289931862663,
+          "cpu_seconds_per_job": -2.2820312500000054e-05,
+          "pickup_p99_ms": 18.93701171875
+        }
+      },
+      {
+        "pair": 4,
+        "on_minus_off": {
+          "jobs_per_second": -533.0333649076384,
+          "cpu_seconds_per_job": 0.0004627890625000001,
+          "pickup_p99_ms": 65.903076171875
+        }
+      }
+    ],
+    "stage_trial_medians_ms": {
+      "claim_confirmed_to_launch": [
+        2.09125,
+        1.919271,
+        1.2893124999999999,
+        2.0450005,
+        1.9290829999999999
+      ],
+      "launch_to_spawn": [
+        0.00375,
+        0.002125,
+        0.002125,
+        0.0022919999999999998,
+        0.0050834999999999995
+      ],
+      "spawn_call": [
+        0.3596045,
+        0.2880005,
+        0.2202085,
+        0.250125,
+        0.414854
+      ],
+      "spawn_to_child_start": [
+        0.590646,
+        0.417896,
+        0.3526665,
+        0.4213125,
+        0.6613745
+      ],
+      "spawn_return_to_handler": [
+        0.5086665,
+        0.3493965,
+        0.34525,
+        0.345854,
+        0.6279794999999999
+      ],
+      "child_start_to_handler": [
+        0.161083,
+        0.0673955,
+        0.0825,
+        0.0684165,
+        0.09285399999999999
+      ],
+      "handler_to_frame_written": [
+        2.4967085,
+        2.079396,
+        1.8427505000000002,
+        2.069688,
+        2.8515829999999998
+      ],
+      "frame_written_to_exact_reap": [
+        0.9666875,
+        0.5480625,
+        0.5179165,
+        0.7273955000000001,
+        0.9741664999999999
+      ],
+      "frame_decoded_to_exact_reap_signed": [
+        0.6337915000000001,
+        0.37618799999999997,
+        0.27110449999999997,
+        0.4508955,
+        0.5143335
+      ],
+      "frame_decoded_to_wake_attempt": [
+        0.000292,
+        0.000166,
+        0.000166,
+        0.000209,
+        0.000375
+      ],
+      "reap_to_settlement": [
+        1.7885625,
+        1.1359585,
+        0.479417,
+        2.0392295000000003,
+        0.6057915
+      ],
+      "reply_and_reap_to_settlement_lower_bound": [
+        1.7885625,
+        1.1359585,
+        0.479417,
+        2.0392295000000003,
+        0.6057915
+      ],
+      "reply_and_reap_to_settlement_upper_bound": [
+        1.7885625,
+        1.1359585,
+        0.479417,
+        2.0392295000000003,
+        0.6057915
+      ],
+      "settlement_to_pg_call": [
+        0.000333,
+        0.000166,
+        0.000167,
+        0.000167,
+        0.000459
+      ],
+      "pg_call_to_confirmed_return": [
+        0.2391875,
+        0.127,
+        0.142646,
+        0.1402085,
+        0.285292
+      ],
+      "pg_return_to_settlement_return": [
+        0.001917,
+        0.0013544999999999998,
+        0.0012915000000000001,
+        0.001375,
+        0.00225
+      ],
+      "claim_confirmed_to_settlement_return": [
+        9.145520999999999,
+        7.6479375,
+        6.4865215,
+        8.643333,
+        8.4360415
+      ]
+    },
+    "claim_confirmation_to_launch_ms_by_ordinal": {
+      "1": {
+        "total_jobs": 73,
+        "trial_medians": [
+          0.023667,
+          0.013,
+          0.025583,
+          0.015875,
+          0.021103999999999998
+        ]
+      },
+      "8": {
+        "total_jobs": 40,
+        "trial_medians": [
+          3.5992295,
+          2.1365,
+          2.6234585,
+          2.6068955000000003,
+          3.3463125
+        ]
+      },
+      "16": {
+        "total_jobs": 13,
+        "trial_medians": [
+          7.899604,
+          5.730084,
+          7.965479,
+          7.6757705,
+          10.60275
+        ]
+      }
+    },
+    "workers_reaped_before_reply_decode": 2,
+    "scope": "Same-binary trace-off/on diagnostic. Tracing reduced throughput in four of five pairs. Stage timings include observer overhead. No Oban arm or performance qualification."
+  },
   "effect_exact_child_proof": {
     "revision": "254df3cef64783b6a52c1f7e854ef7c2c374ffc1",
     "base": "f72e16bb2af77eef144c4c86b06c21e5dd4c4b5c",
@@ -6337,6 +6612,85 @@
         }
       }
     }
+  },
+  "linux_thp_runtime_opt_in_proof": {
+    "revision": "242702e1926fc0e19c463c6676361adb65a05ba7",
+    "runtime_sha256": "c65fb7a827773d15a6b021dbf2a6debf5d9b45e2aff87d27db48204cae39a2f1",
+    "fixture_sha256": "0d689f4ed05c9c0aca1c0be95c6259b7f4c884205d8f02083775930a8cb5f1ed",
+    "verifier_sha256": "7874413753048ffe8f382a154d3b2bd5a4e712cfa1e761809be74edb942c87b5",
+    "base": "1b8d7b129b982b5931226043f77a263721244b35",
+    "guest": "Linux 6.12.115-0-virt ARM64",
+    "archive_sha256": "19f4044680c37fc135601a4190a689256ba202ffda67ddcd27f712a9afb00f5e",
+    "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+    "serial": "target/jobs-parity/linux-arm-ownership-guest/worker-thp-runtime-proof/guest.serial",
+    "serial_sha256": "2acfc9ddc19d6ac0f270e423e576266c99d412e3257a18f3b1efeb558f3a3af4",
+    "cases": [
+      {
+        "setting": null,
+        "args": [
+          "--mesh-internal-job-attempt-v1"
+        ],
+        "observed_thp": "1",
+        "exit_status": 174
+      },
+      {
+        "setting": "0",
+        "args": [
+          "--mesh-internal-job-attempt-v1"
+        ],
+        "observed_thp": "1",
+        "exit_status": 174
+      },
+      {
+        "setting": "01",
+        "args": [
+          "--mesh-internal-job-attempt-v1"
+        ],
+        "observed_thp": "1",
+        "exit_status": 174
+      },
+      {
+        "setting": "1",
+        "args": [],
+        "observed_thp": "1",
+        "exit_status": 0
+      },
+      {
+        "setting": "1",
+        "args": [
+          "--mesh-internal-job-attempt-v10"
+        ],
+        "observed_thp": "1",
+        "exit_status": 0
+      },
+      {
+        "setting": "1",
+        "args": [
+          "--mesh-internal-job-attempt-v1",
+          ""
+        ],
+        "observed_thp": "1",
+        "exit_status": 0
+      },
+      {
+        "setting": "1",
+        "args": [
+          "extra",
+          "--mesh-internal-job-attempt-v1"
+        ],
+        "observed_thp": "1",
+        "exit_status": 0
+      },
+      {
+        "setting": "1",
+        "args": [
+          "--mesh-internal-job-attempt-v1"
+        ],
+        "observed_thp": "0",
+        "exit_status": 174
+      }
+    ],
+    "scope": "Database-free release fixture verifies early opt-in process policy and exact argument boundaries. No timed workload."
   },
   "linux_slow_64_timed_worker_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
