@@ -1436,10 +1436,20 @@ A separate probe put an unrelated child owned by another thread in the
 template's process group. The runner's group-scoped `waitid` with
 `__WNOTHREAD` left that child's exit status for its owning thread. Removing
 the thread filter exposed the unrelated child to the cleanup scan.
-Removing `CLONE_PARENT` broke the pre-transfer reap case. This verifies
-kernel wait ownership for the fixture. Compiled worker entry, PostgreSQL
-settlement, and throughput remain outside this run.
+Removing `CLONE_PARENT` broke the pre-transfer reap case.
 [Linux ownership receipt](../proof/jobs-parity/qualification-v1.json)
+
+The follow-up ran a compiled Jobs worker in the same Linux guest. Six
+boots each passed three cases. Template death before pidfd transfer
+left no constructor, handler, or reply output. After transfer and grant,
+`execve` preserved the attempt PID through the native constructor and
+the compiled handler returned its exact framed reply. Closing the
+control pipe during a separate running handler produced native exit
+173 with no reply. Both granted cases consumed the exit status through
+the runner's exact pidfd. The proof used the normal worker startup ABI
+and a cached Linux debug runtime. Database claims, settlement, and
+throughput remain open for this launcher.
+[Compiled Linux ownership receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Run the compiled handler through the fork template
 

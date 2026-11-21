@@ -4272,6 +4272,42 @@
     },
     "scope": "Synthetic child lifecycle, exact Linux reap, and cleanup ownership after template death. Compiled Mesh handlers, Jobs claim and settlement, and benchmark performance were outside the fixture."
   },
+  "linux_gated_exec_compiled_worker": {
+    "guest": "Linux 6.12.115-0-virt aarch64",
+    "gnu_userspace": "Ubuntu Base 24.04.4 arm64",
+    "gnu_userspace_archive_sha256": "04207713ece899c3740823d33690441ad3a7f0ded1101aca744e2b0f37ac7ff2",
+    "compiler_commit": "52406a0170e8bf9cca86447ac95e888c76339430",
+    "compiler_sha256": "441b9d7904076b0e8acd6456ba273fb5e407b72f7fa1a6c77f5dc58405a67f7b",
+    "runtime_commit": "d3ac450e333ef5386fed9d9b47844feae0df3c46",
+    "runtime_profile": "aarch64-unknown-linux-gnu debug",
+    "runtime_sha256": "6ad3f10b1e12f31d80548f048c1bc0df08c0f843f8f1da9cb1e0cf67ac368f45",
+    "run": "target/jobs-parity/worker-cost-screen/linux-launch-ownership/exec-build.7gzpwP2g",
+    "sources_sha256": {
+      "exec-fixture.c": "e3737bb5c1a6ccea4d4a0c3bd26f464e8559b97dac66b59ae305b594765bcbf1",
+      "exec-constructor.c": "b5808f4869dd7ee1ef05eb452f1f46a5a3707d93f0b8319b8f08b7273ec225d1",
+      "exec-worker/main.mpl": "96b628d16defa72002cdad3ff857aab1b1048b1a3d000cfda2c157639c32d8d0",
+      "pack-exec.py": "41795d7cf3e3008c9b447b8ac38a55903ec616f6e4694c47a39a41175c43d5ff"
+    },
+    "runner_sha256": "5ecdd822650e86ecb97266f3fb2631be84d61ae53c75d5d1c35c305c1fa392fc",
+    "worker_sha256": "eaf52032f79ad5777e9eb13d6e362b271d3f1f85931d9cbba5fb02dd0b6e89a7",
+    "worker_handler_key_sha256": "207540392efc9edd3d21e6d3308397aa5423264bc77082ce8151fdcd0baf5247",
+    "initramfs_sha256": "7a2c6abaacb798c3851544d0c89aedc4b17a5abe98119f278812410748fc6374",
+    "passing_boots": 6,
+    "cases_per_boot": {
+      "lost_handoff": {"constructors": 0, "handlers": 0, "replies": 0},
+      "granted_reply": {"constructors": 1, "handlers": 1, "replies": 1, "pidfd_exit": 0},
+      "control_eof": {"constructors": 1, "handlers": 1, "replies": 0, "pidfd_exit": 173}
+    },
+    "logs_sha256": {
+      "guest.log": "c7ee89f1903037cec00015ed8685125a950ef5e2d4febd5ecbe3b0ffd8cc6591",
+      "guest-1.log": "55872dd716a6849aafd5b8a173a6806a9058034736f6ccf75f9d07876ab5a264",
+      "guest-2.log": "48250b1bc14712f8a8f055f2e23175840e698ee83d4d929364f337905ac4effa",
+      "guest-3.log": "48250b1bc14712f8a8f055f2e23175840e698ee83d4d929364f337905ac4effa",
+      "guest-4.log": "c7ee89f1903037cec00015ed8685125a950ef5e2d4febd5ecbe3b0ffd8cc6591",
+      "guest-5.log": "55872dd716a6849aafd5b8a173a6806a9058034736f6ccf75f9d07876ab5a264"
+    },
+    "scope": "Fixture runner with clone3, exact pidfd reaping, and gated execve of a compiled Jobs worker. It exercises the real worker frames and parent-disconnect watchdog. It uses no PostgreSQL and makes no durable settlement or throughput claim."
+  },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "host": "Darwin arm64",
