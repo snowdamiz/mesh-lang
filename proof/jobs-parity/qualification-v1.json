@@ -3873,6 +3873,127 @@
       }
     }
   },
+  "bootstrap_context_release": {
+    "baseline": "9bd80627830d331aaba09d4a3283bdfa2b810ad2",
+    "candidate": "5d45b53b7b3b66f2d39a8774e58b5f39619784c5",
+    "harness": "fcfd9184822b8370adabc4bd836f71359bd71fb2",
+    "host": "Darwin arm64",
+    "logical_cpus": 15,
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "held_effect_writes": {
+      "run": "target/jobs-parity/reply-reap-integration/comparison-sthqcloq",
+      "manifest_sha256": "818ee263592fefc960b9973c989dfb11463799ace53394f435486d11dce7dfde",
+      "result_sha256": "e938bde5d25d3f9c6146e4d83f0adf4c4ace460f807a63ac22c579d7ee1e5b67",
+      "matched_tls_effect_writers": 64,
+      "payload_bytes_per_job": 524288,
+      "completed_trials": 15,
+      "reconciled_jobs": 960,
+      "peak_one_minute_host_load": 13.5478515625,
+      "per_trial_rss_bytes": {
+        "baseline": {
+          "runner": [51363840, 51331072, 51331072, 51331072, 51920896],
+          "children": [746536960, 746700800, 745816064, 746438656, 746553344]
+        },
+        "baseline_repeat": {
+          "runner": [51855360, 51281920, 50774016, 51331072, 51347456],
+          "children": [747225088, 715128832, 746602496, 747094016, 746422272]
+        },
+        "candidate": {
+          "runner": [33996800, 28033024, 26918912, 31244288, 36487168],
+          "children": [739540992, 740835328, 741113856, 742178816, 739278848]
+        }
+      }
+    },
+    "unblocked_large_profile": {
+      "run": "target/jobs-parity/reply-reap-integration/comparison-apsrjxx8",
+      "manifest_sha256": "91a202a4a26097d12709665cb0375ef2faf4c114e8911a48c756a27d4b449e53",
+      "result_sha256": "9cfdcb7eca5bd64f3c406c215d2e1b6cad6e82aaf119c7a222be621f6ac3d7f3",
+      "profile": "large-1r-64s",
+      "completed_trials": 15,
+      "reconciled_jobs": 960,
+      "jobs_per_second": {"baseline": 160.316, "baseline_repeat": 168.011, "candidate": 132.888},
+      "first_claim_to_last_settlement_ms": {"baseline": 313.816, "baseline_repeat": 323.631, "candidate": 260.162}
+    },
+    "verified_tls_paired_recovery": {
+      "run": "target/jobs-parity/5d45b53b7b3b66f2d39a8774e58b5f39619784c5/j1-fault-j9opre31",
+      "baseline": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+      "manifest_sha256": "85aa546f517f507b6c596658904546e193ce2420402946a4687d2565c134f037",
+      "result_sha256": "48436d736163c2f302623635e97fb6aa84793feff0999b47ecd49cb2b4851706",
+      "status": "passed"
+    },
+    "release_commit_loss": {
+      "run": "target/jobs-parity/5d45b53b7b3b66f2d39a8774e58b5f39619784c5/j1-fault-is6s72ln",
+      "baseline": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+      "manifest_sha256": "803bfb9a50b621e6eb6eb1a6158754ceeafa9247d50a73c5f6acd7764509f634",
+      "result_sha256": "48436d736163c2f302623635e97fb6aa84793feff0999b47ecd49cb2b4851706",
+      "transport": "SCRAM on disposable plaintext loopback",
+      "passed_cases": 12
+    },
+    "compiled_postgres_proof": {
+      "command": "bash scripts/verify-postgres-jobs.sh --compatibility 17.11 --j6-roles --parity-driver-check",
+      "log": "target/jobs-parity/bootstrap-context-study/postgres-17.11.log",
+      "log_sha256": "36bd5c1c6cbde89949658621e3382d91c41708fa3dfd4139011375246b91594f",
+      "postgres_driver_tests_passed": 36,
+      "runtime_tests_passed": 53,
+      "compiled_proofs_passed": 3
+    }
+  },
+  "reply_pipe_exit_wake_diagnostic": {
+    "runtime_all_arms": "ccf62ff171217bd2426aa661f3a2f343a5a4d31d",
+    "harness": "fcfd9184822b8370adabc4bd836f71359bd71fb2",
+    "host": "Darwin arm64",
+    "logical_cpus": 15,
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "candidate_flag": "MESH_DIAGNOSTIC_JOB_REPLY_EOF_WAKE=1",
+    "run": "target/jobs-parity/reply-reap-integration/comparison-820v5etw",
+    "manifest_sha256": "18e27ca881837d7e4745b71355bed8f2b61bff8f17aac83725ff031cefad78d0",
+    "result_sha256": "8c121405566eb655e72e8f4d11b75802c17720acbe883298b335b22b304c5421",
+    "measured_groups_per_profile": 5,
+    "jobs_per_trial": 128,
+    "reconciled_jobs": 3840,
+    "profiles": {
+      "short-1r-1s": {
+        "peak_one_minute_host_load": 20.228,
+        "jobs_per_second": {"baseline": 38.112, "baseline_repeat": 39.780, "candidate": 56.053},
+        "median_effect_commit_to_settlement_ms": {"baseline": 9.207, "baseline_repeat": 8.389, "candidate": 1.169},
+        "groups_faster_than_both_controls": {"throughput": 5, "effect_commit_to_settlement": 5}
+      },
+      "short-1r-16s": {
+        "peak_one_minute_host_load": 47.949,
+        "jobs_per_second": {"baseline": 180.831, "baseline_repeat": 114.450, "candidate": 175.795},
+        "median_effect_commit_to_settlement_ms": {"baseline": 10.167, "baseline_repeat": 11.531, "candidate": 16.572},
+        "groups_faster_than_both_controls": {"throughput": 2, "effect_commit_to_settlement": 2}
+      }
+    },
+    "combined_one_slot_oban": {
+      "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+      "oban": "2.24.2",
+      "run": "target/jobs-parity/da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0/j1-load-o48x4zbk",
+      "manifest_sha256": "27e20ec463a1607d58dc4e7e00c0618cb6b16543f345cc88899700ca671c864a",
+      "result_sha256": "8df87bd9c9364fae27f71aa45b469c2ff5e96db246192125654c0c17c1d360b2",
+      "summary_sha256": "024b20eac7d4df90ca724d1fa0bb3bda924bab5507433e429674ba169b05d87e",
+      "measured_pairs": 5,
+      "reconciled_jobs_per_engine": 640,
+      "peak_one_minute_host_load": 9.677,
+      "jobs_per_second": {"mesh": 59.208, "oban": 91.339},
+      "pickup_p99_ms": {"mesh": 2124.990, "oban": 1388.605},
+      "cpu_ms_per_job": {"mesh": 6.219, "oban": 3.987},
+      "median_claim_to_entry_ms": {"mesh": 4.721, "oban": 0.694},
+      "median_entry_to_attempt_commit_ms": {"mesh": 4.442, "oban": 0.211},
+      "median_effect_commit_to_settlement_ms": {"mesh": 1.127, "oban": 0.243},
+      "comparison_gate_passed": false,
+      "breaches": ["throughput", "pickup_p99", "cpu_per_job"],
+      "release_faults": {
+        "run": "target/jobs-parity/da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0/j1-fault-k4qkdmqw",
+        "manifest_sha256": "aedbfe88fcabd0b1babc907905321d15e0fd73969166fb0d15cb09e2a4527032",
+        "result_sha256": "48436d736163c2f302623635e97fb6aa84793feff0999b47ecd49cb2b4851706",
+        "transport": "SCRAM on disposable plaintext loopback",
+        "passed_cases": 12
+      }
+    }
+  },
   "batch_claims_local_qualification": {
     "runtime": "9bd80627830d331aaba09d4a3283bdfa2b810ad2",
     "baseline": "7c1620563614a04a573aef806a6d019a2af4dfe9",

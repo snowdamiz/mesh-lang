@@ -1167,6 +1167,59 @@ versus 137.2 at 16 slots, and 152.0 versus 179.0 at 64 slots, with one
 runner in both profiles. Pickup p99 also missed its limit at 16 slots.
 These are local macOS comparisons. [Receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Release bootstrap buffers after copying the context
+
+In `5d45b53b`, the runner drops its Rust context buffer after flushing
+the worker bootstrap. The child drops its Rust copy after copying the
+context onto the Mesh heap, before calling the handler.
+
+On PostgreSQL 17.11, the exact checkout passed 53 Jobs runtime tests and
+all three compiled Jobs suites, including large contexts and scoped workers.
+The release build preserved the job ID and effect key after runner death,
+completed on attempt two, and rejected settlement with the old token.
+It passed all 12 recovery and commit-loss cases with loopback SCRAM.
+
+On macOS arm64 and PostgreSQL 17.11 with verified TLS, five groups compared
+the release candidate with two identical `9bd80627` controls. Each measured
+trial held 64 workers with 512 KiB payloads at the same effect write. The
+observer verified 64 TLS sessions blocked on the table lock, 64 recorded
+attempts, and zero committed effects before releasing the lock. All 960
+jobs then reconciled with one attempt and one effect each.
+
+Runner RSS fell from a median 49.0 MiB in both controls to 29.8 MiB. It was
+lower than both controls in all five groups. Summed runner and child RSS
+fell from 760.9 and 760.8 MiB to 737.6 MiB, lower than both controls in four
+groups. The barrier measures residency at equal concurrency. In the separate
+unblocked large-job run, median first-claim-to-final-settlement time fell
+from 314 and 324 ms to 260 ms, while measured throughput fell from 160 and
+168 to 133 jobs/s. Local measurements leave the throughput gate open.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Reply-pipe exit wake experiment
+
+The opt-in `ccf62ff1` experiment sends a second supervisor wake when the
+worker's reply pipe reaches EOF. The child leaves the pipe open through
+process exit. Reaping still gates acknowledgement, and the 10 ms timed scan
+covers missed or early hints.
+
+Five groups per profile used one release binary, two flag-off controls,
+and PostgreSQL 17.11 over verified TLS on macOS arm64. All 3,840 measured
+jobs reconciled. With one runner and one slot, median effect-commit-to-
+settlement fell from 9.21 and 8.39 ms to 1.17 ms. Throughput increased from
+38.1 and 39.8 to 56.1 jobs/s. Both metrics improved against both controls
+in all five groups. At 16 slots, throughput beat both controls in two
+groups and median settlement latency rose to 16.57 ms from 10.17 and
+11.53 ms. The host's one-minute load peaked at 47.95 on 15 logical CPUs.
+
+The combined opt-in `da0a51bc` candidate also drops the bootstrap buffers.
+In five one-slot short-job pairs against Oban Basic 2.24.2, Mesh reached
+59.2 versus 91.3 jobs/s. Pickup p99 was 2,125 versus 1,389 ms, and CPU per
+job was 6.22 versus 3.99 ms. All three limits were missed. Mesh took a
+median 4.72 ms from claim to handler entry and 4.44 ms from entry to the
+first durable write, versus 0.69 and 0.21 ms for Oban. The combined release
+passed the 12 recovery and commit-loss cases. Linux and dense refill
+resource behavior remain unverified. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
