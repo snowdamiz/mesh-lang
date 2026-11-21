@@ -37275,6 +37275,508 @@
       }
     }
   },
+  "macos_named_jobs_effect_integrated_compatibility": {
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "host": "macOS ARM64",
+    "qualification": false,
+    "scope": "Locked compatibility verifier with parity-driver and J6 role checks. The Jobs topology test uses synthetic workers. Linux compiled named effects have separate evidence.",
+    "versions": {
+      "17.11": {
+        "jobs_runtime_tests_passed": 68,
+        "compiled_jobs_tests_passed": 3,
+        "log": {
+          "path": "target/jobs-parity/current-stock-verification/8526a5bd70a1cb37f8fc27611021c90a44a89590/pg17.11.log",
+          "sha256": "813823493921a8d69926dcafc5c4647f0c79cb3bffd2fbc8fecc962943057369"
+        }
+      },
+      "18.7": {
+        "jobs_runtime_tests_passed": 68,
+        "compiled_jobs_tests_passed": 3,
+        "log": {
+          "path": "target/jobs-parity/current-stock-verification/8526a5bd70a1cb37f8fc27611021c90a44a89590/pg18.7.log",
+          "sha256": "c2c1a8fcee05025e1d3681825844b8b03f4fe49167d060d04f3e57f798cb5c49"
+        }
+      },
+      "19.0": {
+        "jobs_runtime_tests_passed": 68,
+        "compiled_jobs_tests_passed": 3,
+        "log": {
+          "path": "target/jobs-parity/current-stock-verification/8526a5bd70a1cb37f8fc27611021c90a44a89590/pg19.0.log",
+          "sha256": "a1fa74d1dbe4048ba9a2e915844aa3f947324605eef47318b2b6652d884c7db3"
+        }
+      }
+    },
+    "external_owner_regression": {
+      "postgres": "17.11",
+      "witness": {
+        "path": "target/jobs-parity/current-stock-verification/8526a5bd70a1cb37f8fc27611021c90a44a89590/external-role-regression-pg17.11/test.log",
+        "sha256": "acf108987acd71ee8b3869e33cbd239909e2d921c29d2b726ade6b5a4fe58f07"
+      },
+      "fix_revision": "99a5f1ffc41841861918e8a11706fc97d49db086",
+      "fix_scope": "Use the supplied database and identify this runner's sessions with a unique startup tag in the test build."
+    }
+  },
+  "linux_compiled_jobs_effect_integrated_verifier": {
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "postgres": "17.11",
+    "qualification": false,
+    "scope": "Both one-slot Linux GNU ARM64 compiled fixture modes ran with a hashed release ELF and guest-side credential witness. They establish durable settlement and eventual exact child absence. Consuming wait before submission requires a separate trace.",
+    "arms": {
+      "poll": {
+        "notification_enqueues": 0,
+        "files": {
+          "pack.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/poll-01/pack.json",
+            "sha256": "6487a85b0f2c6b9026b813f95a82722794a59148057cdca7ad7fa7f807a7a276"
+          },
+          "extracted/extraction.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/poll-01/extracted/extraction.json",
+            "sha256": "e68a2cbf8ecf5ea5bacb62e0a9f0ac86e229ba1d02c185d70119ef8e7bf79966"
+          },
+          "extracted/evidence/result.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/poll-01/extracted/evidence/result.json",
+            "sha256": "e614b09316978fae863f6737ff799994fd1c28edaf880fd25ab718d298b1e39c"
+          },
+          "extracted/evidence/compiled.log": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/poll-01/extracted/evidence/compiled.log",
+            "sha256": "6a8f17ab91434cd1c73a3565b81e9310bcc21f11b70645b7a09fbbfc1acb1b99"
+          },
+          "extracted/evidence/receipts.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/poll-01/extracted/evidence/receipts.json",
+            "sha256": "0d939b505ea994eaf1f9bbb4777f30f6c22991c4d6c834e49de2b0bc54201fef"
+          },
+          "extracted/evidence/resets.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/poll-01/extracted/evidence/resets.json",
+            "sha256": "f2c2d732ccf03f97d10059b40c751c8b16cb3ddc9a5a0d1b27e94d38f7215584"
+          },
+          "extracted/evidence/observer.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/poll-01/extracted/evidence/observer.json",
+            "sha256": "4e72bd35418604e2b9c190eaca574781f8f25440fbe5dc892ea8864e42a8ca20"
+          }
+        }
+      },
+      "listen": {
+        "notification_enqueues": 2,
+        "files": {
+          "pack.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/listen-01/pack.json",
+            "sha256": "2ccd580523e2da7b98d79c850ddf2f1527d46b362cce1939d0b22812393c1e49"
+          },
+          "extracted/extraction.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/listen-01/extracted/extraction.json",
+            "sha256": "98ae4b4dec184f2891f89c3f32ae9b5288817ee28e548cfed99f1fe1bc964ca6"
+          },
+          "extracted/evidence/result.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/listen-01/extracted/evidence/result.json",
+            "sha256": "5b8cec639f6c25761481bef1c9ac9c1eb1514447156ce1dd8074eab56ac7b057"
+          },
+          "extracted/evidence/compiled.log": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/listen-01/extracted/evidence/compiled.log",
+            "sha256": "c49258e4245a8460f32703b4564671f61184a6567e75ec08ede59e41c60d9345"
+          },
+          "extracted/evidence/receipts.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/listen-01/extracted/evidence/receipts.json",
+            "sha256": "2dddc4c3c5ac50c7405d4a6c1bf3a37b11e5cf3d72b80aed96561a79ee358ec0"
+          },
+          "extracted/evidence/resets.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/listen-01/extracted/evidence/resets.json",
+            "sha256": "746079f336477936373f137f0a80890ec656cf65911df8ab8b9f589b47bbc5f6"
+          },
+          "extracted/evidence/observer.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-verifier/listen-01/extracted/evidence/observer.json",
+            "sha256": "5b458bf7eda11019b6b79e2f4ea47ca9144a525185e4820959b58326c73c7824"
+          }
+        }
+      }
+    },
+    "elf_sha256": "f2f59aa8d3fa58698ea50e1180a9244f87a414d7fcaac1682455a0d90d15a29d"
+  },
+  "linux_compiled_jobs_effect_short_hard_cap": {
+    "scope": "local-linux-arm64-short-1r-16s-hard-cap",
+    "revision": "b38e23e8868bc25aabb972fb36babca94ad64dea",
+    "canonical": false,
+    "qualification": false,
+    "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+    "fixture_sha256": "8bfec71aff9193f39c394e7d27651d998576e6ddb93e54bfef3f3b5eaa973e43",
+    "elapsed_interval": "Durable enqueue commit through last durable settlement",
+    "candidate": "Jobs.start_effects, eight warm sessions, worker-local THP disabled, LISTEN on",
+    "comparator": "Oban Basic 2.24.2, Isolated notifier, one combined producer and observer",
+    "postgres": "17.11",
+    "physical_connection_cap": 20,
+    "completed_jobs": 2560,
+    "durable_writes": 5120,
+    "primary_comparison_passed": true,
+    "paired_listen_wins": 5,
+    "score": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/score-01.json",
+      "sha256": "c44022b37453430f2371c0465950103f86c3608351bee5769267de3f96017789"
+    },
+    "pilot": {
+      "pack.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pilot-01/pack.json",
+        "sha256": "cc2ce6639b93bc09a47525819a3a6c229978c71d56d03b11003623c1112dd6ef"
+      },
+      "extracted/extraction.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pilot-01/extracted/extraction.json",
+        "sha256": "d04cf3ab6f32d814d5c40101bbcfd3cf13e33ce6834d487e7c84ef7313ed1927"
+      },
+      "extracted/evidence/result.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pilot-01/extracted/evidence/result.json",
+        "sha256": "27507a84a392d72dd3c188c5628837a7e822950e8b377a0009e8118feeec5891"
+      }
+    },
+    "arms": {
+      "listen": {
+        "jobs_per_second": {
+          "median": 1002.8366216849495,
+          "min": 683.9392567681272,
+          "max": 1072.8810472442717
+        },
+        "pickup_p99_ms": {
+          "median": 116.743896484375,
+          "min": 109.7080078125,
+          "max": 174.77099609375
+        },
+        "cpu_seconds_per_job": {
+          "median": 0.0011974453125,
+          "min": 0.0011326015625,
+          "max": 0.00155303125
+        },
+        "peak_rss_bytes": {
+          "median": 54820864,
+          "min": 44707840,
+          "max": 58187776
+        },
+        "peak_connections": {
+          "median": 13,
+          "min": 13,
+          "max": 13
+        },
+        "commit_to_first_claim_ms": {
+          "median": 1.02392578125,
+          "min": 0.864013671875,
+          "max": 1.967041015625
+        },
+        "first_claim_to_final_settlement_ms": {
+          "median": 126.136962890625,
+          "min": 118.44091796875,
+          "max": 185.18408203125
+        }
+      },
+      "poll": {
+        "jobs_per_second": {
+          "median": 921.062293906936,
+          "min": 263.06103075320567,
+          "max": 1091.2481683761823
+        },
+        "pickup_p99_ms": {
+          "median": 130.57080078125,
+          "min": 113.27587890625,
+          "max": 480.507080078125
+        },
+        "cpu_seconds_per_job": {
+          "median": 0.0011598124999999998,
+          "min": 0.0011319140624999999,
+          "max": 0.0020048124999999997
+        },
+        "peak_rss_bytes": {
+          "median": 57253888,
+          "min": 38580224,
+          "max": 73269248
+        },
+        "peak_connections": {
+          "median": 12,
+          "min": 12,
+          "max": 12
+        },
+        "commit_to_first_claim_ms": {
+          "median": 8.837890625,
+          "min": 4.991943359375,
+          "max": 251.95703125
+        },
+        "first_claim_to_final_settlement_ms": {
+          "median": 130.132080078125,
+          "min": 112.304931640625,
+          "max": 234.6220703125
+        }
+      },
+      "ordinary": {
+        "jobs_per_second": {
+          "median": 279.96981831716295,
+          "min": 172.27756282294567,
+          "max": 395.42553905585936
+        },
+        "pickup_p99_ms": {
+          "median": 427.343017578125,
+          "min": 310.41796875,
+          "max": 725.071044921875
+        },
+        "cpu_seconds_per_job": {
+          "median": 0.0022532421875,
+          "min": 0.001828734375,
+          "max": 0.0027743125
+        },
+        "peak_rss_bytes": {
+          "median": 114135040,
+          "min": 106807296,
+          "max": 144891904
+        },
+        "peak_connections": {
+          "median": 11,
+          "min": 10,
+          "max": 12
+        },
+        "commit_to_first_claim_ms": {
+          "median": 18.9208984375,
+          "min": 5.989990234375,
+          "max": 256.298095703125
+        },
+        "first_claim_to_final_settlement_ms": {
+          "median": 437.748046875,
+          "min": 304.781005859375,
+          "max": 486.68896484375
+        }
+      },
+      "oban": {
+        "jobs_per_second": {
+          "median": 613.8204671604973,
+          "min": 504.3160748055506,
+          "max": 763.3768733592409
+        },
+        "pickup_p99_ms": {
+          "median": 203.62109375,
+          "min": 162.980224609375,
+          "max": 249.489990234375
+        },
+        "cpu_seconds_per_job": {
+          "median": 0.0045824609374999995,
+          "min": 0.003765984375,
+          "max": 0.006442375
+        },
+        "peak_rss_bytes": {
+          "median": 127729664,
+          "min": 125353984,
+          "max": 129417216
+        },
+        "peak_connections": {
+          "median": 19,
+          "min": 19,
+          "max": 19
+        },
+        "commit_to_first_claim_ms": {
+          "median": 62.951171875,
+          "min": 48.5390625,
+          "max": 152.2021484375
+        },
+        "first_claim_to_final_settlement_ms": {
+          "median": 109.155029296875,
+          "min": 101.60693359375,
+          "max": 150.73388671875
+        }
+      }
+    },
+    "groups": [
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-0/pack.json",
+          "sha256": "d5110f8d094b1998905a082aa7530d3d6ad77c1f21408ae60423f4a0061b49c2"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-0/extracted/extraction.json",
+          "sha256": "cc0f8d1f5b563b4e48f08e44515fc39aa8056ca1cf27e90d2955f6995e841c62"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-0/host-load.jsonl",
+          "sha256": "b5fe40992b959c8c02589caa76db552305c93a75e449757dd6980156447a456f"
+        }
+      },
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-1/pack.json",
+          "sha256": "25781eb89c9a4c380a496f8f8525d2085650339c8c1bb3819863e750b952face"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-1/extracted/extraction.json",
+          "sha256": "696195bdb4ebf11a0ea6322645ca23c2ed28db5efc61f4874b03e4caf10b13d2"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-1/host-load.jsonl",
+          "sha256": "41b8e7d3ce4f7a5217d1241c5b93cc13680633a4f903d26b8e094730ef7ca098"
+        }
+      },
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-2/pack.json",
+          "sha256": "de6c6208717a274166f26296eb9c3e3789191b611c08e10a83012c697a82214f"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-2/extracted/extraction.json",
+          "sha256": "512a799319f2b81745f65f9c768b40c2605fc744b1fe0f59c2d1ec2f48d2ddb8"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-2/host-load.jsonl",
+          "sha256": "8829d92043dd6b7d1a822a1681584387c45cc16dab3abc5c82f11ece05507b14"
+        }
+      },
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-3/pack.json",
+          "sha256": "f3dc9847c8d72db590d77e361940abfd11568036233299dd552751ca3854b7f9"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-3/extracted/extraction.json",
+          "sha256": "6524cbe71efa7de59a2b11ea15e374b3fe4656b6fdbbbce7ef28cacc7e1250ea"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-3/host-load.jsonl",
+          "sha256": "a211d005daafc92df2660d0f0a6e6d2db39e2e118af057c39daed3c2fb2f25f8"
+        }
+      },
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-4/pack.json",
+          "sha256": "4f752f30d0f1951ed515a3b35689aa88b6e49a601220941c8da2ac7854af0880"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-4/extracted/extraction.json",
+          "sha256": "e92a139c102ac59ce9a3db4737b7130c3c3a0a137da5d017f13e7f2a3564af7a"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-4/host-load.jsonl",
+          "sha256": "4a0ab09fbbfb4710968fb6c7264f2991b4739be37cb3d6645763acf882a63c26"
+        }
+      }
+    ]
+  },
+  "linux_compiled_jobs_effect_64slot_residency": {
+    "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
+    "scope": "Diagnostic ELF on Linux ARM64 with worker-local THP disabled. Only the disposable guest fault-around setting differs between arms. Full workload reconciliation and resident file-page accounting do not measure a worker-local reduction.",
+    "qualification": false,
+    "elf_sha256": "155c21e46496a2cf3b35d57e8ee5cc7bb9dc8237d697bdce1fb45a155f0b503e",
+    "completed_jobs_per_arm": 64,
+    "durable_effect_transactions_per_arm": 128,
+    "consuming_waits_per_arm": 64,
+    "original_pagemap_open_eacces": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency/screen-01.json",
+      "sha256": "23d6858850c54f631210bf8d709381a8695db799f74a3ed79644cc765750196c"
+    },
+    "screen": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/screen-01.json",
+      "sha256": "e5b75a80a32552df604fae65a5bd7e76e980f223568372c2903fd31a52170b04"
+    },
+    "mean_bytes_per_worker": {
+      "bootstrap": {
+        "all_file_mappings": {
+          "signed_stock_minus_probe": 2822272.0,
+          "stock_resident_outside_one_page_present_union": 2694080.0
+        },
+        "all_readonly_private": {
+          "signed_stock_minus_probe": 2822272.0,
+          "stock_resident_outside_one_page_present_union": 2694080.0
+        },
+        "fixture_readonly_private": {
+          "signed_stock_minus_probe": 2030144.0,
+          "stock_resident_outside_one_page_present_union": 1915584.0
+        }
+      },
+      "first": {
+        "all_file_mappings": {
+          "signed_stock_minus_probe": 2965760.0,
+          "stock_resident_outside_one_page_present_union": 2961664.0
+        },
+        "all_readonly_private": {
+          "signed_stock_minus_probe": 2965760.0,
+          "stock_resident_outside_one_page_present_union": 2961664.0
+        },
+        "fixture_readonly_private": {
+          "signed_stock_minus_probe": 2187264.0,
+          "stock_resident_outside_one_page_present_union": 2183168.0
+        }
+      },
+      "second": {
+        "all_file_mappings": {
+          "signed_stock_minus_probe": 2961664.0,
+          "stock_resident_outside_one_page_present_union": 2961664.0
+        },
+        "all_readonly_private": {
+          "signed_stock_minus_probe": 2961664.0,
+          "stock_resident_outside_one_page_present_union": 2961664.0
+        },
+        "fixture_readonly_private": {
+          "signed_stock_minus_probe": 2183168.0,
+          "stock_resident_outside_one_page_present_union": 2183168.0
+        }
+      }
+    },
+    "arms": {
+      "stock64k-01": {
+        "peak_tree_rss_bytes": 384864256,
+        "files": [
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/stock64k-01/pack.json",
+            "sha256": "85f48e662211a62fc4b5fc8d6e491c8918595ab5b21a252b67be9f2824fe828b"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/stock64k-01/residency.json",
+            "sha256": "3ec2a0b879efa1e70194c9ce8310f828f7b53deb8115c3393d6b2a357b246cd1"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/stock64k-01/extracted/extraction.json",
+            "sha256": "74fdcae2a6d601eee434bfb7b9069e1664f67015b4d280cf03419ff873589c1e"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/stock64k-01/extracted/evidence/combined/file-residency-bootstrap.json",
+            "sha256": "6171bc2e1ac93eaa407579a6433fecea22d6545364926d9eea1d7e9617876a30"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/stock64k-01/extracted/evidence/combined/file-residency-first.json",
+            "sha256": "d58a153c611e7ad25a5a10aac6ba0aca30e1ffcaf717e546ec25f53b3181b480"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/stock64k-01/extracted/evidence/combined/file-residency-second.json",
+            "sha256": "4d5294d3684e9082db8bd757937572bb9ae7d05119f3a4b9b0feba1adfe38a42"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/stock64k-01/extracted/evidence/64slot-gate.json",
+            "sha256": "0a920b3e3b98332391b801b4addb0e13eeb7952b459ca609ab73e744b65d7f91"
+          }
+        ]
+      },
+      "onepage4k-01": {
+        "peak_tree_rss_bytes": 192962560,
+        "files": [
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/onepage4k-01/pack.json",
+            "sha256": "868803af02622c10a9d28b5fb5c248ae3fc542fcd6078e24ed8674195a4ae06e"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/onepage4k-01/residency.json",
+            "sha256": "e1c4fe7e67fe2c6f58d26d9acd701e17dfdf8c8ef04a3013b460b952a35a1863"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/onepage4k-01/extracted/extraction.json",
+            "sha256": "66d291f9bd969980131f8f7e2a95decdb629c9f8d2f2df2f18e89ef30f49397e"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/onepage4k-01/extracted/evidence/combined/file-residency-bootstrap.json",
+            "sha256": "4691f99a023561c2f1ecc55ab9a8a104c0a5b058642744f2e822dce09bcdf52c"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/onepage4k-01/extracted/evidence/combined/file-residency-first.json",
+            "sha256": "19d8462d96f183e826ab86a3da6556875ee4bb9e998be81dcc6fb321794a9141"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/onepage4k-01/extracted/evidence/combined/file-residency-second.json",
+            "sha256": "d96551bf4d6e60457e955bae7b0dd51754b0e582a792c5a4d887a34487953b25"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-file-residency-preopen/onepage4k-01/extracted/evidence/64slot-gate.json",
+            "sha256": "7e55770804d33ed1ced3e6d9fdf79d8a6c5566554b27f4bd84c4758bb615025a"
+          }
+        ]
+      }
+    }
+  },
   "linux_compiled_jobs_effect_64slot_gate": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
     "qualification": false,

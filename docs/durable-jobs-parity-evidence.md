@@ -4364,6 +4364,82 @@ occupancy, durability, and memory use. It has no same-run Oban
 arm or throughput score.
 [Full-occupancy receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Attribute the full-occupancy memory gap
+
+Two fresh guests ran the same diagnostic ELF linked to the
+`2465f793` runtime. Both held 64 live workers, verified 128 durable
+fenced commits and resets, and recorded 64 consuming waits. Using
+the stock 64 KiB fault-around window, peak summed tree RSS reached
+367.0 MiB. With a 4 KiB window it reached 184.0 MiB. The probe
+restored the original window before the guest shut down.
+
+At the second hold, the 4 KiB arm mapped 2.82 MiB fewer file-backed
+pages per worker. The main executable accounted for 2.08 MiB. Even
+reclaiming that entire executable delta would leave the 64 KiB arm
+above the earlier 221.3 MiB budget. The comparison includes system
+libraries and a guest-wide setting. A worker-local reduction and
+its CPU cost still need measurement.
+
+An earlier pair completed the workload but failed to open pagemap
+from protected release workers. The replay opened each exact
+worker's own read-only descriptor in its diagnostic constructor.
+The release protections remained active, and the witness recorded
+only the present and file bits for the worker's file mappings.
+[File residency receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Verify the integrated Jobs candidate
+
+Revision `8526a5bd` passed the compatibility verifier on macOS ARM64
+with PostgreSQL 17.11, 18.7, and 19.0. Each version passed 68 Jobs
+runtime tests and three compiled Jobs tests. The 64-slot LISTEN test
+holds synthetic workers to verify admission and separate database
+sessions. Compiled named-effect children require the Linux ARM64 proof.
+
+The new topology test initially failed for a supplied database owner
+without `CREATEDB`. Revision `99a5f1ff` uses the supplied database and
+tags the runtime test connections. The focused test passed five times
+on PostgreSQL 17.11 with neither `CREATEDB` nor `CREATEROLE` and an
+unrelated session under the same login.
+[Integrated compatibility receipts](../proof/jobs-parity/qualification-v1.json)
+
+Both one-slot Linux ARM64 fixtures passed on PostgreSQL 17.11 using
+one release ELF linked against the `8526a5bd` runtime. Each mode
+verified five TLS connections, separate durable effects on a reused
+backend, full resets, and retry after an interrupted effect. Both
+LISTEN enqueues advanced the notification counter with zero fallback
+scans. These runs check child absence after settlement. A separate
+trace is needed to establish the consuming wait before submission.
+[Integrated Linux receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare short jobs under a physical cap of 20 connections
+
+Five counterbalanced Linux ARM64 groups ran 2,560 jobs on the frozen
+`short-1r-16s` input with PostgreSQL 17.11 and Oban Basic 2.24.2
+using Isolated notification. One connection per arm served both the
+producer and observer. The named-effects arms used eight warm app
+sessions and worker-local THP disablement on the same `b38e23e8` ELF.
+All arms reconciled two separate commits per job.
+
+| Arm | Median jobs/s | Range, jobs/s | Peak connections |
+| --- | ---: | ---: | ---: |
+| Named effects with LISTEN | 1,003 | 684–1,073 | 13 |
+| Named effects with polling | 921 | 263–1,091 | 12 |
+| Ordinary Mesh with polling | 280 | 172–395 | 12 |
+| Oban Basic | 614 | 504–763 | 19 |
+
+Named LISTEN won all five pairs and passed all gates applied by the
+local scorer. Its median pickup p99 was 116.7 ms versus 203.6 for
+Oban. Median runner CPU was 1.20 versus 4.58 CPU-ms/job, and median
+sampled peak tree RSS was 52.3 versus 121.8 MiB. Polling passed the
+median gates and missed an initial poll in two of five groups.
+
+The throughput gain came from pickup. The median first claim followed
+enqueue commit by 1.0 ms with named LISTEN and 63.0 ms for Oban.
+From the first claim to final settlement, the medians were 126.1 and
+109.2 ms. The scorer marks this comparison as local evidence for one
+profile. Dense drain and full-occupancy memory remain open.
+[Hard-cap short profile receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
