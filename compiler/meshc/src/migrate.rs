@@ -12,8 +12,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::ReportResult;
-use mesh_diagnostics::{Failed, Reporter};
+use crate::ReportText;
+use mesh_diagnostics::{Code, Failed, Reporter};
 use mesh_rt::db::pg::{
     native_pg_close, native_pg_connect, native_pg_execute, native_pg_query, NativePgConn,
 };
@@ -202,11 +202,11 @@ fn compile_and_run_migration(
 ) -> Result<(), Failed> {
     let tmp = tempfile::tempdir()
         .map_err(|e| format!("Failed to create temp directory: {}", e))
-        .reported(reporter)?;
+        .reported_as(Code::MigrationFailed, reporter)?;
     let tmp_path = tmp.path();
 
     let src = prepare_migration_project(project_dir, tmp_path, migration, direction)
-        .reported(reporter)?;
+        .reported_as(Code::MigrationFailed, reporter)?;
 
     // Compile the synthetic project
     let output_path = tmp_path.join("_migrate");
@@ -243,7 +243,7 @@ fn compile_and_run_migration(
             .env("DATABASE_URL", url)
             .output(),
     )
-    .reported(reporter)
+    .reported_as(Code::MigrationFailed, reporter)
 }
 
 fn prepare_migration_project(
@@ -322,11 +322,13 @@ fn migration_outcome(
 /// 3. Discovers migration files and queries applied versions
 /// 4. For each pending migration: compiles, runs, records in tracking table
 pub fn run_migrations_up(project_dir: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
-    let url = database_url().reported(reporter)?;
-    let Some(migrations) = project_migrations(project_dir, reporter).reported(reporter)? else {
+    let url = database_url().reported_as(Code::MigrationFailed, reporter)?;
+    let Some(migrations) =
+        project_migrations(project_dir, reporter).reported_as(Code::MigrationFailed, reporter)?
+    else {
         return Ok(());
     };
-    let (mut conn, applied) = open_tracking(&url).reported(reporter)?;
+    let (mut conn, applied) = open_tracking(&url).reported_as(Code::MigrationFailed, reporter)?;
 
     // Determine pending migrations
     let pending: Vec<&MigrationInfo> = migrations
@@ -368,7 +370,7 @@ pub fn run_migrations_up(project_dir: &Path, reporter: &mut Reporter) -> Result<
                 migration.version, migration.name, e
             )
         })
-        .reported(reporter)?;
+        .reported_as(Code::MigrationFailed, reporter)?;
 
         reporter.status(format_args!(
             "  Applied:  {}_{}",
@@ -389,9 +391,9 @@ pub fn run_migrations_up(project_dir: &Path, reporter: &mut Reporter) -> Result<
 /// 3. Compiles and runs with direction "down"
 /// 4. Removes the tracking row
 pub fn run_migrations_down(project_dir: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
-    let url = database_url().reported(reporter)?;
+    let url = database_url().reported_as(Code::MigrationFailed, reporter)?;
     let migrations_dir = project_dir.join("migrations");
-    let (mut conn, applied) = open_tracking(&url).reported(reporter)?;
+    let (mut conn, applied) = open_tracking(&url).reported_as(Code::MigrationFailed, reporter)?;
 
     if applied.is_empty() {
         reporter.status(format_args!("No migrations to roll back"));
@@ -403,7 +405,8 @@ pub fn run_migrations_down(project_dir: &Path, reporter: &mut Reporter) -> Resul
     let last_version = *applied.last().unwrap();
 
     // Find the corresponding migration file
-    let migrations = discover_migrations(&migrations_dir).reported(reporter)?;
+    let migrations =
+        discover_migrations(&migrations_dir).reported_as(Code::MigrationFailed, reporter)?;
     let migration = migrations
         .iter()
         .find(|m| m.version == last_version)
@@ -413,7 +416,7 @@ pub fn run_migrations_down(project_dir: &Path, reporter: &mut Reporter) -> Resul
                 last_version
             )
         })
-        .reported(reporter)?;
+        .reported_as(Code::MigrationFailed, reporter)?;
 
     reporter.status(format_args!(
         "Rolling back: {}_{}",
@@ -436,7 +439,7 @@ pub fn run_migrations_down(project_dir: &Path, reporter: &mut Reporter) -> Resul
             last_version, e
         )
     })
-    .reported(reporter)?;
+    .reported_as(Code::MigrationFailed, reporter)?;
 
     native_pg_close(conn);
     reporter.status(format_args!(
@@ -451,11 +454,13 @@ pub fn run_migrations_down(project_dir: &Path, reporter: &mut Reporter) -> Resul
 /// Connects to PG, discovers migration files, and prints a status table
 /// showing which migrations have been applied and which are pending.
 pub fn show_migration_status(project_dir: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
-    let url = database_url().reported(reporter)?;
-    let Some(migrations) = project_migrations(project_dir, reporter).reported(reporter)? else {
+    let url = database_url().reported_as(Code::MigrationFailed, reporter)?;
+    let Some(migrations) =
+        project_migrations(project_dir, reporter).reported_as(Code::MigrationFailed, reporter)?
+    else {
         return Ok(());
     };
-    let (conn, applied) = open_tracking(&url).reported(reporter)?;
+    let (conn, applied) = open_tracking(&url).reported_as(Code::MigrationFailed, reporter)?;
     native_pg_close(conn);
 
     // Print status
@@ -502,7 +507,8 @@ pub fn generate_migration(
     name: &str,
     reporter: &mut Reporter,
 ) -> Result<(), Failed> {
-    let filename = write_migration_scaffold(project_dir, name).reported(reporter)?;
+    let filename =
+        write_migration_scaffold(project_dir, name).reported_as(Code::MigrationFailed, reporter)?;
     reporter.status(format_args!("Created migration: migrations/{filename}"));
     Ok(())
 }

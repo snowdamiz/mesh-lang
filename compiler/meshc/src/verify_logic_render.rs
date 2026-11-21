@@ -907,7 +907,7 @@ proof empty_elim do exact Empty.elim(h) end
             let inhabited =
                 render_program(&program.replace("h :: Positive<0>", "h :: Positive<1>")).unwrap();
             let error = check(inhabited).unwrap_err();
-            assert!(error.contains("Missing cases:"), "{error}");
+            assert!(error.reason.contains("Missing cases:"), "{error}");
         }
     }
 

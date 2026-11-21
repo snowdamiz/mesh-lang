@@ -680,7 +680,7 @@ fn test_fmt_writes_nothing_when_a_file_cannot_be_formatted() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Cannot format") && stderr.contains("b.mpl"),
+        stderr.contains("[P") && stderr.contains("b.mpl"),
         "{stderr}"
     );
     let a = std::fs::read_to_string(dir.path().join("a.mpl")).unwrap();
@@ -2376,7 +2376,7 @@ fn test_init_rejects_an_unknown_template() {
     assert!(!ok, "{text}");
     assert!(
         text.contains(
-            "[C0001] Error: unknown init template 'blog'; supported templates: todo-api.\n"
+            "[X0001] Error: unknown init template 'blog'; supported templates: todo-api.\n"
         ),
         "{text}"
     );
@@ -2478,7 +2478,7 @@ fn test_update_runs_the_installer_it_downloads() {
         &[("MESH_UPDATE_INSTALLER_URL", "http://127.0.0.1:1/install.sh")],
     );
     assert!(
-        !ok && text.starts_with("[C0001] Error: toolchain update download failed"),
+        !ok && text.starts_with("[X0301] Error: toolchain update download failed"),
         "{text}"
     );
 }
@@ -2650,7 +2650,11 @@ fn json_mode_is_pure_ndjson() {
         let output = execute(args);
         assert_eq!(
             output.status.code(),
-            Some(i32::from(!expected.is_empty())),
+            Some(match expected {
+                [] => 0,
+                ["X0001"] => 2,
+                _ => 1,
+            }),
             "{output:?}"
         );
         assert!(output.stdout.is_empty(), "{args:?}: {output:?}");
@@ -2703,6 +2707,9 @@ fn json_mode_is_pure_ndjson() {
     let diagnostics = verify(&["build", ".", "--json"], &["P0004"]);
     assert_eq!(diagnostics[0]["spans"].as_array().unwrap().len(), 2);
     verify(&["lint", "main.mpl", "--json"], &["P0004"]);
+    let diagnostics = verify(&["fmt", "main.mpl", "--json"], &["P0004"]);
+    assert_eq!(diagnostics[0]["file"], "main.mpl");
+    assert!(!diagnostics[0]["spans"].as_array().unwrap().is_empty());
 
     write_file(&main, "fn main() do\n  println(missing)\nend\n");
     verify(&["build", ".", "--json"], &["E0004"]);
@@ -2770,12 +2777,103 @@ fn json_mode_is_pure_ndjson() {
             "applicability": "machine-applicable"
         }])
     );
-    verify(&["explain", "BOGUS", "--json"], &["C0001"]);
-    verify(&["guide", "bogus", "--json"], &["C0001"]);
+    verify(&["explain", "BOGUS", "--json"], &["X0102"]);
+    verify(&["guide", "bogus", "--json"], &["X0101"]);
+    let records = verify(&["guide", "syntx", "--json"], &["X0101"]);
+    assert!(records[0]["fix"]
+        .as_str()
+        .unwrap()
+        .contains("`meshc guide syntax`"));
+    for (query, code) in [("e0001", "E0001"), ("cfg0001", "CFG0001")] {
+        let records = verify(&["guide", query, "--json"], &["X0101"]);
+        assert!(records[0]["fix"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("`meshc explain {code}`")));
+    }
     verify(
         &["cluster", "status", "invalid-target", "--json"],
-        &["C0001"],
+        &["X0501"],
     );
+    verify(&["check", "--bogus", "--json"], &["X0001"]);
+    for args in [
+        &["--json", "check", "--help"][..],
+        &["--json", "--version"][..],
+    ] {
+        let output = execute(args);
+        assert!(output.status.success(), "{output:?}");
+        assert!(
+            output.stderr.is_empty() && !output.stdout.is_empty(),
+            "{output:?}"
+        );
+    }
+
+    let unformatted = "fn add(a,b) do\na+b\nend\n";
+    write_file(&main, unformatted);
+    let records = verify(&["fmt", "--check", "main.mpl", "--json"], &["X0201"]);
+    assert_eq!(records[0]["file"], "main.mpl");
+    assert!(records[0]["fix"]
+        .as_str()
+        .unwrap()
+        .contains("`meshc fmt main.mpl`"));
+    assert_eq!(std::fs::read_to_string(main).unwrap(), unformatted);
+}
+
+#[test]
+fn skills_setup_supports_piped_stdin_with_explicit_targets() {
+    let project = tempfile::tempdir().unwrap();
+    let root = project.path();
+    write_file(
+        &root.join("mesh.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+    );
+    let subdir = root.join("src");
+    std::fs::create_dir(&subdir).unwrap();
+    let run = |args: &[&str]| {
+        Command::new(meshc_bin())
+            .args(["skills", "setup", "--json"])
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .current_dir(&subdir)
+            .output()
+            .unwrap()
+    };
+    for args in [&[][..], &["--yes"][..], &["--target", "codex"][..]] {
+        let output = run(args);
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["code"], "X0104");
+        assert!(error["fix"]
+            .as_str()
+            .unwrap()
+            .contains("meshc skills setup --yes --target <agent>"));
+        assert!(!root.join(".agents").exists());
+    }
+
+    let args = ["-y", "--target", "codex", "--target", "claude-code"];
+    for _ in 0..2 {
+        let output = run(&args);
+        assert!(output.status.success(), "{output:?}");
+        assert!(
+            output.stdout.is_empty() && output.stderr.is_empty(),
+            "{output:?}"
+        );
+        for host in [".agents", ".claude"] {
+            let installed = root.join(host).join("skills/mesh");
+            assert!(installed.join("SKILL.md").is_file());
+            assert!(installed.join("references/diagnostics.md").is_file());
+        }
+    }
+
+    let skill = root.join(".agents/skills/mesh/SKILL.md");
+    write_file(&skill, "local edits");
+    let conflict = run(&args);
+    assert_eq!(conflict.status.code(), Some(1), "{conflict:?}");
+    assert!(conflict.stdout.is_empty(), "{conflict:?}");
+    let error: serde_json::Value = serde_json::from_slice(&conflict.stderr).unwrap();
+    assert_eq!(error["code"], "X0103");
+    assert_eq!(std::fs::read_to_string(skill).unwrap(), "local edits");
 }
 
 #[test]

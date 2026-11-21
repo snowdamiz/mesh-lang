@@ -1,6 +1,6 @@
-use mesh_diagnostics::{docs, Code, Lookup};
+use mesh_diagnostics::{docs, Code, Diagnostic, Lookup};
 
-pub(crate) fn render(query: Option<&str>, json: bool) -> Result<String, String> {
+pub(crate) fn render(query: Option<&str>, json: bool) -> Result<String, Diagnostic> {
     let Some(query) = query else {
         return Ok(if json {
             docs::catalog_json()
@@ -29,17 +29,21 @@ pub(crate) fn render(query: Option<&str>, json: bool) -> Result<String, String> 
             }
         }
         Lookup::Unknown { closest } => {
-            let mut message = format!("unknown diagnostic code or name `{query}`.");
+            let mut diagnostic = Diagnostic::new(
+                Code::UnknownDiagnosticCode,
+                format!("unknown diagnostic code or name `{query}`"),
+            );
             if !closest.is_empty() {
-                let ids = closest
+                let commands = closest
                     .iter()
-                    .map(|code| code.id())
+                    .map(|code| format!("`meshc explain {}`", code.id()))
                     .collect::<Vec<_>>()
                     .join(", ");
-                message.push_str(&format!(" Closest codes: {ids}."));
+                diagnostic = diagnostic.with_repair(format!(
+                    "Try {commands}. Run `meshc explain` to list diagnostic codes."
+                ));
             }
-            message.push_str(" Run `meshc explain` to list diagnostic codes.");
-            Err(message)
+            Err(diagnostic)
         }
     }
 }
@@ -125,7 +129,7 @@ mod tests {
     #[test]
     fn explain_unknown_suggests_codes() {
         let error = render(Some("unbound-varable"), false).unwrap_err();
-        assert!(error.contains("unknown diagnostic code or name `unbound-varable`"));
-        assert!(error.contains("Closest codes: E0004"));
+        assert_eq!(error.code(), mesh_diagnostics::Code::UnknownDiagnosticCode);
+        assert!(error.repair().contains("`meshc explain E0004`"));
     }
 }

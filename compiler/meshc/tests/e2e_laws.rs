@@ -455,7 +455,19 @@ fn proves_retry_and_replays_the_capped_counterexample_on_the_native_program() {
         &POLICY.replace("remaining > 0", "remaining > 0 && remaining <= 8"),
     );
     budget_passes(root);
-    let proof = verify(root, false);
+    let output = on_cli("verify", root).arg("--json").output().unwrap();
+    let proof = read_json(&output, false);
+    let diagnostics = diagnostics(&output);
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0]["code"], "V0001");
+    assert!(diagnostics[0]["file"]
+        .as_str()
+        .unwrap()
+        .ends_with("laws/retry.law"));
+    assert!(diagnostics[0]["notes"][0]
+        .as_str()
+        .unwrap()
+        .contains("Counterexample:"));
     let verdict = &proof["laws"][0];
     assert_eq!(verdict["status"], "falsified");
     let status = verdict["inputs"]["status"].as_i64().unwrap();
@@ -551,6 +563,7 @@ fn checks_a_mesh_induction_proof_against_the_compiled_recursive_list_function() 
         .output()
         .unwrap();
     let unavailable = read_json(&absent, false);
+    assert_eq!(diagnostics(&absent)[0]["code"], "V0202");
     assert_eq!(unavailable["laws"][0]["status"], "unverified");
     assert!(unavailable["laws"][0]["reason"]
         .as_str()
@@ -1110,7 +1123,9 @@ end
         "laws/copy.law",
         &spec.replace("-> List<Int>\n", "-> List<Bool>\n"),
     );
-    fails(&list(root), "not an instance of its checked declaration");
+    let mismatched = list(root);
+    fails(&mismatched, "not an instance of its checked declaration");
+    assert_eq!(diagnostics(&mismatched)[0]["code"], "V0102");
 }
 
 #[test]
@@ -1805,14 +1820,20 @@ fn proves_that_compiled_sort_returns_an_ordered_permutation() {
     read_json(&inventory, true);
     fs::write(&baseline, inventory.stdout).unwrap();
     let check = |success| {
-        read_json(
-            &on_cli("verify", root)
-                .args(["--verdict", "--json", "--preserve"])
-                .arg(&baseline)
-                .output()
-                .unwrap(),
-            success,
-        )
+        let output = on_cli("verify", root)
+            .args(["--verdict", "--json", "--preserve"])
+            .arg(&baseline)
+            .output()
+            .unwrap();
+        let report = read_json(&output, success);
+        if success {
+            assert!(output.stderr.is_empty(), "{output:?}");
+        } else {
+            let failures = diagnostics(&output);
+            assert!(!failures.is_empty());
+            assert!(failures.iter().all(|failure| failure["code"] == "V0301"));
+        }
+        report
     };
     let report = check(true);
     assert_eq!(report["preservation"]["preserved"], true);
@@ -1873,6 +1894,7 @@ fn unverified_cases_report_unsupported_operations_and_solver_failures() {
         .env("MESH_VERIFY_Z3", root.join("unavailable-solver"))
         .output()
         .unwrap();
+    assert_eq!(diagnostics(&missing)[0]["code"], "V0201");
     let missing = read_json(&missing, false);
     assert_eq!(missing["laws"][0]["status"], "unverified");
     assert!(missing["laws"][0]["reason"]
@@ -1885,6 +1907,7 @@ fn unverified_cases_report_unsupported_operations_and_solver_failures() {
         .env("MESH_VERIFY_TIMEOUT_MS", "0")
         .output()
         .unwrap();
+    assert_eq!(diagnostics(&exhausted)[0]["code"], "V0203");
     let exhausted = read_json(&exhausted, false);
     assert_eq!(exhausted["laws"][0]["status"], "unverified");
     assert!(exhausted["laws"][0]["reason"]
@@ -1934,10 +1957,21 @@ fn unverified_ranges_use_the_helper_and_law_source_files() {
     let law = "from Policy import retry\n\n# δ is measured in bytes\nlaw retry(status :: Int, left :: Int) -> Bool do\n  left % 2 > 0\nend\n";
     write(root, "laws/retry.law", law);
 
-    let result = verify(root, false);
+    let output = on_cli("verify", root).arg("--json").output().unwrap();
+    let result = read_json(&output, false);
+    let diagnostics = diagnostics(&output);
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostic["code"], "V0003");
+    assert!(diagnostic["file"]
+        .as_str()
+        .unwrap()
+        .ends_with("laws/retry.law"));
     let location = &result["laws"][0]["unsupported_at"];
     assert_eq!(location["path"], "laws/retry.law");
     let start = law.find("left % 2").unwrap();
+    assert_eq!(diagnostic["spans"][0]["start"], start);
+    assert_eq!(diagnostic["spans"][0]["end"], start + "left % 2".len());
     assert_eq!(location["start"], start);
     assert_eq!(location["end"], start + "left % 2".len());
     assert_eq!(location["line"], 5);

@@ -1,6 +1,7 @@
 mod auth;
 mod install;
 mod publish;
+mod registry;
 mod search;
 
 use std::path::PathBuf;
@@ -8,6 +9,7 @@ use std::process;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use mesh_diagnostics::{Code, Diagnostic, Format, Reporter};
 
 const DEFAULT_REGISTRY: &str = "https://api.packages.meshlang.dev";
 
@@ -20,6 +22,31 @@ struct Cli {
     /// Output in JSON format (suppresses spinners and colored output)
     #[arg(long, global = true)]
     json: bool,
+
+    /// Disable colorized output
+    #[arg(long, global = true)]
+    no_color: bool,
+}
+
+impl Cli {
+    fn parse_or_report() -> Self {
+        Self::try_parse().unwrap_or_else(|error| {
+            let json = std::env::args_os()
+                .skip(1)
+                .take_while(|arg| arg != "--")
+                .any(|arg| arg == "--json");
+            if !json || !error.use_stderr() {
+                error.exit();
+            }
+            let mut reporter = Reporter::stderr(Format::Json);
+            reporter.emit(Diagnostic::new(
+                Code::InvalidArguments,
+                error.to_string().trim(),
+            ));
+            reporter.finish();
+            process::exit(error.exit_code());
+        })
+    }
 }
 
 #[derive(Subcommand)]
@@ -57,7 +84,11 @@ enum Commands {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let cli = Cli::parse_or_report();
+    if cli.no_color || cli.json {
+        colored::control::set_override(false);
+    }
+    let mut reporter = Reporter::stderr(Format::for_cli(cli.json, cli.no_color));
     let json_mode = cli.json;
 
     let result = match cli.command {
@@ -70,51 +101,53 @@ fn main() {
         Commands::Update => run_update(json_mode),
     };
 
-    match result {
-        Ok(()) => process::exit(0),
-        Err(e) => {
-            if json_mode {
-                eprintln!("{}", serde_json::json!({ "error": e }));
-            } else {
-                eprintln!("{} {}", "✗".red().bold(), e);
-            }
-            process::exit(1);
-        }
+    if let Err(error) = result {
+        reporter.emit(error);
     }
+    process::exit(reporter.finish().exit_code());
 }
 
-fn run_update(json_mode: bool) -> Result<(), String> {
+fn run_update(json_mode: bool) -> Result<(), Diagnostic> {
     if json_mode {
-        return Err(
-            "installer-backed self-update does not support --json; rerun `meshpkg update` without --json"
-                .to_string(),
-        );
+        return Err(Diagnostic::new(
+            Code::InvalidArguments,
+            "installer-backed self-update does not support --json",
+        )
+        .with_repair("Rerun `meshpkg update` without --json."));
     }
 
-    let outcome = mesh_pkg::run_toolchain_update().map_err(|error| error.to_string())?;
+    let outcome = mesh_pkg::run_toolchain_update().map_err(|error| error.to_diagnostic())?;
     println!("{}", outcome.mode);
     Ok(())
 }
 
-fn run_login(token: Option<String>, json_mode: bool) -> Result<(), String> {
+fn run_login(token: Option<String>, json_mode: bool) -> Result<(), Diagnostic> {
     let token = match token {
         Some(t) => t,
         None => {
             // Read from stdin interactively
-            eprint!("Enter registry token: ");
+            if !json_mode {
+                eprint!("Enter registry token: ");
+            }
             let mut input = String::new();
-            std::io::stdin()
-                .read_line(&mut input)
-                .map_err(|e| format!("Failed to read token: {}", e))?;
+            std::io::stdin().read_line(&mut input).map_err(|e| {
+                Diagnostic::new(
+                    Code::RegistryAuthFailed,
+                    format!("Failed to read token: {e}"),
+                )
+            })?;
             input.trim().to_string()
         }
     };
 
     if token.is_empty() {
-        return Err("Token cannot be empty".to_string());
+        return Err(Diagnostic::new(
+            Code::RegistryAuthFailed,
+            "Token cannot be empty",
+        ));
     }
 
-    auth::write_token(&token)?;
+    auth::write_token(&token).map_err(|message| Diagnostic::new(Code::PathNotFound, message))?;
 
     if json_mode {
         println!(

@@ -7,7 +7,8 @@
 //! changed (a moved line is no change), so a project's CI can refuse
 //! declassifications nobody reviewed. See `docs/security/plaintext-types.md`.
 
-use crate::ReportResult;
+use crate::{ReportResult, ReportText};
+use mesh_diagnostics::{Code, Diagnostic};
 use mesh_diagnostics::{Failed, Reporter};
 use std::path::{Component, Path, PathBuf};
 
@@ -84,9 +85,13 @@ pub(crate) fn render(report: &Report) -> String {
     serde_json::to_string_pretty(report).expect("the report is serializable") + "\n"
 }
 
-pub(crate) fn write(report: &Report, path: &Path) -> Result<(), String> {
-    std::fs::write(path, render(report))
-        .map_err(|error| format!("Failed to write '{}': {error}", path.display()))
+pub(crate) fn write(report: &Report, path: &Path) -> Result<(), Diagnostic> {
+    std::fs::write(path, render(report)).map_err(|error| {
+        Diagnostic::new(
+            Code::PathNotFound,
+            format!("Failed to write '{}': {error}", path.display()),
+        )
+    })
 }
 
 /// What differs between `committed` and `current`, line numbers aside: a
@@ -171,7 +176,7 @@ pub(crate) fn run(
     };
     let text = std::fs::read_to_string(committed_path)
         .map_err(|error| format!("Failed to read '{}': {error}", committed_path.display()))
-        .reported(reporter)?;
+        .reported_as(Code::PathNotFound, reporter)?;
     let committed: Report = serde_json::from_str(&text)
         .map_err(|error| {
             format!(
@@ -179,7 +184,7 @@ pub(crate) fn run(
                 committed_path.display()
             )
         })
-        .reported(reporter)?;
+        .reported_as(Code::InvalidArguments, reporter)?;
     let changed = changes(&committed, report);
     if changed.is_empty() {
         reporter.status(format_args!(
@@ -195,12 +200,21 @@ pub(crate) fn run(
         }
         return Ok(());
     }
-    Err(format!(
-        "the plaintext report differs from {}:\n{}\nReview the changes, then write the report with `meshc plaintext-report <dir> --output {}`",
+    let mut diagnostic = Diagnostic::new(
+        Code::PlaintextReportChanged,
+        format!(
+            "the plaintext report differs from {}",
+            committed_path.display(),
+        ),
+    )
+    .with_repair(format!(
+        "Review the changes, then write the report with `meshc plaintext-report <dir> --output {}`",
         committed_path.display(),
-        changed.join("\n"),
-        committed_path.display()
-    )).reported(reporter)
+    ));
+    for change in changed {
+        diagnostic = diagnostic.with_note(change);
+    }
+    Err(reporter.fail(diagnostic))
 }
 
 /// A module path relative to the project, with slash-separated components.

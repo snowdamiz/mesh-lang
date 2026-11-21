@@ -1,5 +1,5 @@
-use crate::ReportResult;
-use mesh_diagnostics::{Failed, Reporter};
+use crate::ReportText;
+use mesh_diagnostics::{Code, Failed, Reporter};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -233,7 +233,7 @@ pub fn run_cluster_command(
             },
         ),
     }
-    .reported(reporter)
+    .reported_as(Code::ClusterCommandFailed, reporter)
 }
 
 fn run_control(

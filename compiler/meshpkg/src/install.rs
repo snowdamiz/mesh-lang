@@ -1,3 +1,5 @@
+use crate::registry;
+use mesh_diagnostics::{Code, Diagnostic};
 use std::io::Read as IoRead;
 use std::path::Path;
 
@@ -37,7 +39,7 @@ pub fn run(
     package_name: Option<&str>,
     registry: &str,
     json_mode: bool,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     match package_name {
         Some(name) => install_named(project_dir, name, registry, json_mode),
         None => install_all(project_dir, registry, json_mode),
@@ -46,14 +48,13 @@ pub fn run(
 
 /// Install all registry dependencies declared in mesh.toml.
 /// Uses mesh.lock exact pins if it exists; otherwise resolves from registry.
-fn install_all(project_dir: &Path, registry: &str, json_mode: bool) -> Result<(), String> {
+fn install_all(project_dir: &Path, registry: &str, json_mode: bool) -> Result<(), Diagnostic> {
     let manifest_path = project_dir.join("mesh.toml");
-    let manifest =
-        Manifest::from_file(&manifest_path).map_err(|error| error.message().to_owned())?;
+    let manifest = Manifest::from_file(&manifest_path)?;
 
     let lock_path = project_dir.join(LOCKFILE_NAME);
     let existing_lock = if lock_path.exists() {
-        Some(Lockfile::from_file(&lock_path).map_err(|error| error.message().to_owned())?)
+        Some(Lockfile::from_file(&lock_path)?)
     } else {
         None
     };
@@ -99,9 +100,7 @@ fn install_all(project_dir: &Path, registry: &str, json_mode: bool) -> Result<()
             }
         }
         let lockfile = Lockfile::new(all_packages);
-        lockfile
-            .write(&lock_path)
-            .map_err(|error| error.message().to_owned())?;
+        lockfile.write(&lock_path)?;
 
         if json_mode {
             println!(
@@ -123,16 +122,14 @@ fn install_named(
     name: &str,
     registry: &str,
     json_mode: bool,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     let (version, sha256) = resolve_latest(name, registry)?;
     let locked = fetch_package(project_dir, name, &version, &sha256, registry, json_mode)?;
 
     // Update mesh.lock
     let lock_path = project_dir.join(LOCKFILE_NAME);
     let mut packages = if lock_path.exists() {
-        Lockfile::from_file(&lock_path)
-            .map_err(|error| error.message().to_owned())?
-            .packages
+        Lockfile::from_file(&lock_path)?.packages
     } else {
         Vec::new()
     };
@@ -140,9 +137,7 @@ fn install_named(
     // Replace or add the entry
     packages.retain(|p| p.name != name);
     packages.push(locked);
-    Lockfile::new(packages)
-        .write(&lock_path)
-        .map_err(|error| error.message().to_owned())?;
+    Lockfile::new(packages).write(&lock_path)?;
 
     if json_mode {
         println!("{}", named_install_result_json(name, &version));
@@ -160,20 +155,26 @@ fn download_tarball(
     name: &str,
     version: &str,
     registry: &str,
-) -> Result<(Vec<u8>, String), String> {
+) -> Result<(Vec<u8>, String), Diagnostic> {
     let url = format!("{}/api/v1/packages/{}/{}/download", registry, name, version);
-    let agent = ureq::Agent::new_with_defaults();
-    let mut response = agent
-        .get(&url)
-        .call()
-        .map_err(|e| format!("Failed to download {}@{}: {}", name, version, e))?;
+    let mut response = registry::response(
+        registry::agent().get(&url).call(),
+        &format!("download {name}@{version}"),
+        None,
+    )?;
 
     let mut buf = Vec::new();
     response
         .body_mut()
         .as_reader()
         .read_to_end(&mut buf)
-        .map_err(|e| format!("Failed to read response body: {}", e))?;
+        .map_err(|e| {
+            Diagnostic::new(
+                Code::RegistryResponseInvalid,
+                "Failed to read package response body",
+            )
+            .with_note(e.to_string())
+        })?;
 
     let sha256: String = Sha256::digest(&buf)
         .iter()
@@ -191,15 +192,18 @@ fn fetch_package(
     sha256: &str,
     registry: &str,
     json_mode: bool,
-) -> Result<LockedPackage, String> {
+) -> Result<LockedPackage, Diagnostic> {
     let msg = format!("Downloading {}@{}...", name, version);
     let (tarball_bytes, actual_sha256) = crate::publish::with_spinner(&msg, json_mode, || {
         download_tarball(name, version, registry)
     })?;
     if sha256 != actual_sha256 {
-        return Err(format!(
-            "SHA-256 mismatch for {}@{}: expected {}, got {}",
-            name, version, sha256, actual_sha256
+        return Err(Diagnostic::new(
+            Code::RegistryResponseInvalid,
+            format!(
+                "SHA-256 mismatch for {}@{}: expected {}, got {}",
+                name, version, sha256, actual_sha256
+            ),
         ));
     }
     extract_tarball(
@@ -216,14 +220,14 @@ fn fetch_package(
 }
 
 /// The registry's answer about `package` (a name, or `name/version`).
-fn registry_json(registry: &str, package: &str) -> Result<serde_json::Value, String> {
+fn registry_json(registry: &str, package: &str) -> Result<serde_json::Value, Diagnostic> {
     let url = format!("{registry}/api/v1/packages/{package}");
-    let body = ureq::Agent::new_with_defaults()
-        .get(&url)
-        .call()
-        .and_then(|mut response| response.body_mut().read_to_string())
-        .map_err(|e| format!("Failed to query registry for {package}: {e}"))?;
-    serde_json::from_str(&body).map_err(|e| format!("Failed to parse registry response: {e}"))
+    let response = registry::response(
+        registry::agent().get(&url).call(),
+        &format!("query registry for {package}"),
+        None,
+    )?;
+    registry::json(response, "registry response")
 }
 
 /// The string at `pointer` in a registry answer about `package`.
@@ -231,21 +235,27 @@ fn registry_field(
     json: &serde_json::Value,
     pointer: &str,
     package: &str,
-) -> Result<String, String> {
+) -> Result<String, Diagnostic> {
     json.pointer(pointer)
         .and_then(serde_json::Value::as_str)
         .map(str::to_string)
-        .ok_or_else(|| format!("Registry response missing {} for {package}", &pointer[1..]))
+        .ok_or_else(|| {
+            Diagnostic::new(
+                Code::RegistryResponseInvalid,
+                format!("Registry response missing {} for {package}", &pointer[1..]),
+            )
+            .with_note(json.to_string().chars().take(4096).collect::<String>())
+        })
 }
 
 /// The checksum of an exact version (the only constraint there is).
-fn resolve_version(name: &str, version: &str, registry: &str) -> Result<String, String> {
+fn resolve_version(name: &str, version: &str, registry: &str) -> Result<String, Diagnostic> {
     let json = registry_json(registry, &format!("{name}/{version}"))?;
     registry_field(&json, "/sha256", &format!("{name}@{version}"))
 }
 
 /// The latest release of a package: its version and checksum.
-fn resolve_latest(name: &str, registry: &str) -> Result<(String, String), String> {
+fn resolve_latest(name: &str, registry: &str) -> Result<(String, String), Diagnostic> {
     let json = registry_json(registry, name)?;
     Ok((
         registry_field(&json, "/latest/version", name)?,
@@ -260,7 +270,7 @@ fn package_install_dir(
     project_dir: &Path,
     name: &str,
     version: &str,
-) -> Result<std::path::PathBuf, String> {
+) -> Result<std::path::PathBuf, Diagnostic> {
     let install_dir = project_dir
         .join(".mesh")
         .join("packages")
@@ -274,23 +284,34 @@ fn package_install_dir(
             let file_name = entry.file_name();
             let file_name = file_name.to_string_lossy();
             if file_name.starts_with(&format!("{leaf}@")) && entry.path() != install_dir {
-                std::fs::remove_dir_all(entry.path())
-                    .map_err(|e| format!("Failed to remove {}: {}", entry.path().display(), e))?;
+                std::fs::remove_dir_all(entry.path()).map_err(|e| {
+                    Diagnostic::new(
+                        Code::PathNotFound,
+                        format!("Failed to remove {}: {}", entry.path().display(), e),
+                    )
+                })?;
             }
         }
     }
-    std::fs::create_dir_all(&install_dir)
-        .map_err(|e| format!("Failed to create {}: {}", install_dir.display(), e))?;
+    std::fs::create_dir_all(&install_dir).map_err(|e| {
+        Diagnostic::new(
+            Code::PathNotFound,
+            format!("Failed to create {}: {}", install_dir.display(), e),
+        )
+    })?;
     Ok(install_dir)
 }
 
 /// Extract a .tar.gz tarball to the given directory.
-fn extract_tarball(bytes: &[u8], dest: &Path) -> Result<(), String> {
+fn extract_tarball(bytes: &[u8], dest: &Path) -> Result<(), Diagnostic> {
     let dec = GzDecoder::new(bytes);
     let mut archive = Archive::new(dec);
-    archive
-        .unpack(dest)
-        .map_err(|e| format!("Failed to extract package to {}: {}", dest.display(), e))
+    archive.unpack(dest).map_err(|e| {
+        Diagnostic::new(
+            Code::RegistryResponseInvalid,
+            format!("Failed to extract package to {}: {}", dest.display(), e),
+        )
+    })
 }
 
 #[cfg(test)]

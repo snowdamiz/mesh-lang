@@ -2651,6 +2651,7 @@ impl<'a, 'session, 'project, 'registry> Encoder<'a, 'session, 'project, 'registr
         for arm in arms {
             if let Some(guard) = &arm.guard {
                 return Err(EncodingError {
+                    code: mesh_diagnostics::Code::LawUnsupported,
                     reason: "unsupported guard on a kernel model pattern".into(),
                     location: guard.source_span(),
                 });
@@ -2706,6 +2707,7 @@ impl<'a, 'session, 'project, 'registry> Encoder<'a, 'session, 'project, 'registr
         for arm in arms {
             if let Some(guard) = &arm.guard {
                 return Err(EncodingError {
+                    code: mesh_diagnostics::Code::LawUnsupported,
                     reason: "unsupported guard on a dependent kernel model pattern".into(),
                     location: guard.source_span(),
                 });

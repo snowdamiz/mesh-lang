@@ -81,6 +81,27 @@ struct Cli {
     command: Commands,
 }
 
+impl Cli {
+    fn parse_or_report() -> Self {
+        Self::try_parse().unwrap_or_else(|error| {
+            let json = std::env::args_os()
+                .skip(1)
+                .take_while(|arg| arg != "--")
+                .any(|arg| arg == "--json");
+            if !json || !error.use_stderr() {
+                error.exit();
+            }
+            let mut reporter = Reporter::stderr(Format::Json);
+            reporter.emit(Diagnostic::new(
+                Code::InvalidArguments,
+                error.to_string().trim(),
+            ));
+            reporter.finish();
+            process::exit(error.exit_code());
+        })
+    }
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Read the guide embedded in this compiler
@@ -352,18 +373,27 @@ fn run_init_command(
     name: &str,
     reporter: &mut Reporter,
 ) -> Result<(), Failed> {
-    let dir = std::env::current_dir().unwrap_or_default();
-    let kind = match resolve_init_target(clustered, template, db).reported(reporter)? {
+    let dir = std::env::current_dir().map_err(|error| {
+        reporter.fail(Diagnostic::new(
+            Code::PathNotFound,
+            format!("Cannot resolve the current directory: {error}"),
+        ))
+    })?;
+    let kind = match resolve_init_target(clustered, template, db)
+        .reported_as(Code::InvalidArguments, reporter)?
+    {
         InitTarget::HelloWorld => {
-            mesh_pkg::scaffold_project(name, &dir).reported(reporter)?;
+            mesh_pkg::scaffold_project(name, &dir).reported_as(Code::PathNotFound, reporter)?;
             ""
         }
         InitTarget::Clustered => {
-            mesh_pkg::scaffold_clustered_project(name, &dir).reported(reporter)?;
+            mesh_pkg::scaffold_clustered_project(name, &dir)
+                .reported_as(Code::PathNotFound, reporter)?;
             "clustered "
         }
         InitTarget::TodoApi(database) => {
-            mesh_pkg::scaffold_todo_api_project_with_db(name, &dir, database).reported(reporter)?;
+            mesh_pkg::scaffold_todo_api_project_with_db(name, &dir, database)
+                .reported_as(Code::PathNotFound, reporter)?;
             "todo-api "
         }
     };
@@ -388,7 +418,7 @@ fn main() {
 }
 
 fn run() {
-    let cli = Cli::parse();
+    let cli = Cli::parse_or_report();
     let mut reporter = Reporter::stderr(Format::for_cli(cli.json, cli.no_color));
     // Lint findings are warnings, which fail no build; failing on them is
     // what `meshc lint` is for, as a CI gate.
@@ -487,10 +517,11 @@ fn dispatch(cli: Cli, reporter: &mut Reporter) -> Result<(), Failed> {
                 reporter,
             )
         }
-        Commands::Repl => mesh_repl::run_repl(&mesh_repl::ReplConfig::default()).reported(reporter),
+        Commands::Repl => mesh_repl::run_repl(&mesh_repl::ReplConfig::default())
+            .reported_as(Code::PathNotFound, reporter),
         Commands::Lsp => {
             let rt = tokio::runtime::Runtime::new()
-                .map_err(|e| format!("Failed to create tokio runtime: {e}"))
+                .map_err(|e| Diagnostic::internal(format!("Failed to create tokio runtime: {e}")))
                 .reported(reporter)?;
             rt.block_on(mesh_lsp::run_server());
             // Its stdin read cannot be cancelled: do not wait for it.
@@ -526,14 +557,18 @@ pub(crate) fn diagnostic_reason(error: &Diagnostic) -> String {
         .join(": ")
 }
 
-/// Convert a legacy string error at the CLI boundary until its producer is migrated.
 trait ReportResult<T> {
     fn reported(self, reporter: &mut Reporter) -> Result<T, Failed>;
 }
 
-impl<T> ReportResult<T> for Result<T, String> {
-    fn reported(self, reporter: &mut Reporter) -> Result<T, Failed> {
-        self.map_err(|message| reporter.fail(Diagnostic::uncategorized(message)))
+/// Give a text-only failure its command-specific code at the CLI boundary.
+trait ReportText<T> {
+    fn reported_as(self, code: Code, reporter: &mut Reporter) -> Result<T, Failed>;
+}
+
+impl<T> ReportText<T> for Result<T, String> {
+    fn reported_as(self, code: Code, reporter: &mut Reporter) -> Result<T, Failed> {
+        self.map_err(|message| reporter.fail(Diagnostic::new(code, message)))
     }
 }
 
@@ -545,7 +580,7 @@ impl<T> ReportResult<T> for Result<T, Diagnostic> {
 
 fn run_update_command(json: bool, reporter: &mut Reporter) -> Result<(), Failed> {
     let outcome = mesh_pkg::run_toolchain_update_with_progress(!json)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_diagnostic())
         .reported(reporter)?;
     println!("{}", outcome.mode);
     Ok(())
@@ -876,7 +911,7 @@ pub(crate) fn build_with_report(
             )
             .reported(reporter)?;
             library_bindings::write(&output_path, &prepared.library_exports, target)
-                .reported(reporter)?;
+                .reported_as(Code::PathNotFound, reporter)?;
         }
     }
 
@@ -999,6 +1034,7 @@ pub(crate) fn prepare_project_build(
                 .as_ref()
                 .and_then(|manifest| manifest.autonomous_cluster.as_ref()),
         )
+        .map_err(Diagnostic::internal)
         .reported(reporter)?,
         plaintext_report,
         files,
@@ -1361,30 +1397,54 @@ fn fmt_command(
     // Format every file before writing any: a file that cannot be formatted
     // leaves the whole tree as it was.
     let mut changed = Vec::new();
-    for file in &files {
-        let source = std::fs::read_to_string(file)
-            .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))
-            .reported(reporter)?;
-        let formatted = mesh_fmt::try_format(&source, config)
-            .map_err(|reason| format!("Cannot format '{}': {}", file.display(), reason))
-            .reported(reporter)?;
-        if formatted != source {
-            changed.push((file, formatted));
+    let mut failure = None;
+    for path in &files {
+        let source = std::fs::read_to_string(path)
+            .map_err(|e| format!("Failed to read '{}': {e}", path.display()))
+            .reported_as(Code::PathNotFound, reporter)?;
+        match mesh_fmt::try_format(&source, config) {
+            Ok(formatted) if formatted != source => {
+                if check {
+                    let file = SourceFile::new(path.as_path(), source);
+                    failure = Some(
+                        reporter.fail(
+                            Diagnostic::in_file(
+                                Code::WouldReformat,
+                                &file,
+                                "File would be reformatted",
+                            )
+                            .with_repair(format!(
+                                "Run `meshc fmt {}` to format the file.",
+                                path.display()
+                            )),
+                        ),
+                    );
+                } else {
+                    changed.push((path, formatted));
+                }
+            }
+            Ok(_) => {}
+            Err(mesh_fmt::FormatError::Parse(errors)) => {
+                let file = SourceFile::new(path.as_path(), source);
+                for error in errors {
+                    failure = Some(reporter.fail(error.to_diagnostic(&file)));
+                }
+            }
+            Err(error @ mesh_fmt::FormatError::ChangedProgram) => {
+                failure = Some(reporter.fail(Diagnostic::internal(format!(
+                    "Cannot format '{}': {error}",
+                    path.display()
+                ))));
+            }
         }
     }
-
-    for (file, formatted) in &changed {
-        if check {
-            reporter.status(format_args!("  would reformat: {}", file.display()));
-        } else {
-            std::fs::write(file, formatted)
-                .map_err(|e| format!("Failed to write '{}': {}", file.display(), e))
-                .reported(reporter)?;
-        }
+    if let Some(failure) = failure {
+        return Err(failure);
     }
-
-    if check && !changed.is_empty() {
-        return Err(format!("{} file(s) would be reformatted", changed.len())).reported(reporter);
+    for (path, formatted) in changed {
+        std::fs::write(path, formatted)
+            .map_err(|e| format!("Failed to write '{}': {e}", path.display()))
+            .reported_as(Code::PathNotFound, reporter)?;
     }
     if !check {
         reporter.status(format_args!("Formatted {} file(s)", files.len()));
@@ -1398,7 +1458,7 @@ fn lint_command(path: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
     for source in collect_mesh_files(path).reported(reporter)? {
         let text = std::fs::read_to_string(&source)
             .map_err(|e| format!("Failed to read '{}': {}", source.display(), e))
-            .reported(reporter)?;
+            .reported_as(Code::PathNotFound, reporter)?;
         let parse = mesh_parser::parse(&text);
         let file = SourceFile::new(source, text);
         let diagnostics = if parse.ok() {
@@ -1419,27 +1479,43 @@ fn lint_command(path: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
 
 /// Collect `.mpl` files from a path: the file itself, or every one under a
 /// directory. Finding none is an error.
-fn collect_mesh_files(path: &Path) -> Result<Vec<PathBuf>, String> {
+fn collect_mesh_files(path: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
     if !path.exists() {
-        return Err(format!("Path '{}' does not exist", path.display()));
+        return Err(Diagnostic::new(
+            Code::PathNotFound,
+            format!("Path '{}' does not exist", path.display()),
+        ));
     }
 
     if path.is_file() {
         if path.extension().and_then(|e| e.to_str()) == Some("mpl") {
             return Ok(vec![path.to_path_buf()]);
         } else {
-            return Err(format!("'{}' is not a .mpl file", path.display()));
+            return Err(Diagnostic::new(
+                Code::InvalidArguments,
+                format!("'{}' is not a .mpl file", path.display()),
+            ));
         }
     }
 
     if !path.is_dir() {
-        return Err(format!("'{}' is not a file or directory", path.display()));
+        return Err(Diagnostic::new(
+            Code::PathNotFound,
+            format!("'{}' is not a file or directory", path.display()),
+        ));
     }
     let mut files = Vec::new();
-    collect_mesh_files_recursive(path, &mut files)
-        .map_err(|e| format!("Failed to walk directory '{}': {}", path.display(), e))?;
+    collect_mesh_files_recursive(path, &mut files).map_err(|e| {
+        Diagnostic::new(
+            Code::PathNotFound,
+            format!("Failed to walk directory '{}': {e}", path.display()),
+        )
+    })?;
     if files.is_empty() {
-        return Err(format!("No .mpl files found at '{}'", path.display()));
+        return Err(Diagnostic::new(
+            Code::InvalidArguments,
+            format!("No .mpl files found at '{}'", path.display()),
+        ));
     }
     files.sort();
     Ok(files)

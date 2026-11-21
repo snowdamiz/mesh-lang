@@ -2988,6 +2988,186 @@
       "status": "active"
     },
     {
+      "code": "V0001",
+      "name": "law-falsified",
+      "severity": "error",
+      "category": "verify",
+      "title": "law falsified",
+      "summary": "Verification found inputs for which the implementation and law disagree.",
+      "repair": "Reproduce the counterexample in the note and fix the implementation or correct the stated law.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0001",
+      "guide": {
+        "explain": "meshc explain V0001",
+        "skill": "references/diagnostics.md#v0001",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0002",
+      "name": "law-unverified",
+      "severity": "error",
+      "category": "verify",
+      "title": "law unverified",
+      "summary": "Verification could not establish a verdict for the law inventory.",
+      "repair": "Read the reason and resolve the reported obligation before treating the law as verified.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0002",
+      "guide": {
+        "explain": "meshc explain V0002",
+        "skill": "references/diagnostics.md#v0002",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0003",
+      "name": "law-unsupported",
+      "severity": "error",
+      "category": "verify",
+      "title": "law unsupported",
+      "summary": "The verifier cannot model the law or a construct that it depends on.",
+      "repair": "Rewrite the marked expression using the supported verification fragment.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0003",
+      "guide": {
+        "explain": "meshc explain V0003",
+        "skill": "references/diagnostics.md#v0003",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0101",
+      "name": "law-binding-unresolved",
+      "severity": "error",
+      "category": "verify",
+      "title": "law binding unresolved",
+      "summary": "A law, import, or proof could not be bound to a unique declaration.",
+      "repair": "Check the law name and its target import, including the module, visibility, and number of parameters.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0101",
+      "guide": {
+        "explain": "meshc explain V0101",
+        "skill": "references/diagnostics.md#v0101",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0102",
+      "name": "law-signature-mismatch",
+      "severity": "error",
+      "category": "verify",
+      "title": "law signature mismatch",
+      "summary": "The law does not declare the same concrete function signature as its target.",
+      "repair": "Match the target parameter and return types in the law declaration.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0102",
+      "guide": {
+        "explain": "meshc explain V0102",
+        "skill": "references/diagnostics.md#v0102",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0201",
+      "name": "solver-missing",
+      "severity": "error",
+      "category": "verify",
+      "title": "required Z3 solver unavailable",
+      "summary": "Verification could not use the required Z3 4.15.7 solver.",
+      "repair": "Install Z3 4.15.7 and put it on `PATH` or set `MESH_VERIFY_Z3` to its executable.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0201",
+      "guide": {
+        "explain": "meshc explain V0201",
+        "skill": "references/diagnostics.md#v0201",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0202",
+      "name": "prover-missing",
+      "severity": "error",
+      "category": "verify",
+      "title": "required Lean toolchain unavailable",
+      "summary": "Verification could not use the required Lean 4.36.0 toolchain.",
+      "repair": "Install Lean 4.36.0 and set `MESH_VERIFY_LEAN` to the trusted Lean executable. For `--verdict`, install the replay tools in the toolchain as well.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0202",
+      "guide": {
+        "explain": "meshc explain V0202",
+        "skill": "references/diagnostics.md#v0202",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0203",
+      "name": "solver-timeout",
+      "severity": "error",
+      "category": "verify",
+      "title": "verification time budget exhausted",
+      "summary": "A verification tool did not finish within the time budget.",
+      "repair": "Simplify the obligation or increase `MESH_VERIFY_TIMEOUT_MS` in milliseconds and retry.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0203",
+      "guide": {
+        "explain": "meshc explain V0203",
+        "skill": "references/diagnostics.md#v0203",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0301",
+      "name": "proof-rejected",
+      "severity": "error",
+      "category": "verify",
+      "title": "proof rejected",
+      "summary": "A proof checker or proof scenario failed.",
+      "repair": "Read the checker or scenario failure and correct the proof or the condition it checks.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0301",
+      "guide": {
+        "explain": "meshc explain V0301",
+        "skill": "references/diagnostics.md#v0301",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0302",
+      "name": "proof-replay-mismatch",
+      "severity": "error",
+      "category": "verify",
+      "title": "proof replay mismatch",
+      "summary": "The independent replay failed to confirm the exported proof.",
+      "repair": "Inspect the export and independent checker output, fix the proof or replay toolchain, and rerun `meshc verify --verdict`.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0302",
+      "guide": {
+        "explain": "meshc explain V0302",
+        "skill": "references/diagnostics.md#v0302",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
       "code": "W0001",
       "name": "redundant-arm",
       "severity": "warning",
@@ -3048,6 +3228,276 @@
         "bad": "fn label(0) = \"zero\"\nfn label(1) = \"one\"\n\nfn main() do\n  println(label(0))\nend\n",
         "fixed": "fn label(0) = \"zero\"\nfn label(n) = \"other\"\n\nfn main() do\n  println(label(0))\nend\n"
       },
+      "status": "active"
+    },
+    {
+      "code": "X0001",
+      "name": "invalid-arguments",
+      "severity": "error",
+      "category": "cli",
+      "title": "invalid command arguments",
+      "summary": "An option, value, or combination of arguments is invalid.",
+      "repair": "Run the command with `--help` and correct the invocation.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0001",
+      "guide": {
+        "explain": "meshc explain X0001",
+        "skill": "references/diagnostics.md#x0001",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0002",
+      "name": "path-not-found",
+      "severity": "error",
+      "category": "cli",
+      "title": "path unavailable",
+      "summary": "A command could not access the input or output path it needs.",
+      "repair": "Check the path and its permissions. For output, use a writable directory.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0002",
+      "guide": {
+        "explain": "meshc explain X0002",
+        "skill": "references/diagnostics.md#x0002",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0101",
+      "name": "unknown-guide-topic",
+      "severity": "error",
+      "category": "cli",
+      "title": "unknown guide topic",
+      "summary": "The embedded guide has no reference with this name.",
+      "repair": "Run `meshc guide` to list topics.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0101",
+      "guide": {
+        "explain": "meshc explain X0101",
+        "skill": "references/diagnostics.md#x0101",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0102",
+      "name": "unknown-diagnostic-code",
+      "severity": "error",
+      "category": "cli",
+      "title": "unknown diagnostic code",
+      "summary": "The catalog does not recognize the requested code or name.",
+      "repair": "Run `meshc explain` to list diagnostic codes.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0102",
+      "guide": {
+        "explain": "meshc explain X0102",
+        "skill": "references/diagnostics.md#x0102",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0103",
+      "name": "skills-install-conflict",
+      "severity": "error",
+      "category": "cli",
+      "title": "skill installation conflict",
+      "summary": "An existing skill or installation receipt prevents Mesh from updating the skill safely.",
+      "repair": "Inspect the existing destination. Move it aside if you want Mesh to manage that location, then retry setup.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0103",
+      "guide": {
+        "explain": "meshc explain X0103",
+        "skill": "references/diagnostics.md#x0103",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0104",
+      "name": "skills-setup-needs-target",
+      "severity": "error",
+      "category": "cli",
+      "title": "non-interactive setup requires a target",
+      "summary": "Skill setup requires explicit approval and a coding tool when it cannot prompt.",
+      "repair": "Run `meshc skills setup --yes --target <agent>`. Run `meshc skills setup --help` to list agents.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0104",
+      "guide": {
+        "explain": "meshc explain X0104",
+        "skill": "references/diagnostics.md#x0104",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0201",
+      "name": "would-reformat",
+      "severity": "error",
+      "category": "cli",
+      "title": "file would be reformatted",
+      "summary": "The file differs from the formatter output.",
+      "repair": "Run `meshc fmt <path>` to format the file.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0201",
+      "guide": {
+        "explain": "meshc explain X0201",
+        "skill": "references/diagnostics.md#x0201",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0301",
+      "name": "update-failed",
+      "severity": "error",
+      "category": "cli",
+      "title": "toolchain update failed",
+      "summary": "The updater could not download or run the canonical installer.",
+      "repair": "Correct the failing installer step named in the message and rerun the update.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0301",
+      "guide": {
+        "explain": "meshc explain X0301",
+        "skill": "references/diagnostics.md#x0301",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0401",
+      "name": "registry-unreachable",
+      "severity": "error",
+      "category": "cli",
+      "title": "registry request failed",
+      "summary": "A transport or server failure prevented the registry request from completing.",
+      "repair": "Check the registry URL, network connection, and registry availability, then retry.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0401",
+      "guide": {
+        "explain": "meshc explain X0401",
+        "skill": "references/diagnostics.md#x0401",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0402",
+      "name": "registry-auth-failed",
+      "severity": "error",
+      "category": "cli",
+      "title": "registry authentication failed",
+      "summary": "The command could not obtain a token with access to the registry operation.",
+      "repair": "Run `meshpkg login` with a valid token that has permission for the operation.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0402",
+      "guide": {
+        "explain": "meshc explain X0402",
+        "skill": "references/diagnostics.md#x0402",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0403",
+      "name": "publish-conflict",
+      "severity": "error",
+      "category": "cli",
+      "title": "package version already published",
+      "summary": "The registry already has the package version being published.",
+      "repair": "Increase the package version in `mesh.toml` and publish the new version.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0403",
+      "guide": {
+        "explain": "meshc explain X0403",
+        "skill": "references/diagnostics.md#x0403",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0404",
+      "name": "registry-response-invalid",
+      "severity": "error",
+      "category": "cli",
+      "title": "registry response invalid",
+      "summary": "The registry returned an unexpected status, invalid data, or a package that did not match its checksum.",
+      "repair": "Check the package name, version, and registry URL. Report invalid metadata or checksum mismatches to the registry operator.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0404",
+      "guide": {
+        "explain": "meshc explain X0404",
+        "skill": "references/diagnostics.md#x0404",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0501",
+      "name": "cluster-command-failed",
+      "severity": "error",
+      "category": "cli",
+      "title": "cluster command failed",
+      "summary": "A cluster operator request could not complete.",
+      "repair": "Check the target node and operator configuration named in the error before retrying.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0501",
+      "guide": {
+        "explain": "meshc explain X0501",
+        "skill": "references/diagnostics.md#x0501",
+        "topic": "clustering"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0601",
+      "name": "migration-failed",
+      "severity": "error",
+      "category": "cli",
+      "title": "migration failed",
+      "summary": "A database migration command could not complete.",
+      "repair": "Fix the reported migration or database connection failure, then check migration status before retrying.",
+      "topic": "database",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0601",
+      "guide": {
+        "explain": "meshc explain X0601",
+        "skill": "references/diagnostics.md#x0601",
+        "topic": "database"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0701",
+      "name": "plaintext-report-changed",
+      "severity": "error",
+      "category": "cli",
+      "title": "plaintext report changed",
+      "summary": "The current report differs from the committed plaintext report.",
+      "repair": "Review the changes, then regenerate the committed report with `meshc plaintext-report --output <path>`.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0701",
+      "guide": {
+        "explain": "meshc explain X0701",
+        "skill": "references/diagnostics.md#x0701",
+        "topic": null
+      },
+      "example": null,
       "status": "active"
     }
   ],

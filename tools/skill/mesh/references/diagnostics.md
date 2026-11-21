@@ -4125,6 +4125,106 @@ A `describe` block in a `.test.mpl` file has its `setup` after one of its tests,
 
 Docs: https://meshlang.dev/docs/errors/#p0401
 
+## V0001
+
+**law-falsified** · error · verify · guide: `meshc guide verification`
+
+Verification found inputs for which the implementation and law disagree.
+
+**Repair:** Reproduce the counterexample in the note and fix the implementation or correct the stated law.
+
+Docs: https://meshlang.dev/docs/errors/#v0001
+
+## V0002
+
+**law-unverified** · error · verify · guide: `meshc guide verification`
+
+Verification could not establish a verdict for the law inventory.
+
+**Repair:** Read the reason and resolve the reported obligation before treating the law as verified.
+
+Docs: https://meshlang.dev/docs/errors/#v0002
+
+## V0003
+
+**law-unsupported** · error · verify · guide: `meshc guide verification`
+
+The verifier cannot model the law or a construct that it depends on.
+
+**Repair:** Rewrite the marked expression using the supported verification fragment.
+
+Docs: https://meshlang.dev/docs/errors/#v0003
+
+## V0101
+
+**law-binding-unresolved** · error · verify · guide: `meshc guide verification`
+
+A law, import, or proof could not be bound to a unique declaration.
+
+**Repair:** Check the law name and its target import, including the module, visibility, and number of parameters.
+
+Docs: https://meshlang.dev/docs/errors/#v0101
+
+## V0102
+
+**law-signature-mismatch** · error · verify · guide: `meshc guide verification`
+
+The law does not declare the same concrete function signature as its target.
+
+**Repair:** Match the target parameter and return types in the law declaration.
+
+Docs: https://meshlang.dev/docs/errors/#v0102
+
+## V0201
+
+**solver-missing** · error · verify · guide: `meshc guide verification`
+
+Verification could not use the required Z3 4.15.7 solver.
+
+**Repair:** Install Z3 4.15.7 and put it on `PATH` or set `MESH_VERIFY_Z3` to its executable.
+
+Docs: https://meshlang.dev/docs/errors/#v0201
+
+## V0202
+
+**prover-missing** · error · verify · guide: `meshc guide verification`
+
+Verification could not use the required Lean 4.36.0 toolchain.
+
+**Repair:** Install Lean 4.36.0 and set `MESH_VERIFY_LEAN` to the trusted Lean executable. For `--verdict`, install the replay tools in the toolchain as well.
+
+Docs: https://meshlang.dev/docs/errors/#v0202
+
+## V0203
+
+**solver-timeout** · error · verify · guide: `meshc guide verification`
+
+A verification tool did not finish within the time budget.
+
+**Repair:** Simplify the obligation or increase `MESH_VERIFY_TIMEOUT_MS` in milliseconds and retry.
+
+Docs: https://meshlang.dev/docs/errors/#v0203
+
+## V0301
+
+**proof-rejected** · error · verify · guide: `meshc guide verification`
+
+A proof checker or proof scenario failed.
+
+**Repair:** Read the checker or scenario failure and correct the proof or the condition it checks.
+
+Docs: https://meshlang.dev/docs/errors/#v0301
+
+## V0302
+
+**proof-replay-mismatch** · error · verify · guide: `meshc guide verification`
+
+The independent replay failed to confirm the exported proof.
+
+**Repair:** Inspect the export and independent checker output, fix the proof or replay toolchain, and rerun `meshc verify --verdict`.
+
+Docs: https://meshlang.dev/docs/errors/#v0302
+
 ## W0001
 
 **redundant-arm** · warning · semantic · guide: `meshc guide pattern-matching`
@@ -4216,6 +4316,156 @@ end
 ```
 
 Docs: https://meshlang.dev/docs/errors/#w0003
+
+## X0001
+
+**invalid-arguments** · error · cli
+
+An option, value, or combination of arguments is invalid.
+
+**Repair:** Run the command with `--help` and correct the invocation.
+
+Docs: https://meshlang.dev/docs/errors/#x0001
+
+## X0002
+
+**path-not-found** · error · cli
+
+A command could not access the input or output path it needs.
+
+**Repair:** Check the path and its permissions. For output, use a writable directory.
+
+Docs: https://meshlang.dev/docs/errors/#x0002
+
+## X0101
+
+**unknown-guide-topic** · error · cli
+
+The embedded guide has no reference with this name.
+
+**Repair:** Run `meshc guide` to list topics.
+
+Docs: https://meshlang.dev/docs/errors/#x0101
+
+## X0102
+
+**unknown-diagnostic-code** · error · cli
+
+The catalog does not recognize the requested code or name.
+
+**Repair:** Run `meshc explain` to list diagnostic codes.
+
+Docs: https://meshlang.dev/docs/errors/#x0102
+
+## X0103
+
+**skills-install-conflict** · error · cli
+
+An existing skill or installation receipt prevents Mesh from updating the skill safely.
+
+**Repair:** Inspect the existing destination. Move it aside if you want Mesh to manage that location, then retry setup.
+
+Docs: https://meshlang.dev/docs/errors/#x0103
+
+## X0104
+
+**skills-setup-needs-target** · error · cli
+
+Skill setup requires explicit approval and a coding tool when it cannot prompt.
+
+**Repair:** Run `meshc skills setup --yes --target <agent>`. Run `meshc skills setup --help` to list agents.
+
+Docs: https://meshlang.dev/docs/errors/#x0104
+
+## X0201
+
+**would-reformat** · error · cli
+
+The file differs from the formatter output.
+
+**Repair:** Run `meshc fmt <path>` to format the file.
+
+Docs: https://meshlang.dev/docs/errors/#x0201
+
+## X0301
+
+**update-failed** · error · cli · guide: `meshc guide projects`
+
+The updater could not download or run the canonical installer.
+
+**Repair:** Correct the failing installer step named in the message and rerun the update.
+
+Docs: https://meshlang.dev/docs/errors/#x0301
+
+## X0401
+
+**registry-unreachable** · error · cli · guide: `meshc guide projects`
+
+A transport or server failure prevented the registry request from completing.
+
+**Repair:** Check the registry URL, network connection, and registry availability, then retry.
+
+Docs: https://meshlang.dev/docs/errors/#x0401
+
+## X0402
+
+**registry-auth-failed** · error · cli · guide: `meshc guide projects`
+
+The command could not obtain a token with access to the registry operation.
+
+**Repair:** Run `meshpkg login` with a valid token that has permission for the operation.
+
+Docs: https://meshlang.dev/docs/errors/#x0402
+
+## X0403
+
+**publish-conflict** · error · cli · guide: `meshc guide projects`
+
+The registry already has the package version being published.
+
+**Repair:** Increase the package version in `mesh.toml` and publish the new version.
+
+Docs: https://meshlang.dev/docs/errors/#x0403
+
+## X0404
+
+**registry-response-invalid** · error · cli · guide: `meshc guide projects`
+
+The registry returned an unexpected status, invalid data, or a package that did not match its checksum.
+
+**Repair:** Check the package name, version, and registry URL. Report invalid metadata or checksum mismatches to the registry operator.
+
+Docs: https://meshlang.dev/docs/errors/#x0404
+
+## X0501
+
+**cluster-command-failed** · error · cli · guide: `meshc guide clustering`
+
+A cluster operator request could not complete.
+
+**Repair:** Check the target node and operator configuration named in the error before retrying.
+
+Docs: https://meshlang.dev/docs/errors/#x0501
+
+## X0601
+
+**migration-failed** · error · cli · guide: `meshc guide database`
+
+A database migration command could not complete.
+
+**Repair:** Fix the reported migration or database connection failure, then check migration status before retrying.
+
+Docs: https://meshlang.dev/docs/errors/#x0601
+
+## X0701
+
+**plaintext-report-changed** · error · cli
+
+The current report differs from the committed plaintext report.
+
+**Repair:** Review the changes, then regenerate the committed report with `meshc plaintext-report --output <path>`.
+
+Docs: https://meshlang.dev/docs/errors/#x0701
 
 ## Retired codes
 

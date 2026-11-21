@@ -1,3 +1,5 @@
+use crate::registry;
+use mesh_diagnostics::Diagnostic;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -7,7 +9,7 @@ struct SearchResult {
     description: String,
 }
 
-pub fn run(query: &str, registry: &str, json_mode: bool) -> Result<(), String> {
+pub fn run(query: &str, registry: &str, json_mode: bool) -> Result<(), Diagnostic> {
     let results = crate::publish::with_spinner(
         &format!("Searching for \"{}\"...", query),
         json_mode,
@@ -35,21 +37,14 @@ pub fn run(query: &str, registry: &str, json_mode: bool) -> Result<(), String> {
     Ok(())
 }
 
-fn fetch_results(query: &str, registry: &str) -> Result<Vec<SearchResult>, String> {
-    let url = format!("{}/api/v1/packages", registry);
-    let agent = ureq::Agent::new_with_defaults();
-    // `query` percent-encodes: a raw `&`, `#` or space would change the request.
-    let mut response = agent
-        .get(&url)
-        .query("search", query)
-        .call()
-        .map_err(|e| format!("Failed to search registry: {}", e))?;
-    let body = response
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| format!("Failed to read search response: {}", e))?;
-    serde_json::from_str::<Vec<SearchResult>>(&body)
-        .map_err(|e| format!("Failed to parse search results: {}", e))
+fn fetch_results(query: &str, registry: &str) -> Result<Vec<SearchResult>, Diagnostic> {
+    let url = format!("{registry}/api/v1/packages");
+    let response = registry::response(
+        registry::agent().get(&url).query("search", query).call(),
+        "search registry",
+        None,
+    )?;
+    registry::json(response, "search results")
 }
 
 fn print_search_table(results: &[SearchResult]) {

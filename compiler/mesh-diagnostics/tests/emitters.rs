@@ -15,7 +15,7 @@ const LIBRARIES: &[&str] = &[
     "mesh-fmt",
 ];
 
-// The meshc conversion for remaining string errors and the constructor test.
+// The test runner conversion for runtime/test errors and the constructor test.
 // Lower this count as producers adopt their own diagnostic codes.
 const UNCATEGORIZED_SITES: usize = 2;
 

@@ -1,5 +1,5 @@
-use crate::ReportResult;
-use mesh_diagnostics::{Failed, Reporter};
+use crate::ReportText;
+use mesh_diagnostics::{Code, Failed, Reporter};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -302,7 +302,7 @@ pub fn run_proof_command(command: ProofCommand, reporter: &mut Reporter) -> Resu
         ProofCommand::AutonomousChaos(args) => run_autonomous_chaos(args),
     }
     .map_err(|error| format!("proof failed: {error}"))
-    .reported(reporter)
+    .reported_as(Code::ProofRejected, reporter)
 }
 
 fn run_autonomous_chaos(args: AutonomousChaosArgs) -> Result<(), String> {

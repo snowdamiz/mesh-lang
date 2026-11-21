@@ -26,11 +26,22 @@ use std::time::Instant;
 
 use crate::ReportResult;
 use mesh_diagnostics::{Code, Diagnostic, Failed, Reporter, SourceFile};
+
 use mesh_parser::test_harness::preprocess_test_source;
 use mesh_pkg::frontend::{self, CheckOptions, Target};
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
 };
+
+trait ReportTestError<T> {
+    fn reported(self, reporter: &mut Reporter) -> Result<T, Failed>;
+}
+
+impl<T> ReportTestError<T> for Result<T, String> {
+    fn reported(self, reporter: &mut Reporter) -> Result<T, Failed> {
+        self.map_err(|message| reporter.fail(Diagnostic::uncategorized(message)))
+    }
+}
 
 /// Whether output goes to a color terminal (and `NO_COLOR` is unset). The
 /// test binaries learn it through `MESH_TEST_COLOR`: their stdout is a pipe.

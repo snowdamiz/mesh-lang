@@ -68,6 +68,12 @@ impl fmt::Display for ToolchainUpdateError {
     }
 }
 
+impl ToolchainUpdateError {
+    pub fn to_diagnostic(&self) -> mesh_diagnostics::Diagnostic {
+        mesh_diagnostics::Diagnostic::new(mesh_diagnostics::Code::UpdateFailed, self.to_string())
+    }
+}
+
 impl std::error::Error for ToolchainUpdateError {}
 
 /// Where an update attempt is, for the errors it reports.

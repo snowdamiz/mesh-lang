@@ -1834,6 +1834,7 @@ dependencies = [
  "dirs",
  "flate2",
  "indicatif",
+ "mesh-diagnostics",
  "mesh-pkg",
  "serde",
  "serde_json",
