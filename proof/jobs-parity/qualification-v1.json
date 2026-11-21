@@ -5980,6 +5980,126 @@
     "passed": 3,
     "scope": "Isolated test-only revision. The proof combines loopback transport cuts and a real PostgreSQL lease and receipt transaction. Runner and child handoff remain open."
   },
+  "current_macos_postgres_jobs_matrix": {
+    "revision": "0f30fde70d2135d7b3da4bfc10d4de51f7d11631",
+    "main_at_verification": "e8f1ceb6f26b61f8be785123c459ff2f454515bf",
+    "host": "macOS arm64",
+    "transport": "verified TLS and SCRAM",
+    "rust": "1.99.0",
+    "command": "bash scripts/verify-postgres-jobs.sh --compatibility VERSION --parity-driver-check --j6-roles",
+    "artifact_scope": "Isolated Cargo target with workspace crates rebuilt from the pinned checkout.",
+    "versions": {
+      "17.11": {
+        "log": "target/jobs-parity/0f30fde70d2135d7b3da4bfc10d4de51f7d11631/current-macos-matrix-rebuilt/postgres-17.11.log",
+        "log_sha256": "14fed8faf35641845cf9aed726584fffcae3d3e8661950fce12d387cb440f6d2",
+        "transport_check": "PostgreSQL 17.11 (Homebrew) over TLSv1.3. The server rejected a wrong password.",
+        "scoped_fresh_and_upgrade": true,
+        "tests": {
+          "server_compatibility": {
+            "passed": 1,
+            "ignored": 0
+          },
+          "database_values": {
+            "passed": 4,
+            "ignored": 0
+          },
+          "borrowed_connection": {
+            "passed": 2,
+            "ignored": 0
+          },
+          "migration": {
+            "passed": 1,
+            "ignored": 0
+          },
+          "postgres_driver": {
+            "passed": 36,
+            "ignored": 6
+          },
+          "jobs_runtime": {
+            "passed": 53,
+            "ignored": 0
+          },
+          "compiled_jobs": {
+            "passed": 3,
+            "ignored": 0
+          }
+        }
+      },
+      "18.7": {
+        "log": "target/jobs-parity/0f30fde70d2135d7b3da4bfc10d4de51f7d11631/current-macos-matrix-rebuilt/postgres-18.7.log",
+        "log_sha256": "3eab76674bef4619b99d180f73be9e9f6700cff610be4ab30630c690cac1d55a",
+        "transport_check": "PostgreSQL 18.7 over TLSv1.3. The server rejected a wrong password.",
+        "scoped_fresh_and_upgrade": true,
+        "tests": {
+          "server_compatibility": {
+            "passed": 1,
+            "ignored": 0
+          },
+          "database_values": {
+            "passed": 4,
+            "ignored": 0
+          },
+          "borrowed_connection": {
+            "passed": 2,
+            "ignored": 0
+          },
+          "migration": {
+            "passed": 1,
+            "ignored": 0
+          },
+          "postgres_driver": {
+            "passed": 36,
+            "ignored": 6
+          },
+          "jobs_runtime": {
+            "passed": 53,
+            "ignored": 0
+          },
+          "compiled_jobs": {
+            "passed": 3,
+            "ignored": 0
+          }
+        }
+      },
+      "19.0": {
+        "log": "target/jobs-parity/0f30fde70d2135d7b3da4bfc10d4de51f7d11631/current-macos-matrix-rebuilt/postgres-19.0.log",
+        "log_sha256": "a9747060e9ae5301f19a50508a0e7bfa81b8f4fada9fad8271da842b68d3cb8e",
+        "transport_check": "PostgreSQL 19.0 over TLSv1.3. The server rejected a wrong password.",
+        "scoped_fresh_and_upgrade": true,
+        "tests": {
+          "server_compatibility": {
+            "passed": 1,
+            "ignored": 0
+          },
+          "database_values": {
+            "passed": 4,
+            "ignored": 0
+          },
+          "borrowed_connection": {
+            "passed": 2,
+            "ignored": 0
+          },
+          "migration": {
+            "passed": 1,
+            "ignored": 0
+          },
+          "postgres_driver": {
+            "passed": 36,
+            "ignored": 6
+          },
+          "jobs_runtime": {
+            "passed": 53,
+            "ignored": 0
+          },
+          "compiled_jobs": {
+            "passed": 3,
+            "ignored": 0
+          }
+        }
+      }
+    },
+    "scope": "Local PostgreSQL compatibility, compiled APIs, and scoped role tests. Other hosts and timing have separate receipts."
+  },
   "linux_warm_short_causal_trace": {
     "revision": "1abc0b2c3311f137c28ec9c063b181e2f28dbc81",
     "base": "1b8d7b129b982b5931226043f77a263721244b35",
@@ -6252,6 +6372,20 @@
         ]
       }
     },
+    "consecutive_spawn_return_to_launch_trial_medians_us": [
+      21.084,
+      12.7915,
+      12.458,
+      13.291,
+      24.979
+    ],
+    "consecutive_batches_sample_counts": [
+      113,
+      116,
+      113,
+      113,
+      112
+    ],
     "workers_reaped_before_reply_decode": 2,
     "scope": "Same-binary trace-off/on diagnostic. Tracing reduced throughput in four of five pairs. Stage timings include observer overhead. No Oban arm or performance qualification."
   },
@@ -6724,6 +6858,159 @@
       "scope": "Release runner, scoped worker THP setting, and two durable jobs. Captured child status during the compiled handler hold and matched exact startup and durable PIDs."
     }
   },
+  "linux_held_worker_fault_around": {
+    "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+    "guest": "Linux 6.12.115-0-virt ARM64, 2 vCPUs and 2 GiB RAM",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "profile": "slow-1r-64s first cohort",
+    "worker_thp_disabled_in_both_arms": true,
+    "comparison_sha256": "7912d7662632bf042bdf094c9685e4b0757ea3eae53d68265ab9fdb76ef2cf31",
+    "held_observations_per_arm": 64,
+    "runs": {
+      "default": {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-fault-around-study/held-default-01",
+        "case_sha256": "36b086f9ab2ba1e381541ee42280f3c978c6c46544d5acb864865eacab0caac1",
+        "archive_sha256": "bbdaf1c8791ffff652fb6b8b94be5b397ce3f15db83e9e4e4dbcfed87769313a",
+        "serial_sha256": "389a8e884cc4d3f058408a1a79b0018bc2bfe5baff56d5f981fe6e19c7a0345c",
+        "proof_sha256": "2b42c957ba919bc0b41a5c197833242c2a57db78ff3ce93dd5405b47db30b865",
+        "receipt_sha256": "ffefe178c9b85f4e7c944fd7264291fb27a536680c4b9ee352b0ca7d285c7ace",
+        "summary_sha256": "2a69e2ae48bb04b3441144845e7f70ae7d9542d0c731cc67ceb2c724d2be41d0",
+        "window_bytes": 65536
+      },
+      "one-page": {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-fault-around-study/held-one-page-01",
+        "case_sha256": "36b086f9ab2ba1e381541ee42280f3c978c6c46544d5acb864865eacab0caac1",
+        "archive_sha256": "fb7d5267543205daf9afaafa5c68012faf1c8807ce80596ef07ae19ea9c8f19b",
+        "serial_sha256": "6249ec13af5187832bfdbe1779c7698df675880af596ed9e1a11099d0e858a08",
+        "proof_sha256": "d2802e6b8c060871694393270f077d60a2607ddb36b6898758e3813e612f7587",
+        "receipt_sha256": "b2a6fb0ca0922015ec844a5331f1d43d196ca69de774ad8d7da0c6ac5ecf4e5a",
+        "summary_sha256": "55870f4380f160af0dc02bfeb151290aff8915401faec7f7ff751141f1e193cb",
+        "window_bytes": 4096
+      }
+    },
+    "rss_bytes": {
+      "fixture_image": {
+        "default": {
+          "max": 2560000,
+          "median": 2560000.0,
+          "min": 2560000
+        },
+        "one-page": {
+          "max": 659456,
+          "median": 659456.0,
+          "min": 659456
+        },
+        "paired_default_minus_one_page": {
+          "max": 1900544,
+          "median": 1900544.0,
+          "min": 1900544
+        }
+      },
+      "ld-linux-aarch64.so.1": {
+        "default": {
+          "max": 184320,
+          "median": 184320.0,
+          "min": 163840
+        },
+        "one-page": {
+          "max": 159744,
+          "median": 159744.0,
+          "min": 159744
+        },
+        "paired_default_minus_one_page": {
+          "max": 24576,
+          "median": 24576.0,
+          "min": 4096
+        }
+      },
+      "libc.so.6": {
+        "default": {
+          "max": 1134592,
+          "median": 1134592.0,
+          "min": 1134592
+        },
+        "one-page": {
+          "max": 516096,
+          "median": 516096.0,
+          "min": 516096
+        },
+        "paired_default_minus_one_page": {
+          "max": 618496,
+          "median": 618496.0,
+          "min": 618496
+        }
+      },
+      "libgcc_s.so.1": {
+        "default": {
+          "max": 73728,
+          "median": 73728.0,
+          "min": 73728
+        },
+        "one-page": {
+          "max": 28672,
+          "median": 28672.0,
+          "min": 28672
+        },
+        "paired_default_minus_one_page": {
+          "max": 45056,
+          "median": 45056.0,
+          "min": 45056
+        }
+      },
+      "other_file": {
+        "default": {
+          "max": 0,
+          "median": 0.0,
+          "min": 0
+        },
+        "one-page": {
+          "max": 0,
+          "median": 0.0,
+          "min": 0
+        },
+        "paired_default_minus_one_page": {
+          "max": 0,
+          "median": 0.0,
+          "min": 0
+        }
+      },
+      "remaining": {
+        "default": {
+          "max": 372736,
+          "median": 364544.0,
+          "min": 360448
+        },
+        "one-page": {
+          "max": 372736,
+          "median": 364544.0,
+          "min": 360448
+        },
+        "paired_default_minus_one_page": {
+          "max": 8192,
+          "median": 0.0,
+          "min": -12288
+        }
+      },
+      "total": {
+        "default": {
+          "max": 4325376,
+          "median": 4317184.0,
+          "min": 4296704
+        },
+        "one-page": {
+          "max": 1736704,
+          "median": 1728512.0,
+          "min": 1724416
+        },
+        "paired_default_minus_one_page": {
+          "max": 2596864,
+          "median": 2588672.0,
+          "min": 2564096
+        }
+      }
+    },
+    "scope": "Separate local guest boots with the same fixture and relay. Each smaps sample is joined to a reconciled exact worker PID during its 100 ms hold. This does not measure aggregate peak RSS or throughput."
+  },
   "linux_slow_64_timed_worker_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "guest": "Linux 6.12.115-0-virt ARM64, 2 vCPUs and 2 GiB RAM",
@@ -6979,6 +7266,294 @@
       }
     },
     "scope": "Local fixture diagnostic with the same binary and effect routes in both Mesh arms. RSS sums sampled process-tree RSS. Throughput varies widely across groups. The frozen slow-64 throughput and RSS gates remain open."
+  },
+  "linux_slow_64_shared_one_page_fault_around": {
+    "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-fault-around-study/full-comparison/slow64-shared-4k-01",
+    "profile": "slow-1r-64s",
+    "guest": "Linux 6.12.115-0-virt ARM64, 2 vCPUs and 2 GiB RAM",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "comparator": "Oban Basic 2.24.2 with the frozen Isolated notifier",
+    "guest_fault_around_readback": {
+      "after_trials": 4096,
+      "before_trials": 4096,
+      "page_bytes": 4096,
+      "restored": 65536,
+      "trial_status": 0
+    },
+    "jobs_reconciled_per_arm": 2560,
+    "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+    "orders": [
+      [
+        "default-thp",
+        "oban",
+        "disabled-thp"
+      ],
+      [
+        "oban",
+        "default-thp",
+        "disabled-thp"
+      ],
+      [
+        "disabled-thp",
+        "default-thp",
+        "oban"
+      ],
+      [
+        "oban",
+        "disabled-thp",
+        "default-thp"
+      ],
+      [
+        "default-thp",
+        "disabled-thp",
+        "oban"
+      ]
+    ],
+    "host_one_minute_load_range": [
+      14.75146484375,
+      23.58935546875
+    ],
+    "archive_sha256": "d3313c70fabb28938dfa6bfe444883f2ed86a02725b7bbe0e34222c327cc5e0f",
+    "serial_sha256": "5fc67e5b8451e4bf71efc47dd42308246b0e1c8febdd4c2081aed2eb6097c183",
+    "host_trace_sha256": "a09798ba8b7ea3d13529d5d95ef0e70d6e4a5c773bf34cea040d6003c789bee2",
+    "proof_sha256": "03b40184961ad43a460a1550ebbff9b79502d119e3443fae2c5ef1dd0a0e4370",
+    "receipt_sha256": "0b032f7663cfdce2b4f53176101a63a8814c41d58ed83adb4e654c598f9ad014",
+    "pinned_overlay_sha256": {
+      "proof/mesh-parity-fixture": "1a0def73fd28cca3ee0d89384189d046f1adefafef6995380967e2e1770462dd",
+      "proof/native-effect-relay": "94c2f29f071eb1699b61ef3d852b5b0261107829b897b1b36f05658d23647af5",
+      "proof/slow64-effect-resident.py": "5e4252e46f036d65a25489fc320e01cb7ec9ff7cf2f48542f1fb6e1ac1bddf11",
+      "proof/contract.py": "aaa0de826ac18a71df5a58fcb99434eb329f4be2270178a3b362e256fb6a52fd"
+    },
+    "evidence_sha256": {
+      "manifest.json": "f62630bf10df931941b62160506efd66e704ef7d912174c29e02314c2431c17e",
+      "trials.json": "8a43aea9d3bbaa8e2c458405e74031291441e15c8db2d3467802d55ef5597a36",
+      "gates.json": "4373830f615e6ec67c04ff55b73ed0c22f0bed797b05f6464681c17c7f05a9e8",
+      "observed-ranges.json": "4e9409c53e64d84e9a71d1e34dbcbcdc3626b0dc77a86927e060b9f7989b0fce",
+      "paired-deltas.json": "2ddfa3eda3b939c97eec742b167c9df7f934b19f5f20390403cce1a7a9ea4386",
+      "postgres-stop.json": "b5751ef90f6680301deba4db09b923c27296a600a90028b44c15a24436bdecfe"
+    },
+    "observed_ranges": {
+      "default-thp": {
+        "jobs_per_second": {
+          "max": 496.09656835819317,
+          "median": 397.94344375447696,
+          "min": 288.3025954288723
+        },
+        "pickup_p99_ms": {
+          "max": 1649.56396484375,
+          "median": 1161.583984375,
+          "min": 928.05908203125
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0028180683593749998,
+          "median": 0.00212390625,
+          "min": 0.001394689453125
+        },
+        "peak_rss_bytes": {
+          "max": 586326016,
+          "median": 575238144,
+          "min": 507174912
+        },
+        "peak_processes": {
+          "max": 66,
+          "median": 64,
+          "min": 55
+        },
+        "peak_connections": {
+          "max": 68,
+          "median": 68,
+          "min": 68
+        },
+        "peak_threads": {
+          "max": 453,
+          "median": 449,
+          "min": 399
+        }
+      },
+      "disabled-thp": {
+        "jobs_per_second": {
+          "max": 419.0664826664525,
+          "median": 311.011346864782,
+          "min": 288.15606401574973
+        },
+        "pickup_p99_ms": {
+          "max": 1661.3388671875,
+          "median": 1524.638916015625,
+          "min": 1115.27099609375
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0027813671874999998,
+          "median": 0.0022551933593749998,
+          "min": 0.0014625156249999998
+        },
+        "peak_rss_bytes": {
+          "max": 175661056,
+          "median": 173142016,
+          "min": 158101504
+        },
+        "peak_processes": {
+          "max": 66,
+          "median": 66,
+          "min": 58
+        },
+        "peak_connections": {
+          "max": 68,
+          "median": 68,
+          "min": 68
+        },
+        "peak_threads": {
+          "max": 457,
+          "median": 457,
+          "min": 407
+        }
+      },
+      "oban": {
+        "jobs_per_second": {
+          "max": 468.52979215719654,
+          "median": 390.1844376253426,
+          "min": 333.7511418649878
+        },
+        "pickup_p99_ms": {
+          "max": 1360.364013671875,
+          "median": 1196.75390625,
+          "min": 986.284912109375
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0026333125,
+          "median": 0.0016511249999999998,
+          "min": 0.001086228515625
+        },
+        "peak_rss_bytes": {
+          "max": 157847552,
+          "median": 144023552,
+          "min": 140730368
+        },
+        "peak_processes": {
+          "max": 2,
+          "median": 2,
+          "min": 2
+        },
+        "peak_connections": {
+          "max": 68,
+          "median": 68,
+          "min": 68
+        },
+        "peak_threads": {
+          "max": 12,
+          "median": 12,
+          "min": 12
+        }
+      }
+    },
+    "disabled_thp_minus_oban": {
+      "jobs_per_second": [
+        -102.02837360959285,
+        -22.73979500020579,
+        -157.6843553324341,
+        -58.57659961567015,
+        54.25639717278648
+      ],
+      "pickup_p99_ms": [
+        464.5849609375,
+        175.14501953125,
+        538.35400390625,
+        188.042236328125,
+        -175.844970703125
+      ],
+      "cpu_seconds_per_job": [
+        0.00014805468749999997,
+        0.00046784765625000006,
+        0.0011689648437499998,
+        0.00037418359375000006,
+        -0.00018860937499999997
+      ],
+      "peak_rss_bytes": [
+        253952,
+        30445568,
+        29995008,
+        30867456,
+        29118464
+      ],
+      "peak_processes": [
+        56,
+        64,
+        64,
+        64,
+        64
+      ],
+      "peak_connections": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "peak_threads": [
+        395,
+        445,
+        442,
+        445,
+        445
+      ]
+    },
+    "gates": {
+      "default-thp": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 0.00212390625,
+            "metric": "cpu_seconds_per_job",
+            "oban_median": 0.0016511249999999998,
+            "relative_limit": 1.25,
+            "scope": "budgets",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 575238144,
+            "metric": "peak_rss_bytes",
+            "oban_median": 144023552,
+            "relative_limit": 1.5,
+            "scope": "budgets",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": true
+      },
+      "disabled-thp": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 0.0022551933593749998,
+            "metric": "cpu_seconds_per_job",
+            "oban_median": 0.0016511249999999998,
+            "relative_limit": 1.25,
+            "scope": "budgets",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 311.011346864782,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 390.1844376253426,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1524.638916015625,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 1196.75390625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      }
+    },
+    "scope": "Both engines share the same guest-wide 4 KiB file fault-around window, reverted after the trial block. Identical frozen workload and fixtures to the earlier timed THP comparison. This is one local diagnostic profile."
   },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",

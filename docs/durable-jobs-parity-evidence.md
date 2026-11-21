@@ -1770,6 +1770,10 @@ vCPUs and 1 GiB of RAM. Host one-minute load ranged from 6.11 to 9.23.
 
 The first batch member launched within 0.03 ms in each trial's median.
 The 13 jobs at ordinal 16 gave trial medians from 5.73 to 10.60 ms.
+The interval from one spawn returning to the next launch had trial
+medians of 12–25 µs. That interval includes parent pipe-thread creation
+and registration. The result makes that setup a low-priority target for
+reducing serialized launch time.
 This run places more of the observed wait in dispatch and lifecycle
 scheduling than in the PostgreSQL acknowledgement call. The trace
 itself slowed four of five pairs. Median throughput was 1,283 jobs/s
@@ -1888,6 +1892,48 @@ the native start markers and both durable attempts. Both jobs completed
 at attempt one with one effect and one receipt each. The timed result
 above used a fixture constructor to apply the policy.
 [Runtime opt-in receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure neighboring file pages in held Linux workers
+
+Two local boots used the same release worker and relay with worker THP
+disabled. The 4 KiB-page guest's file fault-around window was 64 KiB in
+the first boot and 4 KiB in the second. Linux uses the larger window to
+map nearby cached pages when a file page faults. The single-page window
+skips that step. [Linux 6.12.115 source](https://github.com/gregkh/linux/blob/v6.12.115/mm/memory.c)
+
+Both arms reconciled all 64 jobs. Each memory sample matched the native
+start and durable attempt PID and fell inside its worker's 100 ms hold.
+Median held-worker RSS fell from 4.12 to 1.65 MiB. The worker executable
+mapping fell from 2.44 to 0.63 MiB and libc from 1.08 to 0.49 MiB. The
+remaining mappings outside the executable and libraries retained a
+median of 0.35 MiB. These are independent per-worker observations.
+[Held-worker receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare slow jobs with the same single-page window in both engines
+
+The timed comparison reused the frozen slow-64 workloads, executables,
+and five counterbalanced groups from the earlier THP run. Every arm,
+including Oban, ran with the same 4 KiB file fault-around window in one
+guest. The guest verified the setting around the full block and restored
+its default afterward. All 7,680 measured jobs reconciled. One-minute
+host load ranged from 14.75 to 23.59.
+
+| Median metric | Mesh, guest THP default | Mesh, worker THP disabled | Oban |
+| --- | ---: | ---: | ---: |
+| Sampled peak tree RSS | 548.6 MiB | 165.1 MiB | 137.4 MiB |
+| Durable jobs/s | 397.9 | 311.0 | 390.2 |
+| Pickup p99 | 1,162 ms | 1,525 ms | 1,197 ms |
+| Runner-tree CPU/job | 2.12 ms | 2.26 ms | 1.65 ms |
+
+The disabled arm cleared the 206 MiB RSS limit with 66 sampled processes
+at its median peak count, including the runner and relay. It missed the
+throughput, pickup, and CPU limits. The default arm exceeded Oban's
+median throughput by 2% and missed RSS and CPU. Throughput ranges were
+288–496, 288–419, and 334–469 jobs/s, respectively. The disabled arm beat
+Oban in one of five pairs. This is a diagnostic guest configuration for
+one profile. The profile still needs one configuration that passes
+throughput and all resource limits together.
+[Matched single-page window receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Run the compiled handler through the fork template
 
@@ -2150,6 +2196,7 @@ harness and runtime sources.
 | macOS arm64, runtime `1b12243b` | 17.11, 18.7, 19.0 | 45 Jobs runtime cases, both compiled suites, fresh and upgraded scoped roles, and combined pool, listener, and maintenance interruption over verified TLS |
 | macOS arm64, release runtime `1b12243b` with main `7c162056` for the upgrade | 17.11, 18.7, 19.0 | Rolling upgrade, legacy settlement and rollback under scoped grants, and primary promotion with an uncertain acknowledgement. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log) |
 | macOS arm64, integrated `bdb1bd42` | 17.11, 18.7, 19.0 | 51 Jobs runtime cases and all three compiled suites on each version, including scoped roles and contention retry over verified TLS. [Receipt](../proof/jobs-parity/qualification-v1.json) |
+| macOS arm64, `0f30fde7` | 17.11, 18.7, 19.0 | 53 Jobs runtime cases, all three compiled Jobs suites, database API tests, and fresh and upgraded scoped roles on each version over verified TLS and SCRAM. The workspace crates were rebuilt in an isolated Cargo target. [Receipt](../proof/jobs-parity/qualification-v1.json) |
 
 The Linux process proof captured the worker PID and kernel start time for
 each held attempt before injecting parent death or waiting for the hard
