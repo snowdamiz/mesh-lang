@@ -37275,6 +37275,79 @@
       }
     }
   },
+  "linux_compiled_jobs_effect_64slot_gate": {
+    "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
+    "qualification": false,
+    "scope": "Untimed one-arm PostgreSQL 17.11 Linux ARM64 full-occupancy proof with stock boot defaults and worker-local THP disabled. The hold was extended within a bounded interval after an initial short sample, with occupancy and sample-count gates unchanged. No Oban comparison.",
+    "linux_build": {
+      "path": "target/jobs-parity/stock-linux/linux/2465f793b9d0d7f167ecbec1c94001caad900f08/build.sha256",
+      "sha256": "ebe91b7a5893c65c752da4aa924f75fd40cbd49fb3af589d83fbe0e93c552159"
+    },
+    "first_capture": {
+      "result": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-01/extracted/evidence/result.json",
+        "sha256": "07f9275fa9ef65a1d02e4b11f78731ce8105f5a486ffd3eb275935a5868017a4"
+      },
+      "tree": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-01/extracted/evidence/combined/tree-series.json",
+        "sha256": "977bcd42267e087fae14741fe5033d6ad767f9475c261294e4501f8bf50308f8"
+      }
+    },
+    "proof": {
+      "pack.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/pack.json",
+        "sha256": "e3fca6050d166551e3d33e043ec71ae1c7e297687cd4b7e8e81d47057db3cb2f"
+      },
+      "extraction.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/extraction.json",
+        "sha256": "652cbba7e823b947c8681fa259f660a7215b126192ca0060fff75c1d94d31ab1"
+      },
+      "result.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/result.json",
+        "sha256": "523327128860075be003ccb9457530a15c6536d4d929896ec2fd509c8a4d2b70"
+      },
+      "64slot-gate.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/64slot-gate.json",
+        "sha256": "be91eace66761efc6e9d48bd94a12e5a0a894c0c585ae8f5730f540b6fba28a4"
+      },
+      "workers.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/combined/workers.json",
+        "sha256": "c947850b5e04ceafae0bf789be2a7808ec3c9855e0b7f6d283289ece5d144532"
+      },
+      "writes.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/combined/writes.json",
+        "sha256": "ed286fe82c9793cc6021340a0516eba27dff304b809170c50f8ac253b013ce84"
+      },
+      "statement-counters.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/combined/statement-counters.json",
+        "sha256": "60d9a020f584eb62d3b6dfc5245445008184e3323943da89a0a53a0a30f8ba33"
+      },
+      "events": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/combined/events",
+        "sha256": "c07dc6229755f36539413d7e181b346ebf10956153d40b9769d2546a71d8949d"
+      },
+      "tree-series.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/combined/tree-series.json",
+        "sha256": "32454a6ddee973bae56dea5c8ab84b8dc8fdb93ea4739813d75f57ab33c16ee0"
+      },
+      "first-before.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/combined/first-before.json",
+        "sha256": "92028607a4fd160e1d92613a30157d9c42d941689fd9166070ba7a6ad144f7a6"
+      },
+      "first-after.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/combined/first-after.json",
+        "sha256": "92028607a4fd160e1d92613a30157d9c42d941689fd9166070ba7a6ad144f7a6"
+      },
+      "second-before.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/combined/second-before.json",
+        "sha256": "92028607a4fd160e1d92613a30157d9c42d941689fd9166070ba7a6ad144f7a6"
+      },
+      "second-after.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-gate/run-02/extracted/evidence/combined/second-after.json",
+        "sha256": "92028607a4fd160e1d92613a30157d9c42d941689fd9166070ba7a6ad144f7a6"
+      }
+    }
+  },
   "linux_compiled_jobs_effect_worker_thp": {
     "revision": "62ece84c9c3ade3713af7fc2ae1edd463db77925",
     "scope": "Two Linux GNU ARM64 unit tests for exact selectors and environment forwarding. Policy readback and held-worker RSS require a separate live witness.",

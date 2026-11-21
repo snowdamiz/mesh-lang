@@ -4344,6 +4344,26 @@ It establishes that the settings work together on the same ELF.
 The frozen scored comparison with Oban remains open.
 [Combined gate receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Hold 64 compiled named-effect workers
+
+Revision `2465f793` raised the configured attempt limit to 64
+while keeping the warm session limit at 16. The Linux ARM64
+gate used eight app sessions, LISTEN, worker-local THP disablement,
+and the stock boot with PostgreSQL 17.11. Both holds matched all
+64 direct children to 64 executing first attempts. The run
+verified renewals, 128 separate fenced commits and resets, and
+64 exact consuming waits before settlement. It used 13 sessions
+under the profile's 68-connection cap.
+
+The first run reached full occupancy but collected nine samples
+in its first hold. A bounded extension let the same release
+runtime collect 11 and 12 full-cohort samples on the replay.
+Peak summed tree RSS was 351.6 MiB, above the 221.3 MiB limit
+from the earlier slow-64 Oban comparison. The hold verifies
+occupancy, durability, and memory use. It has no same-run Oban
+arm or throughput score.
+[Full-occupancy receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
