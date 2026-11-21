@@ -35622,5 +35622,268 @@
       "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/report/receipt.json",
       "sha256": "9cc697c4e5b9232ebb4b785a2b47853e0b66afdd063f78f54711fddb347ea511"
     }
+  },
+  "archived_stock_comparison_strict_rescore": {
+    "scope": "Current strict thresholds applied to the saved ordinary-worker macOS comparison. No new workload execution.",
+    "scored_profiles": 35,
+    "profiles_passing": 3,
+    "profiles_by_failed_gate": {
+      "jobs_per_second": 31,
+      "pickup_p99_ms": 22,
+      "oban_peak_processes": 5,
+      "cpu_seconds_per_job": 9,
+      "peak_rss_bytes": 1
+    },
+    "noop_8r_64s": {
+      "medians": {
+        "mesh": {
+          "jobs_per_second": 524.9521300635466,
+          "pickup_p99_ms": 1913.183837890625,
+          "cpu_seconds_per_job": 0.006190149414062499,
+          "peak_rss_bytes": 105005056
+        },
+        "oban": {
+          "jobs_per_second": 2551.281357227103,
+          "pickup_p99_ms": 394.342041015625,
+          "cpu_seconds_per_job": 0.0059103564453125,
+          "peak_rss_bytes": 942325760
+        }
+      },
+      "failed": [
+        "jobs_per_second",
+        "pickup_p99_ms"
+      ],
+      "phase_ms": {
+        "mesh": {
+          "claim_to_entry_ms": 8.181232213973999,
+          "entry_to_attempt_commit_ms": 12.207039594650269,
+          "effect_commit_to_settlement_ms": 4.9579174518585205,
+          "attempt_commit_to_effect_commit_ms": 1.0359647274017334
+        },
+        "oban": {
+          "claim_to_entry_ms": 4.016273736953735,
+          "entry_to_attempt_commit_ms": 1.0650794506072998,
+          "effect_commit_to_settlement_ms": 1.4293382167816162,
+          "attempt_commit_to_effect_commit_ms": 1.5795083045959473
+        }
+      },
+      "scored_jobs_per_engine": {
+        "mesh": 5120,
+        "oban": 5120
+      }
+    },
+    "receipt": {
+      "path": "target/jobs-parity/stock-linux/archived-stock-strict-audit.json",
+      "sha256": "3eddb05e6d567f3ab290cc89407de20fa0f8f1c611a918174b8963066e05a6ce"
+    },
+    "reducer": {
+      "path": "target/jobs-parity/stock-linux/strict-rescore.py",
+      "sha256": "25c3814747da478e16c03a2d0dcee59572ff20e8c6842bcb59d911f553072668"
+    }
+  },
+  "linux_stock_worker_thp_bootstrap": {
+    "candidate": "25cc1299275a9e0e87e58135178b4fe961225d8f",
+    "source_base": "2ff0123a",
+    "platform": "Linux GNU ARM64",
+    "scope": "Database-free compiled selector, inherited policy and input EOF. Held worker and parity still separate.",
+    "stock_linux_build": {
+      "path": "target/jobs-parity/stock-linux/linux/25cc1299275a9e0e87e58135178b4fe961225d8f/build.sha256",
+      "sha256": "43ad4077210522c00b7f647f7a8246d463f6e00244bf0400349f1e3787edf9ca"
+    },
+    "bootstrap_elf": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-bootstrap/bootstrap-fixture",
+      "sha256": "29f3246d65dad92d5dd27b8928ff1d4c84140da760d1ae2a5e9bf54e8feb9d86"
+    },
+    "bundle": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-bootstrap/stock-thp-02/proof/evidence/bundle.json",
+      "sha256": "3083d2cc4069ede50c148cc3cfb69a5fc5f4dc300c97e039b7e70be5ba0bcbae"
+    },
+    "cases": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-bootstrap/stock-thp-02/proof/evidence/stock-thp.json",
+      "sha256": "92ee5f82d91e42987381fb1f67901593dd60195c4c9eab1d29fd6768c9d86b17"
+    },
+    "proof": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-bootstrap/stock-thp-02/proof/evidence/worker-proof.log",
+      "sha256": "e607d89a613bb0f3bc07f45de2b5968c0d13fb4e8291d555b0b0268d938f1fe0"
+    },
+    "first_boot_guest_dependency_failure": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-bootstrap/stock-thp-01/proof/evidence/worker-proof.log",
+      "sha256": "61b1c1d30cd9445d4aea447c756f42539fb874cd691bd639116f3ea3673cb670"
+    }
+  },
+  "macos_stock_dense_and_first_write_attribution": {
+    "scope": "Matched ordinary Jobs.start release workload and separate instrumented-path timing.",
+    "revision": "25cc1299275a9e0e87e58135178b4fe961225d8f",
+    "harness": "74aa8af1503da919f76fa71f2c77a8caa2d61b05",
+    "postgres": "17.11",
+    "profile": "noop-8r-64s",
+    "matched_macos": {
+      "manifest": {
+        "path": "target/jobs-parity/25cc1299275a9e0e87e58135178b4fe961225d8f/j1-load-pxxghiim/manifest.json",
+        "sha256": "e5d511025181714c018c8470f09c2171dc374eeb162dc6b62372eee1c047dd31"
+      },
+      "trials": {
+        "path": "target/jobs-parity/25cc1299275a9e0e87e58135178b4fe961225d8f/j1-load-pxxghiim/noop-8r-64s/trials.json",
+        "sha256": "2021a898832a24757f3dced3417d926cc1bd8a30b0c50185b9a348edf01f2c5a"
+      },
+      "summary": {
+        "path": "target/jobs-parity/25cc1299275a9e0e87e58135178b4fe961225d8f/j1-load-pxxghiim/noop-8r-64s/summary.json",
+        "sha256": "688bc77214c1061d0c986741e2cbd741258e50dccacba3a6560724bb772deba5"
+      },
+      "result": {
+        "path": "target/jobs-parity/25cc1299275a9e0e87e58135178b4fe961225d8f/j1-load-pxxghiim/result.json",
+        "sha256": "ddc9f923e83bcbfb361f36ec632fc94fdd307133883cf62ab6ff42b85977dbff"
+      },
+      "reconciled_jobs": 10240,
+      "metrics": {
+        "mesh": {
+          "jobs_per_second": {
+            "max": 778.2580048165372,
+            "median": 736.3658851700094,
+            "min": 663.3831003304497
+          },
+          "pickup_p99_ms": {
+            "max": 1438.52587890625,
+            "median": 1333.944091796875,
+            "min": 1242.2470703125
+          },
+          "cpu_seconds_per_job": {
+            "max": 0.0068513759765625,
+            "median": 0.006785705078125001,
+            "min": 0.006652465820312499
+          },
+          "peak_rss_bytes": {
+            "max": 314015744,
+            "median": 275070976,
+            "min": 216891392
+          }
+        },
+        "oban": {
+          "jobs_per_second": {
+            "max": 4703.484408081243,
+            "median": 3240.804285525534,
+            "min": 2592.390642605454
+          },
+          "pickup_p99_ms": {
+            "max": 390.2470703125,
+            "median": 313.7099609375,
+            "min": 216.1298828125
+          },
+          "cpu_seconds_per_job": {
+            "max": 0.0065668349609375,
+            "median": 0.0056252236328125,
+            "min": 0.005478343750000001
+          },
+          "peak_rss_bytes": {
+            "max": 888619008,
+            "median": 885735424,
+            "min": 882917376
+          }
+        }
+      },
+      "median_of_trial_phase_means_ms": {
+        "mesh": {
+          "claim_to_entry_ms": 9.156383752822876,
+          "entry_to_attempt_commit_ms": 53.35568022727966,
+          "effect_commit_to_settlement_ms": 6.36741042137146
+        },
+        "oban": {
+          "claim_to_entry_ms": 1.793891191482544,
+          "entry_to_attempt_commit_ms": 0.4175841808319092,
+          "effect_commit_to_settlement_ms": 0.48688602447509766
+        }
+      }
+    },
+    "first_write_trace": {
+      "result": {
+        "path": "target/jobs-parity/stock-linux/first-write/trace-02/result.json",
+        "sha256": "5246a185a170737f7434f89753444b1b2a9cb91a14118a5bd5880f9fb8339579"
+      },
+      "per_worker": {
+        "path": "target/jobs-parity/stock-linux/first-write/trace-02/phase-rows.json",
+        "sha256": "4dfcfd5fc0fc983efddf7c46daf5c19932b687dec1eddf1021fe5c7aa7c95ec8"
+      },
+      "manifest_scope": "One instrumented stock Mesh trial. Timing calls add overhead. No qualified throughput comparison.",
+      "connect_ms": {
+        "median": 69.514,
+        "mean": 68.8389482421875
+      },
+      "first_write_ack_ms": {
+        "median": 1.064,
+        "mean": 1.2407978515625
+      },
+      "mean_entry_to_attempt_durable_ms": 69.72069597244263
+    }
+  },
+  "macos_stock_darwin_tcp_nodelay_first_write_screen": {
+    "runtime_revision": "3375dd1ab0c43c8def66c970a4485c3668f14472",
+    "sampled_jobs": 15360,
+    "scope": "Same-executable traced connection screen. Timing, host load and lack of comparator restrict the result to attribution.",
+    "manifest": {
+      "path": "target/jobs-parity/stock-linux/first-write/darwin-nodelay-01/manifest.json",
+      "sha256": "b0b7f83a9890391dfb2c12084877ba94dfc3576ed950f7e3e792d6649656cc74"
+    },
+    "result": {
+      "path": "target/jobs-parity/stock-linux/first-write/darwin-nodelay-01/result.json",
+      "sha256": "315ad4a838e5b06b533aa247149b342a3d7f5c66cf1b6d3b8918bad08d3353a6"
+    },
+    "intervals": {
+      "connect_ms": {
+        "medians_ms": {
+          "mesh": 50.205,
+          "mesh-repeat": 46.005,
+          "mesh-nodelay": 56.863
+        },
+        "paired_median_gain_ms": -8.942,
+        "median_absolute_control_spread_ms": 4.802,
+        "treatment_beat_both": 0
+      },
+      "first_write_ack_ms": {
+        "medians_ms": {
+          "mesh": 1.0905,
+          "mesh-repeat": 1.1215,
+          "mesh-nodelay": 1.0425
+        },
+        "paired_median_gain_ms": 0.011499999999999955,
+        "median_absolute_control_spread_ms": 0.033500000000000085,
+        "treatment_beat_both": 3
+      }
+    }
+  },
+  "linux_stock_slow16_thp_pilot_and_capacity_failure": {
+    "revision": "25cc1299275a9e0e87e58135178b4fe961225d8f",
+    "scope": "Ordinary compiled worker and held-child policy proof. Timed series stopped on a connection-limit fault before a score.",
+    "pilot": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-qualification/runs/stock-thp-01/pilot/proof/evidence/result.json",
+      "sha256": "15346eb296ec4e51e348e8c13707e8521ca0bd7de715b7a875fc7ff090862d56"
+    },
+    "held": {
+      "pilot-mesh": {
+        "samples": 85,
+        "held": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-qualification/runs/stock-thp-01/pilot/proof/evidence/pilot-mesh/held-worker-thp.json",
+          "sha256": "87ded5418dacf87654617e10a4157d389acdc7957f214e087e84ef58bdf0f9f7"
+        }
+      },
+      "pilot-mesh-thp-off": {
+        "samples": 128,
+        "held": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-qualification/runs/stock-thp-01/pilot/proof/evidence/pilot-mesh-thp-off/held-worker-thp.json",
+          "sha256": "59424315ec4b6627662f7551ea838e57b03286414765465db77fd9ab73384755"
+        }
+      }
+    },
+    "failed_warmup": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-qualification/runs/stock-thp-01/0/proof/evidence/result.json",
+      "sha256": "556b2f9de026ae8d7708480359f55b6996286483e55c696fe6eb7e489b1e5db3"
+    },
+    "postgres_log": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-qualification/runs/stock-thp-01/0/proof/evidence/postgres.log",
+      "sha256": "fe877716e207ea90b02afaae0bda914693bf82fe0baa935a2017814623007ef4"
+    },
+    "root_runner_log": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-qualification/runs/stock-thp-01/0/proof/evidence/warmup-mesh-repeat/runner-0.log",
+      "sha256": "8ada18729264b4cbdff27fd8a1d7e9de4c20b1b9845641183ede5587b91af3fb"
+    }
   }
 }

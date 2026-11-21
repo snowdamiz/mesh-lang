@@ -3248,6 +3248,41 @@ The memory result covers the local 16-slot profile with the fenced
 effect fixture. Worker THP disablement remains opt-in.
 [Same-executable trial receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Check the ordinary Linux worker selector
+
+The stock release lineage after the main diagnostics merge
+uses the ordinary Jobs worker entry. The forward port at
+`25cc1299` has no private effect fixture. A Linux GNU ARM64
+boot linked a small compiled application against its release
+runtime and verified eleven live processes through the real
+worker and application selectors.
+
+Only the exact two-argument worker with the flag set to `1`
+changed the stock THP policy. Unset, `0`, and `01` preserved
+the inherited policy. Workers returned status 174 when the
+driver closed input during bootstrap. Nonmatching selectors
+ran the compiled application and kept its policy. The first
+boot stopped because the guest lacked a Python extension's
+`libffi` dependency. A pinned native launcher supplied the
+inherited-policy cases in the successful boot. This proof
+covers selection and bootstrap. The live PostgreSQL workload
+has a separate held-child check.
+[Stock bootstrap receipt](../proof/jobs-parity/qualification-v1.json)
+
+A stock slow-16 PostgreSQL pilot used one release ELF with the
+policy flag off and on. It reconciled 128 jobs per arm and matched
+85 control and 128 treatment PIDs to their durable attempts during
+the handler hold. Controls reported `THP_enabled=1`. Treatment
+workers reported `THP_enabled=0`. The runner kept its inherited policy.
+
+The first scored boot stopped in the Mesh warmup. PostgreSQL
+logged two fresh login rejections at the 20-session database
+limit, and a job ran more than once. The physical limit included
+the observer sessions. The failure alone does not distinguish
+an observer admission race from backend teardown. The pilot and
+failed warmup are retained, and the series has no timing verdict.
+[Ordinary held-worker and admission receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Drop cold executable pages before the slow-64 handler
 
 Two Linux boots used the same relinked `f1e2709c` fixture with
@@ -3823,6 +3858,54 @@ host load ranged from 6.7 to 15.2 on 15 logical CPUs. The treatment
 missed Oban's throughput and pickup gates. The series establishes
 no end-to-end throughput or runner CPU gain.
 [Matched compiled parent I/O receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Re-score the archived stock worker comparison
+
+Under the current strict rule, 31 of the 35 saved macOS profiles
+at `1b12243b` missed throughput and 22 missed relative pickup.
+Three met the recorded throughput, latency, and resource gates.
+This re-score uses the archived trials and their original inputs.
+
+On `noop-8r-64s`, the medians of the five trial means were
+8.18 ms for Mesh claim to entry and 12.21 ms for entry to first
+durable write. Oban recorded 4.02 ms and 1.07 ms. The Mesh
+handler opens a PostgreSQL connection after entry. The second
+interval includes connection setup, server execution, and
+durable acknowledgement. It leaves their individual costs open.
+[Historical stock re-score](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute first-write latency on the ordinary worker path
+
+Five matched macOS ARM64 groups used the stock release at
+`25cc1299`, PostgreSQL 17.11 over verified TLS and SCRAM,
+and Oban Basic 2.24.2 with the Isolated notifier. All 10,240
+scored jobs reconciled. On `noop-8r-64s`, Mesh reached a median
+736 jobs/s and 1,334 ms pickup p99. Oban reached 3,241 jobs/s
+and 314 ms. Mesh missed throughput and pickup.
+
+A separate 1,024-job run timed the call to `Pg.connect` and the
+first write acknowledgement in the same compiled ordinary worker
+with an instrumented fixture. Each observation matched its PID
+to the durable attempt. Median connection time was 69.51 ms
+and median first-write acknowledgement time was 1.06 ms. The
+means were 68.84 ms and 1.24 ms, with 69.72 ms from handler
+entry to the first durable commit. These are elapsed intervals
+and include scheduling. The trace still leaves TCP, TLS, SCRAM,
+and backend startup to be separated within connection time.
+[Ordinary worker trials and attribution](../proof/jobs-parity/qualification-v1.json)
+
+A second traced diagnostic used one Darwin runtime with a
+default-off `TCP_NODELAY` switch before PostgreSQL startup.
+Five counterbalanced groups compared the flag with two identical
+controls. Each group reconciled 1,024 jobs per arm. Connection
+medians were 50.21 and 46.01 ms for the controls and 56.86 ms
+with the flag. Treatment was slower than the faster control
+in every group. The first-write acknowledgement moved by
+0.01 ms against the faster control, within 0.03 ms of absolute
+control spread. Host load varied across the run. This screen
+does not support advancing Darwin socket tuning for the dense
+first-write gap.
+[Darwin socket attribution receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 
