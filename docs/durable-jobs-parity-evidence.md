@@ -2642,6 +2642,24 @@ traffic and runner behavior. They leave CPU attribution to individual
 SQL statements and the repeatability of the split open.
 [Active CPU receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Compare four runners at 64 slots on no-op jobs
+
+Five matched Linux groups at `c271319e` reconciled 15,360
+scored jobs. The identical Mesh controls reached 1,162 and
+952 jobs/s, versus 2,559 for Oban. Pickup p99 was 865 and
+1,051 ms versus 389 ms. Both controls passed the resource
+limits and missed throughput and pickup in every group.
+
+Mesh first claimed work in about 2 ms, versus 54 ms for Oban.
+Mesh then needed 879–1,074 ms to drain the backlog, compared
+with 391 ms for Oban. About 43–44 Mesh slots were occupied
+during that drain, versus 26 for Oban. Mesh made 0.145–0.146
+claim calls per job, close to its batch floor of one call per
+eight jobs. The throughput gap persists in this topology
+with more occupied slots and fewer claim calls per job than
+in the eight-runner comparison.
+[Four-runner no-op receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare the 16-slot slow profile
 
 Five matched Linux groups at `c271319e` reconciled all 1,920
