@@ -3401,6 +3401,43 @@ missed. The plan witness establishes the smaller index scan, and the
 compiled groups leave its end-to-end benefit unproven.
 [Index-range diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Measure claim and settlement SQL without worker processes
+
+The full SQL component kept the eight claim sessions, eight lifecycle
+sessions, and 63 prewarmed effect sessions. Idle connections represented
+maintenance and LISTEN admission. Each job used the stock claim and
+settlement functions and two separate fenced effect commits on one
+effect backend. The component checked the transaction IDs, stable
+effect key, terminal row, and complete reset. Synthetic attempt
+identifiers represented the workers.
+
+Two Linux boots reversed the order of the scalar-range experiment.
+The range probe used 0.087 and 0.093 fewer PostgreSQL CPU-ms/job
+than the faster control. The controls differed by 0.208 and 0.262
+PostgreSQL CPU-ms/job. All six arms completed 1,024 jobs. These
+measurements include libpq and Python client work separately from
+PostgreSQL.
+
+A second component used the scalar range in every arm and prepared
+the due, claim, and settlement statements on their existing sessions
+in the treatment. The two writes and reset used the same statements as
+the controls. The prepared claim retained its explicit transaction,
+client reply validation, and confirmed COMMIT boundary.
+
+| Order | PostgreSQL CPU-ms/job in the controls | PostgreSQL CPU-ms/job with named statements |
+| --- | ---: | ---: |
+| Control, repeat, treatment | 0.854 and 0.837 | 0.668 |
+| Treatment, repeat, control | 0.855 and 1.000 | 0.759 |
+
+The named statements beat both controls on database CPU in both
+orders. Savings against the faster controls were 0.169 and
+0.096 CPU-ms/job. The second difference fell within that boot's
+control spread. All six prepared-comparison arms also reconciled
+1,024 jobs each. The component isolates the database and client path.
+It leaves compiled runner performance and the 35-profile qualification
+open.
+[Full SQL and prepared statement receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
