@@ -1935,6 +1935,29 @@ one profile. The profile still needs one configuration that passes
 throughput and all resource limits together.
 [Matched single-page window receipt](../proof/jobs-parity/qualification-v1.json)
 
+A second five-group run used two identical Mesh arms with worker THP
+disabled. Both used the same executable, warm effect route, polling,
+and slot allocation. Oban and both Mesh arms shared the 4 KiB file
+window. The run reconciled all 7,680 measured jobs. One-minute host
+load ranged from 7.28 to 13.68.
+
+| Metric | Mesh A | Mesh B | Oban |
+| --- | ---: | ---: | ---: |
+| Median jobs/s | 400.1 | 380.3 | 409.2 |
+| Jobs/s range | 289–520 | 182–522 | 351–457 |
+| Median pickup p99 | 1,174 ms | 1,236 ms | 1,147 ms |
+| Median runner-tree CPU/job | 1.76 ms | 2.13 ms | 1.53 ms |
+| Median sampled peak tree RSS | 162.5 MiB | 162.7 MiB | 140.2 MiB |
+
+The median absolute throughput difference within identical Mesh pairs
+was 82.3 jobs/s. Both Mesh arms beat Oban in two groups and stayed below
+the 210.4 MiB median RSS cap. Mesh A met the CPU and pickup limits.
+Mesh B met pickup and missed CPU. Both median throughput results fell
+below Oban. The spread between equivalent Mesh runs exceeds their
+median throughput gaps to Oban. The previous run's ordering across THP
+settings leaves the CPU and throughput effect uncertain on this host.
+[Identical-arm results](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64
@@ -2121,6 +2144,17 @@ one dispatcher slot, and fresh sessions. Prewarmed reuse, renewal and
 watchdog coverage through the compiled route, and performance
 qualification remain open.
 [Compiled effect receipt](../proof/jobs-parity/qualification-v1.json)
+
+The `0b4b7d32` follow-up checks the PostgreSQL driver's parsed TLS mode
+before connecting and attaches the socket to the attempt's authority
+before TLS negotiation. It also starts the relay before the worker can
+spawn. A loopback test held the TLS negotiation open and observed the
+connection close promptly on revocation. A parser test confirmed that
+fixture credentials require the driver's verified TLS mode. Five wire
+tests, the exact-child test, and both compiled cases passed on the same
+PostgreSQL 17.11 setup. An independent observation while a compiled
+child is held alive after its reply is a separate test.
+[Startup fence receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 
