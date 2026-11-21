@@ -35195,5 +35195,432 @@
       "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/pilot-observer-name-shadow/proof/evidence/result.json",
       "sha256": "b46c6b78ff7ee443903ab86d432633cdcfe30058a765c3909e7e3f37ba4d057d"
     }
+  },
+  "linux_jobs_compiled_parent_io_matched": {
+    "revision": "276a7a3d795b1bf1c087f2da2c15f90cffd1e7dc",
+    "profile": "noop-8r-64s",
+    "postgres": "17.11",
+    "jobs_scored": 20480,
+    "scope": "Five matched same-executable Linux ARM64 groups with stock Oban Basic 2.24.2 Isolated. Reconciliation, exact per-runner reactor activation, and raw controls are preserved. The injected rearm-failure tests were outside these groups.",
+    "metrics": {
+      "jobs_per_second": {
+        "summary": {
+          "mesh": {
+            "median": 863.0949527009271,
+            "range": [
+              369.4419487927505,
+              1104.008545049049
+            ]
+          },
+          "mesh-repeat": {
+            "median": 1004.4769506730754,
+            "range": [
+              842.5403421823789,
+              1101.9957972705906
+            ]
+          },
+          "mesh-parent-io": {
+            "median": 1010.5405180752934,
+            "range": [
+              318.8846869884026,
+              1097.1337692079314
+            ]
+          },
+          "oban": {
+            "median": 1990.703131451874,
+            "range": [
+              877.283905015069,
+              2102.9245278288904
+            ]
+          }
+        },
+        "median_paired_gain_vs_better_control": -93.46802697375551,
+        "median_absolute_control_spread": 171.55984712400164,
+        "wins_against_both_control_arms": 1,
+        "wins_against_oban": 1
+      },
+      "pickup_p99_ms": {
+        "summary": {
+          "mesh": {
+            "median": 1168.054931640625,
+            "range": [
+              917.54296875,
+              2740.123046875
+            ]
+          },
+          "mesh-repeat": {
+            "median": 1004.8310546875,
+            "range": [
+              917.8291015625,
+              1201.9580078125
+            ]
+          },
+          "mesh-parent-io": {
+            "median": 993.83203125,
+            "range": [
+              918.383056640625,
+              3165.47412109375
+            ]
+          },
+          "oban": {
+            "median": 504.175048828125,
+            "range": [
+              481.0830078125,
+              1130.926025390625
+            ]
+          }
+        },
+        "median_paired_gain_vs_better_control": -76.2890625,
+        "median_absolute_control_spread": 208.6640625,
+        "wins_against_both_control_arms": 1,
+        "wins_against_oban": 1
+      },
+      "cpu_seconds_per_job": {
+        "summary": {
+          "mesh": {
+            "median": 0.0013291669921875002,
+            "range": [
+              0.00109869140625,
+              0.002850875
+            ]
+          },
+          "mesh-repeat": {
+            "median": 0.0011228408203125,
+            "range": [
+              0.0010601279296874998,
+              0.00141715234375
+            ]
+          },
+          "mesh-parent-io": {
+            "median": 0.001098609375,
+            "range": [
+              0.0010405341796875,
+              0.0031255273437499997
+            ]
+          },
+          "oban": {
+            "median": 0.004071955078125,
+            "range": [
+              0.0037049580078124997,
+              0.0068007900390625
+            ]
+          }
+        },
+        "median_paired_gain_vs_better_control": 8.57519531249993e-06,
+        "median_absolute_control_spread": 0.00014739648437500034,
+        "wins_against_both_control_arms": 3,
+        "wins_against_oban": 5
+      },
+      "peak_threads": {
+        "summary": {
+          "mesh": {
+            "median": 114,
+            "range": [
+              93,
+              141
+            ]
+          },
+          "mesh-repeat": {
+            "median": 129,
+            "range": [
+              116,
+              140
+            ]
+          },
+          "mesh-parent-io": {
+            "median": 108,
+            "range": [
+              102,
+              110
+            ]
+          },
+          "oban": {
+            "median": 96,
+            "range": [
+              96,
+              96
+            ]
+          }
+        },
+        "median_paired_gain_vs_better_control": 7,
+        "median_absolute_control_spread": 16,
+        "wins_against_both_control_arms": 4,
+        "wins_against_oban": 0
+      }
+    },
+    "groups": [
+      {
+        "group": 0,
+        "host_load_average_1m_max": 13.1904296875,
+        "arms": {
+          "mesh": {
+            "jobs_per_second": 1104.008545049049,
+            "pickup_p99_ms": 917.54296875,
+            "cpu_seconds_per_job": 0.0011172802734374999,
+            "peak_threads": 93
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1101.6710355587543,
+            "pickup_p99_ms": 918.501953125,
+            "cpu_seconds_per_job": 0.0011228408203125,
+            "peak_threads": 140
+          },
+          "oban": {
+            "jobs_per_second": 2047.123375390519,
+            "pickup_p99_ms": 489.2890625,
+            "cpu_seconds_per_job": 0.003923642578125,
+            "peak_threads": 96
+          },
+          "mesh-parent-io": {
+            "jobs_per_second": 1010.5405180752934,
+            "pickup_p99_ms": 993.83203125,
+            "cpu_seconds_per_job": 0.0010405341796875,
+            "peak_threads": 104
+          }
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/0/stage.json",
+          "sha256": "01fb6b82bf5eab1c8c5fdc556099bd3330d99674021bef29909d838b24d2d4a8"
+        },
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/0/proof/evidence/trials.json",
+          "sha256": "a173ebcbfd191c13bbc5143623fe02480d4f287c65034af31e662982d0af10df"
+        },
+        "parent_io_admission": {
+          "mesh": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/0/proof/evidence/0-mesh/parent-io-admission.json",
+            "sha256": "a9207b8d4b8adc17d5e026f548605075dfd0b9107ab696e6f8573d45d715d3e8"
+          },
+          "mesh-repeat": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/0/proof/evidence/0-mesh-repeat/parent-io-admission.json",
+            "sha256": "d9cf8f87d152cc1fe5abf17d49199b31069aa15ee4359d84a8a4aca21b168056"
+          },
+          "mesh-parent-io": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/0/proof/evidence/0-mesh-parent-io/parent-io-admission.json",
+            "sha256": "ad83b83ee65d1a363cccbb591bba2ae9e35dbbd88d93e5ea540e876e69c02ebd"
+          }
+        }
+      },
+      {
+        "group": 1,
+        "host_load_average_1m_max": 11.291015625,
+        "arms": {
+          "mesh-repeat": {
+            "jobs_per_second": 842.5403421823789,
+            "pickup_p99_ms": 1201.9580078125,
+            "cpu_seconds_per_job": 0.00141715234375,
+            "peak_threads": 137
+          },
+          "mesh-parent-io": {
+            "jobs_per_second": 318.8846869884026,
+            "pickup_p99_ms": 3165.47412109375,
+            "cpu_seconds_per_job": 0.0031255273437499997,
+            "peak_threads": 110
+          },
+          "mesh": {
+            "jobs_per_second": 369.4419487927505,
+            "pickup_p99_ms": 2740.123046875,
+            "cpu_seconds_per_job": 0.002850875,
+            "peak_threads": 141
+          },
+          "oban": {
+            "jobs_per_second": 926.2241105558487,
+            "pickup_p99_ms": 1089.048095703125,
+            "cpu_seconds_per_job": 0.0068007900390625,
+            "peak_threads": 96
+          }
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/1/stage.json",
+          "sha256": "56f27e6a1488b0a1ecc968621e52d7037aa32971aeb8dc4ac8a9d63ba3962036"
+        },
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/1/proof/evidence/trials.json",
+          "sha256": "7ecac0b58feaeae09b34f112c631a56f1ab4324a304ffd401043b61e3a6290f8"
+        },
+        "parent_io_admission": {
+          "mesh": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/1/proof/evidence/1-mesh/parent-io-admission.json",
+            "sha256": "c886f8c83d464d0df3d27638ad2464dd84ab749f8a03e2ecd5a380fd971c6ada"
+          },
+          "mesh-repeat": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/1/proof/evidence/1-mesh-repeat/parent-io-admission.json",
+            "sha256": "7fa00d31849c029b8ca1dad8857f0194bc5937548def372a2e452e8619e8080c"
+          },
+          "mesh-parent-io": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/1/proof/evidence/1-mesh-parent-io/parent-io-admission.json",
+            "sha256": "af74736721014e05cbb0a7e33d047b67e714548e894f5283327fcf57ca81a9bd"
+          }
+        }
+      },
+      {
+        "group": 2,
+        "host_load_average_1m_max": 15.24072265625,
+        "arms": {
+          "mesh-parent-io": {
+            "jobs_per_second": 384.68619668219816,
+            "pickup_p99_ms": 2635.19287109375,
+            "cpu_seconds_per_job": 0.0027673574218749996,
+            "peak_threads": 109
+          },
+          "oban": {
+            "jobs_per_second": 2102.9245278288904,
+            "pickup_p99_ms": 481.0830078125,
+            "cpu_seconds_per_job": 0.004071955078125,
+            "peak_threads": 96
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 999.4095476009952,
+            "pickup_p99_ms": 1004.8310546875,
+            "cpu_seconds_per_job": 0.0010601279296874998,
+            "peak_threads": 116
+          },
+          "mesh": {
+            "jobs_per_second": 977.7989973740749,
+            "pickup_p99_ms": 1035.642822265625,
+            "cpu_seconds_per_job": 0.00109869140625,
+            "peak_threads": 137
+          }
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/2/stage.json",
+          "sha256": "f0f33d39aef6d50015562dc8cd155a079a10353cb9524bbe43c1b7d119713160"
+        },
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/2/proof/evidence/trials.json",
+          "sha256": "d646e0ed5aedf60c2ace95e2083d29b1d1e4770b92a502b919e7f15f8970b644"
+        },
+        "parent_io_admission": {
+          "mesh": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/2/proof/evidence/2-mesh/parent-io-admission.json",
+            "sha256": "18bcf348ba32a19ab9a7ad767737cbf3aea16e10c2ab32f409f9f2562e02bc0e"
+          },
+          "mesh-repeat": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/2/proof/evidence/2-mesh-repeat/parent-io-admission.json",
+            "sha256": "233f08ac6d55ef75fe3b78e28c96efaf0d732435f81a7572e4f9b60ae700b9f8"
+          },
+          "mesh-parent-io": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/2/proof/evidence/2-mesh-parent-io/parent-io-admission.json",
+            "sha256": "73d1767f68b773ec9e709a027c345322eb4f30e76dfd6447585d84b838051601"
+          }
+        }
+      },
+      {
+        "group": 3,
+        "host_load_average_1m_max": 11.912109375,
+        "arms": {
+          "oban": {
+            "jobs_per_second": 1990.703131451874,
+            "pickup_p99_ms": 504.175048828125,
+            "cpu_seconds_per_job": 0.0037049580078124997,
+            "peak_threads": 96
+          },
+          "mesh": {
+            "jobs_per_second": 832.9171035490738,
+            "pickup_p99_ms": 1214.782958984375,
+            "cpu_seconds_per_job": 0.0013291669921875002,
+            "peak_threads": 109
+          },
+          "mesh-parent-io": {
+            "jobs_per_second": 1097.1337692079314,
+            "pickup_p99_ms": 918.383056640625,
+            "cpu_seconds_per_job": 0.0010751591796875,
+            "peak_threads": 108
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1004.4769506730754,
+            "pickup_p99_ms": 1006.118896484375,
+            "cpu_seconds_per_job": 0.0011817705078125,
+            "peak_threads": 125
+          }
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/3/stage.json",
+          "sha256": "3d3806db1e0131aa5a6ffafdfd2ec9041be826248de4fbee6322fe8ef22a5238"
+        },
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/3/proof/evidence/trials.json",
+          "sha256": "f6316a38c9fb5f9493daa39241b2c0f34178e776794b2f458dea974363e3f3dd"
+        },
+        "parent_io_admission": {
+          "mesh": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/3/proof/evidence/3-mesh/parent-io-admission.json",
+            "sha256": "9945987f571400b6116952a57d49f4756f88e2aec5ca0f55ee4afa5d7167856a"
+          },
+          "mesh-repeat": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/3/proof/evidence/3-mesh-repeat/parent-io-admission.json",
+            "sha256": "7487ec9cbad6e00e94d9662cb9983fe6f4f42bf33527bfd578a2261533132237"
+          },
+          "mesh-parent-io": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/3/proof/evidence/3-mesh-parent-io/parent-io-admission.json",
+            "sha256": "f8ed18de9a32f4113c997a35d1e8a05277c23190da28f63db55f7cef6b054a32"
+          }
+        }
+      },
+      {
+        "group": 4,
+        "host_load_average_1m_max": 6.703125,
+        "arms": {
+          "mesh-repeat": {
+            "jobs_per_second": 1101.9957972705906,
+            "pickup_p99_ms": 917.8291015625,
+            "cpu_seconds_per_job": 0.0011071845703125,
+            "peak_threads": 129
+          },
+          "oban": {
+            "jobs_per_second": 877.283905015069,
+            "pickup_p99_ms": 1130.926025390625,
+            "cpu_seconds_per_job": 0.0055471357421875,
+            "peak_threads": 96
+          },
+          "mesh": {
+            "jobs_per_second": 863.0949527009271,
+            "pickup_p99_ms": 1168.054931640625,
+            "cpu_seconds_per_job": 0.0014177148437499998,
+            "peak_threads": 114
+          },
+          "mesh-parent-io": {
+            "jobs_per_second": 1055.934543852472,
+            "pickup_p99_ms": 961.403076171875,
+            "cpu_seconds_per_job": 0.001098609375,
+            "peak_threads": 102
+          }
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/4/stage.json",
+          "sha256": "ec68c5c8508a0dc344736683c96d7603a1488402342b33972db309e9472f630a"
+        },
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/4/proof/evidence/trials.json",
+          "sha256": "4023b90aa62b357922e265b995917b33ced637650e1cad8507c7d75386e34df5"
+        },
+        "parent_io_admission": {
+          "mesh": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/4/proof/evidence/4-mesh/parent-io-admission.json",
+            "sha256": "25489006d4141f650616630868ac18010ceb34bbf57dd2ba537f90ff25b67965"
+          },
+          "mesh-repeat": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/4/proof/evidence/4-mesh-repeat/parent-io-admission.json",
+            "sha256": "7fa00d31849c029b8ca1dad8857f0194bc5937548def372a2e452e8619e8080c"
+          },
+          "mesh-parent-io": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/4/proof/evidence/4-mesh-parent-io/parent-io-admission.json",
+            "sha256": "55abe0dce9605a04c69afc1c557bff6142e957fe98a0ceaa266a0eaf5247994a"
+          }
+        }
+      }
+    ],
+    "gates": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/report/gates.json",
+      "sha256": "715be2e6f453f23a2c47258a028ee3ccb012c18fdb7ef36be60eb842afdcc34f"
+    },
+    "paired": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/report/paired-deltas.json",
+      "sha256": "0af6737a79acc19d80f09eeaa6bb181d6259ef820598054f6de70eb15613e9f2"
+    },
+    "report": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/compiled-parent-io-guest/runs/compiled-parent-io-01/noop-8r-64s/report/receipt.json",
+      "sha256": "9cc697c4e5b9232ebb4b785a2b47853e0b66afdd063f78f54711fddb347ea511"
+    }
   }
 }

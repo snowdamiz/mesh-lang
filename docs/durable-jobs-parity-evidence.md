@@ -3802,6 +3802,28 @@ run establishes coverage with the real relay and PostgreSQL.
 The injected rearm-failure tests remain separate.
 [Compiled parent I/O pilot](../proof/jobs-parity/qualification-v1.json)
 
+Five trace-off groups kept the same executable, scheduler
+settings, observer, and workload. All 20,480 scored jobs
+reconciled. The stock Oban comparator used Basic 2.24.2 and
+the Isolated notifier.
+
+| Arm | Median jobs/s | Range | Median runner CPU/job | Median sampled peak threads |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 863 | 369–1,104 | 1.329 ms | 114 |
+| Mesh repeat | 1,004 | 843–1,102 | 1.123 ms | 129 |
+| Mesh with shared I/O | 1,011 | 319–1,097 | 1.099 ms | 108 |
+| Oban | 1,991 | 877–2,103 | 4.072 ms | 96 |
+
+The treatment used fewer sampled threads than both Mesh controls
+in four groups. Its paired median gain of 9 µs/job against the
+lower-CPU Mesh control sat within the 147 µs/job control spread.
+The paired median throughput delta against the faster Mesh control
+was −93 jobs/s, with 172 jobs/s of control spread. Peak one-minute
+host load ranged from 6.7 to 15.2 on 15 logical CPUs. The treatment
+missed Oban's throughput and pickup gates. The series establishes
+no end-to-end throughput or runner CPU gain.
+[Matched compiled parent I/O receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
