@@ -1636,6 +1636,17 @@ Claim calls per job fell in all five pairs, from a median of 0.180 to
 prototype remains outside the product branch.
 [Launch overlap receipt](../proof/jobs-parity/qualification-v1.json)
 
+The 64-slot short-job follow-up reconciled 2,560 jobs per arm in each
+comparison. Overlap reduced claim-to-entry and effect-to-settlement
+time in all five pairs. Median paired savings were 20.52 ms and 18.14 ms
+respectively. Throughput rose 21.8% within the median pair. The
+flag-off control rose 37.5% within its median pair during the same noisy
+window. The stage timings support overlap, and the control limits the
+end-to-end conclusion. The exact candidate passed 14 runner unit tests
+on ARM64 Linux, including queue restart fencing and adoption after a
+claim-thread panic. Four database-backed runner tests were ignored.
+[64-slot and runner test receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse effect-write sessions on Linux
 
 The frozen `short-1r-16s` workload ran on the same two-vCPU guest with
@@ -1656,8 +1667,22 @@ backends per fresh trial and 16 prewarmed backends per warm trial. The
 warm route reached the sampled 20-client budget. CPU includes the relay
 and its prewarm. Host one-minute load moved from 16.16 to 39.99 on 15
 logical CPUs. This experiment measures a private fixture route and its
-session reuse. Product lease fencing and a same-window comparison with
-Oban remain open. [Linux session receipt](../proof/jobs-parity/qualification-v1.json)
+session reuse. Product lease fencing remains open.
+[Linux session receipt](../proof/jobs-parity/qualification-v1.json)
+
+The same-window comparison with Oban Basic 2.24.2 reconciled 1,920
+measured jobs across five groups. The two identical warm Mesh arms
+reached median throughput of 440.9 and 464.6 jobs/s against Oban's
+534.7. Both missed the strict throughput condition and met the other
+recorded profile limits. Median CPU was 1.37 and 1.34 ms/job for the
+warm arms and 3.82 for Oban. Both warm arms reached the 20-client cap.
+
+Median time from enqueue commit to first claim was 171.1 and 167.8 ms
+for Mesh and 142.7 ms for Oban. From first claim to final settlement,
+the medians were 119.2, 106.7, and 105.0 ms. The listener and producer
+publication were disabled in both Mesh arms. The two warm arms differed
+by −103.3 to +52.1 jobs/s across paired groups.
+[Warm Mesh and Oban receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Run the compiled handler through the fork template
 
