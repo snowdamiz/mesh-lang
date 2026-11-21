@@ -4154,6 +4154,51 @@
       "reused_breaches": ["throughput", "cpu_per_job", "peak_rss"]
     }
   },
+  "worker_cpu_attribution_64_slot_slow": {
+    "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "harness": "ee4a3bb95938b62755a89af388d77ef1ac377c21",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "oban": "2.24.2",
+    "transport": "SCRAM with verified TLS",
+    "profile": "slow-1r-64s",
+    "run": "target/jobs-parity/effect-session-study/slow-64-slot-cpu-owners-rd_ljazl",
+    "manifest_sha256": "870ed453f35c6997380dab5d440d0c73ad560399e216fd08dd6ea6f986f42804",
+    "result_sha256": "fbd97162c2714ea745f4bc35b066b274600946878bcbbeb09093e06a029ef0f0",
+    "script_sha256": "3672b893011d4c882aff84ab7f27c3577e12f43416c2c2ee4a83f9036020990a",
+    "measured_groups": 5,
+    "jobs_per_trial": 512,
+    "reconciled_jobs": 10240,
+    "logical_cpus": 15,
+    "peak_one_minute_host_load": 15.202,
+    "max_mesh_runner_cpu_residual_seconds": 0.000477,
+    "jobs_per_second": {"direct": 431.710, "relay_fresh": 410.376, "relay_reused": 409.384, "oban": 440.179},
+    "runner_cpu_ms_per_job": {"direct": 0.713, "relay_fresh": 0.740, "relay_reused": 0.650},
+    "worker_cpu_ms_per_job": {"direct": 4.332, "relay_fresh": 3.305, "relay_reused": 3.010},
+    "worker_system_cpu_ms_per_job": {"direct": 2.521, "relay_fresh": 2.054, "relay_reused": 1.855},
+    "relay_cpu_ms_per_job": {"relay_fresh": 0.871, "relay_reused": 0.224},
+    "total_cpu_ms_per_job": {"direct": 5.042, "relay_fresh": 4.874, "relay_reused": 3.888, "oban": 1.649},
+    "pickup_p99_ms": {"direct": 1061.346, "relay_fresh": 1130.011, "relay_reused": 1131.208, "oban": 1059.548},
+    "sampled_peak_rss_mib": {"direct": 187.125, "relay_fresh": 148.797, "relay_reused": 132.375, "oban": 117.359},
+    "reused_worker_cpu_fraction": 0.7763,
+    "reused_throughput_wins_against_oban": 1,
+    "reused_breaches": ["throughput", "cpu_per_job"],
+    "scope": "Fixture-only macOS framework-omitting link and effect relay. CPU by owner comes from getrusage after worker reap, runner join, and pool close. CPU totals exclude producer and PostgreSQL."
+  },
+  "effect_transaction_lease_admission": {
+    "test_commit": "acd1d9b0a43ca9dca16b176a8ab90ff28cbc36dd",
+    "host": "Darwin arm64",
+    "transport": "SCRAM with verified TLS",
+    "command": "env -u MESH_TEST_DATABASE_URL bash scripts/verify-postgres-jobs.sh --effect-transaction",
+    "logs": "target/jobs-parity/acd1d9b0a43ca9dca16b176a8ab90ff28cbc36dd/effect-transaction",
+    "passed_sha256": {
+      "postgres-17.11.log": "1d15835155a7db6965054faf71d3a85c9c7f6fd25e11c90e7276e1be52206b92",
+      "postgres-18.7.log": "74e43ef993598bf39cb05cc3be740921e4929f5739bf007b03af371895557162",
+      "postgres-19.0.log": "28634cecbc6506c67979d44cb62a2ff6173b140e264274697cf6b27c1049839c"
+    },
+    "nowait_removed_negative_control_sha256": "3f3eb5f16f888c0cccb10982c82ce512f4fcce9245dd38f589337d90ad89469f",
+    "scope": "Disposable application fixture validates lease admission under a real job-row lock and reconciles commit, rollback, and idempotent replay with one durable effect. Transport, reusable session, and product integration remain open."
+  },
   "effect_send_admission_loopback": {
     "test_commit": "4818f8a069b25e48f7f7044c2756116d6375de45",
     "host": "Darwin arm64",

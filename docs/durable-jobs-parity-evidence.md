@@ -1333,6 +1333,31 @@ CPU, and RSS. Its RSS was about 1 MiB above that run's 1.5× limit.
 The held measurement and the unheld benchmark have separate receipts.
 [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Attribute CPU on the frozen 64-slot slow profile
+
+The same framework-omitting fixture recorded its own CPU and reaped
+child CPU after joining the runner and closing the pool. The sum agreed
+with the runner's external `wait4` CPU within 0.48 ms per trial. The
+separate helper's CPU includes session prewarming. Five counterbalanced
+groups reconciled 10,240 measured jobs on macOS arm64 with PostgreSQL
+17.11. The host's one-minute load reached 15.20 on 15 logical CPUs.
+
+| Arm | Jobs/s | Runner CPU/job | Child CPU/job | Helper CPU/job | Total CPU/job |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mesh direct | 431.7 | 0.71 ms | 4.33 ms | | 5.04 ms |
+| Mesh with fresh relay sessions | 410.4 | 0.74 ms | 3.30 ms | 0.87 ms | 4.87 ms |
+| Mesh with reused relay sessions | 409.4 | 0.65 ms | 3.01 ms | 0.22 ms | 3.89 ms |
+| Oban Basic 2.24.2 | 440.2 | | | | 1.65 ms |
+
+Each column is the median across the five trials. CPU totals exclude the
+producer and PostgreSQL. In the reuse arm, the children accounted for a
+median 77.6% of total CPU, including 1.85 ms/job of system CPU. The CPU
+limit for the full Mesh tree was 2.06 ms/job. Reuse met the pickup and
+sampled RSS limits in this run and missed throughput and CPU. The CPU
+breakdown measures process ownership. It leaves the system CPU split
+among executable loading, thread startup, and I/O unmeasured.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse effect sessions inside the runner
 
 The local `02afc9e2` diagnostic moved the helper into a thread in the Jobs
@@ -1364,9 +1389,20 @@ before the first write produced zero observed bytes, including when
 rustls already held the request. Stop after partial or full submission
 yielded an unknown result and no fallback write. The tests also rejected
 stale and expired permits. The experiment starts on an established
-connection. Runner wakeup, PostgreSQL result reconciliation, child reply
-handling, and transaction-level lease checks remain integration work.
+connection. Runner wakeup, PostgreSQL result reconciliation, and child
+reply handling remain integration work.
 [Transport test receipt](../proof/jobs-parity/qualification-v1.json)
+
+The disposable effect transaction fixture passed over verified TLS on
+PostgreSQL 17.11, 18.7, and 19.0. It locks the job row and validates
+the attempt identity, expiry, and cancellation before a fixed application
+write. An independent session verified one committed effect and its
+receipt across rollback, replay, replacement, expiry, cancellation, and
+lock contention cases. Removing `NOWAIT` caused the contention case to
+reach its statement timeout on PostgreSQL 17.11. The proof covers
+admission under a real job-row lock. Integrating the transport and
+transaction checks into a reusable runner session remains open.
+[Transaction proof receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 
