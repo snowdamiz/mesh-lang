@@ -4056,6 +4056,17 @@ and app operations. The compiled runner and frozen profile
 comparisons will add claim, dispatch, worker, and settlement costs.
 [Component receipts](../proof/jobs-parity/qualification-v1.json)
 
+Four follow-up blocks added a warm direct-write arm that ran
+the same two full resets. It added a median 0.041 CPU-ms/job
+over direct writes, with an edge envelope of −0.006 to 0.084.
+The fenced routines added 0.210 CPU-ms/job over direct writes
+with the same resets, with an envelope of 0.138 to 0.266.
+That difference includes routine, bind, fence, and reset
+interaction costs. The follow-up reconciled 3,072 jobs. The
+reset control occupied the middle position in every block,
+which leaves it sensitive to changes in host load across arms.
+[Reset attribution receipts](../proof/jobs-parity/qualification-v1.json)
+
 A separate compiled-driver witness used `DISCARD ALL` through
 `Pg.execute` on PostgreSQL 17.11, 18.7, and 19.0. The same
 verified TLS backend cleared a temporary table, prepared statement,
@@ -4084,6 +4095,32 @@ The compatibility workflow runs the fence proof on both Linux
 and macOS for each pinned PostgreSQL version. The stock parity
 handler still connects once per job while the compiled warm-session
 path is being built. [Scoped fence receipts](../proof/jobs-parity/qualification-v1.json)
+
+The first compiled draft at `91722a23` produced a Linux ARM64
+runtime archive and linked the ordinary parity executable. A
+separate macOS object check found that ordinary Jobs source
+referenced its original start symbol. Source using named
+effects referenced the two new versioned symbols. Linking the
+full ordinary fixture against the older `7c162056` archive
+failed on panic diagnostics symbols with both the draft
+compiler and the earlier stock compiler. The object check
+covers the new Jobs symbols, and the legacy link result
+remains a separate compatibility limitation.
+[Compiled draft and legacy-link logs](../proof/jobs-parity/qualification-v1.json)
+
+The Linux ARM64 smoke linked a fixture against the same
+`91722a23` runtime with an in-child check for the database
+environment variables. That check replaced a procfs read
+blocked by the release build's core-dump protection. At one
+slot, the verified-TLS PostgreSQL 17.11 proof observed two
+separate commits on one warm backend, eight full resets across
+three runner lifetimes, and each tracked child reaped by
+settlement. The staged pre-commit disconnect left the first
+effect intact, and attempt two reconciled it before committing
+the second effect. The database stayed within five connections.
+The review fixes and a fault after commit but before receipt
+delivery remain separate gates.
+[Linux compiled smoke and failed preflights](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 
