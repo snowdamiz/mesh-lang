@@ -61,7 +61,7 @@ end
 
 ## Ownership and labeled values
 
-`resource struct Name do ... end` declares an affine resource, and `resource Name` declares an opaque resource. Passing a resource to an ordinary or `consume` parameter moves it. A `borrow` parameter lends it for the call. A resource held inside a tuple, struct, or sum type makes that value a resource too. Error E0053 includes use after move. See the [resource ownership rules](https://meshlang.dev/docs/type-system/#resource-types).
+`resource struct Name do ... end` declares an affine resource, and `resource Name` declares an opaque resource. Passing a resource to an ordinary or `consume` parameter moves it. A `borrow` parameter lends it for the call. A resource held inside a tuple, struct, or sum type makes that value a resource too. E0053 covers move and borrow violations such as use after move. E0101 covers boundaries that cannot preserve the resource’s ownership, such as an actor mailbox or JSON. See the [resource ownership rules](https://meshlang.dev/docs/type-system/#resource-types).
 
 `Plaintext<T>` carries a compiler-tracked label for content with restricted exits. See [plaintext rules](https://meshlang.dev/docs/type-system/#plaintext).
 

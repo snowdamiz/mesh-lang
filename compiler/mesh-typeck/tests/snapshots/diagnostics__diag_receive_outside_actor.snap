@@ -13,3 +13,4 @@ expression: output
    │
    │     Help: move this receive expression into an actor block
 ───╯
+  = E0017: meshc explain E0017 · skill diagnostics.md#e0017 · https://meshlang.dev/docs/errors/#e0017

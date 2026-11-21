@@ -1,0 +1,18 @@
+---
+source: compiler/mesh-diagnostics/tests/render.rs
+expression: "report(HUMAN, [unbound()])"
+---
+[E0004] Error: undefined variable `cuont`
+   ╭─[ src/main.mpl:3:11 ]
+   │
+ 2 │   let count = 1
+   │       ──┬──
+   │         ╰──── `count` is defined here
+ 3 │   println(cuont)
+   │           ──┬──
+   │             ╰──── not found in this scope
+   │
+   │ Help: did you mean `count`?
+───╯
+  = E0004: meshc explain E0004 · skill diagnostics.md#e0004 · https://meshlang.dev/docs/errors/#e0004
+error: 1 error (E0004)

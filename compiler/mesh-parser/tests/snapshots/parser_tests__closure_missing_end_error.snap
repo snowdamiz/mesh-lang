@@ -24,4 +24,4 @@ SOURCE_FILE@0..13
   EOF@13..13 ""
 
 errors:
-  - unclosed closure -- expected `end` @13..13
+  - expected `end` to close closure, found the end of the file @13..13

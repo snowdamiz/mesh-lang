@@ -1,11 +1,13 @@
 //! Native proof values and theorem applications from embedded logic blocks.
 
+use mesh_common::span::Span;
 use mesh_parser::ast::item::SourceFile;
 use mesh_parser::logic::{self, Binary, Binder, Declaration, Term};
 use mesh_parser::{AstNode, SyntaxKind, SyntaxNode};
 use rowan::{TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::error::TypeError;
 use crate::ty::{NatIndex, Ty, TyCon};
 use crate::ImportContext;
 
@@ -196,36 +198,44 @@ impl ProofPredicates {
         }
     }
 
+    /// The proof type `Proof<args>` annotates, or why there is none: an
+    /// error at `span` in the proposition, or in a Nat index of it.
     pub(crate) fn annotation(
         &self,
         mut args: Vec<Ty>,
-        check_nat: impl Fn(Ty) -> Result<NatIndex, String>,
-    ) -> Result<Ty, String> {
+        check_nat: impl Fn(Ty) -> Result<NatIndex, TypeError>,
+        span: TextRange,
+    ) -> Result<Ty, TypeError> {
+        let proposition = |reason: String| TypeError::InvalidProposition { reason, span };
         if args.len() != 1 {
-            return Err("a `Proof` type requires exactly one proposition".into());
+            return Err(proposition(
+                "a `Proof` type requires exactly one proposition".into(),
+            ));
         }
         let (head, args) = match args.remove(0) {
             Ty::App(head, args) => (*head, args),
             head => (head, vec![]),
         };
         let Ty::Con(con) = head else {
-            return Err("a `Proof` type requires a named proposition or `NatEq<lhs, rhs>`".into());
+            return Err(proposition(
+                "a `Proof` type requires a named proposition or `NatEq<lhs, rhs>`".into(),
+            ));
         };
         if con.name == NAT_EQ {
-            let [left, right] = args
-                .try_into()
-                .map_err(|_: Vec<Ty>| "`NatEq` requires exactly two Nat arguments".to_owned())?;
+            let [left, right] = args.try_into().map_err(|_: Vec<Ty>| {
+                proposition("`NatEq` requires exactly two Nat arguments".into())
+            })?;
             return Ok(nat_equality(
-                annotation_nat_term(left, &check_nat)?,
-                annotation_nat_term(right, &check_nat)?,
+                annotation_nat_term(left, &check_nat, span)?,
+                annotation_nat_term(right, &check_nat, span)?,
             ));
         }
-        let predicate = self.resolve(&con.name)?;
+        let predicate = self.resolve(&con.name).map_err(proposition)?;
         let indices = args
             .into_iter()
             .map(|arg| check_nat(arg).map(Ty::Nat))
             .collect::<Result<_, _>>()?;
-        predicate.apply(indices)
+        predicate.apply(indices).map_err(proposition)
     }
 }
 
@@ -345,18 +355,22 @@ impl NatOperation {
 
 fn annotation_nat_term(
     term: Ty,
-    check_nat: &impl Fn(Ty) -> Result<NatIndex, String>,
-) -> Result<Ty, String> {
+    check_nat: &impl Fn(Ty) -> Result<NatIndex, TypeError>,
+    span: TextRange,
+) -> Result<Ty, TypeError> {
     if let Ty::App(head, args) = term {
         if let Ty::Con(con) = head.as_ref() {
             if let Some(operation) = NatOperation::from_name(&con.name) {
                 let args = args
                     .into_iter()
-                    .map(|arg| annotation_nat_term(arg, check_nat))
+                    .map(|arg| annotation_nat_term(arg, check_nat, span))
                     .collect::<Result<_, _>>()?;
                 return operation
                     .apply(args)
-                    .ok_or_else(|| format!("incorrect number of Nat arguments to `{}`", con.name));
+                    .ok_or_else(|| TypeError::InvalidIndex {
+                        reason: format!("incorrect number of Nat arguments to `{}`", con.name),
+                        span,
+                    });
             }
         }
         check_nat(Ty::App(head, args)).map(Ty::Nat)
@@ -374,7 +388,7 @@ pub(crate) struct ProofValue {
 pub(crate) struct ProofValues {
     pub predicates: ProofPredicates,
     pub values: Vec<ProofValue>,
-    pub errors: Vec<(TextRange, String)>,
+    pub errors: Vec<TypeError>,
 }
 
 pub(crate) fn collect(tree: &SourceFile, import_ctx: &ImportContext) -> ProofValues {
@@ -417,7 +431,14 @@ pub(crate) fn collect(tree: &SourceFile, import_ctx: &ImportContext) -> ProofVal
                 }
                 declarations.extend(file.declarations.into_iter().map(|decl| (start, decl)))
             }
-            Err(error) => errors.push((source_range(start, error.span), error.message)),
+            Err(mut error) => {
+                // At its place in the file, as are the block's declarations.
+                error.span = shift(start, error.span);
+                if let Some((_, related)) = &mut error.related {
+                    *related = shift(start, *related);
+                }
+                errors.push(TypeError::LogicSyntax { error });
+            }
         }
     }
 
@@ -458,7 +479,7 @@ pub(crate) fn collect(tree: &SourceFile, import_ctx: &ImportContext) -> ProofVal
     }
 
     let mut values = Vec::new();
-    let mut exported = FxHashSet::default();
+    let mut exported = FxHashMap::default();
     for (start, declaration) in &declarations {
         let Declaration::Theorem {
             name,
@@ -479,14 +500,23 @@ pub(crate) fn collect(tree: &SourceFile, import_ctx: &ImportContext) -> ProofVal
             Some(schema)
         };
         let span = source_range(*start, *span);
-        let result = if !exported.insert(name) {
-            Err(format!("duplicate proof value `{name}`"))
+        let result = if let Some(&first) = exported.get(name) {
+            Err(TypeError::DuplicateProofValue {
+                name: name.clone(),
+                first,
+                span,
+            })
         } else if !proof_names.contains(name.as_str()) {
-            Err(format!(
-                "exported theorem `{name}` requires an embedded proof"
-            ))
+            exported.insert(name, span);
+            Err(TypeError::MissingEmbeddedProof {
+                theorem: name.clone(),
+                span,
+            })
         } else {
-            callable.map_or_else(|| closed_proposition(proposition, &predicates, sorts), Ok)
+            exported.insert(name, span);
+            callable
+                .map_or_else(|| closed_proposition(proposition, &predicates, sorts), Ok)
+                .map_err(|reason| TypeError::InvalidProposition { reason, span })
         };
         match result {
             Ok(ty) => values.push(ProofValue {
@@ -494,7 +524,7 @@ pub(crate) fn collect(tree: &SourceFile, import_ctx: &ImportContext) -> ProofVal
                 ty,
                 span,
             }),
-            Err(message) => errors.push((span, message)),
+            Err(error) => errors.push(error),
         }
     }
     ProofValues {
@@ -504,11 +534,17 @@ pub(crate) fn collect(tree: &SourceFile, import_ctx: &ImportContext) -> ProofVal
     }
 }
 
-fn source_range(start: TextSize, span: mesh_common::span::Span) -> TextRange {
+fn source_range(start: TextSize, span: Span) -> TextRange {
     TextRange::new(
         start + TextSize::from(span.start),
         start + TextSize::from(span.end),
     )
+}
+
+/// `span`, of a block body that starts at `start`, in the file.
+fn shift(start: TextSize, span: Span) -> Span {
+    let range = source_range(start, span);
+    Span::new(range.start().into(), range.end().into())
 }
 
 fn named(term: &Term, expected: &str) -> bool {
@@ -840,7 +876,9 @@ end",
         let proofs = collect(&source.tree(), &ImportContext::empty());
         assert!(proofs.values.is_empty());
         assert!(
-            matches!(&proofs.errors[..], [(_, message)] if message.contains("`unchecked` requires an embedded proof"))
+            matches!(&proofs.errors[..], [TypeError::MissingEmbeddedProof { theorem, .. }] if theorem == "unchecked"),
+            "{:?}",
+            proofs.errors
         );
     }
 
@@ -859,7 +897,7 @@ end",
         );
         let checked = check(&source);
         assert!(
-            matches!(&checked.errors[..], [crate::error::TypeError::Mismatch { expected, found, .. }]
+            matches!(&checked.errors[..], [TypeError::Mismatch { expected, found, .. }]
                 if expected.to_string() == "2" && found.to_string() == "1"),
             "{:?}",
             checked.errors,
@@ -874,7 +912,7 @@ end",
         assert!(
             checked.errors.iter().any(|error| matches!(
                 error,
-                crate::error::TypeError::InvalidIndex { reason, .. }
+                TypeError::InvalidIndex { reason, .. }
                     if reason.contains("expected a Nat index")
             )),
             "{:?}",
@@ -976,7 +1014,9 @@ end";
         let proofs = collect(&parse(source).tree(), &ImportContext::empty());
         assert!(proofs.values.is_empty());
         assert!(
-            matches!(&proofs.errors[..], [(_, message)] if message.contains("requires an embedded proof"))
+            matches!(&proofs.errors[..], [TypeError::MissingEmbeddedProof { theorem, .. }] if theorem == "available"),
+            "{:?}",
+            proofs.errors
         );
 
         let shadowed = source.replace(
@@ -986,5 +1026,64 @@ end";
         let proofs = collect(&parse(&shadowed).tree(), &ImportContext::empty());
         assert!(proofs.errors.is_empty(), "{:?}", proofs.errors);
         assert!(proofs.values.is_empty());
+    }
+
+    fn range_of(source: &str, needle: &str) -> TextRange {
+        let start = source.find(needle).unwrap() as u32;
+        TextRange::new(start.into(), (start + needle.len() as u32).into())
+    }
+
+    #[test]
+    fn a_logic_syntax_error_is_at_its_place_in_the_file() {
+        let source = "fn before() = 1\nlogic do\n  theorem two() do 2 = 2 end\nend\n";
+        let proofs = collect(&parse(source).tree(), &ImportContext::empty());
+        let [TypeError::LogicSyntax { error }] = &proofs.errors[..] else {
+            panic!("{:?}", proofs.errors);
+        };
+        assert_eq!(error.code, mesh_diagnostics::Code::LogicSyntax);
+        assert_eq!(error.message, "expected `end`, found `=`");
+        let equals = source.find(" = 2").unwrap() as u32 + 1;
+        assert_eq!(error.span, Span::new(equals, equals + 1));
+        let opened = source.find("do 2").unwrap() as u32;
+        assert_eq!(
+            error.related,
+            Some(("block opened here".into(), Span::new(opened, opened + 2)))
+        );
+    }
+
+    #[test]
+    fn a_second_export_of_a_name_points_at_the_first() {
+        let source = "logic do
+  pub theorem two() do 2 == 2 end
+  proof two do refl end
+  pub theorem two() do 1 + 1 == 2 end
+end";
+        let proofs = collect(&parse(source).tree(), &ImportContext::empty());
+        let [TypeError::DuplicateProofValue { name, first, span }] = &proofs.errors[..] else {
+            panic!("{:?}", proofs.errors);
+        };
+        assert_eq!(name, "two");
+        assert_eq!(*first, range_of(source, "pub theorem two() do 2 == 2 end"));
+        assert_eq!(
+            *span,
+            range_of(source, "pub theorem two() do 1 + 1 == 2 end")
+        );
+    }
+
+    #[test]
+    fn an_exported_statement_without_a_proof_type_is_an_invalid_proposition() {
+        let source = "logic do
+  pub theorem yes() do true end
+  proof yes do refl end
+end";
+        let proofs = collect(&parse(source).tree(), &ImportContext::empty());
+        let [TypeError::InvalidProposition { reason, span }] = &proofs.errors[..] else {
+            panic!("{:?}", proofs.errors);
+        };
+        assert_eq!(
+            reason,
+            "an exported theorem requires a named Nat proposition"
+        );
+        assert_eq!(*span, range_of(source, "pub theorem yes() do true end"));
     }
 }

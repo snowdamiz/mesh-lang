@@ -931,7 +931,7 @@ TryFrom/TryInto is for fallible conversions. For infallible conversions, use [Fr
 
 ## Resource Types
 
-A resource type is affine: each of its values can be moved at most once. Use one for a value that stands for something that must not be duplicated, such as an open connection or key material. The compiler tracks every resource and reports misuse as error E0053 (`resource ownership violation`).
+A resource type is affine: each of its values can be moved at most once. Use one for a value that stands for something that must not be duplicated, such as an open connection or key material. The compiler reports move and borrow violations as E0053 (`resource-ownership-violation`). It reports operations that cannot keep a resource under one owner as E0101 (`resource-crosses-boundary`).
 
 ```mesh
 resource struct Session do

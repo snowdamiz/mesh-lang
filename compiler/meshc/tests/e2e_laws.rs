@@ -180,6 +180,7 @@ fn rejects_invalid_inventory_and_signatures() {
     write(root, "invalid.law", RETRY_LAW);
     write(root, "copy.law", RETRY_LAW);
     let duplicate = list(root);
+    assert_eq!(diagnostics(&duplicate)[0]["code"], "V0101");
     for diagnostic in ["Duplicate law", "copy.law:3", "invalid.law:3"] {
         fails(&duplicate, diagnostic);
     }
@@ -282,6 +283,49 @@ fn dotted_imports_build_in_either_order_and_list_both_checked_targets() {
         &list(root),
         "public function `second` is defined in more than one module",
     );
+}
+
+/// A program that does not lower leaves every law unverified, and its own
+/// diagnostic, at its place, says why once.
+#[test]
+fn a_lowering_failure_is_reported_once_as_itself() {
+    let dir = project();
+    let root = dir.path();
+    write(
+        root,
+        "main.mpl",
+        "actor worker() do\n  receive do\n    _ -> ()\n  end\nend\n\nsupervisor Sup do\n  strategy: one_for_one\n  max_restarts: 3\n  max_seconds: 5\n\n  child w do\n    start: fn -> spawn grouped(worker) end\n    restart: permanent\n    shutdown: 5000\n  end\nend\n\nfn main() do\n  let sup = spawn(Sup)\nend\n",
+    );
+    write(root, "policy.law", RETRY_LAW);
+    let out = on_cli("verify", root)
+        .arg("--json")
+        .env("MESH_VERIFY_Z3", root.join("unavailable-solver"))
+        .output()
+        .unwrap();
+    let report = read_json(&out, false);
+    let laws = report["laws"].as_array().unwrap();
+    assert!(!laws.is_empty(), "{report}");
+    for law in laws {
+        assert_eq!(law["status"], "unverified", "{law}");
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let diagnostics: Vec<Value> = stderr
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}")))
+        .collect();
+    let codes: Vec<&str> = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["E0106"], "{stderr}");
+    assert!(
+        diagnostics[0]["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("main.mpl"),
+        "{stderr}"
+    );
+    assert_eq!(diagnostics[0]["line"], 13, "{stderr}");
 }
 
 #[test]
@@ -455,7 +499,19 @@ fn proves_retry_and_replays_the_capped_counterexample_on_the_native_program() {
         &POLICY.replace("remaining > 0", "remaining > 0 && remaining <= 8"),
     );
     budget_passes(root);
-    let proof = verify(root, false);
+    let output = on_cli("verify", root).arg("--json").output().unwrap();
+    let proof = read_json(&output, false);
+    let diagnostics = diagnostics(&output);
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0]["code"], "V0001");
+    assert!(diagnostics[0]["file"]
+        .as_str()
+        .unwrap()
+        .ends_with("laws/retry.law"));
+    assert!(diagnostics[0]["notes"][0]
+        .as_str()
+        .unwrap()
+        .contains("Counterexample:"));
     let verdict = &proof["laws"][0];
     assert_eq!(verdict["status"], "falsified");
     let status = verdict["inputs"]["status"].as_i64().unwrap();
@@ -551,6 +607,7 @@ fn checks_a_mesh_induction_proof_against_the_compiled_recursive_list_function() 
         .output()
         .unwrap();
     let unavailable = read_json(&absent, false);
+    assert_eq!(diagnostics(&absent)[0]["code"], "V0202");
     assert_eq!(unavailable["laws"][0]["status"], "unverified");
     assert!(unavailable["laws"][0]["reason"]
         .as_str()
@@ -1110,7 +1167,9 @@ end
         "laws/copy.law",
         &spec.replace("-> List<Int>\n", "-> List<Bool>\n"),
     );
-    fails(&list(root), "not an instance of its checked declaration");
+    let mismatched = list(root);
+    fails(&mismatched, "not an instance of its checked declaration");
+    assert_eq!(diagnostics(&mismatched)[0]["code"], "V0102");
 }
 
 #[test]
@@ -1805,14 +1864,20 @@ fn proves_that_compiled_sort_returns_an_ordered_permutation() {
     read_json(&inventory, true);
     fs::write(&baseline, inventory.stdout).unwrap();
     let check = |success| {
-        read_json(
-            &on_cli("verify", root)
-                .args(["--verdict", "--json", "--preserve"])
-                .arg(&baseline)
-                .output()
-                .unwrap(),
-            success,
-        )
+        let output = on_cli("verify", root)
+            .args(["--verdict", "--json", "--preserve"])
+            .arg(&baseline)
+            .output()
+            .unwrap();
+        let report = read_json(&output, success);
+        if success {
+            assert!(output.stderr.is_empty(), "{output:?}");
+        } else {
+            let failures = diagnostics(&output);
+            assert!(!failures.is_empty());
+            assert!(failures.iter().all(|failure| failure["code"] == "V0301"));
+        }
+        report
     };
     let report = check(true);
     assert_eq!(report["preservation"]["preserved"], true);
@@ -1873,6 +1938,7 @@ fn unverified_cases_report_unsupported_operations_and_solver_failures() {
         .env("MESH_VERIFY_Z3", root.join("unavailable-solver"))
         .output()
         .unwrap();
+    assert_eq!(diagnostics(&missing)[0]["code"], "V0201");
     let missing = read_json(&missing, false);
     assert_eq!(missing["laws"][0]["status"], "unverified");
     assert!(missing["laws"][0]["reason"]
@@ -1885,6 +1951,7 @@ fn unverified_cases_report_unsupported_operations_and_solver_failures() {
         .env("MESH_VERIFY_TIMEOUT_MS", "0")
         .output()
         .unwrap();
+    assert_eq!(diagnostics(&exhausted)[0]["code"], "V0203");
     let exhausted = read_json(&exhausted, false);
     assert_eq!(exhausted["laws"][0]["status"], "unverified");
     assert!(exhausted["laws"][0]["reason"]
@@ -1934,10 +2001,21 @@ fn unverified_ranges_use_the_helper_and_law_source_files() {
     let law = "from Policy import retry\n\n# δ is measured in bytes\nlaw retry(status :: Int, left :: Int) -> Bool do\n  left % 2 > 0\nend\n";
     write(root, "laws/retry.law", law);
 
-    let result = verify(root, false);
+    let output = on_cli("verify", root).arg("--json").output().unwrap();
+    let result = read_json(&output, false);
+    let diagnostics = diagnostics(&output);
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostic["code"], "V0003");
+    assert!(diagnostic["file"]
+        .as_str()
+        .unwrap()
+        .ends_with("laws/retry.law"));
     let location = &result["laws"][0]["unsupported_at"];
     assert_eq!(location["path"], "laws/retry.law");
     let start = law.find("left % 2").unwrap();
+    assert_eq!(diagnostic["spans"][0]["start"], start);
+    assert_eq!(diagnostic["spans"][0]["end"], start + "left % 2".len());
     assert_eq!(location["start"], start);
     assert_eq!(location["end"], start + "left % 2".len());
     assert_eq!(location["line"], 5);
@@ -2057,4 +2135,145 @@ fn authorized_429_requirement_change_fails_old_policy_then_verifies_the_update()
     write(root, "tests/budget.test.mpl", BUDGET_TEST);
     assert_eq!(verify(root, true)["laws"][0]["status"], "verified");
     budget_passes(root);
+}
+
+/// The diagnostics `meshc` wrote to stderr, one JSON object per line.
+fn diagnostics(out: &Output) -> Vec<Value> {
+    String::from_utf8_lossy(&out.stderr)
+        .lines()
+        .map(|line| {
+            serde_json::from_str(line)
+                .unwrap_or_else(|error| panic!("{error}: {}", artifacts::command_output_text(out)))
+        })
+        .collect()
+}
+
+/// `(line, col, label)` of each span of `diagnostic`.
+fn spans(diagnostic: &Value) -> Vec<(u64, u64, String)> {
+    diagnostic["spans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|span| {
+            (
+                span["line"].as_u64().unwrap(),
+                span["col"].as_u64().unwrap(),
+                span["label"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn law_and_logic_files_report_syntax_errors_with_their_codes_and_places() {
+    let dir = project();
+    let root = dir.path();
+    for (source, code, at) in [
+        (
+            "from Policy import retry\nlaw retry(status :: Int, left :: Int) -> Bool do\n  true\n",
+            "P0201",
+            vec![
+                (3, 7, "expected `end` here".to_owned()),
+                (2, 47, "block opened here".to_owned()),
+            ],
+        ),
+        (
+            "logic\ntheorem two() do 2 = 2 end\n",
+            "P0301",
+            vec![
+                (2, 20, "expected `end` here".to_owned()),
+                (2, 15, "block opened here".to_owned()),
+            ],
+        ),
+    ] {
+        write(root, "laws/retry.law", source);
+        let out = list(root);
+        assert!(!out.status.success());
+        let [diagnostic] = &diagnostics(&out)[..] else {
+            panic!("{}", artifacts::command_output_text(&out));
+        };
+        assert_eq!(diagnostic["code"], code, "{diagnostic}");
+        assert!(
+            diagnostic["file"]
+                .as_str()
+                .unwrap()
+                .ends_with("laws/retry.law"),
+            "{diagnostic}"
+        );
+        assert_eq!(spans(diagnostic), at, "{diagnostic}");
+    }
+}
+
+#[test]
+fn proof_and_logic_block_errors_have_their_own_codes_in_meshc_check() {
+    let dir = project();
+    let root = dir.path();
+    let meshc = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_meshc"))
+            .args(args)
+            .current_dir(root)
+            .output()
+            .unwrap()
+    };
+    let catalog = meshc(&["--json", "explain"]);
+    let catalog: Value = serde_json::from_slice(&catalog.stdout).unwrap();
+    for code in [
+        "P0301", "E0095", "E0096", "E0097", "E0098", "E0099", "E0100",
+    ] {
+        let entry = catalog["codes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["code"] == code)
+            .unwrap();
+        write(
+            root,
+            "example.mpl",
+            entry["example"]["bad"].as_str().unwrap(),
+        );
+        let bad = meshc(&["check", "example.mpl", "--json"]);
+        let found: Vec<_> = diagnostics(&bad)
+            .iter()
+            .map(|d| d["code"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(found, [code], "{}", artifacts::command_output_text(&bad));
+        assert_eq!(bad.status.code(), Some(1));
+        write(
+            root,
+            "example.mpl",
+            entry["example"]["fixed"].as_str().unwrap(),
+        );
+        let fixed = meshc(&["check", "example.mpl", "--json"]);
+        assert!(
+            fixed.status.success() && fixed.stderr.is_empty(),
+            "{code}: {}",
+            artifacts::command_output_text(&fixed)
+        );
+    }
+
+    write(
+        root,
+        "tests/order.test.mpl",
+        "describe(\"order\") do\n  test(\"first\") do\n    assert(true)\n  end\n  setup do\n  end\nend\n",
+    );
+    let out = meshc(&["check", "tests/order.test.mpl", "--tests", "--json"]);
+    let [diagnostic] = &diagnostics(&out)[..] else {
+        panic!("{}", artifacts::command_output_text(&out));
+    };
+    assert_eq!(diagnostic["code"], "P0401", "{diagnostic}");
+    assert!(
+        diagnostic["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("tests/order.test.mpl"),
+        "{diagnostic}"
+    );
+    assert_eq!(
+        spans(diagnostic),
+        [
+            (5, 3, "`setup` after a test".to_owned()),
+            (2, 3, "the describe's first test".to_owned()),
+        ],
+        "{diagnostic}"
+    );
 }

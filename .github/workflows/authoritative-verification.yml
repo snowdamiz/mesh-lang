@@ -211,8 +211,20 @@ jobs:
         run: |
           # Whole crates, not only --lib: the parser, type checker and formatter
           # keep their integration and snapshot tests beside the library, and
-          # the runtime's own suite covers the distribution transport.
-          cargo test --locked -p mesh-parser -p mesh-typeck -p mesh-codegen -p mesh-fmt -p mesh-lint
+          # the runtime's own suite covers the distribution transport. The
+          # catalog's structural and generated-artifact tests run here.
+          # The meshc catalog_examples suite runs each example through the CLI.
+          cargo test --locked -p mesh-common -p mesh-diagnostics -p mesh-lexer -p mesh-parser \
+            -p mesh-typeck -p mesh-pkg -p mesh-codegen -p mesh-fmt -p mesh-lint \
+            -p mesh-lsp -p mesh-repl -p mesh-test-rt -p meshpkg
+          cargo check --locked -p mesh-diagnostics --no-default-features
+          # Compiled programs render diagnostics without Ariadne: the runtime
+          # links mesh-diagnostics without its terminal feature.
+          runtime_dependencies="$(cargo tree --locked -p mesh-rt -p mesh-test-rt -e normal,build --prefix none)"
+          if grep -q '^ariadne ' <<<"$runtime_dependencies"; then
+            echo "mesh-rt or mesh-test-rt depends on ariadne" >&2
+            exit 1
+          fi
           cargo test --locked -p mesh-rt --lib --test library --test library_memory
           cargo build --workspace --locked
           # The fuzz crate is its own workspace and only runs at release:
@@ -228,7 +240,10 @@ jobs:
           # e2e_crypto_v2 and e2e_secret run the published crypto vectors
           # (ML-KEM, RFC 9578 blind RSA), the OpenSSL differential and the
           # secret-resource contract through compiled Mesh.
-          cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance --test e2e_library --test e2e_crypto_v2 --test e2e_secret
+          cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes \
+            --test e2e_performance --test e2e_library --test e2e_crypto_v2 --test e2e_secret \
+            --test catalog_examples --test e2e_lsp --test e2e_plaintext --test e2e_migrate \
+            --test e2e_supervisors
 
       - name: Check skill updates and verify policy laws
         shell: bash

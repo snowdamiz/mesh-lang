@@ -23,13 +23,14 @@ use crate::syntax::{
 /// Returns `None` if the cursor is not inside a call expression or the
 /// callee's type cannot be resolved.
 pub fn compute_signature_help(
-    source: &str,
     analysis: &AnalysisResult,
     position: &Position,
 ) -> Option<SignatureHelp> {
     // Tree offsets are source offsets.
-    let target =
-        rowan::TextSize::from(crate::analysis::position_to_offset(source, position)? as u32);
+    let target = rowan::TextSize::from(crate::analysis::position_to_offset(
+        &analysis.file,
+        position,
+    )? as u32);
     let root = analysis.parse.syntax();
     let tokens = root.token_at_offset(target);
     // The innermost call whose argument list holds the token after the
@@ -177,7 +178,7 @@ mod tests {
     fn sig_help_at(source: &str, line: u32, character: u32) -> Option<SignatureHelp> {
         let analysis = crate::analysis::analyze_document("file:///test.mpl", source, &[]);
         let position = Position { line, character };
-        compute_signature_help(source, &analysis, &position)
+        compute_signature_help(&analysis, &position)
     }
 
     /// Signature help at the end of `line`'s `marker`.

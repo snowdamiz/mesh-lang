@@ -11,3 +11,4 @@ expression: output
    │
    │ Help: join strings with `<>`, and lists with `++`
 ───╯
+  = E0006: meshc explain E0006 · skill diagnostics.md#e0006 · https://meshlang.dev/docs/errors/#e0006

@@ -1,9 +1,13 @@
 // Mesh lexer -- tokenizer for the Mesh programming language.
 
 mod cursor;
+mod error;
 
 use cursor::Cursor;
+use mesh_common::span::Span;
 use mesh_common::token::{keyword_from_str, Token, TokenKind};
+
+pub use error::{LexError, LexErrorKind, RegexError, SlotPipeError};
 
 /// Tracks what the lexer is currently doing.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,6 +37,8 @@ pub struct Lexer<'src> {
     pending: Vec<Token>,
     /// State stack for tracking nested lexing contexts.
     state_stack: Vec<LexerState>,
+    /// One per `Error` token produced so far, in token order.
+    errors: Vec<LexError>,
 }
 
 impl<'src> Lexer<'src> {
@@ -44,6 +50,7 @@ impl<'src> Lexer<'src> {
             emitted_eof: false,
             pending: Vec::new(),
             state_stack: vec![LexerState::Normal],
+            errors: Vec::new(),
         }
     }
 
@@ -52,6 +59,23 @@ impl<'src> Lexer<'src> {
     /// The returned vector includes the final `Eof` token.
     pub fn tokenize(source: &str) -> Vec<Token> {
         Lexer::new(source).collect()
+    }
+
+    /// [`tokenize`](Self::tokenize), with why each `Error` token was
+    /// rejected: the `n`th error is the `n`th `Error` token's, at its span.
+    pub fn tokenize_with_errors(source: &str) -> (Vec<Token>, Vec<LexError>) {
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.by_ref().collect();
+        (tokens, lexer.errors)
+    }
+
+    /// An `Error` token from `start` to `end`, rejected as `kind`.
+    fn error(&mut self, kind: LexErrorKind, start: u32, end: u32) -> Token {
+        self.errors.push(LexError {
+            kind,
+            span: Span::new(start, end),
+        });
+        Token::new(TokenKind::Error, start, end)
     }
 
     /// Current lexer state (top of stack).
@@ -133,7 +157,8 @@ impl<'src> Lexer<'src> {
                 if self.cursor.peek() == Some('r') {
                     self.lex_regex_literal(start)
                 } else {
-                    Token::new(TokenKind::Error, start, self.cursor.pos())
+                    let end = self.cursor.pos();
+                    self.error(LexErrorKind::InvalidRegex(RegexError::Start), start, end)
                 }
             }
 
@@ -152,7 +177,8 @@ impl<'src> Lexer<'src> {
             // ── Unknown character (error recovery) ──────────────────────
             _ => {
                 self.cursor.advance();
-                Token::new(TokenKind::Error, start, self.cursor.pos())
+                let end = self.cursor.pos();
+                self.error(LexErrorKind::UnknownCharacter, start, end)
             }
         }
     }
@@ -233,7 +259,8 @@ impl<'src> Lexer<'src> {
             self.cursor.advance();
             Token::new(TokenKind::AmpAmp, start, self.cursor.pos())
         } else {
-            Token::new(TokenKind::Error, start, self.cursor.pos())
+            let end = self.cursor.pos();
+            self.error(LexErrorKind::SingleAmpersand, start, end)
         }
     }
 
@@ -263,18 +290,27 @@ impl<'src> Lexer<'src> {
                 // Must be followed by '>'
                 if self.cursor.peek() == Some('>') {
                     self.cursor.advance(); // consume '>'
-                    if n == 0 {
-                        // |0> is invalid -- arguments are 1-indexed
-                        Token::new(TokenKind::Error, start, self.cursor.pos())
-                    } else if n == 1 {
-                        // |1> is invalid -- use |> instead
-                        Token::new(TokenKind::Error, start, self.cursor.pos())
-                    } else {
-                        Token::new(TokenKind::SlotPipe(n), start, self.cursor.pos())
+                    let end = self.cursor.pos();
+                    match n {
+                        0 => self.error(
+                            LexErrorKind::InvalidSlotPipe(SlotPipeError::Zero),
+                            start,
+                            end,
+                        ),
+                        1 => self.error(
+                            LexErrorKind::InvalidSlotPipe(SlotPipeError::One),
+                            start,
+                            end,
+                        ),
+                        _ => Token::new(TokenKind::SlotPipe(n), start, end),
                     }
                 } else {
-                    // Digits consumed but no '>' -- not a valid slot pipe, emit error
-                    Token::new(TokenKind::Error, start, self.cursor.pos())
+                    let end = self.cursor.pos();
+                    self.error(
+                        LexErrorKind::InvalidSlotPipe(SlotPipeError::Unclosed),
+                        start,
+                        end,
+                    )
                 }
             }
             _ => Token::new(TokenKind::Bar, start, self.cursor.pos()),
@@ -357,7 +393,8 @@ impl<'src> Lexer<'src> {
 
         // Expect opening '/'
         if self.cursor.peek() != Some('/') {
-            return Token::new(TokenKind::Error, start, self.cursor.pos());
+            let end = self.cursor.pos();
+            return self.error(LexErrorKind::InvalidRegex(RegexError::Start), start, end);
         }
         self.cursor.advance(); // consume '/'
 
@@ -367,8 +404,12 @@ impl<'src> Lexer<'src> {
         loop {
             match self.cursor.peek() {
                 None => {
-                    // Unterminated regex
-                    return Token::new(TokenKind::Error, start, self.cursor.pos());
+                    let end = self.cursor.pos();
+                    return self.error(
+                        LexErrorKind::InvalidRegex(RegexError::Unterminated),
+                        start,
+                        end,
+                    );
                 }
                 Some('/') if !prev_was_backslash => {
                     self.cursor.advance(); // consume closing '/'
@@ -391,9 +432,9 @@ impl<'src> Lexer<'src> {
                     self.cursor.advance();
                 }
                 Some(c) if c.is_ascii_alphabetic() => {
-                    // Invalid flag character -- consume it and return error
                     self.cursor.advance();
-                    return Token::new(TokenKind::Error, start, self.cursor.pos());
+                    let end = self.cursor.pos();
+                    return self.error(LexErrorKind::InvalidRegex(RegexError::Flag), start, end);
                 }
                 _ => break,
             }
@@ -464,8 +505,8 @@ impl<'src> Lexer<'src> {
         loop {
             match self.cursor.peek() {
                 None => {
-                    // Unterminated block comment
-                    return Token::new(TokenKind::Error, start, self.cursor.pos());
+                    let end = self.cursor.pos();
+                    return self.error(LexErrorKind::UnterminatedBlockComment, start, end);
                 }
                 Some('#') => {
                     self.cursor.advance();
@@ -610,10 +651,11 @@ impl<'src> Lexer<'src> {
                     let end = self.cursor.pos();
                     if end > start {
                         // Emit accumulated content first, then queue error
-                        self.pending.push(Token::new(TokenKind::Error, end, end));
+                        let error = self.error(LexErrorKind::UnterminatedString, end, end);
+                        self.pending.push(error);
                         return Token::new(TokenKind::StringContent, start, end);
                     }
-                    return Token::new(TokenKind::Error, start, end);
+                    return self.error(LexErrorKind::UnterminatedString, start, end);
                 }
                 Some('$') if self.cursor.peek_next() == Some('{') => {
                     let content_end = self.cursor.pos();
@@ -746,7 +788,7 @@ impl<'src> Lexer<'src> {
             // EOF inside interpolation -- error
             None => {
                 self.state_stack.pop();
-                Token::new(TokenKind::Error, start, start)
+                self.error(LexErrorKind::UnterminatedInterpolation, start, start)
             }
             Some('{') => {
                 self.set_interpolation_depth(brace_depth + 1);
@@ -929,6 +971,109 @@ mod tests {
     fn lex_bar_unchanged() {
         let tokens = Lexer::tokenize("|");
         assert_eq!(tokens[0].kind, TokenKind::Bar);
+    }
+
+    /// The errors of `source`, after checking that each is its `Error`
+    /// token's, in order.
+    fn errors(source: &str) -> Vec<(LexErrorKind, u32, u32)> {
+        let (tokens, errors) = Lexer::tokenize_with_errors(source);
+        let error_spans: Vec<_> = tokens
+            .iter()
+            .filter(|token| token.kind == TokenKind::Error)
+            .map(|token| token.span)
+            .collect();
+        let spans: Vec<_> = errors.iter().map(|error| error.span).collect();
+        assert_eq!(spans, error_spans, "{source:?}");
+        assert_eq!(tokens, Lexer::tokenize(source), "{source:?}");
+        errors
+            .iter()
+            .map(|error| (error.kind, error.span.start, error.span.end))
+            .collect()
+    }
+
+    #[test]
+    fn every_error_token_says_why() {
+        use LexErrorKind::*;
+        let cases: &[(&str, &[(LexErrorKind, u32, u32)])] = &[
+            ("~x", &[(InvalidRegex(RegexError::Start), 0, 1)]),
+            ("$", &[(UnknownCharacter, 0, 1)]),
+            ("1 ¤ 2", &[(UnknownCharacter, 2, 4)]),
+            ("a & b", &[(SingleAmpersand, 2, 3)]),
+            ("x |0> f", &[(InvalidSlotPipe(SlotPipeError::Zero), 2, 5)]),
+            ("x |1> f", &[(InvalidSlotPipe(SlotPipeError::One), 2, 5)]),
+            (
+                "x |3 f",
+                &[(InvalidSlotPipe(SlotPipeError::Unclosed), 2, 4)],
+            ),
+            ("~rx", &[(InvalidRegex(RegexError::Start), 0, 2)]),
+            ("~r/abc", &[(InvalidRegex(RegexError::Unterminated), 0, 6)]),
+            ("~r/a/x", &[(InvalidRegex(RegexError::Flag), 0, 6)]),
+            ("#= a #= b =#", &[(UnterminatedBlockComment, 0, 12)]),
+            ("\"abc", &[(UnterminatedString, 4, 4)]),
+            ("\"", &[(UnterminatedString, 1, 1)]),
+            (
+                "\"${x",
+                &[
+                    (UnterminatedInterpolation, 4, 4),
+                    (UnterminatedString, 4, 4),
+                ],
+            ),
+            (
+                "a & b $ c",
+                &[(SingleAmpersand, 2, 3), (UnknownCharacter, 6, 7)],
+            ),
+        ];
+        for (source, expected) in cases {
+            assert_eq!(errors(source), *expected, "{source:?}");
+        }
+    }
+
+    #[test]
+    fn valid_tokens_have_no_errors() {
+        assert_eq!(
+            errors("a && b |> f |2> g ~r/a\\/b/ims #= c =# \"${x}\""),
+            []
+        );
+    }
+
+    #[test]
+    fn messages_name_the_rejected_text() {
+        let message = |source: &str| {
+            let (tokens, errors) = Lexer::tokenize_with_errors(source);
+            let error = errors[0];
+            let token = tokens.iter().find(|t| t.kind == TokenKind::Error).unwrap();
+            let text = &source[token.span.start as usize..token.span.end as usize];
+            (error.kind.code().id(), error.kind.message(text))
+        };
+        assert_eq!(message("¤"), ("P0101", "unknown character `¤`".to_string()));
+        assert_eq!(
+            message("x |1> f"),
+            (
+                "P0105",
+                "`|1>` is not a pipe: `|>` pipes into the first argument".to_string()
+            )
+        );
+        assert_eq!(
+            message("x |4 f"),
+            (
+                "P0105",
+                "`|4` is not a pipe: a slot pipe ends with `>`, as in `|4>`".to_string()
+            )
+        );
+        assert_eq!(
+            message("~r/a/q"),
+            (
+                "P0106",
+                "unknown regex flag `q`: the flags are `i`, `m`, and `s`".to_string()
+            )
+        );
+        assert_eq!(
+            message("a & b"),
+            (
+                "P0107",
+                "`&` is not an operator: logical and is `&&` or `and`".to_string()
+            )
+        );
     }
 
     #[test]

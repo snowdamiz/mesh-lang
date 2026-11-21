@@ -11,3 +11,4 @@ expression: output
    │
    │ Help: this Pid accepts messages of type String
 ───╯
+  = E0014: meshc explain E0014 · skill diagnostics.md#e0014 · https://meshlang.dev/docs/errors/#e0014

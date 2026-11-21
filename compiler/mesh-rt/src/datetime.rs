@@ -201,7 +201,8 @@ mod tests {
         let week = 604_800_000;
         assert_eq!(mesh_datetime_diff(week, 0, mesh_str("week")), 1.0);
         let unknown = std::panic::catch_unwind(|| mesh_datetime_diff(0, 0, mesh_str("fortnight")));
-        let message = *unknown.unwrap_err().downcast::<String>().unwrap();
+        let panic = unknown.unwrap_err();
+        let message = crate::panic::MeshPanic::of(&*panic).unwrap().reason();
         assert!(
             message.contains("DateTime.diff: unknown unit \"fortnight\""),
             "{message}"

@@ -1599,6 +1599,7 @@ dependencies = [
  "inkwell",
  "insta",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-parser",
  "mesh-typeck",
  "rowan",
@@ -1612,6 +1613,19 @@ version = "0.1.8"
 dependencies = [
  "rustc-hash 2.1.1",
  "serde",
+]
+
+[[package]]
+name = "mesh-diagnostics"
+version = "0.1.8"
+dependencies = [
+ "ariadne",
+ "insta",
+ "mesh-common",
+ "proc-macro2",
+ "serde",
+ "serde_json",
+ "syn",
 ]
 
 [[package]]
@@ -1630,6 +1644,7 @@ version = "0.1.8"
 dependencies = [
  "insta",
  "mesh-common",
+ "mesh-diagnostics",
  "serde",
 ]
 
@@ -1637,6 +1652,8 @@ dependencies = [
 name = "mesh-lint"
 version = "0.1.8"
 dependencies = [
+ "mesh-common",
+ "mesh-diagnostics",
  "mesh-parser",
 ]
 
@@ -1645,8 +1662,10 @@ name = "mesh-lsp"
 version = "0.1.8"
 dependencies = [
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-fmt",
  "mesh-lexer",
+ "mesh-lint",
  "mesh-parser",
  "mesh-pkg",
  "mesh-typeck",
@@ -1664,6 +1683,7 @@ version = "0.1.8"
 dependencies = [
  "insta",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-lexer",
  "rowan",
  "serde",
@@ -1675,6 +1695,8 @@ version = "0.1.8"
 dependencies = [
  "git2",
  "mesh-common",
+ "mesh-diagnostics",
+ "mesh-lint",
  "mesh-parser",
  "mesh-typeck",
  "semver",
@@ -1683,6 +1705,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "toml",
+ "toml_edit 0.22.27",
  "ureq",
 ]
 
@@ -1693,6 +1716,7 @@ dependencies = [
  "inkwell",
  "mesh-codegen",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-lexer",
  "mesh-parser",
  "mesh-rt",
@@ -1722,6 +1746,7 @@ dependencies = [
  "libcrux-ml-kem",
  "libsqlite3-sys",
  "md-5",
+ "mesh-diagnostics",
  "mio",
  "openraft",
  "parking_lot",
@@ -1761,14 +1786,13 @@ dependencies = [
 name = "mesh-typeck"
 version = "0.1.8"
 dependencies = [
- "ariadne",
  "ena",
  "insta",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-parser",
  "rowan",
  "rustc-hash 2.1.1",
- "serde",
  "serde_json",
 ]
 
@@ -1776,12 +1800,12 @@ dependencies = [
 name = "meshc"
 version = "0.1.8"
 dependencies = [
- "ariadne",
  "base64",
  "clap",
  "libc",
  "mesh-codegen",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-fmt",
  "mesh-lexer",
  "mesh-lint",
@@ -1811,6 +1835,7 @@ dependencies = [
  "dirs",
  "flate2",
  "indicatif",
+ "mesh-diagnostics",
  "mesh-pkg",
  "serde",
  "serde_json",

@@ -4,6 +4,7 @@ use mesh_codegen::mir::{
     BinOp, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule, MirPattern, MirSourceSpan,
     MirType, UnaryOp,
 };
+use mesh_diagnostics::Code;
 use serde_json::Value as Json;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
@@ -33,11 +34,19 @@ pub(crate) enum Verdict {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct EncodingError {
+    pub(crate) code: Code,
     pub(crate) reason: String,
     pub(crate) location: Option<MirSourceSpan>,
 }
 
 impl EncodingError {
+    pub(crate) fn new(code: Code, reason: impl Into<String>) -> Self {
+        Self {
+            code,
+            reason: reason.into(),
+            location: None,
+        }
+    }
     fn context(mut self, context: &str) -> Self {
         self.reason = format!("{context}: {}", self.reason);
         self
@@ -49,12 +58,15 @@ impl EncodingError {
     }
 }
 
+impl std::fmt::Display for EncodingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.reason)
+    }
+}
+
 impl From<String> for EncodingError {
     fn from(reason: String) -> Self {
-        Self {
-            reason,
-            location: None,
-        }
+        Self::new(Code::LawUnsupported, reason)
     }
 }
 
@@ -64,18 +76,19 @@ impl From<&str> for EncodingError {
     }
 }
 
+impl From<mesh_diagnostics::Diagnostic> for EncodingError {
+    fn from(error: mesh_diagnostics::Diagnostic) -> Self {
+        crate::diagnostic_reason(&error).into()
+    }
+}
+
 pub(crate) fn check(
     program: &[MirModule],
     target: &MirFunction,
     expected: &MirFunction,
 ) -> Result<Verdict, EncodingError> {
     let query = Query::encode(program, target, expected)?;
-    Ok(
-        match Solver::configured().and_then(|solver| solver.solve(&query)) {
-            Ok(verdict) => verdict,
-            Err(reason) => Verdict::Unverified { reason },
-        },
-    )
+    Solver::configured()?.solve(&query)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -559,11 +572,12 @@ struct Solver {
 }
 
 impl Solver {
-    fn configured() -> Result<Self, String> {
+    fn configured() -> Result<Self, EncodingError> {
         let executable = std::env::var_os("MESH_VERIFY_Z3").unwrap_or_else(|| "z3".into());
         Ok(Self::new(
             executable,
-            verify_process::timeout_ms(verify_process::DEFAULT_TIMEOUT_MS)?,
+            verify_process::timeout_ms(verify_process::DEFAULT_TIMEOUT_MS)
+                .map_err(|reason| EncodingError::new(Code::InvalidArguments, reason))?,
         ))
     }
 
@@ -574,22 +588,25 @@ impl Solver {
         }
     }
 
-    fn remaining(&self) -> Result<Duration, String> {
+    fn remaining(&self) -> Result<Duration, EncodingError> {
         self.deadline
             .checked_duration_since(Instant::now())
             .filter(|duration| !duration.is_zero())
-            .ok_or_else(|| "solver time budget exhausted".to_string())
+            .ok_or_else(solver_timeout)
     }
 
-    fn solve(&self, query: &Query<'_>) -> Result<Verdict, String> {
+    fn solve(&self, query: &Query<'_>) -> Result<Verdict, EncodingError> {
         let version = self.run(&["--version"], "")?;
         let mut words = version.split_whitespace();
         if (words.next(), words.next(), words.next())
             != (Some("Z3"), Some("version"), Some(Z3_VERSION))
         {
-            return Err(format!(
-                "mesh verify requires Z3 {Z3_VERSION}; found {}",
-                version.trim()
+            return Err(EncodingError::new(
+                Code::SolverMissing,
+                format!(
+                    "mesh verify requires Z3 {Z3_VERSION}; found {}",
+                    version.trim()
+                ),
             ));
         }
 
@@ -602,29 +619,42 @@ impl Solver {
                 // The SMT-LIB get-value command is valid only after sat.
                 let witness = self.run_query(query, &query.value_request())?;
                 match solver_response(&witness) {
-                    Some(("sat", model)) => parse_witness(query, model),
-                    Some(("unknown", _)) => {
-                        Err("Z3 returned unknown while extracting a witness".into())
-                    }
-                    _ => Err(
-                        "Z3 did not reproduce its satisfiable verdict for witness extraction"
-                            .into(),
-                    ),
+                    Some(("sat", model)) => parse_witness(query, model)
+                        .map_err(|reason| EncodingError::new(Code::LawUnverified, reason)),
+                    Some(("unknown", _)) => Err(EncodingError::new(
+                        Code::LawUnverified,
+                        "Z3 returned unknown while extracting a witness",
+                    )),
+                    _ => Err(EncodingError::new(
+                        Code::LawUnverified,
+                        "Z3 did not reproduce its satisfiable verdict for witness extraction",
+                    )),
                 }
             }
-            Some(("unknown", reason)) => Err(format!(
-                "Z3 returned unknown ({})",
-                reason
+            Some(("unknown", reason)) => {
+                let reason = reason
                     .trim()
                     .strip_prefix("(:reason-unknown \"")
                     .and_then(|reason| reason.strip_suffix("\")"))
-                    .unwrap_or("reason unavailable"),
+                    .unwrap_or("reason unavailable");
+                let code = if reason == "timeout" {
+                    Code::SolverTimeout
+                } else {
+                    Code::LawUnverified
+                };
+                Err(EncodingError::new(
+                    code,
+                    format!("Z3 returned unknown ({reason})"),
+                ))
+            }
+            _ => Err(EncodingError::new(
+                Code::LawUnverified,
+                "unexpected Z3 check-sat response",
             )),
-            _ => Err("unexpected Z3 check-sat response".into()),
         }
     }
 
-    fn run_query(&self, query: &Query<'_>, follow_up: &str) -> Result<String, String> {
+    fn run_query(&self, query: &Query<'_>, follow_up: &str) -> Result<String, EncodingError> {
         let timeout_ms = self.remaining()?.as_millis().max(1);
         let input = format!(
             "(set-option :timeout {timeout_ms})\n{}{follow_up}",
@@ -633,16 +663,21 @@ impl Solver {
         self.run(&["-in", "-smt2"], &input)
     }
 
-    fn run(&self, args: &[&str], input: &str) -> Result<String, String> {
+    fn run(&self, args: &[&str], input: &str) -> Result<String, EncodingError> {
         let output = verify_process::run(
             Command::new(&self.executable).args(args),
             input,
             self.deadline,
         )
         .map_err(|error| match error {
-            RunError::Start(error) => executable_error(&self.executable, error),
-            RunError::Io(error) => format!("Z3 I/O: {error}"),
-            RunError::Timeout => "solver time budget exhausted".into(),
+            RunError::Start(error) => EncodingError::new(
+                Code::SolverMissing,
+                executable_error(&self.executable, error),
+            ),
+            RunError::Io(error) => {
+                EncodingError::new(Code::LawUnverified, format!("Z3 I/O: {error}"))
+            }
+            RunError::Timeout => solver_timeout(),
         })?;
         if !output.status.success() || !output.stderr.trim().is_empty() {
             let detail = if output.stderr.trim().is_empty() {
@@ -651,10 +686,17 @@ impl Solver {
                 &output.stderr
             };
             let brief: String = detail.trim().chars().take(240).collect();
-            return Err(format!("Z3 failed ({}): {brief}", output.status));
+            return Err(EncodingError::new(
+                Code::LawUnverified,
+                format!("Z3 failed ({}): {brief}", output.status),
+            ));
         }
         Ok(output.stdout)
     }
+}
+
+fn solver_timeout() -> EncodingError {
+    EncodingError::new(Code::SolverTimeout, "solver time budget exhausted")
 }
 
 fn solver_response(output: &str) -> Option<(&str, &str)> {
@@ -905,10 +947,11 @@ end
         )
         .solve(&query)
         .unwrap_err();
-        assert!(missing.contains("could not start Z3"), "{missing}");
+        assert_eq!(missing.code, Code::SolverMissing);
+        assert!(missing.reason.contains("could not start Z3"), "{missing:?}");
         assert_eq!(
             Solver::new(absent.into_os_string(), 0).solve(&query),
-            Err("solver time budget exhausted".into()),
+            Err(solver_timeout()),
         );
     }
 
@@ -916,10 +959,7 @@ end
     #[test]
     fn kills_and_reaps_a_solver_that_exceeds_its_deadline() {
         let solver = Solver::new("/bin/sleep".into(), 30);
-        assert_eq!(
-            solver.run(&["10"], ""),
-            Err("solver time budget exhausted".into())
-        );
+        assert_eq!(solver.run(&["10"], ""), Err(solver_timeout()));
     }
 
     #[test]
@@ -960,7 +1000,9 @@ end
 
         let mut query = query(&program, &law);
         query.assertions.insert_str(0, "(set-option :rlimit 1)\n");
-        let reason = Solver::configured().unwrap().solve(&query).unwrap_err();
+        let failure = Solver::configured().unwrap().solve(&query).unwrap_err();
+        assert_eq!(failure.code, Code::LawUnverified);
+        let reason = failure.reason;
         assert!(
             reason.contains("Z3 returned unknown") && reason.contains("resource limit"),
             "{reason}"

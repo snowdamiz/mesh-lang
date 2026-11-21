@@ -68,6 +68,6 @@ Each helper takes the option or result first and can be called by module, throug
 
 ## Panics
 
-`panic(message)` has return type `Never`, so it fits any branch. It prints `Mesh panic: message` and ends the current actor, which a supervisor can restart. In `main` it ends the program with status 101. A missing `Map.get` key, an out-of-range `List.get`, and integer division by zero also panic.
+`panic(message)` has return type `Never`, so it fits any branch. It reports the message as an `R0001` diagnostic on standard error (a JSON line when `MESH_DIAGNOSTICS=json`) and ends the current actor, which a supervisor can restart. In `main` it ends the program with status 101. A missing `Map.get` key, an out-of-range `List.get`, and integer division by zero also panic.
 
 See [traits](traits.md) for `From` and `TryFrom`, the [error handling walkthrough](https://meshlang.dev/docs/language-basics/#error-handling), and the [standard-library helper signatures](https://meshlang.dev/docs/stdlib/#option-and-result).

@@ -1,7 +1,7 @@
 //! `Plaintext<T>`: message content that may leave the program only through
 //! a seal, an `@display` export or a `declassify` with a written reason.
 
-use mesh_typeck::diagnostics::{render_diagnostic, DiagnosticOptions};
+use mesh_diagnostics::{Format, Reporter, SourceFile};
 use mesh_typeck::error::TypeError;
 use mesh_typeck::{ImportContext, ModuleExports, TypeckResult};
 
@@ -23,19 +23,11 @@ fn violations(result: &TypeckResult) -> Vec<&str> {
 }
 
 fn rendered(source: &str, result: &TypeckResult) -> String {
-    result
-        .errors
-        .iter()
-        .map(|error| {
-            render_diagnostic(
-                error,
-                source,
-                "main.mpl",
-                &DiagnosticOptions::colorless(),
-                None,
-            )
-        })
-        .collect()
+    let file = SourceFile::new("main.mpl", source);
+    let mut out = Vec::new();
+    let _ = Reporter::new(Format::Human { color: false }, &mut out)
+        .emit_all(result.errors.iter().map(|error| error.to_diagnostic(&file)));
+    String::from_utf8(out).unwrap()
 }
 
 fn assert_clean(source: &str) -> TypeckResult {

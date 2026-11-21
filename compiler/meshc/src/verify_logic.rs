@@ -1,5 +1,6 @@
 //! Binds Mesh logic files to checked program declarations and their proofs.
 
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 use std::{collections::HashSet, fmt::Write as _};
 
 #[path = "verify_logic_render.rs"]
@@ -53,6 +54,7 @@ pub(super) struct Theorem {
 }
 
 pub(super) struct ProofFailure {
+    pub(super) code: Code,
     pub(super) reason: String,
     pub(super) location: Option<Location>,
 }
@@ -60,7 +62,18 @@ pub(super) struct ProofFailure {
 impl From<String> for ProofFailure {
     fn from(reason: String) -> Self {
         Self {
+            code: Code::LawUnsupported,
             reason,
+            location: None,
+        }
+    }
+}
+
+impl From<verify_solver::EncodingError> for ProofFailure {
+    fn from(error: verify_solver::EncodingError) -> Self {
+        Self {
+            code: error.code,
+            reason: error.reason,
             location: None,
         }
     }
@@ -72,10 +85,11 @@ impl Program {
         project: &ProjectData,
         checked: &CheckedProject,
         path: &str,
-        source: &str,
-    ) -> Result<(), String> {
-        let lines = LineIndex::new(source);
-        self.add_parsed(project, checked, logic::parse(source), |span| {
+        source: &SourceFile,
+        parsed: logic::LogicFile,
+    ) -> Result<(), Diagnostic> {
+        let lines = LineIndex::new(source.text().expect("logic source text"));
+        self.add_parsed(project, checked, parsed, source, |span| {
             Location::new(path, &lines, span)
         })
     }
@@ -84,7 +98,8 @@ impl Program {
         &mut self,
         project: &ProjectData,
         checked: &CheckedProject,
-    ) -> Result<(), String> {
+        files: &[SourceFile],
+    ) -> Result<(), Diagnostic> {
         for &id in &project.compilation_order {
             let index = id.0 as usize;
             let tree = project.module_parses[index].tree();
@@ -96,19 +111,24 @@ impl Program {
             let source = &project.module_sources[index];
             let lines = LineIndex::new(source);
             for block in blocks {
-                let range = block
-                    .body_range()
-                    .ok_or_else(|| format!("Invalid logic block in {path}"))?;
+                let range = block.body_range().ok_or_else(|| {
+                    Diagnostic::internal(format!("Invalid logic block in {path}"))
+                })?;
                 let start = u32::from(range.start());
                 let end = u32::from(range.end());
                 let body = &source[start as usize..end as usize];
-                self.add_parsed(project, checked, logic::parse_body(body), |span| {
+                let at = |span: Span| {
                     Location::new(
                         &path,
                         &lines,
                         Span::new(start + span.start, start + span.end),
                     )
+                };
+                // The frontend reports a syntax error in the block first.
+                let parsed = logic::parse_body(body).map_err(|error| {
+                    Diagnostic::internal(format!("{}: {}", at(error.span), error.message))
                 })?;
+                self.add_parsed(project, checked, parsed, &files[index], at)?;
             }
         }
         Ok(())
@@ -118,22 +138,27 @@ impl Program {
         &mut self,
         project: &ProjectData,
         checked: &CheckedProject,
-        parsed: Result<logic::LogicFile, mesh_parser::ParseError>,
+        parsed: logic::LogicFile,
+        source: &SourceFile,
         at: impl Fn(Span) -> Location,
-    ) -> Result<(), String> {
-        let parsed = parsed.map_err(|error| format!("{}: {}", at(error.span), error.message))?;
+    ) -> Result<(), Diagnostic> {
         for import in parsed.imports {
-            let candidate = bind_import(project, checked, &import, at(import.span))?;
+            let candidate = bind_import(project, checked, &import, at(import.span), source)?;
             let name = import.alias.unwrap_or(import.name);
             if let Some(previous) = self.imports.get(&name) {
                 if previous.module_id != candidate.module_id
                     || previous.source_name != candidate.source_name
                     || previous.binding != candidate.binding
                 {
-                    return Err(format!(
-                        "{}: Logic import `{}` is ambiguous with the import at {}",
-                        candidate.location, name, previous.location
-                    ));
+                    return Err(Diagnostic::in_file(
+                        Code::LawBindingUnresolved,
+                        source,
+                        format!(
+                            "Logic import `{name}` is ambiguous with the import at {}",
+                            previous.location
+                        ),
+                    )
+                    .at(candidate.location.span(), ""));
                 }
             } else {
                 self.imports.insert(name, candidate);
@@ -149,9 +174,12 @@ impl Program {
                 &mut self.specifications
             };
             if let Some((_, previous)) = collection.get(&name) {
-                return Err(format!(
-                    "{location}: Duplicate logic declaration `{name}` at {previous}"
-                ));
+                return Err(Diagnostic::in_file(
+                    Code::LawBindingUnresolved,
+                    source,
+                    format!("Duplicate logic declaration `{name}` at {previous}"),
+                )
+                .at(location.span(), ""));
             }
             collection.insert(name, (declaration, location));
         }
@@ -227,6 +255,7 @@ impl Program {
         for (name, import) in &self.imports {
             let registry = &checked.typeck[import.module_id.0 as usize].type_registry;
             let at_import = |error: verify_solver::EncodingError| ProofFailure {
+                code: error.code,
                 reason: format!("{}: {}", import.location, error.reason),
                 location: error
                     .location
@@ -533,11 +562,17 @@ fn bind_import(
     checked: &CheckedProject,
     import: &logic::LogicImport,
     location: Location,
-) -> Result<Import, String> {
+    source: &SourceFile,
+) -> Result<Import, Diagnostic> {
     let module_name = &import.module;
     let name = import.name.as_str();
     let reference = format!("{module_name}.{name}");
-    let invalid = |reason| format!("{location}: Logic import `{reference}` {reason}");
+    let at = |code, reason: &str| {
+        Diagnostic::in_file(code, source, format!("Logic import `{reference}` {reason}"))
+            .at(location.span(), "")
+    };
+    let invalid = |reason| at(Code::LawBindingUnresolved, reason);
+    let signature_mismatch = |reason| at(Code::LawSignatureMismatch, reason);
     let module_id = project
         .graph
         .resolve(module_name)
@@ -567,15 +602,16 @@ fn bind_import(
         let signature = match &import.signature {
             Some((params, result)) => {
                 let parse_type = |term| {
-                    source_type(term, registry)
-                        .ok_or_else(|| invalid("has an unsupported type in its signature"))
+                    source_type(term, registry).ok_or_else(|| {
+                        signature_mismatch("has an unsupported type in its signature")
+                    })
                 };
                 let chosen = Ty::Fun(
                     params.iter().map(parse_type).collect::<Result<_, _>>()?,
                     Box::new(parse_type(result)?),
                 );
                 if !signature_instance(&function.ty, &chosen, &mut BTreeMap::new()) {
-                    return Err(invalid(
+                    return Err(signature_mismatch(
                         "has a signature that is not an instance of its checked declaration",
                     ));
                 }
@@ -583,13 +619,15 @@ fn bind_import(
             }
             None if specialized => {
                 if exports.function_constraints.contains_key(name) {
-                    return Err(invalid(
+                    return Err(signature_mismatch(
                         "needs an explicit concrete signature for its constrained type parameters",
                     ));
                 }
                 let (parameters, signature) = rigid_signature(&function.ty, &function.vars)
                     .ok_or_else(|| {
-                        invalid("needs an explicit concrete signature for its type parameters")
+                        signature_mismatch(
+                            "needs an explicit concrete signature for its type parameters",
+                        )
                     })?;
                 return Ok(Import {
                     module: module.name.clone(),
@@ -649,8 +687,9 @@ fn bind_import(
             });
         }
         if import.arguments.len() != arity {
-            return Err(format!(
-                "{location}: Logic import `{reference}` needs {arity} concrete type arguments"
+            return Err(at(
+                Code::LawSignatureMismatch,
+                &format!("needs {arity} concrete type arguments"),
             ));
         }
         let registry = &checked.typeck[idx].type_registry;
@@ -757,8 +796,9 @@ fn lower_template(
     )
     .map_err(|error| {
         format!(
-            "{}: Could not lower the generic template: {error}",
-            import.location
+            "{}: Could not lower the generic template: {}",
+            import.location,
+            crate::diagnostic_reason(&error)
         )
     })?;
     let entries = entries

@@ -1,120 +1,275 @@
-//! Document analysis: parse, type-check, and produce LSP diagnostics.
+//! Document analysis: the shared frontend's view of a document, and the
+//! positions an editor speaks in.
 //!
-//! This module bridges the Mesh compiler frontend (parser + typeck) with the
-//! LSP protocol. It converts byte-offset spans into LSP line/character
-//! positions (0-based, UTF-16 code units per the LSP spec) and translates
-//! parse errors and type errors into `lsp_types::Diagnostic`.
+//! A document is checked as `meshc check` checks it, and each file that
+//! parses is linted as `meshc lint` lints it: in its project, with the
+//! editor's open documents read in place of their files, or on its own
+//! outside any project. LSP positions are 0-based lines and UTF-16 code
+//! units, converted against the analyzed text.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rowan::TextRange;
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range, Url};
+use tower_lsp::lsp_types::{self, Position, Range, Url};
 
-use mesh_common::module_graph::ModuleId;
-use mesh_pkg::manifest::{plan_cluster_declarations, resolve_entrypoint, Manifest};
-use mesh_pkg::project::{
-    build_import_context, build_project, check_project, single_source_project, ProjectData,
-};
-use mesh_typeck::diagnostics::{error_code, repair_hint};
-use mesh_typeck::error::TypeError;
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
+use mesh_pkg::frontend::{self, CheckOptions, Frontend, Target};
+use mesh_pkg::manifest::DEFAULT_ENTRYPOINT;
 use mesh_typeck::ty::Ty;
 use mesh_typeck::TypeckResult;
 
 /// The result of analyzing a Mesh document.
 pub struct AnalysisResult {
-    /// LSP diagnostics (parse errors + type errors + warnings).
+    /// Everything the frontend found: the document's, and those of the
+    /// project's other files.
     pub diagnostics: Vec<Diagnostic>,
-    /// The parse result, kept for further queries.
-    pub parse: mesh_parser::Parse,
-    /// The type-check result, kept for hover queries.
-    pub typeck: TypeckResult,
     /// The text analyzed, which `parse` and `typeck` describe: the document,
     /// or for a test file the program `meshc test` makes of it, which keeps
     /// every line and column of the document but not its byte offsets.
     /// Positions are converted against it.
-    pub source: String,
+    pub file: SourceFile,
+    /// The parse result, kept for further queries.
+    pub parse: mesh_parser::Parse,
+    /// The type-check result, kept for hover queries.
+    pub typeck: TypeckResult,
+    /// Whether the project loaded before checking (false when manifest
+    /// loading or test preprocessing failed early).
+    pub loaded: bool,
+    /// The project's entry file path when a project analysis loaded it.
+    pub entry: Option<PathBuf>,
 }
 
-/// Analyze a Mesh document: parse, type-check, and produce diagnostics.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum ProjectRole {
+    Project,
+    TestHelper,
+    TestFile,
+}
+
+pub(crate) fn project_role(root: &Path, path: &Path) -> ProjectRole {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return ProjectRole::Project;
+    };
+    let is_test_file = relative
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".test.mpl"));
+    if is_test_file {
+        ProjectRole::TestFile
+    } else if relative.starts_with("tests") {
+        ProjectRole::TestHelper
+    } else {
+        ProjectRole::Project
+    }
+}
+
+impl AnalysisResult {
+    pub fn source(&self) -> &str {
+        self.file.text().unwrap_or_default()
+    }
+
+    /// The diagnostics to publish on the document, whose URI is `uri`.
+    pub fn lsp_diagnostics(&self, uri: &Url) -> Vec<lsp_types::Diagnostic> {
+        let uri_for = |path: &Path| {
+            if path == self.file.path() {
+                Some(uri.clone())
+            } else {
+                Url::from_file_path(path).ok()
+            }
+        };
+        crate::diagnostics::by_uri(&self.diagnostics, &self.file, &uri_for)
+            .remove(uri)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|diagnostic| diagnostic.lsp)
+            .collect()
+    }
+}
+
+/// Analyze a Mesh document: the frontend's diagnostics, and the parse and
+/// type check of the document for queries.
 ///
 /// This is the main entry point called by the LSP server on didOpen/didChange.
 /// When the URI belongs to a Mesh project (an ancestor contains `mesh.toml`),
-/// analysis uses project-aware import resolution with open-document overlays so
-/// project files behave like the real compiler path instead of isolated
-/// single-file snippets.
+/// the project is checked, with `open_documents` read in place of their files.
 pub fn analyze_document(
     uri: &str,
     source: &str,
     open_documents: &[(String, String)],
 ) -> AnalysisResult {
-    match analyze_project_document(uri, source, open_documents) {
-        ProjectAnalysis::Success(result) | ProjectAnalysis::Failed(result) => result,
-        ProjectAnalysis::NotProject => analyze_single_document(source),
+    let path = canonical_file_path(uri);
+    if let Some(path) = &path {
+        if let Some(root) = find_project_root(path) {
+            return analyze_in_project(&root, path, source, open_documents);
+        }
     }
+    // A buffer that is not a file is named as a lone file is built.
+    let path = path.unwrap_or_else(|| PathBuf::from(DEFAULT_ENTRYPOINT));
+    let target = Target::Source {
+        path: &path,
+        text: source,
+    };
+    let checked = check_and_lint(target, &CheckOptions::cli());
+    // A lone file's module is named by its file name.
+    let module = Path::new(path.file_name().unwrap_or(DEFAULT_ENTRYPOINT.as_ref()));
+    module_analysis(checked, None, module).unwrap_or_else(|(diagnostics, loaded, entry)| {
+        analysis_alone(diagnostics, &path, source, loaded, entry)
+    })
 }
 
-/// A document outside any project, analyzed as meshc builds a directory
-/// holding only it.
-fn analyze_single_document(source: &str) -> AnalysisResult {
-    match single_source_project(source) {
-        Ok(project) => analyze_module(&project, ModuleId(0)),
-        // A module block that conflicts with another, or an import cycle.
-        Err(error) => project_failure_analysis(source, error),
+fn analyze_in_project(
+    root: &Path,
+    path: &Path,
+    source: &str,
+    open_documents: &[(String, String)],
+) -> AnalysisResult {
+    let mut overlays = HashMap::new();
+    for (open_uri, open_source) in open_documents {
+        if let Some(open_path) = canonical_file_path(open_uri) {
+            overlays.insert(open_path, open_source.clone());
+        }
     }
-}
+    overlays.insert(path.to_path_buf(), source.to_string());
 
-/// The document parsed and checked on its own, when it cannot be built.
-fn analyze_source_alone(source: &str) -> AnalysisResult {
-    let parse = mesh_parser::parse(source);
-    let typeck = mesh_typeck::check(&parse);
-    let diagnostics = diagnostics_from_parse_and_typeck(source, &parse, &typeck);
-
-    AnalysisResult {
-        diagnostics,
-        parse,
-        typeck,
-        source: source.to_string(),
-    }
-}
-
-enum ProjectAnalysis {
-    Success(AnalysisResult),
-    Failed(AnalysisResult),
-    NotProject,
-}
-
-fn project_failure_analysis(source: &str, message: impl Into<String>) -> AnalysisResult {
-    let mut result = analyze_source_alone(source);
-    result.diagnostics.insert(0, project_diagnostic(message));
-    result
-}
-
-/// Convert a byte offset to an LSP Position (0-based line, 0-based UTF-16 character offset).
-///
-/// The LSP specification requires positions in UTF-16 code units. For ASCII-only
-/// sources, UTF-16 offset == byte offset within the line. For non-ASCII sources,
-/// we count UTF-16 code units properly.
-/// The LSP range of a syntax tree range: tree offsets are source offsets.
-pub fn text_range_to_range(source: &str, range: rowan::TextRange) -> Range {
-    Range::new(
-        offset_to_position(source, range.start().into()),
-        offset_to_position(source, range.end().into()),
+    let relative = path
+        .strip_prefix(root)
+        .expect("the project root is an ancestor of the document");
+    // A test file is not a module: `meshc test` compiles it on its own,
+    // with the project's modules, the helpers under `tests/` and the test
+    // builtins.
+    let role = project_role(root, path);
+    let options = CheckOptions {
+        test_builtins: matches!(role, ProjectRole::TestFile | ProjectRole::TestHelper),
+        ..CheckOptions::editor(&overlays)
+    };
+    let target = if role == ProjectRole::TestFile {
+        Target::TestFile { root, test: path }
+    } else {
+        Target::Project { root }
+    };
+    let checked = check_and_lint(target, &options);
+    let entry_root = (role != ProjectRole::TestFile).then_some(root);
+    module_analysis(checked, entry_root, relative).unwrap_or_else(
+        |(mut diagnostics, loaded, entry)| {
+            if loaded {
+                diagnostics.insert(
+                    0,
+                    Diagnostic::in_file(
+                        Code::ModuleUnreadable,
+                        &SourceFile::new(path, source),
+                        format!(
+                            "Document '{}' was not discovered under project root '{}'",
+                            path.display(),
+                            root.display()
+                        ),
+                    )
+                    .with_repair(
+                        "Place the document in the project outside hidden directories and nested packages.",
+                    ),
+                );
+            }
+            analysis_alone(diagnostics, path, source, loaded, entry)
+        },
     )
 }
 
-pub fn offset_to_position(source: &str, offset: usize) -> Position {
-    let offset = offset.min(source.len());
-    let before = &source[..offset];
+/// What `meshc check` reports for `target`, with what `meshc lint` reports
+/// for each of its files that parses.
+fn check_and_lint(target: Target<'_>, options: &CheckOptions<'_>) -> Frontend {
+    let mut checked = frontend::check(target, options);
+    let lints: Vec<Diagnostic> = checked
+        .lintable()
+        .flat_map(|(parse, file)| mesh_lint::lint(parse, file))
+        .collect();
+    checked.extend(lints);
+    checked
+}
 
-    let line = before.matches('\n').count() as u32;
-    let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
-    let line_text = &source[line_start..offset];
+/// The module at `relative` (to the project root) of the checked project;
+/// the diagnostics alone when the project did not load or has no such
+/// module.
+fn module_analysis(
+    checked: Frontend,
+    entry_root: Option<&Path>,
+    relative: &Path,
+) -> Result<AnalysisResult, (Vec<Diagnostic>, bool, Option<PathBuf>)> {
+    let Frontend {
+        diagnostics,
+        analysis,
+    } = checked;
+    let Some(mut analysis) = analysis else {
+        return Err((diagnostics, false, None));
+    };
+    let entry = entry_root.and_then(|root| {
+        analysis.entry.as_ref().map(|rel| {
+            let path = root.join(rel);
+            std::fs::canonicalize(&path).unwrap_or(path)
+        })
+    });
+    let Some(idx) = analysis
+        .project
+        .graph
+        .modules
+        .iter()
+        .position(|module| module.path == relative)
+    else {
+        return Err((diagnostics, true, entry));
+    };
+    Ok(AnalysisResult {
+        diagnostics,
+        file: analysis.files.swap_remove(idx),
+        parse: analysis.project.module_parses.swap_remove(idx),
+        typeck: analysis.checked.typeck.swap_remove(idx),
+        loaded: true,
+        entry,
+    })
+}
 
-    // Count UTF-16 code units for LSP spec compliance.
-    let character: u32 = line_text.chars().map(|c| c.len_utf16() as u32).sum();
+/// `diagnostics`, with the document parsed and checked on its own for
+/// queries.
+fn analysis_alone(
+    diagnostics: Vec<Diagnostic>,
+    path: &Path,
+    source: &str,
+    loaded: bool,
+    entry: Option<PathBuf>,
+) -> AnalysisResult {
+    let parse = mesh_parser::parse(source);
+    let typeck = mesh_typeck::check(&parse);
+    AnalysisResult {
+        diagnostics,
+        file: SourceFile::new(path, source),
+        parse,
+        typeck,
+        loaded,
+        entry,
+    }
+}
 
-    Position { line, character }
+/// The LSP range of a syntax tree range: tree offsets are source offsets.
+pub fn text_range_to_range(file: &SourceFile, range: TextRange) -> Range {
+    Range::new(
+        offset_to_position(file, range.start().into()),
+        offset_to_position(file, range.end().into()),
+    )
+}
+
+/// The LSP position of byte `offset` of `file`; past the end, the end.
+pub fn offset_to_position(file: &SourceFile, offset: usize) -> Position {
+    let end = file.text().map_or(0, str::len);
+    let (line, character) = file
+        .utf16_position(offset.min(end) as u32)
+        .unwrap_or_default();
+    Position::new(line, character)
+}
+
+/// The byte offset of an LSP position in `file`. A character past the end
+/// of its line is the line's end; a line past the end of the file has no
+/// offset.
+pub fn position_to_offset(file: &SourceFile, position: &Position) -> Option<usize> {
+    file.offset_of_utf16(position.line, position.character)
+        .map(|offset| offset as usize)
 }
 
 /// Look up the inferred type at a given LSP position.
@@ -122,11 +277,11 @@ pub fn offset_to_position(source: &str, offset: usize) -> Position {
 /// Searches the typeck result's type map for the smallest range that contains
 /// the given byte offset. Returns the type formatted as a string.
 pub fn type_at_position(
-    source: &str,
+    file: &SourceFile,
     typeck: &TypeckResult,
     position: &Position,
 ) -> Option<String> {
-    let offset = position_to_offset(source, position)?;
+    let offset = position_to_offset(file, position)?;
     let target_offset = rowan::TextSize::from(offset as u32);
 
     // Find the smallest range containing this offset.
@@ -148,274 +303,38 @@ pub fn type_at_position(
     best.map(|(_, ty)| ty.with_named_vars().to_string())
 }
 
-/// Convert an LSP Position back to a byte offset in the source.
-///
-/// Public wrapper for go-to-definition support.
-/// Convert an LSP Position back to a byte offset in the source. A character
-/// past the end of its line is the line's end; a line past the end of the
-/// source has no offset.
-pub fn position_to_offset(source: &str, position: &Position) -> Option<usize> {
-    let mut line_start = 0;
-    for _ in 0..position.line {
-        line_start += source[line_start..].find('\n')? + 1;
-    }
-    let rest = &source[line_start..];
-    let line = &rest[..rest.find('\n').unwrap_or(rest.len())];
-    // Characters are UTF-16 code units.
-    let mut utf16 = 0u32;
-    for (byte_idx, c) in line.char_indices() {
-        if utf16 >= position.character {
-            return Some(line_start + byte_idx);
-        }
-        utf16 += c.len_utf16() as u32;
-    }
-    Some(line_start + line.len())
-}
-
-/// Convert a TypeError into an LSP Diagnostic.
-fn type_error_to_diagnostic(
-    source: &str,
-    error: &TypeError,
-    severity: DiagnosticSeverity,
-) -> Option<Diagnostic> {
-    let range = text_range_to_range(source, error.span()?);
-    let mut message = error.to_string();
-    if let Some(hint) = repair_hint(error) {
-        message.push('\n');
-        message.push_str(&hint);
-    }
-    Some(Diagnostic {
-        range,
-        severity: Some(severity),
-        code: Some(NumberOrString::String(error_code(error).to_string())),
-        source: Some("mesh".to_string()),
-        message,
-        ..Default::default()
-    })
-}
-
-fn diagnostics_from_parse_and_typeck(
-    source: &str,
-    parse: &mesh_parser::Parse,
-    typeck: &TypeckResult,
-) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-
-    for error in parse.errors() {
-        let start = offset_to_position(source, error.span.start as usize);
-        let end = offset_to_position(source, error.span.end as usize);
-        diagnostics.push(Diagnostic {
-            range: Range::new(start, end),
-            severity: Some(DiagnosticSeverity::ERROR),
-            source: Some("mesh".to_string()),
-            message: error.message.clone(),
-            ..Default::default()
-        });
-    }
-
-    for error in &typeck.errors {
-        if let Some(diag) = type_error_to_diagnostic(source, error, DiagnosticSeverity::ERROR) {
-            diagnostics.push(diag);
-        }
-    }
-
-    for warning in &typeck.warnings {
-        if let Some(diag) = type_error_to_diagnostic(source, warning, DiagnosticSeverity::WARNING) {
-            diagnostics.push(diag);
-        }
-    }
-
-    diagnostics
-}
-
-fn analyze_project_document(
-    uri: &str,
-    source: &str,
-    open_documents: &[(String, String)],
-) -> ProjectAnalysis {
-    let Some(doc_path) = canonical_file_path(uri) else {
-        return ProjectAnalysis::NotProject;
-    };
-    let Some(project_root) = find_project_root(&doc_path) else {
-        return ProjectAnalysis::NotProject;
-    };
-    let relative_path = doc_path
-        .strip_prefix(&project_root)
-        .expect("the project root is an ancestor of the document")
-        .to_path_buf();
-
-    let mut overlays = HashMap::new();
-    for (open_uri, open_source) in open_documents {
-        if let Some(path) = canonical_file_path(open_uri) {
-            overlays.insert(path, open_source.clone());
-        }
-    }
-    overlays.insert(doc_path.clone(), source.to_string());
-
-    // The root is where a mesh.toml is.
-    let manifest = match Manifest::from_file(&project_root.join("mesh.toml")) {
-        Ok(manifest) => manifest,
-        Err(error) => return ProjectAnalysis::Failed(project_failure_analysis(source, error)),
-    };
-
-    let entry_relative_path = match resolve_entrypoint(&project_root, Some(&manifest)) {
-        Ok(entry_relative_path) => entry_relative_path,
-        Err(error) => {
-            return ProjectAnalysis::Failed(project_failure_analysis(source, error));
-        }
-    };
-
-    // A test file is not a module: `meshc test` compiles it on its own,
-    // with the project's modules, the helpers under `tests/` and the test
-    // builtins.
-    let is_test_file = relative_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".test.mpl"));
-    let with_test_helpers = is_test_file || relative_path.starts_with("tests");
-    let native_bindings = match mesh_pkg::resolve_native_bindings(&project_root) {
-        Ok(bindings) => bindings,
-        Err(error) => return ProjectAnalysis::Failed(project_failure_analysis(source, error)),
-    };
-    let project = match build_project(
-        &project_root,
-        &entry_relative_path,
-        &native_bindings,
-        with_test_helpers,
-        &|path| read_source_with_overlays(path, &overlays),
-    ) {
-        Ok(project) => project,
-        Err(error) => {
-            return ProjectAnalysis::Failed(project_failure_analysis(source, error));
-        }
-    };
-    if is_test_file {
-        return analyze_test_document(&project, source);
-    }
-
-    let Some(current_id) = project
-        .graph
-        .modules
-        .iter()
-        .find(|module| module.path == relative_path)
-        .map(|module| module.id)
-    else {
-        return ProjectAnalysis::Failed(project_failure_analysis(
-            source,
-            format!(
-                "Document '{}' was not discovered under project root '{}'",
-                doc_path.display(),
-                project_root.display()
-            ),
-        ));
-    };
-    ProjectAnalysis::Success(analyze_module(&project, current_id))
-}
-
-/// One module of a built project: its own diagnostics and those of the
-/// `module ... do ... end` blocks in its file (modules of their own over the
-/// same text), and, when the project has no other errors, its clustered
-/// declarations'.
-fn analyze_module(project: &ProjectData, current_id: ModuleId) -> AnalysisResult {
-    let mut all_typeck = check_project(project, false).typeck;
-    let has_project_errors = project
-        .module_parses
-        .iter()
-        .any(|parse| !parse.errors().is_empty())
-        || all_typeck.iter().any(|typeck| !typeck.errors.is_empty());
-
-    let path = &project.graph.get(current_id).path;
-    let current_idx = current_id.0 as usize;
-    let current_source = project.module_sources[current_idx].clone();
-    let inline_errors: Vec<_> = project
-        .graph
-        .modules
-        .iter()
-        .filter(|module| module.path == *path && module.id != current_id)
-        .flat_map(|module| all_typeck[module.id.0 as usize].errors.iter().cloned())
-        .collect();
-    let mut current_typeck = all_typeck.swap_remove(current_idx);
-    current_typeck.errors.extend(inline_errors);
-    let current_parse = mesh_parser::parse(&current_source);
-    let mut diagnostics =
-        diagnostics_from_parse_and_typeck(&current_source, &current_parse, &current_typeck);
-
-    if !has_project_errors {
-        if let Err(issues) = plan_cluster_declarations(&project.graph, &project.module_parses) {
-            // Each `@cluster` decorator in this file that cannot run.
-            diagnostics.extend(issues.into_iter().filter(|issue| &issue.file == path).map(
-                |issue| Diagnostic {
-                    range: Range::new(
-                        offset_to_position(&current_source, issue.span.start as usize),
-                        offset_to_position(&current_source, issue.span.end as usize),
-                    ),
-                    ..project_diagnostic(issue.to_string())
-                },
-            ));
-        }
-    }
-
-    AnalysisResult {
-        diagnostics,
-        parse: current_parse,
-        typeck: current_typeck,
-        source: current_source,
-    }
-}
-
-/// A `.test.mpl` document, analyzed as the program `meshc test` makes of it.
-fn analyze_test_document(project: &ProjectData, source: &str) -> ProjectAnalysis {
-    let program = match mesh_parser::test_harness::preprocess_test_source(source) {
-        Ok(program) => program,
-        Err(message) => return ProjectAnalysis::Failed(project_failure_analysis(source, message)),
-    };
-    let all_exports = check_project(project, true).exports;
-    let parse = mesh_parser::parse(&program);
-    let mut import_ctx = build_import_context(&project.graph, &all_exports, &parse);
-    import_ctx.current_module = Some("Main".to_string());
-    import_ctx.test_builtins = true;
-    let typeck = mesh_typeck::check_with_imports(&parse, &import_ctx);
-    let diagnostics = diagnostics_from_parse_and_typeck(&program, &parse, &typeck);
-    ProjectAnalysis::Success(AnalysisResult {
-        diagnostics,
-        parse,
-        typeck,
-        source: program,
-    })
-}
-
-fn project_diagnostic(message: impl Into<String>) -> Diagnostic {
-    Diagnostic {
-        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-        severity: Some(DiagnosticSeverity::ERROR),
-        source: Some("mesh".to_string()),
-        message: message.into(),
-        ..Default::default()
-    }
-}
-
-fn read_source_with_overlays(
-    path: &Path,
-    overlays: &HashMap<PathBuf, String>,
-) -> Result<String, String> {
-    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    if let Some(source) = overlays.get(&canonical) {
-        return Ok(source.clone());
-    }
-
-    std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path.display(), e))
-}
-
-fn canonical_file_path(uri: &str) -> Option<PathBuf> {
+pub(crate) fn canonical_file_path(uri: &str) -> Option<PathBuf> {
     let url = Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
-    Some(std::fs::canonicalize(&path).unwrap_or(path))
+    Some(canonicalize_lossy(path))
+}
+
+fn canonicalize_lossy(path: PathBuf) -> PathBuf {
+    if let Ok(canon) = std::fs::canonicalize(&path) {
+        return canon;
+    }
+    let mut suffix = Vec::new();
+    let mut current = path.as_path();
+    while let Some(name) = current.file_name() {
+        suffix.push(name.to_os_string());
+        let Some(parent) = current.parent() else {
+            return path;
+        };
+        if let Ok(mut canon) = std::fs::canonicalize(parent) {
+            for component in suffix.into_iter().rev() {
+                canon.push(component);
+            }
+            return canon;
+        }
+        current = parent;
+    }
+    path
 }
 
 /// The nearest directory above the document holding a mesh.toml: one of
 /// its ancestors as spelled, so the document's path is under it even when
 /// the document is not on disk and could not be canonicalized.
-fn find_project_root(path: &Path) -> Option<PathBuf> {
+pub(crate) fn find_project_root(path: &Path) -> Option<PathBuf> {
     path.ancestors()
         .skip(1)
         .find(|dir| dir.join("mesh.toml").exists())
@@ -425,8 +344,43 @@ fn find_project_root(path: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mesh_pkg::manifest::DEFAULT_ENTRYPOINT;
-    use std::path::PathBuf;
+    use mesh_pkg::manifest::{resolve_entrypoint, Manifest};
+    use mesh_pkg::project::build_project;
+    use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
+
+    /// An analysis, with the diagnostics published on the document.
+    struct Published {
+        diagnostics: Vec<Diagnostic>,
+        file: SourceFile,
+        parse: mesh_parser::Parse,
+        typeck: TypeckResult,
+    }
+
+    fn published(uri: &str, source: &str, open_documents: &[(String, String)]) -> Published {
+        let result = analyze_document(uri, source, open_documents);
+        Published {
+            diagnostics: result.lsp_diagnostics(&Url::parse(uri).unwrap()),
+            file: result.file,
+            parse: result.parse,
+            typeck: result.typeck,
+        }
+    }
+
+    fn published_on(open_path: &Path, source: &str, target_path: &Path) -> Vec<Diagnostic> {
+        let result = analyze_document(&file_uri(open_path), source, &[]);
+        let uri_for = |path: &Path| Url::from_file_path(path).ok();
+        let target_uri = Url::from_file_path(target_path.canonicalize().unwrap()).unwrap();
+        crate::diagnostics::by_uri(&result.diagnostics, &result.file, &uri_for)
+            .remove(&target_uri)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|diagnostic| diagnostic.lsp)
+            .collect()
+    }
+
+    fn file(text: &str) -> SourceFile {
+        SourceFile::new("", text)
+    }
 
     fn package_manifest(name: &str) -> String {
         format!(
@@ -473,7 +427,7 @@ mod tests {
         (tmp, project_dir, open_path, source)
     }
 
-    fn diagnostic_messages(result: &AnalysisResult) -> Vec<&str> {
+    fn diagnostic_messages(result: &Published) -> Vec<&str> {
         result
             .diagnostics
             .iter()
@@ -607,7 +561,7 @@ mod tests {
         let link = tmp.path().join("link");
         std::os::unix::fs::symlink(&project_dir, &link).unwrap();
 
-        let result = analyze_document(&file_uri(&link.join("draft.mpl")), "fn draft() = 1\n", &[]);
+        let result = published(&file_uri(&link.join("draft.mpl")), "fn draft() = 1\n", &[]);
         assert!(
             diagnostic_messages(&result)[0].contains("was not discovered under project root"),
             "{:?}",
@@ -658,7 +612,7 @@ mod tests {
             1
         );
 
-        let result = analyze_document(&file_uri(&open_path), &source, &[]);
+        let result = published(&file_uri(&open_path), &source, &[]);
         let messages = diagnostic_messages(&result);
         assert!(
             messages.is_empty(),
@@ -721,7 +675,7 @@ mod tests {
             "root main.mpl should not stay executable"
         );
 
-        let result = analyze_document(&file_uri(&open_path), &source, &[]);
+        let result = published(&file_uri(&open_path), &source, &[]);
         let messages = diagnostic_messages(&result);
         assert!(
             messages.is_empty(),
@@ -733,7 +687,7 @@ mod tests {
     #[test]
     fn missing_configured_entry_reports_project_diagnostic() {
         let manifest = entrypoint_manifest("broken-entry", "lib/start.mpl");
-        let (_tmp, _project_dir, open_path, source) = write_mesh_project(
+        let (_tmp, project_dir, open_path, source) = write_mesh_project(
             Some(&manifest),
             &[(
                 "app.mpl",
@@ -742,28 +696,22 @@ mod tests {
             "app.mpl",
         );
 
-        let result = analyze_document(&file_uri(&open_path), &source, &[]);
-        let messages = diagnostic_messages(&result);
-
-        assert!(
-            messages
-                .iter()
-                .any(|message| message.contains("Entrypoint 'lib/start.mpl'")),
-            "missing configured entry should surface as a project diagnostic, got: {:?}",
-            messages
-        );
+        let diagnostics = published_on(&open_path, &source, &project_dir.join("mesh.toml"));
+        let [diagnostic] = diagnostics.as_slice() else {
+            panic!("expected one manifest diagnostic, got {diagnostics:?}");
+        };
         assert_eq!(
-            messages.len(),
-            1,
-            "clean standalone files should only receive the project diagnostic, got: {:?}",
-            messages
+            diagnostic.code,
+            Some(NumberOrString::String("M0003".into()))
         );
+        assert!(diagnostic.message.contains("Entrypoint 'lib/start.mpl'"));
+        assert_eq!(diagnostic.range.start, Position::new(0, 0));
     }
 
     #[test]
     fn invalid_manifest_entrypoint_reports_project_diagnostic() {
         let manifest = entrypoint_manifest("escaping-entry", "../escape.mpl");
-        let (_tmp, _project_dir, open_path, source) = write_mesh_project(
+        let (_tmp, project_dir, open_path, source) = write_mesh_project(
             Some(&manifest),
             &[(
                 "lib/support.mpl",
@@ -772,22 +720,16 @@ mod tests {
             "lib/support.mpl",
         );
 
-        let result = analyze_document(&file_uri(&open_path), &source, &[]);
-        let messages = diagnostic_messages(&result);
-
-        assert!(
-            messages
-                .iter()
-                .any(|message| message.contains("stay within the project root")),
-            "invalid manifest entrypoint should surface as a project diagnostic, got: {:?}",
-            messages
-        );
+        let diagnostics = published_on(&open_path, &source, &project_dir.join("mesh.toml"));
+        let [diagnostic] = diagnostics.as_slice() else {
+            panic!("expected one manifest diagnostic, got {diagnostics:?}");
+        };
         assert_eq!(
-            messages.len(),
-            1,
-            "clean standalone files should only receive the project diagnostic, got: {:?}",
-            messages
+            diagnostic.code,
+            Some(NumberOrString::String("M0002".into()))
         );
+        assert!(diagnostic.message.contains("stay within the project root"));
+        assert_eq!(diagnostic.range.start, Position::new(3, 13));
     }
 
     // ── Clustered cutover contract ────────────────────────────────────
@@ -799,7 +741,7 @@ mod tests {
             source_declared_public_work_source(),
         );
 
-        let result = analyze_document(&file_uri(&work_path), &source, &[]);
+        let result = published(&file_uri(&work_path), &source, &[]);
         let messages = result
             .diagnostics
             .iter()
@@ -820,27 +762,18 @@ mod tests {
             source_declared_public_work_source(),
         );
 
-        let result = analyze_document(&file_uri(&work_path), &source, &[]);
-        let diag = result
-            .diagnostics
-            .iter()
-            .find(|diag| {
-                diag.message
-                    .contains("`[cluster]` manifest sections are no longer supported")
-                    && diag.message.contains("mesh.toml")
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "expected removed-manifest diagnostic, got: {:?}",
-                    result
-                        .diagnostics
-                        .iter()
-                        .map(|diag| (&diag.message, diag.range))
-                        .collect::<Vec<_>>()
-                )
-            });
-
-        assert_eq!(diag.range.start, Position::new(0, 0));
+        let diagnostics = published_on(&work_path, &source, &work_path.with_file_name("mesh.toml"));
+        let [diagnostic] = diagnostics.as_slice() else {
+            panic!("expected one manifest diagnostic, got {diagnostics:?}");
+        };
+        assert_eq!(
+            diagnostic.code,
+            Some(NumberOrString::String("M0002".into()))
+        );
+        assert!(diagnostic
+            .message
+            .contains("`[cluster]` manifest sections are no longer supported"));
+        assert_eq!(diagnostic.range.start, Position::new(6, 0));
     }
 
     #[test]
@@ -850,7 +783,7 @@ mod tests {
             removed_clustered_work_source(),
         );
 
-        let result = analyze_document(&file_uri(&work_path), &source, &[]);
+        let result = published(&file_uri(&work_path), &source, &[]);
         let diag = result
             .diagnostics
             .iter()
@@ -885,7 +818,7 @@ mod tests {
             source_declared_public_work_source(),
         );
 
-        let result = analyze_document(&file_uri(&work_path), &source, &[]);
+        let result = published(&file_uri(&work_path), &source, &[]);
         let messages = result
             .diagnostics
             .iter()
@@ -906,7 +839,7 @@ mod tests {
             source_declared_private_work_source(),
         );
 
-        let result = analyze_document(&file_uri(&work_path), &source, &[]);
+        let result = published(&file_uri(&work_path), &source, &[]);
         let diag = result
             .diagnostics
             .iter()
@@ -936,27 +869,18 @@ mod tests {
             source_declared_public_work_source(),
         );
 
-        let result = analyze_document(&file_uri(&work_path), &source, &[]);
-        let diag = result
-            .diagnostics
-            .iter()
-            .find(|diag| {
-                diag.message
-                    .contains("`[cluster]` manifest sections are no longer supported")
-                    && diag.message.contains("mesh.toml")
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "expected removed-manifest diagnostic, got: {:?}",
-                    result
-                        .diagnostics
-                        .iter()
-                        .map(|diag| (&diag.message, diag.range))
-                        .collect::<Vec<_>>()
-                )
-            });
-
-        assert_eq!(diag.range.start, Position::new(0, 0));
+        let diagnostics = published_on(&work_path, &source, &work_path.with_file_name("mesh.toml"));
+        let [diagnostic] = diagnostics.as_slice() else {
+            panic!("expected one manifest diagnostic, got {diagnostics:?}");
+        };
+        assert_eq!(
+            diagnostic.code,
+            Some(NumberOrString::String("M0002".into()))
+        );
+        assert!(diagnostic
+            .message
+            .contains("`[cluster]` manifest sections are no longer supported"));
+        assert_eq!(diagnostic.range.start, Position::new(6, 0));
     }
 
     // ── The editor sees the program meshc builds ─────────────────────────
@@ -978,7 +902,7 @@ mod tests {
             ],
             "app.mpl",
         );
-        let result = analyze_document(&file_uri(&open_path), &source, &[]);
+        let result = published(&file_uri(&open_path), &source, &[]);
         assert!(
             result.diagnostics.is_empty(),
             "{:?}",
@@ -992,16 +916,16 @@ mod tests {
     #[test]
     fn a_document_outside_a_project_is_built_like_one() {
         let source = "import Geo\n\nmodule Geo do\n  pub fn area(w :: Int, h :: Int) -> Int do\n    w * h\n  end\nend\n\nfn main() do\n  println(\"${Geo.area(1, 2)}\")\nend\n";
-        let result = analyze_document("file:///nowhere/main.mpl", source, &[]);
+        let result = published("file:///nowhere/main.mpl", source, &[]);
         assert!(
             result.diagnostics.is_empty(),
             "{:?}",
             diagnostic_messages(&result)
         );
-        let result = analyze_document("file:///nowhere/main.mpl", "let x = 1\n", &[]);
+        let result = published("file:///nowhere/main.mpl", "let x = 1\n", &[]);
         assert_eq!(
             diagnostic_messages(&result),
-            ["`let x` outside a function is not supported"]
+            ["`let x` outside a function is not supported\nhelp: move it into the function that uses it, or make it a function: `fn x() do ... end`"]
         );
     }
 
@@ -1010,7 +934,7 @@ mod tests {
     #[test]
     fn documents_that_cannot_be_analyzed_as_modules_say_why() {
         // A standalone file whose module blocks conflict.
-        let result = analyze_document(
+        let result = published(
             "file:///nowhere/main.mpl",
             "module A do\nend\n\nmodule A do\nend\n",
             &[],
@@ -1021,21 +945,23 @@ mod tests {
             diagnostic_messages(&result)
         );
         // An editor buffer that is not a file is analyzed on its own.
-        let result = analyze_document("untitled:Untitled-1", "fn main() do\n  1\nend\n", &[]);
+        let result = published("untitled:Untitled-1", "fn main() do\n  1\nend\n", &[]);
         assert!(
             result.diagnostics.is_empty(),
             "{:?}",
             diagnostic_messages(&result)
         );
 
-        for (files, open, expected) in [
+        for (files, open, target, code, expected) in [
             (
                 vec![
                     ("a.mpl", "import B\n\npub fn a() = 1\n"),
                     ("b.mpl", "import A\n\npub fn b() = 2\n"),
                     ("main.mpl", "fn main() do\n  1\nend\n"),
                 ],
+                "b.mpl",
                 "a.mpl",
+                "M0201",
                 "Circular dependency",
             ),
             (
@@ -1044,6 +970,8 @@ mod tests {
                     (".scratch/note.mpl", "fn note() = 1\n"),
                 ],
                 ".scratch/note.mpl",
+                ".scratch/note.mpl",
+                "M0202",
                 "was not discovered",
             ),
             (
@@ -1055,6 +983,8 @@ mod tests {
                     ),
                 ],
                 "math.test.mpl",
+                "math.test.mpl",
+                "P0401",
                 "one `teardown`",
             ),
             (
@@ -1063,23 +993,66 @@ mod tests {
                     ("mesh.lock", "not a lockfile"),
                 ],
                 "main.mpl",
+                "mesh.lock",
+                "M0101",
                 "Failed to parse lockfile",
             ),
         ] {
-            let (_tmp, _project_dir, open_path, source) =
+            let (_tmp, project_dir, open_path, source) =
                 write_mesh_project(Some(&package_manifest("failing")), &files, open);
-            let result = analyze_document(&file_uri(&open_path), &source, &[]);
-            assert!(
-                diagnostic_messages(&result)[0].contains(expected),
-                "{expected}: {:?}",
-                diagnostic_messages(&result)
-            );
+            let diagnostics = published_on(&open_path, &source, &project_dir.join(target));
+            let [diagnostic] = diagnostics.as_slice() else {
+                panic!("expected one {code} diagnostic in {target}, got {diagnostics:?}");
+            };
+            assert!(diagnostic.message.contains(expected), "{diagnostic:?}");
+            assert_eq!(diagnostic.code, Some(NumberOrString::String(code.into())));
+            if code == "P0401" {
+                assert_eq!(diagnostic.range.start, Position::new(4, 2));
+                assert_eq!(diagnostic.range.end, Position::new(4, 10));
+            }
+            if code == "M0201" {
+                let labels = diagnostic.related_information.as_ref().unwrap();
+                assert_eq!(labels.len(), 2);
+                for (label, file) in labels.iter().zip(["a.mpl", "b.mpl"]) {
+                    let path = project_dir.join(file).canonicalize().unwrap();
+                    assert_eq!(label.location.uri, Url::from_file_path(path).unwrap());
+                    assert_eq!(label.location.range, Range::new(Position::new(0, 0), Position::new(0, 8)));
+                }
+            }
         }
+    }
+
+    /// A test file is linted as written, as `meshc lint` lints it: a test
+    /// in a `describe` starts its own nesting, though the program generated
+    /// from it nests the test inside an `if` and a closure.
+    #[test]
+    fn a_test_file_is_linted_as_written() {
+        let test = "describe(\"math\") do\n  test(\"deep\") do\n    let ready = true\n    if ready do\n      if ready do\n        if ready do\n          if ready == true do\n            assert(true)\n          end\n        end\n      end\n    end\n  end\nend\n";
+        let (_tmp, _project_dir, open_path, source) = write_mesh_project(
+            Some(&package_manifest("lint")),
+            &[("main.mpl", "fn main() do\nend\n"), ("math.test.mpl", test)],
+            "math.test.mpl",
+        );
+        let result = published(&file_uri(&open_path), &source, &[]);
+        let found: Vec<_> = result
+            .diagnostics
+            .iter()
+            .map(|diagnostic| (diagnostic.code.clone(), diagnostic.range))
+            .collect();
+        assert_eq!(
+            found,
+            [(
+                Some(NumberOrString::String("L0004".into())),
+                Range::new(Position::new(6, 13), Position::new(6, 26))
+            )],
+            "{:?}",
+            diagnostic_messages(&result)
+        );
     }
 
     #[test]
     fn warnings_are_reported_as_warnings() {
-        let result = analyze_document(
+        let result = published(
             "file:///nowhere/main.mpl",
             "fn main() do\n  case 1 do\n    _ -> 1\n    2 -> 2\n  end\nend\n",
             &[],
@@ -1108,13 +1081,13 @@ mod tests {
             ],
             "main.mpl",
         );
-        let saved = analyze_document(&file_uri(&open_path), &source, &[]);
+        let saved = published(&file_uri(&open_path), &source, &[]);
         assert!(!saved.diagnostics.is_empty());
         let open = [(
             file_uri(&project_dir.join("util.mpl")),
             "pub fn helper() -> String do\n  \"h\"\nend\n".to_string(),
         )];
-        let edited = analyze_document(&file_uri(&open_path), &source, &open);
+        let edited = published(&file_uri(&open_path), &source, &open);
         assert!(
             edited.diagnostics.is_empty(),
             "{:?}",
@@ -1133,7 +1106,7 @@ mod tests {
             )],
             "main.mpl",
         );
-        let result = analyze_document(&file_uri(&open_path), &source, &[]);
+        let result = published(&file_uri(&open_path), &source, &[]);
         assert!(
             diagnostic_messages(&result)
                 .iter()
@@ -1172,7 +1145,7 @@ mod tests {
         .unwrap();
 
         let source = std::fs::read_to_string(&main_path).unwrap();
-        let result = analyze_document(&file_uri(&main_path), &source, &[]);
+        let result = published(&file_uri(&main_path), &source, &[]);
         let messages = result
             .diagnostics
             .iter()
@@ -1208,7 +1181,7 @@ mod tests {
         .unwrap();
 
         let source = std::fs::read_to_string(&main_path).unwrap();
-        let result = analyze_document(&file_uri(&main_path), &source, &[]);
+        let result = published(&file_uri(&main_path), &source, &[]);
         let messages = result
             .diagnostics
             .iter()
@@ -1226,7 +1199,7 @@ mod tests {
     fn clustered_route_wrapper_project_keeps_imported_origin_metadata() {
         let (_tmp, main_path, source) = write_clustered_route_wrapper_project();
 
-        let result = analyze_document(&file_uri(&main_path), &source, &[]);
+        let result = published(&file_uri(&main_path), &source, &[]);
         let messages = result
             .diagnostics
             .iter()
@@ -1269,7 +1242,7 @@ mod tests {
     #[test]
     fn clustered_route_wrapper_reports_wrapper_range_in_lsp() {
         let source = "pub fn handle(req :: Request) -> Response do\n  HTTP.response(200, \"ok\")\nend\n\nfn build() do\n  let wrapped = HTTP.clustered(handle)\n  wrapped\nend\n";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         let diag = result
             .diagnostics
             .iter()
@@ -1288,7 +1261,10 @@ mod tests {
         let wrapper_start = source
             .find("HTTP.clustered")
             .expect("wrapper text should exist");
-        assert_eq!(diag.range.start, offset_to_position(source, wrapper_start));
+        assert_eq!(
+            diag.range.start,
+            offset_to_position(&file(source), wrapper_start)
+        );
         assert!(
             diag.range.end.line > diag.range.start.line
                 || diag.range.end.character > diag.range.start.character,
@@ -1302,7 +1278,7 @@ mod tests {
     #[test]
     fn analyze_valid_source_no_diagnostics() {
         let source = "fn main() do\n  let x = 42\n  x\nend\n";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         assert!(
             result.diagnostics.is_empty(),
             "Valid source should produce no diagnostics, got: {:?}",
@@ -1317,7 +1293,7 @@ mod tests {
     #[test]
     fn analyze_valid_function_no_diagnostics() {
         let source = "fn add(a, b) do\na + b\nend";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         assert!(
             result.diagnostics.is_empty(),
             "Valid function should produce no diagnostics, got: {:?}",
@@ -1333,7 +1309,7 @@ mod tests {
     fn analyze_type_error_produces_diagnostic() {
         // Using an undefined variable should produce a type error diagnostic.
         let source = "let x = undefined_var";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         assert!(
             !result.diagnostics.is_empty(),
             "Type error should produce at least one diagnostic"
@@ -1347,7 +1323,7 @@ mod tests {
     fn analyze_type_error_has_range() {
         // The diagnostic range should point to the error location.
         let source = "let x = undefined_var";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         assert!(!result.diagnostics.is_empty());
         let diag = &result.diagnostics[0];
         // The error is for "undefined_var" which is on line 0.
@@ -1357,7 +1333,7 @@ mod tests {
     #[test]
     fn analyze_resource_violation_produces_diagnostic() {
         let source = "fn misuse(secret :: SecretBytes) do\n  let moved = secret\n  secret\nend";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
 
         assert!(result.diagnostics.iter().any(|diagnostic| {
             diagnostic.severity == Some(DiagnosticSeverity::ERROR)
@@ -1374,7 +1350,7 @@ mod tests {
         let source = "interface Sized do\n  fn size(self) -> Int\nend\n\
                       impl Sized for Int do\n  fn size(self) -> Int do\n    1\n  end\nend\n\
                       impl Sized for Int do\n  fn size(self) -> Int do\n    2\n  end\nend\n";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         let duplicate = result
             .diagnostics
             .iter()
@@ -1388,7 +1364,7 @@ mod tests {
     fn analyze_multiple_errors_all_reported() {
         // Two undefined variables should produce at least two diagnostics.
         let source = "let x = undef1\nlet y = undef2";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         assert!(
             result.diagnostics.len() >= 2,
             "Expected at least 2 diagnostics, got {}",
@@ -1402,7 +1378,7 @@ mod tests {
         // Note: `fn do end` is now valid syntax (no-params closure, Phase 12-01).
         // Use a clearly invalid expression instead.
         let source = "let x = + +";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         assert!(
             !result.diagnostics.is_empty(),
             "Parse error should produce at least one diagnostic"
@@ -1416,9 +1392,9 @@ mod tests {
     #[test]
     fn hover_names_a_generic_type_variables() {
         let source = "fn pick(x, y) do\n  x\nend\n";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         let ty = type_at_position(
-            source,
+            &result.file,
             &result.typeck,
             &Position {
                 line: 1,
@@ -1427,7 +1403,7 @@ mod tests {
         );
         assert_eq!(ty.as_deref(), Some("a"));
         let whole = type_at_position(
-            source,
+            &result.file,
             &result.typeck,
             &Position {
                 line: 0,
@@ -1441,9 +1417,9 @@ mod tests {
     #[test]
     fn hover_integer_literal() {
         let source = "fn main() do\n  let x = 42\n  x\nend\n";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         let ty = type_at_position(
-            source,
+            &result.file,
             &result.typeck,
             &Position {
                 line: 1,
@@ -1457,10 +1433,10 @@ mod tests {
     fn hover_over_empty_space_returns_none() {
         // Hovering over whitespace or at end of file should return None.
         let source = "let x = 42";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         // Position past end of source.
         let ty = type_at_position(
-            source,
+            &result.file,
             &result.typeck,
             &Position {
                 line: 5,
@@ -1475,7 +1451,7 @@ mod tests {
     #[test]
     fn goto_def_function_defined_then_called() {
         let source = "fn greet(name) do\nname\nend\nlet msg = greet(42)";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         let root = result.parse.syntax();
         // Find the call to "greet" in `greet(42)`.
         let call_offset = source.rfind("greet").unwrap();
@@ -1487,7 +1463,7 @@ mod tests {
     #[test]
     fn goto_def_let_binding_used_later() {
         let source = "let count = 10\nlet doubled = count + count";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         let root = result.parse.syntax();
         // Find "count" in the second let binding.
         let second_count = source.find("count + count").unwrap();
@@ -1499,7 +1475,7 @@ mod tests {
     #[test]
     fn goto_def_variable_shadowing_inner_scope() {
         let source = "fn test() do\nlet x = 1\nfn inner() do\nlet x = 2\nlet y = x\nend\nend";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         let root = result.parse.syntax();
         let y_binding = source.find("let y = x").unwrap();
         let x_use = y_binding + "let y = ".len();
@@ -1515,7 +1491,7 @@ mod tests {
     #[test]
     fn goto_def_unknown_identifier_returns_none() {
         let source = "let y = completely_unknown";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         let root = result.parse.syntax();
         let unknown_offset = source.find("completely_unknown").unwrap();
         let def = crate::definition::find_definition(&root, unknown_offset);
@@ -1525,7 +1501,7 @@ mod tests {
     #[test]
     fn goto_def_struct_name_resolves() {
         let source = "struct Point do\nx :: Int\nend";
-        let result = analyze_document("file:///test.mpl", source, &[]);
+        let result = published("file:///test.mpl", source, &[]);
         let root = result.parse.syntax();
         // Definition search for "Point" at the struct def should find itself.
         let point_offset = source.find("Point").unwrap();
@@ -1544,7 +1520,7 @@ mod tests {
     #[test]
     fn offset_to_position_first_line() {
         let source = "hello world";
-        let pos = offset_to_position(source, 0);
+        let pos = offset_to_position(&file(source), 0);
         assert_eq!(
             pos,
             Position {
@@ -1553,7 +1529,7 @@ mod tests {
             }
         );
 
-        let pos = offset_to_position(source, 5);
+        let pos = offset_to_position(&file(source), 5);
         assert_eq!(
             pos,
             Position {
@@ -1567,7 +1543,7 @@ mod tests {
     fn offset_to_position_multiline() {
         let source = "line1\nline2\nline3";
         // 'l' of line2 is at offset 6
-        let pos = offset_to_position(source, 6);
+        let pos = offset_to_position(&file(source), 6);
         assert_eq!(
             pos,
             Position {
@@ -1577,7 +1553,7 @@ mod tests {
         );
 
         // 'l' of line3 is at offset 12
-        let pos = offset_to_position(source, 12);
+        let pos = offset_to_position(&file(source), 12);
         assert_eq!(
             pos,
             Position {
@@ -1587,7 +1563,7 @@ mod tests {
         );
 
         // 'i' of line2 is at offset 7
-        let pos = offset_to_position(source, 7);
+        let pos = offset_to_position(&file(source), 7);
         assert_eq!(
             pos,
             Position {
@@ -1600,7 +1576,7 @@ mod tests {
     #[test]
     fn offset_to_position_at_end() {
         let source = "ab\ncd";
-        let pos = offset_to_position(source, 5);
+        let pos = offset_to_position(&file(source), 5);
         assert_eq!(
             pos,
             Position {
@@ -1615,7 +1591,7 @@ mod tests {
         let source = "hello";
         assert_eq!(
             position_to_offset(
-                source,
+                &file(source),
                 &Position {
                     line: 0,
                     character: 0
@@ -1625,7 +1601,7 @@ mod tests {
         );
         assert_eq!(
             position_to_offset(
-                source,
+                &file(source),
                 &Position {
                     line: 0,
                     character: 3
@@ -1635,7 +1611,7 @@ mod tests {
         );
         assert_eq!(
             position_to_offset(
-                source,
+                &file(source),
                 &Position {
                     line: 0,
                     character: 5
@@ -1651,7 +1627,7 @@ mod tests {
         // First char of line 2 (0-indexed) at (1, 0).
         assert_eq!(
             position_to_offset(
-                source,
+                &file(source),
                 &Position {
                     line: 1,
                     character: 0
@@ -1662,7 +1638,7 @@ mod tests {
         // First char of line 3 at (2, 0).
         assert_eq!(
             position_to_offset(
-                source,
+                &file(source),
                 &Position {
                     line: 2,
                     character: 0
@@ -1676,7 +1652,7 @@ mod tests {
     fn position_to_offset_stays_on_its_line() {
         // A character past the end of a line counted on into the next lines.
         let source = "ab\ncdef\né𝄞x\n";
-        let at = |line, character| position_to_offset(source, &Position { line, character });
+        let at = |line, character| position_to_offset(&file(source), &Position { line, character });
         assert_eq!(at(0, 10), Some(2));
         assert_eq!(at(1, 2), Some(5));
         // `é` is one UTF-16 unit, `𝄞` two.
@@ -1691,8 +1667,8 @@ mod tests {
     fn position_to_offset_roundtrip() {
         let source = "hello\nworld\nfoo";
         for offset in 0..source.len() {
-            let pos = offset_to_position(source, offset);
-            let back = position_to_offset(source, &pos);
+            let pos = offset_to_position(&file(source), offset);
+            let back = position_to_offset(&file(source), &pos);
             assert_eq!(
                 back,
                 Some(offset),
@@ -1707,7 +1683,7 @@ mod tests {
     fn position_past_eof_returns_none() {
         let source = "hello";
         let result = position_to_offset(
-            source,
+            &file(source),
             &Position {
                 line: 5,
                 character: 0,
@@ -1734,11 +1710,11 @@ mod tests {
         let source = "from Greeting import message\n\ndescribe(\"greeting\") do\n  setup do\n    let expected = \"hello\"\n  end\n  test(\"says hello\") do\n    assert_eq(message(), expected)\n  end\nend\n";
         std::fs::write(&test_path, source).unwrap();
 
-        let result = analyze_document(&file_uri(&test_path), source, &[]);
+        let result = published(&file_uri(&test_path), source, &[]);
         assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
         // Hover converts positions against the analyzed program: line 8,
         // `expected`, is a String there too.
-        let hover = type_at_position(&result.source, &result.typeck, &Position::new(7, 26));
+        let hover = type_at_position(&result.file, &result.typeck, &Position::new(7, 26));
         assert_eq!(hover.as_deref(), Some("String"));
 
         // An error is reported where it is in the test file.
@@ -1746,7 +1722,7 @@ mod tests {
             "assert_eq(message(), expected)",
             "assert_eq(message() + 1, expected)",
         );
-        let result = analyze_document(&file_uri(&test_path), &broken, &[]);
+        let result = published(&file_uri(&test_path), &broken, &[]);
         assert_eq!(result.diagnostics.len(), 1, "{:?}", result.diagnostics);
         assert_eq!(result.diagnostics[0].range.start.line, 7);
     }
@@ -1779,7 +1755,7 @@ mod tests {
         .unwrap();
 
         let source = std::fs::read_to_string(&main_path).unwrap();
-        let result = analyze_document(&file_uri(&main_path), &source, &[]);
+        let result = published(&file_uri(&main_path), &source, &[]);
         assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     }
 
@@ -1793,7 +1769,7 @@ mod tests {
         let source = "import Billing\n\nmodule Billing do\n  pub fn total() -> Int do\n    \"no\" + nope\n  end\nend\n\nfn main() do\n  println(\"${Billing.total()}\")\nend\n";
         std::fs::write(&main_path, source).unwrap();
 
-        let result = analyze_document(&file_uri(&main_path), source, &[]);
+        let result = published(&file_uri(&main_path), source, &[]);
         let messages: Vec<&str> = result
             .diagnostics
             .iter()

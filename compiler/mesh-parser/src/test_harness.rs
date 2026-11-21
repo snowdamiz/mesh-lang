@@ -7,7 +7,10 @@
 
 use std::ops::Range;
 
-use crate::{SyntaxKind, SyntaxNode};
+use mesh_common::span::Span;
+use mesh_diagnostics::{Code, SourceMap};
+
+use crate::{ParseError, SyntaxKind, SyntaxNode};
 
 /// Preprocess a .test.mpl source file into a valid Mesh program. The file is
 /// rewritten in place, so each of its lines keeps its line and column and a
@@ -26,11 +29,15 @@ use crate::{SyntaxKind, SyntaxNode};
 ///   `test_run_body`, `test_end`) and then `test_summary`.
 ///
 /// A file that does not parse is returned as it is, for the build to report
-/// its errors where they are.
-pub fn preprocess_test_source(source: &str) -> Result<String, String> {
+/// its errors where they are. A `describe` whose `setup` follows a test, or
+/// that has a second `teardown`, is a `P0401` error at that block.
+///
+/// The program's map places its spans in the file: a header rewritten on
+/// its line has moved what follows it there, and every line after it.
+pub fn preprocess_test_source(source: &str) -> Result<TestProgram, ParseError> {
     let parse = crate::parse(source);
     if !parse.errors().is_empty() {
-        return Ok(source.to_string());
+        return Ok(TestProgram::unchanged(source));
     }
 
     let mut edits: Vec<(Range<usize>, String)> = Vec::new();
@@ -51,7 +58,6 @@ pub fn preprocess_test_source(source: &str) -> Result<String, String> {
                 let d = describes;
                 describes += 1;
                 let mut group = Group {
-                    source,
                     function: d,
                     cases: 0,
                     edits: &mut edits,
@@ -76,12 +82,18 @@ pub fn preprocess_test_source(source: &str) -> Result<String, String> {
 
     if tests.is_empty() {
         // Not a test file or no test blocks — pass through unchanged.
-        return Ok(source.to_string());
+        return Ok(TestProgram::unchanged(source));
     }
 
+    edits.sort_by_key(|(range, _)| range.start);
+    let map = SourceMap::new(
+        source.len(),
+        edits
+            .iter()
+            .map(|(range, text)| (range.clone(), text.len())),
+    );
     let mut out = source.to_string();
-    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
-    for (range, text) in edits {
+    for (range, text) in edits.into_iter().rev() {
         out.replace_range(range, &text);
     }
     if !out.ends_with('\n') {
@@ -99,12 +111,28 @@ pub fn preprocess_test_source(source: &str) -> Result<String, String> {
     // Pass 0 for elapsed_ms; accurate timing is cosmetic and can be added later.
     out.push_str("  test_summary(test_pass_count(), test_fail_count(), 0)\n");
     out.push_str("end\n");
-    Ok(out)
+    Ok(TestProgram { text: out, map })
+}
+
+/// A `.test.mpl` file as the program `meshc test` compiles.
+#[derive(Debug)]
+pub struct TestProgram {
+    pub text: String,
+    /// Where the program's spans are in the file.
+    pub map: SourceMap,
+}
+
+impl TestProgram {
+    fn unchanged(source: &str) -> Self {
+        TestProgram {
+            text: source.to_string(),
+            map: SourceMap::new(source.len(), []),
+        }
+    }
 }
 
 /// The tests of one top-level `describe`: cases of one function.
 struct Group<'a> {
-    source: &'a str,
     /// The `__test_describe_N` function's N.
     function: usize,
     /// Cases numbered so far.
@@ -116,30 +144,45 @@ struct Group<'a> {
 impl Group<'_> {
     /// Rewrite the setup, teardown, tests and nested describes of the
     /// describe `call`, labelled `label`, and say whether it has a teardown.
-    fn describe(&mut self, call: &BlockCall, label: &str) -> Result<bool, String> {
-        let mut teardown = false;
-        let mut has_tests = false;
+    fn describe(&mut self, call: &BlockCall, label: &str) -> Result<bool, ParseError> {
+        let mut teardown = None;
+        let mut first_test = None;
         for stmt in call.block.children() {
             let Some(inner) = BlockCall::of(&stmt) else {
                 continue;
             };
-            let line = line_of(self.source, inner.header.start);
             match inner.name.as_str() {
-                "setup" if has_tests => {
-                    return Err(format!(
-                        "line {line}: `setup` must come before the tests of its describe"
-                    ));
-                }
-                "setup" => inner.rewrite(self.edits, "", ""),
-                "teardown" if teardown => {
-                    return Err(format!("line {line}: a describe has one `teardown`"));
+                "setup" => {
+                    if let Some(test) = first_test {
+                        return Err(ParseError::new(
+                            Code::TestFileSyntax,
+                            "`setup` must come before the tests of its describe",
+                            inner.name_span,
+                        )
+                        .with_related("the describe's first test", test)
+                        .with_label("`setup` after a test")
+                        .with_repair("Move this `setup` above the describe's first test."));
+                    }
+                    inner.rewrite(self.edits, "", "");
                 }
                 "teardown" => {
-                    teardown = true;
+                    if let Some(first) = teardown {
+                        return Err(ParseError::new(
+                            Code::TestFileSyntax,
+                            "a describe has one `teardown`",
+                            inner.name_span,
+                        )
+                        .with_related("its first `teardown`", first)
+                        .with_label("a second `teardown`")
+                        .with_repair(
+                            "Move this teardown's statements into the first `teardown`, and remove this one.",
+                        ));
+                    }
+                    teardown = Some(inner.name_span);
                     inner.rewrite(self.edits, "let __teardown = fn() do", "end");
                 }
                 "test" => {
-                    has_tests = true;
+                    first_test.get_or_insert(inner.name_span);
                     let case = self.cases;
                     inner.rewrite(
                         self.edits,
@@ -153,7 +196,7 @@ impl Group<'_> {
                     self.cases += 1;
                 }
                 "describe" => {
-                    has_tests = true;
+                    first_test.get_or_insert(inner.name_span);
                     let first = self.cases;
                     let nested = format!("{label} > {}", inner.label("describe"));
                     let teardown = self.describe(&inner, &nested)?;
@@ -163,7 +206,7 @@ impl Group<'_> {
                 _ => {}
             }
         }
-        Ok(teardown)
+        Ok(teardown.is_some())
     }
 }
 
@@ -180,6 +223,7 @@ fn teardown_end(teardown: bool) -> &'static str {
 /// `describe`, `setup` and `teardown` are written.
 struct BlockCall {
     name: String,
+    name_span: Span,
     call: SyntaxNode,
     /// From the call's start through its `do`.
     header: Range<usize>,
@@ -194,11 +238,11 @@ impl BlockCall {
         if node.kind() != SyntaxKind::CALL_EXPR {
             return None;
         }
-        let name = node
+        let name_ref = node
             .children()
-            .find(|child| child.kind() == SyntaxKind::NAME_REF)?
-            .text()
-            .to_string();
+            .find(|child| child.kind() == SyntaxKind::NAME_REF)?;
+        let name = name_ref.text().to_string();
+        let name_range = name_ref.text_range();
         let closure = node
             .children()
             .find(|child| child.kind() == SyntaxKind::TRAILING_CLOSURE)?;
@@ -212,6 +256,7 @@ impl BlockCall {
             .text_range();
         Some(BlockCall {
             name,
+            name_span: Span::new(name_range.start().into(), name_range.end().into()),
             header: range_of(node).start..range_of(&block).start,
             end: end.start().into()..end.end().into(),
             call: node.clone(),
@@ -267,10 +312,6 @@ fn keep_lines(text: &str, node: &SyntaxNode, range: Range<usize>) -> String {
     format!("{text}{}", "\n".repeat(original.matches('\n').count()))
 }
 
-fn line_of(source: &str, offset: usize) -> usize {
-    source[..offset].matches('\n').count() + 1
-}
-
 // ── assert_receive ────────────────────────────────────────────────────────
 
 /// `assert_receive PATTERN[, TIMEOUT_MS]` (timeout 100ms by default) as a
@@ -306,7 +347,7 @@ mod tests {
         // tests were emitted after the other items, re-indented.
         let source = "fn pick(n :: Int) -> Int do\n  if n < 0 do\n    0\n  else if n > 9 do\n    9\n  else\n    n\n  end\nend\n\ntest(\"pick\") do\n  if pick(3) == 3 do\n    assert(true)\n  else if pick(3) == 0 do\n    assert(false)\n  else\n    assert(false)\n  end\nend\n\nfn later() -> Int do\n  1\nend\n";
 
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
 
         let out_lines: Vec<&str> = out.lines().collect();
         for (i, line) in source.lines().enumerate() {
@@ -324,11 +365,28 @@ mod tests {
         );
     }
 
+    /// The program's map places a span of copied text on the same text of
+    /// the file, and a rewritten header on the header as written.
+    #[test]
+    fn preprocess_test_source_maps_spans_back_to_the_file() {
+        use mesh_diagnostics::Origin;
+        let source = "describe(\"group\") do\n  test(\"one\") do assert(cuont == 1) end\nend\n\ntest(\"two\") do\n  assert_receive 40, 50\n  assert(totl)\nend\n";
+        let program = preprocess_test_source(source).unwrap();
+        for needle in ["cuont", "totl"] {
+            let Origin::Exact(at) = program.map.origin(span_of(&program.text, needle)) else {
+                panic!("{needle} is copied text");
+            };
+            assert_eq!(&source[at.start as usize..at.end as usize], needle);
+        }
+        let header = program.map.origin(span_of(&program.text, "__test_body_"));
+        assert_eq!(header, Origin::Near(span_of(source, "test(\"two\") do")));
+    }
+
     #[test]
     fn preprocess_test_source_reads_strings_in_interpolations() {
         // The text scanner took the `end` in `" end "` for the test's own.
         let source = "test(\"interp\") do\n  let s = \"#{String.join([\"a\"], \" end \")}\"\n  assert_eq(s, \"a\")\nend\n";
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
         assert!(
             out.starts_with(&source.replace("test(\"interp\") do", "fn __test_body_0() do")),
             "{out}"
@@ -339,7 +397,7 @@ mod tests {
     fn preprocess_test_source_runs_a_describe_by_case() {
         let source = "describe(\"group\") do\n  setup() do\n    let base = if true do\n      1\n    else if false do\n      2\n    else\n      3\n    end\n  end\n  teardown do\n    println(\"#{base}\")\n  end\n  test(\"one\") do\n    assert_receive 40, 50\n  end\nend\n\ntest(\"two\") do\n  assert(true)\nend\n";
 
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
 
         let out_lines: Vec<&str> = out.lines().collect();
         assert_eq!(
@@ -381,7 +439,7 @@ mod tests {
         // A describe in a describe was left as it was: `test` was undefined.
         let source = "describe(\"outer\") do\n  setup do\n    let x = 1\n  end\n  test(\"a\") do\n    assert(x == 1)\n  end\n  describe(\"inner\") do\n    teardown do\n      println(\"t\")\n    end\n    test(\"b\") do\n      assert(x == 1)\n    end\n    test(\"c\") do\n      assert(true)\n    end\n  end\nend\n";
 
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
 
         let lines: Vec<&str> = out.lines().collect();
         assert_eq!(lines[7], "  if __case >= 1 && __case < 3 do", "{out}");
@@ -405,23 +463,33 @@ mod tests {
     fn preprocess_test_source_refuses_a_late_setup_and_passes_parse_errors() {
         let late = "describe(\"g\") do\n  test(\"a\") do\n    assert(true)\n  end\n  setup do\n    let x = 1\n  end\nend\n";
         let err = preprocess_test_source(late).unwrap_err();
-        assert!(err.starts_with("line 5: `setup` must come before"), "{err}");
+        assert_eq!(err.code, Code::TestFileSyntax);
+        assert_eq!(
+            err.message,
+            "`setup` must come before the tests of its describe"
+        );
+        assert_eq!(err.span, span_of(late, "setup"));
+        assert_eq!(
+            err.related,
+            Some(("the describe's first test".into(), span_of(late, "test")))
+        );
+        assert_eq!(err.label.as_deref(), Some("`setup` after a test"));
 
         // The build reports the parse error where it is.
         let broken = "test(\"a\") do\n  let x = (1\nend\n";
-        assert_eq!(preprocess_test_source(broken).unwrap(), broken);
+        assert_eq!(preprocess_test_source(broken).unwrap().text, broken);
     }
 
     #[test]
     fn preprocess_test_source_leaves_what_is_not_a_test() {
         // No tests: the file is returned as it is.
         let plain = "fn f() -> Int do\n  1\nend\n";
-        assert_eq!(preprocess_test_source(plain).unwrap(), plain);
+        assert_eq!(preprocess_test_source(plain).unwrap().text, plain);
         // A block call other than a test or a describe, at the top or in a
         // describe, and a statement in a describe, stay as they are; a file
         // that does not end with a new line gets one before `main`.
         let source = "run() do\n  1\nend\ndescribe(\"g\") do\n  let x = 1\n  run() do\n    x\n  end\n  test(\"a\") do\n    assert(x == 1)\n  end\nend";
-        let out = preprocess_test_source(source).unwrap();
+        let out = preprocess_test_source(source).unwrap().text;
         assert!(out.starts_with("run() do\n  1\nend\n"), "{out}");
         assert!(
             out.contains("\n  let x = 1\n  run() do\n    x\n  end\n"),
@@ -434,9 +502,22 @@ mod tests {
     fn preprocess_test_source_refuses_a_second_teardown() {
         let source = "describe(\"g\") do\n  teardown do\n    1\n  end\n  teardown do\n    2\n  end\n  test(\"a\") do\n    assert(true)\n  end\nend\n";
         let err = preprocess_test_source(source).unwrap_err();
-        assert!(
-            err.starts_with("line 5: a describe has one `teardown`"),
-            "{err}"
+        assert_eq!(err.code, Code::TestFileSyntax);
+        assert_eq!(err.message, "a describe has one `teardown`");
+        let second = source.rfind("teardown").unwrap() as u32;
+        assert_eq!(
+            err.span,
+            Span::new(second, second + "teardown".len() as u32)
         );
+        assert_eq!(
+            err.related,
+            Some(("its first `teardown`".into(), span_of(source, "teardown")))
+        );
+        assert_eq!(err.label.as_deref(), Some("a second `teardown`"));
+    }
+
+    fn span_of(source: &str, needle: &str) -> Span {
+        let start = source.find(needle).unwrap() as u32;
+        Span::new(start, start + needle.len() as u32)
     }
 }

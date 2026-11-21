@@ -3,8 +3,8 @@
 //! Deep non-tail recursion runs off the end of the thread's or the actor's
 //! stack into its guard page. The fault handler runs on a small alternate
 //! stack and, when the faulting address is at the current stack's limit,
-//! prints what happened and aborts. Any other fault goes to the default
-//! action, as before.
+//! writes the `R0002` diagnostic and aborts. Any other fault goes to the
+//! default action, as before.
 
 use std::cell::Cell;
 
@@ -20,6 +20,22 @@ thread_local! {
 /// frame larger than the guard page can land below it.
 const GUARD_WINDOW: usize = 64 * 1024;
 
+/// The `R0002` diagnostic, rendered as the handler is installed: the
+/// handler may only `write` bytes that already exist.
+#[cfg(unix)]
+static REPORT: std::sync::OnceLock<Box<[u8]>> = std::sync::OnceLock::new();
+
+#[cfg(unix)]
+fn overflow_report() -> Box<[u8]> {
+    let diagnostic = mesh_diagnostics::Diagnostic::new(
+        mesh_diagnostics::Code::StackOverflow,
+        "stack overflow: a function recursed too deeply (only a call in tail position runs in constant stack)",
+    );
+    crate::panic::render_as(crate::panic::format(), &diagnostic)
+        .into_bytes()
+        .into_boxed_slice()
+}
+
 /// Set up reporting for the calling thread: an alternate signal stack, and
 /// the handler (installed once per process).
 pub fn install_for_current_thread() {
@@ -27,6 +43,7 @@ pub fn install_for_current_thread() {
     unsafe {
         static INSTALL: std::sync::Once = std::sync::Once::new();
         INSTALL.call_once(|| {
+            REPORT.get_or_init(overflow_report);
             for signal in [libc::SIGSEGV, libc::SIGBUS] {
                 let mut action: libc::sigaction = std::mem::zeroed();
                 action.sa_sigaction = handler as *const () as usize;
@@ -88,7 +105,8 @@ extern "C" fn handler(
 
 /// What a fault at `address` does: a stack overflow is reported and aborts
 /// the process; any other fault takes the default action, as without the
-/// handler (the faulting instruction runs again and faults).
+/// handler (the faulting instruction runs again and faults). Only
+/// async-signal-safe calls: no allocation, no lock.
 #[cfg(unix)]
 fn on_fault(signal: libc::c_int, address: usize) {
     let limit = CURRENT_LIMIT.with(|c| c.get());
@@ -97,9 +115,9 @@ fn on_fault(signal: libc::c_int, address: usize) {
         && address < limit + GUARD_WINDOW;
     unsafe {
         if overflow {
-            let message: &[u8] = b"\nerror: stack overflow: a function recursed too deeply \
-(only a call in tail position runs in constant stack)\n";
-            libc::write(2, message.as_ptr().cast(), message.len());
+            if let Some(report) = REPORT.get() {
+                libc::write(2, report.as_ptr().cast(), report.len());
+            }
             // A coverage build counts the process, which abort would lose.
             crate::process_signal::write_coverage_profile();
             libc::abort();
@@ -133,5 +151,16 @@ mod tests {
 
         assert_eq!(disposition(libc::SIGBUS).sa_sigaction, libc::SIG_DFL);
         unsafe { libc::sigaction(libc::SIGBUS, &installed, std::ptr::null_mut()) };
+    }
+
+    /// The handler writes a report rendered before any fault: the `R0002`
+    /// diagnostic, ready as soon as the handler is.
+    #[test]
+    fn the_overflow_report_is_rendered_with_the_handler() {
+        install_for_current_thread();
+        let report = std::str::from_utf8(REPORT.get().expect("rendered at install")).unwrap();
+        assert!(report.contains("R0002"), "{report}");
+        assert!(report.contains("recursed too deeply"), "{report}");
+        assert!(report.ends_with('\n'), "{report}");
     }
 }

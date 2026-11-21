@@ -1581,9 +1581,14 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::mesh_orm_build_update as *const (),
         ),
         ("mesh_panic", mesh_rt::mesh_panic as *const ()),
+        ("mesh_panic_at", mesh_rt::panic::mesh_panic_at as *const ()),
         (
             "mesh_panic_str",
             mesh_rt::panic::mesh_panic_str as *const (),
+        ),
+        (
+            "mesh_panic_str_at",
+            mesh_rt::panic::mesh_panic_str_at as *const (),
         ),
         ("mesh_pg_begin", mesh_rt::db::pg::mesh_pg_begin as *const ()),
         ("mesh_pg_cast", mesh_rt::db::expr::mesh_pg_cast as *const ()),
@@ -2393,6 +2398,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::test::mesh_test_fail_msg as *const (),
         ),
         (
+            "mesh_test_fail_msg_at",
+            mesh_rt::test::mesh_test_fail_msg_at as *const (),
+        ),
+        (
             "mesh_test_mock_actor",
             mesh_rt::test::mesh_test_mock_actor as *const (),
         ),
@@ -2692,14 +2701,33 @@ pub(crate) fn check_source(
     }
     let typeck = mesh_typeck::check(&parse);
     if !typeck.errors.is_empty() {
-        let rendered = typeck.render_errors(
-            source,
-            "<repl>",
-            &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
-        );
-        return Err(rendered.join("\n"));
+        return Err(render_type_errors(&typeck, source, "<repl>"));
     }
     Ok((parse, typeck))
+}
+
+/// The type errors of `source`, named `name`, as the REPL shows them.
+pub(crate) fn render_type_errors(
+    typeck: &mesh_typeck::TypeckResult,
+    source: &str,
+    name: &str,
+) -> String {
+    let file = mesh_diagnostics::SourceFile::new(name, source);
+    render(typeck.errors.iter().map(|error| error.to_diagnostic(&file)))
+}
+
+/// `diagnostics` as the REPL shows them.
+fn render(diagnostics: impl IntoIterator<Item = mesh_diagnostics::Diagnostic>) -> String {
+    let mut out = Vec::new();
+    let _ =
+        mesh_diagnostics::Reporter::new(mesh_diagnostics::Format::Human { color: false }, &mut out)
+            .emit_all(diagnostics);
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// A compiler diagnostic as the REPL shows it.
+fn rendered(diagnostic: mesh_diagnostics::Diagnostic) -> String {
+    render([diagnostic])
 }
 
 /// What the wrapper function checked last (`() -> T`) returns: T. A source
@@ -2729,11 +2757,11 @@ fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     };
     let value = match shown {
         Some(((parse, typeck), wrapper)) => {
-            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck)?;
+            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck).map_err(rendered)?;
             jit_execute(&mir, &wrapper, SHOWN)?
         }
         None => {
-            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck)?;
+            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck).map_err(rendered)?;
             jit_execute(&mir, &wrapper_fn, &result_type_name)?
         }
     };
@@ -2760,8 +2788,8 @@ fn jit_execute(
     use mesh_codegen::codegen::CodeGen;
 
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "repl_jit", 0, None)?;
-    codegen.compile(mir)?;
+    let mut codegen = CodeGen::new(&context, "repl_jit", 0, None).map_err(rendered)?;
+    codegen.compile(mir).map_err(rendered)?;
 
     let module = codegen.into_module();
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
@@ -2788,17 +2816,22 @@ fn jit_execute(
 
     // The compiled wrapper has no arguments. The result type determines
     // which register the caller reads, or whether there is a return value.
-    if result_type == "Unit" || result_type == "()" {
-        let call: unsafe extern "C" fn() = unsafe { std::mem::transmute(address) };
-        unsafe { call() };
-        return Ok("()".to_string());
-    }
-    if result_type == "Float" {
-        let call: unsafe extern "C" fn() -> f64 = unsafe { std::mem::transmute(address) };
-        return Ok(format!("{:?}", unsafe { call() }));
-    }
-    let call: unsafe extern "C" fn() -> i64 = unsafe { std::mem::transmute(address) };
-    Ok(format_jit_result(unsafe { call() }, result_type))
+    // A panic unwinds out of it and ends the evaluation, not the REPL.
+    mesh_rt::panic::catch_panic(|| {
+        if result_type == "Unit" || result_type == "()" {
+            let call: unsafe extern "C-unwind" fn() = unsafe { std::mem::transmute(address) };
+            unsafe { call() };
+            return "()".to_string();
+        }
+        if result_type == "Float" {
+            let call: unsafe extern "C-unwind" fn() -> f64 =
+                unsafe { std::mem::transmute(address) };
+            return format!("{:?}", unsafe { call() });
+        }
+        let call: unsafe extern "C-unwind" fn() -> i64 = unsafe { std::mem::transmute(address) };
+        format_jit_result(unsafe { call() }, result_type)
+    })
+    .map_err(rendered)
 }
 
 /// The result type `jit_execute` is given for a value's `inspect` text,
@@ -2859,6 +2892,20 @@ mod tests {
             .err()
             .unwrap();
         assert!(error.contains("expected Int"), "{error}");
+    }
+
+    /// A panic in an evaluation is reported as its diagnostic, and the
+    /// session goes on.
+    #[test]
+    fn a_panic_ends_the_evaluation_not_the_session() {
+        init_runtime();
+        let mut session = ReplSession::new();
+        jit_eval("fn boom() -> Int do\n  panic(\"boom\")\nend", &mut session).unwrap();
+        for input in ["boom()", "List.get([1], 5)", "10 / (1 - 1)"] {
+            let error = jit_eval(input, &mut session).err().unwrap();
+            assert!(error.starts_with("[R0001] Error: "), "{input}: {error}");
+        }
+        assert_eq!(jit_eval("1 + 1", &mut session).unwrap().value, "2");
     }
 
     #[test]

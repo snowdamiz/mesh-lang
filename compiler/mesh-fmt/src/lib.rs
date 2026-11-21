@@ -37,11 +37,28 @@ pub fn format_source(source: &str, config: &FormatConfig) -> String {
     try_format(source, config).unwrap_or_else(|_| source.to_owned())
 }
 
+#[derive(Debug)]
+pub enum FormatError {
+    Parse(Vec<mesh_parser::ParseError>),
+    ChangedProgram,
+}
+
+impl std::fmt::Display for FormatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Parse(_) => "source contains parse errors",
+            Self::ChangedProgram => "the formatter could not preserve it exactly (a formatter bug), so it was left unchanged",
+        })
+    }
+}
+
+impl std::error::Error for FormatError {}
+
 /// Format like [`format_source`], or say why the source cannot be formatted.
-pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String> {
+pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, FormatError> {
     let parse = mesh_parser::parse(source);
     if !parse.errors().is_empty() {
-        return Err("source contains parse errors".to_owned());
+        return Err(FormatError::Parse(parse.errors().to_vec()));
     }
     checked(
         &parse,
@@ -50,14 +67,11 @@ pub fn try_format(source: &str, config: &FormatConfig) -> Result<String, String>
 }
 
 /// `formatted`, if it is the program `parse` holds (see [`preserves`]).
-fn checked(parse: &mesh_parser::Parse, formatted: String) -> Result<String, String> {
+fn checked(parse: &mesh_parser::Parse, formatted: String) -> Result<String, FormatError> {
     if preserves(parse, &formatted) {
         Ok(formatted)
     } else {
-        Err(
-            "the formatter could not preserve it exactly (a formatter bug), so it was left unchanged"
-                .to_owned(),
-        )
+        Err(FormatError::ChangedProgram)
     }
 }
 
@@ -161,7 +175,7 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
 
 #[cfg(test)]
 mod idempotency_tests {
-    use super::{checked, format_source, preserves, FormatConfig};
+    use super::{checked, format_source, preserves, FormatConfig, FormatError};
 
     /// Output with other tokens, another tree or a parse error is not the
     /// same program, and the formatter would refuse it.
@@ -175,7 +189,7 @@ mod idempotency_tests {
         assert!(!preserves(&parse, "fn f(a, b) do\n  a -\n"));
         // Output that is not the program is refused, and says why.
         let refused = checked(&parse, "fn f(a, b) do\n  a + b\nend\n".to_string());
-        assert!(refused.unwrap_err().contains("a formatter bug"));
+        assert!(matches!(refused, Err(FormatError::ChangedProgram)));
     }
 
     #[test]

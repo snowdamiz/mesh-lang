@@ -233,7 +233,7 @@ Anything else is error E0055:
 
 ```text
 [E0055] Error: invalid exported function declaration: stable exports require exactly `(Bytes) -> Result<Bytes, String>`
-   ╭─[ main.mpl:1:1 ]
+   ╭─[ ./main.mpl:1:1 ]
    │
  1 │ ╭─▶ @export("bad_sig")
    ┆ ┆
@@ -243,13 +243,16 @@ Anything else is error E0055:
    │
    │     Help: use `@export("c_symbol") pub fn name(request :: Bytes) -> Bytes!String`
 ───╯
+  = E0055: meshc explain E0055 · skill diagnostics.md#e0055 · https://meshlang.dev/docs/errors/#e0055
+error: 1 error (E0055)
 ```
 
 Exports may be declared in any module of the project. Two exports with the same
-symbol fail the build with `duplicate exported symbol '<symbol>'`. A symbol
-that matches a function the compiled module already defines or declares fails
-with `Exported symbol '<symbol>' conflicts with another generated or runtime
-symbol`. That check sees only the runtime functions the program uses, so
+symbol fail the build with error `E0108` (``exported symbol `<symbol>` is
+exported twice``). A symbol that matches a function the compiled module already
+defines or declares also fails with `E0108` (``exported symbol `<symbol>` is
+already the symbol of a runtime or generated function``). That check sees only
+the runtime functions the program uses, so
 give symbols a prefix unique to your library rather than a bare `mesh_` one.
 
 `Ok(bytes)` returns the bytes to the host. `Err(message)` returns the message

@@ -17,7 +17,7 @@ pub fn read_token() -> Result<String, String> {
     let content = std::fs::read_to_string(&path)
         .map_err(|_| "Not logged in. Run `meshpkg login` first.".to_string())?;
     let table: toml::Table =
-        toml::from_str(&content).map_err(|e| format!("Corrupted credentials file: {}", e))?;
+        toml::from_str(&content).map_err(|_| "Corrupted credentials file.".to_owned())?;
     table
         .get("registry")
         .and_then(|r| r.get("token"))

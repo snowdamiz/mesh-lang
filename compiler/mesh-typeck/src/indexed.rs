@@ -100,7 +100,7 @@ impl TypeRegistry {
                     .is_some_and(|def| def.indexed.is_none())
                 || ctx.builtin_types.contains(name));
         if conflicts_with_indexed || conflicts_with_ordinary {
-            invalid_index(
+            invalid_indexed_type(
                 ctx,
                 span,
                 format!("indexed type `{name}` shares a runtime type name with another definition"),
@@ -109,10 +109,24 @@ impl TypeRegistry {
     }
 }
 
-pub(super) fn invalid_index(ctx: &mut InferCtx, span: TextRange, reason: String) -> TypeError {
-    let error = TypeError::InvalidIndex { reason, span };
+pub(super) fn report(ctx: &mut InferCtx, error: TypeError) -> TypeError {
     ctx.errors.push(error.clone());
     error
+}
+
+/// A malformed Nat index or index parameter (`E0095`).
+pub(super) fn invalid_index(ctx: &mut InferCtx, span: TextRange, reason: String) -> TypeError {
+    report(ctx, TypeError::InvalidIndex { reason, span })
+}
+
+/// An indexed type, constructor, or indexed function against the rules
+/// of indexed types (`E0096`).
+pub(super) fn invalid_indexed_type(
+    ctx: &mut InferCtx,
+    span: TextRange,
+    reason: String,
+) -> TypeError {
+    report(ctx, TypeError::InvalidIndexedType { reason, span })
 }
 
 pub(super) fn index_param_name(parameter: IndexParam) -> Option<String> {
@@ -211,7 +225,7 @@ pub(super) fn function_type_params(ctx: &mut InferCtx, node: &SyntaxNode) -> FxH
             ctx.fresh_var()
         };
         if params.insert(name.clone(), ty).is_some() && !indices.is_empty() {
-            invalid_index(
+            invalid_indexed_type(
                 ctx,
                 significant_range(node),
                 format!("duplicate parameter `{name}`"),
@@ -229,7 +243,7 @@ pub(super) fn check_index_bounds(
 ) {
     for (name, _) in bounds {
         if matches!(params.get(name), Some(Ty::Nat(_))) {
-            invalid_index(
+            invalid_indexed_type(
                 ctx,
                 significant_range(fun.syntax()),
                 format!("Nat parameter `{name}` cannot have a trait bound"),
@@ -244,12 +258,14 @@ pub(super) fn contains_indexed_type(ty: &Ty) -> bool {
 }
 
 /// Turn raw annotation syntax into kind-checked types and Nat terms. A Nat
-/// parameter belongs to the nearest declaration that binds its name.
+/// parameter belongs to the nearest declaration that binds its name. An
+/// error is at `span`, the annotation.
 pub(super) fn check_indexed_type(
     ty: Ty,
     node: &SyntaxNode,
     registry: &TypeRegistry,
-) -> Result<Ty, String> {
+    span: TextRange,
+) -> Result<Ty, TypeError> {
     let lookup = |name: &str| {
         for enclosing in node.ancestors() {
             if index_param_names(&enclosing).any(|param| param == name) {
@@ -264,72 +280,81 @@ pub(super) fn check_indexed_type(
         }
         None
     };
-    check_type_kind(ty, registry, &lookup)
+    check_type_kind(ty, registry, &lookup, span)
 }
 
 fn check_type_kind(
     ty: Ty,
     registry: &TypeRegistry,
     parameter_kind: &dyn Fn(&str) -> Option<bool>,
-) -> Result<Ty, String> {
+    span: TextRange,
+) -> Result<Ty, TypeError> {
     use crate::proof_values::PROOF_TYPE;
 
+    let index = |reason: String| TypeError::InvalidIndex { reason, span };
+    let indexed_type = |reason: String| TypeError::InvalidIndexedType { reason, span };
+    let check = |ty: Ty| check_type_kind(ty, registry, parameter_kind, span);
     if ty.is_proof() {
         return Ok(ty);
     }
     match ty {
-        Ty::Nat(index) => Err(format!("expected a type, found Nat index `{index}`")),
-        Ty::Con(con) if con.name == PROOF_TYPE => {
-            Err("a `Proof` type requires exactly one named proposition".into())
-        }
+        Ty::Nat(nat) => Err(index(format!("expected a type, found Nat index `{nat}`"))),
+        Ty::Con(con) if con.name == PROOF_TYPE => Err(TypeError::InvalidProposition {
+            reason: "a `Proof` type requires exactly one named proposition".into(),
+            span,
+        }),
         Ty::Con(con) => {
             match parameter_kind(&con.name) {
                 Some(true) => {
-                    return Err(format!(
+                    return Err(index(format!(
                         "expected a type, found Nat parameter `{}`",
                         con.name
-                    ))
+                    )))
                 }
                 Some(false) => return Ok(Ty::Con(con)),
                 None => {}
             }
             if let Some(family) = registry.indexed_family(&con) {
-                return Err(format!(
+                return Err(indexed_type(format!(
                     "indexed type `{}` requires {} explicit arguments",
                     family.name,
                     family.generic_params.len()
-                ));
+                )));
             }
             if is_unbound_succ(&con, registry) {
-                return Err("a `Succ` index is allowed only in a Nat position".into());
+                return Err(index(
+                    "a `Succ` index is allowed only in a Nat position".into(),
+                ));
             }
-            reject_unresolved_indexed_qualifier(&con, registry)?;
+            reject_unresolved_indexed_qualifier(&con, registry).map_err(indexed_type)?;
             Ok(Ty::Con(con))
         }
         Ty::App(head, args) => {
             if matches!(head.as_ref(), Ty::Con(con) if con.name == PROOF_TYPE) {
-                return registry
-                    .proof_predicates
-                    .annotation(args, |arg| check_nat_kind(arg, parameter_kind));
+                return registry.proof_predicates.annotation(
+                    args,
+                    |arg| check_nat_kind(arg, parameter_kind, span),
+                    span,
+                );
             }
             let family = head.con().and_then(|con| registry.indexed_family(con));
             if let Some(family) = family {
                 if args.len() != family.generic_params.len() {
-                    return Err(format!(
+                    return Err(indexed_type(format!(
                         "indexed type `{}` requires {} arguments, found {}",
                         family.name,
                         family.generic_params.len(),
                         args.len()
-                    ));
+                    )));
                 }
                 let args = args
                     .into_iter()
                     .enumerate()
                     .map(|(pos, arg)| {
                         if family.is_index_position(pos) {
-                            check_nat_kind(arg, parameter_kind).map(Ty::Nat)
+                            check_nat_kind(arg, parameter_kind, span).map(Ty::Nat)
                         } else {
-                            check_type_kind(arg, registry, parameter_kind)
+                            check(arg)
                         }
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -342,28 +367,28 @@ fn check_type_kind(
                     return Ok(Ty::App(head, args));
                 }
                 if is_unbound_succ(con, registry) && parameter_kind(&con.name).is_none() {
-                    return Err("a `Succ` index is allowed only in a Nat position".into());
+                    return Err(index(
+                        "a `Succ` index is allowed only in a Nat position".into(),
+                    ));
                 }
-                reject_unresolved_indexed_qualifier(con, registry)?;
+                reject_unresolved_indexed_qualifier(con, registry).map_err(indexed_type)?;
             }
             Ok(Ty::App(
-                Box::new(check_type_kind(*head, registry, parameter_kind)?),
-                args.into_iter()
-                    .map(|arg| check_type_kind(arg, registry, parameter_kind))
-                    .collect::<Result<Vec<_>, _>>()?,
+                Box::new(check(*head)?),
+                args.into_iter().map(check).collect::<Result<Vec<_>, _>>()?,
             ))
         }
         Ty::Fun(params, result) => Ok(Ty::fun(
             params
                 .into_iter()
-                .map(|arg| check_type_kind(arg, registry, parameter_kind))
+                .map(check)
                 .collect::<Result<Vec<_>, _>>()?,
-            check_type_kind(*result, registry, parameter_kind)?,
+            check(*result)?,
         )),
         Ty::Tuple(items) => Ok(Ty::Tuple(
             items
                 .into_iter()
-                .map(|arg| check_type_kind(arg, registry, parameter_kind))
+                .map(check)
                 .collect::<Result<Vec<_>, _>>()?,
         )),
         other => Ok(other),
@@ -393,16 +418,20 @@ fn reject_unresolved_indexed_qualifier(con: &TyCon, registry: &TypeRegistry) -> 
 fn check_nat_kind(
     ty: Ty,
     parameter_kind: &dyn Fn(&str) -> Option<bool>,
-) -> Result<NatIndex, String> {
+    span: TextRange,
+) -> Result<NatIndex, TypeError> {
     match ty {
         Ty::Nat(index) => Ok(index),
         Ty::Con(con) if parameter_kind(&con.name) == Some(true) => {
             Ok(NatIndex::Parameter(con.name))
         }
         Ty::App(head, mut args) if head.con_name() == Some("Succ") && args.len() == 1 => {
-            Ok(check_nat_kind(args.remove(0), parameter_kind)?.successor())
+            Ok(check_nat_kind(args.remove(0), parameter_kind, span)?.successor())
         }
-        ty => Err(format!("expected a Nat index, found `{ty}`")),
+        ty => Err(TypeError::InvalidIndex {
+            reason: format!("expected a Nat index, found `{ty}`"),
+            span,
+        }),
     }
 }
 
@@ -577,7 +606,7 @@ pub(super) fn indexed_pattern_fields(
     };
     let scrutinee = ctx.resolve(scrutinee.clone());
     let Some(def) = registry.indexed_family(head) else {
-        return Err(invalid_index(
+        return Err(invalid_indexed_type(
             ctx,
             span,
             "import the indexed family before matching its constructors".into(),
@@ -588,14 +617,14 @@ pub(super) fn indexed_pattern_fields(
         .iter()
         .find(|variant| variant.name == variant_name)
     else {
-        return Err(invalid_index(
+        return Err(invalid_indexed_type(
             ctx,
             span,
             format!("unknown indexed constructor `{variant_name}`"),
         ));
     };
     let Some(indexed) = &variant.indexed else {
-        return Err(invalid_index(
+        return Err(invalid_indexed_type(
             ctx,
             span,
             format!("constructor `{variant_name}` has no checked index result"),
@@ -611,7 +640,7 @@ pub(super) fn indexed_pattern_fields(
             ),
             _ => format!("matching `{variant_name}` requires a scrutinee with checked Nat indices"),
         };
-        return Err(invalid_index(ctx, span, reason));
+        return Err(invalid_indexed_type(ctx, span, reason));
     }
 
     let witnesses: FxHashMap<_, _> = indexed
@@ -669,7 +698,7 @@ pub(super) fn reject_unchecked_indexed_pattern(
     span: TextRange,
 ) -> Result<(), TypeError> {
     if result.con().is_some_and(|con| con.indexed_origin.is_some()) {
-        return Err(invalid_index(
+        return Err(invalid_indexed_type(
             ctx,
             span,
             "indexed constructor patterns require a direct case arm".into(),

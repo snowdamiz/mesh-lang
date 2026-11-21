@@ -130,7 +130,7 @@ fn diagnostic_repair_pipe_placeholder_preserves_argument_order() {
     assert!(!json.ok, "{}", json.stderr);
     assert!(json.stdout.is_empty(), "{}", json.stdout);
     let diagnostics = parse_json_diagnostics(&json.stderr);
-    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic["code"], "E0003");
     assert_eq!(diagnostic["severity"], "error");
@@ -142,7 +142,12 @@ fn diagnostic_repair_pipe_placeholder_preserves_argument_order() {
         serde_json::json!([{
             "start": 149,
             "end": 181,
-            "label": "expected 3 argument(s)"
+            "label": "expected 3 argument(s)",
+            "file": diagnostic["file"],
+            "line": 6,
+            "col": 31,
+            "end_line": 6,
+            "end_col": 63
         }])
     );
     assert_eq!(
@@ -152,7 +157,6 @@ fn diagnostic_repair_pipe_placeholder_preserves_argument_order() {
     let hint = diagnostic["fix"].as_str().unwrap();
     assert!(hint.contains("Use `|2>` and remove `_`"), "{hint}");
     assert!(terminal.contains(hint), "{terminal}");
-    assert_eq!(diagnostics[1]["code"], "C0001");
 
     let removing_only = PIPE_PLACEHOLDER.replace("_, ", "");
     assert_eq!(run(&removing_only), "middle:left:right\n");
@@ -270,7 +274,7 @@ fn json_diagnostics_are_one_object_per_line() {
     let source = "fn main() do\n  println(aaa)\n  println(bbb)\nend\n";
     let diags = json_diagnostics(source);
     let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
-    assert_eq!(codes, ["E0004", "E0004", "C0001"]);
+    assert_eq!(codes, ["E0004", "E0004"]);
 }
 
 #[test]
@@ -1678,6 +1682,30 @@ fn receive_arms_must_cover_the_message_type() {
 // ── Numbers ────────────────────────────────────────────────────────────
 
 /// Build and run a program that may fail; returns (exit code, stdout, stderr).
+/// What a program writes on stderr for runtime panics with `messages`,
+/// raised where compiled code does not know the place (`List.get`): one
+/// `R0001` report each, in order.
+/// What a program's runtime writes for `diagnostics`, one process showing
+/// each code's footer once.
+fn runtime_report(diagnostics: impl IntoIterator<Item = mesh_diagnostics::Diagnostic>) -> String {
+    let mut out = Vec::new();
+    let mut reporter =
+        mesh_diagnostics::Reporter::new(mesh_diagnostics::Format::Human { color: false }, &mut out);
+    for diagnostic in diagnostics {
+        reporter.emit(diagnostic);
+    }
+    drop(reporter);
+    String::from_utf8(out).unwrap()
+}
+
+fn panic_report(messages: &[&str]) -> String {
+    runtime_report(
+        messages.iter().map(|message| {
+            mesh_diagnostics::Diagnostic::new(mesh_diagnostics::Code::Panic, *message)
+        }),
+    )
+}
+
 fn run_status(source: &str, args: &[&str]) -> (Option<i32>, String, String) {
     let built = build_with_args(source, args);
     assert!(built.ok, "build failed:\n{}", built.stderr);
@@ -1718,7 +1746,9 @@ end
         let (code, out, err) = run_status(panics, &["--opt-level", opt]);
         assert_eq!(code, Some(101), "--opt-level {opt}\n{err}");
         assert_eq!(out, "before\n");
-        assert!(err.contains("division by zero"), "{err}");
+        assert!(err.contains("[R0001] Error: division by zero"), "{err}");
+        // At the `%`: line 5, where `10 % zero` starts.
+        assert!(err.contains("main.mpl:5:14\n"), "{err}");
         assert!(!err.contains("failed to initiate panic"), "{err}");
     }
 }
@@ -1753,7 +1783,7 @@ fn a_service_handler_type_error_points_at_the_handler() {
     let diags = json_diagnostics(source);
     let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
     // Only the handler's error: the service is still defined for `main`.
-    assert_eq!(codes, ["E0001", "C0001"], "{diags:?}");
+    assert_eq!(codes, ["E0001"], "{diags:?}");
     assert_eq!(
         diags[0]["message"],
         "type mismatch: expected `String`, found `Int`"
@@ -1766,7 +1796,7 @@ fn a_service_handler_type_error_points_at_the_handler() {
 fn an_undefined_module_is_reported_once() {
     let diags = json_diagnostics("fn main() do\n  let r = Nope.start()\n  println(\"x\")\nend\n");
     let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
-    assert_eq!(codes, ["E0004", "C0001"], "{diags:?}");
+    assert_eq!(codes, ["E0004"], "{diags:?}");
 }
 
 // ── Pattern matching: guards, nesting, scoping ─────────────────────────
@@ -2405,7 +2435,7 @@ fn a_failed_let_does_not_make_its_name_undefined() {
         "fn main() do\n  let v = \"a\" <> nope\n  let w :: Int = \"s\"\n  println(v)\n  println(\"#{w}\")\nend\n",
     );
     let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
-    assert_eq!(codes, ["E0004", "E0001", "C0001"], "{diags:?}");
+    assert_eq!(codes, ["E0004", "E0001"], "{diags:?}");
     // The annotation is what was expected.
     assert_eq!(
         diags[1]["message"],
@@ -3787,6 +3817,11 @@ fn question_mark_needs_a_function_that_can_return_its_error() {
     );
     let diags = json_diagnostics(&source);
     let try_err = diags.iter().find(|d| d["code"] == "E0036").expect("E0036");
+    assert!(try_err["fix"]
+        .as_str()
+        .unwrap()
+        .contains("handle the operand with `case`"));
+    assert_eq!(try_err["notes"], serde_json::json!([]));
     assert_eq!(
         try_err["spans"][0]["start"].as_u64().unwrap() as usize,
         source.find("helper(n)?").unwrap()
@@ -4404,7 +4439,7 @@ end
     );
     let bad = "fn main() do\n  let a = 1e\n  let b = 2e+\n  let c = 0x\n  let d = 9223372036854775808\n  let e = 0xffffffffffffffff\n  let f = 1e999\n  let g = case 0 do\n    99999999999999999999 -> 1\n    _ -> 0\n  end\n  println(\"#{a} #{b} #{c} #{d} #{e} #{f} #{g}\")\nend\n";
     let err = build_error(bad);
-    assert_eq!(err.matches("E0072").count(), 7, "{err}");
+    assert_eq!(err.matches("[E0072] Error").count(), 7, "{err}");
     assert!(err.contains("expected digits after the exponent"), "{err}");
     assert!(err.contains("expected digits after `0x`"), "{err}");
     assert!(
@@ -4582,7 +4617,7 @@ fn a_parse_error_at_the_end_of_the_file_is_reported() {
     ] {
         let err = build_error(source);
         assert!(
-            err.contains("Parse error") && !err.contains("panicked"),
+            err.contains("[P0102] Error:") && !err.contains("panicked"),
             "{err}"
         );
     }
@@ -4593,7 +4628,7 @@ fn an_unterminated_string_is_one_error_at_its_opening_quote() {
     // It was "Parse error" with an empty message at the end of the file,
     // two or three times.
     let err = build_error("fn main() do\n  let s = \"abc\n  println(s)\nend\n");
-    assert_eq!(err.matches("Parse error").count(), 1, "{err}");
+    assert_eq!(err.matches("[P0102] Error:").count(), 1, "{err}");
     assert!(
         err.contains("unterminated string: no closing `\"`"),
         "{err}"
@@ -4613,7 +4648,7 @@ fn parse_errors_name_tokens_as_written() {
 fn a_parse_error_is_not_repeated_at_the_same_place() {
     // An unclosed interpolation gave four errors on one column.
     let err = build_error("fn main() do\n  let x = 1\n  println(\"a#{x\")\nend\n");
-    assert_eq!(err.matches("Parse error").count(), 1, "{err}");
+    assert_eq!(err.matches("[P0003] Error:").count(), 1, "{err}");
     assert!(
         err.contains("expected `}` to close the interpolation"),
         "{err}"
@@ -4631,13 +4666,16 @@ fn a_pattern_of_the_wrong_type_is_reported_at_the_pattern() {
         mismatch["spans"][0]["start"].as_u64().unwrap() as usize,
         source.find("\"a\"").unwrap()
     );
-    assert_eq!(mismatch["fix"], serde_json::Value::Null);
+    assert_eq!(
+        mismatch["fix"],
+        mesh_diagnostics::Code::TypeMismatch.info().repair
+    );
     let err = build_error(source);
     assert!(
         err.contains("this pattern matches String, but the value is Int"),
         "{err}"
     );
-    assert_eq!(err.matches("E0001").count(), 1, "{err}");
+    assert_eq!(err.matches("[E0001] Error").count(), 1, "{err}");
 }
 
 #[test]
@@ -4766,7 +4804,7 @@ fn a_stack_overflow_is_reported() {
     ] {
         let (code, _stdout, stderr) = run_status(&format!("{recurse}{main}"), &[]);
         assert_ne!(code, Some(0), "{stderr}");
-        assert!(stderr.contains("error: stack overflow"), "{stderr}");
+        assert!(stderr.contains("[R0002] Error: stack overflow"), "{stderr}");
     }
 }
 
@@ -4824,7 +4862,7 @@ fn a_runtime_error_is_a_mesh_panic_that_ends_only_its_actor() {
     // `List.get` past the end, in an actor, aborted the whole process ("panic
     // in a function that cannot unwind", then Rust's backtrace): runtime
     // functions could not unwind. It now ends the actor alone, reported as
-    // the one-line Mesh panic.
+    // its R0001 diagnostic.
     let (code, out, err) = run_status(
         r##"actor worker(n :: Int) do
   receive do
@@ -4845,7 +4883,7 @@ end
     assert_eq!(out, "main still running\n");
     assert_eq!(
         err,
-        "Mesh panic: List.get: index 5 is out of bounds for a list of length 1\n"
+        panic_report(&["List.get: index 5 is out of bounds for a list of length 1"])
     );
     // On the main thread it ends the program with status 101.
     for (value, message) in [
@@ -4866,10 +4904,10 @@ end
         assert_eq!(code, Some(101), "{value}\n{err}");
         assert_eq!(out, "", "{value}");
         assert!(
-            err.starts_with(&format!("Mesh panic: {message}")),
+            err.starts_with(&format!("[R0001] Error: {message}")),
             "{value}\n{err}"
         );
-        assert_eq!(err.lines().count(), 1, "{value}\n{err}");
+        assert_eq!(err.matches("[R0001]").count(), 1, "{value}\n{err}");
     }
 }
 
@@ -4880,11 +4918,11 @@ fn an_unknown_query_atom_is_a_mesh_panic() {
     for (call, message) in [
         (
             "Query.from(\"t\") |> Query.where_op(:age, :greater, \"1\")",
-            "Mesh panic: Query.where_op: unknown operator :greater;",
+            "[R0001] Error: Query.where_op: unknown operator :greater;",
         ),
         (
             "Query.from(\"t\") |> Query.join_as(:outer, \"u\", \"x\", \"x.id = t.id\")",
-            "Mesh panic: Query.join_as: unknown join kind :outer;",
+            "[R0001] Error: Query.join_as: unknown join kind :outer;",
         ),
     ] {
         let source = format!("fn main() do\n  let q = {call}\n  println(\"built\")\nend\n");
@@ -4904,7 +4942,12 @@ fn a_failed_match_names_its_function() {
     );
     assert_eq!(code, Some(101), "{err}");
     assert_eq!(out, "zero\n");
-    assert_eq!(err, "Mesh panic in Main__f: non-exhaustive match\n");
+    assert!(
+        err.starts_with("[R0001] Error: non-exhaustive match\n"),
+        "{err}"
+    );
+    assert!(err.contains("  Note: raised in `Main__f`\n"), "{err}");
+    assert_eq!(err.matches("[R0001]").count(), 1, "{err}");
 }
 
 #[test]
@@ -5162,7 +5205,7 @@ end
 #[test]
 fn panic_ends_the_actor_or_the_program() {
     // The Mesh skill docs used `panic("...")`, which did not exist.
-    let (code, out, err) = run_status(
+    let built = build_with_args(
         r##"fn parse_port(text :: String) -> Int do
   case String.to_int(text) do
     Some(port) -> port
@@ -5187,11 +5230,27 @@ end
 "##,
         &[],
     );
-    assert_eq!(code, Some(101), "{err}");
-    assert_eq!(out, "8080\n");
+    assert!(built.ok, "build failed:\n{}", built.stderr);
+    let output = Command::new(built.dir.path().join("project/project"))
+        .output()
+        .expect("run binary");
+    let err = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(101), "{err}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "8080\n");
+    // Each panic is at its call.
+    let main = mesh_diagnostics::SourceFile::unread(built.dir.path().join("project/main.mpl"));
+    let at = |line, col, message| {
+        mesh_diagnostics::Diagnostic::at_line(
+            mesh_diagnostics::Code::Panic,
+            main.clone(),
+            line,
+            message,
+        )
+        .at_column(col)
+    };
     assert_eq!(
         err,
-        "Mesh panic: deliberate crash\nMesh panic: not a port: x\n"
+        runtime_report([at(10, 10, "deliberate crash"), at(4, 13, "not a port: x")])
     );
 }
 
@@ -5259,7 +5318,9 @@ fn map_get_of_a_missing_key_panics() {
         assert_eq!(code, Some(101), "{source}\n{err}");
         assert_eq!(out, "", "{source}");
         assert!(
-            err.starts_with(&format!("Mesh panic: {value}: the key is not in the map")),
+            err.starts_with(&format!(
+                "[R0001] Error: {value}: the key is not in the map"
+            )),
             "{source}\n{err}"
         );
     }

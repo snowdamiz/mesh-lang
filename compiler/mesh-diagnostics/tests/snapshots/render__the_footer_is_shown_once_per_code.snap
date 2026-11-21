@@ -1,0 +1,23 @@
+---
+source: compiler/mesh-diagnostics/tests/render.rs
+expression: output
+---
+[I0001] Error: internal compiler error
+  Help: Report it with the notes and the smallest program that reproduces it. Until it is fixed, rewrite the construct the notes name another way.
+  Note: unexpected MIR node `Foo`
+  = I0001: meshc explain I0001 · skill diagnostics.md#i0001 · https://meshlang.dev/docs/errors/#i0001
+[E0001] Error: type mismatch: expected `Int`, found `String`
+   --> src/main.mpl
+  Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+[I0001] Error: internal compiler error
+  Help: Report it with the notes and the smallest program that reproduces it. Until it is fixed, rewrite the construct the notes name another way.
+  Note: unexpected MIR node `Foo`
+[W0001] Warning: this arm is unreachable
+   --> src/main.mpl
+  Help: Remove the arm, or move it before the arm that covers it.
+  = W0001: meshc explain W0001 · skill diagnostics.md#w0001 · https://meshlang.dev/docs/errors/#w0001
+[E0001] Error: type mismatch: expected `Int`, found `String`
+   --> src/main.mpl
+  Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
+error: 4 errors, 1 warning (I0001 ×2, E0001 ×2, W0001)

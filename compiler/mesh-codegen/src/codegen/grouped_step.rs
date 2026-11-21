@@ -5,6 +5,7 @@ use inkwell::module::Linkage;
 use inkwell::values::{
     BasicValue, CallSiteValue, FunctionValue, InstructionOpcode, IntValue, PointerValue,
 };
+use mesh_diagnostics::Diagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{CodeGen, BUILT};
@@ -56,7 +57,13 @@ fn safe_helper(f: FunctionValue<'_>, natives: &FxHashSet<&str>) -> bool {
                         let name = callee.get_name().to_string_lossy();
                         callee.count_basic_blocks() == 0
                             && !natives.contains(name.as_ref())
-                            && matches!(name.as_ref(), "mesh_panic_str" | "mesh_panic")
+                            && matches!(
+                                name.as_ref(),
+                                "mesh_panic_str"
+                                    | "mesh_panic_str_at"
+                                    | "mesh_panic"
+                                    | "mesh_panic_at"
+                            )
                     }),
                 _ => false,
             }
@@ -228,7 +235,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .all(|child| self.step_expression_supported(child, handler, mir, natives))
     }
 
-    pub(super) fn lower_grouped_steps(&mut self, mir: &MirModule) -> Result<(), String> {
+    pub(super) fn lower_grouped_steps(&mut self, mir: &MirModule) -> Result<(), Diagnostic> {
         if self.step_sites.is_empty() {
             return Ok(());
         }
@@ -314,7 +321,11 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    fn emit_step(&mut self, actor: &str, h: Handler<'_>) -> Result<FunctionValue<'ctx>, String> {
+    fn emit_step(
+        &mut self,
+        actor: &str,
+        h: Handler<'_>,
+    ) -> Result<FunctionValue<'ctx>, Diagnostic> {
         let ptr = self.context.ptr_type(Default::default());
         let status = self.context.i8_type();
         let word = self.context.i64_type();
@@ -388,7 +399,8 @@ fn segment_bound(f: FunctionValue<'_>, natives: &FxHashSet<&str>) -> Option<u32>
                 }
                 match name.as_ref() {
                     "mesh_step_charge" => charges = charges.checked_add(1)?,
-                    "mesh_actor_self" | "mesh_actor_send" | "mesh_panic" | "mesh_panic_str" => (),
+                    "mesh_actor_self" | "mesh_actor_send" | "mesh_panic" | "mesh_panic_at"
+                    | "mesh_panic_str" | "mesh_panic_str_at" => (),
                     _ if safe_helper(callee, natives) => (),
                     _ => return None,
                 }

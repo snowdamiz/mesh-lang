@@ -18,10 +18,11 @@
 use inkwell::basic_block::BasicBlock;
 use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
 use inkwell::IntPredicate;
+use mesh_diagnostics::Diagnostic;
 
 use super::types::variant_struct_type;
 use super::{CodeGen, SavedLocal};
-use crate::mir::{MirLiteral, MirMatchArm, MirType};
+use crate::mir::{MirLiteral, MirMatchArm, MirSourceSpan, MirType};
 use crate::pattern::{AccessPath, DecisionTree};
 
 /// Where a match's decision tree reads its scrutinee and leaves its result.
@@ -36,6 +37,8 @@ pub(crate) struct MatchTarget<'a, 'ctx> {
     pub(crate) result: PointerValue<'ctx>,
     /// Where an arm branches once it is done.
     pub(crate) merge_bb: BasicBlock<'ctx>,
+    /// Where the match is: a value no arm accepts panics there.
+    pub(crate) at: Option<MirSourceSpan>,
 }
 
 type Binding = (String, MirType, AccessPath);
@@ -47,7 +50,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         tree: &DecisionTree,
         target: MatchTarget<'_, 'ctx>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         match tree {
             DecisionTree::Leaf {
                 arm_index,
@@ -76,11 +79,9 @@ impl<'ctx> CodeGen<'ctx> {
                 empty,
                 ..
             } => self.codegen_list_decons(scrutinee_path, non_empty, empty, target),
-            DecisionTree::Fail {
-                message,
-                file,
-                line,
-            } => self.codegen_panic(message, file, *line).map(drop),
+            DecisionTree::Fail { message, file, .. } => {
+                self.codegen_panic(message, file, target.at).map(drop)
+            }
         }
     }
 
@@ -92,10 +93,10 @@ impl<'ctx> CodeGen<'ctx> {
         (success_bb, success): (BasicBlock<'ctx>, &DecisionTree),
         (failure_bb, failure): (BasicBlock<'ctx>, &DecisionTree),
         target: MatchTarget<'_, 'ctx>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         self.builder
             .build_conditional_branch(cond, success_bb, failure_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder.position_at_end(success_bb);
         self.codegen_decision_tree(success, target)?;
         self.builder.position_at_end(failure_bb);
@@ -109,7 +110,7 @@ impl<'ctx> CodeGen<'ctx> {
         arm_index: usize,
         bindings: &[Binding],
         target: MatchTarget<'_, 'ctx>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         // Bind variables from access paths. A binding shadows an outer name
         // only for the arm body.
         let saved = self.bind_pattern_values(bindings, target)?;
@@ -125,10 +126,10 @@ impl<'ctx> CodeGen<'ctx> {
             let body_val = self.coerce_value_to_type(body_val, self.llvm_type(target.result_ty))?;
             self.builder
                 .build_store(target.result, body_val)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_unconditional_branch(target.merge_bb)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         Ok(())
@@ -140,7 +141,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         bindings: &[Binding],
         target: MatchTarget<'_, 'ctx>,
-    ) -> Result<Vec<SavedLocal<'ctx>>, String> {
+    ) -> Result<Vec<SavedLocal<'ctx>>, Diagnostic> {
         bindings
             .iter()
             .map(|(name, ty, path)| {
@@ -158,7 +159,7 @@ impl<'ctx> CodeGen<'ctx> {
         cases: &[(crate::pattern::ConstructorTag, DecisionTree)],
         default: Option<&DecisionTree>,
         target: MatchTarget<'_, 'ctx>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         let fn_val = self.current_function();
 
         // Every sum type layout starts with its i8 tag.
@@ -167,7 +168,7 @@ impl<'ctx> CodeGen<'ctx> {
         let tag_val = self
             .builder
             .build_load(self.context.i8_type(), switch_ptr, "tag")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value();
 
         // Create blocks for each case
@@ -192,7 +193,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder
             .build_switch(tag_val, default_bb, &switch_cases)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Generate code for each case
         for (i, (_, subtree)) in cases.iter().enumerate() {
@@ -207,7 +208,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Default: unreachable (exhaustive match guaranteed by type checker)
             None => {
                 let fn_name = self.current_function_name();
-                self.codegen_panic("non-exhaustive match in switch", &fn_name, 0)
+                self.codegen_panic("non-exhaustive match in switch", &fn_name, target.at)
                     .map(drop)
             }
         }
@@ -222,7 +223,7 @@ impl<'ctx> CodeGen<'ctx> {
         success: &DecisionTree,
         failure: &DecisionTree,
         target: MatchTarget<'_, 'ctx>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         let fn_val = self.current_function();
 
         // The value at the access path. A literal inside a generic payload is
@@ -241,7 +242,7 @@ impl<'ctx> CodeGen<'ctx> {
                         lit_val,
                         "test_eq",
                     )
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             }
             MirLiteral::Float(f) => {
                 let lit_val = self.context.f64_type().const_float(*f);
@@ -252,7 +253,7 @@ impl<'ctx> CodeGen<'ctx> {
                         lit_val,
                         "test_feq",
                     )
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             }
             MirLiteral::Bool(b) => {
                 let lit_val = self
@@ -266,7 +267,7 @@ impl<'ctx> CodeGen<'ctx> {
                         lit_val,
                         "test_beq",
                     )
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             }
             MirLiteral::String(s) => {
                 // Create a MeshString for the pattern literal
@@ -285,7 +286,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let zero = self.context.i8_type().const_int(0, false);
                 self.builder
                     .build_int_compare(IntPredicate::NE, i8_result, zero, "str_eq_bool")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             }
         };
 
@@ -305,7 +306,7 @@ impl<'ctx> CodeGen<'ctx> {
         bindings: &[Binding],
         failure: &DecisionTree,
         target: MatchTarget<'_, 'ctx>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         let fn_val = self.current_function();
 
         let saved = self.bind_pattern_values(bindings, target)?;
@@ -317,7 +318,7 @@ impl<'ctx> CodeGen<'ctx> {
         let failure_bb = self.context.append_basic_block(fn_val, "guard_fail");
         self.builder
             .build_conditional_branch(guard_val, success_bb, failure_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder.position_at_end(success_bb);
         self.codegen_leaf(arm_index, bindings, target)?;
         self.builder.position_at_end(failure_bb);
@@ -332,7 +333,7 @@ impl<'ctx> CodeGen<'ctx> {
         non_empty: &DecisionTree,
         empty: &DecisionTree,
         target: MatchTarget<'_, 'ctx>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         let fn_val = self.current_function();
 
         // Load the list pointer at the access path.
@@ -350,7 +351,7 @@ impl<'ctx> CodeGen<'ctx> {
         let is_non_empty = self
             .builder
             .build_int_compare(IntPredicate::SGT, length_val, zero, "is_non_empty")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let non_empty_bb = self.context.append_basic_block(fn_val, "list_non_empty");
         let empty_bb = self.context.append_basic_block(fn_val, "list_empty");
@@ -370,7 +371,7 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee_alloca: PointerValue<'ctx>,
         scrutinee_ty: &MirType,
         path: &AccessPath,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let ptr = self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, path)?;
         // A tuple is never loaded by value: lowering gives every tuple value
         // the pointer to its runtime block as its type (`runtime_value_type`),
@@ -378,7 +379,7 @@ impl<'ctx> CodeGen<'ctx> {
         let llvm_ty = self.llvm_type(path.ty(scrutinee_ty));
         self.builder
             .build_load(llvm_ty, ptr, "path_val")
-            .map_err(|e| e.to_string())
+            .map_err(Diagnostic::internal)
     }
 
     /// Navigate an access path and return a pointer to the value.
@@ -387,7 +388,7 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee_alloca: PointerValue<'ctx>,
         scrutinee_ty: &MirType,
         path: &AccessPath,
-    ) -> Result<PointerValue<'ctx>, String> {
+    ) -> Result<PointerValue<'ctx>, Diagnostic> {
         match path {
             AccessPath::Root => Ok(scrutinee_alloca),
 
@@ -399,7 +400,7 @@ impl<'ctx> CodeGen<'ctx> {
                     *index as u32,
                     "column",
                 )
-                .map_err(|e| e.to_string()),
+                .map_err(Diagnostic::internal),
 
             AccessPath::TupleField(parent, index, element_ty) => {
                 // Tuples use the runtime layout `{ u64 len, u64 elements[] }`,
@@ -431,7 +432,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let variant_def = self
                     .lookup_sum_type_def(type_name)
                     .and_then(|def| def.variants.iter().find(|v| v.name == *variant))
-                    .ok_or_else(|| format!("Unknown variant '{type_name}.{variant}'"))?;
+                    .ok_or_else(|| {
+                        Diagnostic::internal(format!("Unknown variant '{type_name}.{variant}'"))
+                    })?;
                 let storage_ty = variant_def.fields[*index].clone();
 
                 // Create variant overlay type { i8 tag, field0, field1, ... }
@@ -446,7 +449,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let field_ptr = self
                     .builder
                     .build_struct_gep(variant_ty, parent_ptr, (*index + 1) as u32, "variant_field")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 // A tuple is itself a pointer, stored as the slot's word; any
                 // other value, a pid included, is boxed.
                 if matches!(storage_ty, MirType::Ptr | MirType::Struct(_))
@@ -462,7 +465,7 @@ impl<'ctx> CodeGen<'ctx> {
                             "boxed_variant_payload",
                         )
                         .map(|value| value.into_pointer_value())
-                        .map_err(|error| error.to_string())
+                        .map_err(Diagnostic::internal)
                 } else {
                     Ok(field_ptr)
                 }
@@ -481,7 +484,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_struct_type();
                 self.builder
                     .build_struct_gep(struct_ty, parent_ptr, *index as u32, "struct_field")
-                    .map_err(|e| e.to_string())
+                    .map_err(Diagnostic::internal)
             }
 
             AccessPath::ListHead(parent, elem_ty) => {
@@ -501,10 +504,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let alloca = self
                     .builder
                     .build_alloca(self.llvm_type(elem_ty), "list_head_alloca")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.builder
                     .build_store(alloca, converted)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 Ok(alloca)
             }
 
@@ -523,10 +526,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let alloca = self
                     .builder
                     .build_alloca(ptr_ty, "list_tail_alloca")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.builder
                     .build_store(alloca, tail_ptr)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 Ok(alloca)
             }
         }
@@ -541,7 +544,7 @@ impl<'ctx> CodeGen<'ctx> {
         &self,
         value: IntValue<'ctx>,
         element_ty: &MirType,
-    ) -> Result<PointerValue<'ctx>, String> {
+    ) -> Result<PointerValue<'ctx>, Diagnostic> {
         if matches!(
             element_ty,
             MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(_, _)
@@ -559,17 +562,17 @@ impl<'ctx> CodeGen<'ctx> {
                         self.context.ptr_type(inkwell::AddressSpace::default()),
                         "tuple_boxed_element",
                     )
-                    .map_err(|e| e.to_string());
+                    .map_err(Diagnostic::internal);
             }
         }
 
         let alloca = self
             .builder
             .build_alloca(self.context.i64_type(), "tuple_element")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(alloca, value)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         Ok(alloca)
     }
 }

@@ -270,7 +270,8 @@ fn builds_that_cannot_produce_their_artifact_say_why() {
         .output()
         .unwrap();
     assert!(
-        stderr(&output).contains("library artifacts require at least one `@export` function"),
+        stderr(&output)
+            .contains("[B0302] Error: library artifacts require at least one `@export` function"),
         "{}",
         stderr(&output)
     );
@@ -283,7 +284,7 @@ fn builds_that_cannot_produce_their_artifact_say_why() {
         .output()
         .unwrap();
     assert!(
-        stderr(&output).contains("Failed to emit object file"),
+        stderr(&output).contains("[B0301] Error: cannot write the object file"),
         "{}",
         stderr(&output)
     );
@@ -293,7 +294,7 @@ fn builds_that_cannot_produce_their_artifact_say_why() {
     assert!(
         trace["error"]
             .as_str()
-            .is_some_and(|error| error.contains("Failed to emit object file")),
+            .is_some_and(|error| error.starts_with("[B0301] cannot write the object file")),
         "{trace}"
     );
 
@@ -303,7 +304,7 @@ fn builds_that_cannot_produce_their_artifact_say_why() {
         .unwrap();
     assert!(
         stderr(&output).contains(
-            "Exported symbol 'mesh_println' conflicts with another generated or runtime symbol"
+            "[E0108] Error: exported symbol `mesh_println` is already the symbol of a runtime or generated function"
         ),
         "{}",
         stderr(&output)
@@ -1314,7 +1315,7 @@ end
     let output = meshc_build(&project_dir, &[]).output().unwrap();
     assert!(
         stderr(&output).contains(
-            "Node.spawn needs a function defined at the top level: the remote node starts it by name"
+            "[E0107] Error: `Node.spawn` needs a function defined at the top level: the remote node starts it by name"
         ),
         "{}",
         stderr(&output)
@@ -2076,7 +2077,7 @@ end
         let output = meshc_build(&project_dir, &[]).output().unwrap();
         assert!(
             stderr(&output).contains(
-                "Node.spawn needs a function defined at the top level: the remote node starts it by name"
+                "[E0107] Error: `Node.spawn` needs a function defined at the top level: the remote node starts it by name"
             ),
             "{}",
             stderr(&output)
@@ -2148,7 +2149,7 @@ end
     );
     let output = meshc_build(&project_dir, &[]).output().unwrap();
     assert!(
-        stderr(&output).contains("struct `Node` holds itself by value"),
+        stderr(&output).contains("[E0104] Error: struct `Node` holds itself by value"),
         "{}",
         stderr(&output)
     );

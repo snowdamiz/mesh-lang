@@ -23,6 +23,25 @@ fn check_source(src: &str) -> TypeckResult {
     mesh_typeck::check(&parse)
 }
 
+/// Each error of `result` as the terminal shows it for `src`, a file named
+/// `test.mpl`.
+fn render_errors(result: &TypeckResult, src: &str) -> Vec<String> {
+    let file = mesh_diagnostics::SourceFile::new("test.mpl", src);
+    result
+        .errors
+        .iter()
+        .map(|error| {
+            let mut out = Vec::new();
+            mesh_diagnostics::Reporter::new(
+                mesh_diagnostics::Format::Human { color: false },
+                &mut out,
+            )
+            .emit(error.to_diagnostic(&file));
+            String::from_utf8(out).unwrap()
+        })
+        .collect()
+}
+
 /// Assert that the result has no errors and the final expression type
 /// matches the expected type.
 fn assert_result_type(result: &TypeckResult, expected: Ty) {
@@ -100,11 +119,7 @@ fn test_success_criterion_2_occurs_check_diagnostic() {
     let result = check_source(src);
     assert!(!result.errors.is_empty(), "expected an error");
 
-    let rendered = result.render_errors(
-        src,
-        "test.mpl",
-        &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
-    );
+    let rendered = render_errors(&result, src);
     assert!(!rendered.is_empty(), "expected rendered diagnostics");
     let first = &rendered[0];
     assert!(
@@ -222,11 +237,7 @@ fn test_success_criterion_5_error_locations() {
     );
 
     // Render the diagnostic and check it contains source location information.
-    let rendered = result.render_errors(
-        src,
-        "test.mpl",
-        &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
-    );
+    let rendered = render_errors(&result, src);
     assert!(!rendered.is_empty(), "expected rendered diagnostics");
     let first = &rendered[0];
 
@@ -258,11 +269,7 @@ fn test_success_criterion_5_unbound_var_location() {
         "UnboundVariable(foo)",
     );
 
-    let rendered = result.render_errors(
-        src,
-        "test.mpl",
-        &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
-    );
+    let rendered = render_errors(&result, src);
     assert!(!rendered.is_empty());
     assert!(
         rendered[0].contains("foo"),
@@ -292,11 +299,7 @@ fn test_success_criterion_5_arity_location() {
         "ArityMismatch(2, 1)",
     );
 
-    let rendered = result.render_errors(
-        src,
-        "test.mpl",
-        &mesh_typeck::diagnostics::DiagnosticOptions::colorless(),
-    );
+    let rendered = render_errors(&result, src);
     assert!(!rendered.is_empty());
     let first = &rendered[0];
     assert!(

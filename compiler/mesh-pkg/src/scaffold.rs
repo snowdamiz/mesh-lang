@@ -102,7 +102,6 @@ end
         &[("mesh.toml", &manifest), ("main.mpl", main_mesh)],
     )?;
 
-    println!("Created project '{}'", name);
     Ok(())
 }
 
@@ -212,7 +211,6 @@ MESH_CONTINUITY_PROMOTION_EPOCH=0 \
         ],
     )?;
 
-    println!("Created clustered project '{}'", name);
     Ok(())
 }
 
@@ -1777,7 +1775,6 @@ end deriving(Json)
         ],
     )?;
 
-    println!("Created todo-api project '{}'", name);
     Ok(())
 }
 
@@ -2451,7 +2448,6 @@ end
         ],
     )?;
 
-    println!("Created todo-api project '{}'", name);
     Ok(())
 }
 

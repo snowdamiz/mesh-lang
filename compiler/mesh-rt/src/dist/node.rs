@@ -6388,10 +6388,16 @@ const GLOBAL_NAMES_WAIT: Duration = Duration::from_secs(5);
 #[no_mangle]
 pub extern "C" fn mesh_node_connect(name_ptr: *const u8, name_len: u64) -> i64 {
     // Check NODE_STATE is initialized
+    let failed = |message: String| {
+        crate::panic::report(&mesh_diagnostics::Diagnostic::new(
+            mesh_diagnostics::Code::NodeConnectFailed,
+            message,
+        ))
+    };
     let state = match NODE_STATE.get() {
         Some(s) => s,
         None => {
-            eprintln!("mesh node: node not started");
+            failed("Node.connect: this node is not started".to_string());
             return -1;
         }
     };
@@ -6401,7 +6407,10 @@ pub extern "C" fn mesh_node_connect(name_ptr: *const u8, name_len: u64) -> i64 {
         let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
         match std::str::from_utf8(slice) {
             Ok(s) => s.to_string(),
-            Err(_) => return -3,
+            Err(_) => {
+                failed("Node.connect: the node name is not UTF-8".to_string());
+                return -3;
+            }
         }
     };
 
@@ -6419,7 +6428,7 @@ pub extern "C" fn mesh_node_connect(name_ptr: *const u8, name_len: u64) -> i64 {
             0
         }
         Err(error) => {
-            eprintln!("mesh node: {}", error);
+            failed(format!("Node.connect to {target}: {error}"));
             if error.starts_with("TCP connect") {
                 -2
             } else {

@@ -1,3 +1,5 @@
+use crate::ReportText;
+use mesh_diagnostics::{Code, Failed, Reporter};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -124,10 +126,6 @@ pub struct ClusterQueryArgs {
     /// Query timeout in milliseconds
     #[arg(long, default_value_t = DEFAULT_OPERATOR_QUERY_TIMEOUT.as_millis() as u64)]
     pub timeout_ms: u64,
-
-    /// Emit JSON instead of human-readable output
-    #[arg(long)]
-    pub json: bool,
 }
 
 #[derive(Args, Debug)]
@@ -180,33 +178,40 @@ pub struct ClusterDiagnosticsArgs {
     pub query: ClusterQueryArgs,
 }
 
-pub fn run_cluster_command(command: ClusterCommand) -> Result<(), String> {
+pub fn run_cluster_command(
+    command: ClusterCommand,
+    json: bool,
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
     match command {
-        ClusterCommand::Status(args) => run_status(args),
-        ClusterCommand::Snapshot(args) => run_snapshot(args),
-        ClusterCommand::Continuity(args) => run_continuity(args),
-        ClusterCommand::Diagnostics(args) => run_diagnostics(args),
-        ClusterCommand::Capacity(args) => run_capacity(args),
-        ClusterCommand::Pressure(args) => run_pressure(args),
-        ClusterCommand::Routing(args) => run_routing(args),
-        ClusterCommand::Scaling(args) => run_scaling(args),
-        ClusterCommand::Events(args) => run_diagnostics(args),
-        ClusterCommand::Explain(args) => run_explain(args),
+        ClusterCommand::Status(args) => run_status(args, json),
+        ClusterCommand::Snapshot(args) => run_snapshot(args, json),
+        ClusterCommand::Continuity(args) => run_continuity(args, json),
+        ClusterCommand::Diagnostics(args) => run_diagnostics(args, json),
+        ClusterCommand::Capacity(args) => run_capacity(args, json),
+        ClusterCommand::Pressure(args) => run_pressure(args, json),
+        ClusterCommand::Routing(args) => run_routing(args, json),
+        ClusterCommand::Scaling(args) => run_scaling(args, json),
+        ClusterCommand::Events(args) => run_diagnostics(args, json),
+        ClusterCommand::Explain(args) => run_explain(args, json),
         ClusterCommand::Autoscale { action } => match action {
             AutoscaleCommand::Pause(args) => run_control(
                 args.target,
                 args.authorization,
+                json,
                 OperatorControlAction::PauseAutoscaler,
             ),
             AutoscaleCommand::Resume(args) => run_control(
                 args.target,
                 args.authorization,
+                json,
                 OperatorControlAction::ResumeAutoscaler,
             ),
         },
         ClusterCommand::Scale(args) => run_control(
             args.target,
             args.authorization,
+            json,
             OperatorControlAction::SetDesiredCapacity {
                 worker_nodes: args.worker_nodes,
             },
@@ -214,6 +219,7 @@ pub fn run_cluster_command(command: ClusterCommand) -> Result<(), String> {
         ClusterCommand::Drain(args) => run_control(
             args.target,
             args.authorization,
+            json,
             OperatorControlAction::DrainNode {
                 node_id: args.node_id,
             },
@@ -221,16 +227,19 @@ pub fn run_cluster_command(command: ClusterCommand) -> Result<(), String> {
         ClusterCommand::CancelDrain(args) => run_control(
             args.target,
             args.authorization,
+            json,
             OperatorControlAction::CancelDrain {
                 node_id: args.node_id,
             },
         ),
     }
+    .reported_as(Code::ClusterCommandFailed, reporter)
 }
 
 fn run_control(
     target: String,
     authorization: ClusterControlAuthorization,
+    json: bool,
     action: OperatorControlAction,
 ) -> Result<(), String> {
     let cookie = cluster_cookie(authorization.query.cookie_file.as_deref())?;
@@ -270,7 +279,7 @@ fn run_control(
         timeout(authorization.query.timeout_ms),
     )
     .map_err(|error| error.to_string())?;
-    if authorization.query.json {
+    if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&outcome).expect("serialize cluster control outcome json")
@@ -298,9 +307,9 @@ fn runtime_snapshot(args: &ClusterRuntimeArgs) -> Result<OperatorRuntimeSnapshot
         .map_err(|error| error.to_string())
 }
 
-fn run_snapshot(args: ClusterRuntimeArgs) -> Result<(), String> {
+fn run_snapshot(args: ClusterRuntimeArgs, json: bool) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.query.json {
+    if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&snapshot)
@@ -378,9 +387,9 @@ fn snapshot_lines(target: &str, snapshot: &OperatorRuntimeSnapshot) -> Vec<Strin
     lines
 }
 
-fn run_capacity(args: ClusterRuntimeArgs) -> Result<(), String> {
+fn run_capacity(args: ClusterRuntimeArgs, json: bool) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.query.json {
+    if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -412,9 +421,9 @@ fn run_capacity(args: ClusterRuntimeArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn run_pressure(args: ClusterRuntimeArgs) -> Result<(), String> {
+fn run_pressure(args: ClusterRuntimeArgs, json: bool) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.query.json {
+    if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -474,9 +483,9 @@ fn pressure_lines(target: &str, snapshot: &OperatorRuntimeSnapshot) -> Vec<Strin
     lines
 }
 
-fn run_routing(args: ClusterRuntimeArgs) -> Result<(), String> {
+fn run_routing(args: ClusterRuntimeArgs, json: bool) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.query.json {
+    if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -536,9 +545,9 @@ fn run_routing(args: ClusterRuntimeArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn run_scaling(args: ClusterRuntimeArgs) -> Result<(), String> {
+fn run_scaling(args: ClusterRuntimeArgs, json: bool) -> Result<(), String> {
     let snapshot = runtime_snapshot(&args)?;
-    if args.query.json {
+    if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -625,7 +634,7 @@ fn scaling_lines(target: &str, snapshot: &OperatorRuntimeSnapshot) -> Vec<String
     lines
 }
 
-fn run_explain(args: ClusterExplainArgs) -> Result<(), String> {
+fn run_explain(args: ClusterExplainArgs, json: bool) -> Result<(), String> {
     let cookie = cluster_cookie(args.query.cookie_file.as_deref())?;
     let query_timeout = timeout(args.query.timeout_ms);
     let record = query_operator_continuity_status_remote(
@@ -637,7 +646,7 @@ fn run_explain(args: ClusterExplainArgs) -> Result<(), String> {
     .map_err(|error| error.to_string())?;
     let runtime = query_operator_runtime_remote(&args.target, &cookie, query_timeout)
         .map_err(|error| error.to_string())?;
-    if args.query.json {
+    if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -665,13 +674,13 @@ fn run_explain(args: ClusterExplainArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn run_status(args: ClusterRuntimeArgs) -> Result<(), String> {
+fn run_status(args: ClusterRuntimeArgs, json: bool) -> Result<(), String> {
     let cookie = cluster_cookie(args.query.cookie_file.as_deref())?;
     let timeout = timeout(args.query.timeout_ms);
     let snapshot = query_operator_status_remote(&args.target, &cookie, timeout)
         .map_err(|error| error.to_string())?;
 
-    if args.query.json {
+    if json {
         println!(
             "{}",
             serde_json::to_string_pretty(&json!({
@@ -715,7 +724,7 @@ fn run_status(args: ClusterRuntimeArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn run_continuity(args: ClusterContinuityArgs) -> Result<(), String> {
+fn run_continuity(args: ClusterContinuityArgs, json: bool) -> Result<(), String> {
     if args.request_key.is_some() && args.limit.is_some() {
         return Err(
             "meshc cluster continuity does not accept --limit when request_key is provided"
@@ -730,7 +739,7 @@ fn run_continuity(args: ClusterContinuityArgs) -> Result<(), String> {
         let record =
             query_operator_continuity_status_remote(&args.target, &cookie, request_key, timeout)
                 .map_err(|error| error.to_string())?;
-        if args.query.json {
+        if json {
             println!(
                 "{}",
                 serde_json::to_string_pretty(&json!({
@@ -748,7 +757,7 @@ fn run_continuity(args: ClusterContinuityArgs) -> Result<(), String> {
 
     let list = query_operator_continuity_list_remote(&args.target, &cookie, args.limit, timeout)
         .map_err(|error| error.to_string())?;
-    if args.query.json {
+    if json {
         let records: Vec<_> = list.records.iter().map(continuity_record_json).collect();
         println!(
             "{}",
@@ -794,13 +803,13 @@ fn run_continuity(args: ClusterContinuityArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn run_diagnostics(args: ClusterDiagnosticsArgs) -> Result<(), String> {
+fn run_diagnostics(args: ClusterDiagnosticsArgs, json: bool) -> Result<(), String> {
     let cookie = cluster_cookie(args.query.cookie_file.as_deref())?;
     let timeout = timeout(args.query.timeout_ms);
     let snapshot = query_operator_diagnostics_remote(&args.target, &cookie, args.limit, timeout)
         .map_err(|error| error.to_string())?;
 
-    if args.query.json {
+    if json {
         let entries: Vec<_> = snapshot
             .entries
             .iter()
@@ -1098,7 +1107,6 @@ mod tests {
             query: ClusterQueryArgs {
                 cookie_file: Some(cookie.path().to_path_buf()),
                 timeout_ms: 100,
-                json: false,
             },
             operator_key_file: Some(key.path().to_path_buf()),
             cluster_id: "mesh".to_string(),
@@ -1110,6 +1118,7 @@ mod tests {
             run_control(
                 "nobody@127.0.0.1:1".to_string(),
                 authorization,
+                false,
                 OperatorControlAction::PauseAutoscaler,
             ),
             Err("operator_control_key_missing".to_string())

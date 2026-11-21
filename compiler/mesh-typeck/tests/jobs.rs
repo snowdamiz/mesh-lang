@@ -114,23 +114,28 @@ fn run(pool :: PoolHandle) do Repo.transaction(pool, transaction_body) end
 
 #[test]
 fn jobs_enqueue_in_rejects_escaped_or_consumed_connections() {
-    for (body, message) in [
+    use mesh_diagnostics::Code;
+
+    for (body, message, code) in [
         (
             r#"fn() do Jobs.enqueue_in(conn, "app", "{}") end"#,
             "captured",
+            Code::ResourceCrossesBoundary,
         ),
         (
             r#"let enqueue_in = Jobs.enqueue_in
   enqueue_in(conn, "app", "{}")"#,
             "indirect call",
+            Code::ResourceCrossesBoundary,
         ),
         (
             r#"Pg.close(conn)
   Jobs.enqueue_in(conn, "app", "{}")"#,
             "used after it moved",
+            Code::ResourceOwnershipViolation,
         ),
     ] {
-        let ownership = if message == "used after it moved" {
+        let ownership = if code == Code::ResourceOwnershipViolation {
             ""
         } else {
             "borrow "
@@ -139,7 +144,10 @@ fn jobs_enqueue_in_rejects_escaped_or_consumed_connections() {
             "from Jobs import enqueue_in\n\nfn run(conn :: {ownership}PgConn) do\n  {body}\nend"
         ));
         assert!(
-            result.errors.iter().any(|error| matches!(error, TypeError::ResourceViolation { reason, .. } if reason.contains(message))),
+            result
+                .errors
+                .iter()
+                .any(|error| error.code() == code && error.to_string().contains(message)),
             "{body}: {:?}",
             result.errors
         );

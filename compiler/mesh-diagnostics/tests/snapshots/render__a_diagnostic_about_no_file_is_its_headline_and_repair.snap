@@ -1,0 +1,9 @@
+---
+source: compiler/mesh-diagnostics/tests/render.rs
+expression: "report(HUMAN, [spanless()])"
+---
+[I0001] Error: internal compiler error
+  Help: Report it with the notes and the smallest program that reproduces it. Until it is fixed, rewrite the construct the notes name another way.
+  Note: unexpected MIR node `Foo`
+  = I0001: meshc explain I0001 · skill diagnostics.md#i0001 · https://meshlang.dev/docs/errors/#i0001
+error: 1 error (I0001)

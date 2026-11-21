@@ -1314,12 +1314,7 @@ impl Execution {
                 }));
                 match result {
                     Err(e) if e.is::<super::stack::ActorStopped>() => Ok(false),
-                    other => other.map_err(|e| {
-                        e.downcast_ref::<String>()
-                            .cloned()
-                            .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
-                            .unwrap_or_else(|| "actor panicked".into())
-                    }),
+                    other => other.map_err(|e| crate::panic::actor_exit_reason(&*e)),
                 }
             }
         }
@@ -2115,12 +2110,9 @@ fn resume_movable_step(
         Ok(Resumed::Waiting) => return StepTurn::Parked,
         Ok(Resumed::Finished) => ExitReason::Normal,
         Err(e) if e.is::<super::stack::ActorStopped>() => ExitReason::Normal,
-        Err(e) => ExitReason::Error(
-            e.downcast_ref::<String>()
-                .cloned()
-                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
-                .unwrap_or_else(|| "actor panicked".into()),
-        ),
+        Err(e) => ExitReason::Error(crate::panic::defer_diagnostics(|| {
+            crate::panic::actor_exit_reason(&*e)
+        })),
     };
     StepTurn::Finished(pid, reason)
 }

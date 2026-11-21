@@ -257,10 +257,10 @@ fn removed_clustered_work_json_diagnostic_uses_source_file_and_span() {
     let spans = diag["spans"]
         .as_array()
         .expect("removed clustered(work) JSON diagnostic should include spans");
+    assert_eq!(spans.len(), 2, "expected primary and related spans");
     assert_eq!(
-        spans.len(),
-        1,
-        "expected one source span on removed-syntax diagnostic"
+        spans[1]["label"],
+        "unsupported clustered declaration started here"
     );
     let start = spans[0]["start"]
         .as_u64()
@@ -296,7 +296,7 @@ fn cluster_declaration_invalid_cluster_decorator_count_fails_before_codegen() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Parse error"),
+        stderr.contains("[P0001] Error:"),
         "expected malformed decorator count to surface as a parse error, got:\n{stderr}"
     );
 }
@@ -366,7 +366,9 @@ fn declared_work_with_parameters_fails_the_build() {
     let text = command_output_text(&output);
     assert!(!output.status.success(), "{text}");
     assert!(
-        text.contains("declared work target `Work.handle_submit` must use `pub fn name() -> ...`"),
+        text.contains(
+            "[CFG0001] Error: declared work target `Work.handle_submit` must use `pub fn name() -> ...`"
+        ),
         "{text}"
     );
 }
@@ -390,5 +392,8 @@ fn llvm_ir_that_cannot_be_written_fails_the_build() {
         .expect("meshc build runs");
     let text = command_output_text(&output);
     assert!(!output.status.success(), "{text}");
-    assert!(text.contains("Failed to emit LLVM IR"), "{text}");
+    assert!(
+        text.contains("[B0301] Error: cannot write the LLVM IR"),
+        "{text}"
+    );
 }

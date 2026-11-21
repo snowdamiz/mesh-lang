@@ -7,6 +7,9 @@
 //! changed (a moved line is no change), so a project's CI can refuse
 //! declassifications nobody reviewed. See `docs/security/plaintext-types.md`.
 
+use crate::{ReportResult, ReportText};
+use mesh_diagnostics::{Code, Diagnostic};
+use mesh_diagnostics::{Failed, Reporter};
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -82,9 +85,13 @@ pub(crate) fn render(report: &Report) -> String {
     serde_json::to_string_pretty(report).expect("the report is serializable") + "\n"
 }
 
-pub(crate) fn write(report: &Report, path: &Path) -> Result<(), String> {
-    std::fs::write(path, render(report))
-        .map_err(|error| format!("Failed to write '{}': {error}", path.display()))
+pub(crate) fn write(report: &Report, path: &Path) -> Result<(), Diagnostic> {
+    std::fs::write(path, render(report)).map_err(|error| {
+        Diagnostic::new(
+            Code::PathNotFound,
+            format!("Failed to write '{}': {error}", path.display()),
+        )
+    })
 }
 
 /// What differs between `committed` and `current`, line numbers aside: a
@@ -156,9 +163,10 @@ pub(crate) fn run(
     report: &Report,
     output: Option<&Path>,
     check: Option<&Path>,
-) -> Result<(), String> {
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
     if let Some(path) = output {
-        write(report, path)?;
+        write(report, path).reported(reporter)?;
     }
     let Some(committed_path) = check else {
         if output.is_none() {
@@ -167,39 +175,49 @@ pub(crate) fn run(
         return Ok(());
     };
     let text = std::fs::read_to_string(committed_path)
-        .map_err(|error| format!("Failed to read '{}': {error}", committed_path.display()))?;
-    let committed: Report = serde_json::from_str(&text).map_err(|error| {
-        format!(
-            "'{}' is not a plaintext report: {error}",
-            committed_path.display()
-        )
-    })?;
+        .map_err(|error| format!("Failed to read '{}': {error}", committed_path.display()))
+        .reported_as(Code::PathNotFound, reporter)?;
+    let committed: Report = serde_json::from_str(&text)
+        .map_err(|error| {
+            format!(
+                "'{}' is not a plaintext report: {error}",
+                committed_path.display()
+            )
+        })
+        .reported_as(Code::InvalidArguments, reporter)?;
     let changed = changes(&committed, report);
     if changed.is_empty() {
-        eprintln!(
+        reporter.status(format_args!(
             "plaintext report matches {} ({} declassify sites, {} display exports)",
             committed_path.display(),
             report.declassify.len(),
             report.display.len()
-        );
+        ));
         if committed != *report {
-            eprintln!("note: sites moved to other lines; write the report again to update them");
+            reporter.status(format_args!(
+                "note: sites moved to other lines; write the report again to update them"
+            ));
         }
         return Ok(());
     }
-    for change in &changed {
-        eprintln!("{change}");
-    }
-    Err(format!(
-        "the plaintext report differs from {}: review the changes above, then write it with \
-         `meshc plaintext-report <dir> --output {}`",
+    let mut diagnostic = Diagnostic::new(
+        Code::PlaintextReportChanged,
+        format!(
+            "the plaintext report differs from {}",
+            committed_path.display(),
+        ),
+    )
+    .with_repair(format!(
+        "Review the changes, then write the report with `meshc plaintext-report <dir> --output {}`",
         committed_path.display(),
-        committed_path.display()
-    ))
+    ));
+    for change in changed {
+        diagnostic = diagnostic.with_note(change);
+    }
+    Err(reporter.fail(diagnostic))
 }
 
-/// A module's file as the report names it: relative to the project, with
-/// `/` between its parts, wherever the project is checked out.
+/// A module path relative to the project, with slash-separated components.
 fn display_path(dir: &Path, path: &Path) -> String {
     let relative = if path.is_absolute() {
         let base = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());

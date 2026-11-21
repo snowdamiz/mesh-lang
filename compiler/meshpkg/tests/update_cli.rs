@@ -81,9 +81,10 @@ fn json_mode_rejects_update_before_installer_launch() {
     let json: Value = serde_json::from_str(stderr.trim()).unwrap_or_else(|error| {
         panic!("meshpkg --json update should emit one JSON error: {error}\nstderr:\n{stderr}")
     });
-    let message = json["error"]
+    assert_eq!(json["code"], "X0001");
+    let message = json["message"]
         .as_str()
-        .expect("json error payload should contain an error string");
+        .expect("diagnostic should contain a message");
 
     assert!(
         message.contains("does not support --json"),

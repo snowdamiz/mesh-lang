@@ -1405,6 +1405,175 @@ fn ast_parse_tree_convenience() {
 // ── Error Message Quality Tests ─────────────────────────────────────
 
 #[test]
+fn recovery_reports_independent_syntax_and_lex_errors_at_their_tokens() {
+    let source = concat!(
+        "fn a() do\n  let = 1\nend\n",
+        "fn b() do\n  for x [1] do\n    x\n  end\nend\n",
+        "fn c() = 1 ^ 2\n",
+        "pub fn d() = 3 $ 4\n",
+        "fn e() = \"unfinished",
+    );
+    assert_parse_errors(
+        source,
+        &[
+            ("P0001", "let =", 4, 1),
+            ("P0002", "[1]", 0, 1),
+            ("P0101", "^", 0, 1),
+            ("P0101", "$", 0, 1),
+            ("P0102", "\"unfinished", 0, 1),
+        ],
+    );
+}
+
+#[test]
+fn recovery_skips_the_broken_item_tail() {
+    for tail in [
+        "end",
+        "  if true do\n    let = 2\n  end\nend",
+        "  f(\nfn -> end\n  )\nend",
+        "  fn nested() do\n    let = 2\n  end\nend",
+        "fn nested() do\n    let = 2\nend\nend",
+        "  let closure = fn -> 1 end\n  fn nested() do\n    let = 2\n  end\nend",
+    ] {
+        let source = format!("fn main() do\n  let = 1\n{tail}");
+        assert_parse_errors(&source, &[("P0001", "let =", 4, 1)]);
+    }
+}
+
+#[test]
+fn recovery_caps_diagnostics_and_keeps_the_source_lossless() {
+    let source: String = (0..40)
+        .map(|id| format!("fn bad{id}() do\n  let = {id}\nend\n"))
+        .collect();
+    let expected: Vec<_> = source
+        .match_indices('=')
+        .take(20)
+        .map(|(at, _)| at)
+        .collect();
+    let parsed = parse(&source);
+    assert_eq!(parsed.errors().len(), 20);
+    for (error, at) in parsed.errors().iter().zip(expected) {
+        assert_eq!(error.code.id(), "P0001");
+        assert_eq!(
+            error.span,
+            mesh_common::span::Span::new(at as u32, at as u32 + 1)
+        );
+    }
+    assert_eq!(parsed.syntax().text().to_string(), source);
+}
+
+#[test]
+fn recovery_resumes_after_unclosed_delimiters_and_blocks() {
+    for (body, code) in [
+        ("  f(1\n", "P0003"),
+        ("  f(\n", "P0003"),
+        ("  1\n", "P0004"),
+    ] {
+        let source = format!("fn a() do\n{body}fn broken() do\n  let = 1\nend\nfn good() = 2\n");
+        assert_parse_errors(
+            &source,
+            &[(code, "fn broken", 0, 2), ("P0001", "let =", 4, 1)],
+        );
+        let parsed = parse(&source);
+        let names: Vec<_> = parsed
+            .tree()
+            .fn_defs()
+            .map(|f| f.name().unwrap().text().unwrap())
+            .collect();
+        assert_eq!(names, ["a", "broken", "good"]);
+    }
+}
+
+#[test]
+fn recovery_respects_declaration_boundaries_without_changing_valid_nesting() {
+    let source = "module Outer do\nfn nested() = 1\nend\nfn outer() = 2";
+    let parsed = parse(source);
+    assert!(parsed.ok(), "{:?}", parsed.errors());
+    let names: Vec<_> = parsed
+        .tree()
+        .fn_defs()
+        .map(|f| f.name().unwrap().text().unwrap())
+        .collect();
+    assert_eq!(names, ["outer"]);
+
+    let source = "struct MissingEnd do\n  field :: Int\nfn next() = 1 ^ 2";
+    assert_parse_errors(source, &[("P0004", "fn next", 0, 2), ("P0101", "^", 0, 1)]);
+
+    let source = "let = 1; let = 2\n  fn next() = 1 ^ 2";
+    assert_parse_errors(
+        source,
+        &[
+            ("P0001", "= 1", 0, 1),
+            ("P0001", "= 2", 0, 1),
+            ("P0101", "^", 0, 1),
+        ],
+    );
+}
+
+#[test]
+fn recovery_bounds_adversarial_nesting() {
+    let statements = [
+        format!("fn bad() = {}1", "(".repeat(4096)),
+        format!("fn bad() = a{}", " + a".repeat(30_000)),
+        format!("fn bad(x :: {}Int", "(".repeat(4096)),
+        format!("fn bad({}x", "(".repeat(4096)),
+        "module Nested do ".repeat(4096),
+        format!(
+            "fn bad() = if true do 1 {}",
+            "else if true do 1 ".repeat(4096)
+        ),
+    ];
+    for statement in statements {
+        let source = format!("{statement}\n");
+        let parsed = parse(&source);
+        assert_eq!(parsed.errors().len(), 1);
+        assert!(parsed.errors()[0].message.contains("nested too deeply"));
+        assert_eq!(
+            parsed.errors()[0].repair.as_deref(),
+            Some("Break this deeply nested expression or block into helper functions or `let` bindings.")
+        );
+        assert_eq!(parsed.syntax().text().to_string(), source);
+    }
+}
+
+#[test]
+fn deep_but_reasonable_nesting_parses() {
+    let parens = format!("fn f() = {}1{}\n", "(".repeat(250), ")".repeat(250));
+    let blocks = format!(
+        "fn f() do\n{}1\n{}end\n",
+        "if true do\n".repeat(125),
+        "end\n".repeat(125)
+    );
+    let chain = format!("fn f() = a{}\n", " + a".repeat(4000));
+    for source in [parens, blocks, chain] {
+        let parsed = parse(&source);
+        assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+    }
+}
+
+fn assert_parse_errors(source: &str, expected: &[(&str, &str, usize, usize)]) {
+    use mesh_common::span::Span;
+
+    let parsed = parse(source);
+    assert_eq!(
+        parsed.errors().len(),
+        expected.len(),
+        "{source}\n{:?}",
+        parsed.errors()
+    );
+    for (error, &(code, needle, offset, width)) in parsed.errors().iter().zip(expected) {
+        let start = source.find(needle).unwrap() + offset;
+        assert_eq!(error.code.id(), code, "{source}\n{error:?}");
+        assert_eq!(
+            error.span,
+            Span::new(start as u32, (start + width) as u32),
+            "{source}\n{error:?}"
+        );
+    }
+    assert_eq!(parsed.syntax().text().to_string(), source);
+}
+
+#[test]
 fn error_fn_missing_end_references_do_span() {
     // fn foo() do 1 (missing end) -> error should reference the do span
     let p = parse("fn foo() do\n  1\n");
@@ -1419,11 +1588,12 @@ fn error_fn_missing_end_references_do_span() {
         err.related.is_some(),
         "error should have related span referencing `do`"
     );
-    let (related_msg, _) = err.related.as_ref().unwrap();
-    assert!(
-        related_msg.contains("do"),
-        "related message should mention `do`: {}",
-        related_msg
+    let (related_msg, related_span) = err.related.as_ref().unwrap();
+    assert_eq!(err.code.id(), "P0004");
+    assert_eq!(related_msg, "block opened here");
+    assert_eq!(
+        &"fn foo() do\n  1\n"[related_span.start as usize..related_span.end as usize],
+        "do"
     );
 }
 
@@ -1885,7 +2055,8 @@ fn sum_type_stops_at_a_malformed_variant() {
     // as more of the same mistake.
     let parse = parse("type Shape do\n  Circle(Float\n  Square\nend\n");
     let messages: Vec<&str> = parse.errors().iter().map(|e| e.message.as_str()).collect();
-    assert_eq!(messages, ["expected `)`"]);
+    assert_eq!(messages, ["expected `)` to close `(`, found `Square`"]);
+    assert_eq!(parse.errors()[0].code.id(), "P0003");
 }
 
 #[test]
@@ -2560,16 +2731,17 @@ fn clustered_work_malformed_targets_are_rejected_with_same_guidance() {
 fn clustered_work_recovery_keeps_following_plain_functions() {
     let source = "clustered(work) fn remote(job) do\n  job\nend\nfn local(job) do\n  job\nend";
     let p = parse(source);
-    assert!(!p.ok(), "removed prefix should fail closed");
+    assert_eq!(p.errors().len(), 1, "removed prefix should fail closed");
 
     let tree = p.tree();
     let fn_defs: Vec<_> = tree.fn_defs().collect();
     assert_eq!(
         fn_defs.len(),
-        1,
+        2,
         "expected recovery to keep the following plain function visible"
     );
     assert_eq!(fn_defs[0].name().unwrap().text().unwrap(), "remote");
+    assert_eq!(fn_defs[1].name().unwrap().text().unwrap(), "local");
     assert!(fn_defs[0].clustered_decl().is_none());
 }
 
@@ -3972,7 +4144,7 @@ fn malformed_constructs_report_what_was_expected() {
         ),
         (
             "fn f() do\n  fn 0 -> 1 | n do\n    n\n",
-            "unclosed closure clause -- expected `end`",
+            "expected `end` to close closure clause",
         ),
         (
             "impl Show for Int do\n  pub let x = 1\nend",
@@ -4202,7 +4374,7 @@ fn malformed_constructs_report_what_was_expected() {
         ),
         (
             "fn f(x) do\n  case x do\n    \"abc",
-            "unterminated string in pattern",
+            "unterminated string: no closing `\"`",
         ),
         (
             "supervisor S do\n  child c do\n    start: fn -> 1 end\n    1\n  end\nend",
@@ -4211,7 +4383,7 @@ fn malformed_constructs_report_what_was_expected() {
         ("supervisor S do\n  1\nend", "in supervisor body"),
         (
             "struct S do\n  table \"users",
-            "unterminated string in table option",
+            "unterminated string: no closing `\"`",
         ),
         (
             "fn f(p) do\n  case p do\n    Point { x, .. } -> 0\n  end\nend",

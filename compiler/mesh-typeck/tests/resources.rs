@@ -21,6 +21,17 @@ fn resource_violations(result: &TypeckResult) -> Vec<&str> {
         .collect()
 }
 
+fn resource_boundaries(result: &TypeckResult) -> Vec<&str> {
+    result
+        .errors
+        .iter()
+        .filter_map(|error| match error {
+            TypeError::ResourceCrossesBoundary { reason, .. } => Some(reason.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
 fn check_with_module(module_name: &str, module_source: &str, source: &str) -> TypeckResult {
     let module_parse = mesh_parser::parse(module_source);
     assert!(
@@ -90,7 +101,7 @@ fn borrowing_a_resource_field_does_not_move_its_parent() {
     );
 
     assert!(
-        resource_violations(&result).is_empty(),
+        resource_violations(&result).is_empty() && resource_boundaries(&result).is_empty(),
         "borrowed resource field should leave its parent movable: {:?}",
         result.errors
     );
@@ -103,7 +114,7 @@ fn borrowed_resource_field_survives_fallible_case_branches() {
     );
 
     assert!(
-        resource_violations(&result).is_empty(),
+        resource_violations(&result).is_empty() && resource_boundaries(&result).is_empty(),
         "fallible borrow should leave its parent movable in either arm: {:?}",
         result.errors
     );
@@ -239,7 +250,7 @@ fn resource_sums_reject_mailbox_and_formatting_boundaries() {
     );
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         [
             "resource `state` cannot cross an actor mailbox boundary",
             "resource `state` cannot be interpolated or formatted",
@@ -308,7 +319,7 @@ fn unknown_call_modes_fail_closed_to_move() {
     );
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot be passed through generic or indirect call `indirect`"]
     );
 }
@@ -398,7 +409,7 @@ fn explicit_derives_are_rejected_for_affine_types_without_registering_impls() {
     );
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         [
             "resource type `Vault` cannot derive `Debug`",
             "resource type `Vault` cannot derive `Eq`",
@@ -427,7 +438,7 @@ fn rejects_resource_string_interpolation() {
     let result = check_source("fn misuse(secret :: SecretBytes) do\n  println(\"#{secret}\")\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot be interpolated or formatted"]
     );
 }
@@ -437,7 +448,7 @@ fn rejects_resource_json_serialization() {
     let result = check_source("fn misuse(secret :: SecretBytes) do\n  Json.encode(secret)\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot cross JSON or serialization boundaries"]
     );
 }
@@ -448,7 +459,7 @@ fn rejects_resources_in_json_literals() {
         check_source("fn misuse(secret :: SecretBytes) do\n  json { secret: secret }\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot cross JSON or serialization boundaries"]
     );
 }
@@ -458,7 +469,7 @@ fn rejects_resource_formatting_calls() {
     let result = check_source("fn misuse(secret :: SecretBytes) do\n  println(secret)\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot be interpolated or formatted"]
     );
 }
@@ -469,7 +480,7 @@ fn rejects_resource_equality() {
         check_source("fn misuse(secret :: SecretBytes) -> Bool do\n  secret == secret\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot be compared or hashed"]
     );
 }
@@ -504,7 +515,7 @@ fn rejects_typed_and_untyped_actor_resource_messages() {
     );
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         [
             "resource `secret` cannot cross an actor mailbox boundary",
             "resource `secret` cannot cross an actor mailbox boundary",
@@ -519,7 +530,7 @@ fn rejects_resource_spawn_arguments() {
     );
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot be transferred into a spawned actor"]
     );
 }
@@ -531,7 +542,7 @@ fn rejects_resources_in_unrestricted_lists() {
     );
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot enter an unrestricted collection"]
     );
 }
@@ -543,7 +554,7 @@ fn rejects_resources_in_unrestricted_maps() {
     );
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot enter an unrestricted collection"]
     );
 }
@@ -554,7 +565,7 @@ fn rejects_resources_passed_to_collection_apis() {
         check_source("fn misuse(secret :: SecretBytes) do\n  Set.add(Set.new(), secret)\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot enter an unrestricted collection"]
     );
 }
@@ -566,7 +577,7 @@ fn rejects_resource_closure_capture() {
     );
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot be captured by a closure"]
     );
 }
@@ -576,7 +587,7 @@ fn rejects_resource_bearing_collection_parameter_types() {
     let result = check_source("fn invalid(secrets :: List<SecretBytes>) do\n  secrets\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource-bearing type `List<SecretBytes>` cannot be used as an unrestricted collection"]
     );
 }
@@ -586,7 +597,7 @@ fn rejects_resource_bearing_collection_return_types() {
     let result = check_source("fn invalid() -> List<SecretBytes> do\n  []\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource-bearing type `List<SecretBytes>` cannot be used as an unrestricted collection"]
     );
 }
@@ -597,7 +608,7 @@ fn rejects_resource_bearing_collection_let_types() {
         check_source("fn invalid() do\n  let secrets :: List<SecretBytes> = []\n  nil\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource-bearing type `List<SecretBytes>` cannot be used as an unrestricted collection"]
     );
 }
@@ -610,7 +621,7 @@ fn rejects_resource_bearing_wrapper_let_types() {
         check_source("fn invalid(q :: Queue<SecretBytes>) do\n  let again = q\n  nil\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         [
             "resource-bearing wrapper `Queue<SecretBytes>` has no registered resource destructor",
             "resource-bearing wrapper `Queue<SecretBytes>` has no registered resource destructor",
@@ -794,7 +805,7 @@ fn rejects_resource_arguments_to_generic_borrow_parameters() {
     );
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot be passed through generic or indirect call `leak`"]
     );
 }
@@ -804,7 +815,7 @@ fn rejects_resource_hash_method_calls() {
     let result = check_source("fn misuse(secret :: SecretBytes) do\n  secret.hash()\nend");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource `secret` cannot be compared or hashed"]
     );
 }
@@ -852,7 +863,7 @@ fn allows_resource_results_with_crypto_errors() {
     );
 
     assert!(
-        resource_violations(&result).is_empty(),
+        resource_violations(&result).is_empty() && resource_boundaries(&result).is_empty(),
         "resource Result wrapper should be accepted: {:?}",
         result.errors
     );
@@ -887,7 +898,7 @@ fn rejects_resource_valued_top_level_bindings() {
     let result = check_source("let secret = Secret.random(32)?");
 
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         ["resource-bearing top-level binding `secret` is unsupported"]
     );
 }
@@ -1002,7 +1013,7 @@ fn a_method_receiver_is_borrowed_in_both_call_forms() {
         "resource struct Session do\n  id :: Int\nend\n\ninterface Closer do\n  fn close(self) -> Int\nend\n\nimpl Closer for Session do\n  fn close(self) -> Int do\n    self.id\n  end\nend\n\nfn use_it(s :: Session) -> Int do\n  let a = close(s)\n  let b = s.close()\n  a + b + s.id\nend\n",
     );
     assert!(
-        resource_violations(&result).is_empty(),
+        resource_violations(&result).is_empty() && resource_boundaries(&result).is_empty(),
         "{:?}",
         result.errors
     );
@@ -1051,7 +1062,7 @@ end
     );
     let result = mesh_typeck::check(&parse);
     assert_eq!(
-        resource_violations(&result),
+        resource_boundaries(&result),
         [
             "resource-bearing wrapper `Queue<H>` has no registered resource destructor",
             "resource `h` cannot be interpolated or formatted",
@@ -1074,7 +1085,7 @@ fn a_job_cannot_return_a_resource() {
     ] {
         let result = check_source(&format!("{prelude}fn main() do\n  {body}\nend\n"));
         assert_eq!(
-            resource_violations(&result),
+            resource_boundaries(&result),
             ["a job's result cannot be a resource: it crosses to the actor that awaits it"],
             "{body}"
         );

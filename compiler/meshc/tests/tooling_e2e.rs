@@ -341,7 +341,7 @@ fn test_build_without_main_names_the_entrypoint() {
     assert!(!output.status.success(), "build without main must fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("main.mpl has no `fn main()`"),
+        stderr.contains("[B0302] Error: main.mpl has no `fn main()`"),
         "stderr: {stderr}"
     );
     assert!(!stderr.contains("Linking failed"), "stderr: {stderr}");
@@ -486,6 +486,9 @@ fn test_fmt_idempotent() {
 
 // ── Linter ───────────────────────────────────────────────────────────
 
+/// `meshc lint` reports through the one diagnostic format: a parse error
+/// as its `P` code, a finding as its `L` warning, and the tally last, all on
+/// stderr. A warning fails the command, as a CI gate needs.
 #[test]
 fn test_lint_reports_findings_with_locations_and_fails() {
     let dir = tempfile::tempdir().unwrap();
@@ -498,30 +501,147 @@ fn test_lint_reports_findings_with_locations_and_fails() {
         &dir.path().join("broken.mpl"),
         "fn h() do\n  let = 1\nend\n",
     );
+    let broken = dir.path().join("broken.mpl");
+    let deep = dir.path().join("src/deep.mpl");
 
     let output = Command::new(meshc_bin())
         .args(["lint", dir.path().to_str().unwrap()])
         .output()
         .expect("failed to run meshc lint");
 
-    assert_eq!(output.status.code(), Some(1));
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let broken = dir.path().join("broken.mpl");
-    let deep = dir.path().join("src/deep.mpl");
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for expected in [
+        "[P0001] Error: expected identifier or pattern after `let`".to_string(),
+        format!("─[ {}:2:7 ]", broken.display()),
+        "  = P0001: meshc explain P0001".to_string(),
+        "[L0002] Warning: this `else` holds only an `if`".to_string(),
+        format!("─[ {}:4:3 ]", deep.display()),
+        "this `else`".to_string(),
+        "holds only this `if`".to_string(),
+        "Help: Join `else` and the `if` it holds into `else if ... do`".to_string(),
+        "  = L0002: meshc explain L0002".to_string(),
+    ] {
+        assert!(
+            stderr.contains(&expected),
+            "missing {expected:?} in:\n{stderr}"
+        );
+    }
+    assert!(
+        stderr.find("[P0001]") < stderr.find("[L0002]"),
+        "files are linted in path order:\n{stderr}"
+    );
     assert_eq!(
-        stdout.lines().collect::<Vec<_>>(),
-        vec![
-            format!(
-                "{}:2:7: parse-error: expected identifier or pattern after `let`",
-                broken.display()
+        stderr.lines().last(),
+        Some("error: 1 error, 1 warning (P0001, L0002)"),
+        "{stderr}"
+    );
+    assert!(
+        !stderr.contains("parse-error") && !stderr.contains("problem(s) found"),
+        "{stderr}"
+    );
+
+    let json = Command::new(meshc_bin())
+        .args(["lint", "--json", dir.path().to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc lint --json");
+    assert_eq!(json.status.code(), Some(1), "{json:?}");
+    assert!(json.stdout.is_empty(), "{json:?}");
+    let found: Vec<(String, String, String, u64, u64)> = String::from_utf8_lossy(&json.stderr)
+        .lines()
+        .map(|line| {
+            let d: serde_json::Value = serde_json::from_str(line)
+                .unwrap_or_else(|e| panic!("invalid diagnostic {line:?}: {e}"));
+            (
+                d["code"].as_str().unwrap().to_string(),
+                d["severity"].as_str().unwrap().to_string(),
+                d["file"].as_str().unwrap().to_string(),
+                d["line"].as_u64().unwrap(),
+                d["col"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (
+                "P0001".to_string(),
+                "error".to_string(),
+                broken.display().to_string(),
+                2,
+                7
             ),
-            format!(
-                "{}:4:3: collapsible-else-if: this `else` holds only an `if`; write `else if`",
-                deep.display()
+            (
+                "L0002".to_string(),
+                "warning".to_string(),
+                deep.display().to_string(),
+                4,
+                3
             ),
         ]
     );
-    assert!(String::from_utf8_lossy(&output.stderr).contains("2 problem(s) found"));
+}
+
+/// Each catalog lint example gets its own code from `meshc lint`, and its
+/// fix gets nothing. Warnings alone fail the command.
+#[test]
+fn test_lint_reports_each_lint_code_and_passes_the_fixes() {
+    let lints = [
+        mesh_diagnostics::Code::DeepNesting,
+        mesh_diagnostics::Code::CollapsibleElseIf,
+        mesh_diagnostics::Code::PassThroughArm,
+        mesh_diagnostics::Code::BoolComparison,
+    ];
+    let dir = tempfile::tempdir().unwrap();
+    for (bad, code) in [true, false]
+        .into_iter()
+        .flat_map(|bad| lints.map(|code| (bad, code)))
+    {
+        let example = code.info().example.unwrap();
+        let folder = if bad { "bad" } else { "fixed" };
+        let source = if bad { example.bad } else { example.fixed };
+        write_file(
+            &dir.path().join(folder).join(format!("{}.mpl", code.id())),
+            source,
+        );
+    }
+
+    let bad = Command::new(meshc_bin())
+        .args(["lint", dir.path().join("bad").to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc lint");
+    assert_eq!(bad.status.code(), Some(1), "{bad:?}");
+    assert!(bad.stdout.is_empty(), "{bad:?}");
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    for code in lints {
+        let headline = format!("[{}] Warning: ", code.id());
+        assert_eq!(
+            stderr.matches(&headline).count(),
+            1,
+            "{headline}:\n{stderr}"
+        );
+        let file = dir.path().join("bad").join(format!("{}.mpl", code.id()));
+        assert!(
+            stderr.contains(&format!("─[ {}:", file.display())),
+            "{stderr}"
+        );
+    }
+    assert_eq!(
+        stderr.lines().last(),
+        Some("warning: 4 warnings (L0001, L0002, L0003, L0004)"),
+        "{stderr}"
+    );
+
+    let fixed = Command::new(meshc_bin())
+        .args(["lint", dir.path().join("fixed").to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc lint");
+    assert!(fixed.status.success(), "{fixed:?}");
+    assert!(
+        fixed.stdout.is_empty() && fixed.stderr.is_empty(),
+        "{fixed:?}"
+    );
 }
 
 #[test]
@@ -530,13 +650,19 @@ fn test_lint_clean_file_succeeds_silently() {
     let file = dir.path().join("clean.mpl");
     std::fs::write(&file, "fn g(a) do\n  a\nend\n").unwrap();
 
-    let output = Command::new(meshc_bin())
-        .args(["lint", file.to_str().unwrap()])
-        .output()
-        .expect("failed to run meshc lint");
+    for args in [vec!["lint"], vec!["lint", "--json"]] {
+        let output = Command::new(meshc_bin())
+            .args(&args)
+            .arg(&file)
+            .output()
+            .expect("failed to run meshc lint");
 
-    assert!(output.status.success());
-    assert!(output.stdout.is_empty() && output.stderr.is_empty());
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        assert!(
+            output.stdout.is_empty() && output.stderr.is_empty(),
+            "{args:?}: {output:?}"
+        );
+    }
 }
 
 #[test]
@@ -554,7 +680,7 @@ fn test_fmt_writes_nothing_when_a_file_cannot_be_formatted() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Cannot format") && stderr.contains("b.mpl"),
+        stderr.contains("[P") && stderr.contains("b.mpl"),
         "{stderr}"
     );
     let a = std::fs::read_to_string(dir.path().join("a.mpl")).unwrap();
@@ -1933,6 +2059,15 @@ end
         stdout.contains("assert_raises failed: expression did not raise"),
         "{stdout}"
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[T0001] Error: assert failed: false"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("[T0003] Error: assert_ne failed"),
+        "{stderr}"
+    );
     assert!(stdout.contains("6 failed"), "{stdout}");
     assert!(stdout.contains("3 passed"), "{stdout}");
 }
@@ -2009,6 +2144,307 @@ fn test_diagnostics_point_at_the_test_file() {
         "{stderr}"
     );
     assert!(!stderr.contains("main.mpl"), "{stderr}");
+}
+
+/// A failed test reports its catalog code at its line of the test file,
+/// as written: the assertion's `T` code, or a panic's own `R0001`. Under
+/// `--json` stderr is only those diagnostics, one object per line, and
+/// whatever else a test program writes there is in the run's output.
+#[test]
+fn test_failures_are_coded_diagnostics_at_the_test_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"coded-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/coded.test.mpl"),
+        r#"fn zero() = 0
+
+test("equal") do
+  IO.eprintln("noise on stderr")
+  IO.eprintln("{\"code\":\"Z9999\",\"message\":\"not a catalog code\"}")
+  assert_eq(1 + 1, 3)
+end
+
+test("divides") do
+  assert(10 / zero() == 1)
+end
+
+test("raises") do
+  assert_raises(fn() do
+    assert(false)
+  end)
+end
+
+test("receives") do
+  assert_receive 42, 10
+end
+
+test("passes") do
+  assert(true)
+end
+"#,
+    );
+    let run = |json: bool| {
+        let mut command = Command::new(meshc_bin());
+        command.arg("test").arg(&project).env("NO_COLOR", "1");
+        if json {
+            command.arg("--json");
+        }
+        let output = command.output().expect("failed to run meshc test");
+        assert!(!output.status.success(), "{output:?}");
+        (
+            String::from_utf8_lossy(&output.stdout).to_string(),
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        )
+    };
+
+    let (stdout, stderr) = run(false);
+    assert!(stdout.contains("  ✗ equal\n"), "{stdout}");
+    assert!(stdout.contains("3 failed, 2 passed"), "{stdout}");
+    for (headline, location) in [
+        (
+            "[T0002] Error: assert_eq failed: 1 + 1 == 3",
+            "tests/coded.test.mpl:6\n",
+        ),
+        (
+            "[R0001] Error: division by zero",
+            "tests/coded.test.mpl:10:10\n",
+        ),
+        (
+            "[T0005] Error: assert_receive 42 timed out after 10ms",
+            "tests/coded.test.mpl:20\n",
+        ),
+    ] {
+        let at = stderr
+            .find(headline)
+            .unwrap_or_else(|| panic!("{headline}: {stderr}"));
+        let report = &stderr[at..];
+        let next = report[1..].find("\n[").map_or(report.len(), |end| end + 1);
+        assert!(report[..next].contains(location), "{location}: {stderr}");
+    }
+    assert!(stderr.contains("noise on stderr"), "{stderr}");
+    assert!(
+        !stderr.contains("T0004"),
+        "a raise inside assert_raises: {stderr}"
+    );
+    assert!(!stderr.contains("main.mpl"), "{stderr}");
+
+    let (stdout, stderr) = run(true);
+    assert!(stdout.contains("  ✗ equal\n"), "{stdout}");
+    assert!(stdout.contains("noise on stderr\n"), "{stdout}");
+    assert!(stdout.contains("Z9999"), "{stdout}");
+    let diagnostics: Vec<serde_json::Value> = stderr
+        .lines()
+        .map(|line| {
+            serde_json::from_str(line).unwrap_or_else(|e| panic!("not NDJSON ({e}): {line}"))
+        })
+        .collect();
+    let codes: Vec<&str> = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["T0002", "R0001", "T0005"], "{stderr}");
+    for diagnostic in &diagnostics {
+        let file = diagnostic["file"].as_str().unwrap();
+        assert!(file.ends_with("tests/coded.test.mpl"), "{diagnostic}");
+        assert!(diagnostic["line"].as_u64().is_some(), "{diagnostic}");
+        let family = match diagnostic["code"].as_str() {
+            Some("R0001") => "runtime",
+            _ => "test",
+        };
+        assert_eq!(diagnostic["category"], family, "{diagnostic}");
+    }
+    assert_eq!(diagnostics[1]["col"], 10);
+}
+
+/// `test_fail_msg` passed as a value takes the one argument its type says
+/// and fails its test at no place; `panic(message)` is an `R0001` at its
+/// call.
+#[test]
+fn test_fail_msg_as_a_value_and_panic_fail_their_tests_cleanly() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"values\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/values.test.mpl"),
+        "test(\"fails through a value\") do\n  let fail = test_fail_msg\n  fail(\"boom\")\nend\n\ntest(\"panics\") do\n  panic(\"kaboom\")\nend\n\ntest(\"passes\") do\n  assert(true)\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", "--json"])
+        .arg(&project)
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stdout}{stderr}");
+    assert!(stdout.contains("  ✗ fails through a value\n"), "{stdout}");
+    assert!(stdout.contains("2 failed, 1 passed"), "{stdout}");
+    let diagnostics: Vec<serde_json::Value> = stderr
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}")))
+        .collect();
+    let codes: Vec<&str> = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["T0005", "R0001"], "{stderr}");
+    assert_eq!(diagnostics[0]["message"], "boom");
+    assert_eq!(
+        (&diagnostics[0]["file"], &diagnostics[0]["line"]),
+        (&serde_json::json!(""), &serde_json::Value::Null),
+        "{}",
+        diagnostics[0]
+    );
+    assert_eq!(diagnostics[1]["message"], "kaboom");
+    assert!(
+        diagnostics[1]["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("tests/values.test.mpl"),
+        "{}",
+        diagnostics[1]
+    );
+    assert_eq!(
+        (
+            diagnostics[1]["line"].as_u64(),
+            diagnostics[1]["col"].as_u64()
+        ),
+        (Some(7), Some(3))
+    );
+}
+
+/// An error a test handles explains no crash: a program that reported a
+/// failed `Node.connect` and then died is still a `T0101`.
+#[test]
+fn test_a_handled_error_does_not_explain_a_later_crash() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"handled\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/handled.test.mpl"),
+        "test(\"connects, then dies\") do\n  assert(Node.connect(\"absent@127.0.0.1:1\") == -1)\n  Process.exit(3)\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", "--json"])
+        .arg(&project)
+        .output()
+        .expect("failed to run meshc test");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let codes: Vec<String> = stderr
+        .lines()
+        .map(|line| {
+            let diagnostic: serde_json::Value = serde_json::from_str(line).unwrap();
+            diagnostic["code"].as_str().unwrap().to_string()
+        })
+        .collect();
+    assert_eq!(codes, ["R0301", "T0101"], "{stderr}");
+}
+
+/// A test file's JSON spans and edits are byte offsets into the file as
+/// written, not into the program `meshc test` makes of it, whose rewritten
+/// header moved them: an editor applying the edit fixes the typo.
+#[test]
+fn test_file_spans_and_edits_index_the_file_as_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"spans\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    let path = project.join("tests/typo.test.mpl");
+    let source = "test(\"typo\") do\n  let count = 1\n  assert(cuont == 1)\nend\n";
+    write_file(&path, source);
+    for args in [&["test", "--json"][..], &["check", "--tests", "--json"]] {
+        let output = Command::new(meshc_bin())
+            .args(args)
+            .arg(&project)
+            .output()
+            .expect("failed to run meshc");
+        assert_eq!(output.status.code(), Some(1), "{args:?}: {output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let diagnostic: serde_json::Value = serde_json::from_str(stderr.trim_end())
+            .unwrap_or_else(|e| panic!("{args:?}: {e}: {stderr}"));
+        assert_eq!(diagnostic["code"], "E0004", "{diagnostic}");
+        assert!(
+            Path::new(diagnostic["file"].as_str().unwrap()).ends_with("tests/typo.test.mpl"),
+            "{diagnostic}"
+        );
+        let slice = |value: &serde_json::Value| {
+            let start = value["start"].as_u64().unwrap() as usize;
+            let end = value["end"].as_u64().unwrap() as usize;
+            &source[start..end]
+        };
+        assert_eq!(
+            slice(&diagnostic["spans"][0]),
+            "cuont",
+            "{args:?}: {diagnostic}"
+        );
+        let edit = &diagnostic["edits"][0];
+        assert_eq!(slice(edit), "cuont", "{args:?}: {diagnostic}");
+        assert_eq!(edit["replacement"], "count", "{diagnostic}");
+        assert_eq!(
+            (diagnostic["line"].as_u64(), diagnostic["col"].as_u64()),
+            (Some(3), Some(10))
+        );
+    }
+}
+
+/// A passing run is a success even when its tests crash actors on purpose;
+/// those panics are still reported, and no error tally contradicts the
+/// passing summary.
+#[test]
+fn test_a_crash_a_passing_test_provokes_fails_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"crashing-actor\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/crash.test.mpl"),
+        "actor crasher() do\n  panic(\"deliberate crash\")\nend\n\ntest(\"crashes an actor\") do\n  spawn(crasher)\n  Timer.sleep(50)\n  assert(true)\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", "--json"])
+        .arg(&project)
+        .output()
+        .expect("failed to run meshc test");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{output:?}");
+    let diagnostic: serde_json::Value = serde_json::from_str(stderr.trim_end()).unwrap();
+    assert_eq!(diagnostic["code"], "R0001");
+    assert_eq!(diagnostic["message"], "deliberate crash");
+
+    let output = Command::new(meshc_bin())
+        .arg("test")
+        .arg(&project)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to run meshc test");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{output:?}");
+    assert!(stdout.contains("1 test file passed"), "{stdout}");
+    assert!(
+        stderr.contains("[R0001] Error: deliberate crash"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("error: 1 error"), "{stderr}");
 }
 
 #[test]
@@ -2195,8 +2631,8 @@ fn test_nested_describes_run() {
 
 #[test]
 fn test_runner_reports_a_test_file_that_crashes() {
-    // A test binary killed by a signal printed nothing, and `meshc test`
-    // said only "1 test file failed": the file and the cause were lost.
+    // Stack overflow has its own diagnostic. An unexplained exit gets the
+    // test runner's diagnostic with the failed file and exit status.
     let dir = tempfile::tempdir().unwrap();
     let project = dir.path().join("project");
     write_file(
@@ -2215,10 +2651,21 @@ test("overflows the stack") do
 end
 "##,
     );
+    write_file(
+        &project.join("tests/exit.test.mpl"),
+        "test(\"exits early\") do\n  Process.exit(42)\nend\n",
+    );
     let output = Command::new(meshc_bin())
         .args(["test", project.to_str().unwrap()])
         .output()
         .expect("failed to run meshc test");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("[R0002]"), "{stderr}");
+    assert!(
+        stderr.contains("[T0101] Error: the test program for 'tests/exit.test.mpl' ended without reporting a failure")
+            && stderr.contains("exit status: 42"),
+        "{stderr}"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success(), "{stdout}");
     assert!(
@@ -2249,7 +2696,9 @@ fn test_init_rejects_an_unknown_template() {
     let (ok, text) = run_meshc(dir.path(), &["init", "--template", "blog", "app"], &[]);
     assert!(!ok, "{text}");
     assert!(
-        text.contains("error: unknown init template 'blog'; supported templates: todo-api.\n"),
+        text.contains(
+            "[X0001] Error: unknown init template 'blog'; supported templates: todo-api.\n"
+        ),
         "{text}"
     );
     let (ok, text) = run_meshc(
@@ -2274,7 +2723,11 @@ fn test_deps_resolves_until_the_lockfile_is_fresh() {
     std::fs::create_dir_all(&project).unwrap();
     let (ok, text) = run_meshc(dir.path(), &["deps", "app"], &[]);
     assert!(
-        !ok && text.contains("No 'mesh.toml' found in 'app'"),
+        !ok && text.contains("[M0001] Error: Failed to read"),
+        "{text}"
+    );
+    assert!(
+        text.contains(&Path::new("app").join("mesh.toml").display().to_string()),
         "{text}"
     );
 
@@ -2345,7 +2798,10 @@ fn test_update_runs_the_installer_it_downloads() {
         &["update"],
         &[("MESH_UPDATE_INSTALLER_URL", "http://127.0.0.1:1/install.sh")],
     );
-    assert!(!ok && text.starts_with("error: "), "{text}");
+    assert!(
+        !ok && text.starts_with("[X0301] Error: toolchain update download failed"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -2447,7 +2903,10 @@ fn test_test_reports_targets_it_cannot_run() {
     write_file(&project.join("notes.txt"), "notes");
 
     let (ok, text) = run_meshc(&project, &["test"], &[]);
-    assert!(ok && text.contains("No *.test.mpl files found."), "{text}");
+    assert!(
+        !ok && text.contains("[T0103] Error: no *.test.mpl files found under '"),
+        "{text}"
+    );
     let (ok, text) = run_meshc(&project, &["test", "missing"], &[]);
     assert!(
         !ok && text.contains("/app/missing' does not exist"),
@@ -2469,7 +2928,8 @@ fn test_test_reports_targets_it_cannot_run() {
     assert!(!ok, "{text}");
     assert!(
         text.contains("COMPILE ERROR: tests/order.test.mpl")
-            && text.contains("`setup` must come before the tests of its describe"),
+            && text.contains("[P0401] Error: `setup` must come before the tests of its describe")
+            && text.contains("tests/order.test.mpl:5:3"),
         "{text}"
     );
     write_file(
@@ -2487,4 +2947,335 @@ fn test_test_reports_targets_it_cannot_run() {
             && text.contains("Failed to resolve path dependency `gone`"),
         "{text}"
     );
+}
+
+/// A bad command line is an `X0001` for a person too, exiting 2, with
+/// Clap's tip and usage as notes; help and the version still print to
+/// stdout and exit 0.
+#[test]
+fn argument_errors_are_coded_for_people_too() {
+    let run = |args: &[&str]| {
+        Command::new(meshc_bin())
+            .args(args)
+            .env("NO_COLOR", "1")
+            .output()
+            .unwrap()
+    };
+    let bad = run(&["check", "--bogus"]);
+    assert_eq!(bad.status.code(), Some(2), "{bad:?}");
+    assert!(bad.stdout.is_empty(), "{bad:?}");
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    assert!(
+        stderr.starts_with("[X0001] Error: unexpected argument '--bogus' found\n"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("  Note: Usage: meshc check"), "{stderr}");
+    assert!(stderr.contains("meshc explain X0001"), "{stderr}");
+    for args in [&["check", "--help"][..], &["--version"]] {
+        let output = run(args);
+        assert!(output.status.success(), "{output:?}");
+        assert!(output.stderr.is_empty(), "{output:?}");
+        assert!(!output.stdout.is_empty(), "{output:?}");
+    }
+}
+
+#[test]
+fn json_mode_is_pure_ndjson() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let bin = meshc_bin();
+    let execute = |args: &[&str]| {
+        Command::new(&bin)
+            .args(args)
+            .current_dir(root)
+            .output()
+            .unwrap()
+    };
+    let catalog = execute(&["--json", "explain"]);
+    assert!(catalog.status.success(), "{catalog:?}");
+    assert!(catalog.stderr.is_empty(), "{catalog:?}");
+    let catalog: serde_json::Value = serde_json::from_slice(&catalog.stdout).unwrap();
+    let codes = catalog["codes"].as_array().unwrap();
+    let keys = [
+        "code", "severity", "message", "file", "spans", "fix", "line", "col", "name", "category",
+        "notes", "guide", "docs_url", "edits",
+    ];
+    let verify = |args: &[&str], expected: &[&str]| {
+        let output = execute(args);
+        assert_eq!(
+            output.status.code(),
+            Some(match expected {
+                [] => 0,
+                ["X0001"] => 2,
+                _ => 1,
+            }),
+            "{output:?}"
+        );
+        assert!(output.stdout.is_empty(), "{args:?}: {output:?}");
+        let stderr = std::str::from_utf8(&output.stderr).unwrap();
+        let diagnostics: Vec<serde_json::Value> = stderr
+            .lines()
+            .map(|line| {
+                let diagnostic: serde_json::Value = serde_json::from_str(line)
+                    .unwrap_or_else(|e| panic!("{args:?}: invalid diagnostic {line:?}: {e}"));
+                let object = diagnostic.as_object().unwrap();
+                assert_eq!(object.len(), keys.len(), "{line}");
+                for key in keys {
+                    assert!(object.contains_key(key), "missing {key} in {line}");
+                }
+                assert!(
+                    codes
+                        .iter()
+                        .any(|entry| entry["code"] == diagnostic["code"]),
+                    "{line}"
+                );
+                diagnostic
+            })
+            .collect();
+        let actual: Vec<_> = diagnostics
+            .iter()
+            .map(|d| d["code"].as_str().unwrap())
+            .collect();
+        assert_eq!(actual, expected, "{args:?}: {stderr}");
+        diagnostics
+    };
+
+    let main = root.join("main.mpl");
+    let clean = "fn main() do\n  println(\"ready\")\nend\n";
+    write_file(&main, clean);
+    verify(&["check", "--json"], &[]);
+    verify(&["lint", "--json"], &[]);
+    verify(&["lint", "missing", "--json"], &["X0002"]);
+    assert!(!root.join("out").exists());
+    verify(
+        &["build", ".", "--output", "out", "--emit-llvm", "--json"],
+        &[],
+    );
+    assert!(root.join("out").is_file());
+    assert!(root.join("out.ll").is_file());
+    verify(
+        &["--json", "build", "main.mpl", "--output", "standalone"],
+        &[],
+    );
+
+    write_file(&main, "fn main() do\n  println(1)\n");
+    let diagnostics = verify(&["build", ".", "--json"], &["P0004"]);
+    assert_eq!(diagnostics[0]["spans"].as_array().unwrap().len(), 2);
+    verify(&["lint", "main.mpl", "--json"], &["P0004"]);
+    let diagnostics = verify(&["fmt", "main.mpl", "--json"], &["P0004"]);
+    assert_eq!(diagnostics[0]["file"], "main.mpl");
+    assert!(!diagnostics[0]["spans"].as_array().unwrap().is_empty());
+
+    write_file(&main, "fn main() do\n  println(missing)\nend\n");
+    verify(&["build", ".", "--json"], &["E0004"]);
+    let diagnostics = verify(&["check", "main.mpl", "--json"], &["E0004"]);
+    assert_eq!(diagnostics[0]["file"], "main.mpl");
+
+    write_file(&main, clean);
+    write_file(&root.join("a.mpl"), "struct State do\n  a :: Int\nend\n");
+    write_file(&root.join("b.mpl"), "struct State do\n  b :: String\nend\n");
+    let diagnostics = verify(&["build", ".", "--json"], &["E0102"]);
+    assert_eq!(diagnostics[0]["spans"].as_array().unwrap().len(), 2);
+    verify(&["--json", "check"], &["E0102"]);
+
+    for (file, result) in [("a.mpl", 1), ("b.mpl", 2)] {
+        write_file(
+            &root.join(file),
+            &format!("pub fn same() do\n  {result}\nend\n"),
+        );
+    }
+    verify(&["check", "--json"], &["E0103"]);
+    verify(&["verify", "--list", "--json"], &["E0103"]);
+    write_file(&root.join("a.mpl"), "");
+    write_file(&root.join("b.mpl"), "@cluster(3)\nfn hidden() do\nend\n");
+    verify(&["check", "--json"], &["CFG0001"]);
+    write_file(&root.join("b.mpl"), "");
+
+    let malformed = "[package\n";
+    write_file(&root.join("mesh.toml"), malformed);
+    for args in [["build", ".", "--json"].as_slice(), &["check", "--json"]] {
+        let diagnostics = verify(args, &["M0002"]);
+        let diagnostic = &diagnostics[0];
+        let span = &diagnostic["spans"][0];
+        assert!(diagnostic["file"].as_str().unwrap().ends_with("mesh.toml"));
+        assert_eq!(span["file"], diagnostic["file"]);
+        assert_eq!(span["line"], 1);
+        assert_eq!(span["start"], malformed.find('\n').unwrap());
+    }
+    let standalone = root.join("example.mpl");
+    for code in ["E0102", "E0103"] {
+        let example = &codes.iter().find(|entry| entry["code"] == code).unwrap()["example"];
+        write_file(&standalone, example["bad"].as_str().unwrap());
+        verify(&["check", "example.mpl", "--json"], &[code]);
+        write_file(&standalone, example["fixed"].as_str().unwrap());
+        verify(&["check", "example.mpl", "--json"], &[]);
+    }
+    for code in ["L0001", "L0002", "L0003", "L0004"] {
+        let example = &codes.iter().find(|entry| entry["code"] == code).unwrap()["example"];
+        write_file(&standalone, example["bad"].as_str().unwrap());
+        let diagnostics = verify(&["lint", "example.mpl", "--json"], &[code]);
+        assert_eq!(diagnostics[0]["severity"], "warning");
+        assert_eq!(diagnostics[0]["category"], "lint");
+        write_file(&standalone, example["fixed"].as_str().unwrap());
+        verify(&["--json", "lint", "example.mpl"], &[]);
+    }
+    let bool_comparison = &codes.iter().find(|entry| entry["code"] == "L0004").unwrap()["example"];
+    write_file(&standalone, bool_comparison["bad"].as_str().unwrap());
+    let diagnostics = verify(&["lint", "example.mpl", "--json"], &["L0004"]);
+    assert_eq!(
+        diagnostics[0]["edits"],
+        serde_json::json!([{
+            "file": "example.mpl",
+            "start": 37,
+            "end": 50,
+            "replacement": "ready",
+            "applicability": "machine-applicable"
+        }])
+    );
+    verify(&["explain", "BOGUS", "--json"], &["X0102"]);
+    verify(&["guide", "bogus", "--json"], &["X0101"]);
+    let records = verify(&["guide", "syntx", "--json"], &["X0101"]);
+    assert!(records[0]["fix"]
+        .as_str()
+        .unwrap()
+        .contains("`meshc guide syntax`"));
+    for (query, code) in [("e0001", "E0001"), ("cfg0001", "CFG0001")] {
+        let records = verify(&["guide", query, "--json"], &["X0101"]);
+        assert!(records[0]["fix"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("`meshc explain {code}`")));
+    }
+    verify(
+        &["cluster", "status", "invalid-target", "--json"],
+        &["X0501"],
+    );
+    verify(&["check", "--bogus", "--json"], &["X0001"]);
+    for args in [
+        &["--json", "check", "--help"][..],
+        &["--json", "--version"][..],
+    ] {
+        let output = execute(args);
+        assert!(output.status.success(), "{output:?}");
+        assert!(
+            output.stderr.is_empty() && !output.stdout.is_empty(),
+            "{output:?}"
+        );
+    }
+
+    let unformatted = "fn add(a,b) do\na+b\nend\n";
+    write_file(&main, unformatted);
+    let records = verify(&["fmt", "--check", "main.mpl", "--json"], &["X0201"]);
+    assert_eq!(records[0]["file"], "main.mpl");
+    assert!(records[0]["fix"]
+        .as_str()
+        .unwrap()
+        .contains("`meshc fmt main.mpl`"));
+    assert_eq!(std::fs::read_to_string(main).unwrap(), unformatted);
+}
+
+#[test]
+fn skills_setup_supports_piped_stdin_with_explicit_targets() {
+    let project = tempfile::tempdir().unwrap();
+    let root = project.path();
+    write_file(
+        &root.join("mesh.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+    );
+    let subdir = root.join("src");
+    std::fs::create_dir(&subdir).unwrap();
+    let run = |args: &[&str]| {
+        Command::new(meshc_bin())
+            .args(["skills", "setup", "--json"])
+            .args(args)
+            .stdin(std::process::Stdio::piped())
+            .current_dir(&subdir)
+            .output()
+            .unwrap()
+    };
+    for args in [&[][..], &["--yes"][..], &["--target", "codex"][..]] {
+        let output = run(args);
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let error: serde_json::Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["code"], "X0104");
+        assert!(error["fix"]
+            .as_str()
+            .unwrap()
+            .contains("meshc skills setup --yes --target <agent>"));
+        assert!(!root.join(".agents").exists());
+    }
+
+    let args = ["-y", "--target", "codex", "--target", "claude-code"];
+    for _ in 0..2 {
+        let output = run(&args);
+        assert!(output.status.success(), "{output:?}");
+        assert!(
+            output.stdout.is_empty() && output.stderr.is_empty(),
+            "{output:?}"
+        );
+        for host in [".agents", ".claude"] {
+            let installed = root.join(host).join("skills/mesh");
+            assert!(installed.join("SKILL.md").is_file());
+            assert!(installed.join("references/diagnostics.md").is_file());
+        }
+    }
+
+    let skill = root.join(".agents/skills/mesh/SKILL.md");
+    write_file(&skill, "local edits");
+    let conflict = run(&args);
+    assert_eq!(conflict.status.code(), Some(1), "{conflict:?}");
+    assert!(conflict.stdout.is_empty(), "{conflict:?}");
+    let error: serde_json::Value = serde_json::from_slice(&conflict.stderr).unwrap();
+    assert_eq!(error["code"], "X0103");
+    assert_eq!(std::fs::read_to_string(skill).unwrap(), "local edits");
+}
+
+#[test]
+fn check_tests_compiles_the_test_dsl_without_running_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    write_file(
+        &root.join("mesh.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&root.join("main.mpl"), "fn main() do\nend\n");
+    let path = "tests/example.test.mpl";
+    let run = |args: &[&str]| {
+        Command::new(meshc_bin())
+            .args(args)
+            .current_dir(root)
+            .env("MESH_TEST_RT_LIB_PATH", "")
+            .output()
+            .unwrap()
+    };
+    write_file(
+        &root.join(path),
+        "test(\"runtime failure\") do\n  assert(false)\nend\n",
+    );
+    let clean = run(&["check", "--tests", "--json"]);
+    assert!(
+        clean.status.success() && clean.stderr.is_empty(),
+        "{clean:?}"
+    );
+
+    write_file(
+        &root.join(path),
+        "test(\"type error\") do\n  assert(missing)\nend\n",
+    );
+    assert!(run(&["check"]).status.success());
+    for args in [
+        &["check", "--tests", "--json"][..],
+        &["check", path, "--tests", "--json"],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(1), "{bad:?}");
+        assert!(bad.stdout.is_empty(), "{bad:?}");
+        let diagnostic: serde_json::Value = serde_json::from_slice(&bad.stderr).unwrap();
+        assert_eq!(diagnostic["code"], "E0004", "{diagnostic}");
+        assert!(
+            Path::new(diagnostic["file"].as_str().unwrap()).ends_with(path),
+            "{diagnostic}"
+        );
+    }
 }

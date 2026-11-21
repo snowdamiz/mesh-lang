@@ -6,6 +6,7 @@ description = "Interactive REPL with LLVM JIT compilation for the Mesh language"
 
 [dependencies]
 mesh-common = { path = "../mesh-common" }
+mesh-diagnostics = { path = "../mesh-diagnostics" }
 mesh-lexer = { path = "../mesh-lexer" }
 mesh-parser = { path = "../mesh-parser" }
 mesh-typeck = { path = "../mesh-typeck" }

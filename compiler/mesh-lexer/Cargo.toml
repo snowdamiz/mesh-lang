@@ -6,6 +6,7 @@ description = "Tokenizer for the Mesh programming language"
 
 [dependencies]
 mesh-common = { path = "../mesh-common" }
+mesh-diagnostics = { path = "../mesh-diagnostics", default-features = false }
 
 [dev-dependencies]
 insta = { workspace = true }

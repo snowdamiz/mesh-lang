@@ -70,6 +70,9 @@ meshpkg update
 ```
 
 Both commands rerun the canonical installer path and refresh both `meshc` and `meshpkg` together.
+`meshc update --json` runs the installer without showing its output, and a
+failed installer is an `X0301` whose note holds the last lines the installer
+wrote.
 
 For the clustered release proof behind this install contract, see [Distributed Proof](/docs/distributed-proof/).
 
@@ -128,6 +131,11 @@ optional. Upgrades refresh account copies that Mesh installed and whose
 files match the recorded digest. Mesh reports paths with local edits, extra
 files, symlinks, or an existing skill managed by another tool. Project
 copies stay pinned until you rerun setup and confirm the project scope.
+
+For unattended project setup, run `meshc skills setup --yes --target <agent>`.
+Repeat `--target` to select multiple hosts. Run `meshc skills setup --help`
+for the supported agent IDs.
+
 Run `meshc skills refresh` to apply the same account refresh with your current
 compiler without reinstalling it.
 
@@ -804,26 +812,52 @@ Commit the report and run the check in CI, so no disclosure is added without
 review. The command type-checks the project as `meshc build` does, and fails
 on the same errors.
 
+### Check and explain diagnostics
+
+Run `meshc check [path]` to parse and type-check a project or a standalone
+source file without generating a binary. The path defaults to the current
+directory. Add `--tests` to check the project's `*.test.mpl` files without
+running them. Add `--json` for machine-readable diagnostics.
+
+Run `meshc explain <CODE>` for the catalog entry, including the repair and
+any examples. You can also look up a diagnostic by its kebab-case name.
+Run `meshc explain` to list the codes. `meshc explain --json` writes the
+catalog object to standard output. Pass a code or name to get one entry
+in that format.
+
 ### JSON diagnostics
 
-With `--json`, each diagnostic is one JSON object per line on standard error.
-For `let x :: Int = "abc"` in `main.mpl`, `meshc build . --json` prints:
+With `--json`, the v2 diagnostic stream writes one JSON object per line to
+standard error. For `let x :: Int = "abc"` inside `fn main()` in `main.mpl`,
+`meshc build . --json` reports the following diagnostic.
 
-```text
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"./main.mpl","spans":[{"start":21,"end":27,"label":"expected Int from annotation"}],"fix":null}
-{"code":"C0001","file":"","fix":null,"message":"Compilation failed due to errors above.","severity":"error","spans":[]}
+```json
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"./main.mpl","spans":[{"start":21,"end":27,"label":"expected Int from annotation","file":"./main.mpl","line":2,"col":9,"end_line":2,"end_col":15}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":2,"col":9,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 ```
 
-`message` is the headline the terminal report shows, and the language server
-shows the same text. `spans` hold byte offsets into `file`, which is named as
-the build argument names it. The first span is where the error is and the others are places it
-relates to, each labelled as the terminal report labels it; `fix` is the
-report's help, or `null`. Codes starting with `E` are type errors and `W` warnings from the
-type checker; `P0001` is a parse error and `CFG0001` an invalid cluster
-declaration. A failed build always ends with one `C0001` object with an empty
-`file`, carrying either the summary above or a failure outside any source file
-(a missing entrypoint, a link error). The exit status is 1 whenever the build
-fails.
+| Fields | Meaning |
+| --- | --- |
+| `code`, `name`, `severity`, `category` | Stable ID, kebab-case name, severity, and diagnostic family. |
+| `message`, `fix`, `notes` | The problem, a non-null repair string, and an array of extra details. |
+| `file`, `line`, `col` | Primary location. Invocation-level diagnostics have an empty `file`. Unknown lines and columns are `null`. |
+| `spans` | The primary span followed by related spans. Each span names its own file and carries start and end positions and a label. |
+| `guide`, `docs_url` | The `meshc explain` command, local skill reference, optional guide topic, and website entry. |
+| `edits` | Suggested edits, each with `file`, `start`, `end`, `replacement`, and `applicability`. |
+
+Offsets are zero-based UTF-8 bytes. End positions are exclusive. Lines and
+columns are one-based, and columns count Unicode scalar values. Apply
+`machine-applicable` edits to the source that produced them. Review
+`maybe-incorrect` edits before applying them.
+
+Every failure reports its specific code. A failed build exits with status 1,
+and the stream contains the individual diagnostics without a final summary
+object. A command that fails exits with status 1. A command line that `meshc`
+or `meshpkg` cannot parse is an `X0001` in either format, and exits with
+status 2. `--help` and `--version` print to standard output and exit 0. The [diagnostic catalog](/docs/errors/) covers syntax (`P`),
+semantic errors and warnings (`E`, `W`), lint (`L`), project and cluster
+configuration (`M`, `CFG`), verification (`V`), build and linking (`B`),
+internal compiler diagnostics (`I`), runtime (`R`), tests (`T`), and
+command-line tools (`X`). Run `meshc explain <CODE>` to look up any active code.
 
 For example:
 
@@ -878,8 +912,9 @@ than the lockfile and every git dependency is checked out, it prints
 
 A git dependency is fetched at its `rev`, the head of its `branch`, its `tag`,
 or the remote's default branch. The build compiles each checkout like a path
-dependency; building before `meshc deps` has fetched one fails with
-"Git dependency `name` is not fetched; run `meshc deps`". A dependency name
+dependency; building before `meshc deps` has fetched one fails with `M0103`
+("Git dependency `name` is not fetched at '...'") and suggests running
+`meshc deps`. A dependency name
 reached from two different sources, or a cycle, is an error.
 
 Registry downloads belong to `meshpkg install`, which `meshc deps` leaves
@@ -1108,7 +1143,7 @@ is merged into `foo.mpl` only in the temporary test project. Tests can import
 fragment. See the [Testing guide](/docs/testing/#private-module-test-support)
 for the exact naming and isolation rules.
 
-Exit code is 1 if any test fails or a test file does not compile, making `meshc test` suitable for CI pipelines; a run that finds no test files prints `No *.test.mpl files found.` and exits 0.
+Exit code is 1 if any test fails or a test file does not compile, making `meshc test` suitable for CI pipelines; a run that finds no test files reports `T0103` and exits 1, so a CI step pointed at the wrong directory fails. Each test failure is also a diagnostic on standard error at its line of the test file (`T0001` to `T0005` for the assertions, a panic's own `R0001`), and `meshc test --json` writes them as JSON lines there. A run whose tests all pass exits 0 even when a test crashes an actor on purpose: the crash is still reported, without an error tally under the passing summary.
 
 Use compact output for a large suite, a `.` per passing test and an `F` per failing one, with the failures listed after them:
 
@@ -1164,14 +1199,14 @@ The formatter uses the **Wadler-Lindig** pretty-printing algorithm with a CST-ba
 
 Beyond whitespace, the formatter puts `;`-separated statements on lines of
 their own and may drop trailing commas. It never changes what the code means:
-it refuses a file it cannot reproduce exactly, and a file with parse errors.
-Either refusal (`Cannot format '<file>': ...`) fails the whole run before any
+it refuses a file it cannot reproduce exactly (an `I0001`), and a file with
+parse errors (its `P` codes). Either refusal fails the whole run before any
 file is written.
 
 `meshc fmt` prints `Formatted N file(s)`, counting every file it read. With
-`--check`, it lists each file as `  would reformat: <path>`, prints
-`N file(s) would be reformatted`, and exits with status 1 when any would
-change.
+`--check`, it writes no file: each file that would change is an `X0201`
+diagnostic on standard error, a JSON line under `--json`, and the run exits
+with status 1 when any would change.
 
 ### Example
 
@@ -1207,35 +1242,47 @@ unchanged.
 meshc lint .
 ```
 
-The path may be one `.mpl` file or a directory, walked recursively, and defaults to the current directory. Each finding is printed as `path:line:column: rule: message`, and the command exits with status 1 when it reports anything, so it can gate CI next to `meshc fmt --check`. A file that does not parse is reported as a `parse-error`.
+The path may be one `.mpl` file or a directory, walked recursively, and defaults to the current directory. Each finding is an `L` warning from the [error index](/docs/errors/), reported on standard error in the format `meshc check` and `meshc build` use, and the run ends with a tally. The command exits with status 1 when it reports anything, warnings included, so it can gate CI next to `meshc fmt --check`. A file that does not parse is reported with its parse errors (`P` codes) and is not linted.
 
 ```text
-api/users.mpl:14:9: deep-nesting: `case` is nested 5 levels deep (at most 4); extract a function, return early, or use `?`
-api/users.mpl:31:3: collapsible-else-if: this `else` holds only an `if`; write `else if`
+[L0004] Warning: comparison with the Bool literal `true`
+   ╭─[ ./main.mpl:3:6 ]
+   │
+ 3 │   if ready == true do
+   │      ──────┬──────
+   │            ╰──────── the same as `ready`
+   │
+   │ Help: Replace the comparison with `ready`.
+───╯
+  = L0004: meshc explain L0004 · skill diagnostics.md#l0004 · https://meshlang.dev/docs/errors/#l0004
+warning: 1 warning (L0004)
 ```
 
-| Rule | Reports | Write instead |
+| Code | Reports | Write instead |
 |------|---------|---------------|
-| `deep-nesting` | `if`, `case`/`match`, `for`, `while`, `receive`, or a closure nested more than four levels deep in one function | A helper function, an early `return`, or `?` in place of a `case` that only passes an error on |
-| `collapsible-else-if` | An `else` whose whole body is a single `if` | `else if` |
-| `pass-through-arm` | An arm that returns exactly what it matched, such as `Ok(value) -> Ok(value)` | The pattern on its own: `Ok(value)` |
-| `bool-comparison` | A comparison with `true` or `false`, such as `ready == true` or `done != false` | The value itself, or `not` it |
+| [`L0001`](/docs/errors/#l0001) `deep-nesting` | `if`, `case`/`match`, `for`, `while`, `receive`, or a closure nested more than four levels deep in one function | A helper function, an early `return`, or `?` in place of a `case` that only passes an error on |
+| [`L0002`](/docs/errors/#l0002) `collapsible-else-if` | An `else` whose whole body is a single `if` | `else if` |
+| [`L0003`](/docs/errors/#l0003) `pass-through-arm` | An arm that returns exactly what it matched, such as `Ok(value) -> Ok(value)` | The pattern on its own: `Ok(value)` |
+| [`L0004`](/docs/errors/#l0004) `bool-comparison` | A comparison with `true` or `false`, such as `ready == true` or `done != false` | The value itself, or `not` it |
 
 Nesting is counted from each named function, service handler, `terminate`
 clause, actor body, and top-level `test`, `describe`, `setup`, or `teardown`
 block. An `else if` chain stays at the level of its first `if`; a trailing
 `do |x| ... end` closure counts as a level. Only the outermost construct past
-the limit is reported, so fixing it may reveal a deeper one.
+the limit is reported, labelled with each level it is nested in, so fixing it
+may reveal a deeper one.
 
 `pass-through-arm` fires only where the pattern alone would compile as the
 arm's value: a name, a literal, or a constructor of those. A tuple or list
 pattern such as `(0, b) -> (0, b)` is left alone.
 
-Findings go to standard output, one per line, with 1-based line and byte
-columns; the count, `N problem(s) found`, goes to standard error. A file that
-does not parse reports its first parse error. Like the formatter, the linter
-skips hidden files and directories. It has no options, configuration file, or
-suppression comments yet.
+`meshc lint --json` writes one JSON object per finding to standard error, in
+the schema of [`--json`](#json-diagnostics) diagnostics, and nothing to
+standard output. A `bool-comparison` finding carries a machine-applicable edit
+that replaces the comparison, which the language server offers as a quick fix.
+The language server reports the same findings as `meshc lint` while you edit.
+Like the formatter, the linter skips hidden files and directories. It has no
+options, configuration file, or suppression comments yet.
 
 ## REPL
 
@@ -1415,8 +1462,11 @@ meshpkg --json install
 | `publish` | `{"status": "ok", "name", "version", "sha256"}` |
 | `login` | `{"status": "ok", "message"}` |
 
-A failure prints `{"error": "..."}` on standard error and exits with status 1.
-`meshpkg update` refuses `--json`, because it hands over to the installer.
+A failure is one catalog diagnostic on standard error, a JSON line in the
+shape `meshc --json` writes, and exits with status 1. A command line meshpkg
+cannot parse is an `X0001` and exits with status 2. `meshpkg update` refuses
+`--json` with an `X0001` and exits with status 1, because it hands over to
+the installer.
 
 ### mesh.toml with Registry Dependencies
 
@@ -1459,7 +1509,8 @@ editor-facing behaviors over real stdio JSON-RPC:
 
 | Feature | Description |
 |---------|-------------|
-| **Diagnostics** | Parse errors and type errors displayed inline as you type |
+| **Diagnostics** | Project, syntax, type, and lint diagnostics as you edit |
+| **Quick fixes** | Code actions that apply a diagnostic's suggested edits |
 | **Hover** | Hover over identifiers to see inferred type information |
 | **Go-to-definition** | Jump to definitions in the current document |
 | **Completion** | Keywords, built-in types, snippets, and names visible in the current scope |
@@ -1467,20 +1518,29 @@ editor-facing behaviors over real stdio JSON-RPC:
 | **Document formatting** | Format the current document through the same formatter used by `meshc fmt` |
 | **Signature help** | Parameter hints for function calls, including active-parameter tracking |
 
-The language server receives full-document changes and reruns the Mesh lexer,
-parser, and type checker before publishing diagnostics. When the file belongs
-to a project (an ancestor directory holds `mesh.toml`), it checks the file as
-part of the whole project, as `meshc build` would: imports resolve across the
-project's modules, path and git dependencies, and installed packages, using
-the unsaved text of any other open documents, and manifest or entrypoint
-errors appear as diagnostics. A file outside a project is checked alone.
+The language server receives full-document changes and runs the same
+`frontend::check` as `meshc check`. It also runs `mesh-lint` on files that
+parse. It checks a file under `mesh.toml` in its project context, including
+imports from path and git dependencies and installed packages. It uses the
+unsaved text of other open documents. Files outside a project are checked
+individually.
+
+The server publishes each diagnostic to the file it concerns. Editing one
+file can refresh or clear diagnostics in other files. The diagnostic
+message includes `help:` for the repair and `note:` for each note. Its
+`code_description` links to the catalog entry, and `related_information`
+points to secondary labels, including labels in other files.
+
+For diagnostics with applicable source edits, the server offers a
+`QuickFix` code action that applies the edits together. Editors can mark
+the action as preferred when all edits are `machine-applicable`.
 
 Hover shows the inferred type of the expression under the cursor. Completion
 has no trigger characters, so request it explicitly or let the editor ask as
 you type; signature help triggers on `(` and `,`. Document symbols cover
 functions, structs, sum types, type aliases, modules, actors, services, their
 call and cast handlers, supervisors, interfaces, impls, and top-level `let`
-bindings. References, rename, code actions, workspace symbols, and semantic
+bindings. References, rename, workspace symbols, and semantic
 tokens are not implemented.
 
 `meshc lsp` takes no arguments and always speaks over stdio; configure clients
@@ -1723,10 +1783,12 @@ The verifier persists the candidate and hosted-run evidence under:
 | Registry dependencies | `meshpkg install [name]` | Install all declared exact registry dependencies or one latest named package |
 | Migrations | `meshc migrate [dir] [up \| down \| status \| generate]` | Generate and run PostgreSQL migrations |
 | Formatter | `meshc fmt <path>` | Recursively format Mesh source or use `--check` in CI |
+| Frontend check | `meshc check [path] [--tests]` | Parse and type-check a project or file without building it |
+| Diagnostic catalog | `meshc explain [CODE] [--json]` | Look up repairs and examples |
 | Linter | `meshc lint [path]` | Report deep nesting and other code that reads worse than it needs to; fails when it finds anything |
 | Test Runner | `meshc test [path]` | Run `*.test.mpl` files from a project root, tests directory, or specific test file |
 | REPL | `meshc repl` | Interactive LLVM JIT evaluation |
-| Language Server | `meshc lsp` | Diagnostics, hover, navigation, completion, symbols, formatting, and signature help over stdio JSON-RPC |
+| Language Server | `meshc lsp` | Diagnostics, hover, navigation, completion, symbols, formatting, signature help, and quick fixes over stdio JSON-RPC |
 | Cluster operations | `meshc cluster <command>` | Inspect or mutate runtime-owned cluster state |
 | Release gates | `meshc proof <command>` | Run Docker, chaos, performance, and continuity proof commands |
 | Toolchain update | `meshc update` or `meshpkg update` | Refresh both installed commands |

@@ -1,0 +1,23 @@
+---
+source: compiler/mesh-diagnostics/tests/render.rs
+expression: "report(HUMAN, [duplicate_across_files()])"
+---
+[E0068] Error: `area` is defined twice
+   ╭─[ src/main.mpl:1:4 ]
+   │
+ 1 │ fn area() = 2
+   │    ──┬─
+   │      ╰─── defined again here
+   │
+   ├─[ src/geo.mpl:1:8 ]
+   │
+ 1 │ pub fn area() = 1
+   │        ──┬─
+   │          ╰─── first defined here
+   │
+   │ Help: Rename or remove one of the two definitions.
+   │
+   │ Note: each module's names are one namespace
+───╯
+  = E0068: meshc explain E0068 · skill diagnostics.md#e0068 · https://meshlang.dev/docs/errors/#e0068
+error: 1 error (E0068)

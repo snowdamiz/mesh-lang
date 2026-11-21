@@ -11,3 +11,4 @@ expression: output
    │
    │ Help: add an arm for `None`. Use a wildcard `_` arm for an intentional default that also covers future variants.
 ───╯
+  = E0012: meshc explain E0012 · skill diagnostics.md#e0012 · https://meshlang.dev/docs/errors/#e0012

@@ -24,6 +24,7 @@ requirements and recheck the proofs against the implementation.
 ## Topics
 
 - [Projects and tooling](references/projects.md) covers setup, imports, packages, native interop, and diagnostics.
+- [Diagnostics](references/diagnostics.md) lists diagnostic codes and repairs. Run `meshc explain <CODE>` for one entry.
 - [Syntax](references/syntax.md) covers functions, pipes, operators, and control flow.
 - [Types](references/types.md) covers primitives, structs, sum types, and generics.
 - [Pattern matching](references/pattern-matching.md) covers case arms and destructuring.

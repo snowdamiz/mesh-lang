@@ -1,6 +1,7 @@
 mod auth;
 mod install;
 mod publish;
+mod registry;
 mod search;
 
 use std::path::PathBuf;
@@ -8,6 +9,7 @@ use std::process;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
+use mesh_diagnostics::{Code, Diagnostic, Format, Reporter};
 
 const DEFAULT_REGISTRY: &str = "https://api.packages.meshlang.dev";
 
@@ -20,6 +22,52 @@ struct Cli {
     /// Output in JSON format (suppresses spinners and colored output)
     #[arg(long, global = true)]
     json: bool,
+
+    /// Disable colorized output
+    #[arg(long, global = true)]
+    no_color: bool,
+}
+
+impl Cli {
+    /// The command line. Help and `--version` print to stdout and exit 0;
+    /// a bad command line is an `X0001` in the format asked for, exiting 2.
+    /// Run without a command, the tool shows a person its help instead.
+    fn parse_or_report() -> Self {
+        Self::try_parse().unwrap_or_else(|error| {
+            let given = |flag: &str| {
+                std::env::args_os()
+                    .skip(1)
+                    .take_while(|arg| arg != "--")
+                    .any(|arg| arg == flag)
+            };
+            let json = given("--json");
+            let wants_help =
+                error.kind() == clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand;
+            if !error.use_stderr() || (wants_help && !json) {
+                error.exit();
+            }
+            let mut reporter = Reporter::stderr(Format::for_cli(json, given("--no-color")));
+            reporter.emit(argument_error(&error));
+            reporter.finish();
+            process::exit(error.exit_code());
+        })
+    }
+}
+
+/// Clap's report of a bad command line as an `X0001`: its first paragraph
+/// is the message, and each paragraph after it (a tip, the usage) a note.
+fn argument_error(error: &clap::Error) -> Diagnostic {
+    let text = error.to_string();
+    let mut paragraphs = text
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|paragraph| !paragraph.is_empty());
+    let message = paragraphs.next().unwrap_or_default();
+    let message = message.strip_prefix("error: ").unwrap_or(message);
+    paragraphs.fold(
+        Diagnostic::new(Code::InvalidArguments, message),
+        Diagnostic::with_note,
+    )
 }
 
 #[derive(Subcommand)]
@@ -57,7 +105,11 @@ enum Commands {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let cli = Cli::parse_or_report();
+    if cli.no_color || cli.json {
+        colored::control::set_override(false);
+    }
+    let mut reporter = Reporter::stderr(Format::for_cli(cli.json, cli.no_color));
     let json_mode = cli.json;
 
     let result = match cli.command {
@@ -70,51 +122,53 @@ fn main() {
         Commands::Update => run_update(json_mode),
     };
 
-    match result {
-        Ok(()) => process::exit(0),
-        Err(e) => {
-            if json_mode {
-                eprintln!("{}", serde_json::json!({ "error": e }));
-            } else {
-                eprintln!("{} {}", "✗".red().bold(), e);
-            }
-            process::exit(1);
-        }
+    if let Err(error) = result {
+        reporter.emit(error);
     }
+    process::exit(reporter.finish().exit_code());
 }
 
-fn run_update(json_mode: bool) -> Result<(), String> {
+fn run_update(json_mode: bool) -> Result<(), Diagnostic> {
     if json_mode {
-        return Err(
-            "installer-backed self-update does not support --json; rerun `meshpkg update` without --json"
-                .to_string(),
-        );
+        return Err(Diagnostic::new(
+            Code::InvalidArguments,
+            "installer-backed self-update does not support --json",
+        )
+        .with_repair("Rerun `meshpkg update` without --json."));
     }
 
-    let outcome = mesh_pkg::run_toolchain_update().map_err(|error| error.to_string())?;
+    let outcome = mesh_pkg::run_toolchain_update().map_err(|error| error.to_diagnostic())?;
     println!("{}", outcome.mode);
     Ok(())
 }
 
-fn run_login(token: Option<String>, json_mode: bool) -> Result<(), String> {
+fn run_login(token: Option<String>, json_mode: bool) -> Result<(), Diagnostic> {
     let token = match token {
         Some(t) => t,
         None => {
             // Read from stdin interactively
-            eprint!("Enter registry token: ");
+            if !json_mode {
+                eprint!("Enter registry token: ");
+            }
             let mut input = String::new();
-            std::io::stdin()
-                .read_line(&mut input)
-                .map_err(|e| format!("Failed to read token: {}", e))?;
+            std::io::stdin().read_line(&mut input).map_err(|e| {
+                Diagnostic::new(
+                    Code::RegistryAuthFailed,
+                    format!("Failed to read token: {e}"),
+                )
+            })?;
             input.trim().to_string()
         }
     };
 
     if token.is_empty() {
-        return Err("Token cannot be empty".to_string());
+        return Err(Diagnostic::new(
+            Code::RegistryAuthFailed,
+            "Token cannot be empty",
+        ));
     }
 
-    auth::write_token(&token)?;
+    auth::write_token(&token).map_err(|message| Diagnostic::new(Code::PathNotFound, message))?;
 
     if json_mode {
         println!(

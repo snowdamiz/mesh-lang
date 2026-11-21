@@ -55,6 +55,12 @@ impl LineIndex {
         let col = offset - self.line_starts[line_idx] + 1; // 1-based
         (line, col)
     }
+
+    /// The byte offset where 1-based `line` starts, or `None` past the last line.
+    pub fn line_start(&self, line: u32) -> Option<u32> {
+        let index = usize::try_from(line.checked_sub(1)?).ok()?;
+        self.line_starts.get(index).copied()
+    }
 }
 
 #[cfg(test)]
@@ -97,5 +103,25 @@ mod tests {
         assert_eq!(idx.line_col(2), (1, 3));
         // 'c' is at offset 3 -> line 2, col 1
         assert_eq!(idx.line_col(3), (2, 1));
+    }
+
+    #[test]
+    fn line_start_of_each_line() {
+        let idx = LineIndex::new("ab\r\ncd\n");
+        assert_eq!(idx.line_start(1), Some(0));
+        assert_eq!(idx.line_start(2), Some(4));
+        assert_eq!(
+            idx.line_start(3),
+            Some(7),
+            "the empty line after a final newline"
+        );
+    }
+
+    #[test]
+    fn line_start_out_of_bounds() {
+        let idx = LineIndex::new("ab\ncd");
+        assert_eq!(idx.line_start(0), None, "lines are 1-based");
+        assert_eq!(idx.line_start(3), None);
+        assert_eq!(LineIndex::new("").line_start(1), Some(0));
     }
 }

@@ -1,3 +1,5 @@
+use crate::registry;
+use mesh_diagnostics::{Code, Diagnostic};
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
@@ -11,7 +13,7 @@ use tar::Builder;
 
 use mesh_pkg::Manifest;
 
-pub fn run(project_dir: &Path, registry: &str, json_mode: bool) -> Result<(), String> {
+pub fn run(project_dir: &Path, registry: &str, json_mode: bool) -> Result<(), Diagnostic> {
     // Read manifest
     let manifest_path = project_dir.join("mesh.toml");
     let manifest = Manifest::from_file(&manifest_path)?;
@@ -49,7 +51,7 @@ pub fn run(project_dir: &Path, registry: &str, json_mode: bool) -> Result<(), St
     Ok(())
 }
 
-fn create_tarball(project_dir: &Path) -> Result<(Vec<u8>, String), String> {
+fn create_tarball(project_dir: &Path) -> Result<(Vec<u8>, String), Diagnostic> {
     let archive_members = publish_archive_members(project_dir)?;
     let mut buf = Vec::new();
     {
@@ -60,14 +62,29 @@ fn create_tarball(project_dir: &Path) -> Result<(Vec<u8>, String), String> {
             let source_path = project_dir.join(member);
             archive
                 .append_path_with_name(&source_path, member)
-                .map_err(|e| format!("Failed to add '{}' to tarball: {}", member.display(), e))?;
+                .map_err(|e| {
+                    Diagnostic::new(
+                        Code::PathNotFound,
+                        format!("Failed to add '{}' to tarball: {}", member.display(), e),
+                    )
+                })?;
         }
 
         archive
             .into_inner()
-            .map_err(|e| format!("Failed to finalize tarball: {}", e))?
+            .map_err(|e| {
+                Diagnostic::new(
+                    Code::PathNotFound,
+                    format!("Failed to finalize tarball: {}", e),
+                )
+            })?
             .finish()
-            .map_err(|e| format!("Failed to flush gzip stream: {}", e))?;
+            .map_err(|e| {
+                Diagnostic::new(
+                    Code::PathNotFound,
+                    format!("Failed to flush gzip stream: {}", e),
+                )
+            })?;
     }
 
     // Compute SHA-256
@@ -77,16 +94,18 @@ fn create_tarball(project_dir: &Path) -> Result<(Vec<u8>, String), String> {
     Ok((buf, sha256))
 }
 
-fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, String> {
+fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
     let mut source_members = Vec::new();
-    discover_publish_source_members(project_dir, project_dir, &mut source_members)?;
+    discover_publish_source_members(project_dir, project_dir, &mut source_members)
+        .map_err(|message| Diagnostic::new(Code::PathNotFound, message))?;
     source_members.sort();
 
     let mut archive_members = Vec::with_capacity(source_members.len() + 1);
     archive_members.push(PathBuf::from("mesh.toml"));
     archive_members.extend(source_members);
     let manifest = Manifest::from_file(&project_dir.join("mesh.toml"))?;
-    let laws = mesh_pkg::project::laws::discover(project_dir, Some(&manifest))?;
+    let laws = mesh_pkg::project::laws::discover(project_dir, Some(&manifest))
+        .map_err(|message| Diagnostic::new(Code::ManifestInvalid, message))?;
     // Preserve explicit roots even when they contain no archive members.
     archive_members.extend(laws.roots.into_iter().filter(|root| root != Path::new(".")));
     archive_members.extend(laws.paths);
@@ -100,30 +119,40 @@ fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, String> {
         for library in native.libraries {
             let member = declared_package_member(project_dir, &library.path)?;
             let archive = project_dir.join(&member);
-            let bytes = std::fs::read(&archive).map_err(failed("read native archive", &archive))?;
+            let bytes = std::fs::read(&archive).map_err(|e| {
+                Diagnostic::new(
+                    Code::PathNotFound,
+                    failed("read native archive", &archive)(e),
+                )
+            })?;
             let actual = format!("{:x}", Sha256::digest(&bytes));
             if actual != library.sha256 {
-                return Err(format!(
-                    "SHA-256 mismatch for native archive '{}': expected {}, got {}",
-                    member.display(),
-                    library.sha256,
-                    actual
+                return Err(Diagnostic::new(
+                    Code::NativeArchiveMissing,
+                    format!(
+                        "SHA-256 mismatch for native archive '{}': expected {}, got {}",
+                        member.display(),
+                        library.sha256,
+                        actual
+                    ),
                 ));
             }
             archive_members.push(member);
         }
     }
     archive_members.sort();
-    ensure_unique_archive_members(&archive_members)?;
+    ensure_unique_archive_members(&archive_members)
+        .map_err(|message| Diagnostic::new(Code::ManifestInvalid, message))?;
 
     Ok(archive_members)
 }
 
 /// A file the manifest declares, as its archive member: a file inside the
 /// package, reached through no symbolic link.
-fn declared_package_member(project_root: &Path, relative: &Path) -> Result<PathBuf, String> {
+fn declared_package_member(project_root: &Path, relative: &Path) -> Result<PathBuf, Diagnostic> {
     let source = mesh_pkg::checked_package_file(project_root, relative, "Declared package file")?;
     relative_archive_member_path(project_root, &source)
+        .map_err(|message| Diagnostic::new(Code::PathNotFound, message))
 }
 
 /// The error for an I/O step on `path`: what it was, then why.
@@ -252,19 +281,11 @@ fn upload_tarball(
     version: &str,
     description: &str,
     registry: &str,
-) -> Result<(), String> {
-    // Read auth token
-    let token = crate::auth::read_token()?;
-
-    // The statuses the registry refuses with are answered below; as errors
-    // they all read "Failed to connect".
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .http_status_as_error(false)
-        .build()
-        .into();
-    let url = format!("{}/api/v1/packages", registry);
-
-    let response = agent
+) -> Result<(), Diagnostic> {
+    let token = crate::auth::read_token()
+        .map_err(|message| Diagnostic::new(Code::RegistryAuthFailed, message))?;
+    let url = format!("{registry}/api/v1/packages");
+    let result = registry::agent()
         .post(&url)
         .header("Authorization", &format!("Bearer {}", token))
         .header("Content-Type", "application/octet-stream")
@@ -272,31 +293,22 @@ fn upload_tarball(
         .header("X-Package-Version", version)
         .header("X-Package-SHA256", sha256)
         .header("X-Package-Description", description)
-        .send(tarball)
-        .map_err(|e| format!("Failed to connect to registry: {}", e))?;
-
-    match response.status().as_u16() {
-        200 | 201 => Ok(()),
-        409 => Err(format!(
-            "{}@{} already exists in registry. Versions are immutable.",
-            name, version
-        )),
-        401 => Err("Unauthorized. Run `meshpkg login` to authenticate.".to_string()),
-        status => Err(format!("Registry returned HTTP {}", status)),
-    }
+        .send(tarball);
+    registry::response(result, "publish package", Some((name, version)))?;
+    Ok(())
 }
 
-pub(crate) fn with_spinner<T, F: FnOnce() -> Result<T, String>>(
+pub(crate) fn with_spinner<T, F: FnOnce() -> Result<T, Diagnostic>>(
     msg: &str,
     json_mode: bool,
     f: F,
-) -> Result<T, String> {
+) -> Result<T, Diagnostic> {
     if json_mode {
         return f();
     }
     let pb = ProgressBar::new_spinner();
     pb.set_style(
-        ProgressStyle::with_template("{spinner:.cyan} {msg}")
+        ProgressStyle::with_template("{spinner} {msg}")
             .unwrap()
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", ""]),
     );
@@ -572,6 +584,7 @@ mod tests {
             symlink(target, &alias).unwrap();
 
             let error = publish_archive_members(&project_dir).unwrap_err();
+            let error = error.message();
             assert!(
                 error.contains("symbolic link")
                     && error.contains(alias.file_name().unwrap().to_str().unwrap()),
@@ -608,6 +621,7 @@ sha256 = "{sha256}"
         write_project_file(project_dir, "tests/libtest.a", archive);
 
         let error = publish_archive_members(project_dir).unwrap_err();
+        let error = error.message();
         assert!(
             error.contains("native static archive") && error.contains("tests/libtest.a"),
             "unexpected error: {error}"
@@ -647,6 +661,7 @@ bindings = [".native/helper.mpl"]
         .unwrap();
 
         let error = publish_archive_members(project_dir).unwrap_err();
+        let error = error.message();
         assert!(
             error.contains("symbolic link") && error.contains(".native/helper.mpl"),
             "unexpected error: {error}"

@@ -1,4 +1,4 @@
-use mesh_typeck::diagnostics::DiagnosticOptions;
+use mesh_diagnostics::{Format, Reporter, SourceFile};
 use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::{Scheme, Ty, TyCon};
 use mesh_typeck::{
@@ -188,7 +188,17 @@ end
         result.errors
     );
 
-    let rendered = result.render_errors(src, "test.mpl", &DiagnosticOptions::colorless());
+    let file = SourceFile::new("test.mpl", src);
+    let rendered: Vec<String> = result
+        .errors
+        .iter()
+        .map(|error| {
+            let mut out = Vec::new();
+            Reporter::new(Format::Human { color: false }, &mut out)
+                .emit(error.to_diagnostic(&file));
+            String::from_utf8(out).unwrap()
+        })
+        .collect();
     assert!(
         rendered
             .iter()
@@ -310,6 +320,18 @@ end
         "expected imported-origin diagnostic, got: {:?}",
         result.errors
     );
+
+    let error = result
+        .errors
+        .iter()
+        .find(|error| matches!(error, TypeError::HttpClusteredImportedOriginMissing { .. }))
+        .unwrap();
+    let diagnostic = error.to_diagnostic(&SourceFile::new("test.mpl", src));
+    assert_eq!(diagnostic.code().id(), "E0051");
+    assert!(diagnostic
+        .repair()
+        .contains("HTTP.clustered(Module.handle_list_todos)"));
+    assert!(diagnostic.notes().is_empty());
 }
 
 /// Each way a handler reference can be wrong is its own error: of the

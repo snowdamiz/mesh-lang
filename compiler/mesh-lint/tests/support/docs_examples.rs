@@ -19,12 +19,18 @@ fn markdown_files(dir: &Path, files: &mut Vec<PathBuf>) {
 }
 
 /// `(first line, source)` of each ```mesh block.
-fn mesh_blocks(markdown: &str) -> Vec<(usize, String)> {
+fn mesh_blocks(markdown: &str, diagnostic_index: bool) -> Vec<(usize, String)> {
     let mut blocks = Vec::new();
     let mut open: Option<(usize, String)> = None;
-    for (index, line) in markdown.lines().enumerate() {
+    let previous_lines = std::iter::once("").chain(markdown.lines());
+    for (index, (line, previous)) in markdown.lines().zip(previous_lines).enumerate() {
         match open.as_mut() {
-            None if line.starts_with("```mesh") => open = Some((index + 2, String::new())),
+            // The catalog example suite checks intentionally failing programs.
+            None if line.starts_with("```mesh")
+                && !(diagnostic_index && previous == "**Example**") =>
+            {
+                open = Some((index + 2, String::new()));
+            }
             Some(_) if line.starts_with("```") => blocks.extend(open.take()),
             Some((_, source)) => {
                 source.push_str(line);
@@ -46,6 +52,7 @@ fn is_fragment(source: &str) -> bool {
 /// source)`.
 pub fn examples() -> Vec<(String, usize, String)> {
     let docs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../website/docs");
+    let diagnostic_index = docs.join("docs").join("errors").join("index.md");
     let mut files = Vec::new();
     markdown_files(&docs, &mut files);
     files.sort();
@@ -57,7 +64,7 @@ pub fn examples() -> Vec<(String, usize, String)> {
             .unwrap_or(file)
             .display()
             .to_string();
-        for (line, source) in mesh_blocks(&markdown) {
+        for (line, source) in mesh_blocks(&markdown, *file == diagnostic_index) {
             if !is_fragment(&source) {
                 examples.push((relative.clone(), line, source));
             }

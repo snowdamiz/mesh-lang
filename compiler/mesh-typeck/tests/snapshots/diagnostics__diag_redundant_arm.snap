@@ -1,5 +1,5 @@
 ---
-source: crates/mesh-typeck/tests/diagnostics.rs
+source: compiler/mesh-typeck/tests/diagnostics.rs
 expression: output
 ---
 [W0001] Warning: redundant match arm (arm 2)
@@ -11,3 +11,4 @@ expression: output
    │
    │ Help: remove this arm or reorder the match
 ───╯
+  = W0001: meshc explain W0001 · skill diagnostics.md#w0001 · https://meshlang.dev/docs/errors/#w0001

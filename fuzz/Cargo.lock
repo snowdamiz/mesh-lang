@@ -1336,6 +1336,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mesh-diagnostics"
+version = "0.1.8"
+dependencies = [
+ "mesh-common",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "mesh-fuzz"
 version = "0.0.0"
 dependencies = [
@@ -1350,6 +1359,7 @@ name = "mesh-lexer"
 version = "0.1.8"
 dependencies = [
  "mesh-common",
+ "mesh-diagnostics",
 ]
 
 [[package]]
@@ -1357,6 +1367,7 @@ name = "mesh-parser"
 version = "0.1.8"
 dependencies = [
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-lexer",
  "rowan",
 ]
@@ -1382,6 +1393,7 @@ dependencies = [
  "libcrux-ml-kem",
  "libsqlite3-sys",
  "md-5",
+ "mesh-diagnostics",
  "mio",
  "openraft",
  "parking_lot",

@@ -9,7 +9,9 @@ mesh-lexer = { path = "../mesh-lexer" }
 mesh-parser = { path = "../mesh-parser" }
 mesh-typeck = { path = "../mesh-typeck" }
 mesh-common = { path = "../mesh-common" }
+mesh-diagnostics = { path = "../mesh-diagnostics" }
 mesh-fmt = { path = "../mesh-fmt" }
+mesh-lint = { path = "../mesh-lint" }
 mesh-pkg = { path = "../mesh-pkg" }
 tower-lsp = { workspace = true }
 tower-service = { workspace = true }

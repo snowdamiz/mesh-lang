@@ -10,12 +10,13 @@
 //! `_mesh_migrations` tracking table in PostgreSQL via direct Rust PG wire
 //! protocol, compiles each migration as a synthetic Mesh project, and executes it.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use crate::ReportText;
+use mesh_diagnostics::{Code, Failed, Reporter};
 use mesh_rt::db::pg::{
     native_pg_close, native_pg_connect, native_pg_execute, native_pg_query, NativePgConn,
 };
-use mesh_typeck::diagnostics::DiagnosticOptions;
 
 // ── Migration Info ──────────────────────────────────────────────────────
 
@@ -111,18 +112,21 @@ fn open_tracking(url: &str) -> Result<(NativePgConn, Vec<i64>), String> {
 }
 
 /// The project's migrations, or `None` after saying there are none.
-fn project_migrations(project_dir: &Path) -> Result<Option<Vec<MigrationInfo>>, String> {
+fn project_migrations(
+    project_dir: &Path,
+    reporter: &mut Reporter,
+) -> Result<Option<Vec<MigrationInfo>>, String> {
     let migrations_dir = project_dir.join("migrations");
     if !migrations_dir.exists() {
-        eprintln!(
+        reporter.status(
             "No migrations directory found. \
-             Run 'meshc migrate generate <name>' to create your first migration."
+             Run 'meshc migrate generate <name>' to create your first migration.",
         );
         return Ok(None);
     }
     let migrations = discover_migrations(&migrations_dir)?;
     if migrations.is_empty() {
-        eprintln!("No migration files found in migrations/");
+        reporter.status("No migration files found in migrations/");
         return Ok(None);
     }
     Ok(Some(migrations))
@@ -194,10 +198,60 @@ fn compile_and_run_migration(
     url: &str,
     migration: &MigrationInfo,
     direction: &str,
-) -> Result<(), String> {
-    let tmp = tempfile::tempdir().map_err(|e| format!("Failed to create temp directory: {}", e))?;
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
+    let tmp = tempfile::tempdir()
+        .map_err(|e| format!("Failed to create temp directory: {}", e))
+        .reported_as(Code::MigrationFailed, reporter)?;
     let tmp_path = tmp.path();
 
+    let src = prepare_migration_project(project_dir, tmp_path, migration, direction)
+        .reported_as(Code::MigrationFailed, reporter)?;
+
+    // Compile the synthetic project
+    let output_path = tmp_path.join("_migrate");
+    reporter
+        .with_path_aliases(
+            [
+                (tmp_path.join("migration.mpl"), src),
+                (tmp_path.to_path_buf(), project_dir.to_path_buf()),
+            ],
+            |reporter| {
+                crate::build(
+                    tmp_path,
+                    0,
+                    false,
+                    Some(&output_path),
+                    None,
+                    crate::BuildArtifact::Executable,
+                    false,
+                    reporter,
+                )
+            },
+        )
+        .inspect_err(|_| {
+            reporter.status(format_args!(
+                "Failed to compile migration {}_{}",
+                migration.version, migration.name
+            ));
+        })?;
+
+    // Execute the compiled binary
+    migration_outcome(
+        migration,
+        std::process::Command::new(&output_path)
+            .env("DATABASE_URL", url)
+            .output(),
+    )
+    .reported_as(Code::MigrationFailed, reporter)
+}
+
+fn prepare_migration_project(
+    project_dir: &Path,
+    tmp_path: &Path,
+    migration: &MigrationInfo,
+    direction: &str,
+) -> Result<PathBuf, String> {
     // Copy migration file as migration.mpl
     let src = project_dir.join("migrations").join(&migration.filename);
     std::fs::copy(&src, tmp_path.join("migration.mpl")).map_err(|e| {
@@ -212,36 +266,7 @@ fn compile_and_run_migration(
     std::fs::write(tmp_path.join("main.mpl"), &main_code)
         .map_err(|e| format!("Failed to write synthetic main.mpl: {}", e))?;
 
-    // Compile the synthetic project
-    let output_path = tmp_path.join("_migrate");
-    crate::build(
-        tmp_path,
-        0,
-        false,
-        Some(&output_path),
-        None,
-        crate::BuildArtifact::Executable,
-        false,
-        &DiagnosticOptions {
-            color: std::env::var_os("NO_COLOR").is_none()
-                && std::io::IsTerminal::is_terminal(&std::io::stderr()),
-            ..DiagnosticOptions::default()
-        },
-    )
-    .map_err(|e| {
-        format!(
-            "Failed to compile migration {}_{}: {}",
-            migration.version, migration.name, e
-        )
-    })?;
-
-    // Execute the compiled binary
-    migration_outcome(
-        migration,
-        std::process::Command::new(&output_path)
-            .env("DATABASE_URL", url)
-            .output(),
-    )
+    Ok(src)
 }
 
 /// What running a migration's program says about it: that it could not
@@ -296,12 +321,14 @@ fn migration_outcome(
 /// 2. Connects to PG and ensures tracking table exists
 /// 3. Discovers migration files and queries applied versions
 /// 4. For each pending migration: compiles, runs, records in tracking table
-pub fn run_migrations_up(project_dir: &Path) -> Result<(), String> {
-    let url = database_url()?;
-    let Some(migrations) = project_migrations(project_dir)? else {
+pub fn run_migrations_up(project_dir: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
+    let url = database_url().reported_as(Code::MigrationFailed, reporter)?;
+    let Some(migrations) =
+        project_migrations(project_dir, reporter).reported_as(Code::MigrationFailed, reporter)?
+    else {
         return Ok(());
     };
-    let (mut conn, applied) = open_tracking(&url)?;
+    let (mut conn, applied) = open_tracking(&url).reported_as(Code::MigrationFailed, reporter)?;
 
     // Determine pending migrations
     let pending: Vec<&MigrationInfo> = migrations
@@ -310,19 +337,25 @@ pub fn run_migrations_up(project_dir: &Path) -> Result<(), String> {
         .collect();
 
     if pending.is_empty() {
-        eprintln!("No pending migrations");
+        reporter.status(format_args!("No pending migrations"));
         native_pg_close(conn);
         return Ok(());
     }
 
-    eprintln!("Running {} pending migration(s):", pending.len());
+    reporter.status(format_args!(
+        "Running {} pending migration(s):",
+        pending.len()
+    ));
 
     let mut applied_count = 0;
     for migration in &pending {
-        eprintln!("  Applying: {}_{}", migration.version, migration.name);
+        reporter.status(format_args!(
+            "  Applying: {}_{}",
+            migration.version, migration.name
+        ));
 
         // Compile and run the migration
-        compile_and_run_migration(project_dir, &url, migration, "up")?;
+        compile_and_run_migration(project_dir, &url, migration, "up", reporter)?;
 
         // Record in tracking table
         let version_str = migration.version.to_string();
@@ -336,14 +369,18 @@ pub fn run_migrations_up(project_dir: &Path) -> Result<(), String> {
                 "Failed to record migration {}_{}: {}",
                 migration.version, migration.name, e
             )
-        })?;
+        })
+        .reported_as(Code::MigrationFailed, reporter)?;
 
-        eprintln!("  Applied:  {}_{}", migration.version, migration.name);
+        reporter.status(format_args!(
+            "  Applied:  {}_{}",
+            migration.version, migration.name
+        ));
         applied_count += 1;
     }
 
     native_pg_close(conn);
-    eprintln!("Applied {} migration(s)", applied_count);
+    reporter.status(format_args!("Applied {} migration(s)", applied_count));
     Ok(())
 }
 
@@ -353,13 +390,13 @@ pub fn run_migrations_up(project_dir: &Path) -> Result<(), String> {
 /// 2. Finds the corresponding migration file
 /// 3. Compiles and runs with direction "down"
 /// 4. Removes the tracking row
-pub fn run_migrations_down(project_dir: &Path) -> Result<(), String> {
-    let url = database_url()?;
+pub fn run_migrations_down(project_dir: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
+    let url = database_url().reported_as(Code::MigrationFailed, reporter)?;
     let migrations_dir = project_dir.join("migrations");
-    let (mut conn, applied) = open_tracking(&url)?;
+    let (mut conn, applied) = open_tracking(&url).reported_as(Code::MigrationFailed, reporter)?;
 
     if applied.is_empty() {
-        eprintln!("No migrations to roll back");
+        reporter.status(format_args!("No migrations to roll back"));
         native_pg_close(conn);
         return Ok(());
     }
@@ -368,7 +405,8 @@ pub fn run_migrations_down(project_dir: &Path) -> Result<(), String> {
     let last_version = *applied.last().unwrap();
 
     // Find the corresponding migration file
-    let migrations = discover_migrations(&migrations_dir)?;
+    let migrations =
+        discover_migrations(&migrations_dir).reported_as(Code::MigrationFailed, reporter)?;
     let migration = migrations
         .iter()
         .find(|m| m.version == last_version)
@@ -377,12 +415,16 @@ pub fn run_migrations_down(project_dir: &Path) -> Result<(), String> {
                 "Migration file for version {} not found in migrations/",
                 last_version
             )
-        })?;
+        })
+        .reported_as(Code::MigrationFailed, reporter)?;
 
-    eprintln!("Rolling back: {}_{}", migration.version, migration.name);
+    reporter.status(format_args!(
+        "Rolling back: {}_{}",
+        migration.version, migration.name
+    ));
 
     // Compile and run with direction "down"
-    compile_and_run_migration(project_dir, &url, migration, "down")?;
+    compile_and_run_migration(project_dir, &url, migration, "down", reporter)?;
 
     // Remove tracking row
     let version_str = last_version.to_string();
@@ -396,10 +438,14 @@ pub fn run_migrations_down(project_dir: &Path) -> Result<(), String> {
             "Failed to remove tracking row for version {}: {}",
             last_version, e
         )
-    })?;
+    })
+    .reported_as(Code::MigrationFailed, reporter)?;
 
     native_pg_close(conn);
-    eprintln!("Rolled back: {}_{}", migration.version, migration.name);
+    reporter.status(format_args!(
+        "Rolled back: {}_{}",
+        migration.version, migration.name
+    ));
     Ok(())
 }
 
@@ -407,28 +453,39 @@ pub fn run_migrations_down(project_dir: &Path) -> Result<(), String> {
 ///
 /// Connects to PG, discovers migration files, and prints a status table
 /// showing which migrations have been applied and which are pending.
-pub fn show_migration_status(project_dir: &Path) -> Result<(), String> {
-    let url = database_url()?;
-    let Some(migrations) = project_migrations(project_dir)? else {
+pub fn show_migration_status(project_dir: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
+    let url = database_url().reported_as(Code::MigrationFailed, reporter)?;
+    let Some(migrations) =
+        project_migrations(project_dir, reporter).reported_as(Code::MigrationFailed, reporter)?
+    else {
         return Ok(());
     };
-    let (conn, applied) = open_tracking(&url)?;
+    let (conn, applied) = open_tracking(&url).reported_as(Code::MigrationFailed, reporter)?;
     native_pg_close(conn);
 
     // Print status
-    eprintln!("Migration Status:");
+    reporter.status(format_args!("Migration Status:"));
     let mut applied_count = 0;
     let mut pending_count = 0;
     for migration in &migrations {
         if applied.contains(&migration.version) {
-            eprintln!("  [x] {}_{}", migration.version, migration.name);
+            reporter.status(format_args!(
+                "  [x] {}_{}",
+                migration.version, migration.name
+            ));
             applied_count += 1;
         } else {
-            eprintln!("  [ ] {}_{}", migration.version, migration.name);
+            reporter.status(format_args!(
+                "  [ ] {}_{}",
+                migration.version, migration.name
+            ));
             pending_count += 1;
         }
     }
-    eprintln!("{} applied, {} pending", applied_count, pending_count);
+    reporter.status(format_args!(
+        "{} applied, {} pending",
+        applied_count, pending_count
+    ));
     Ok(())
 }
 
@@ -445,7 +502,18 @@ pub fn show_migration_status(project_dir: &Path) -> Result<(), String> {
 /// - `name` is empty
 /// - `name` contains characters other than lowercase ASCII letters, digits, or underscores
 /// - Directory creation or file writing fails
-pub fn generate_migration(project_dir: &Path, name: &str) -> Result<(), String> {
+pub fn generate_migration(
+    project_dir: &Path,
+    name: &str,
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
+    let filename =
+        write_migration_scaffold(project_dir, name).reported_as(Code::MigrationFailed, reporter)?;
+    reporter.status(format_args!("Created migration: migrations/{filename}"));
+    Ok(())
+}
+
+fn write_migration_scaffold(project_dir: &Path, name: &str) -> Result<String, String> {
     // Validate name: must be non-empty, only lowercase letters, digits, underscores
     if name.is_empty() {
         return Err("Migration name cannot be empty".to_string());
@@ -509,8 +577,7 @@ end
     std::fs::write(&filepath, content)
         .map_err(|e| format!("Failed to write migration file: {}", e))?;
 
-    eprintln!("Created migration: migrations/{}", filename);
-    Ok(())
+    Ok(filename)
 }
 
 // ── Timestamp Utilities ─────────────────────────────────────────────────
@@ -571,9 +638,9 @@ mod tests {
     #[test]
     fn a_migration_whose_file_is_gone_is_not_compiled() {
         let project = tempfile::tempdir().unwrap();
-        let error =
-            compile_and_run_migration(project.path(), "postgres://unused", &migration(), "up")
-                .unwrap_err();
+        let temporary = tempfile::tempdir().unwrap();
+        let error = prepare_migration_project(project.path(), temporary.path(), &migration(), "up")
+            .unwrap_err();
         assert!(
             error.starts_with("Failed to copy migration file '1_one.mpl':"),
             "{error}"
@@ -656,7 +723,7 @@ mod tests {
     #[test]
     fn test_generate_migration_validates_empty_name() {
         let tmp = tempfile::tempdir().unwrap();
-        let result = generate_migration(tmp.path(), "");
+        let result = write_migration_scaffold(tmp.path(), "");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("cannot be empty"));
     }
@@ -664,7 +731,7 @@ mod tests {
     #[test]
     fn test_generate_migration_validates_uppercase() {
         let tmp = tempfile::tempdir().unwrap();
-        let result = generate_migration(tmp.path(), "Create_Users");
+        let result = write_migration_scaffold(tmp.path(), "Create_Users");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("lowercase"));
     }
@@ -672,7 +739,7 @@ mod tests {
     #[test]
     fn test_generate_migration_validates_spaces() {
         let tmp = tempfile::tempdir().unwrap();
-        let result = generate_migration(tmp.path(), "create users");
+        let result = write_migration_scaffold(tmp.path(), "create users");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("lowercase"));
     }
@@ -680,7 +747,7 @@ mod tests {
     #[test]
     fn test_generate_migration_creates_file() {
         let tmp = tempfile::tempdir().unwrap();
-        generate_migration(tmp.path(), "create_users").unwrap();
+        write_migration_scaffold(tmp.path(), "create_users").unwrap();
 
         let migrations_dir = tmp.path().join("migrations");
         assert!(migrations_dir.exists());
@@ -701,7 +768,7 @@ mod tests {
     #[test]
     fn test_generate_migration_file_content() {
         let tmp = tempfile::tempdir().unwrap();
-        generate_migration(tmp.path(), "create_users").unwrap();
+        write_migration_scaffold(tmp.path(), "create_users").unwrap();
 
         let migrations_dir = tmp.path().join("migrations");
         let entry = std::fs::read_dir(&migrations_dir)
@@ -725,14 +792,14 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let migrations_dir = tmp.path().join("migrations");
         assert!(!migrations_dir.exists());
-        generate_migration(tmp.path(), "init").unwrap();
+        write_migration_scaffold(tmp.path(), "init").unwrap();
         assert!(migrations_dir.exists());
     }
 
     #[test]
     fn test_generate_migration_allows_digits_and_underscores() {
         let tmp = tempfile::tempdir().unwrap();
-        assert!(generate_migration(tmp.path(), "add_column_v2").is_ok());
+        assert!(write_migration_scaffold(tmp.path(), "add_column_v2").is_ok());
     }
 
     #[test]

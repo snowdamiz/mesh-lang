@@ -86,11 +86,125 @@ fn public_theorem_must_have_a_matching_embedded_proof() {
     let parse = mesh_parser::parse(&source);
     assert!(parse.errors().is_empty(), "{:?}", parse.errors());
     let checked = check(&parse);
-    assert!(checked
-        .errors
-        .iter()
-        .any(|error| error.to_string().contains("requires an embedded proof")));
+    assert!(
+        checked.errors.iter().any(|error| matches!(
+            error,
+            TypeError::MissingEmbeddedProof { theorem, .. } if theorem == "allowed_two"
+        )),
+        "{:?}",
+        checked.errors
+    );
     assert!(!collect_exports(&parse, &checked)
         .functions
         .contains_key("allowed_two"));
+}
+
+const VEC: &str = "type Vec<T, n :: Nat> do
+  Empty -> Vec<T, 0>
+  Push<k :: Nat>(T, Vec<T, k>) -> Vec<T, Succ<k>>
+end
+";
+
+const ADD_ZERO: &str = "logic do
+  pub theorem add_zero(n :: Nat) do n + 0 == n end
+  proof add_zero do refl end
+end
+";
+
+/// Each proof and index error has the code of its repair, where all of
+/// them were E0095 "invalid Nat index".
+#[test]
+fn each_proof_and_index_error_has_its_own_code() {
+    let deep_logic = format!(
+        "logic do\n  theorem t() do {}0{} end\nend\n",
+        "(".repeat(70),
+        ")".repeat(70)
+    );
+    for (source, code) in [
+        ("fn count<n :: Int>() -> Int = 0".to_string(), "E0095"),
+        (
+            "fn bad<x>(h :: Proof<NatEq<NatMul<0, x>, 0>>) do h end".to_string(),
+            "E0095",
+        ),
+        (
+            format!("{VEC}fn bad(v :: Vec<Int, Int>) do v end"),
+            "E0095",
+        ),
+        (
+            VEC.replace("Empty -> Vec<T, 0>", "Empty"),
+            "E0096",
+        ),
+        (format!("{VEC}fn bad(v :: Vec) do v end"), "E0096"),
+        (
+            format!("{VEC}type Wrong<T, n :: Nat> do\n  Wrong -> Vec<T, 0>\nend\n"),
+            "E0096",
+        ),
+        ("struct Proof do\n  value :: Int\nend".to_string(), "E0097"),
+        (
+            "logic do\n  pub theorem two() do 2 == 2 end\nend".to_string(),
+            "E0098",
+        ),
+        (
+            "logic do\n  pub theorem two() do 2 == 2 end\n  proof two do refl end\n  pub theorem two() do 1 + 1 == 2 end\nend".to_string(),
+            "E0099",
+        ),
+        (
+            "fn accept(evidence :: Proof<NatEq<2>>) -> Int = 2".to_string(),
+            "E0100",
+        ),
+        (
+            "fn accept(evidence :: Proof<Ready>) -> Int = 2".to_string(),
+            "E0100",
+        ),
+        (
+            "logic do\n  pub theorem yes() do true end\n  proof yes do refl end\nend".to_string(),
+            "E0100",
+        ),
+        (
+            format!("{ADD_ZERO}fn main() do\n  let evidence = add_zero\nend"),
+            "E0100",
+        ),
+        (
+            "logic do\n  theorem two() do 2 = 2 end\nend".to_string(),
+            "P0301",
+        ),
+        (deep_logic, "P0302"),
+    ] {
+        let parse = mesh_parser::parse(&source);
+        assert!(parse.errors().is_empty(), "{source}: {:?}", parse.errors());
+        let checked = check(&parse);
+        let codes: Vec<_> = checked.errors.iter().map(|e| e.code().id()).collect();
+        assert_eq!(codes, [code], "{source}: {:?}", checked.errors);
+    }
+}
+
+#[test]
+fn a_logic_syntax_error_is_a_parse_error_not_an_invalid_index() {
+    let source = "fn main() do\nend\nlogic do\n  theorem two() do 2 = 2 end\nend\n";
+    let checked = check(&mesh_parser::parse(source));
+    let [TypeError::LogicSyntax { error }] = &checked.errors[..] else {
+        panic!("{:?}", checked.errors);
+    };
+    let file = mesh_diagnostics::SourceFile::new("main.mpl", source);
+    let diagnostic = checked.errors[0].to_diagnostic(&file);
+    assert_eq!(diagnostic.code().id(), "P0301");
+    assert_eq!(diagnostic.message(), "expected `end`, found `=`");
+    assert_eq!(diagnostic.primary_label(), Some("expected `end` here"));
+    assert_eq!(diagnostic.span(), Some(error.span));
+    assert_eq!(
+        &source[error.span.start as usize..error.span.end as usize],
+        "="
+    );
+    let [opened] = diagnostic.labels() else {
+        panic!("{diagnostic:?}");
+    };
+    assert_eq!(opened.message(), "block opened here");
+    assert_eq!(
+        &source[opened.span().start as usize..opened.span().end as usize],
+        "do"
+    );
+    assert_ne!(
+        diagnostic.repair(),
+        mesh_diagnostics::Code::InvalidNatIndex.info().repair
+    );
 }

@@ -122,39 +122,69 @@ fn plaintext_computes_seals_and_opens_at_its_value() {
 }
 
 /// A crash inside `Plaintext.map` says it crashed, not what the content
-/// made of the runtime's message (`List.get`'s names the index).
+/// made of the runtime's message (`List.get`'s names the index), nor where
+/// it was raised, which a branch on the content may choose.
 #[test]
-fn a_panic_while_computing_on_plaintext_withholds_its_message() {
+fn a_panic_while_computing_on_plaintext_withholds_its_message_and_place() {
     let temp = tempfile::tempdir().unwrap();
-    let dir = project(
-        temp.path(),
-        "plaintext-panic",
-        &[(
-            "main.mpl",
+    let crashes = [
+        "List.get([1], String.length(text))",
+        "100 / (String.length(text) - 27)",
+    ];
+    for (index, crash) in crashes.iter().enumerate() {
+        let name = format!("plaintext-panic-{index}");
+        let source = format!(
             r#"
 fn main() do
   let secret = Plaintext.from("twenty-seven characters!!!!")
-  let crashed = Plaintext.map(secret, fn(text) -> List.get([1], String.length(text)) end)
+  let crashed = Plaintext.map(secret, fn(text) -> {crash} end)
   println(declassify(Plaintext.map(crashed, fn(value) -> Int.to_string(value) end), "e2e: never reached"))
 end
-"#,
-        )],
-    );
-    let binary = temp.path().join("plaintext-panic-bin");
-    assert_success(
-        &meshc(&[
+"#
+        );
+        let dir = project(temp.path(), &name, &[("main.mpl", source.as_str())]);
+        let binary = temp.path().join(format!("{name}-bin"));
+        assert_success(
+            &meshc(&[
+                "build",
+                dir.to_str().unwrap(),
+                "--output",
+                binary.to_str().unwrap(),
+            ]),
             "build",
-            dir.to_str().unwrap(),
-            "--output",
-            binary.to_str().unwrap(),
-        ]),
-        "build",
-    );
-    let run = Command::new(&binary).output().unwrap();
-    assert!(!run.status.success(), "the program should crash");
-    let stderr = text(&run.stderr);
-    assert!(!stderr.contains("27"), "the index leaked: {stderr}");
-    assert!(stderr.contains("plaintext"), "{stderr}");
+        );
+        // Neither the report for a person nor the JSON one for a tool names it.
+        for json in [false, true] {
+            let mut command = Command::new(&binary);
+            if json {
+                command.env("MESH_DIAGNOSTICS", "json");
+            }
+            let run = command.output().unwrap();
+            assert!(!run.status.success(), "{crash}: the program should crash");
+            let stderr = text(&run.stderr);
+            assert!(
+                !stderr.contains("27"),
+                "{crash}: the index leaked: {stderr}"
+            );
+            assert!(
+                !stderr.contains("division"),
+                "{crash}: the message leaked: {stderr}"
+            );
+            assert!(
+                !stderr.contains("main.mpl"),
+                "{crash}: the place leaked: {stderr}"
+            );
+            assert!(stderr.contains("plaintext"), "{stderr}");
+            assert!(stderr.contains("R0001"), "{stderr}");
+            if json {
+                let diagnostic: serde_json::Value =
+                    serde_json::from_str(stderr.trim_end()).unwrap();
+                assert_eq!(diagnostic["code"], "R0001", "{stderr}");
+                assert_eq!(diagnostic["file"], "", "{stderr}");
+                assert!(diagnostic["line"].is_null(), "{stderr}");
+            }
+        }
+    }
 }
 
 #[test]
@@ -286,6 +316,7 @@ fn the_build_report_lists_every_site_and_check_catches_a_change() {
     let changed = check();
     assert!(!changed.status.success(), "an unreviewed declassify passed");
     let stderr = text(&changed.stderr);
+    assert!(stderr.contains("[X0701]"), "{stderr}");
     assert!(
         stderr.contains("+ declassify in `whole` (words.mpl): debugging"),
         "{stderr}"

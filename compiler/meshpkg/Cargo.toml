@@ -9,6 +9,7 @@ name = "meshpkg"
 path = "src/main.rs"
 
 [dependencies]
+mesh-diagnostics = { path = "../mesh-diagnostics" }
 mesh-pkg = { path = "../mesh-pkg" }
 clap = { workspace = true }
 serde = { workspace = true }

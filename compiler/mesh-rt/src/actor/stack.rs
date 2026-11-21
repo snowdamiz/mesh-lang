@@ -299,13 +299,7 @@ impl CoroutineHandle {
         if panic.is::<ActorStopped>() {
             return Ok(false);
         }
-        Err(match panic.downcast::<String>() {
-            Ok(message) => *message,
-            Err(panic) => panic.downcast_ref::<&str>().map_or_else(
-                || "actor panicked".to_string(),
-                |message| (*message).to_string(),
-            ),
-        })
+        Err(crate::panic::actor_exit_reason(&*panic))
     }
 
     /// Check whether the coroutine has finished.

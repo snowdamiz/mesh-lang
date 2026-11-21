@@ -8,10 +8,13 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │               ──────┬──────
    │                     ╰──────── expected Int, found String
+   │
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected Int, found String"}],"fix":null}
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected Int, found String","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":2,"col":15,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 
-[E0002] Error: infinite type: `?7` occurs in `Int`
+[E0002] Error: infinite type: `a` occurs in `(a) -> b`
    ╭─[ main.mpl:2:15 ]
    │
  2 │   let value = compute(1, 2)
@@ -20,7 +23,8 @@ expression: rendered
    │
    │ Help: a value cannot have a type that refers to itself
 ───╯
-{"code":"E0002","severity":"error","message":"infinite type: `?7` occurs in `Int`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"recursive type here"}],"fix":"a value cannot have a type that refers to itself"}
+  = E0002: meshc explain E0002 · skill diagnostics.md#e0002 · https://meshlang.dev/docs/errors/#e0002
+{"code":"E0002","severity":"error","message":"infinite type: `a` occurs in `(a) -> b`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"recursive type here","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"a value cannot have a type that refers to itself","line":2,"col":15,"name":"infinite-type","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0002","skill":"references/diagnostics.md#e0002","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0002","edits":[]}
 
 [E0003] Error: arity mismatch: expected 2 arguments, found 3
    ╭─[ main.mpl:2:15 ]
@@ -31,7 +35,8 @@ expression: rendered
    │
    │ Help: 1 extra argument(s)
 ───╯
-{"code":"E0003","severity":"error","message":"arity mismatch: expected 2 arguments, found 3","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected 2 argument(s)"}],"fix":"1 extra argument(s)"}
+  = E0003: meshc explain E0003 · skill diagnostics.md#e0003 · https://meshlang.dev/docs/errors/#e0003
+{"code":"E0003","severity":"error","message":"arity mismatch: expected 2 arguments, found 3","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected 2 argument(s)","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"1 extra argument(s)","line":2,"col":15,"name":"arity-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0003","skill":"references/diagnostics.md#e0003","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0003","edits":[]}
 
 [E0003] Error: arity mismatch: expected 2 arguments, found 3
    ╭─[ main.mpl:2:15 ]
@@ -42,7 +47,8 @@ expression: rendered
    │
    │ Help: `|>` passes the piped value as the first argument. The call counts `_` as a written argument. Use `|2>` and remove `_` from the call to pass the value as argument 2. See `meshc guide syntax`.
 ───╯
-{"code":"E0003","severity":"error","message":"arity mismatch: expected 2 arguments, found 3","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected 2 argument(s)"}],"fix":"`|>` passes the piped value as the first argument. The call counts `_` as a written argument. Use `|2>` and remove `_` from the call to pass the value as argument 2. See `meshc guide syntax`."}
+  = E0003: meshc explain E0003 · skill diagnostics.md#e0003 · https://meshlang.dev/docs/errors/#e0003
+{"code":"E0003","severity":"error","message":"arity mismatch: expected 2 arguments, found 3","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected 2 argument(s)","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"`|>` passes the piped value as the first argument. The call counts `_` as a written argument. Use `|2>` and remove `_` from the call to pass the value as argument 2. See `meshc guide syntax`.","line":2,"col":15,"name":"arity-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0003","skill":"references/diagnostics.md#e0003","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0003","edits":[]}
 
 [E0044] Error: slot position 4 is out of range: `fn_name` takes 2 arguments, so valid slot positions are 2–2
    ╭─[ main.mpl:2:7 ]
@@ -53,7 +59,8 @@ expression: rendered
    │
    │ Help: use |> to pipe as the first argument, or |2>...|2> for other positions
 ───╯
-{"code":"E0044","severity":"error","message":"slot position 4 is out of range: `fn_name` takes 2 arguments, so valid slot positions are 2–2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"slot 4 exceeds function arity 2"}],"fix":"use |> to pipe as the first argument, or |2>...|2> for other positions"}
+  = E0044: meshc explain E0044 · skill diagnostics.md#e0044 · https://meshlang.dev/docs/errors/#e0044
+{"code":"E0044","severity":"error","message":"slot position 4 is out of range: `fn_name` takes 2 arguments, so valid slot positions are 2–2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"slot 4 exceeds function arity 2","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use |> to pipe as the first argument, or |2>...|2> for other positions","line":2,"col":7,"name":"slot-pipe-out-of-range","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0044","skill":"references/diagnostics.md#e0044","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0044","edits":[]}
 
 [E0044] Error: slot position 2 is out of range: `fn_name` takes fewer than 2 arguments; use |> instead
    ╭─[ main.mpl:2:7 ]
@@ -64,7 +71,8 @@ expression: rendered
    │
    │ Help: use |> to pipe as the first argument
 ───╯
-{"code":"E0044","severity":"error","message":"slot position 2 is out of range: `fn_name` takes fewer than 2 arguments; use |> instead","file":"main.mpl","spans":[{"start":19,"end":24,"label":"slot 2 exceeds function arity 1"}],"fix":"use |> to pipe as the first argument"}
+  = E0044: meshc explain E0044 · skill diagnostics.md#e0044 · https://meshlang.dev/docs/errors/#e0044
+{"code":"E0044","severity":"error","message":"slot position 2 is out of range: `fn_name` takes fewer than 2 arguments; use |> instead","file":"main.mpl","spans":[{"start":19,"end":24,"label":"slot 2 exceeds function arity 1","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use |> to pipe as the first argument","line":2,"col":7,"name":"slot-pipe-out-of-range","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0044","skill":"references/diagnostics.md#e0044","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0044","edits":[]}
 
 [E0004] Error: undefined variable `name`
    ╭─[ main.mpl:2:7 ]
@@ -75,7 +83,8 @@ expression: rendered
    │
    │ Help: did you mean `suggestion`?
 ───╯
-{"code":"E0004","severity":"error","message":"undefined variable `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not found in this scope"}],"fix":"did you mean `suggestion`?"}
+  = E0004: meshc explain E0004 · skill diagnostics.md#e0004 · https://meshlang.dev/docs/errors/#e0004
+{"code":"E0004","severity":"error","message":"undefined variable `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not found in this scope","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"did you mean `suggestion`?","line":2,"col":7,"name":"unbound-variable","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0004","skill":"references/diagnostics.md#e0004","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0004","edits":[]}
 
 [E0005] Error: `Int` is not a function
    ╭─[ main.mpl:2:7 ]
@@ -86,7 +95,8 @@ expression: rendered
    │
    │ Help: only functions can be called; remove the parentheses to use the value
 ───╯
-{"code":"E0005","severity":"error","message":"`Int` is not a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"Int is not a function"}],"fix":"only functions can be called; remove the parentheses to use the value"}
+  = E0005: meshc explain E0005 · skill diagnostics.md#e0005 · https://meshlang.dev/docs/errors/#e0005
+{"code":"E0005","severity":"error","message":"`Int` is not a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"Int is not a function","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"only functions can be called; remove the parentheses to use the value","line":2,"col":7,"name":"not-a-function","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0005","skill":"references/diagnostics.md#e0005","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0005","edits":[]}
 
 [E0006] Error: `Int` does not implement `trait_name`
    ╭─[ main.mpl:2:15 ]
@@ -97,7 +107,8 @@ expression: rendered
    │
    │ Help: add `impl trait_name for Int do ... end`
 ───╯
-{"code":"E0006","severity":"error","message":"`Int` does not implement `trait_name`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"Int does not satisfy trait_name"}],"fix":"add `impl trait_name for Int do ... end`"}
+  = E0006: meshc explain E0006 · skill diagnostics.md#e0006 · https://meshlang.dev/docs/errors/#e0006
+{"code":"E0006","severity":"error","message":"`Int` does not implement `trait_name`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"Int does not satisfy trait_name","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"add `impl trait_name for Int do ... end`","line":2,"col":15,"name":"trait-not-satisfied","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0006","skill":"references/diagnostics.md#e0006","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0006","edits":[]}
 
 [E0007] Error: impl `trait_name` for `impl_ty` is missing method `method_name`
    ╭─[ main.mpl:2:15 ]
@@ -108,7 +119,8 @@ expression: rendered
    │
    │ Help: add `fn method_name` as `trait_name` declares it to the impl block
 ───╯
-{"code":"E0007","severity":"error","message":"impl `trait_name` for `impl_ty` is missing method `method_name`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"missing `method_name`"}],"fix":"add `fn method_name` as `trait_name` declares it to the impl block"}
+  = E0007: meshc explain E0007 · skill diagnostics.md#e0007 · https://meshlang.dev/docs/errors/#e0007
+{"code":"E0007","severity":"error","message":"impl `trait_name` for `impl_ty` is missing method `method_name`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"missing `method_name`","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"add `fn method_name` as `trait_name` declares it to the impl block","line":2,"col":15,"name":"missing-trait-method","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0007","skill":"references/diagnostics.md#e0007","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0007","edits":[]}
 
 [E0008] Error: method `method_name` in impl `trait_name` has wrong signature: expected `Int`, found `String`
    ╭─[ main.mpl:2:15 ]
@@ -116,8 +128,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │               ──────┬──────
    │                     ╰──────── `trait_name` declares Int, this is String
+   │
+   │ Help: give `method_name` the signature `Int` from `trait_name`
 ───╯
-{"code":"E0008","severity":"error","message":"method `method_name` in impl `trait_name` has wrong signature: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"`trait_name` declares Int, this is String"}],"fix":null}
+  = E0008: meshc explain E0008 · skill diagnostics.md#e0008 · https://meshlang.dev/docs/errors/#e0008
+{"code":"E0008","severity":"error","message":"method `method_name` in impl `trait_name` has wrong signature: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"`trait_name` declares Int, this is String","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"give `method_name` the signature `Int` from `trait_name`","line":2,"col":15,"name":"trait-method-signature-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0008","skill":"references/diagnostics.md#e0008","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0008","edits":[]}
 
 [E0009] Error: missing field `field_name` in struct `struct_name`
    ╭─[ main.mpl:2:7 ]
@@ -128,7 +143,8 @@ expression: rendered
    │
    │ Help: add `field_name: <value>`
 ───╯
-{"code":"E0009","severity":"error","message":"missing field `field_name` in struct `struct_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"field `field_name` is required"}],"fix":"add `field_name: <value>`"}
+  = E0009: meshc explain E0009 · skill diagnostics.md#e0009 · https://meshlang.dev/docs/errors/#e0009
+{"code":"E0009","severity":"error","message":"missing field `field_name` in struct `struct_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"field `field_name` is required","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"add `field_name: <value>`","line":2,"col":7,"name":"invalid-field","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0009","skill":"references/diagnostics.md#e0009","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0009","edits":[]}
 
 [E0009] Error: unknown field `field_name` in struct `struct_name`
    ╭─[ main.mpl:2:7 ]
@@ -136,8 +152,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── `struct_name` has no field `field_name`
+   │
+   │ Help: use a field declared by `struct_name`, or add `field_name` to its definition
 ───╯
-{"code":"E0009","severity":"error","message":"unknown field `field_name` in struct `struct_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`struct_name` has no field `field_name`"}],"fix":null}
+  = E0009: meshc explain E0009 · skill diagnostics.md#e0009 · https://meshlang.dev/docs/errors/#e0009
+{"code":"E0009","severity":"error","message":"unknown field `field_name` in struct `struct_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`struct_name` has no field `field_name`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use a field declared by `struct_name`, or add `field_name` to its definition","line":2,"col":7,"name":"invalid-field","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0009","skill":"references/diagnostics.md#e0009","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0009","edits":[]}
 
 [E0009] Error: type `Int` has no field `field_name`
    ╭─[ main.mpl:2:7 ]
@@ -145,19 +164,23 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── no field `field_name`
+   │
+   │ Help: use a field of `Int`, or change the receiver to a struct with a `field_name` field
 ───╯
-{"code":"E0009","severity":"error","message":"type `Int` has no field `field_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no field `field_name`"}],"fix":null}
+  = E0009: meshc explain E0009 · skill diagnostics.md#e0009 · https://meshlang.dev/docs/errors/#e0009
+{"code":"E0009","severity":"error","message":"type `Int` has no field `field_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no field `field_name`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use a field of `Int`, or change the receiver to a struct with a `field_name` field","line":2,"col":7,"name":"invalid-field","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0009","skill":"references/diagnostics.md#e0009","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0009","edits":[]}
 
-[E0030] Error: no method `method_name` on type `Int`
+[E0030] Error: no method `method_name` on type `List<_>`
    ╭─[ main.mpl:2:7 ]
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── method `method_name` not found
    │
-   │ Help: type `Int` has no trait impl providing `method_name`
+   │ Help: use a method of `List<_>`, or implement an interface that provides `method_name` for it
 ───╯
-{"code":"E0030","severity":"error","message":"no method `method_name` on type `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"method `method_name` not found"}],"fix":"type `Int` has no trait impl providing `method_name`"}
+  = E0030: meshc explain E0030 · skill diagnostics.md#e0030 · https://meshlang.dev/docs/errors/#e0030
+{"code":"E0030","severity":"error","message":"no method `method_name` on type `List<_>`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"method `method_name` not found","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use a method of `List<_>`, or implement an interface that provides `method_name` for it","line":2,"col":7,"name":"no-such-method","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0030","skill":"references/diagnostics.md#e0030","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0030","edits":[]}
 
 [E0046] Error: `Continuity.promote()` is disabled; failover is automatic-only
    ╭─[ main.mpl:2:7 ]
@@ -168,7 +191,8 @@ expression: rendered
    │
    │ Help: failover is automatic-only now; use `Continuity.authority_status()` to inspect authority state
 ───╯
-{"code":"E0046","severity":"error","message":"`Continuity.promote()` is disabled; failover is automatic-only","file":"main.mpl","spans":[{"start":19,"end":24,"label":"manual authority changes are no longer part of the Mesh surface"}],"fix":"failover is automatic-only now; use `Continuity.authority_status()` to inspect authority state"}
+  = E0046: meshc explain E0046 · skill diagnostics.md#e0046 · https://meshlang.dev/docs/errors/#e0046
+{"code":"E0046","severity":"error","message":"`Continuity.promote()` is disabled; failover is automatic-only","file":"main.mpl","spans":[{"start":19,"end":24,"label":"manual authority changes are no longer part of the Mesh surface","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"failover is automatic-only now; use `Continuity.authority_status()` to inspect authority state","line":2,"col":7,"name":"manual-continuity-promotion","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0046","skill":"references/diagnostics.md#e0046","topic":"clustering"},"docs_url":"https://meshlang.dev/docs/errors/#e0046","edits":[]}
 
 [E0010] Error: unknown variant `name`
    ╭─[ main.mpl:2:7 ]
@@ -179,7 +203,8 @@ expression: rendered
    │
    │ Help: did you mean `suggestion`?
 ───╯
-{"code":"E0010","severity":"error","message":"unknown variant `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a known variant"}],"fix":"did you mean `suggestion`?"}
+  = E0010: meshc explain E0010 · skill diagnostics.md#e0010 · https://meshlang.dev/docs/errors/#e0010
+{"code":"E0010","severity":"error","message":"unknown variant `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a known variant","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"did you mean `suggestion`?","line":2,"col":7,"name":"unknown-variant","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0010","skill":"references/diagnostics.md#e0010","topic":"pattern-matching"},"docs_url":"https://meshlang.dev/docs/errors/#e0010","edits":[]}
 
 [E0011] Error: or-pattern binding mismatch: expected [expected_bindings_a, expected_bindings_b], found [found_bindings_a, found_bindings_b]
    ╭─[ main.mpl:2:7 ]
@@ -190,7 +215,8 @@ expression: rendered
    │
    │ Help: all alternatives in an or-pattern must bind the same set of variable names
 ───╯
-{"code":"E0011","severity":"error","message":"or-pattern binding mismatch: expected [expected_bindings_a, expected_bindings_b], found [found_bindings_a, found_bindings_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"alternatives must bind the same variables"}],"fix":"all alternatives in an or-pattern must bind the same set of variable names"}
+  = E0011: meshc explain E0011 · skill diagnostics.md#e0011 · https://meshlang.dev/docs/errors/#e0011
+{"code":"E0011","severity":"error","message":"or-pattern binding mismatch: expected [expected_bindings_a, expected_bindings_b], found [found_bindings_a, found_bindings_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"alternatives must bind the same variables","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"all alternatives in an or-pattern must bind the same set of variable names","line":2,"col":7,"name":"or-pattern-binding-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0011","skill":"references/diagnostics.md#e0011","topic":"pattern-matching"},"docs_url":"https://meshlang.dev/docs/errors/#e0011","edits":[]}
 
 [E0012] Error: non-exhaustive match on `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]
    ╭─[ main.mpl:2:7 ]
@@ -201,7 +227,8 @@ expression: rendered
    │
    │ Help: add arms for `missing_patterns_a`, `missing_patterns_b`. Use a wildcard `_` arm for an intentional default that also covers future variants.
 ───╯
-{"code":"E0012","severity":"error","message":"non-exhaustive match on `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing: missing_patterns_a, missing_patterns_b"}],"fix":"add arms for `missing_patterns_a`, `missing_patterns_b`. Use a wildcard `_` arm for an intentional default that also covers future variants."}
+  = E0012: meshc explain E0012 · skill diagnostics.md#e0012 · https://meshlang.dev/docs/errors/#e0012
+{"code":"E0012","severity":"error","message":"non-exhaustive match on `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing: missing_patterns_a, missing_patterns_b","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"add arms for `missing_patterns_a`, `missing_patterns_b`. Use a wildcard `_` arm for an intentional default that also covers future variants.","line":2,"col":7,"name":"non-exhaustive-match","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0012","skill":"references/diagnostics.md#e0012","topic":"pattern-matching"},"docs_url":"https://meshlang.dev/docs/errors/#e0012","edits":[]}
 
 [W0003] Warning: clauses do not cover every `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]
    ╭─[ main.mpl:2:7 ]
@@ -212,7 +239,8 @@ expression: rendered
    │
    │ Help: add a clause for the missing patterns: a call no clause matches panics
 ───╯
-{"code":"W0003","severity":"warning","message":"clauses do not cover every `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing: missing_patterns_a, missing_patterns_b"}],"fix":"add a clause for the missing patterns: a call no clause matches panics"}
+  = W0003: meshc explain W0003 · skill diagnostics.md#w0003 · https://meshlang.dev/docs/errors/#w0003
+{"code":"W0003","severity":"warning","message":"clauses do not cover every `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing: missing_patterns_a, missing_patterns_b","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"add a clause for the missing patterns: a call no clause matches panics","line":2,"col":7,"name":"non-exhaustive-clauses","category":"semantic","notes":[],"guide":{"explain":"meshc explain W0003","skill":"references/diagnostics.md#w0003","topic":"pattern-matching"},"docs_url":"https://meshlang.dev/docs/errors/#w0003","edits":[]}
 
 [W0001] Warning: redundant match arm (arm 3)
    ╭─[ main.mpl:2:7 ]
@@ -223,7 +251,8 @@ expression: rendered
    │
    │ Help: remove this arm or reorder the match
 ───╯
-{"code":"W0001","severity":"warning","message":"redundant match arm (arm 3)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this arm is unreachable"}],"fix":"remove this arm or reorder the match"}
+  = W0001: meshc explain W0001 · skill diagnostics.md#w0001 · https://meshlang.dev/docs/errors/#w0001
+{"code":"W0001","severity":"warning","message":"redundant match arm (arm 3)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this arm is unreachable","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"remove this arm or reorder the match","line":2,"col":7,"name":"redundant-arm","category":"semantic","notes":[],"guide":{"explain":"meshc explain W0001","skill":"references/diagnostics.md#w0001","topic":"pattern-matching"},"docs_url":"https://meshlang.dev/docs/errors/#w0001","edits":[]}
 
 [E0014] Error: message type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:2:7 ]
@@ -234,7 +263,8 @@ expression: rendered
    │
    │ Help: this Pid accepts messages of type Int
 ───╯
-{"code":"E0014","severity":"error","message":"message type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int, found String"}],"fix":"this Pid accepts messages of type Int"}
+  = E0014: meshc explain E0014 · skill diagnostics.md#e0014 · https://meshlang.dev/docs/errors/#e0014
+{"code":"E0014","severity":"error","message":"message type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int, found String","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"this Pid accepts messages of type Int","line":2,"col":7,"name":"message-type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0014","skill":"references/diagnostics.md#e0014","topic":"actors"},"docs_url":"https://meshlang.dev/docs/errors/#e0014","edits":[]}
 
 [E0015] Error: self() used outside actor block
    ╭─[ main.mpl:2:7 ]
@@ -242,8 +272,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── self() is only available inside an actor block
+   │
+   │ Help: call `self()` inside the actor and pass its pid to any function that needs it
 ───╯
-{"code":"E0015","severity":"error","message":"self() used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"self() is only available inside an actor block"}],"fix":null}
+  = E0015: meshc explain E0015 · skill diagnostics.md#e0015 · https://meshlang.dev/docs/errors/#e0015
+{"code":"E0015","severity":"error","message":"self() used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"self() is only available inside an actor block","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"call `self()` inside the actor and pass its pid to any function that needs it","line":2,"col":7,"name":"self-outside-actor","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0015","skill":"references/diagnostics.md#e0015","topic":"actors"},"docs_url":"https://meshlang.dev/docs/errors/#e0015","edits":[]}
 
 [E0086] Error: monitor used outside actor block
    ╭─[ main.mpl:2:7 ]
@@ -254,7 +287,8 @@ expression: rendered
    │
    │ Help: call `Process.monitor` or `Node.monitor` inside an actor block
 ───╯
-{"code":"E0086","severity":"error","message":"monitor used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a monitor delivers its message to the actor that sets it up"}],"fix":"call `Process.monitor` or `Node.monitor` inside an actor block"}
+  = E0086: meshc explain E0086 · skill diagnostics.md#e0086 · https://meshlang.dev/docs/errors/#e0086
+{"code":"E0086","severity":"error","message":"monitor used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a monitor delivers its message to the actor that sets it up","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"call `Process.monitor` or `Node.monitor` inside an actor block","line":2,"col":7,"name":"monitor-outside-actor","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0086","skill":"references/diagnostics.md#e0086","topic":"actors"},"docs_url":"https://meshlang.dev/docs/errors/#e0086","edits":[]}
 
 [E0016] Error: cannot spawn non-function: found `String`
    ╭─[ main.mpl:2:7 ]
@@ -262,8 +296,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── expected a function, found String
+   │
+   │ Help: pass the name of an actor as the first argument to `spawn`
 ───╯
-{"code":"E0016","severity":"error","message":"cannot spawn non-function: found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected a function, found String"}],"fix":null}
+  = E0016: meshc explain E0016 · skill diagnostics.md#e0016 · https://meshlang.dev/docs/errors/#e0016
+{"code":"E0016","severity":"error","message":"cannot spawn non-function: found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected a function, found String","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"pass the name of an actor as the first argument to `spawn`","line":2,"col":7,"name":"spawn-non-function","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0016","skill":"references/diagnostics.md#e0016","topic":"actors"},"docs_url":"https://meshlang.dev/docs/errors/#e0016","edits":[]}
 
 [E0089] Error: an actor is spawned by its name
    ╭─[ main.mpl:2:7 ]
@@ -274,7 +311,8 @@ expression: rendered
    │
    │ Help: name the actor or function, `spawn(worker, ...)`; to choose one at run time, spawn each by name where it is chosen
 ───╯
-{"code":"E0089","severity":"error","message":"an actor is spawned by its name","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a function worked out here, not named"}],"fix":"name the actor or function, `spawn(worker, ...)`; to choose one at run time, spawn each by name where it is chosen"}
+  = E0089: meshc explain E0089 · skill diagnostics.md#e0089 · https://meshlang.dev/docs/errors/#e0089
+{"code":"E0089","severity":"error","message":"an actor is spawned by its name","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a function worked out here, not named","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"name the actor or function, `spawn(worker, ...)`; to choose one at run time, spawn each by name where it is chosen","line":2,"col":7,"name":"spawn-computed","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0089","skill":"references/diagnostics.md#e0089","topic":"actors"},"docs_url":"https://meshlang.dev/docs/errors/#e0089","edits":[]}
 
 [E0090] Error: only an actor can be spawned
    ╭─[ main.mpl:2:7 ]
@@ -285,7 +323,8 @@ expression: rendered
    │
    │ Help: define what runs in the new process as `actor name(...) do ... end`, or call the function
 ───╯
-{"code":"E0090","severity":"error","message":"only an actor can be spawned","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a function, not an actor"}],"fix":"define what runs in the new process as `actor name(...) do ... end`, or call the function"}
+  = E0090: meshc explain E0090 · skill diagnostics.md#e0090 · https://meshlang.dev/docs/errors/#e0090
+{"code":"E0090","severity":"error","message":"only an actor can be spawned","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a function, not an actor","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"define what runs in the new process as `actor name(...) do ... end`, or call the function","line":2,"col":7,"name":"spawn-not-actor","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0090","skill":"references/diagnostics.md#e0090","topic":"actors"},"docs_url":"https://meshlang.dev/docs/errors/#e0090","edits":[]}
 
 [E0092] Error: cannot derive `Eq` for `Holder`: field `p` is a `Point`, which has no `Eq`
    ╭─[ main.mpl:2:7 ]
@@ -296,7 +335,8 @@ expression: rendered
    │
    │ Help: derive or implement `Eq` for `Point`, or leave `Eq` out of `Holder`'s deriving list
 ───╯
-{"code":"E0092","severity":"error","message":"cannot derive `Eq` for `Holder`: field `p` is a `Point`, which has no `Eq`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this has no `Eq`"}],"fix":"derive or implement `Eq` for `Point`, or leave `Eq` out of `Holder`'s deriving list"}
+  = E0092: meshc explain E0092 · skill diagnostics.md#e0092 · https://meshlang.dev/docs/errors/#e0092
+{"code":"E0092","severity":"error","message":"cannot derive `Eq` for `Holder`: field `p` is a `Point`, which has no `Eq`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this has no `Eq`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"derive or implement `Eq` for `Point`, or leave `Eq` out of `Holder`'s deriving list","line":2,"col":7,"name":"underivable-field-type","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0092","skill":"references/diagnostics.md#e0092","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0092","edits":[]}
 
 [E0091] Error: cannot tell what `Box<_>` this decodes
    ╭─[ main.mpl:2:7 ]
@@ -307,7 +347,8 @@ expression: rendered
    │
    │ Help: annotate the result, as `let r :: Result<Box<_>, String> = ...` with the `_` filled in
 ───╯
-{"code":"E0091","severity":"error","message":"cannot tell what `Box<_>` this decodes","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes what this decodes"}],"fix":"annotate the result, as `let r :: Result<Box<_>, String> = ...` with the `_` filled in"}
+  = E0091: meshc explain E0091 · skill diagnostics.md#e0091 · https://meshlang.dev/docs/errors/#e0091
+{"code":"E0091","severity":"error","message":"cannot tell what `Box<_>` this decodes","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes what this decodes","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"annotate the result, as `let r :: Result<Box<_>, String> = ...` with the `_` filled in","line":2,"col":7,"name":"decode-type-unknown","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0091","skill":"references/diagnostics.md#e0091","topic":"strings"},"docs_url":"https://meshlang.dev/docs/errors/#e0091","edits":[]}
 
 [E0017] Error: receive used outside actor block
    ╭─[ main.mpl:2:7 ]
@@ -318,7 +359,8 @@ expression: rendered
    │
    │ Help: move this receive expression into an actor block
 ───╯
-{"code":"E0017","severity":"error","message":"receive used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"receive is only available inside an actor block"}],"fix":"move this receive expression into an actor block"}
+  = E0017: meshc explain E0017 · skill diagnostics.md#e0017 · https://meshlang.dev/docs/errors/#e0017
+{"code":"E0017","severity":"error","message":"receive used outside actor block","file":"main.mpl","spans":[{"start":19,"end":24,"label":"receive is only available inside an actor block","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"move this receive expression into an actor block","line":2,"col":7,"name":"receive-outside-actor","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0017","skill":"references/diagnostics.md#e0017","topic":"actors"},"docs_url":"https://meshlang.dev/docs/errors/#e0017","edits":[]}
 
 [E0018] Error: child `child_name` start function must return Pid, found `String`
    ╭─[ main.mpl:2:7 ]
@@ -329,25 +371,32 @@ expression: rendered
    │
    │ Help: the start function must call spawn() and return a Pid
 ───╯
-{"code":"E0018","severity":"error","message":"child `child_name` start function must return Pid, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Pid<M>, found String"}],"fix":"the start function must call spawn() and return a Pid"}
+  = E0018: meshc explain E0018 · skill diagnostics.md#e0018 · https://meshlang.dev/docs/errors/#e0018
+{"code":"E0018","severity":"error","message":"child `child_name` start function must return Pid, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Pid<M>, found String","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"the start function must call spawn() and return a Pid","line":2,"col":7,"name":"invalid-child-start","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0018","skill":"references/diagnostics.md#e0018","topic":"supervisors"},"docs_url":"https://meshlang.dev/docs/errors/#e0018","edits":[]}
 
 [E0019] Error: unknown supervision strategy `found`, expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one
    ╭─[ main.mpl:2:7 ]
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
-   │         ╰──── expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one
+   │         ╰──── invalid strategy
+   │
+   │ Help: use `one_for_one`, `one_for_all`, `rest_for_one`, or `simple_one_for_one` for `strategy`
 ───╯
-{"code":"E0019","severity":"error","message":"unknown supervision strategy `found`, expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one"}],"fix":null}
+  = E0019: meshc explain E0019 · skill diagnostics.md#e0019 · https://meshlang.dev/docs/errors/#e0019
+{"code":"E0019","severity":"error","message":"unknown supervision strategy `found`, expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid strategy","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use `one_for_one`, `one_for_all`, `rest_for_one`, or `simple_one_for_one` for `strategy`","line":2,"col":7,"name":"unknown-supervision-strategy","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0019","skill":"references/diagnostics.md#e0019","topic":"supervisors"},"docs_url":"https://meshlang.dev/docs/errors/#e0019","edits":[]}
 
 [E0020] Error: invalid restart type `found` for child `child_name`, expected permanent, transient, or temporary
    ╭─[ main.mpl:2:7 ]
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
-   │         ╰──── expected permanent, transient, or temporary
+   │         ╰──── invalid restart type for `child_name`
+   │
+   │ Help: set `child_name`'s `restart` to `permanent`, `transient`, or `temporary`
 ───╯
-{"code":"E0020","severity":"error","message":"invalid restart type `found` for child `child_name`, expected permanent, transient, or temporary","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected permanent, transient, or temporary"}],"fix":null}
+  = E0020: meshc explain E0020 · skill diagnostics.md#e0020 · https://meshlang.dev/docs/errors/#e0020
+{"code":"E0020","severity":"error","message":"invalid restart type `found` for child `child_name`, expected permanent, transient, or temporary","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid restart type for `child_name`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"set `child_name`'s `restart` to `permanent`, `transient`, or `temporary`","line":2,"col":7,"name":"invalid-restart-type","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0020","skill":"references/diagnostics.md#e0020","topic":"supervisors"},"docs_url":"https://meshlang.dev/docs/errors/#e0020","edits":[]}
 
 [E0021] Error: invalid shutdown value `found` for child `child_name`, expected a positive integer or brutal_kill
    ╭─[ main.mpl:2:7 ]
@@ -355,8 +404,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── expected a positive integer or brutal_kill
+   │
+   │ Help: set `child_name`'s `shutdown` to a positive timeout in milliseconds, such as `5000`, or use `brutal_kill`
 ───╯
-{"code":"E0021","severity":"error","message":"invalid shutdown value `found` for child `child_name`, expected a positive integer or brutal_kill","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected a positive integer or brutal_kill"}],"fix":null}
+  = E0021: meshc explain E0021 · skill diagnostics.md#e0021 · https://meshlang.dev/docs/errors/#e0021
+{"code":"E0021","severity":"error","message":"invalid shutdown value `found` for child `child_name`, expected a positive integer or brutal_kill","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected a positive integer or brutal_kill","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"set `child_name`'s `shutdown` to a positive timeout in milliseconds, such as `5000`, or use `brutal_kill`","line":2,"col":7,"name":"invalid-shutdown-value","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0021","skill":"references/diagnostics.md#e0021","topic":"supervisors"},"docs_url":"https://meshlang.dev/docs/errors/#e0021","edits":[]}
 
 [E0022] Error: catch-all clause must be the last clause of function `fn_name/2`; clauses after a catch-all are unreachable
    ╭─[ main.mpl:2:7 ]
@@ -364,8 +416,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── clauses after a catch-all are unreachable
+   │
+   │ Help: move this clause to the end of `fn_name`'s clauses
 ───╯
-{"code":"E0022","severity":"error","message":"catch-all clause must be the last clause of function `fn_name/2`; clauses after a catch-all are unreachable","file":"main.mpl","spans":[{"start":19,"end":24,"label":"clauses after a catch-all are unreachable"}],"fix":null}
+  = E0022: meshc explain E0022 · skill diagnostics.md#e0022 · https://meshlang.dev/docs/errors/#e0022
+{"code":"E0022","severity":"error","message":"catch-all clause must be the last clause of function `fn_name/2`; clauses after a catch-all are unreachable","file":"main.mpl","spans":[{"start":19,"end":24,"label":"clauses after a catch-all are unreachable","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"move this clause to the end of `fn_name`'s clauses","line":2,"col":7,"name":"catch-all-not-last","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0022","skill":"references/diagnostics.md#e0022","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0022","edits":[]}
 
 [E0023] Error: function `fn_name/2` already defined; multi-clause functions must have consecutive clauses
    ╭─[ main.mpl:3:11 ]
@@ -376,8 +431,11 @@ expression: rendered
  3 │   value + other
    │           ──┬──
    │             ╰──── non-consecutive redefinition here
+   │
+   │ Help: put all clauses of `fn_name/2` together
 ───╯
-{"code":"E0023","severity":"error","message":"function `fn_name/2` already defined; multi-clause functions must have consecutive clauses","file":"main.mpl","spans":[{"start":51,"end":56,"label":"non-consecutive redefinition here"},{"start":19,"end":24,"label":"first definition here"}],"fix":null}
+  = E0023: meshc explain E0023 · skill diagnostics.md#e0023 · https://meshlang.dev/docs/errors/#e0023
+{"code":"E0023","severity":"error","message":"function `fn_name/2` already defined; multi-clause functions must have consecutive clauses","file":"main.mpl","spans":[{"start":51,"end":56,"label":"non-consecutive redefinition here","file":"main.mpl","line":3,"col":11,"end_line":3,"end_col":16},{"start":19,"end":24,"label":"first definition here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"put all clauses of `fn_name/2` together","line":3,"col":11,"name":"non-consecutive-clauses","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0023","skill":"references/diagnostics.md#e0023","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0023","edits":[]}
 
 [W0002] Warning: what on non-first clause of `fn_name` will be ignored
    ╭─[ main.mpl:2:7 ]
@@ -385,8 +443,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── only the first clause should have this annotation
+   │
+   │ Help: move the what to the first clause of `fn_name`
 ───╯
-{"code":"W0002","severity":"warning","message":"what on non-first clause of `fn_name` will be ignored","file":"main.mpl","spans":[{"start":19,"end":24,"label":"only the first clause should have this annotation"}],"fix":null}
+  = W0002: meshc explain W0002 · skill diagnostics.md#w0002 · https://meshlang.dev/docs/errors/#w0002
+{"code":"W0002","severity":"warning","message":"what on non-first clause of `fn_name` will be ignored","file":"main.mpl","spans":[{"start":19,"end":24,"label":"only the first clause should have this annotation","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"move the what to the first clause of `fn_name`","line":2,"col":7,"name":"non-first-clause-annotation","category":"semantic","notes":[],"guide":{"explain":"meshc explain W0002","skill":"references/diagnostics.md#w0002","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#w0002","edits":[]}
 
 [E0026] Error: duplicate impl: `trait_name` is already implemented for `impl_type` (first_impl)
    ╭─[ main.mpl:2:7 ]
@@ -397,7 +458,8 @@ expression: rendered
    │
    │ Help: remove one of the conflicting impl blocks
 ───╯
-{"code":"E0026","severity":"error","message":"duplicate impl: `trait_name` is already implemented for `impl_type` (first_impl)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"first_impl"}],"fix":"remove one of the conflicting impl blocks"}
+  = E0026: meshc explain E0026 · skill diagnostics.md#e0026 · https://meshlang.dev/docs/errors/#e0026
+{"code":"E0026","severity":"error","message":"duplicate impl: `trait_name` is already implemented for `impl_type` (first_impl)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"first_impl","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"remove one of the conflicting impl blocks","line":2,"col":7,"name":"duplicate-impl","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0026","skill":"references/diagnostics.md#e0026","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0026","edits":[]}
 
 [E0027] Error: ambiguous method `method_name` for type `Int`: candidates from traits [candidate_traits_a, candidate_traits_b]
    ╭─[ main.mpl:2:7 ]
@@ -408,7 +470,8 @@ expression: rendered
    │
    │ Help: use qualified syntax: candidate_traits_a.method_name(value) or candidate_traits_b.method_name(value)
 ───╯
-{"code":"E0027","severity":"error","message":"ambiguous method `method_name` for type `Int`: candidates from traits [candidate_traits_a, candidate_traits_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"multiple traits provide `method_name`"}],"fix":"use qualified syntax: candidate_traits_a.method_name(value) or candidate_traits_b.method_name(value)"}
+  = E0027: meshc explain E0027 · skill diagnostics.md#e0027 · https://meshlang.dev/docs/errors/#e0027
+{"code":"E0027","severity":"error","message":"ambiguous method `method_name` for type `Int`: candidates from traits [candidate_traits_a, candidate_traits_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"multiple traits provide `method_name`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use qualified syntax: candidate_traits_a.method_name(value) or candidate_traits_b.method_name(value)","line":2,"col":7,"name":"ambiguous-method","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0027","skill":"references/diagnostics.md#e0027","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0027","edits":[]}
 
 [E0028] Error: cannot derive `trait_name` for `type_name` -- structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema
    ╭─[ main.mpl:2:7 ]
@@ -419,7 +482,8 @@ expression: rendered
    │
    │ Help: structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema
 ───╯
-{"code":"E0028","severity":"error","message":"cannot derive `trait_name` for `type_name` -- structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`trait_name` cannot be derived here"}],"fix":"structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema"}
+  = E0028: meshc explain E0028 · skill diagnostics.md#e0028 · https://meshlang.dev/docs/errors/#e0028
+{"code":"E0028","severity":"error","message":"cannot derive `trait_name` for `type_name` -- structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`trait_name` cannot be derived here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema","line":2,"col":7,"name":"unsupported-derive","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0028","skill":"references/diagnostics.md#e0028","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0028","edits":[]}
 
 [E0029] Error: deriving `trait_name` for `type_name` requires `requires` to also be derived
    ╭─[ main.mpl:2:7 ]
@@ -430,7 +494,8 @@ expression: rendered
    │
    │ Help: add `requires` to the deriving list: deriving(requires, trait_name)
 ───╯
-{"code":"E0029","severity":"error","message":"deriving `trait_name` for `type_name` requires `requires` to also be derived","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`trait_name` requires `requires` for its implementation"}],"fix":"add `requires` to the deriving list: deriving(requires, trait_name)"}
+  = E0029: meshc explain E0029 · skill diagnostics.md#e0029 · https://meshlang.dev/docs/errors/#e0029
+{"code":"E0029","severity":"error","message":"deriving `trait_name` for `type_name` requires `requires` to also be derived","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`trait_name` requires `requires` for its implementation","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"add `requires` to the deriving list: deriving(requires, trait_name)","line":2,"col":7,"name":"missing-derive-prerequisite","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0029","skill":"references/diagnostics.md#e0029","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0029","edits":[]}
 
 [E0032] Error: `break` outside of loop
    ╭─[ main.mpl:2:7 ]
@@ -441,7 +506,8 @@ expression: rendered
    │
    │ Help: move this `break` inside a loop body
 ───╯
-{"code":"E0032","severity":"error","message":"`break` outside of loop","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`break` can only be used inside a `while` or `for` loop"}],"fix":"move this `break` inside a loop body"}
+  = E0032: meshc explain E0032 · skill diagnostics.md#e0032 · https://meshlang.dev/docs/errors/#e0032
+{"code":"E0032","severity":"error","message":"`break` outside of loop","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`break` can only be used inside a `while` or `for` loop","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"move this `break` inside a loop body","line":2,"col":7,"name":"break-outside-loop","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0032","skill":"references/diagnostics.md#e0032","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0032","edits":[]}
 
 [E0033] Error: `continue` outside of loop
    ╭─[ main.mpl:2:7 ]
@@ -452,7 +518,8 @@ expression: rendered
    │
    │ Help: move this `continue` inside a loop body
 ───╯
-{"code":"E0033","severity":"error","message":"`continue` outside of loop","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`continue` can only be used inside a `while` or `for` loop"}],"fix":"move this `continue` inside a loop body"}
+  = E0033: meshc explain E0033 · skill diagnostics.md#e0033 · https://meshlang.dev/docs/errors/#e0033
+{"code":"E0033","severity":"error","message":"`continue` outside of loop","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`continue` can only be used inside a `while` or `for` loop","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"move this `continue` inside a loop body","line":2,"col":7,"name":"continue-outside-loop","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0033","skill":"references/diagnostics.md#e0033","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0033","edits":[]}
 
 [E0031] Error: module `module_name` not found; did you mean `suggestion`?
    ╭─[ main.mpl:2:7 ]
@@ -460,8 +527,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── no module has this name
+   │
+   │ Help: did you mean `suggestion`?
 ───╯
-{"code":"E0031","severity":"error","message":"module `module_name` not found; did you mean `suggestion`?","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no module has this name"}],"fix":null}
+  = E0031: meshc explain E0031 · skill diagnostics.md#e0031 · https://meshlang.dev/docs/errors/#e0031
+{"code":"E0031","severity":"error","message":"module `module_name` not found; did you mean `suggestion`?","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no module has this name","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"did you mean `suggestion`?","line":2,"col":7,"name":"module-not-found","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0031","skill":"references/diagnostics.md#e0031","topic":"projects"},"docs_url":"https://meshlang.dev/docs/errors/#e0031","edits":[]}
 
 [E0034] Error: `name` is not exported by module `module_name`; available: available_a, available_b
    ╭─[ main.mpl:2:7 ]
@@ -469,8 +539,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── not exported
+   │
+   │ Help: import a public name from `module_name`, or define and export `name` there
 ───╯
-{"code":"E0034","severity":"error","message":"`name` is not exported by module `module_name`; available: available_a, available_b","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not exported"}],"fix":null}
+  = E0034: meshc explain E0034 · skill diagnostics.md#e0034 · https://meshlang.dev/docs/errors/#e0034
+{"code":"E0034","severity":"error","message":"`name` is not exported by module `module_name`; available: available_a, available_b","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not exported","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"import a public name from `module_name`, or define and export `name` there","line":2,"col":7,"name":"import-name-not-found","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0034","skill":"references/diagnostics.md#e0034","topic":"projects"},"docs_url":"https://meshlang.dev/docs/errors/#e0034","edits":[]}
 
 [E0035] Error: `name` is private in module `module_name`; add `pub` to make it accessible
    ╭─[ main.mpl:2:7 ]
@@ -481,7 +554,8 @@ expression: rendered
    │
    │ Help: add `pub` to `name` in module `module_name` to make it accessible
 ───╯
-{"code":"E0035","severity":"error","message":"`name` is private in module `module_name`; add `pub` to make it accessible","file":"main.mpl","spans":[{"start":19,"end":24,"label":"private to its module"}],"fix":"add `pub` to `name` in module `module_name` to make it accessible"}
+  = E0035: meshc explain E0035 · skill diagnostics.md#e0035 · https://meshlang.dev/docs/errors/#e0035
+{"code":"E0035","severity":"error","message":"`name` is private in module `module_name`; add `pub` to make it accessible","file":"main.mpl","spans":[{"start":19,"end":24,"label":"private to its module","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"add `pub` to `name` in module `module_name` to make it accessible","line":2,"col":7,"name":"private-item","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0035","skill":"references/diagnostics.md#e0035","topic":"projects"},"docs_url":"https://meshlang.dev/docs/errors/#e0035","edits":[]}
 
 [E0047] Error: invalid HTTP.clustered(...) usage: reason
    ╭─[ main.mpl:2:7 ]
@@ -492,7 +566,8 @@ expression: rendered
    │
    │ Help: use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference
 ───╯
-{"code":"E0047","severity":"error","message":"invalid HTTP.clustered(...) usage: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this wrapper"}],"fix":"use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference"}
+  = E0047: meshc explain E0047 · skill diagnostics.md#e0047 · https://meshlang.dev/docs/errors/#e0047
+{"code":"E0047","severity":"error","message":"invalid HTTP.clustered(...) usage: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this wrapper","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference","line":2,"col":7,"name":"clustered-route-invalid-arguments","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0047","skill":"references/diagnostics.md#e0047","topic":"clustering"},"docs_url":"https://meshlang.dev/docs/errors/#e0047","edits":[]}
 
 [E0048] Error: route handler `handler_name` must be public to use HTTP.clustered(...)
    ╭─[ main.mpl:2:7 ]
@@ -503,29 +578,34 @@ expression: rendered
    │
    │ Help: add `pub` to `handler_name` or remove `HTTP.clustered(...)`
 ───╯
-{"code":"E0048","severity":"error","message":"route handler `handler_name` must be public to use HTTP.clustered(...)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`handler_name` is private and cannot cross the clustered route boundary"}],"fix":"add `pub` to `handler_name` or remove `HTTP.clustered(...)`"}
+  = E0048: meshc explain E0048 · skill diagnostics.md#e0048 · https://meshlang.dev/docs/errors/#e0048
+{"code":"E0048","severity":"error","message":"route handler `handler_name` must be public to use HTTP.clustered(...)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`handler_name` is private and cannot cross the clustered route boundary","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"add `pub` to `handler_name` or remove `HTTP.clustered(...)`","line":2,"col":7,"name":"clustered-route-private-handler","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0048","skill":"references/diagnostics.md#e0048","topic":"clustering"},"docs_url":"https://meshlang.dev/docs/errors/#e0048","edits":[]}
 
 [E0049] Error: HTTP.clustered(...) can only appear in the route handler position of HTTP.route(...) or HTTP.on_*(...)
    ╭─[ main.mpl:2:7 ]
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
-   │         ╰──── use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`
+   │         ╰──── outside the route handler argument
+   │
+   │ Help: use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`
 ───╯
-{"code":"E0049","severity":"error","message":"HTTP.clustered(...) can only appear in the route handler position of HTTP.route(...) or HTTP.on_*(...)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`"}],"fix":null}
+  = E0049: meshc explain E0049 · skill diagnostics.md#e0049 · https://meshlang.dev/docs/errors/#e0049
+{"code":"E0049","severity":"error","message":"HTTP.clustered(...) can only appear in the route handler position of HTTP.route(...) or HTTP.on_*(...)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"outside the route handler argument","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`","line":2,"col":7,"name":"clustered-route-misplaced","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0049","skill":"references/diagnostics.md#e0049","topic":"clustering"},"docs_url":"https://meshlang.dev/docs/errors/#e0049","edits":[]}
 
 [E0050] Error: clustered route handler `runtime_name` already uses replication count 4; found conflicting count 4
    ╭─[ main.mpl:2:7 ]
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
-   │         ╰──── `runtime_name` was first declared here with replication count 4
-   │         │
    │         ╰──── conflicting replication count 4 for `runtime_name`
+   │         │
+   │         ╰──── `runtime_name` was first declared here with replication count 4
    │
    │ Help: keep one replication count per clustered route handler runtime name
 ───╯
-{"code":"E0050","severity":"error","message":"clustered route handler `runtime_name` already uses replication count 4; found conflicting count 4","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`runtime_name` was first declared here with replication count 4"},{"start":19,"end":24,"label":"conflicting replication count 4 for `runtime_name`"}],"fix":"keep one replication count per clustered route handler runtime name"}
+  = E0050: meshc explain E0050 · skill diagnostics.md#e0050 · https://meshlang.dev/docs/errors/#e0050
+{"code":"E0050","severity":"error","message":"clustered route handler `runtime_name` already uses replication count 4; found conflicting count 4","file":"main.mpl","spans":[{"start":19,"end":24,"label":"conflicting replication count 4 for `runtime_name`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12},{"start":19,"end":24,"label":"`runtime_name` was first declared here with replication count 4","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"keep one replication count per clustered route handler runtime name","line":2,"col":7,"name":"clustered-route-conflicting-count","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0050","skill":"references/diagnostics.md#e0050","topic":"clustering"},"docs_url":"https://meshlang.dev/docs/errors/#e0050","edits":[]}
 
 [E0051] Error: imported route handler `handler_name` is missing defining-module metadata for HTTP.clustered(...)
    ╭─[ main.mpl:2:7 ]
@@ -534,9 +614,10 @@ expression: rendered
    │       ──┬──
    │         ╰──── cannot determine the defining module for imported handler `handler_name`
    │
-   │ Note: imported bare handlers must preserve their defining module so clustered route lowering can keep the real runtime name
+   │ Help: import the defining module and pass its qualified handler to `HTTP.clustered(Module.handler_name)`
 ───╯
-{"code":"E0051","severity":"error","message":"imported route handler `handler_name` is missing defining-module metadata for HTTP.clustered(...)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"cannot determine the defining module for imported handler `handler_name`"}],"fix":null}
+  = E0051: meshc explain E0051 · skill diagnostics.md#e0051 · https://meshlang.dev/docs/errors/#e0051
+{"code":"E0051","severity":"error","message":"imported route handler `handler_name` is missing defining-module metadata for HTTP.clustered(...)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"cannot determine the defining module for imported handler `handler_name`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"import the defining module and pass its qualified handler to `HTTP.clustered(Module.handler_name)`","line":2,"col":7,"name":"clustered-route-origin-missing","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0051","skill":"references/diagnostics.md#e0051","topic":"clustering"},"docs_url":"https://meshlang.dev/docs/errors/#e0051","edits":[]}
 
 [E0036] Error: `?` cannot propagate `Int` from a function returning `Int`
    ╭─[ main.mpl:2:7 ]
@@ -545,9 +626,10 @@ expression: rendered
    │       ──┬──
    │         ╰──── cannot use `?` here
    │
-   │ Note: cannot propagate `Int` from a function returning `Int`; Result errors must match or have a From conversion, and Option requires an Option return type
+   │ Help: to propagate `Int` instead of returning `Int`, return an `Option` for an `Option` operand, or a `Result` with the same error type or a `From` conversion for a `Result` operand. To keep the return type, handle the operand with `case`
 ───╯
-{"code":"E0036","severity":"error","message":"`?` cannot propagate `Int` from a function returning `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"cannot use `?` here"}],"fix":null}
+  = E0036: meshc explain E0036 · skill diagnostics.md#e0036 · https://meshlang.dev/docs/errors/#e0036
+{"code":"E0036","severity":"error","message":"`?` cannot propagate `Int` from a function returning `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"cannot use `?` here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"to propagate `Int` instead of returning `Int`, return an `Option` for an `Option` operand, or a `Result` with the same error type or a `From` conversion for a `Result` operand. To keep the return type, handle the operand with `case`","line":2,"col":7,"name":"try-incompatible-return","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0036","skill":"references/diagnostics.md#e0036","topic":"error-handling"},"docs_url":"https://meshlang.dev/docs/errors/#e0036","edits":[]}
 
 [E0037] Error: `?` operator requires `Result` or `Option`, found `Int`
    ╭─[ main.mpl:2:7 ]
@@ -558,7 +640,8 @@ expression: rendered
    │
    │ Help: the `?` operator can only be used on `Result<T, E>` or `Option<T>` values
 ───╯
-{"code":"E0037","severity":"error","message":"`?` operator requires `Result` or `Option`, found `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"type `Int` is not `Result` or `Option`"}],"fix":"the `?` operator can only be used on `Result<T, E>` or `Option<T>` values"}
+  = E0037: meshc explain E0037 · skill diagnostics.md#e0037 · https://meshlang.dev/docs/errors/#e0037
+{"code":"E0037","severity":"error","message":"`?` operator requires `Result` or `Option`, found `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"type `Int` is not `Result` or `Option`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"the `?` operator can only be used on `Result<T, E>` or `Option<T>` values","line":2,"col":7,"name":"try-on-non-result","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0037","skill":"references/diagnostics.md#e0037","topic":"error-handling"},"docs_url":"https://meshlang.dev/docs/errors/#e0037","edits":[]}
 
 [E0038] Error: field `field_name` of type `field_type` is not JSON-serializable
    ╭─[ main.mpl:2:7 ]
@@ -569,7 +652,8 @@ expression: rendered
    │
    │ Help: type `field_type` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, a tuple, Option<T>, List<T>, Map<String, V>)
 ───╯
-{"code":"E0038","severity":"error","message":"field `field_name` of type `field_type` is not JSON-serializable","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`field_type` is not serializable"}],"fix":"type `field_type` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, a tuple, Option<T>, List<T>, Map<String, V>)"}
+  = E0038: meshc explain E0038 · skill diagnostics.md#e0038 · https://meshlang.dev/docs/errors/#e0038
+{"code":"E0038","severity":"error","message":"field `field_name` of type `field_type` is not JSON-serializable","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`field_type` is not serializable","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"type `field_type` does not derive Json; add `deriving(Json)` to its definition, or use a serializable type (Int, Float, Bool, String, a tuple, Option<T>, List<T>, Map<String, V>)","line":2,"col":7,"name":"non-serializable-field","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0038","skill":"references/diagnostics.md#e0038","topic":"strings"},"docs_url":"https://meshlang.dev/docs/errors/#e0038","edits":[]}
 
 [E0039] Error: field `field_name` has type `field_type` which cannot be mapped from a database row (only Int, Float, Bool, String, and Option<T> are supported)
    ╭─[ main.mpl:2:7 ]
@@ -580,7 +664,8 @@ expression: rendered
    │
    │ Help: only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)
 ───╯
-{"code":"E0039","severity":"error","message":"field `field_name` has type `field_type` which cannot be mapped from a database row (only Int, Float, Bool, String, and Option<T> are supported)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`field_type` is not row-mappable"}],"fix":"only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)"}
+  = E0039: meshc explain E0039 · skill diagnostics.md#e0039 · https://meshlang.dev/docs/errors/#e0039
+{"code":"E0039","severity":"error","message":"field `field_name` has type `field_type` which cannot be mapped from a database row (only Int, Float, Bool, String, and Option<T> are supported)","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`field_type` is not row-mappable","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"only Int, Float, Bool, String, and Option<T> fields are supported for deriving(Row)","line":2,"col":7,"name":"non-mappable-field","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0039","skill":"references/diagnostics.md#e0039","topic":"database"},"docs_url":"https://meshlang.dev/docs/errors/#e0039","edits":[]}
 
 [E0040] Error: impl `trait_name` for `impl_ty` is missing associated type `assoc_name`
    ╭─[ main.mpl:2:7 ]
@@ -591,7 +676,8 @@ expression: rendered
    │
    │ Help: add `type assoc_name = <ConcreteType>` to the impl block
 ───╯
-{"code":"E0040","severity":"error","message":"impl `trait_name` for `impl_ty` is missing associated type `assoc_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing `type assoc_name = ...`"}],"fix":"add `type assoc_name = <ConcreteType>` to the impl block"}
+  = E0040: meshc explain E0040 · skill diagnostics.md#e0040 · https://meshlang.dev/docs/errors/#e0040
+{"code":"E0040","severity":"error","message":"impl `trait_name` for `impl_ty` is missing associated type `assoc_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing `type assoc_name = ...`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"add `type assoc_name = <ConcreteType>` to the impl block","line":2,"col":7,"name":"missing-associated-type","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0040","skill":"references/diagnostics.md#e0040","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0040","edits":[]}
 
 [E0041] Error: impl `trait_name` for `impl_ty` provides associated type `assoc_name` which is not declared by the trait
    ╭─[ main.mpl:2:7 ]
@@ -599,8 +685,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── `assoc_name` is not declared by `trait_name`
+   │
+   │ Help: remove `type assoc_name = ...` or declare `type assoc_name` in `trait_name`
 ───╯
-{"code":"E0041","severity":"error","message":"impl `trait_name` for `impl_ty` provides associated type `assoc_name` which is not declared by the trait","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`assoc_name` is not declared by `trait_name`"}],"fix":null}
+  = E0041: meshc explain E0041 · skill diagnostics.md#e0041 · https://meshlang.dev/docs/errors/#e0041
+{"code":"E0041","severity":"error","message":"impl `trait_name` for `impl_ty` provides associated type `assoc_name` which is not declared by the trait","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`assoc_name` is not declared by `trait_name`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"remove `type assoc_name = ...` or declare `type assoc_name` in `trait_name`","line":2,"col":7,"name":"extra-associated-type","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0041","skill":"references/diagnostics.md#e0041","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0041","edits":[]}
 
 [E0042] Error: no associated type `assoc_name` is declared
    ╭─[ main.mpl:2:7 ]
@@ -611,7 +700,8 @@ expression: rendered
    │
    │ Help: declare it in the interface with `type assoc_name`, and bind it in each impl
 ───╯
-{"code":"E0042","severity":"error","message":"no associated type `assoc_name` is declared","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not declared"}],"fix":"declare it in the interface with `type assoc_name`, and bind it in each impl"}
+  = E0042: meshc explain E0042 · skill diagnostics.md#e0042 · https://meshlang.dev/docs/errors/#e0042
+{"code":"E0042","severity":"error","message":"no associated type `assoc_name` is declared","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not declared","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"declare it in the interface with `type assoc_name`, and bind it in each impl","line":2,"col":7,"name":"unresolved-associated-type","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0042","skill":"references/diagnostics.md#e0042","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0042","edits":[]}
 
 [E0045] Error: type alias `alias_name` references undefined type `target_name`
    ╭─[ main.mpl:2:7 ]
@@ -622,7 +712,8 @@ expression: rendered
    │
    │ Help: define `target_name` as a struct, sum type, or type alias before using it here
 ───╯
-{"code":"E0045","severity":"error","message":"type alias `alias_name` references undefined type `target_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`target_name` is not defined"}],"fix":"define `target_name` as a struct, sum type, or type alias before using it here"}
+  = E0045: meshc explain E0045 · skill diagnostics.md#e0045 · https://meshlang.dev/docs/errors/#e0045
+{"code":"E0045","severity":"error","message":"type alias `alias_name` references undefined type `target_name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`target_name` is not defined","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"define `target_name` as a struct, sum type, or type alias before using it here","line":2,"col":7,"name":"undefined-alias-target","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0045","skill":"references/diagnostics.md#e0045","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0045","edits":[]}
 
 [E0052] Error: invalid native function declaration: reason
    ╭─[ main.mpl:2:7 ]
@@ -633,7 +724,8 @@ expression: rendered
    │
    │ Help: use a public, fully annotated, non-generic signature and a C identifier symbol
 ───╯
-{"code":"E0052","severity":"error","message":"invalid native function declaration: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this declaration"}],"fix":"use a public, fully annotated, non-generic signature and a C identifier symbol"}
+  = E0052: meshc explain E0052 · skill diagnostics.md#e0052 · https://meshlang.dev/docs/errors/#e0052
+{"code":"E0052","severity":"error","message":"invalid native function declaration: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this declaration","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use a public, fully annotated, non-generic signature and a C identifier symbol","line":2,"col":7,"name":"invalid-native-declaration","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0052","skill":"references/diagnostics.md#e0052","topic":"projects"},"docs_url":"https://meshlang.dev/docs/errors/#e0052","edits":[]}
 
 [E0055] Error: invalid exported function declaration: reason
    ╭─[ main.mpl:2:7 ]
@@ -644,7 +736,8 @@ expression: rendered
    │
    │ Help: use `@export("c_symbol") pub fn name(request :: Bytes) -> Bytes!String`
 ───╯
-{"code":"E0055","severity":"error","message":"invalid exported function declaration: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this declaration"}],"fix":"use `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`"}
+  = E0055: meshc explain E0055 · skill diagnostics.md#e0055 · https://meshlang.dev/docs/errors/#e0055
+{"code":"E0055","severity":"error","message":"invalid exported function declaration: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this declaration","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`","line":2,"col":7,"name":"invalid-export-declaration","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0055","skill":"references/diagnostics.md#e0055","topic":"projects"},"docs_url":"https://meshlang.dev/docs/errors/#e0055","edits":[]}
 
 [E0054] Error: invalid destructuring pattern: reason
    ╭─[ main.mpl:2:7 ]
@@ -655,7 +748,8 @@ expression: rendered
    │
    │ Help: use only lowercase names, `_`, and tuple and struct patterns; use `case` for refutable patterns
 ───╯
-{"code":"E0054","severity":"error","message":"invalid destructuring pattern: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this pattern"}],"fix":"use only lowercase names, `_`, and tuple and struct patterns; use `case` for refutable patterns"}
+  = E0054: meshc explain E0054 · skill diagnostics.md#e0054 · https://meshlang.dev/docs/errors/#e0054
+{"code":"E0054","severity":"error","message":"invalid destructuring pattern: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this pattern","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use only lowercase names, `_`, and tuple and struct patterns; use `case` for refutable patterns","line":2,"col":7,"name":"invalid-let-pattern","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0054","skill":"references/diagnostics.md#e0054","topic":"pattern-matching"},"docs_url":"https://meshlang.dev/docs/errors/#e0054","edits":[]}
 
 [E0056] Error: this arm has no `->` and its pattern is not a value: reason
    ╭─[ main.mpl:2:7 ]
@@ -666,7 +760,8 @@ expression: rendered
    │
    │ Help: write the value after `->`: `pattern -> value`
 ───╯
-{"code":"E0056","severity":"error","message":"this arm has no `->` and its pattern is not a value: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this arm"}],"fix":"write the value after `->`: `pattern -> value`"}
+  = E0056: meshc explain E0056 · skill diagnostics.md#e0056 · https://meshlang.dev/docs/errors/#e0056
+{"code":"E0056","severity":"error","message":"this arm has no `->` and its pattern is not a value: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this arm","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"write the value after `->`: `pattern -> value`","line":2,"col":7,"name":"invalid-pass-through-arm","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0056","skill":"references/diagnostics.md#e0056","topic":"pattern-matching"},"docs_url":"https://meshlang.dev/docs/errors/#e0056","edits":[]}
 
 [E0057] Error: `name` is bound twice in one pattern
    ╭─[ main.mpl:2:7 ]
@@ -677,7 +772,8 @@ expression: rendered
    │
    │ Help: rename one of them, or compare the values in a `when` guard
 ───╯
-{"code":"E0057","severity":"error","message":"`name` is bound twice in one pattern","file":"main.mpl","spans":[{"start":19,"end":24,"label":"each name in a pattern binds one value"}],"fix":"rename one of them, or compare the values in a `when` guard"}
+  = E0057: meshc explain E0057 · skill diagnostics.md#e0057 · https://meshlang.dev/docs/errors/#e0057
+{"code":"E0057","severity":"error","message":"`name` is bound twice in one pattern","file":"main.mpl","spans":[{"start":19,"end":24,"label":"each name in a pattern binds one value","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"rename one of them, or compare the values in a `when` guard","line":2,"col":7,"name":"duplicate-binding","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0057","skill":"references/diagnostics.md#e0057","topic":"pattern-matching"},"docs_url":"https://meshlang.dev/docs/errors/#e0057","edits":[]}
 
 [E0063] Error: `param` is not known to implement trait_name; add `where param: trait_name`
    ╭─[ main.mpl:2:15 ]
@@ -688,18 +784,20 @@ expression: rendered
    │
    │ Help: add `where param: trait_name` to the function, so every call is checked for it
 ───╯
-{"code":"E0063","severity":"error","message":"`param` is not known to implement trait_name; add `where param: trait_name`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"this needs param: trait_name"}],"fix":"add `where param: trait_name` to the function, so every call is checked for it"}
+  = E0063: meshc explain E0063 · skill diagnostics.md#e0063 · https://meshlang.dev/docs/errors/#e0063
+{"code":"E0063","severity":"error","message":"`param` is not known to implement trait_name; add `where param: trait_name`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"this needs param: trait_name","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"add `where param: trait_name` to the function, so every call is checked for it","line":2,"col":15,"name":"unbounded-type-parameter","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0063","skill":"references/diagnostics.md#e0063","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0063","edits":[]}
 
-[E0065] Error: no impl's `method` on `Int` returns `Int`
+[E0065] Error: no impl's `method` on `Int` returns `List<_>`
    ╭─[ main.mpl:2:7 ]
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
-   │         ╰──── they return `Int`, `String`
+   │         ╰──── they return `List<_>`, `String`
    │
-   │ Help: give the result a type: `let x :: Int = value.method()`
+   │ Help: give the result a type: `let x :: List<_> = value.method()`
 ───╯
-{"code":"E0065","severity":"error","message":"no impl's `method` on `Int` returns `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"they return `Int`, `String`"}],"fix":"give the result a type: `let x :: Int = value.method()`"}
+  = E0065: meshc explain E0065 · skill diagnostics.md#e0065 · https://meshlang.dev/docs/errors/#e0065
+{"code":"E0065","severity":"error","message":"no impl's `method` on `Int` returns `List<_>`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"they return `List<_>`, `String`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"give the result a type: `let x :: List<_> = value.method()`","line":2,"col":7,"name":"ambiguous-impl-method","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0065","skill":"references/diagnostics.md#e0065","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0065","edits":[]}
 
 [E0065] Error: no impl's `from` for `Meters` takes `Bool`
    ╭─[ main.mpl:2:7 ]
@@ -710,7 +808,8 @@ expression: rendered
    │
    │ Help: convert the argument to one of those types first
 ───╯
-{"code":"E0065","severity":"error","message":"no impl's `from` for `Meters` takes `Bool`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"they take `Int`, `String`"}],"fix":"convert the argument to one of those types first"}
+  = E0065: meshc explain E0065 · skill diagnostics.md#e0065 · https://meshlang.dev/docs/errors/#e0065
+{"code":"E0065","severity":"error","message":"no impl's `from` for `Meters` takes `Bool`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"they take `Int`, `String`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"convert the argument to one of those types first","line":2,"col":7,"name":"ambiguous-impl-method","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0065","skill":"references/diagnostics.md#e0065","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0065","edits":[]}
 
 [E0065] Error: cannot tell which impl's `method` to call on `Int`
    ╭─[ main.mpl:2:7 ]
@@ -721,7 +820,8 @@ expression: rendered
    │
    │ Help: give the result a type: `let x :: Int = value.method()`
 ───╯
-{"code":"E0065","severity":"error","message":"cannot tell which impl's `method` to call on `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"its impls return `Int`, `String`"}],"fix":"give the result a type: `let x :: Int = value.method()`"}
+  = E0065: meshc explain E0065 · skill diagnostics.md#e0065 · https://meshlang.dev/docs/errors/#e0065
+{"code":"E0065","severity":"error","message":"cannot tell which impl's `method` to call on `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"its impls return `Int`, `String`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"give the result a type: `let x :: Int = value.method()`","line":2,"col":7,"name":"ambiguous-impl-method","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0065","skill":"references/diagnostics.md#e0065","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0065","edits":[]}
 
 [E0065] Error: cannot tell which impl's `from` to call on `Meters`
    ╭─[ main.mpl:2:7 ]
@@ -732,7 +832,8 @@ expression: rendered
    │
    │ Help: give the argument a type, such as `Int`
 ───╯
-{"code":"E0065","severity":"error","message":"cannot tell which impl's `from` to call on `Meters`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"its impls take `Int`, `String`"}],"fix":"give the argument a type, such as `Int`"}
+  = E0065: meshc explain E0065 · skill diagnostics.md#e0065 · https://meshlang.dev/docs/errors/#e0065
+{"code":"E0065","severity":"error","message":"cannot tell which impl's `from` to call on `Meters`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"its impls take `Int`, `String`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"give the argument a type, such as `Int`","line":2,"col":7,"name":"ambiguous-impl-method","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0065","skill":"references/diagnostics.md#e0065","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0065","edits":[]}
 
 [E0068] Error: kind `name` is defined twice
    ╭─[ main.mpl:2:7 ]
@@ -743,7 +844,8 @@ expression: rendered
    │
    │ Help: rename or remove one of the two `name`s
 ───╯
-{"code":"E0068","severity":"error","message":"kind `name` is defined twice","file":"main.mpl","spans":[{"start":19,"end":24,"label":"defined again here"}],"fix":"rename or remove one of the two `name`s"}
+  = E0068: meshc explain E0068 · skill diagnostics.md#e0068 · https://meshlang.dev/docs/errors/#e0068
+{"code":"E0068","severity":"error","message":"kind `name` is defined twice","file":"main.mpl","spans":[{"start":19,"end":24,"label":"defined again here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"rename or remove one of the two `name`s","line":2,"col":7,"name":"duplicate-definition","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0068","skill":"references/diagnostics.md#e0068","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0068","edits":[]}
 
 [E0069] Error: unknown type `name`
    ╭─[ main.mpl:2:7 ]
@@ -752,9 +854,10 @@ expression: rendered
    │       ──┬──
    │         ╰──── no type has this name
    │
-   │ Help: check the spelling, or define or import the type
+   │ Help: check the spelling of `name`, or define or import that type
 ───╯
-{"code":"E0069","severity":"error","message":"unknown type `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no type has this name"}],"fix":"check the spelling, or define or import the type"}
+  = E0069: meshc explain E0069 · skill diagnostics.md#e0069 · https://meshlang.dev/docs/errors/#e0069
+{"code":"E0069","severity":"error","message":"unknown type `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no type has this name","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"check the spelling of `name`, or define or import that type","line":2,"col":7,"name":"unknown-type","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0069","skill":"references/diagnostics.md#e0069","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0069","edits":[]}
 
 [E0070] Error: cannot tell which type has the field `field`
    ╭─[ main.mpl:2:7 ]
@@ -765,7 +868,8 @@ expression: rendered
    │
    │ Help: annotate the value's type, such as a parameter `p :: Point`
 ───╯
-{"code":"E0070","severity":"error","message":"cannot tell which type has the field `field`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing here fixes the type of this value"}],"fix":"annotate the value's type, such as a parameter `p :: Point`"}
+  = E0070: meshc explain E0070 · skill diagnostics.md#e0070 · https://meshlang.dev/docs/errors/#e0070
+{"code":"E0070","severity":"error","message":"cannot tell which type has the field `field`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing here fixes the type of this value","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"annotate the value's type, such as a parameter `p :: Point`","line":2,"col":7,"name":"unknown-field-owner","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0070","skill":"references/diagnostics.md#e0070","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0070","edits":[]}
 
 [E0082] Error: the type of `param` in method `method` is not known
    ╭─[ main.mpl:2:7 ]
@@ -776,7 +880,8 @@ expression: rendered
    │
    │ Help: annotate it, `param :: Type`: a method is compiled once, for the type it is implemented for, not for each call
 ───╯
-{"code":"E0082","severity":"error","message":"the type of `param` in method `method` is not known","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes the type of this parameter"}],"fix":"annotate it, `param :: Type`: a method is compiled once, for the type it is implemented for, not for each call"}
+  = E0082: meshc explain E0082 · skill diagnostics.md#e0082 · https://meshlang.dev/docs/errors/#e0082
+{"code":"E0082","severity":"error","message":"the type of `param` in method `method` is not known","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes the type of this parameter","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"annotate it, `param :: Type`: a method is compiled once, for the type it is implemented for, not for each call","line":2,"col":7,"name":"untyped-method-parameter","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0082","skill":"references/diagnostics.md#e0082","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0082","edits":[]}
 
 [E0088] Error: the return type of method `poke` on `Point` is not known
    ╭─[ main.mpl:2:7 ]
@@ -787,7 +892,8 @@ expression: rendered
    │
    │ Help: annotate its return type in the `impl` or the interface, `fn poke(self) -> Type`
 ───╯
-{"code":"E0088","severity":"error","message":"the return type of method `poke` on `Point` is not known","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes what this method returns"}],"fix":"annotate its return type in the `impl` or the interface, `fn poke(self) -> Type`"}
+  = E0088: meshc explain E0088 · skill diagnostics.md#e0088 · https://meshlang.dev/docs/errors/#e0088
+{"code":"E0088","severity":"error","message":"the return type of method `poke` on `Point` is not known","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes what this method returns","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"annotate its return type in the `impl` or the interface, `fn poke(self) -> Type`","line":2,"col":7,"name":"method-return-unknown","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0088","skill":"references/diagnostics.md#e0088","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0088","edits":[]}
 
 [E0083] Error: `Name` is a type, not a value
    ╭─[ main.mpl:2:7 ]
@@ -798,7 +904,8 @@ expression: rendered
    │
    │ Help: build a value of it (`Name { ... }` for a struct, a variant for a sum type), or call one of its methods, `Name.method(...)`
 ───╯
-{"code":"E0083","severity":"error","message":"`Name` is a type, not a value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a type names no value"}],"fix":"build a value of it (`Name { ... }` for a struct, a variant for a sum type), or call one of its methods, `Name.method(...)`"}
+  = E0083: meshc explain E0083 · skill diagnostics.md#e0083 · https://meshlang.dev/docs/errors/#e0083
+{"code":"E0083","severity":"error","message":"`Name` is a type, not a value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a type names no value","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"build a value of it (`Name { ... }` for a struct, a variant for a sum type), or call one of its methods, `Name.method(...)`","line":2,"col":7,"name":"type-not-value","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0083","skill":"references/diagnostics.md#e0083","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0083","edits":[]}
 
 [E0083] Error: `Int` is a type, not a value
    ╭─[ main.mpl:2:7 ]
@@ -809,7 +916,8 @@ expression: rendered
    │
    │ Help: call a function of its module, `Int.function(...)`
 ───╯
-{"code":"E0083","severity":"error","message":"`Int` is a type, not a value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a type names no value"}],"fix":"call a function of its module, `Int.function(...)`"}
+  = E0083: meshc explain E0083 · skill diagnostics.md#e0083 · https://meshlang.dev/docs/errors/#e0083
+{"code":"E0083","severity":"error","message":"`Int` is a type, not a value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a type names no value","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"call a function of its module, `Int.function(...)`","line":2,"col":7,"name":"type-not-value","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0083","skill":"references/diagnostics.md#e0083","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0083","edits":[]}
 
 [E0084] Error: `fn` belongs at the top level of a module, not inside a function
    ╭─[ main.mpl:2:7 ]
@@ -820,7 +928,8 @@ expression: rendered
    │
    │ Help: move it to the top level, or bind a closure: `let name = fn x -> ... end`
 ───╯
-{"code":"E0084","severity":"error","message":"`fn` belongs at the top level of a module, not inside a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"inside a function"}],"fix":"move it to the top level, or bind a closure: `let name = fn x -> ... end`"}
+  = E0084: meshc explain E0084 · skill diagnostics.md#e0084 · https://meshlang.dev/docs/errors/#e0084
+{"code":"E0084","severity":"error","message":"`fn` belongs at the top level of a module, not inside a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"inside a function","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"move it to the top level, or bind a closure: `let name = fn x -> ... end`","line":2,"col":7,"name":"nested-definition","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0084","skill":"references/diagnostics.md#e0084","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0084","edits":[]}
 
 [E0084] Error: `struct` belongs at the top level of a module, not inside a function
    ╭─[ main.mpl:2:7 ]
@@ -831,7 +940,8 @@ expression: rendered
    │
    │ Help: move it to the top level of the module
 ───╯
-{"code":"E0084","severity":"error","message":"`struct` belongs at the top level of a module, not inside a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"inside a function"}],"fix":"move it to the top level of the module"}
+  = E0084: meshc explain E0084 · skill diagnostics.md#e0084 · https://meshlang.dev/docs/errors/#e0084
+{"code":"E0084","severity":"error","message":"`struct` belongs at the top level of a module, not inside a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"inside a function","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"move it to the top level of the module","line":2,"col":7,"name":"nested-definition","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0084","skill":"references/diagnostics.md#e0084","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0084","edits":[]}
 
 [E0085] Error: `Option` takes 1 type argument, not 2
    ╭─[ main.mpl:2:7 ]
@@ -839,8 +949,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── wrong number of type arguments
+   │
+   │ Help: give `Option` one type argument
 ───╯
-{"code":"E0085","severity":"error","message":"`Option` takes 1 type argument, not 2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"wrong number of type arguments"}],"fix":null}
+  = E0085: meshc explain E0085 · skill diagnostics.md#e0085 · https://meshlang.dev/docs/errors/#e0085
+{"code":"E0085","severity":"error","message":"`Option` takes 1 type argument, not 2","file":"main.mpl","spans":[{"start":19,"end":24,"label":"wrong number of type arguments","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"give `Option` one type argument","line":2,"col":7,"name":"type-argument-count","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0085","skill":"references/diagnostics.md#e0085","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0085","edits":[]}
 
 [E0071] Error: unknown interface `name`
    ╭─[ main.mpl:2:7 ]
@@ -851,7 +964,8 @@ expression: rendered
    │
    │ Help: check the spelling, or declare the interface or import its module
 ───╯
-{"code":"E0071","severity":"error","message":"unknown interface `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no interface has this name"}],"fix":"check the spelling, or declare the interface or import its module"}
+  = E0071: meshc explain E0071 · skill diagnostics.md#e0071 · https://meshlang.dev/docs/errors/#e0071
+{"code":"E0071","severity":"error","message":"unknown interface `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no interface has this name","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"check the spelling, or declare the interface or import its module","line":2,"col":7,"name":"unknown-interface","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0071","skill":"references/diagnostics.md#e0071","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0071","edits":[]}
 
 [E0072] Error: reason
    ╭─[ main.mpl:2:7 ]
@@ -859,8 +973,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── invalid literal
+   │
+   │ Help: check the digits and use a number within the range of its type
 ───╯
-{"code":"E0072","severity":"error","message":"reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid literal"}],"fix":null}
+  = E0072: meshc explain E0072 · skill diagnostics.md#e0072 · https://meshlang.dev/docs/errors/#e0072
+{"code":"E0072","severity":"error","message":"reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid literal","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"check the digits and use a number within the range of its type","line":2,"col":7,"name":"invalid-literal","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0072","skill":"references/diagnostics.md#e0072","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0072","edits":[]}
 
 [E0074] Error: module `module` has no function `name`
    ╭─[ main.mpl:2:7 ]
@@ -871,7 +988,8 @@ expression: rendered
    │
    │ Help: `module` has available_a, available_b
 ───╯
-{"code":"E0074","severity":"error","message":"module `module` has no function `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a function of `module`"}],"fix":"`module` has available_a, available_b"}
+  = E0074: meshc explain E0074 · skill diagnostics.md#e0074 · https://meshlang.dev/docs/errors/#e0074
+{"code":"E0074","severity":"error","message":"module `module` has no function `name`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a function of `module`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"`module` has available_a, available_b","line":2,"col":7,"name":"no-such-module-function","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0074","skill":"references/diagnostics.md#e0074","topic":"stdlib"},"docs_url":"https://meshlang.dev/docs/errors/#e0074","edits":[]}
 
 [E0077] Error: `assert_receive` works only in test files run by `meshc test`
    ╭─[ main.mpl:2:7 ]
@@ -882,7 +1000,8 @@ expression: rendered
    │
    │ Help: elsewhere, write the `receive ... after TIMEOUT -> ...` it stands for
 ───╯
-{"code":"E0077","severity":"error","message":"`assert_receive` works only in test files run by `meshc test`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not in a test file"}],"fix":"elsewhere, write the `receive ... after TIMEOUT -> ...` it stands for"}
+  = E0077: meshc explain E0077 · skill diagnostics.md#e0077 · https://meshlang.dev/docs/errors/#e0077
+{"code":"E0077","severity":"error","message":"`assert_receive` works only in test files run by `meshc test`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not in a test file","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"elsewhere, write the `receive ... after TIMEOUT -> ...` it stands for","line":2,"col":7,"name":"assert-receive-outside-test","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0077","skill":"references/diagnostics.md#e0077","topic":"testing"},"docs_url":"https://meshlang.dev/docs/errors/#e0077","edits":[]}
 
 [E0076] Error: an `impl` for the generic type `name` is not supported
    ╭─[ main.mpl:2:7 ]
@@ -893,7 +1012,8 @@ expression: rendered
    │
    │ Help: implement it for a type without type parameters, such as a struct holding the `name` you mean
 ───╯
-{"code":"E0076","severity":"error","message":"an `impl` for the generic type `name` is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`name` takes type parameters"}],"fix":"implement it for a type without type parameters, such as a struct holding the `name` you mean"}
+  = E0076: meshc explain E0076 · skill diagnostics.md#e0076 · https://meshlang.dev/docs/errors/#e0076
+{"code":"E0076","severity":"error","message":"an `impl` for the generic type `name` is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`name` takes type parameters","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"implement it for a type without type parameters, such as a struct holding the `name` you mean","line":2,"col":7,"name":"generic-impl-target","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0076","skill":"references/diagnostics.md#e0076","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0076","edits":[]}
 
 [E0075] Error: `name` is defined at arities 0, 1 and 3
    ╭─[ main.mpl:2:7 ]
@@ -904,7 +1024,8 @@ expression: rendered
    │
    │ Help: call it with 0, 1 or 3 arguments; as a value, use a closure that calls one: `fn a0 -> name(a0) end`
 ───╯
-{"code":"E0075","severity":"error","message":"`name` is defined at arities 0, 1 and 3","file":"main.mpl","spans":[{"start":19,"end":24,"label":"each arity is its own function"}],"fix":"call it with 0, 1 or 3 arguments; as a value, use a closure that calls one: `fn a0 -> name(a0) end`"}
+  = E0075: meshc explain E0075 · skill diagnostics.md#e0075 · https://meshlang.dev/docs/errors/#e0075
+{"code":"E0075","severity":"error","message":"`name` is defined at arities 0, 1 and 3","file":"main.mpl","spans":[{"start":19,"end":24,"label":"each arity is its own function","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"call it with 0, 1 or 3 arguments; as a value, use a closure that calls one: `fn a0 -> name(a0) end`","line":2,"col":7,"name":"overloaded-function-value","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0075","skill":"references/diagnostics.md#e0075","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0075","edits":[]}
 
 [E0078] Error: `value[index]` indexing is not supported
    ╭─[ main.mpl:2:7 ]
@@ -915,7 +1036,8 @@ expression: rendered
    │
    │ Help: use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`
 ───╯
-{"code":"E0078","severity":"error","message":"`value[index]` indexing is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no indexing syntax"}],"fix":"use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`"}
+  = E0078: meshc explain E0078 · skill diagnostics.md#e0078 · https://meshlang.dev/docs/errors/#e0078
+{"code":"E0078","severity":"error","message":"`value[index]` indexing is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no indexing syntax","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`","line":2,"col":7,"name":"indexing-unsupported","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0078","skill":"references/diagnostics.md#e0078","topic":"collections"},"docs_url":"https://meshlang.dev/docs/errors/#e0078","edits":[]}
 
 [E0079] Error: cannot tell what type of message `actor` receives
    ╭─[ main.mpl:2:7 ]
@@ -926,7 +1048,8 @@ expression: rendered
    │
    │ Help: give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn(actor)`, or use the messages in the actor as the type they are
 ───╯
-{"code":"E0079","severity":"error","message":"cannot tell what type of message `actor` receives","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no typed `Pid` reaches this actor"}],"fix":"give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn(actor)`, or use the messages in the actor as the type they are"}
+  = E0079: meshc explain E0079 · skill diagnostics.md#e0079 · https://meshlang.dev/docs/errors/#e0079
+{"code":"E0079","severity":"error","message":"cannot tell what type of message `actor` receives","file":"main.mpl","spans":[{"start":19,"end":24,"label":"no typed `Pid` reaches this actor","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"give the pid a message type where it is spawned, as `let pid :: Pid<Int> = spawn(actor)`, or use the messages in the actor as the type they are","line":2,"col":7,"name":"actor-message-type-unknown","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0079","skill":"references/diagnostics.md#e0079","topic":"actors"},"docs_url":"https://meshlang.dev/docs/errors/#e0079","edits":[]}
 
 [E0080] Error: `let name` outside a function is not supported
    ╭─[ main.mpl:2:7 ]
@@ -937,7 +1060,8 @@ expression: rendered
    │
    │ Help: move it into the function that uses it, or make it a function: `fn name() do ... end`
 ───╯
-{"code":"E0080","severity":"error","message":"`let name` outside a function is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a module has no global bindings"}],"fix":"move it into the function that uses it, or make it a function: `fn name() do ... end`"}
+  = E0080: meshc explain E0080 · skill diagnostics.md#e0080 · https://meshlang.dev/docs/errors/#e0080
+{"code":"E0080","severity":"error","message":"`let name` outside a function is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a module has no global bindings","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"move it into the function that uses it, or make it a function: `fn name() do ... end`","line":2,"col":7,"name":"top-level-let","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0080","skill":"references/diagnostics.md#e0080","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0080","edits":[]}
 
 [E0087] Error: a statement outside a function never runs
    ╭─[ main.mpl:2:7 ]
@@ -948,7 +1072,8 @@ expression: rendered
    │
    │ Help: a program runs `main` and what it calls: move this into `main` or the function that needs it
 ───╯
-{"code":"E0087","severity":"error","message":"a statement outside a function never runs","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing runs this"}],"fix":"a program runs `main` and what it calls: move this into `main` or the function that needs it"}
+  = E0087: meshc explain E0087 · skill diagnostics.md#e0087 · https://meshlang.dev/docs/errors/#e0087
+{"code":"E0087","severity":"error","message":"a statement outside a function never runs","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing runs this","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"a program runs `main` and what it calls: move this into `main` or the function that needs it","line":2,"col":7,"name":"top-level-statement","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0087","skill":"references/diagnostics.md#e0087","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0087","edits":[]}
 
 [E0003] Error: a function of 2 parameters where one taking a 2-tuple is expected
    ╭─[ main.mpl:2:7 ]
@@ -959,7 +1084,8 @@ expression: rendered
    │
    │ Help: `fn (a, b) -> ...` takes 2 arguments; to take the tuple apart, put its pattern in parentheses: `fn ((a, b)) -> ... end`
 ───╯
-{"code":"E0003","severity":"error","message":"a function of 2 parameters where one taking a 2-tuple is expected","file":"main.mpl","spans":[{"start":19,"end":24,"label":"takes 2 arguments, not a tuple"}],"fix":"`fn (a, b) -> ...` takes 2 arguments; to take the tuple apart, put its pattern in parentheses: `fn ((a, b)) -> ... end`"}
+  = E0003: meshc explain E0003 · skill diagnostics.md#e0003 · https://meshlang.dev/docs/errors/#e0003
+{"code":"E0003","severity":"error","message":"a function of 2 parameters where one taking a 2-tuple is expected","file":"main.mpl","spans":[{"start":19,"end":24,"label":"takes 2 arguments, not a tuple","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"`fn (a, b) -> ...` takes 2 arguments; to take the tuple apart, put its pattern in parentheses: `fn ((a, b)) -> ... end`","line":2,"col":7,"name":"arity-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0003","skill":"references/diagnostics.md#e0003","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0003","edits":[]}
 
 [E0081] Error: module `name` is not imported
    ╭─[ main.mpl:2:7 ]
@@ -970,7 +1096,8 @@ expression: rendered
    │
    │ Help: add `import module` at the top of the file
 ───╯
-{"code":"E0081","severity":"error","message":"module `name` is not imported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a module of this project"}],"fix":"add `import module` at the top of the file"}
+  = E0081: meshc explain E0081 · skill diagnostics.md#e0081 · https://meshlang.dev/docs/errors/#e0081
+{"code":"E0081","severity":"error","message":"module `name` is not imported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a module of this project","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"add `import module` at the top of the file","line":2,"col":7,"name":"module-not-imported","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0081","skill":"references/diagnostics.md#e0081","topic":"projects"},"docs_url":"https://meshlang.dev/docs/errors/#e0081","edits":[]}
 
 [E0073] Error: `op` joins strings or lists, not `Int`
    ╭─[ main.mpl:2:7 ]
@@ -981,7 +1108,8 @@ expression: rendered
    │
    │ Help: convert the values to strings first, e.g. with `"${a}${b}"`
 ───╯
-{"code":"E0073","severity":"error","message":"`op` joins strings or lists, not `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"these operands are `Int`"}],"fix":"convert the values to strings first, e.g. with `\"${a}${b}\"`"}
+  = E0073: meshc explain E0073 · skill diagnostics.md#e0073 · https://meshlang.dev/docs/errors/#e0073
+{"code":"E0073","severity":"error","message":"`op` joins strings or lists, not `Int`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"these operands are `Int`","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"convert the values to strings first, e.g. with `\"${a}${b}\"`","line":2,"col":7,"name":"invalid-concat","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0073","skill":"references/diagnostics.md#e0073","topic":"syntax"},"docs_url":"https://meshlang.dev/docs/errors/#e0073","edits":[]}
 
 [E0067] Error: type parameter `param` stands for any type, but this function makes it `String`
    ╭─[ main.mpl:2:7 ]
@@ -992,7 +1120,8 @@ expression: rendered
    │
    │ Help: a generic function must work for every `param`: use `String` in its signature instead, or keep `param` values as they are
 ───╯
-{"code":"E0067","severity":"error","message":"type parameter `param` stands for any type, but this function makes it `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`param` is declared here"}],"fix":"a generic function must work for every `param`: use `String` in its signature instead, or keep `param` values as they are"}
+  = E0067: meshc explain E0067 · skill diagnostics.md#e0067 · https://meshlang.dev/docs/errors/#e0067
+{"code":"E0067","severity":"error","message":"type parameter `param` stands for any type, but this function makes it `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`param` is declared here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"a generic function must work for every `param`: use `String` in its signature instead, or keep `param` values as they are","line":2,"col":7,"name":"rigid-type-parameter","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0067","skill":"references/diagnostics.md#e0067","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0067","edits":[]}
 
 [E0066] Error: `method` is a static method of several types (types_a, types_b); call it on one
    ╭─[ main.mpl:2:7 ]
@@ -1003,7 +1132,8 @@ expression: rendered
    │
    │ Help: call it on the type: `types_a.method()`
 ───╯
-{"code":"E0066","severity":"error","message":"`method` is a static method of several types (types_a, types_b); call it on one","file":"main.mpl","spans":[{"start":19,"end":24,"label":"which type's is meant?"}],"fix":"call it on the type: `types_a.method()`"}
+  = E0066: meshc explain E0066 · skill diagnostics.md#e0066 · https://meshlang.dev/docs/errors/#e0066
+{"code":"E0066","severity":"error","message":"`method` is a static method of several types (types_a, types_b); call it on one","file":"main.mpl","spans":[{"start":19,"end":24,"label":"which type's is meant?","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"call it on the type: `types_a.method()`","line":2,"col":7,"name":"ambiguous-static-method","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0066","skill":"references/diagnostics.md#e0066","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0066","edits":[]}
 
 [E0064] Error: cannot tell which type `default()` builds here
    ╭─[ main.mpl:2:7 ]
@@ -1014,7 +1144,8 @@ expression: rendered
    │
    │ Help: annotate it: `let x :: Int = default()`
 ───╯
-{"code":"E0064","severity":"error","message":"cannot tell which type `default()` builds here","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes this value's type"}],"fix":"annotate it: `let x :: Int = default()`"}
+  = E0064: meshc explain E0064 · skill diagnostics.md#e0064 · https://meshlang.dev/docs/errors/#e0064
+{"code":"E0064","severity":"error","message":"cannot tell which type `default()` builds here","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes this value's type","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"annotate it: `let x :: Int = default()`","line":2,"col":7,"name":"ambiguous-default","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0064","skill":"references/diagnostics.md#e0064","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0064","edits":[]}
 
 [E0062] Error: type alias `alias_name` refers to itself
    ╭─[ main.mpl:2:7 ]
@@ -1025,7 +1156,8 @@ expression: rendered
    │
    │ Help: an alias names an existing type; use a struct or sum type for a recursive type
 ───╯
-{"code":"E0062","severity":"error","message":"type alias `alias_name` refers to itself","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expanding it never ends"}],"fix":"an alias names an existing type; use a struct or sum type for a recursive type"}
+  = E0062: meshc explain E0062 · skill diagnostics.md#e0062 · https://meshlang.dev/docs/errors/#e0062
+{"code":"E0062","severity":"error","message":"type alias `alias_name` refers to itself","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expanding it never ends","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"an alias names an existing type; use a struct or sum type for a recursive type","line":2,"col":7,"name":"cyclic-alias","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0062","skill":"references/diagnostics.md#e0062","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0062","edits":[]}
 
 [E0061] Error: variant `variant` of `second_type` is already a variant of `first_type`
    ╭─[ main.mpl:2:7 ]
@@ -1036,7 +1168,8 @@ expression: rendered
    │
    │ Help: give one of the variants another name
 ───╯
-{"code":"E0061","severity":"error","message":"variant `variant` of `second_type` is already a variant of `first_type`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`variant` would name either type's variant"}],"fix":"give one of the variants another name"}
+  = E0061: meshc explain E0061 · skill diagnostics.md#e0061 · https://meshlang.dev/docs/errors/#e0061
+{"code":"E0061","severity":"error","message":"variant `variant` of `second_type` is already a variant of `first_type`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"`variant` would name either type's variant","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"give one of the variants another name","line":2,"col":7,"name":"duplicate-variant","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0061","skill":"references/diagnostics.md#e0061","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0061","edits":[]}
 
 [E0060] Error: cannot derive `trait_name` for `type_name`: field `field_name` holds a function
    ╭─[ main.mpl:2:7 ]
@@ -1047,7 +1180,8 @@ expression: rendered
    │
    │ Help: remove `trait_name` from the deriving list
 ───╯
-{"code":"E0060","severity":"error","message":"cannot derive `trait_name` for `type_name`: field `field_name` holds a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"functions cannot be compared, hashed or shown"}],"fix":"remove `trait_name` from the deriving list"}
+  = E0060: meshc explain E0060 · skill diagnostics.md#e0060 · https://meshlang.dev/docs/errors/#e0060
+{"code":"E0060","severity":"error","message":"cannot derive `trait_name` for `type_name`: field `field_name` holds a function","file":"main.mpl","spans":[{"start":19,"end":24,"label":"functions cannot be compared, hashed or shown","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"remove `trait_name` from the deriving list","line":2,"col":7,"name":"underivable-function-field","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0060","skill":"references/diagnostics.md#e0060","topic":"traits"},"docs_url":"https://meshlang.dev/docs/errors/#e0060","edits":[]}
 
 [E0058] Error: field `field_name` is given more than once
    ╭─[ main.mpl:2:7 ]
@@ -1058,7 +1192,8 @@ expression: rendered
    │
    │ Help: give each field one value
 ───╯
-{"code":"E0058","severity":"error","message":"field `field_name` is given more than once","file":"main.mpl","spans":[{"start":19,"end":24,"label":"given again here"}],"fix":"give each field one value"}
+  = E0058: meshc explain E0058 · skill diagnostics.md#e0058 · https://meshlang.dev/docs/errors/#e0058
+{"code":"E0058","severity":"error","message":"field `field_name` is given more than once","file":"main.mpl","spans":[{"start":19,"end":24,"label":"given again here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"give each field one value","line":2,"col":7,"name":"duplicate-field","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0058","skill":"references/diagnostics.md#e0058","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0058","edits":[]}
 
 [E0059] Error: `Int` is not a struct
    ╭─[ main.mpl:2:7 ]
@@ -1069,7 +1204,8 @@ expression: rendered
    │
    │ Help: `Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one
 ───╯
-{"code":"E0059","severity":"error","message":"`Int` is not a struct","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a struct"}],"fix":"`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one"}
+  = E0059: meshc explain E0059 · skill diagnostics.md#e0059 · https://meshlang.dev/docs/errors/#e0059
+{"code":"E0059","severity":"error","message":"`Int` is not a struct","file":"main.mpl","spans":[{"start":19,"end":24,"label":"not a struct","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one","line":2,"col":7,"name":"not-a-struct","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0059","skill":"references/diagnostics.md#e0059","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0059","edits":[]}
 
 [E0059] Error: a struct update needs a struct value
    ╭─[ main.mpl:2:7 ]
@@ -1080,18 +1216,32 @@ expression: rendered
    │
    │ Help: `Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one
 ───╯
-{"code":"E0059","severity":"error","message":"a struct update needs a struct value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"the type of this value is not known here"}],"fix":"`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one"}
+  = E0059: meshc explain E0059 · skill diagnostics.md#e0059 · https://meshlang.dev/docs/errors/#e0059
+{"code":"E0059","severity":"error","message":"a struct update needs a struct value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"the type of this value is not known here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"`Name { field: value }` and `%{value | field: new}` work on structs; annotate the value with its struct type if it has one","line":2,"col":7,"name":"not-a-struct","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0059","skill":"references/diagnostics.md#e0059","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0059","edits":[]}
 
-[E0053] Error: resource ownership violation: reason
+[E0101] Error: resource crosses a boundary: resource `value` cannot enter an unrestricted collection
    ╭─[ main.mpl:2:7 ]
    │
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── here
    │
-   │ Help: move each resource once, or pass it to a direct `borrow` parameter
+   │ Help: Keep the resource in an ownership-aware scope and pass an unrestricted value instead, such as an ID or the data the resource represents.
 ───╯
-{"code":"E0053","severity":"error","message":"resource ownership violation: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"here"}],"fix":"move each resource once, or pass it to a direct `borrow` parameter"}
+  = E0101: meshc explain E0101 · skill diagnostics.md#e0101 · https://meshlang.dev/docs/errors/#e0101
+{"code":"E0101","severity":"error","message":"resource crosses a boundary: resource `value` cannot enter an unrestricted collection","file":"main.mpl","spans":[{"start":19,"end":24,"label":"here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Keep the resource in an ownership-aware scope and pass an unrestricted value instead, such as an ID or the data the resource represents.","line":2,"col":7,"name":"resource-crosses-boundary","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0101","skill":"references/diagnostics.md#e0101","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0101","edits":[]}
+
+[E0053] Error: resource ownership violation: resource `value` was used after it moved
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── here
+   │
+   │ Help: Use the resource before moving it. Pass it to a direct `borrow` parameter when the caller needs to keep ownership.
+───╯
+  = E0053: meshc explain E0053 · skill diagnostics.md#e0053 · https://meshlang.dev/docs/errors/#e0053
+{"code":"E0053","severity":"error","message":"resource ownership violation: resource `value` was used after it moved","file":"main.mpl","spans":[{"start":19,"end":24,"label":"here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Use the resource before moving it. Pass it to a direct `borrow` parameter when the caller needs to keep ownership.","line":2,"col":7,"name":"resource-ownership-violation","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0053","skill":"references/diagnostics.md#e0053","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0053","edits":[]}
 
 [E0093] Error: plaintext cannot leave here: reason
    ╭─[ main.mpl:2:7 ]
@@ -1102,7 +1252,8 @@ expression: rendered
    │
    │ Help: a `Plaintext` value leaves the program only through `Crypto.aead_seal_plaintext`, `Crypto.hpke_seal_plaintext`, `Plaintext.seal_for_storage`, an `@display` export, or `declassify(value, "reason")`; work on it with `Plaintext.map`
 ───╯
-{"code":"E0093","severity":"error","message":"plaintext cannot leave here: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"here"}],"fix":"a `Plaintext` value leaves the program only through `Crypto.aead_seal_plaintext`, `Crypto.hpke_seal_plaintext`, `Plaintext.seal_for_storage`, an `@display` export, or `declassify(value, \"reason\")`; work on it with `Plaintext.map`"}
+  = E0093: meshc explain E0093 · skill diagnostics.md#e0093 · https://meshlang.dev/docs/errors/#e0093
+{"code":"E0093","severity":"error","message":"plaintext cannot leave here: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"a `Plaintext` value leaves the program only through `Crypto.aead_seal_plaintext`, `Crypto.hpke_seal_plaintext`, `Plaintext.seal_for_storage`, an `@display` export, or `declassify(value, \"reason\")`; work on it with `Plaintext.map`","line":2,"col":7,"name":"plaintext-violation","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0093","skill":"references/diagnostics.md#e0093","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0093","edits":[]}
 
 [E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:2:15 ]
@@ -1110,8 +1261,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │               ──────┬──────
    │                     ╰──────── argument 2 has type String, expected Int
+   │
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"argument 2 has type String, expected Int"}],"fix":null}
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"argument 2 has type String, expected Int","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":2,"col":15,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 
 [E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:3:9 ]
@@ -1119,8 +1273,11 @@ expression: rendered
  3 │   value + other
    │         ┬
    │         ╰── expected Int, found String
+   │
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":49,"end":50,"label":"expected Int, found String"}],"fix":null}
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":49,"end":50,"label":"expected Int, found String","file":"main.mpl","line":3,"col":9,"end_line":3,"end_col":10}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":3,"col":9,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 
 [E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:2:15 ]
@@ -1131,8 +1288,11 @@ expression: rendered
  3 │   value + other
    │           ──┬──
    │             ╰──── found String
+   │
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"type mismatch: expected `Int`, found `String`"},{"start":19,"end":24,"label":"expected Int"},{"start":51,"end":56,"label":"found String"}],"fix":null}
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":27,"end":40,"label":"type mismatch: expected `Int`, found `String`","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28},{"start":19,"end":24,"label":"expected Int","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12},{"start":51,"end":56,"label":"found String","file":"main.mpl","line":3,"col":11,"end_line":3,"end_col":16}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":2,"col":15,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 
 [E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:2:7 ]
@@ -1140,23 +1300,27 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── expected Int from annotation
+   │
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int from annotation"}],"fix":null}
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int from annotation","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":2,"col":7,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 
 [E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:3:11 ]
+   │
+ 1 │ fn main() do
+   │ ──────┬─────
+   │       ╰─────── return type declared as Int
    │
  3 │   value + other
    │           ──┬──
    │             ╰──── returns String
    │
-   ├─[ main.mpl:3:11 ]
-   │
- 1 │ fn main() do
-   │ ──────┬─────
-   │       ╰─────── return type declared as Int
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":51,"end":56,"label":"returns String"},{"start":0,"end":12,"label":"return type declared as Int"}],"fix":null}
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":51,"end":56,"label":"returns String","file":"main.mpl","line":3,"col":11,"end_line":3,"end_col":16},{"start":0,"end":12,"label":"return type declared as Int","file":"main.mpl","line":1,"col":1,"end_line":1,"end_col":13}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":3,"col":11,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 
 [E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:2:7 ]
@@ -1164,8 +1328,11 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── expected Int, found String
+   │
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int, found String"}],"fix":null}
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int, found String","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":2,"col":7,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 
 [E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:2:7 ]
@@ -1175,8 +1342,11 @@ expression: rendered
    │         ╰──────────────────── expected Int
    │                     │
    │                     ╰──────── found String
+   │
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int"},{"start":27,"end":40,"label":"found String"}],"fix":null}
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"expected Int","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12},{"start":27,"end":40,"label":"found String","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":2,"col":7,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 
 [E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:2:7 ]
@@ -1184,16 +1354,127 @@ expression: rendered
  2 │   let value = compute(1, 2)
    │       ──┬──
    │         ╰──── this pattern matches String, but the value is Int
+   │
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this pattern matches String, but the value is Int"}],"fix":null}
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":19,"end":24,"label":"this pattern matches String, but the value is Int","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":2,"col":7,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
 
 [E0001] Error: type mismatch: expected `Int`, found `String`
-   ╭─[ main.mpl:1:1 ]
+   --> main.mpl
+  Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001
+{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[],"fix":"Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.","line":null,"col":null,"name":"type-mismatch","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0001","skill":"references/diagnostics.md#e0001","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0001","edits":[]}
+
+[E0094] Error: pass a named function with type fn(String) -> String as the handler
+   ╭─[ main.mpl:2:15 ]
    │
- 1 │ ╭─▶ fn main() do
-   ┆ ┆
- 4 │ ├─▶ end
-   │ │
-   │ ╰───────── expected Int, found String
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── invalid job start
+   │
+   │ Help: pass a named function with type fn(String) -> String as the handler
 ───╯
-{"code":"E0001","severity":"error","message":"type mismatch: expected `Int`, found `String`","file":"main.mpl","spans":[{"start":0,"end":61,"label":"expected Int, found String"}],"fix":null}
+  = E0094: meshc explain E0094 · skill diagnostics.md#e0094 · https://meshlang.dev/docs/errors/#e0094
+{"code":"E0094","severity":"error","message":"pass a named function with type fn(String) -> String as the handler","file":"main.mpl","spans":[{"start":27,"end":40,"label":"invalid job start","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"pass a named function with type fn(String) -> String as the handler","line":2,"col":15,"name":"invalid-jobs-start","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0094","skill":"references/diagnostics.md#e0094","topic":"database"},"docs_url":"https://meshlang.dev/docs/errors/#e0094","edits":[]}
+
+[E0095] Error: reason
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── invalid Nat index
+   │
+   │ Help: Declare each index parameter as `n :: Nat` on a sum type, variant, or function, and write each index from `Nat` literals, those parameters, and `Succ<...>`, with types only in type positions. Return a value whose type names no index bound inside a case arm.
+───╯
+  = E0095: meshc explain E0095 · skill diagnostics.md#e0095 · https://meshlang.dev/docs/errors/#e0095
+{"code":"E0095","severity":"error","message":"reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid Nat index","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Declare each index parameter as `n :: Nat` on a sum type, variant, or function, and write each index from `Nat` literals, those parameters, and `Succ<...>`, with types only in type positions. Return a value whose type names no index bound inside a case arm.","line":2,"col":7,"name":"invalid-nat-index","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0095","skill":"references/diagnostics.md#e0095","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0095","edits":[]}
+
+[E0096] Error: each indexed constructor must declare its result type
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── invalid indexed type
+   │
+   │ Help: Give each constructor of an indexed type a result `-> Family<...>` of its own family that keeps the type parameters and binds every constructor index; write the family with all its arguments; declare index parameters once, without trait bounds, on a function of one clause; derive nothing; and match its constructors in a direct `case` arm.
+───╯
+  = E0096: meshc explain E0096 · skill diagnostics.md#e0096 · https://meshlang.dev/docs/errors/#e0096
+{"code":"E0096","severity":"error","message":"each indexed constructor must declare its result type","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid indexed type","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Give each constructor of an indexed type a result `-> Family<...>` of its own family that keeps the type parameters and binds every constructor index; write the family with all its arguments; declare index parameters once, without trait bounds, on a function of one clause; derive nothing; and match its constructors in a direct `case` arm.","line":2,"col":7,"name":"invalid-indexed-type","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0096","skill":"references/diagnostics.md#e0096","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0096","edits":[]}
+
+[E0097] Error: `Proof` is a reserved type name
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── reserved for the type of proof values
+   │
+   │ Help: rename your `Proof` type, for example to `Evidence`, and update its uses
+───╯
+  = E0097: meshc explain E0097 · skill diagnostics.md#e0097 · https://meshlang.dev/docs/errors/#e0097
+{"code":"E0097","severity":"error","message":"`Proof` is a reserved type name","file":"main.mpl","spans":[{"start":19,"end":24,"label":"reserved for the type of proof values","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"rename your `Proof` type, for example to `Evidence`, and update its uses","line":2,"col":7,"name":"reserved-proof-name","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0097","skill":"references/diagnostics.md#e0097","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#e0097","edits":[]}
+
+[E0098] Error: exported theorem `theorem` requires an embedded proof
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── no `proof` of this theorem
+   │
+   │ Help: write `proof theorem do ... end` in a `logic do` block of this module, or remove `pub` to keep `theorem` out of Mesh code
+───╯
+  = E0098: meshc explain E0098 · skill diagnostics.md#e0098 · https://meshlang.dev/docs/errors/#e0098
+{"code":"E0098","severity":"error","message":"exported theorem `theorem` requires an embedded proof","file":"main.mpl","spans":[{"start":27,"end":40,"label":"no `proof` of this theorem","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"write `proof theorem do ... end` in a `logic do` block of this module, or remove `pub` to keep `theorem` out of Mesh code","line":2,"col":15,"name":"missing-embedded-proof","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0098","skill":"references/diagnostics.md#e0098","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#e0098","edits":[]}
+
+[E0099] Error: proof value `name` is defined twice
+   ╭─[ main.mpl:3:3 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── first defined here
+ 3 │   value + other
+   │   ──┬──
+   │     ╰──── defined again here
+   │
+   │ Help: rename one `name` and its `proof`, and update the calls that use it
+───╯
+  = E0099: meshc explain E0099 · skill diagnostics.md#e0099 · https://meshlang.dev/docs/errors/#e0099
+{"code":"E0099","severity":"error","message":"proof value `name` is defined twice","file":"main.mpl","spans":[{"start":43,"end":48,"label":"defined again here","file":"main.mpl","line":3,"col":3,"end_line":3,"end_col":8},{"start":19,"end":24,"label":"first defined here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"rename one `name` and its `proof`, and update the calls that use it","line":3,"col":3,"name":"duplicate-proof-value","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0099","skill":"references/diagnostics.md#e0099","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#e0099","edits":[]}
+
+[E0100] Error: `NatEq` requires exactly two Nat arguments
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── has no proof type here
+   │
+   │ Help: State the proposition as a predicate declared `-> Prop` in a `logic do` block, applied to Nat literals, `Nat.succ`, or index parameters, or as an equality of Nat terms (`Proof<NatEq<a, b>>` in a type). Call a theorem with parameters as `name(indices..., proofs...)`.
+───╯
+  = E0100: meshc explain E0100 · skill diagnostics.md#e0100 · https://meshlang.dev/docs/errors/#e0100
+{"code":"E0100","severity":"error","message":"`NatEq` requires exactly two Nat arguments","file":"main.mpl","spans":[{"start":27,"end":40,"label":"has no proof type here","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"State the proposition as a predicate declared `-> Prop` in a `logic do` block, applied to Nat literals, `Nat.succ`, or index parameters, or as an equality of Nat terms (`Proof<NatEq<a, b>>` in a type). Call a theorem with parameters as `name(indices..., proofs...)`.","line":2,"col":15,"name":"invalid-proposition","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0100","skill":"references/diagnostics.md#e0100","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#e0100","edits":[]}
+
+[P0301] Error: expected `end`, found `=`
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──   ───┬───
+   │         ╰────────────── block opened here
+   │                  │
+   │                  ╰───── expected `end` here
+   │
+   │ Help: Write the token the message expects where the label points: separate entries with new lines or `;`, close each `do` with `end`, write equality as `==`, and annotate binders as `name :: Type`.
+───╯
+  = P0301: meshc explain P0301 · skill diagnostics.md#p0301 · https://meshlang.dev/docs/errors/#p0301
+{"code":"P0301","severity":"error","message":"expected `end`, found `=`","file":"main.mpl","spans":[{"start":27,"end":34,"label":"expected `end` here","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":22},{"start":19,"end":24,"label":"block opened here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Write the token the message expects where the label points: separate entries with new lines or `;`, close each `do` with `end`, write equality as `==`, and annotate binders as `name :: Type`.","line":2,"col":15,"name":"logic-syntax","category":"syntax","notes":[],"guide":{"explain":"meshc explain P0301","skill":"references/diagnostics.md#p0301","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#p0301","edits":[]}
+
+[P0302] Error: logic nesting limit exceeded
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰────────
+   │
+   │ Help: Name the deepest subterm with `let` or a separate `fn` declaration, split a deep proof into lemmas used with `exact`, or split the file.
+───╯
+  = P0302: meshc explain P0302 · skill diagnostics.md#p0302 · https://meshlang.dev/docs/errors/#p0302
+{"code":"P0302","severity":"error","message":"logic nesting limit exceeded","file":"main.mpl","spans":[{"start":27,"end":40,"label":"logic nesting limit exceeded","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"Name the deepest subterm with `let` or a separate `fn` declaration, split a deep proof into lemmas used with `exact`, or split the file.","line":2,"col":15,"name":"logic-too-large","category":"syntax","notes":[],"guide":{"explain":"meshc explain P0302","skill":"references/diagnostics.md#p0302","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#p0302","edits":[]}

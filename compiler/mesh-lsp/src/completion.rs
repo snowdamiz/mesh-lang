@@ -115,13 +115,9 @@ const SNIPPETS: &[(&str, &str)] = &[
 /// Combines all four completion tiers: keywords, built-in types, snippets,
 /// and scope-aware names from CST traversal. Results are filtered by the
 /// prefix the user has typed so far.
-pub fn compute_completions(
-    source: &str,
-    analysis: &AnalysisResult,
-    position: &Position,
-) -> Vec<CompletionItem> {
+pub fn compute_completions(analysis: &AnalysisResult, position: &Position) -> Vec<CompletionItem> {
     // Convert LSP position to source byte offset.
-    let source_offset = match crate::analysis::position_to_offset(source, position) {
+    let source_offset = match crate::analysis::position_to_offset(&analysis.file, position) {
         Some(o) => o,
         None => return Vec::new(),
     };
@@ -129,7 +125,7 @@ pub fn compute_completions(
     // Extract the prefix by scanning backward from cursor to the last
     // non-identifier character. This avoids tree offset issues when cursor
     // is in whitespace.
-    let prefix = extract_prefix(source, source_offset);
+    let prefix = extract_prefix(analysis.source(), source_offset);
 
     let mut items = Vec::new();
 
@@ -292,7 +288,7 @@ mod tests {
     fn completions_at(source: &str, line: u32, character: u32) -> Vec<CompletionItem> {
         let analysis = crate::analysis::analyze_document("file:///test.mpl", source, &[]);
         let position = Position { line, character };
-        compute_completions(source, &analysis, &position)
+        compute_completions(&analysis, &position)
     }
 
     /// The scope names at the cursor, with their kinds.

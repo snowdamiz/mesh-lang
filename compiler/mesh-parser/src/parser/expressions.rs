@@ -7,7 +7,9 @@
 //! closures, blocks), and basic statements (let bindings, return).
 
 use mesh_common::span::Span;
+use mesh_lexer::LexErrorKind;
 
+use crate::error::ParseError;
 use crate::syntax_kind::SyntaxKind;
 
 use super::{MarkClosed, Parser};
@@ -83,6 +85,13 @@ pub(crate) fn expr(p: &mut Parser) {
 /// expression (the LHS), then loops over postfix and infix operators,
 /// consuming them as long as their binding power exceeds `min_bp`.
 fn expr_bp(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
+    p.with_nesting(|p| expr_bp_inner(p, min_bp))
+}
+
+fn expr_bp_inner(p: &mut Parser, min_bp: u8) -> Option<MarkClosed> {
+    if p.is_newline_insignificant() && p.at_item_boundary() {
+        return None;
+    }
     // Parse the left-hand side (atom or prefix).
     let mut lhs = lhs(p)?;
 
@@ -761,9 +770,12 @@ fn parse_string_expr(p: &mut Parser) -> MarkClosed {
             }
             SyntaxKind::INTERPOLATION_START => {
                 let interp = p.open();
+                let opened = p.current_span();
                 p.advance(); // ${
                 expr_bp(p, 0);
-                p.expect(SyntaxKind::INTERPOLATION_END);
+                if !p.eat(SyntaxKind::INTERPOLATION_END) {
+                    p.unclosed(SyntaxKind::INTERPOLATION_END, opened);
+                }
                 p.close(interp, SyntaxKind::INTERPOLATION);
             }
             SyntaxKind::STRING_END => {
@@ -771,9 +783,16 @@ fn parse_string_expr(p: &mut Parser) -> MarkClosed {
                 break;
             }
             // The lexer ends a string that the file ends in with an error.
-            SyntaxKind::EOF | SyntaxKind::ERROR => {
-                p.error_at("unterminated string: no closing `\"`", opening);
-                p.input_swallowed();
+            SyntaxKind::EOF | SyntaxKind::ERROR
+                if p.current_lex_kind()
+                    .is_none_or(|kind| kind == LexErrorKind::UnterminatedString) =>
+            {
+                let unterminated = LexErrorKind::UnterminatedString;
+                p.report(ParseError::new(
+                    unterminated.code(),
+                    unterminated.message(""),
+                    opening,
+                ));
                 if p.at(SyntaxKind::ERROR) {
                     p.advance();
                 }
@@ -804,6 +823,10 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
 
     loop {
         p.eat_separators();
+
+        if p.at_item_boundary() {
+            break;
+        }
 
         // Check if we've reached a block terminator.
         match p.current() {
@@ -955,25 +978,19 @@ fn parse_if_expr(p: &mut Parser) -> MarkClosed {
 
         if p.at(SyntaxKind::IF_KW) {
             // else-if chain: parse nested if expression.
-            parse_if_expr(p);
+            p.with_nesting(|p| {
+                parse_if_expr(p);
+            });
         } else {
             // else block.
             parse_block_body(p);
-            p.expect(SyntaxKind::END_KW);
+            p.expect_end("`else` block", do_span);
         }
 
         p.close(else_m, SyntaxKind::ELSE_BRANCH);
     } else {
         // No else -- expect `end`.
-        if !p.at(SyntaxKind::END_KW) {
-            p.error_with_related(
-                "expected `end` to close `do` block",
-                do_span,
-                "`do` block started here",
-            );
-        } else {
-            p.advance(); // END_KW
-        }
+        p.expect_end("`do` block", do_span);
     }
 
     p.close(m, SyntaxKind::IF_EXPR)
@@ -1007,15 +1024,7 @@ fn parse_case_expr(p: &mut Parser) -> MarkClosed {
         }
     }
 
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close `case` block",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("`case` block", do_span);
 
     p.close(m, SyntaxKind::CASE_EXPR)
 }
@@ -1058,13 +1067,10 @@ fn parse_match_arm(p: &mut Parser) {
 ///   end
 fn parse_arm_body(p: &mut Parser) {
     if p.at(SyntaxKind::DO_KW) {
+        let do_span = p.current_span();
         p.advance(); // DO_KW
         parse_block_body(p);
-        if p.at(SyntaxKind::END_KW) {
-            p.advance(); // END_KW
-        } else {
-            p.error("expected `end` to close arm `do` block");
-        }
+        p.expect_end("arm `do` block", do_span);
     } else if p.at_line_end() {
         // A new line, also an insignificant one: a case inside brackets
         // (`f(case x do ... end)`) has statement bodies too.
@@ -1207,7 +1213,7 @@ fn parse_closure(p: &mut Parser) -> MarkClosed {
     // No-params closures: `fn -> body end` or `fn do body end`
     if has_arrow_immediately || has_do_immediately {
         parse_closure_body_block(p);
-        expect_closure_end(p, fn_span);
+        p.expect_end("closure", fn_span);
         return p.close(m, SyntaxKind::CLOSURE_EXPR);
     }
 
@@ -1254,22 +1260,14 @@ fn parse_closure(p: &mut Parser) -> MarkClosed {
         if p.at(SyntaxKind::DO_KW) && !p.has_error() {
             p.error("a closure's return type is inferred: write `fn(params) do ... end`, without `-> Type`");
         } else {
-            expect_closure_end(p, fn_span);
+            p.expect_end("closure", fn_span);
         }
     } else if p.at(SyntaxKind::DO_KW) {
         // do/end body: `fn x do body end` -- single `end` for both block and closure.
         let do_span = p.current_span();
         p.advance(); // DO_KW
         parse_block_body(p);
-        if !p.at(SyntaxKind::END_KW) {
-            p.error_with_related(
-                "unclosed closure -- expected `end`",
-                do_span,
-                "`do` block started here",
-            );
-        } else {
-            p.advance(); // END_KW
-        }
+        p.expect_end("closure", do_span);
     } else {
         p.error("expected `->` or `do` after closure parameters");
     }
@@ -1345,15 +1343,7 @@ fn parse_closure_clause(p: &mut Parser) {
         let do_span = p.current_span();
         p.advance(); // DO_KW
         parse_block_body(p);
-        if !p.at(SyntaxKind::END_KW) {
-            p.error_with_related(
-                "unclosed closure clause -- expected `end`",
-                do_span,
-                "`do` block started here",
-            );
-        } else {
-            p.advance(); // END_KW (for do/end block)
-        }
+        p.expect_end("closure clause", do_span);
     } else {
         p.error("expected `->` or `do` after closure clause parameters");
     }
@@ -1366,19 +1356,6 @@ fn parse_closure_clause(p: &mut Parser) {
 fn parse_closure_body_block(p: &mut Parser) {
     p.advance(); // ARROW or DO_KW
     parse_block_body(p);
-}
-
-/// Expect END_KW to close a closure, emitting an error pointing back to fn if missing.
-fn expect_closure_end(p: &mut Parser, fn_span: Span) {
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "unclosed closure -- expected `end`",
-            fn_span,
-            "closure started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
 }
 
 /// Check whether the current position looks like bare closure parameters.
@@ -1648,15 +1625,7 @@ fn parse_trailing_closure(p: &mut Parser) {
     // Parse block body.
     parse_block_body(p);
 
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close `do` block",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("`do` block", do_span);
 
     p.close(m, SyntaxKind::TRAILING_CLOSURE);
 }
@@ -1678,15 +1647,7 @@ fn parse_while_expr(p: &mut Parser) -> MarkClosed {
     parse_block_body(p);
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close `do` block",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("`do` block", do_span);
 
     p.close(m, SyntaxKind::WHILE_EXPR)
 }
@@ -1774,15 +1735,7 @@ fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
     parse_block_body(p);
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close `for` block",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("`for` block", do_span);
 
     p.close(m, SyntaxKind::FOR_IN_EXPR)
 }
@@ -1858,15 +1811,7 @@ fn parse_receive_expr(p: &mut Parser) -> MarkClosed {
     // The `after` clause ends the loop above; `end` may follow on its own line.
     p.eat_separators();
 
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close `receive` block",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("`receive` block", do_span);
 
     p.close(m, SyntaxKind::RECEIVE_EXPR)
 }

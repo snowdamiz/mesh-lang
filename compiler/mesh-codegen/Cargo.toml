@@ -7,6 +7,7 @@ description = "LLVM code generation for the Mesh compiler"
 [dependencies]
 inkwell = { workspace = true }
 mesh-common = { path = "../mesh-common" }
+mesh-diagnostics = { path = "../mesh-diagnostics" }
 mesh-parser = { path = "../mesh-parser" }
 mesh-typeck = { path = "../mesh-typeck" }
 rustc-hash = { workspace = true }

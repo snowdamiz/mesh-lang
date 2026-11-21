@@ -1,10 +1,11 @@
+use mesh_diagnostics::{Code, Diagnostic, Failed, Reporter};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs::{self, File, Metadata, OpenOptions};
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
-use clap::Subcommand;
+use clap::{builder::PossibleValuesParser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 use crate::guide;
@@ -15,7 +16,15 @@ const BACKUP: &str = ".mesh-skill-previous";
 #[derive(Subcommand)]
 pub(crate) enum SkillsCommand {
     /// Choose coding tools and install their Mesh skill
-    Setup,
+    Setup {
+        /// Approve installation in the current project without prompting
+        #[arg(long, short = 'y')]
+        yes: bool,
+
+        /// Coding tool to install for (repeat to select multiple tools)
+        #[arg(long, value_name = "AGENT", value_parser = PossibleValuesParser::new(HOSTS.iter().map(|host| host.id)))]
+        target: Vec<String>,
+    },
     /// Refresh account skills previously installed by Mesh
     Refresh,
 }
@@ -28,6 +37,7 @@ enum Scope {
 }
 
 struct Host {
+    id: &'static str,
     name: &'static str,
     account: &'static str,
     project: &'static str,
@@ -35,26 +45,31 @@ struct Host {
 
 const HOSTS: &[Host] = &[
     Host {
+        id: "codex",
         name: "Codex",
         account: ".agents",
         project: ".agents",
     },
     Host {
+        id: "claude-code",
         name: "Claude Code",
         account: ".claude",
         project: ".claude",
     },
     Host {
+        id: "cursor",
         name: "Cursor",
         account: ".cursor",
         project: ".agents",
     },
     Host {
+        id: "gemini-cli",
         name: "Gemini CLI",
         account: ".gemini",
         project: ".gemini",
     },
     Host {
+        id: "github-copilot-cli",
         name: "GitHub Copilot CLI",
         account: ".copilot",
         project: ".github",
@@ -69,17 +84,72 @@ struct Receipt {
     digest: String,
 }
 
-pub(crate) fn run(command: SkillsCommand) -> Result<(), String> {
-    match command {
-        SkillsCommand::Setup => {
-            let input = io::stdin();
-            if !input.is_terminal() {
-                return Err("Run `meshc skills setup` in an interactive terminal.".into());
-            }
-            setup(&mut input.lock(), &mut io::stdout().lock()).map_err(|err| err.to_string())
+pub(crate) fn run(command: SkillsCommand, reporter: &mut Reporter) -> Result<(), Failed> {
+    let report_io = |error: io::Error| Diagnostic::new(Code::PathNotFound, error.to_string());
+    let (selection, setup) = match command {
+        SkillsCommand::Setup { yes: true, target } if !target.is_empty() => {
+            let hosts = HOSTS
+                .iter()
+                .filter(|host| target.iter().any(|id| id == host.id));
+            let root = project_root().map_err(|error| reporter.fail(report_io(error)))?;
+            (Some(Selection::new(Scope::Project, root, hosts)), true)
         }
-        SkillsCommand::Refresh => refresh().map_err(|err| err.to_string()),
+        SkillsCommand::Setup { yes: false, target }
+            if target.is_empty() && io::stdin().is_terminal() =>
+        {
+            let selection = select(&mut io::stdin().lock(), &mut io::stdout().lock())
+                .map_err(|error| reporter.fail(report_io(error)))?;
+            (selection, true)
+        }
+        SkillsCommand::Setup { .. } => {
+            return Err(reporter.fail(Diagnostic::new(
+                Code::SkillsSetupNeedsTarget,
+                "Skill setup needs both --yes and --target to run without prompts",
+            )));
+        }
+        SkillsCommand::Refresh => {
+            let root = account_home().map_err(|error| reporter.fail(report_io(error)))?;
+            (
+                Some(Selection::new(Scope::Account, root, HOSTS.iter())),
+                false,
+            )
+        }
+    };
+    if let Some(selection) = selection {
+        apply(&selection, setup, reporter)?;
     }
+    Ok(())
+}
+
+struct Selection {
+    scope: Scope,
+    root: PathBuf,
+    destinations: BTreeSet<&'static str>,
+}
+
+impl Selection {
+    fn new(scope: Scope, root: PathBuf, hosts: impl Iterator<Item = &'static Host>) -> Self {
+        let destinations = hosts
+            .map(|host| match scope {
+                Scope::Account => host.account,
+                Scope::Project => host.project,
+            })
+            .collect();
+        Self {
+            scope,
+            root,
+            destinations,
+        }
+    }
+}
+
+fn project_root() -> io::Result<PathBuf> {
+    let cwd = env::current_dir()?;
+    Ok(cwd
+        .ancestors()
+        .find(|path| path.join("mesh.toml").is_file() || path.join(".git").exists())
+        .unwrap_or(&cwd)
+        .to_owned())
 }
 
 fn ask(
@@ -93,7 +163,7 @@ fn ask(
     Ok((input.read_line(&mut line)? != 0).then(|| line.trim().to_owned()))
 }
 
-fn setup(input: &mut impl BufRead, output: &mut impl Write) -> io::Result<()> {
+fn select(input: &mut impl BufRead, output: &mut impl Write) -> io::Result<Option<Selection>> {
     writeln!(
         output,
         "Choose your coding tools. Enter one or more numbers separated by commas."
@@ -103,10 +173,10 @@ fn setup(input: &mut impl BufRead, output: &mut impl Write) -> io::Result<()> {
     }
     let hosts = loop {
         let Some(line) = ask(input, output, "Tools (Enter to cancel): ")? else {
-            return Ok(());
+            return Ok(None);
         };
         if line.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
         let hosts = line
             .split(',')
@@ -125,33 +195,27 @@ fn setup(input: &mut impl BufRead, output: &mut impl Write) -> io::Result<()> {
         writeln!(output, "Enter numbers from 1 through {}.", HOSTS.len())?;
     };
 
-    let cwd = env::current_dir()?;
-    let project = cwd
-        .ancestors()
-        .find(|path| path.join("mesh.toml").is_file() || path.join(".git").exists())
-        .unwrap_or(&cwd);
+    let project = project_root()?;
     writeln!(output, "  1. Account (for all projects)")?;
     writeln!(output, "  2. Project ({})", project.display())?;
     let (scope, root) = loop {
         match ask(input, output, "Scope (Enter to cancel): ")?.as_deref() {
             Some("1") => break (Scope::Account, account_home()?),
-            Some("2") => break (Scope::Project, project.to_owned()),
-            Some("") | None => return Ok(()),
+            Some("2") => break (Scope::Project, project),
+            Some("") | None => return Ok(None),
             _ => writeln!(output, "Enter 1 or 2.")?,
         }
     };
-    let destinations: BTreeSet<_> = hosts
-        .into_iter()
-        .map(|host| match scope {
-            Scope::Account => host.account,
-            Scope::Project => host.project,
-        })
-        .collect();
+    let selection = Selection::new(scope, root, hosts.into_iter());
     writeln!(output, "Mesh will install its skill in these directories:")?;
-    for host_dir in &destinations {
-        writeln!(output, "  {}", skill_path(&root, host_dir).display())?;
+    for host_dir in &selection.destinations {
+        writeln!(
+            output,
+            "  {}",
+            skill_path(&selection.root, host_dir).display()
+        )?;
     }
-    if destinations.contains(".agents") {
+    if selection.destinations.contains(".agents") {
         writeln!(
             output,
             "Other coding tools that read .agents/skills can also discover this copy."
@@ -160,9 +224,9 @@ fn setup(input: &mut impl BufRead, output: &mut impl Write) -> io::Result<()> {
     let answer = ask(input, output, "Install the Mesh skill? [y/N] ")?;
     if !answer.is_some_and(|answer| matches!(answer.to_ascii_lowercase().as_str(), "y" | "yes")) {
         writeln!(output, "Setup skipped.")?;
-        return Ok(());
+        return Ok(None);
     }
-    apply(&root, &destinations, scope, true, output)
+    Ok(Some(selection))
 }
 
 fn account_home() -> io::Result<PathBuf> {
@@ -177,61 +241,42 @@ fn account_home() -> io::Result<PathBuf> {
         })
 }
 
-fn refresh() -> io::Result<()> {
-    let root = account_home()?;
-    let destinations = HOSTS.iter().map(|host| host.account).collect();
-    apply(
-        &root,
-        &destinations,
-        Scope::Account,
-        false,
-        &mut io::stdout().lock(),
-    )
-}
-
 fn skill_path(root: &Path, host_dir: &str) -> PathBuf {
     root.join(host_dir).join("skills").join("mesh")
 }
 
 fn apply(
-    root: &Path,
-    destinations: &BTreeSet<&str>,
-    scope: Scope,
+    selection: &Selection,
     setup: bool,
-    output: &mut impl Write,
-) -> io::Result<()> {
+    reporter: &mut Reporter<impl Write>,
+) -> Result<(), Failed> {
     let receipt = Receipt {
         schema: 1,
-        scope,
+        scope: selection.scope,
         digest: guide::digest(guide::files()),
     };
-    let mut failed = false;
-    for host_dir in destinations {
-        let path = skill_path(root, host_dir);
-        match update(root, host_dir, &path, &receipt, setup) {
-            Ok(Some(message)) => writeln!(output, "{message} {}", path.display())?,
+    let mut failure = None;
+    for host_dir in &selection.destinations {
+        let path = skill_path(&selection.root, host_dir);
+        match update(&selection.root, host_dir, &path, &receipt, setup) {
+            Ok(Some(message)) => reporter.status(format_args!("{message} {}", path.display())),
             Ok(None) => {}
-            Err(err)
-                if matches!(
-                    err.kind(),
-                    io::ErrorKind::InvalidData | io::ErrorKind::AlreadyExists
-                ) =>
-            {
-                writeln!(output, "Kept {} ({err}).", path.display())?;
-            }
-            Err(err) => {
-                writeln!(output, "Could not update {} ({err}).", path.display())?;
-                failed = true;
+            Err(error) => {
+                let diagnostic = match error.kind() {
+                    io::ErrorKind::InvalidData | io::ErrorKind::AlreadyExists => Diagnostic::new(
+                        Code::SkillsInstallConflict,
+                        format!("Kept {} ({error}).", path.display()),
+                    ),
+                    _ => Diagnostic::new(
+                        Code::PathNotFound,
+                        format!("Could not update {} ({error}).", path.display()),
+                    ),
+                };
+                failure = Some(reporter.fail(diagnostic));
             }
         }
     }
-    if failed {
-        Err(io::Error::other(
-            "Some Mesh skill destinations could not be updated.",
-        ))
-    } else {
-        Ok(())
-    }
+    failure.map_or(Ok(()), Err)
 }
 
 fn update(
@@ -583,9 +628,11 @@ mod tests {
         fs::write(edited.join("SKILL.md"), "Local instructions").unwrap();
         fs::write(extra.join("notes.md"), "Local notes").unwrap();
 
-        let hosts = HOSTS.iter().map(|host| host.account).collect();
+        let selection = Selection::new(Scope::Account, home.path().to_owned(), HOSTS.iter());
         let mut output = Vec::new();
-        apply(home.path(), &hosts, Scope::Account, false, &mut output).unwrap();
+        let mut reporter = Reporter::new(mesh_diagnostics::Format::Json, &mut output);
+        assert!(apply(&selection, false, &mut reporter).is_err());
+        assert_eq!(reporter.finish().errors, 2);
 
         assert_eq!(installed(&clean).unwrap(), Some(receipt(Scope::Account)));
         assert_eq!(
@@ -600,8 +647,17 @@ mod tests {
         assert_eq!(installed(&pinned_current).unwrap(), Some(current_project));
         assert!(!home.path().join(".gemini").exists());
         let output = String::from_utf8(output).unwrap();
-        assert!(output.contains(&format!("Kept {}", edited.display())));
-        assert!(output.contains(&format!("Kept {}", extra.display())));
+        let kept: Vec<_> = output
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect();
+        assert!(kept.iter().all(|record| record["code"] == "X0103"));
+        for path in [edited, extra] {
+            assert!(kept.iter().any(|record| record["message"]
+                .as_str()
+                .unwrap()
+                .contains(&format!("Kept {}", path.display()))));
+        }
 
         let project_receipt = receipt(Scope::Project);
         assert_eq!(

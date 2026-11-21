@@ -256,7 +256,9 @@ end
     let error = String::from_utf8_lossy(&output.stderr);
     assert!(!output.status.success());
     assert!(
-        error.contains("cannot certify terminate callback of `worker`"),
+        error.contains(
+            "[E0106] Error: `spawn grouped` cannot certify the terminate callback of `worker`"
+        ),
         "{error}"
     );
 }

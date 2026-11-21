@@ -121,7 +121,7 @@ mod tests {
             ("Queue.peek", Box::new(move || _ = mesh_queue_peek(empty))),
         ] {
             let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_err();
-            let message = *panic.downcast::<String>().unwrap();
+            let message = crate::panic::MeshPanic::of(&*panic).unwrap().reason();
             assert!(
                 message.contains(&format!("{what}: the queue is empty")),
                 "{message}"

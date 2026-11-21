@@ -209,6 +209,34 @@ fn login_needs_a_mesh_directory() {
 }
 
 #[test]
+fn json_login_and_argument_failures_use_diagnostics() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = home.path();
+    for (args, status, code) in [
+        (&["login", "--json"][..], 1, "X0402"),
+        (&["login", "--bogus", "--json"][..], 2, "X0001"),
+        (&["install", "--json"][..], 1, "M0001"),
+    ] {
+        let output = meshpkg(args, dir, dir);
+        assert_eq!(output.status.code(), Some(status), "{output:?}");
+        assert!(output.stdout.is_empty(), "{output:?}");
+        let diagnostic: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(diagnostic["code"], code);
+        assert_eq!(diagnostic["severity"], "error");
+    }
+
+    // A person gets the same X0001, exiting 2, with Clap's usage as a note.
+    let output = meshpkg(&["login", "--bogus", "--no-color"], dir, dir);
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.starts_with("[X0001] Error: unexpected argument '--bogus' found\n"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("  Note: Usage: meshpkg login"), "{stderr}");
+}
+
+#[test]
 fn install_fetches_verifies_and_locks_packages() {
     let (bytes, sha) = tarball();
     let registry = Registry::serve(vec![
@@ -520,16 +548,18 @@ fn login_and_publish_upload_the_package_with_the_token() {
         text(&output)
     );
 
-    for (status, message) in [
-        (409, "already exists in registry"),
-        (401, "Unauthorized"),
-        (500, "Registry returned HTTP 500"),
+    for (status, code, message) in [
+        (409, "X0403", "already exists in registry"),
+        (401, "X0402", "Unauthorized"),
+        (404, "X0404", "Registry returned HTTP 404"),
+        (500, "X0401", "Registry returned HTTP 500"),
     ] {
+        let body = format!("registry detail for {status}");
         let refusing = Registry::serve(vec![(
             "POST",
             "/api/v1/packages".to_string(),
             status,
-            Vec::new(),
+            body.as_bytes().to_vec(),
         )]);
         let output = meshpkg(&["publish", "--registry", &refusing.url], dir, home.path());
         assert!(!output.status.success());
@@ -544,7 +574,18 @@ fn login_and_publish_upload_the_package_with_the_token() {
             home.path(),
         );
         let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-        assert!(error["error"].as_str().unwrap().contains(message));
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty(), "{output:?}");
+        assert_eq!(error["code"], code);
+        assert_eq!(error["severity"], "error");
+        let headline = error["message"].as_str().unwrap();
+        assert!(headline.contains(message));
+        assert!(!headline.contains(&body));
+        assert!(error["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|note| note.as_str().unwrap().contains(&body)));
     }
 }
 

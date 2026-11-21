@@ -283,7 +283,12 @@ mod tests {
             unsafe { (reply.add(16) as *const u64).read() }
         });
         stack::clear_current_pid();
-        result.map_err(|panic| *panic.downcast::<String>().unwrap())
+        result.map_err(|panic| {
+            crate::panic::MeshPanic::of(&*panic)
+                .unwrap()
+                .reason()
+                .to_string()
+        })
     }
 
     fn queue(pid: ProcessId, word: u64, tag: u64) {

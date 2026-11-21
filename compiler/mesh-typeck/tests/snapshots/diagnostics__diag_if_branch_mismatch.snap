@@ -10,4 +10,7 @@ expression: output
    │            ╰─────────────────── expected Int
    │                      │
    │                      ╰───────── found String
+   │
+   │ Help: Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.
 ───╯
+  = E0001: meshc explain E0001 · skill diagnostics.md#e0001 · https://meshlang.dev/docs/errors/#e0001

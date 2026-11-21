@@ -80,6 +80,10 @@ fn parse_as_pattern(p: &mut Parser, param: bool) -> Option<MarkClosed> {
 /// Right-associative: `a :: b :: c` parses as `a :: (b :: c)`.
 /// Only valid in pattern position -- `::` is not used as an expression operator.
 fn parse_cons_pattern(p: &mut Parser, param: bool) -> Option<MarkClosed> {
+    p.with_nesting(|p| parse_cons_pattern_inner(p, param))
+}
+
+fn parse_cons_pattern_inner(p: &mut Parser, param: bool) -> Option<MarkClosed> {
     let head = parse_or_pattern(p)?;
 
     if p.at(SyntaxKind::COLON_COLON) && (!param || super::expressions::at_cons_tail(p, 1)) {

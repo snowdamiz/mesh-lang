@@ -36,4 +36,3 @@ SOURCE_FILE@0..43
 
 errors:
   - expected exactly one replication count in `@cluster(N)` @10..11
-  - expected `end` to close function body @39..40

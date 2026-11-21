@@ -2,7 +2,9 @@
 //! of each kind (and a mismatch from each origin), so a change to how
 //! errors render is a snapshot change to review.
 
-use mesh_typeck::diagnostics::{render_diagnostic, DiagnosticOptions};
+use mesh_common::span::Span;
+use mesh_diagnostics::{Code, Format, Reporter, SourceFile};
+use mesh_parser::ParseError;
 use mesh_typeck::error::{ConstraintOrigin, TypeError};
 use mesh_typeck::ty::{Ty, TyVar};
 use rowan::TextRange;
@@ -21,8 +23,8 @@ fn one_of_each() -> Vec<TypeError> {
             origin: ConstraintOrigin::Expr { span: span(27, 40) },
         },
         TypeError::InfiniteType {
-            var: TyVar(7),
-            ty: Ty::int(),
+            var: TyVar(0),
+            ty: Ty::Fun(vec![Ty::Var(TyVar(0))], Box::new(Ty::Var(TyVar(1)))),
             origin: ConstraintOrigin::Expr { span: span(27, 40) },
         },
         TypeError::ArityMismatch {
@@ -87,16 +89,19 @@ fn one_of_each() -> Vec<TypeError> {
             struct_name: "struct_name".to_string(),
             field_name: "field_name".to_string(),
             span: span(19, 24),
+            suggestion: None,
         },
         TypeError::NoSuchField {
             ty: Ty::int(),
             field_name: "field_name".to_string(),
             span: span(19, 24),
+            suggestion: None,
         },
         TypeError::NoSuchMethod {
-            ty: Ty::int(),
+            ty: Ty::list(Ty::Var(TyVar(0))),
             method_name: "method_name".to_string(),
             span: span(19, 24),
+            suggestion: None,
         },
         TypeError::ManualContinuityPromotionDisabled { span: span(19, 24) },
         TypeError::UnknownVariant {
@@ -158,7 +163,10 @@ fn one_of_each() -> Vec<TypeError> {
             span: span(19, 24),
         },
         TypeError::DecodeTypeUnknown {
-            ty: Ty::Con(mesh_typeck::ty::TyCon::new("Box<_>")),
+            ty: Ty::App(
+                Box::new(Ty::Con(mesh_typeck::ty::TyCon::new("Box"))),
+                vec![Ty::Var(TyVar(1))],
+            ),
             span: span(19, 24),
         },
         TypeError::ReceiveOutsideActor { span: span(19, 24) },
@@ -331,8 +339,8 @@ fn one_of_each() -> Vec<TypeError> {
         TypeError::AmbiguousImplMethod {
             method: "method".to_string(),
             receiver: Ty::int(),
-            candidates: vec![Ty::int(), Ty::string()],
-            found: Some(Ty::int()),
+            candidates: vec![Ty::list(Ty::Var(TyVar(0))), Ty::string()],
+            found: Some(Ty::list(Ty::Var(TyVar(1)))),
             span: span(19, 24),
             by_argument: false,
         },
@@ -368,6 +376,7 @@ fn one_of_each() -> Vec<TypeError> {
         TypeError::UnknownType {
             name: "name".to_string(),
             span: span(19, 24),
+            suggestion: None,
         },
         TypeError::UnknownFieldOwner {
             field: "field".to_string(),
@@ -494,8 +503,12 @@ fn one_of_each() -> Vec<TypeError> {
             ty: Ty::Var(TyVar(3)),
             span: span(19, 24),
         },
+        TypeError::ResourceCrossesBoundary {
+            reason: "resource `value` cannot enter an unrestricted collection".to_string(),
+            span: span(19, 24),
+        },
         TypeError::ResourceViolation {
-            reason: "reason".to_string(),
+            reason: "resource `value` was used after it moved".to_string(),
             span: span(19, 24),
         },
         TypeError::PlaintextViolation {
@@ -568,7 +581,198 @@ fn one_of_each() -> Vec<TypeError> {
             found: Ty::string(),
             origin: ConstraintOrigin::Builtin,
         },
+        TypeError::JobsStartInvalid {
+            reason: "pass a named function with type fn(String) -> String as the handler",
+            span: span(27, 40),
+        },
+        TypeError::InvalidIndex {
+            reason: "reason".to_string(),
+            span: span(19, 24),
+        },
+        TypeError::InvalidIndexedType {
+            reason: "each indexed constructor must declare its result type".to_string(),
+            span: span(19, 24),
+        },
+        TypeError::ReservedProofName { span: span(19, 24) },
+        TypeError::MissingEmbeddedProof {
+            theorem: "theorem".to_string(),
+            span: span(27, 40),
+        },
+        TypeError::DuplicateProofValue {
+            name: "name".to_string(),
+            first: span(19, 24),
+            span: span(43, 48),
+        },
+        TypeError::InvalidProposition {
+            reason: "`NatEq` requires exactly two Nat arguments".to_string(),
+            span: span(27, 40),
+        },
+        TypeError::LogicSyntax {
+            error: ParseError::new(
+                Code::LogicSyntax,
+                "expected `end`, found `=`",
+                Span::new(27, 34),
+            )
+            .with_related("block opened here", Span::new(19, 24))
+            .with_label("expected `end` here"),
+        },
+        TypeError::LogicSyntax {
+            error: ParseError::new(
+                Code::LogicTooLarge,
+                "logic nesting limit exceeded",
+                Span::new(27, 40),
+            ),
+        },
     ]
+}
+
+/// Names every `TypeError` variant, in one list that makes both
+/// `variant_name`, an exhaustive `match`, and `VARIANTS`: a new variant does
+/// not compile until it is listed, and `one_of_each_covers_every_variant`
+/// then fails until `one_of_each` has an example of it.
+macro_rules! variants {
+    ($($variant:ident),* $(,)?) => {
+        fn variant_name(error: &TypeError) -> &'static str {
+            match error {
+                $(TypeError::$variant { .. } => stringify!($variant),)*
+            }
+        }
+
+        const VARIANTS: &[&str] = &[$(stringify!($variant)),*];
+    };
+}
+
+variants!(
+    Mismatch,
+    InfiniteType,
+    ArityMismatch,
+    TupleParameterSplit,
+    SlotPipeOutOfRange,
+    UnboundVariable,
+    NotAFunction,
+    TraitNotSatisfied,
+    MissingTraitMethod,
+    TraitMethodSignatureMismatch,
+    MissingField,
+    UnknownField,
+    NoSuchField,
+    NoSuchMethod,
+    ManualContinuityPromotionDisabled,
+    UnknownVariant,
+    OrPatternBindingMismatch,
+    NonExhaustiveMatch,
+    NonExhaustiveClauses,
+    RedundantArm,
+    SendTypeMismatch,
+    SelfOutsideActor,
+    MonitorOutsideActor,
+    SpawnNonFunction,
+    SpawnByName,
+    SpawnNotActor,
+    UnderivableFieldType,
+    DecodeTypeUnknown,
+    ReceiveOutsideActor,
+    InvalidChildStart,
+    InvalidStrategy,
+    InvalidRestartType,
+    InvalidShutdownValue,
+    CatchAllNotLast,
+    NonConsecutiveClauses,
+    NonFirstClauseAnnotation,
+    DuplicateImpl,
+    AmbiguousMethod,
+    UnsupportedDerive,
+    MissingDerivePrerequisite,
+    BreakOutsideLoop,
+    ContinueOutsideLoop,
+    ImportModuleNotFound,
+    ImportNameNotFound,
+    PrivateItem,
+    HttpClusteredInvalidArguments,
+    JobsStartInvalid,
+    HttpClusteredPrivateHandler,
+    HttpClusteredOutsideRouteHandlerPosition,
+    HttpClusteredConflictingReplicationCount,
+    HttpClusteredImportedOriginMissing,
+    TryIncompatibleReturn,
+    TryOnNonResultOption,
+    NonSerializableField,
+    NonMappableField,
+    MissingAssocType,
+    ExtraAssocType,
+    UnresolvedAssocType,
+    UndefinedType,
+    NativeDeclarationInvalid,
+    ExportDeclarationInvalid,
+    InvalidLetPattern,
+    InvalidPassThroughArm,
+    DuplicateBinding,
+    UnboundedTypeParam,
+    AmbiguousImplMethod,
+    DuplicateDefinition,
+    UnknownType,
+    UnknownFieldOwner,
+    TypeNotValue,
+    NestedDefinition,
+    TypeArgumentCount,
+    UntypedMethodParam,
+    MethodReturnUnknown,
+    UnknownInterface,
+    InvalidLiteral,
+    InvalidIndex,
+    InvalidIndexedType,
+    ReservedProofName,
+    MissingEmbeddedProof,
+    DuplicateProofValue,
+    InvalidProposition,
+    LogicSyntax,
+    NoSuchModuleFunction,
+    AssertReceiveOutsideTest,
+    GenericImplTarget,
+    OverloadedFunctionValue,
+    IndexingUnsupported,
+    ActorMessageTypeUnknown,
+    TopLevelLet,
+    TopLevelStatement,
+    ModuleNotImported,
+    InvalidConcat,
+    RigidTypeParam,
+    AmbiguousStaticMethod,
+    AmbiguousDefault,
+    CyclicAlias,
+    DuplicateVariant,
+    UnderivableField,
+    DuplicateField,
+    NotAStruct,
+    ResourceViolation,
+    ResourceCrossesBoundary,
+    PlaintextViolation,
+);
+
+#[test]
+fn one_of_each_covers_every_variant() {
+    let covered: std::collections::BTreeSet<&str> =
+        one_of_each().iter().map(variant_name).collect();
+    let missing: Vec<&str> = VARIANTS
+        .iter()
+        .copied()
+        .filter(|variant| !covered.contains(variant))
+        .collect();
+    assert!(missing.is_empty(), "no example of {missing:?}");
+}
+
+const HUMAN: Format = Format::Human { color: false };
+
+/// `error` in `SOURCE`, a file named `main.mpl`, as a reporter of its own
+/// writes it: a report, then the footer for its code.
+fn render(format: Format, error: &TypeError) -> String {
+    let mut out = Vec::new();
+    Reporter::new(format, &mut out).emit(error.to_diagnostic(&SourceFile::new("main.mpl", SOURCE)));
+    String::from_utf8(out).unwrap()
+}
+
+fn render_json(error: &TypeError) -> serde_json::Value {
+    serde_json::from_str(&render(Format::Json, error)).unwrap()
 }
 
 /// Each error is worded once: the terminal report's headline is the JSON
@@ -576,63 +780,59 @@ fn one_of_each() -> Vec<TypeError> {
 /// server shows too. They used to be written twice, and most differed.
 #[test]
 fn every_type_error_has_one_headline() {
-    let terminal = DiagnosticOptions::colorless();
-    let json = DiagnosticOptions {
-        json: true,
-        ..DiagnosticOptions::colorless()
-    };
     for error in one_of_each() {
-        let report = render_diagnostic(&error, SOURCE, "main.mpl", &terminal, None);
+        let report = render(HUMAN, &error);
         let headline = report.lines().next().unwrap_or_default();
         let message = error.to_string();
         assert!(
             headline.ends_with(&format!(": {message}")),
             "{headline} / {message}"
         );
-        let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
-        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
-        assert_eq!(parsed["message"], message.as_str());
+        assert_eq!(render_json(&error)["message"], message.as_str());
     }
 }
 
 /// Each error is at one place: where the terminal report and the JSON
 /// diagnostic put it (their first span) is `TypeError::span`, where the
-/// language server shows it. An error at no one place covers the source.
+/// language server shows it. An error at no one place is about the file,
+/// and has no span.
 #[test]
 fn every_type_error_is_at_one_place() {
-    let json = DiagnosticOptions {
-        json: true,
-        ..DiagnosticOptions::colorless()
-    };
     for error in one_of_each() {
-        let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
-        let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
-        let first = &parsed["spans"][0];
-        let (start, end) = match error.span() {
-            Some(span) => (u32::from(span.start()), u32::from(span.end())),
-            None => (0, SOURCE.len() as u32),
-        };
-        assert_eq!(
-            (first["start"].as_u64(), first["end"].as_u64()),
-            (Some(start.into()), Some(end.into())),
-            "{error:?}"
-        );
+        let parsed = render_json(&error);
+        let spans = parsed["spans"].as_array().unwrap();
+        match error.span() {
+            Some(span) => assert_eq!(
+                (spans[0]["start"].as_u64(), spans[0]["end"].as_u64()),
+                (
+                    Some(u32::from(span.start()).into()),
+                    Some(u32::from(span.end()).into())
+                ),
+                "{error:?}"
+            ),
+            None => {
+                assert!(spans.is_empty(), "{error:?}");
+                assert_eq!(parsed["file"], "main.mpl", "{error:?}");
+            }
+        }
+    }
+}
+
+/// Each error has a repair: its own, or its code's.
+#[test]
+fn every_type_error_has_a_repair() {
+    for error in one_of_each() {
+        let fix = render_json(&error)["fix"].clone();
+        assert!(fix.as_str().is_some_and(|fix| !fix.is_empty()), "{error:?}");
     }
 }
 
 #[test]
 fn every_type_error_renders() {
-    let terminal = DiagnosticOptions::colorless();
-    let json = DiagnosticOptions {
-        json: true,
-        ..DiagnosticOptions::colorless()
-    };
     let mut rendered = String::new();
     for error in one_of_each() {
-        rendered.push_str(&render_diagnostic(
-            &error, SOURCE, "main.mpl", &terminal, None,
-        ));
-        rendered.push_str(&render_diagnostic(&error, SOURCE, "main.mpl", &json, None));
+        rendered.push_str(&render(HUMAN, &error));
+        rendered.push_str(&render(Format::Json, &error));
         rendered.push('\n');
     }
     insta::assert_snapshot!(rendered);
@@ -643,18 +843,11 @@ fn every_type_error_renders() {
 /// given to a second, unrelated error.
 #[test]
 fn every_error_code_names_one_kind() {
-    let json = DiagnosticOptions {
-        json: true,
-        ..DiagnosticOptions::colorless()
-    };
     let mut kinds: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
         Default::default();
     for error in one_of_each() {
-        let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
-        let code = rendered
-            .split("\"code\":\"")
-            .nth(1)
-            .and_then(|rest| rest.split('"').next())
+        let code = render_json(&error)["code"]
+            .as_str()
             .expect("a JSON diagnostic has a code")
             .to_string();
         let kind = format!("{error:?}")
@@ -688,4 +881,27 @@ fn type_variables_past_z_are_numbered() {
 #[test]
 fn a_type_variable_key_names_itself() {
     assert_eq!(<TyVar as ena::unify::UnifyKey>::tag(), "TyVar");
+}
+
+#[test]
+fn diagnostics_hide_inference_variable_ids() {
+    let file = SourceFile::new("main.mpl", SOURCE);
+    for error in one_of_each() {
+        let diagnostic = error.to_diagnostic(&file);
+        let texts = [diagnostic.message(), diagnostic.repair()]
+            .into_iter()
+            .chain(diagnostic.primary_label())
+            .chain(diagnostic.labels().iter().map(|label| label.message()))
+            .chain(diagnostic.notes().iter().map(String::as_str));
+        for text in texts {
+            assert!(
+                !text
+                    .as_bytes()
+                    .windows(2)
+                    .any(|pair| pair[0] == b'?' && pair[1].is_ascii_digit()),
+                "{} leaked an inference variable ID in {text:?}",
+                diagnostic.code().id()
+            );
+        }
+    }
 }

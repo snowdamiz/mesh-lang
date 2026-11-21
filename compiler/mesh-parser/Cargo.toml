@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 mesh-common = { path = "../mesh-common" }
+mesh-diagnostics = { path = "../mesh-diagnostics", default-features = false }
 mesh-lexer = { path = "../mesh-lexer" }
 rowan = { workspace = true }
 

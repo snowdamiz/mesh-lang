@@ -41,7 +41,7 @@ RUNTIME_LIBS = ("libmesh_rt.a", "libmesh_test_rt.a")
 # the proof exports the instrumented Linux runtime and driver (objects/).
 PROOF_COVERAGE = ROOT / "target/coverage/proof"
 CRATES = [
-    "mesh-common", "mesh-lexer", "mesh-parser", "mesh-typeck", "mesh-codegen",
+    "mesh-common", "mesh-diagnostics", "mesh-lexer", "mesh-parser", "mesh-typeck", "mesh-codegen",
     "mesh-fmt", "mesh-lint", "mesh-pkg", "mesh-lsp", "mesh-repl", "meshc", "meshpkg",
     "mesh-rt", "mesh-test-rt",
 ]

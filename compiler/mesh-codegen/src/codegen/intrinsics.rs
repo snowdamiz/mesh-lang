@@ -1655,6 +1655,22 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_test_fail_msg_at(msg: ptr, file: ptr, file_len: i64, line: i64) -> void
+    let test_fail_msg_at_ty = void_type.fn_type(
+        &[
+            ptr_type.into(),
+            ptr_type.into(),
+            i64_type.into(),
+            i64_type.into(),
+        ],
+        false,
+    );
+    module.add_function(
+        "mesh_test_fail_msg_at",
+        test_fail_msg_at_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_test_assert(cond: i8, expr_src: ptr, file: ptr, file_len: i64, line: i64) -> void
     let test_assert_ty = void_type.fn_type(
         &[
@@ -3650,6 +3666,29 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ),
     );
 
+    // mesh_panic_at(msg: ptr, msg_len: u64, file: ptr, file_len: u64, line: u32, col: u32) -> !
+    // A panic whose source location compiled code knows.
+    let panic_at_params: Vec<BasicMetadataTypeEnum<'ctx>> = vec![
+        ptr_type.into(), // msg
+        i64_type.into(), // msg_len
+        ptr_type.into(), // file
+        i64_type.into(), // file_len
+        i32_type.into(), // line
+        i32_type.into(), // col
+    ];
+    let panic_at_fn = module.add_function(
+        "mesh_panic_at",
+        void_type.fn_type(&panic_at_params, false),
+        Some(inkwell::module::Linkage::External),
+    );
+    panic_at_fn.add_attribute(
+        inkwell::attributes::AttributeLoc::Function,
+        context.create_enum_attribute(
+            inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn"),
+            0,
+        ),
+    );
+
     // ── Phase 67: Node distribution & remote spawn ──────────────────────
 
     // mesh_node_start(name_ptr: ptr, name_len: i64, cookie_ptr: ptr, cookie_len: i64) -> i64
@@ -3843,6 +3882,29 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
     panic_str.add_attribute(
+        inkwell::attributes::AttributeLoc::Function,
+        context.create_enum_attribute(
+            inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn"),
+            0,
+        ),
+    );
+    // mesh_panic_str_at(message: ptr, file: ptr, file_len: u64, line: u32, col: u32) -> !
+    // (`panic(message)` whose source location compiled code knows)
+    let panic_str_at = module.add_function(
+        "mesh_panic_str_at",
+        void_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                i32_type.into(),
+                i32_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+    panic_str_at.add_attribute(
         inkwell::attributes::AttributeLoc::Function,
         context.create_enum_attribute(
             inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn"),
@@ -5119,6 +5181,7 @@ mod tests {
         assert!(module.get_function("mesh_print").is_some());
         assert!(module.get_function("mesh_println").is_some());
         assert!(module.get_function("mesh_panic").is_some());
+        assert!(module.get_function("mesh_panic_at").is_some());
 
         // Actor runtime functions
         assert!(module.get_function("mesh_rt_init_actor").is_some());
@@ -5683,7 +5746,13 @@ mod tests {
         declare_intrinsics(&module);
 
         let noreturn_id = inkwell::attributes::Attribute::get_named_enum_kind_id("noreturn");
-        for name in ["mesh_panic", "mesh_panic_str", "mesh_process_exit"] {
+        for name in [
+            "mesh_panic",
+            "mesh_panic_at",
+            "mesh_panic_str",
+            "mesh_panic_str_at",
+            "mesh_process_exit",
+        ] {
             let function = get_intrinsic(&module, name);
             let attr = function
                 .get_enum_attribute(inkwell::attributes::AttributeLoc::Function, noreturn_id);

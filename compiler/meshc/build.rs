@@ -37,6 +37,7 @@ fn main() {
 
     let mut source = String::from("const FILES: &[(&str, &str)] = &[\n");
     for file in files {
+        println!("cargo:rerun-if-changed={guide}/{file}");
         let path = format!("/{guide}/{file}");
         writeln!(
             source,

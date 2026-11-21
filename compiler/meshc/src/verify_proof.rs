@@ -3,6 +3,7 @@
 #[path = "verify_proof_model.rs"]
 mod model;
 
+use mesh_diagnostics::Code;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::io::{self, Write as _};
@@ -42,7 +43,8 @@ pub(crate) fn check(
     settings: Settings<'_>,
 ) -> Result<Verdict, EncodingError> {
     let model = session.translate(actual.0, actual.1, expected.0, expected.1, signature)?;
-    let source = render(model, expected.0, proof)?;
+    let source = render(model, expected.0, proof)
+        .map_err(|reason| EncodingError::new(Code::ProofRejected, reason))?;
     check_artifact(source, &["mesh_law".to_owned()], settings)?;
     Ok(Verdict::Verified)
 }
@@ -171,9 +173,12 @@ pub(crate) fn check_artifact(
     mut source: String,
     theorem_symbols: &[String],
     settings: Settings<'_>,
-) -> Result<(), String> {
+) -> Result<(), EncodingError> {
     if theorem_symbols.is_empty() {
-        return Err("proof artifact has no theorems".into());
+        return Err(EncodingError::new(
+            Code::ProofRejected,
+            "proof artifact has no theorems",
+        ));
     }
     for symbol in theorem_symbols {
         writeln!(source, "\n#print axioms {symbol}").unwrap();
@@ -189,9 +194,12 @@ pub(crate) fn check_artifact(
                 }
             })
             .map_err(|error| {
-                format!(
-                    "could not export checked proof to {}: {error}",
-                    directory.display()
+                EncodingError::new(
+                    Code::PathNotFound,
+                    format!(
+                        "could not export checked proof to {}: {error}",
+                        directory.display()
+                    ),
                 )
             })?;
     }
@@ -352,20 +360,29 @@ fn check_kernel(
     source: &str,
     theorem_symbols: &[String],
     verdict: bool,
-) -> Result<Option<String>, String> {
-    let deadline =
-        Instant::now() + Duration::from_millis(u64::from(verify_process::timeout_ms(30_000)?));
+) -> Result<Option<String>, EncodingError> {
+    let deadline = Instant::now()
+        + Duration::from_millis(u64::from(
+            verify_process::timeout_ms(30_000)
+                .map_err(|reason| EncodingError::new(Code::InvalidArguments, reason))?,
+        ));
     let executable = std::env::var_os("MESH_VERIFY_LEAN").unwrap_or_else(|| "lean".into());
     let path = Path::new(&executable);
     let executable = if path.components().count() > 1 {
         std::path::absolute(path)
-            .map_err(|error| format!("Lean executable path: {error}"))?
+            .map_err(|error| {
+                EncodingError::new(
+                    Code::ProverMissing,
+                    format!("Lean executable path: {error}"),
+                )
+            })?
             .into_os_string()
     } else {
         executable
     };
-    let directory =
-        tempfile::tempdir().map_err(|error| format!("Lean proof directory: {error}"))?;
+    let directory = tempfile::tempdir().map_err(|error| {
+        EncodingError::new(Code::PathNotFound, format!("Lean proof directory: {error}"))
+    })?;
     let make_command = |executable: &std::ffi::OsStr| {
         let mut command = Command::new(&executable);
         command.current_dir(directory.path());
@@ -374,18 +391,19 @@ fn check_kernel(
         }
         command
     };
-    let run = |command: &mut Command, limit| {
+    let run = |command: &mut Command, limit, code| {
         let tool = command.get_program().to_string_lossy().into_owned();
         verify_process::run_with_limit(command, "", deadline, limit).map_err(|error| match error {
-            RunError::Start(error) => format!("could not start Lean tool {tool}: {error}; set MESH_VERIFY_LEAN to the trusted Lean {LEAN_VERSION} executable"),
-            RunError::Io(error) => format!("Lean I/O: {error}"),
-            RunError::Timeout => "proof time budget exhausted".to_owned(),
+            RunError::Start(error) => EncodingError::new(Code::ProverMissing, format!("could not start Lean tool {tool}: {error}; set MESH_VERIFY_LEAN to the trusted Lean {LEAN_VERSION} executable")),
+            RunError::Io(error) => EncodingError::new(code, format!("Lean I/O: {error}")),
+            RunError::Timeout => EncodingError::new(Code::SolverTimeout, "proof time budget exhausted"),
         })
     };
     let run_lean = |arguments: &[&str]| {
         run(
             make_command(&executable).args(arguments),
             verify_process::DIAGNOSTIC_LIMIT,
+            Code::ProofRejected,
         )
     };
     let version = run_lean(&["--version"])?;
@@ -398,14 +416,21 @@ fn check_kernel(
             .map(|(version, _)| version)
             != Some(LEAN_VERSION)
     {
-        return Err(format!(
-            "mesh verify requires Lean {LEAN_VERSION}; found {}",
-            version.stdout.trim()
+        return Err(EncodingError::new(
+            Code::ProverMissing,
+            format!(
+                "mesh verify requires Lean {LEAN_VERSION}; found {}",
+                version.stdout.trim()
+            ),
         ));
     }
 
-    std::fs::write(directory.path().join("Proof.lean"), source)
-        .map_err(|error| format!("could not write generated proof: {error}"))?;
+    std::fs::write(directory.path().join("Proof.lean"), source).map_err(|error| {
+        EncodingError::new(
+            Code::PathNotFound,
+            format!("could not write generated proof: {error}"),
+        )
+    })?;
     let output = if verdict {
         run_lean(&["--trust=0", "-o", "Proof.olean", "Proof.lean"])?
     } else {
@@ -417,18 +442,23 @@ fn check_kernel(
     {
         let detail = format!("{} {}", output.stdout.trim(), output.stderr.trim());
         let detail: String = detail.trim().chars().take(500).collect();
-        return Err(format!(
-            "proof did not check with the permitted axioms: {detail}"
+        return Err(EncodingError::new(
+            Code::ProofRejected,
+            format!("proof did not check with the permitted axioms: {detail}"),
         ));
     }
     if !verdict {
         return Ok(None);
     }
 
-    let prefix = checked_output(run_lean(&["--print-prefix"])?, "Lean toolchain lookup")?;
+    let prefix = checked_output(run_lean(&["--print-prefix"])?, "Lean toolchain lookup")
+        .map_err(|reason| EncodingError::new(Code::ProverMissing, reason))?;
     let prefix = PathBuf::from(prefix.trim());
     if !prefix.is_absolute() {
-        return Err("Lean did not report an absolute toolchain prefix".into());
+        return Err(EncodingError::new(
+            Code::ProverMissing,
+            "Lean did not report an absolute toolchain prefix",
+        ));
     }
     let bin = prefix.join("bin");
     let tool = |name: &str| {
@@ -443,28 +473,39 @@ fn check_kernel(
                 .args(["Proof", "--"])
                 .args(theorem_symbols),
             32 * 1024 * 1024,
+            Code::ProofReplayMismatch,
         )?,
         "Lean proof export",
-    )?;
+    )
+    .map_err(|reason| EncodingError::new(Code::ProofReplayMismatch, reason))?;
     check_export(&export, theorem_symbols)?;
-    std::fs::write(directory.path().join("Proof.ndjson"), &export)
-        .map_err(|error| format!("could not write proof export: {error}"))?;
+    std::fs::write(directory.path().join("Proof.ndjson"), &export).map_err(|error| {
+        EncodingError::new(
+            Code::PathNotFound,
+            format!("could not write proof export: {error}"),
+        )
+    })?;
     let report = checked_output(
         run(
             tool("con-leche").args(["--verified", "--jobs=1", "Proof.ndjson"]),
             verify_process::DIAGNOSTIC_LIMIT,
+            Code::ProofReplayMismatch,
         )?,
         "independent ConLeche check",
-    )?;
+    )
+    .map_err(|reason| EncodingError::new(Code::ProofReplayMismatch, reason))?;
     let checked = report
         .trim()
         .strip_prefix("con-leche: accepted ")
         .and_then(|count| count.strip_suffix(" declarations (--verified)"))
         .and_then(|count| count.parse::<usize>().ok());
     if !checked.is_some_and(|count| count >= theorem_symbols.len()) {
-        return Err(format!(
-            "independent checker did not confirm the proof export: {}",
-            report.trim()
+        return Err(EncodingError::new(
+            Code::ProofReplayMismatch,
+            format!(
+                "independent checker did not confirm the proof export: {}",
+                report.trim()
+            ),
         ));
     }
     Ok(Some(export))
@@ -487,18 +528,25 @@ fn check_axiom_report(report: &str, theorems: &[String]) -> bool {
     lines.next().is_none()
 }
 
-fn check_export(export: &str, theorems: &[String]) -> Result<(), String> {
+fn check_export(export: &str, theorems: &[String]) -> Result<(), EncodingError> {
+    let invalid = |reason| EncodingError::new(Code::ProofReplayMismatch, reason);
     let mut lines = export.lines();
     let parse = |line| {
         serde_json::from_str::<serde_json::Value>(line)
-            .map_err(|error| format!("Invalid Lean proof export: {error}"))
+            .map_err(|error| invalid(format!("Invalid Lean proof export: {error}")))
     };
-    let metadata = parse(lines.next().ok_or("Lean exported no proof declarations")?)?;
+    let metadata = parse(
+        lines
+            .next()
+            .ok_or_else(|| invalid("Lean exported no proof declarations".into()))?,
+    )?;
     if metadata["meta"]["format"]["version"] != "3.1.0"
         || metadata["meta"]["lean"]["version"] != LEAN_VERSION
         || metadata["meta"]["lean"]["githash"] != LEAN_COMMIT
     {
-        return Err("Lean proof export does not match the pinned format and toolchain".into());
+        return Err(invalid(
+            "Lean proof export does not match the pinned format and toolchain".into(),
+        ));
     }
     let names: BTreeSet<_> = theorems.iter().map(String::as_str).collect();
     let mut indices = BTreeMap::new();
@@ -512,9 +560,9 @@ fn check_export(export: &str, theorems: &[String]) -> Result<(), String> {
         ) {
             if let Some(required) = names.get(name) {
                 if indices.insert(index, *required).is_some() {
-                    return Err(format!(
+                    return Err(invalid(format!(
                         "Duplicate theorem name index in proof export: {name}"
-                    ));
+                    )));
                 }
             }
         }
@@ -523,12 +571,16 @@ fn check_export(export: &str, theorems: &[String]) -> Result<(), String> {
             .and_then(|index| indices.get(&index))
         {
             if !included.insert(*name) {
-                return Err(format!("Duplicate theorem in proof export: {name}"));
+                return Err(invalid(format!(
+                    "Duplicate theorem in proof export: {name}"
+                )));
             }
         }
     }
     if let Some(missing) = names.difference(&included).next() {
-        return Err(format!("Proof export is missing theorem `{missing}`"));
+        return Err(invalid(format!(
+            "Proof export is missing theorem `{missing}`"
+        )));
     }
     Ok(())
 }
@@ -556,17 +608,19 @@ mod tests {
         let names = r#"{"in":1,"str":{"pre":0,"str":"mesh_law"}}"#;
         let declaration = r#"{"thm":{"name":1,"type":20,"value":21}}"#;
         assert!(check_export(&format!("{meta}\n{names}\n{declaration}"), &required).is_ok());
-        assert!(check_export(&format!("{meta}\n{names}"), &required)
-            .unwrap_err()
-            .contains("missing theorem"));
+        let missing = check_export(&format!("{meta}\n{names}"), &required).unwrap_err();
+        assert_eq!(missing.code, Code::ProofReplayMismatch);
+        assert!(missing.reason.contains("missing theorem"));
         assert!(check_export(
             &format!("{meta}\n{names}\n{declaration}\n{declaration}"),
             &required
         )
         .unwrap_err()
+        .reason
         .contains("Duplicate theorem"));
         assert!(check_export(&format!("{meta}\n{names}\n{{"), &required)
             .unwrap_err()
+            .reason
             .contains("Invalid Lean proof export"));
     }
 

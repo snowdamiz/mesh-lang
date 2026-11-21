@@ -11,6 +11,7 @@
 
 use mesh_common::span::Span;
 use mesh_common::token::{Token, TokenKind};
+use mesh_diagnostics::Code;
 use mesh_lexer::Lexer;
 
 use crate::ParseError;
@@ -219,6 +220,7 @@ impl<'src> Parser<'src> {
     fn new(source: &'src str) -> Result<Self, ParseError> {
         if u32::try_from(source.len()).is_err() {
             return Err(ParseError::new(
+                Code::LogicTooLarge,
                 "logic file exceeds the source size limit",
                 Span::new(0, 0),
             ));
@@ -274,14 +276,23 @@ impl<'src> Parser<'src> {
     }
 
     fn error(&self, message: impl Into<String>) -> ParseError {
-        ParseError::new(message, self.current.span)
+        ParseError::new(Code::LogicSyntax, message, self.current.span)
+    }
+
+    /// The current token as a message names it.
+    fn found(&self) -> String {
+        match self.current.kind {
+            TokenKind::Eof => "the end of the logic".to_owned(),
+            TokenKind::Newline => "a new line".to_owned(),
+            _ => format!("`{}`", self.text()),
+        }
     }
 
     fn expect(&mut self, kind: TokenKind, spelling: &str) -> Result<(), ParseError> {
         if self.eat(kind) {
             Ok(())
         } else {
-            Err(self.error(format!("expected `{spelling}`")))
+            Err(self.error(format!("expected `{spelling}`, found {}", self.found())))
         }
     }
 
@@ -414,8 +425,8 @@ impl<'src> Parser<'src> {
             let name = self.ident()?;
             let params = self.optional_binders()?;
             let kind = self.optional_arrow_type()?;
-            self.open_block()?;
-            let constructors = self.block_entries(true, Self::constructor)?;
+            let opened = self.open_block()?;
+            let constructors = self.block_entries(opened, true, Self::constructor)?;
             Ok(Declaration::Inductive {
                 name,
                 params,
@@ -428,9 +439,9 @@ impl<'src> Parser<'src> {
             let params = self.binders()?;
             self.expect(TokenKind::Arrow, "->")?;
             let result = self.term(0, 0, TermContext::Type)?.term;
-            self.open_block()?;
+            let opened = self.open_block()?;
             let body = self.term(0, 0, TermContext::Value)?.term;
-            self.close_block()?;
+            self.close_block(opened)?;
             Ok(Declaration::Definition {
                 name,
                 params,
@@ -442,9 +453,9 @@ impl<'src> Parser<'src> {
             self.advance();
             let name = self.ident()?;
             let params = self.binders()?;
-            self.open_block()?;
+            let opened = self.open_block()?;
             let proposition = self.term(0, 0, TermContext::Value)?.term;
-            self.close_block()?;
+            self.close_block(opened)?;
             Ok(Declaration::Theorem {
                 name,
                 public,
@@ -455,9 +466,9 @@ impl<'src> Parser<'src> {
         } else if self.at_word("proof") {
             self.advance();
             let name = self.ident()?;
-            self.open_block()?;
+            let opened = self.open_block()?;
             let term = self.proof(0)?;
-            self.close_block()?;
+            self.close_block(opened)?;
             Ok(Declaration::Proof {
                 name,
                 term,
@@ -513,18 +524,33 @@ impl<'src> Parser<'src> {
         Ok((name, self.term(depth, precedence, TermContext::Type)?))
     }
 
-    fn open_block(&mut self) -> Result<(), ParseError> {
+    /// Consume a block's `do`, and say where it is.
+    fn open_block(&mut self) -> Result<Span, ParseError> {
         self.newlines();
-        self.expect(TokenKind::Do, "do")
+        let opened = self.current.span;
+        self.expect(TokenKind::Do, "do")?;
+        Ok(opened)
     }
 
-    fn close_block(&mut self) -> Result<(), ParseError> {
+    /// Consume the `end` of the block opened at `opened`.
+    fn close_block(&mut self, opened: Span) -> Result<(), ParseError> {
         self.newlines();
-        self.expect(TokenKind::End, "end")
+        if self.eat(TokenKind::End) {
+            Ok(())
+        } else {
+            Err(self.missing_end(opened))
+        }
+    }
+
+    fn missing_end(&self, opened: Span) -> ParseError {
+        self.error(format!("expected `end`, found {}", self.found()))
+            .with_related("block opened here", opened)
+            .with_label("expected `end` here")
     }
 
     fn block_entries<T>(
         &mut self,
+        opened: Span,
         allow_empty: bool,
         mut entry: impl FnMut(&mut Self) -> Result<T, ParseError>,
     ) -> Result<Vec<T>, ParseError> {
@@ -532,14 +558,19 @@ impl<'src> Parser<'src> {
         if allow_empty && self.eat(TokenKind::End) {
             return Ok(Vec::new());
         }
-        let mut entries = vec![entry(self)?];
-        while !self.eat(TokenKind::End) {
-            self.statement_end(TokenKind::End)?;
-            if !self.at(TokenKind::End) {
-                entries.push(entry(self)?);
+        let mut entries = Vec::new();
+        loop {
+            if self.at(TokenKind::Eof) {
+                return Err(self.missing_end(opened));
+            }
+            entries.push(entry(self)?);
+            if !self.at(TokenKind::Eof) {
+                self.statement_end(TokenKind::End)?;
+            }
+            if self.eat(TokenKind::End) {
+                return Ok(entries);
             }
         }
-        Ok(entries)
     }
 
     fn comma_list<T>(
@@ -574,7 +605,11 @@ impl<'src> Parser<'src> {
 
     fn check_nesting(&self, depth: usize) -> Result<(), ParseError> {
         if depth >= MAX_NESTING {
-            Err(self.error("logic nesting limit exceeded"))
+            Err(ParseError::new(
+                Code::LogicTooLarge,
+                "logic nesting limit exceeded",
+                self.current.span,
+            ))
         } else {
             Ok(())
         }
@@ -729,17 +764,20 @@ impl<'src> Parser<'src> {
     }
 
     fn binder_term(&mut self, depth: usize, keyword: &str) -> Result<ParsedTerm, ParseError> {
+        let start = self.current.span;
         self.advance();
         let is_lambda = keyword == "fn";
         let precedence = if is_lambda { ARROW_PRECEDENCE + 1 } else { 0 };
         let (name, ty) = self.typed_name(depth, precedence)?;
-        if is_lambda {
+        // A lambda's body runs from `fn` to its `end`.
+        let opened = if is_lambda {
             self.expect(TokenKind::Arrow, "->")?;
+            start
         } else {
-            self.open_block()?;
-        }
+            self.open_block()?
+        };
         let body = self.term(depth, 0, TermContext::Value)?;
-        self.close_block()?;
+        self.close_block(opened)?;
         let height = ty.height.max(body.height);
         let binder = Box::new(Binder { name, ty: ty.term });
         let body = Box::new(body.term);
@@ -754,12 +792,12 @@ impl<'src> Parser<'src> {
     fn if_term(&mut self, depth: usize) -> Result<ParsedTerm, ParseError> {
         self.advance();
         let condition = self.term(depth, 0, TermContext::Value)?;
-        self.open_block()?;
+        let opened = self.open_block()?;
         let yes = self.term(depth, 0, TermContext::Value)?;
         self.newlines();
         self.expect(TokenKind::Else, "else")?;
         let no = self.term(depth, 0, TermContext::Value)?;
-        self.close_block()?;
+        self.close_block(opened)?;
         let height = condition.height.max(yes.height).max(no.height);
         Ok(ParsedTerm::above(
             Term::If(
@@ -774,9 +812,9 @@ impl<'src> Parser<'src> {
     fn match_term(&mut self, depth: usize) -> Result<ParsedTerm, ParseError> {
         self.advance();
         let subject = self.term(depth, 0, TermContext::Value)?;
-        self.open_block()?;
+        let opened = self.open_block()?;
         let mut height = subject.height;
-        let arms = self.block_entries(false, |parser| {
+        let arms = self.block_entries(opened, false, |parser| {
             parser.arm(|parser| {
                 let body = parser.term(depth, 0, TermContext::Value)?;
                 height = height.max(body.height);
@@ -854,12 +892,12 @@ impl<'src> Parser<'src> {
                 Ok(Proof::Intro(name, self.proof_block(child)?))
             }
             "split" => {
-                self.open_block()?;
+                let opened = self.open_block()?;
                 let left = Box::new(self.proof(child)?);
                 self.newlines();
                 self.expect(TokenKind::Comma, ",")?;
                 let right = Box::new(self.proof(child)?);
-                self.close_block()?;
+                self.close_block(opened)?;
                 Ok(Proof::Split(left, right))
             }
             "witness" | "rewrite" => {
@@ -873,13 +911,13 @@ impl<'src> Parser<'src> {
             }
             "branch" => {
                 let proposition = self.term(child, 0, TermContext::Value)?.term;
-                self.open_block()?;
+                let opened = self.open_block()?;
                 self.separators();
                 let (yes_name, yes_proof) = self.branch_arm("yes", child)?;
                 self.statement_end(TokenKind::End)?;
                 let (no_name, no_proof) = self.branch_arm("no", child)?;
                 self.separators();
-                self.expect(TokenKind::End, "end")?;
+                self.close_block(opened)?;
                 Ok(Proof::Branch(
                     proposition,
                     yes_name,
@@ -898,10 +936,11 @@ impl<'src> Parser<'src> {
             }
             "cases" | "induction" => {
                 let name = self.ident()?;
-                self.open_block()?;
+                let opened = self.open_block()?;
                 let is_cases = command == "cases";
-                let arms = self
-                    .block_entries(is_cases, |parser| parser.arm(|parser| parser.proof(child)))?;
+                let arms = self.block_entries(opened, is_cases, |parser| {
+                    parser.arm(|parser| parser.proof(child))
+                })?;
                 if is_cases {
                     Ok(Proof::Cases(name, arms))
                 } else {
@@ -910,7 +949,11 @@ impl<'src> Parser<'src> {
             }
             "left" => Ok(Proof::Left(self.proof_block(child)?)),
             "right" => Ok(Proof::Right(self.proof_block(child)?)),
-            _ => Err(ParseError::new("expected a logic proof term", span)),
+            _ => Err(ParseError::new(
+                Code::LogicSyntax,
+                "expected a logic proof term",
+                span,
+            )),
         }
     }
 
@@ -931,9 +974,9 @@ impl<'src> Parser<'src> {
     }
 
     fn proof_block(&mut self, depth: usize) -> Result<Box<Proof>, ParseError> {
-        self.open_block()?;
+        let opened = self.open_block()?;
         let proof = self.proof(depth)?;
-        self.close_block()?;
+        self.close_block(opened)?;
         Ok(Box::new(proof))
     }
 }
@@ -1190,6 +1233,7 @@ theorem t() do true end";
             let source = format!("logic\nfrom Trees import {import}\ntheorem t() do true end");
             let error = parse(&source).expect_err(&source);
             assert_eq!(spanned(&source, error.span), offending, "{source}: {error}");
+            assert_eq!(error.code, Code::LogicSyntax, "{source}: {error}");
         }
     }
 
@@ -1720,7 +1764,46 @@ proof absurd do intro impossible do cases impossible do end end end";
             let source = format!("logic\n{statement}");
             let error = parse(&source).expect_err(&source);
             assert_eq!(spanned(&source, error.span), offending, "{source}: {error}");
+            assert_eq!(error.code, Code::LogicSyntax, "{source}: {error}");
         }
+    }
+
+    #[test]
+    fn a_missing_end_names_the_block_it_closes() {
+        // Each block opens where its statement's prefix ends.
+        for (prefix, rest, message) in [
+            ("theorem t() ", "do x = y end", "expected `end`, found `=`"),
+            (
+                "proof t do intro x ",
+                "do refl",
+                "expected `end`, found the end of the logic",
+            ),
+            (
+                "proof t do cases x ",
+                "do\n  true -> refl\n",
+                "expected `end`, found the end of the logic",
+            ),
+            (
+                "theorem t() do (",
+                "fn x :: Nat -> x) end",
+                "expected `end`, found `)`",
+            ),
+        ] {
+            let source = format!("logic\n{prefix}{rest}");
+            let error = parse(&source).expect_err(&source);
+            assert_eq!(error.code, Code::LogicSyntax, "{source}");
+            assert_eq!(error.message, message, "{source}");
+            let (label, span) = error.related.expect("the block's opening");
+            assert_eq!(label, "block opened here");
+            assert_eq!(
+                span.start as usize,
+                "logic\n".len() + prefix.len(),
+                "{source}"
+            );
+        }
+        let error = parse("logic\ntheorem t(x :: Nat do x end").unwrap_err();
+        assert_eq!(error.message, "expected `)`, found `do`");
+        assert_eq!(error.related, None);
     }
 
     #[test]
@@ -1766,6 +1849,7 @@ proof absurd do intro impossible do cases impossible do end end end";
         ] {
             let error = parse(&format!("logic\n{statement}")).unwrap_err();
             assert_eq!(error.message, "logic nesting limit exceeded", "{statement}");
+            assert_eq!(error.code, Code::LogicTooLarge, "{statement}");
         }
 
         let many_arguments = "0,".repeat(MAX_NESTING * 2);

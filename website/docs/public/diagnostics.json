@@ -1,0 +1,3799 @@
+{
+  "schema": 1,
+  "docs_base": "https://meshlang.dev/docs/errors/",
+  "codes": [
+    {
+      "code": "B0001",
+      "name": "target-unsupported",
+      "severity": "error",
+      "category": "build",
+      "title": "unsupported build target",
+      "summary": "The target triple names a platform Mesh cannot compile or link for, or an artifact kind that the target does not support.",
+      "repair": "Pass `--target` a supported triple, a Unix-like one (macOS, iOS, Linux, Android, or a BSD) or a Windows MSVC one, or omit it to build for the host. Build an executable or a `cdylib` where the target has no `staticlib` support.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0001",
+      "guide": {
+        "explain": "meshc explain B0001",
+        "skill": "references/diagnostics.md#b0001",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0101",
+      "name": "linker-not-found",
+      "severity": "error",
+      "category": "build",
+      "title": "linker not found",
+      "summary": "The C compiler, linker, or archiver the target links with could not be found or started.",
+      "repair": "Install the tool the message names and put it on `PATH`: a C compiler (`cc`) on Unix-like targets, `clang` from LLVM 21 for Windows MSVC (or set `LLVM_SYS_211_PREFIX` to that LLVM), or the Android NDK with `ANDROID_NDK_HOME` set.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0101",
+      "guide": {
+        "explain": "meshc explain B0101",
+        "skill": "references/diagnostics.md#b0101",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0102",
+      "name": "link-failed",
+      "severity": "error",
+      "category": "build",
+      "title": "linking failed",
+      "summary": "The linker or archiver ran and reported a failure; its output is in the notes.",
+      "repair": "Fix what the linker output in the notes names: supply a missing native library or archive, and rebuild the Mesh runtime for the same target when its symbols are missing.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0102",
+      "guide": {
+        "explain": "meshc explain B0102",
+        "skill": "references/diagnostics.md#b0102",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0201",
+      "name": "runtime-library-missing",
+      "severity": "error",
+      "category": "build",
+      "title": "runtime library missing",
+      "summary": "The Mesh runtime static library for the target was not found, or `MESH_RT_LIB_PATH` or `MESH_TEST_RT_LIB_PATH` does not name one.",
+      "repair": "Reinstall Mesh so the `lib` directory beside `meshc` holds the runtime, or in a source checkout run `cargo build -p mesh-rt` (`-p mesh-test-rt` for `meshc test`, with `--target` for another target). Point `MESH_RT_LIB_PATH` at the library file itself, or unset it.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0201",
+      "guide": {
+        "explain": "meshc explain B0201",
+        "skill": "references/diagnostics.md#b0201",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0301",
+      "name": "output-unwritable",
+      "severity": "error",
+      "category": "build",
+      "title": "cannot write build output",
+      "summary": "The object file, LLVM IR, executable, or library could not be written at its output path.",
+      "repair": "Create the output directory, or pass `--output` a path in a writable directory where no directory of the same name exists.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0301",
+      "guide": {
+        "explain": "meshc explain B0301",
+        "skill": "references/diagnostics.md#b0301",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0302",
+      "name": "artifact-entry-missing",
+      "severity": "error",
+      "category": "build",
+      "title": "artifact has no entry point",
+      "summary": "An executable build found no `fn main()` in the entry module, or a `staticlib` or `cdylib` build found no `@export` function for a host to call.",
+      "repair": "Define `fn main()` in the entrypoint to build an executable, or mark a public function `@export(\"symbol\")` to build a library, or pass `--artifact` the kind of artifact the program provides.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0302",
+      "guide": {
+        "explain": "meshc explain B0302",
+        "skill": "references/diagnostics.md#b0302",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "CFG0001",
+      "name": "cluster-declaration-invalid",
+      "severity": "error",
+      "category": "project",
+      "title": "invalid `@cluster` declaration",
+      "summary": "A `@cluster` decorator is on a private function, on a name with several public definitions, or on a target already declared as clustered work.",
+      "repair": "Put `@cluster` on exactly one `pub fn` per name: make the function public, give overloaded entrypoints distinct names, and remove any second decorator for the same target.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#cfg0001",
+      "guide": {
+        "explain": "meshc explain CFG0001",
+        "skill": "references/diagnostics.md#cfg0001",
+        "topic": "clustering"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "E0001",
+      "name": "type-mismatch",
+      "severity": "error",
+      "category": "semantic",
+      "title": "type mismatch",
+      "summary": "A value's type differs from the type its position requires.",
+      "repair": "Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0001",
+      "guide": {
+        "explain": "meshc explain E0001",
+        "skill": "references/diagnostics.md#e0001",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n :: Int = \"one\"\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn main() do\n  let n :: Int = 1\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0002",
+      "name": "infinite-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "infinite type",
+      "summary": "Inference needs a type that contains itself, as when a function is applied to itself.",
+      "repair": "Stop passing the value to itself or storing it inside itself. For recursive data, define a struct or sum type that refers to itself by name.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0002",
+      "guide": {
+        "explain": "meshc explain E0002",
+        "skill": "references/diagnostics.md#e0002",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn self_apply(f) = f(f)\n\nfn main() do\nend\n",
+        "fixed": "fn apply(f, x) = f(x)\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0003",
+      "name": "arity-mismatch",
+      "severity": "error",
+      "category": "semantic",
+      "title": "wrong number of arguments",
+      "summary": "A call passes more or fewer arguments than the function takes, or a closure of several parameters is given where a function of one tuple is expected.",
+      "repair": "Pass exactly the arguments the function declares; a value piped with `|>` counts as the first. To take a tuple argument apart, put its pattern in parentheses: `fn ((a, b)) -> ... end`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0003",
+      "guide": {
+        "explain": "meshc explain E0003",
+        "skill": "references/diagnostics.md#e0003",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  println(\"#{add(1)}\")\nend\n",
+        "fixed": "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  println(\"#{add(1, 2)}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0004",
+      "name": "unbound-variable",
+      "severity": "error",
+      "category": "semantic",
+      "title": "undefined variable",
+      "summary": "A name is used where nothing of that name is defined, imported, or in scope.",
+      "repair": "Define the name before this use, import the module that defines it, or correct the spelling to a name in scope.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0004",
+      "guide": {
+        "explain": "meshc explain E0004",
+        "skill": "references/diagnostics.md#e0004",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let count = 1\n  println(\"#{cuont}\")\nend\n",
+        "fixed": "fn main() do\n  let count = 1\n  println(\"#{count}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0005",
+      "name": "not-a-function",
+      "severity": "error",
+      "category": "semantic",
+      "title": "call of a non-function",
+      "summary": "A value that is not a function is called with parentheses.",
+      "repair": "Remove the parentheses to use the value itself, or call the function the value was meant to be.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0005",
+      "guide": {
+        "explain": "meshc explain E0005",
+        "skill": "references/diagnostics.md#e0005",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = 1\n  println(\"#{n()}\")\nend\n",
+        "fixed": "fn main() do\n  let n = 1\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0006",
+      "name": "trait-not-satisfied",
+      "severity": "error",
+      "category": "semantic",
+      "title": "interface not implemented",
+      "summary": "A type is used where an interface it does not implement is required, such as interpolating a struct that does not implement `Display`.",
+      "repair": "Add the interface to the type's `deriving(...)` list, or write `impl Interface for Type do ... end`.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0006",
+      "guide": {
+        "explain": "meshc explain E0006",
+        "skill": "references/diagnostics.md#e0006",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "struct Point do\n  x :: Int\nend deriving(Eq)\n\nfn main() do\n  let p = Point { x: 1 }\n  println(\"#{p}\")\nend\n",
+        "fixed": "struct Point do\n  x :: Int\nend deriving(Eq, Display)\n\nfn main() do\n  let p = Point { x: 1 }\n  println(\"#{p}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0007",
+      "name": "missing-trait-method",
+      "severity": "error",
+      "category": "semantic",
+      "title": "missing interface method",
+      "summary": "An `impl` block leaves out a method its interface declares without a default body.",
+      "repair": "Add the missing `fn` to the `impl` block, with the signature the interface declares.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0007",
+      "guide": {
+        "explain": "meshc explain E0007",
+        "skill": "references/diagnostics.md#e0007",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Shape do\n  fn area(self) -> Int\nend\n\nstruct Square do\n  side :: Int\nend\n\nimpl Shape for Square do\nend\n\nfn main() do\nend\n",
+        "fixed": "interface Shape do\n  fn area(self) -> Int\nend\n\nstruct Square do\n  side :: Int\nend\n\nimpl Shape for Square do\n  fn area(self) -> Int do\n    self.side * self.side\n  end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0008",
+      "name": "trait-method-signature-mismatch",
+      "severity": "error",
+      "category": "semantic",
+      "title": "impl method signature differs from its interface",
+      "summary": "A method in an `impl` block has other parameter or return types than its interface declares.",
+      "repair": "Change the method's parameter and return types to the ones the interface declares.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0008",
+      "guide": {
+        "explain": "meshc explain E0008",
+        "skill": "references/diagnostics.md#e0008",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Shape do\n  fn area(self) -> Int\nend\n\nstruct Square do\n  side :: Int\nend\n\nimpl Shape for Square do\n  fn area(self) -> String do\n    \"big\"\n  end\nend\n\nfn main() do\nend\n",
+        "fixed": "interface Shape do\n  fn area(self) -> Int\nend\n\nstruct Square do\n  side :: Int\nend\n\nimpl Shape for Square do\n  fn area(self) -> Int do\n    self.side * self.side\n  end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0009",
+      "name": "invalid-field",
+      "severity": "error",
+      "category": "semantic",
+      "title": "missing or unknown field",
+      "summary": "A struct literal leaves out a field or names one the struct does not have, or a field is read from a type without it.",
+      "repair": "Give every field the struct declares exactly once, and use only field names from the struct's definition.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0009",
+      "guide": {
+        "explain": "meshc explain E0009",
+        "skill": "references/diagnostics.md#e0009",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "struct Point do\n  x :: Int\n  y :: Int\nend\n\nfn main() do\n  let p = Point { x: 1 }\n  println(\"#{p.x}\")\nend\n",
+        "fixed": "struct Point do\n  x :: Int\n  y :: Int\nend\n\nfn main() do\n  let p = Point { x: 1, y: 2 }\n  println(\"#{p.x}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0010",
+      "name": "unknown-variant",
+      "severity": "error",
+      "category": "semantic",
+      "title": "unknown variant",
+      "summary": "A pattern names a constructor that no sum type in scope defines.",
+      "repair": "Correct the spelling to a variant of the matched type, or import the module that defines the type. To split a list in a pattern, write `head :: tail` with a lowercase tail.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0010",
+      "guide": {
+        "explain": "meshc explain E0010",
+        "skill": "references/diagnostics.md#e0010",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = case Some(1) do\n    Some(v) -> v\n    Nothing -> 0\n  end\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn main() do\n  let n = case Some(1) do\n    Some(v) -> v\n    None -> 0\n  end\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0011",
+      "name": "or-pattern-binding-mismatch",
+      "severity": "error",
+      "category": "semantic",
+      "title": "or-pattern alternatives bind different names",
+      "summary": "The alternatives of a `|` pattern bind different sets of variables, so the arm body cannot rely on any of them.",
+      "repair": "Bind the same names in every alternative, or split the alternatives into separate arms. A list's tail is written `head :: tail`, not `[head | tail]`.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0011",
+      "guide": {
+        "explain": "meshc explain E0011",
+        "skill": "references/diagnostics.md#e0011",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = case Some(1) do\n    Some(a) | None -> 0\n  end\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn main() do\n  let n = case Some(1) do\n    Some(_) | None -> 0\n  end\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0012",
+      "name": "non-exhaustive-match",
+      "severity": "error",
+      "category": "semantic",
+      "title": "non-exhaustive match",
+      "summary": "A `case` has no arm for some values of the matched type.",
+      "repair": "Add an arm for each missing pattern the diagnostic lists, or a final `_` arm for an intentional default.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0012",
+      "guide": {
+        "explain": "meshc explain E0012",
+        "skill": "references/diagnostics.md#e0012",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = case Some(1) do\n    Some(v) -> v\n  end\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn main() do\n  let n = case Some(1) do\n    Some(v) -> v\n    None -> 0\n  end\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0014",
+      "name": "message-type-mismatch",
+      "severity": "error",
+      "category": "semantic",
+      "title": "message type mismatch",
+      "summary": "A message sent to a typed `Pid<M>` is not of type `M`.",
+      "repair": "Send a value of the pid's message type, or change the actor's message type to one that includes this message.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0014",
+      "guide": {
+        "explain": "meshc explain E0014",
+        "skill": "references/diagnostics.md#e0014",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "actor counter(total :: Int) do\n  receive do\n    n -> counter(total + n)\n  end\nend\n\nfn main() do\n  let pid :: Pid<Int> = spawn(counter, 0)\n  send(pid, \"five\")\nend\n",
+        "fixed": "actor counter(total :: Int) do\n  receive do\n    n -> counter(total + n)\n  end\nend\n\nfn main() do\n  let pid :: Pid<Int> = spawn(counter, 0)\n  send(pid, 5)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0015",
+      "name": "self-outside-actor",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`self()` outside an actor",
+      "summary": "`self()` names the running actor, and it is called where no actor is running.",
+      "repair": "Move the `self()` call into an `actor` body, or pass the pid it should name in as an argument.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0015",
+      "guide": {
+        "explain": "meshc explain E0015",
+        "skill": "references/diagnostics.md#e0015",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "fn main() do\n  let _me = self()\nend\n",
+        "fixed": "actor worker() do\n  let _me = self()\nend\n\nfn main() do\n  let _ = spawn(worker)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0016",
+      "name": "spawn-non-function",
+      "severity": "error",
+      "category": "semantic",
+      "title": "spawn of a non-function",
+      "summary": "`spawn` is given a value that is not an actor.",
+      "repair": "Pass the actor to start as the first argument, followed by its arguments: `spawn(worker, arg)`.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0016",
+      "guide": {
+        "explain": "meshc explain E0016",
+        "skill": "references/diagnostics.md#e0016",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "fn main() do\n  let _ = spawn(1)\nend\n",
+        "fixed": "actor worker() do\n  println(\"started\")\nend\n\nfn main() do\n  let _ = spawn(worker)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0017",
+      "name": "receive-outside-actor",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`receive` outside an actor",
+      "summary": "A `receive` block appears outside an actor, where there is no mailbox to read.",
+      "repair": "Move the `receive` block into an `actor name(...) do ... end` body.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0017",
+      "guide": {
+        "explain": "meshc explain E0017",
+        "skill": "references/diagnostics.md#e0017",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "fn main() do\n  receive do\n    _ -> println(\"got one\")\n  end\nend\n",
+        "fixed": "actor worker() do\n  receive do\n    _ -> println(\"got one\")\n  end\nend\n\nfn main() do\n  let _ = spawn(worker)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0018",
+      "name": "invalid-child-start",
+      "severity": "error",
+      "category": "semantic",
+      "title": "child start function does not return a pid",
+      "summary": "A supervisor child's `start` function returns something other than the `Pid` of the process it spawns.",
+      "repair": "Make `start` return the result of `spawn`, as `start: fn -> spawn(worker, arg) end`.",
+      "topic": "supervisors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0018",
+      "guide": {
+        "explain": "meshc explain E0018",
+        "skill": "references/diagnostics.md#e0018",
+        "topic": "supervisors"
+      },
+      "example": {
+        "bad": "actor worker() do\n  nil\nend\n\nsupervisor Workers do\n  strategy: one_for_one\n  child worker do\n    start: fn -> 42 end\n  end\nend\n",
+        "fixed": "actor worker() do\n  nil\nend\n\nsupervisor Workers do\n  strategy: one_for_one\n  child worker do\n    start: fn -> spawn(worker) end\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0019",
+      "name": "unknown-supervision-strategy",
+      "severity": "error",
+      "category": "semantic",
+      "title": "unknown supervision strategy",
+      "summary": "A supervisor's `strategy` is not one Mesh supports.",
+      "repair": "Set `strategy:` to `one_for_one`, `one_for_all`, `rest_for_one`, or `simple_one_for_one`.",
+      "topic": "supervisors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0019",
+      "guide": {
+        "explain": "meshc explain E0019",
+        "skill": "references/diagnostics.md#e0019",
+        "topic": "supervisors"
+      },
+      "example": {
+        "bad": "actor worker() do\n  receive do\n    _ -> println(\"done\")\n  end\nend\n\nsupervisor WorkerSup do\n  strategy: one_for_none\n\n  child w do\n    start: fn -> spawn(worker) end\n    restart: transient\n    shutdown: 1_000\n  end\nend\n\nfn main() do\n  let _ = spawn(WorkerSup)\nend\n",
+        "fixed": "actor worker() do\n  receive do\n    _ -> println(\"done\")\n  end\nend\n\nsupervisor WorkerSup do\n  strategy: one_for_one\n\n  child w do\n    start: fn -> spawn(worker) end\n    restart: transient\n    shutdown: 1_000\n  end\nend\n\nfn main() do\n  let _ = spawn(WorkerSup)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0020",
+      "name": "invalid-restart-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid restart type",
+      "summary": "A child spec's `restart` is not a restart type Mesh supports.",
+      "repair": "Set `restart:` to `permanent`, `transient`, or `temporary`.",
+      "topic": "supervisors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0020",
+      "guide": {
+        "explain": "meshc explain E0020",
+        "skill": "references/diagnostics.md#e0020",
+        "topic": "supervisors"
+      },
+      "example": {
+        "bad": "actor worker() do\n  receive do\n    _ -> println(\"done\")\n  end\nend\n\nsupervisor WorkerSup do\n  strategy: one_for_one\n\n  child w do\n    start: fn -> spawn(worker) end\n    restart: always\n    shutdown: 1_000\n  end\nend\n\nfn main() do\n  let _ = spawn(WorkerSup)\nend\n",
+        "fixed": "actor worker() do\n  receive do\n    _ -> println(\"done\")\n  end\nend\n\nsupervisor WorkerSup do\n  strategy: one_for_one\n\n  child w do\n    start: fn -> spawn(worker) end\n    restart: transient\n    shutdown: 1_000\n  end\nend\n\nfn main() do\n  let _ = spawn(WorkerSup)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0021",
+      "name": "invalid-shutdown-value",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid shutdown value",
+      "summary": "A child spec's `shutdown` is neither a positive number of milliseconds nor `brutal_kill`.",
+      "repair": "Set `shutdown:` to a positive integer of milliseconds, such as `1_000`, or to `brutal_kill`.",
+      "topic": "supervisors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0021",
+      "guide": {
+        "explain": "meshc explain E0021",
+        "skill": "references/diagnostics.md#e0021",
+        "topic": "supervisors"
+      },
+      "example": {
+        "bad": "actor worker() do\n  receive do\n    _ -> println(\"done\")\n  end\nend\n\nsupervisor WorkerSup do\n  strategy: one_for_one\n\n  child w do\n    start: fn -> spawn(worker) end\n    restart: transient\n    shutdown: forever\n  end\nend\n\nfn main() do\n  let _ = spawn(WorkerSup)\nend\n",
+        "fixed": "actor worker() do\n  receive do\n    _ -> println(\"done\")\n  end\nend\n\nsupervisor WorkerSup do\n  strategy: one_for_one\n\n  child w do\n    start: fn -> spawn(worker) end\n    restart: transient\n    shutdown: 1_000\n  end\nend\n\nfn main() do\n  let _ = spawn(WorkerSup)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0022",
+      "name": "catch-all-not-last",
+      "severity": "error",
+      "category": "semantic",
+      "title": "catch-all clause before other clauses",
+      "summary": "A clause that matches every argument comes before other clauses of the same function, so they never run.",
+      "repair": "Move the catch-all clause after every more specific clause of the function.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0022",
+      "guide": {
+        "explain": "meshc explain E0022",
+        "skill": "references/diagnostics.md#e0022",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn label(n) = n\nfn label(0) = 1\n",
+        "fixed": "fn label(0) = 1\nfn label(n) = n\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0023",
+      "name": "non-consecutive-clauses",
+      "severity": "error",
+      "category": "semantic",
+      "title": "function clauses are not consecutive",
+      "summary": "Clauses of one function name and arity are separated by other definitions.",
+      "repair": "Move every clause of the function together, one after another, or rename the later definition.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0023",
+      "guide": {
+        "explain": "meshc explain E0023",
+        "skill": "references/diagnostics.md#e0023",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn label(n) = \"any\"\n\nfn main() do\n  println(label(1))\nend\n\nfn label(n) = \"other\"\n",
+        "fixed": "fn label(n) = \"any\"\n\nfn main() do\n  println(label(1))\nend\n\nfn other_label(n) = \"other\"\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0026",
+      "name": "duplicate-impl",
+      "severity": "error",
+      "category": "semantic",
+      "title": "duplicate impl",
+      "summary": "Two `impl` blocks implement the same interface for the same type.",
+      "repair": "Remove one of the `impl` blocks, or merge their methods into one.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0026",
+      "guide": {
+        "explain": "meshc explain E0026",
+        "skill": "references/diagnostics.md#e0026",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Named do\n  fn name(self) -> String\nend\n\nstruct User do\n  id :: Int\nend\n\nimpl Named for User do\n  fn name(self) -> String do\n    \"user\"\n  end\nend\n\nimpl Named for User do\n  fn name(self) -> String do\n    \"person\"\n  end\nend\n\nfn main() do\nend\n",
+        "fixed": "interface Named do\n  fn name(self) -> String\nend\n\nstruct User do\n  id :: Int\nend\n\nimpl Named for User do\n  fn name(self) -> String do\n    \"user\"\n  end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0027",
+      "name": "ambiguous-method",
+      "severity": "error",
+      "category": "semantic",
+      "title": "ambiguous method",
+      "summary": "Several interfaces implemented for the receiver's type provide a method of the called name.",
+      "repair": "Call the method through the interface you mean, as `Interface.method(value)`.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0027",
+      "guide": {
+        "explain": "meshc explain E0027",
+        "skill": "references/diagnostics.md#e0027",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface A do\n  fn label(self) -> Int\nend\n\ninterface B do\n  fn label(self) -> Int\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl A for Item do\n  fn label(self) -> Int = self.n\nend\n\nimpl B for Item do\n  fn label(self) -> Int = self.n + 1\nend\n\nfn main() = Item { n: 0 }.label()\n",
+        "fixed": "interface A do\n  fn label(self) -> Int\nend\n\ninterface B do\n  fn label(self) -> Int\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl A for Item do\n  fn label(self) -> Int = self.n\nend\n\nimpl B for Item do\n  fn label(self) -> Int = self.n + 1\nend\n\nfn main() = A.label(Item { n: 0 })\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0028",
+      "name": "unsupported-derive",
+      "severity": "error",
+      "category": "semantic",
+      "title": "interface cannot be derived",
+      "summary": "A `deriving(...)` list names an interface that cannot be derived for this kind of type.",
+      "repair": "Derive only Eq, Ord, Display, Debug, Hash, Json, Row, or Schema on a struct, and the same but Row and Schema on a sum type. Write an `impl` for any other interface.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0028",
+      "guide": {
+        "explain": "meshc explain E0028",
+        "skill": "references/diagnostics.md#e0028",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "struct Point do\n  x :: Int\nend deriving(Add)\n\nfn main() do\nend\n",
+        "fixed": "struct Point do\n  x :: Int\nend deriving(Eq)\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0029",
+      "name": "missing-derive-prerequisite",
+      "severity": "error",
+      "category": "semantic",
+      "title": "derived interface needs another",
+      "summary": "A derived interface depends on another that the `deriving` list leaves out, such as `Ord` without `Eq`.",
+      "repair": "Add the required interface to the same `deriving(...)` list.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0029",
+      "guide": {
+        "explain": "meshc explain E0029",
+        "skill": "references/diagnostics.md#e0029",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "struct Point do\n  x :: Int\nend deriving(Ord)\n\nfn main() do\nend\n",
+        "fixed": "struct Point do\n  x :: Int\nend deriving(Eq, Ord)\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0030",
+      "name": "no-such-method",
+      "severity": "error",
+      "category": "semantic",
+      "title": "no such method",
+      "summary": "A method is called on a type that neither defines it nor implements an interface that provides it.",
+      "repair": "Correct the method name, call the module function it stands for as `Module.function(value)`, or implement an interface that provides the method.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0030",
+      "guide": {
+        "explain": "meshc explain E0030",
+        "skill": "references/diagnostics.md#e0030",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = 1\n  println(n.shout())\nend\n",
+        "fixed": "fn main() do\n  let n = 1\n  println(n.to_string())\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0031",
+      "name": "module-not-found",
+      "severity": "error",
+      "category": "semantic",
+      "title": "module not found",
+      "summary": "An `import` names a module that is neither in the project nor in the standard library.",
+      "repair": "Correct the module path, which follows the file path (`geo/points.mpl` is `Geo.Points`), or create the module's file.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0031",
+      "guide": {
+        "explain": "meshc explain E0031",
+        "skill": "references/diagnostics.md#e0031",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "import Maths\n\nmodule Math do\n  pub fn count() = 1\nend\n",
+        "fixed": "import Math\n\nmodule Math do\n  pub fn count() = 1\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0032",
+      "name": "break-outside-loop",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`break` outside a loop",
+      "summary": "`break` appears where no `while` or `for` loop encloses it.",
+      "repair": "Move the `break` into a loop body, or leave the function with `return` instead.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0032",
+      "guide": {
+        "explain": "meshc explain E0032",
+        "skill": "references/diagnostics.md#e0032",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  break\nend\n",
+        "fixed": "fn main() do\n  while true do\n    break\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0033",
+      "name": "continue-outside-loop",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`continue` outside a loop",
+      "summary": "`continue` appears where no `while` or `for` loop encloses it.",
+      "repair": "Move the `continue` into a loop body, or remove it.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0033",
+      "guide": {
+        "explain": "meshc explain E0033",
+        "skill": "references/diagnostics.md#e0033",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  continue\nend\n",
+        "fixed": "fn main() do\n  while false do\n    continue\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0034",
+      "name": "import-name-not-found",
+      "severity": "error",
+      "category": "semantic",
+      "title": "imported name not exported",
+      "summary": "An import names something its module does not define.",
+      "repair": "Correct the name to one the module exports (the diagnostic lists them), or define it in the module with `pub`.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0034",
+      "guide": {
+        "explain": "meshc explain E0034",
+        "skill": "references/diagnostics.md#e0034",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "from Math import coun\n\nmodule Math do\n  pub fn count() = 1\nend\n",
+        "fixed": "from Math import count\n\nmodule Math do\n  pub fn count() = 1\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0035",
+      "name": "private-item",
+      "severity": "error",
+      "category": "semantic",
+      "title": "private item imported",
+      "summary": "An import names a definition its module does not mark `pub`.",
+      "repair": "Add `pub` to the definition in its module, or stop importing it.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0035",
+      "guide": {
+        "explain": "meshc explain E0035",
+        "skill": "references/diagnostics.md#e0035",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "from Math import count\n\nmodule Math do\n  fn count() = 1\nend\n",
+        "fixed": "from Math import count\n\nmodule Math do\n  pub fn count() = 1\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0036",
+      "name": "try-incompatible-return",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`?` in a function that cannot return its failure",
+      "summary": "`?` returns early with the operand's `Err` or `None`, and the enclosing function's return type cannot hold it.",
+      "repair": "For a `Result` operand, make the function return a `Result` whose error type matches or has a `From` conversion; for an `Option` operand, return an `Option`. Otherwise handle the value with `case` instead of `?`.",
+      "topic": "error-handling",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0036",
+      "guide": {
+        "explain": "meshc explain E0036",
+        "skill": "references/diagnostics.md#e0036",
+        "topic": "error-handling"
+      },
+      "example": {
+        "bad": "fn half(n :: Int) -> Option<Int> do\n  if n % 2 == 0 do\n    Some(n / 2)\n  else\n    None\n  end\nend\n\nfn quarter(n :: Int) -> Int do\n  let h = half(n)?\n  h / 2\nend\n\nfn main() do\nend\n",
+        "fixed": "fn half(n :: Int) -> Option<Int> do\n  if n % 2 == 0 do\n    Some(n / 2)\n  else\n    None\n  end\nend\n\nfn quarter(n :: Int) -> Option<Int> do\n  let h = half(n)?\n  half(h)\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0037",
+      "name": "try-on-non-result",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`?` on a value that is not a Result or Option",
+      "summary": "`?` unwraps only `Result` and `Option` values, and its operand is neither.",
+      "repair": "Remove the `?`, or apply it to an expression that returns a `Result` or an `Option`.",
+      "topic": "error-handling",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0037",
+      "guide": {
+        "explain": "meshc explain E0037",
+        "skill": "references/diagnostics.md#e0037",
+        "topic": "error-handling"
+      },
+      "example": {
+        "bad": "fn double(n :: Int) -> Int = n * 2\n\nfn quadruple(n :: Int) -> Option<Int> do\n  let d = double(n)?\n  Some(d * 2)\nend\n\nfn main() do\nend\n",
+        "fixed": "fn double(n :: Int) -> Int = n * 2\n\nfn quadruple(n :: Int) -> Option<Int> do\n  let d = double(n)\n  Some(d * 2)\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0038",
+      "name": "non-serializable-field",
+      "severity": "error",
+      "category": "semantic",
+      "title": "field cannot be encoded as JSON",
+      "summary": "A type deriving `Json` has a field whose type has no JSON form.",
+      "repair": "Add `deriving(Json)` to the field's type, or change the field to a JSON type: Int, Float, Bool, String, a tuple, Option, List, or a Map with String keys.",
+      "topic": "strings",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0038",
+      "guide": {
+        "explain": "meshc explain E0038",
+        "skill": "references/diagnostics.md#e0038",
+        "topic": "strings"
+      },
+      "example": {
+        "bad": "struct Point do\n  x :: Int\nend\n\nstruct Shape do\n  origin :: Point\nend deriving(Json)\n\nfn main() do\nend\n",
+        "fixed": "struct Point do\n  x :: Int\nend deriving(Json)\n\nstruct Shape do\n  origin :: Point\nend deriving(Json)\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0039",
+      "name": "non-mappable-field",
+      "severity": "error",
+      "category": "semantic",
+      "title": "field cannot be read from a database row",
+      "summary": "A struct deriving `Row` has a field of a type a database column cannot hold.",
+      "repair": "Change the field to Int, Float, Bool, String, or an Option of one of them, or remove `Row` from the `deriving` list.",
+      "topic": "database",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0039",
+      "guide": {
+        "explain": "meshc explain E0039",
+        "skill": "references/diagnostics.md#e0039",
+        "topic": "database"
+      },
+      "example": {
+        "bad": "struct User do\n  tags :: List<String>\nend deriving(Row)\n\nfn main() do\nend\n",
+        "fixed": "struct User do\n  tags :: String\nend deriving(Row)\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0040",
+      "name": "missing-associated-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "missing associated type",
+      "summary": "An `impl` block leaves out an associated type its interface declares.",
+      "repair": "Add `type Name = ConcreteType` to the `impl` block for each associated type the interface declares.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0040",
+      "guide": {
+        "explain": "meshc explain E0040",
+        "skill": "references/diagnostics.md#e0040",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Container do\n  type Item\n  fn first(self) -> Self.Item\nend\n\nstruct IntBox do\n  value :: Int\nend\n\nimpl Container for IntBox do\n  fn first(self) -> Int do\n    self.value\n  end\nend\n\nfn main() do\nend\n",
+        "fixed": "interface Container do\n  type Item\n  fn first(self) -> Self.Item\nend\n\nstruct IntBox do\n  value :: Int\nend\n\nimpl Container for IntBox do\n  type Item = Int\n  fn first(self) -> Int do\n    self.value\n  end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0041",
+      "name": "extra-associated-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "associated type the interface does not declare",
+      "summary": "An `impl` block binds an associated type its interface does not declare.",
+      "repair": "Remove the `type` binding from the `impl` block, or declare it in the interface with `type Name`.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0041",
+      "guide": {
+        "explain": "meshc explain E0041",
+        "skill": "references/diagnostics.md#e0041",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Labeled do\n  fn label(self) -> String\nend\n\nstruct IntBox do\n  value :: Int\nend\n\nimpl Labeled for IntBox do\n  type Item = Int\n  fn label(self) -> String do\n    \"box\"\n  end\nend\n\nfn main() do\nend\n",
+        "fixed": "interface Labeled do\n  fn label(self) -> String\nend\n\nstruct IntBox do\n  value :: Int\nend\n\nimpl Labeled for IntBox do\n  fn label(self) -> String do\n    \"box\"\n  end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0042",
+      "name": "unresolved-associated-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "unresolved associated type",
+      "summary": "`Self.Name` refers to an associated type that no interface in scope declares.",
+      "repair": "Declare the associated type in the interface with `type Name`, and bind it in each `impl` with `type Name = ConcreteType`.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0042",
+      "guide": {
+        "explain": "meshc explain E0042",
+        "skill": "references/diagnostics.md#e0042",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Container do\n  fn first(self) -> Self.Item\nend\n",
+        "fixed": "interface Container do\n  type Item\n  fn first(self) -> Self.Item\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0044",
+      "name": "slot-pipe-out-of-range",
+      "severity": "error",
+      "category": "semantic",
+      "title": "slot pipe position out of range",
+      "summary": "`|N>` passes the piped value as argument N, and the function takes fewer than N arguments.",
+      "repair": "Use a position from 2 up to the function's arity, or `|>` to pass the value as the first argument.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0044",
+      "guide": {
+        "explain": "meshc explain E0044",
+        "skill": "references/diagnostics.md#e0044",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  let n = 1 |3> add(2)\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  let n = 1 |2> add(2)\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0045",
+      "name": "undefined-alias-target",
+      "severity": "error",
+      "category": "semantic",
+      "title": "type alias names an undefined type",
+      "summary": "A `type Name = Target` alias names a target type that does not exist.",
+      "repair": "Correct the target's spelling, import it, or define it as a struct, sum type, or alias.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0045",
+      "guide": {
+        "explain": "meshc explain E0045",
+        "skill": "references/diagnostics.md#e0045",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "type Count = Integer\n\nfn main() do\nend\n",
+        "fixed": "type Count = Int\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0046",
+      "name": "manual-continuity-promotion",
+      "severity": "error",
+      "category": "semantic",
+      "title": "manual continuity promotion is disabled",
+      "summary": "`Continuity.promote()` is no longer part of Mesh; failover between nodes is automatic.",
+      "repair": "Remove the `Continuity.promote()` call. Read authority state with `Continuity.authority_status()` where the program needs it.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0046",
+      "guide": {
+        "explain": "meshc explain E0046",
+        "skill": "references/diagnostics.md#e0046",
+        "topic": "clustering"
+      },
+      "example": {
+        "bad": "fn main() = Continuity.promote()\n",
+        "fixed": "fn main() = Continuity.authority_status()\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0047",
+      "name": "clustered-route-invalid-arguments",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid `HTTP.clustered` arguments",
+      "summary": "`HTTP.clustered(...)` received arguments other than an optional replication count and a handler reference.",
+      "repair": "Write `HTTP.clustered(handler)` or `HTTP.clustered(count, handler)`, where `handler` names a public top-level route handler.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0047",
+      "guide": {
+        "explain": "meshc explain E0047",
+        "skill": "references/diagnostics.md#e0047",
+        "topic": "clustering"
+      },
+      "example": {
+        "bad": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(0, handle))\n",
+        "fixed": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0048",
+      "name": "clustered-route-private-handler",
+      "severity": "error",
+      "category": "semantic",
+      "title": "clustered route handler is private",
+      "summary": "`HTTP.clustered(...)` wraps a handler that is not `pub`, so other nodes cannot run it.",
+      "repair": "Add `pub` to the handler's definition, or remove the `HTTP.clustered(...)` wrapper.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0048",
+      "guide": {
+        "explain": "meshc explain E0048",
+        "skill": "references/diagnostics.md#e0048",
+        "topic": "clustering"
+      },
+      "example": {
+        "bad": "fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n",
+        "fixed": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0049",
+      "name": "clustered-route-misplaced",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`HTTP.clustered` outside a route handler position",
+      "summary": "`HTTP.clustered(...)` appears somewhere other than the handler argument of `HTTP.route(...)` or `HTTP.on_*(...)`.",
+      "repair": "Pass `HTTP.clustered(handler)` directly as the handler argument of `HTTP.route(...)` or `HTTP.on_*(...)`.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0049",
+      "guide": {
+        "explain": "meshc explain E0049",
+        "skill": "references/diagnostics.md#e0049",
+        "topic": "clustering"
+      },
+      "example": {
+        "bad": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.clustered(handle)\n",
+        "fixed": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0050",
+      "name": "clustered-route-conflicting-count",
+      "severity": "error",
+      "category": "semantic",
+      "title": "conflicting clustered route replication counts",
+      "summary": "One clustered route handler is wrapped with different replication counts in different places.",
+      "repair": "Use one replication count for the handler everywhere it is wrapped in `HTTP.clustered(...)`.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0050",
+      "guide": {
+        "explain": "meshc explain E0050",
+        "skill": "references/diagnostics.md#e0050",
+        "topic": "clustering"
+      },
+      "example": {
+        "bad": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() do\n  let router = HTTP.on_get(HTTP.router(), \"/a\", HTTP.clustered(2, handle))\n  HTTP.on_get(router, \"/b\", HTTP.clustered(3, handle))\nend\n",
+        "fixed": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() do\n  let router = HTTP.on_get(HTTP.router(), \"/a\", HTTP.clustered(2, handle))\n  HTTP.on_get(router, \"/b\", HTTP.clustered(2, handle))\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0051",
+      "name": "clustered-route-origin-missing",
+      "severity": "error",
+      "category": "semantic",
+      "title": "imported clustered handler has no defining module",
+      "summary": "A handler imported by bare name into `HTTP.clustered(...)` has lost the module that defines it, so its runtime name is unknown.",
+      "repair": "Import the handler's module and wrap the handler by its qualified name, as `HTTP.clustered(Module.handler)`.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0051",
+      "guide": {
+        "explain": "meshc explain E0051",
+        "skill": "references/diagnostics.md#e0051",
+        "topic": "clustering"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "E0052",
+      "name": "invalid-native-declaration",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid native declaration",
+      "summary": "In a native binding listed in `mesh.toml`, an `@native` function is private, generic, missing a type annotation, or names a symbol that is not a C identifier.",
+      "repair": "Declare it as a public, non-generic function with every parameter and the return type annotated, and a C identifier as its symbol.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0052",
+      "guide": {
+        "explain": "meshc explain E0052",
+        "skill": "references/diagnostics.md#e0052",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "@native(\"mesh_count\")\nfn count() -> Int\n",
+        "fixed": "@native(\"mesh_count\")\npub fn count() -> Int\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0053",
+      "name": "resource-ownership-violation",
+      "severity": "error",
+      "category": "semantic",
+      "title": "resource ownership violation",
+      "summary": "A resource is used after a move, moved while borrowed, or given more than one owner.",
+      "repair": "Use the resource before moving it. Pass it to a direct `borrow` parameter when the caller needs to keep ownership.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0053",
+      "guide": {
+        "explain": "meshc explain E0053",
+        "skill": "references/diagnostics.md#e0053",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn close(secret :: SecretBytes) do\n  Secret.destroy(secret)\n  Secret.destroy(secret)\nend\n",
+        "fixed": "fn close(secret :: SecretBytes) do\n  Secret.destroy(secret)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0054",
+      "name": "invalid-let-pattern",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid destructuring pattern",
+      "summary": "A `let` pattern could fail to match, or uses a form `let` cannot bind.",
+      "repair": "Bind only lowercase names, `_`, tuples, and struct patterns in `let`; match a value that may not fit with `case`.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0054",
+      "guide": {
+        "explain": "meshc explain E0054",
+        "skill": "references/diagnostics.md#e0054",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn main() do\n  let (1, b) = (1, 2)\n  println(\"#{b}\")\nend\n",
+        "fixed": "fn main() do\n  let (_, b) = (1, 2)\n  println(\"#{b}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0055",
+      "name": "invalid-export-declaration",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid export declaration",
+      "summary": "An `@export` function does not have the binary request and response signature library exports use.",
+      "repair": "Declare the export as `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0055",
+      "guide": {
+        "explain": "meshc explain E0055",
+        "skill": "references/diagnostics.md#e0055",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "@export(\"mesh_echo\")\nfn echo(request :: Bytes) -> Bytes!String = Ok(request)\n",
+        "fixed": "@export(\"mesh_echo\")\npub fn echo(request :: Bytes) -> Bytes!String = Ok(request)\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0056",
+      "name": "invalid-pass-through-arm",
+      "severity": "error",
+      "category": "semantic",
+      "title": "arm without `->` whose pattern is not a value",
+      "summary": "A match arm with no `->` gives its pattern as its value, and this pattern cannot stand for one.",
+      "repair": "Write the arm's value after `->`, as `pattern -> value`.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0056",
+      "guide": {
+        "explain": "meshc explain E0056",
+        "skill": "references/diagnostics.md#e0056",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn main() do\n  case 1 do\n    _\n  end\nend\n",
+        "fixed": "fn main() do\n  case 1 do\n    _ -> 1\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0057",
+      "name": "duplicate-binding",
+      "severity": "error",
+      "category": "semantic",
+      "title": "name bound twice in a pattern",
+      "summary": "One pattern binds the same name in two places.",
+      "repair": "Rename one of the bindings. To require the two values to be equal, compare them in a `when` guard.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0057",
+      "guide": {
+        "explain": "meshc explain E0057",
+        "skill": "references/diagnostics.md#e0057",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = case (1, 2) do\n    (a, a) -> a\n  end\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn main() do\n  let n = case (1, 2) do\n    (a, b) -> a + b\n  end\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0058",
+      "name": "duplicate-field",
+      "severity": "error",
+      "category": "semantic",
+      "title": "field given twice",
+      "summary": "A struct literal or update gives the same field more than once.",
+      "repair": "Give each field one value, and remove the repeated one.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0058",
+      "guide": {
+        "explain": "meshc explain E0058",
+        "skill": "references/diagnostics.md#e0058",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "struct Point do\n  x :: Int\nend\n\nfn main() do\n  let p = Point { x: 1, x: 2 }\n  println(\"#{p.x}\")\nend\n",
+        "fixed": "struct Point do\n  x :: Int\nend\n\nfn main() do\n  let p = Point { x: 1 }\n  println(\"#{p.x}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0059",
+      "name": "not-a-struct",
+      "severity": "error",
+      "category": "semantic",
+      "title": "struct syntax on a non-struct",
+      "summary": "A struct literal or a `%{value | field: new}` update is applied to something that is not a struct, or whose type is not known there.",
+      "repair": "Use struct literals and updates only on struct types, and annotate the value with its struct type when nothing else fixes it.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0059",
+      "guide": {
+        "explain": "meshc explain E0059",
+        "skill": "references/diagnostics.md#e0059",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn main() = Int { n: 1 }\n",
+        "fixed": "struct Count do\n  n :: Int\nend\n\nfn main() = Count { n: 1 }\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0060",
+      "name": "underivable-function-field",
+      "severity": "error",
+      "category": "semantic",
+      "title": "derived interface over a function field",
+      "summary": "A derived interface would compare, hash, or show a field that holds a function.",
+      "repair": "Remove the interface from the `deriving` list, or write an `impl` that leaves the function field out.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0060",
+      "guide": {
+        "explain": "meshc explain E0060",
+        "skill": "references/diagnostics.md#e0060",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "struct Handler do\n  run :: Fun(Int) -> Int\nend deriving(Eq)\n\nfn main() do\nend\n",
+        "fixed": "struct Handler do\n  run :: Fun(Int) -> Int\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0061",
+      "name": "duplicate-variant",
+      "severity": "error",
+      "category": "semantic",
+      "title": "variant name used by two types",
+      "summary": "Two sum types in one module declare a variant of the same name, so the name could mean either.",
+      "repair": "Rename one of the variants, or move one of the sum types to its own module.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0061",
+      "guide": {
+        "explain": "meshc explain E0061",
+        "skill": "references/diagnostics.md#e0061",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "type Light do\n  Red\n  Green\nend\n\ntype Alert do\n  Red\n  Calm\nend\n\nfn main() do\nend\n",
+        "fixed": "type Light do\n  Red\n  Green\nend\n\ntype Alert do\n  Critical\n  Calm\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0062",
+      "name": "cyclic-alias",
+      "severity": "error",
+      "category": "semantic",
+      "title": "type alias refers to itself",
+      "summary": "A type alias expands into itself, directly or through other aliases, so its expansion never ends.",
+      "repair": "Point the alias at an existing type. For a recursive type, define a struct or sum type instead.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0062",
+      "guide": {
+        "explain": "meshc explain E0062",
+        "skill": "references/diagnostics.md#e0062",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "type Loop = Loop\n\nfn main() do\nend\n",
+        "fixed": "type Loop = Int\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0063",
+      "name": "unbounded-type-parameter",
+      "severity": "error",
+      "category": "semantic",
+      "title": "type parameter needs an interface bound",
+      "summary": "A generic function applies an operator to a type parameter that no bound says supports it.",
+      "repair": "Add `where T: Interface` to the function's signature, naming the interface the operator needs, such as `Add` for `+`.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0063",
+      "guide": {
+        "explain": "meshc explain E0063",
+        "skill": "references/diagnostics.md#e0063",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "fn double<T>(x :: T) -> T do\n  x + x\nend\n\nfn main() do\nend\n",
+        "fixed": "fn double<T>(x :: T) -> T where T: Add do\n  x + x\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0064",
+      "name": "ambiguous-default",
+      "severity": "error",
+      "category": "semantic",
+      "title": "ambiguous `default()`",
+      "summary": "A `default()` call appears where nothing fixes which type of value it builds.",
+      "repair": "Annotate the binding with the type to build, as `let x :: Int = default()`.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0064",
+      "guide": {
+        "explain": "meshc explain E0064",
+        "skill": "references/diagnostics.md#e0064",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "fn main() do\n  let _x = default()\nend\n",
+        "fixed": "fn main() do\n  let _x :: Int = default()\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0065",
+      "name": "ambiguous-impl-method",
+      "severity": "error",
+      "category": "semantic",
+      "title": "ambiguous impl method",
+      "summary": "Several `impl`s provide the called method with different return or argument types, and nothing at the call picks one.",
+      "repair": "Annotate the result, or the argument, with one of the types the diagnostic lists.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0065",
+      "guide": {
+        "explain": "meshc explain E0065",
+        "skill": "references/diagnostics.md#e0065",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "fn main() do\n  let x = 5.into()\n  println(\"#{x}\")\nend\n",
+        "fixed": "fn main() do\n  let x :: Float = 5.into()\n  println(\"#{x}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0066",
+      "name": "ambiguous-static-method",
+      "severity": "error",
+      "category": "semantic",
+      "title": "ambiguous static method",
+      "summary": "A static interface method, one without `self`, is called bare while several types provide it.",
+      "repair": "Call it on the type that should provide it, as `Type.method()`.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0066",
+      "guide": {
+        "explain": "meshc explain E0066",
+        "skill": "references/diagnostics.md#e0066",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Versioned do\n  fn version() -> Int\nend\n\nstruct A do\n  n :: Int\nend\n\nstruct B do\n  n :: Int\nend\n\nimpl Versioned for A do\n  fn version() -> Int = 1\nend\n\nimpl Versioned for B do\n  fn version() -> Int = 2\nend\n\nfn main() = version()\n",
+        "fixed": "interface Versioned do\n  fn version() -> Int\nend\n\nstruct A do\n  n :: Int\nend\n\nstruct B do\n  n :: Int\nend\n\nimpl Versioned for A do\n  fn version() -> Int = 1\nend\n\nimpl Versioned for B do\n  fn version() -> Int = 2\nend\n\nfn main() = A.version()\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0067",
+      "name": "rigid-type-parameter",
+      "severity": "error",
+      "category": "semantic",
+      "title": "generic function fixes its type parameter",
+      "summary": "A generic function's body treats a type parameter as one particular type, though callers may pass any type.",
+      "repair": "Replace the type parameter with that type in the signature, or keep the parameter's values opaque in the body.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0067",
+      "guide": {
+        "explain": "meshc explain E0067",
+        "skill": "references/diagnostics.md#e0067",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn same<T>(x :: T) -> Int = x\n\nfn main() do\nend\n",
+        "fixed": "fn same<T>(x :: T) -> T = x\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0068",
+      "name": "duplicate-definition",
+      "severity": "error",
+      "category": "semantic",
+      "title": "defined twice",
+      "summary": "A field, variant, parameter, or type of one name is defined twice in the same scope.",
+      "repair": "Rename or remove one of the two definitions.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0068",
+      "guide": {
+        "explain": "meshc explain E0068",
+        "skill": "references/diagnostics.md#e0068",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "struct Point do\n  x :: Int\n  x :: Int\nend\n\nfn main() do\nend\n",
+        "fixed": "struct Point do\n  x :: Int\n  y :: Int\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0069",
+      "name": "unknown-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "unknown type",
+      "summary": "An annotation names a type that is not defined, imported, or built in.",
+      "repair": "Correct the spelling, define the type, or import the module that defines it.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0069",
+      "guide": {
+        "explain": "meshc explain E0069",
+        "skill": "references/diagnostics.md#e0069",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn main() do\n  let _n :: Integer = 1\nend\n",
+        "fixed": "fn main() do\n  let _n :: Int = 1\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0070",
+      "name": "unknown-field-owner",
+      "severity": "error",
+      "category": "semantic",
+      "title": "field read from a value of unknown type",
+      "summary": "A field is read from a value whose type nothing fixes, so the struct that owns the field is unknown.",
+      "repair": "Annotate the value with its struct type, such as a parameter `p :: Point`.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0070",
+      "guide": {
+        "explain": "meshc explain E0070",
+        "skill": "references/diagnostics.md#e0070",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn get_x(p) = p.x\n\nfn main() do\nend\n",
+        "fixed": "struct Point do\n  x :: Int\nend\n\nfn get_x(p :: Point) -> Int = p.x\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0071",
+      "name": "unknown-interface",
+      "severity": "error",
+      "category": "semantic",
+      "title": "unknown interface",
+      "summary": "An `impl` names an interface that is not defined, imported, or built in.",
+      "repair": "Correct the spelling, declare the interface, or import the module that defines it.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0071",
+      "guide": {
+        "explain": "meshc explain E0071",
+        "skill": "references/diagnostics.md#e0071",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "struct Point do\n  x :: Int\nend\n\nimpl Printable for Point do\n  fn print(self) -> String do\n    \"point\"\n  end\nend\n\nfn main() do\nend\n",
+        "fixed": "interface Printable do\n  fn print(self) -> String\nend\n\nstruct Point do\n  x :: Int\nend\n\nimpl Printable for Point do\n  fn print(self) -> String do\n    \"point\"\n  end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0072",
+      "name": "invalid-literal",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid numeric literal",
+      "summary": "A numeric literal is malformed or does not fit its type.",
+      "repair": "Write a value in range for its type, using only the digits and `_` separators its base allows.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0072",
+      "guide": {
+        "explain": "meshc explain E0072",
+        "skill": "references/diagnostics.md#e0072",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = 99999999999999999999\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn main() do\n  let n = 9_999\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0073",
+      "name": "invalid-concat",
+      "severity": "error",
+      "category": "semantic",
+      "title": "concatenation of values that are not strings or lists",
+      "summary": "`<>` joins strings and `++` joins lists, and these operands are neither.",
+      "repair": "Convert the operands to strings first, as `\"#{a}#{b}\"`, or use the operator their type has, such as `+` for numbers.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0073",
+      "guide": {
+        "explain": "meshc explain E0073",
+        "skill": "references/diagnostics.md#e0073",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let a = 1\n  let b = 2\n  println(a <> b)\nend\n",
+        "fixed": "fn main() do\n  let a = 1\n  let b = 2\n  println(\"#{a}#{b}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0074",
+      "name": "no-such-module-function",
+      "severity": "error",
+      "category": "semantic",
+      "title": "no such module function",
+      "summary": "`Module.name` names a function the module does not define.",
+      "repair": "Correct the name to a function the module defines; the diagnostic lists them.",
+      "topic": "stdlib",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0074",
+      "guide": {
+        "explain": "meshc explain E0074",
+        "skill": "references/diagnostics.md#e0074",
+        "topic": "stdlib"
+      },
+      "example": {
+        "bad": "fn main() do\n  println(String.upper(\"hi\"))\nend\n",
+        "fixed": "fn main() do\n  println(String.to_upper(\"hi\"))\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0075",
+      "name": "overloaded-function-value",
+      "severity": "error",
+      "category": "semantic",
+      "title": "function of several arities used as a value",
+      "summary": "A function defined at several arities is referenced without a call, so the reference names no single function.",
+      "repair": "Call it with the arguments of one arity, or wrap the arity you mean in a closure, as `fn a -> name(a) end`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0075",
+      "guide": {
+        "explain": "meshc explain E0075",
+        "skill": "references/diagnostics.md#e0075",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn area(w :: Int) -> Int = w * w\nfn area(w :: Int, h :: Int) -> Int = w * h\n\nfn main() do\n  let _f = area\nend\n",
+        "fixed": "fn area(w :: Int) -> Int = w * w\nfn area(w :: Int, h :: Int) -> Int = w * h\n\nfn main() do\n  let _f = fn w -> area(w) end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0076",
+      "name": "generic-impl-target",
+      "severity": "error",
+      "category": "semantic",
+      "title": "impl for a generic type",
+      "summary": "An `impl` is written for a type that takes type parameters, which Mesh does not support.",
+      "repair": "Implement the interface for a type without type parameters, such as a struct that holds the generic one at a concrete type.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0076",
+      "guide": {
+        "explain": "meshc explain E0076",
+        "skill": "references/diagnostics.md#e0076",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Named do\n  fn name(self) -> String\nend\n\nstruct Box<T> do\n  value :: T\nend\n\nimpl Named for Box do\n  fn name(self) -> String do\n    \"box\"\n  end\nend\n\nfn main() do\nend\n",
+        "fixed": "interface Named do\n  fn name(self) -> String\nend\n\nstruct IntBox do\n  value :: Int\nend\n\nimpl Named for IntBox do\n  fn name(self) -> String do\n    \"box\"\n  end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0077",
+      "name": "assert-receive-outside-test",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`assert_receive` outside a test file",
+      "summary": "`assert_receive` is expanded only in test files that `meshc test` runs.",
+      "repair": "Move the assertion into a `.test.mpl` file, or write the `receive ... after TIMEOUT -> ...` block it stands for.",
+      "topic": "testing",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0077",
+      "guide": {
+        "explain": "meshc explain E0077",
+        "skill": "references/diagnostics.md#e0077",
+        "topic": "testing"
+      },
+      "example": {
+        "bad": "fn main() do\n  assert_receive 42, 500\nend\n",
+        "fixed": "actor worker() do\n  receive do\n    42 -> nil\n    _ -> nil\n  after 500 -> nil\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0078",
+      "name": "indexing-unsupported",
+      "severity": "error",
+      "category": "semantic",
+      "title": "indexing syntax is not supported",
+      "summary": "`value[index]` is used, and Mesh has no indexing syntax.",
+      "repair": "Use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`.",
+      "topic": "collections",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0078",
+      "guide": {
+        "explain": "meshc explain E0078",
+        "skill": "references/diagnostics.md#e0078",
+        "topic": "collections"
+      },
+      "example": {
+        "bad": "fn main() do\n  let xs = [1, 2, 3]\n  let _first = xs[0]\nend\n",
+        "fixed": "fn main() do\n  let xs = [1, 2, 3]\n  let _first = List.get(xs, 0)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0079",
+      "name": "actor-message-type-unknown",
+      "severity": "error",
+      "category": "semantic",
+      "title": "actor message type unknown",
+      "summary": "Nothing in the module tells which type of message an actor receives, because only untyped pids reach it.",
+      "repair": "Give the pid a message type where the actor is spawned, as `let pid :: Pid<Int> = spawn(worker)`.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0079",
+      "guide": {
+        "explain": "meshc explain E0079",
+        "skill": "references/diagnostics.md#e0079",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "actor worker() do\n  receive do\n    msg -> msg\n  end\nend\n",
+        "fixed": "actor worker() do\n  receive do\n    msg -> msg + 1\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0080",
+      "name": "top-level-let",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`let` outside a function",
+      "summary": "A `let` appears at the top level of a module, which has no global bindings.",
+      "repair": "Move the binding into the function that uses it, or define a function of no arguments for it, as `fn limit() = 10`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0080",
+      "guide": {
+        "explain": "meshc explain E0080",
+        "skill": "references/diagnostics.md#e0080",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "let limit = 10\n\nfn main() do\n  println(\"#{limit}\")\nend\n",
+        "fixed": "fn limit() = 10\n\nfn main() do\n  println(\"#{limit()}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0081",
+      "name": "module-not-imported",
+      "severity": "error",
+      "category": "semantic",
+      "title": "module used without an import",
+      "summary": "Code calls a function of a project module that the file does not import.",
+      "repair": "Add `import Module` at the top of the file.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0081",
+      "guide": {
+        "explain": "meshc explain E0081",
+        "skill": "references/diagnostics.md#e0081",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "module Counters do\n  pub fn count() = 1\nend\n\nfn main() = Counters.count()\n",
+        "fixed": "import Counters\n\nmodule Counters do\n  pub fn count() = 1\nend\n\nfn main() = Counters.count()\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0082",
+      "name": "untyped-method-parameter",
+      "severity": "error",
+      "category": "semantic",
+      "title": "method parameter type unknown",
+      "summary": "A method parameter has no annotation and nothing in the method fixes its type; a method is compiled once, for the type it is implemented for.",
+      "repair": "Annotate the parameter with its type, as `param :: Type`.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0082",
+      "guide": {
+        "explain": "meshc explain E0082",
+        "skill": "references/diagnostics.md#e0082",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Labeler do\n  fn label(self, x) -> String\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Labeler for Item do\n  fn label(self, x) -> String = \"#{x}\"\nend\n",
+        "fixed": "interface Labeler do\n  fn label(self, x) -> String\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Labeler for Item do\n  fn label(self, x :: Int) -> String = \"#{x}\"\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0083",
+      "name": "type-not-value",
+      "severity": "error",
+      "category": "semantic",
+      "title": "type used as a value",
+      "summary": "A type's name is used where a value is expected.",
+      "repair": "Build a value of the type (`Name { ... }` for a struct, a variant for a sum type), or call one of its functions, as `Name.function(...)`.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0083",
+      "guide": {
+        "explain": "meshc explain E0083",
+        "skill": "references/diagnostics.md#e0083",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "struct Point do\n  x :: Int\nend\n\nfn main() do\n  let _p = Point\nend\n",
+        "fixed": "struct Point do\n  x :: Int\nend\n\nfn main() do\n  let _p = Point { x: 1 }\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0084",
+      "name": "nested-definition",
+      "severity": "error",
+      "category": "semantic",
+      "title": "definition inside a function",
+      "summary": "A definition such as `fn`, `struct`, or `import` appears inside a function body, where only `let` binds names.",
+      "repair": "Move the definition to the top level of the module. For a local function, bind a closure: `let name = fn x -> ... end`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0084",
+      "guide": {
+        "explain": "meshc explain E0084",
+        "skill": "references/diagnostics.md#e0084",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  fn helper() = 1\nend\n",
+        "fixed": "fn helper() = 1\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0085",
+      "name": "type-argument-count",
+      "severity": "error",
+      "category": "semantic",
+      "title": "wrong number of type arguments",
+      "summary": "A generic type is named with another number of type arguments than it declares.",
+      "repair": "Pass exactly as many type arguments as the type declares, as `Option<Int>`.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0085",
+      "guide": {
+        "explain": "meshc explain E0085",
+        "skill": "references/diagnostics.md#e0085",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn main() do\n  let _x :: Option<Int, String> = None\nend\n",
+        "fixed": "fn main() do\n  let _x :: Option<Int> = None\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0086",
+      "name": "monitor-outside-actor",
+      "severity": "error",
+      "category": "semantic",
+      "title": "monitor outside an actor",
+      "summary": "`Process.monitor` or `Node.monitor` is called outside an actor, so its message has no actor to go to.",
+      "repair": "Call `Process.monitor` or `Node.monitor` inside the actor body that should receive the message.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0086",
+      "guide": {
+        "explain": "meshc explain E0086",
+        "skill": "references/diagnostics.md#e0086",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "fn main() = Node.monitor(\"node@localhost:9000\", 1)\n",
+        "fixed": "actor watcher() do\n  Node.monitor(\"node@localhost:9000\", 1)\n  receive do\n    n -> n + 1\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0087",
+      "name": "top-level-statement",
+      "severity": "error",
+      "category": "semantic",
+      "title": "statement outside a function",
+      "summary": "An expression appears at the top level of a module, where nothing runs it.",
+      "repair": "Move the expression into `main` or into the function that should run it.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0087",
+      "guide": {
+        "explain": "meshc explain E0087",
+        "skill": "references/diagnostics.md#e0087",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "println(\"hi\")\n\nfn main() do\nend\n",
+        "fixed": "fn main() do\n  println(\"hi\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0088",
+      "name": "method-return-unknown",
+      "severity": "error",
+      "category": "semantic",
+      "title": "method return type unknown",
+      "summary": "A method an `impl` provides has a return type nothing fixes, so a call to it cannot be typed.",
+      "repair": "Annotate the method's return type in the `impl` or the interface, as `fn name(self) -> Type`.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0088",
+      "guide": {
+        "explain": "meshc explain E0088",
+        "skill": "references/diagnostics.md#e0088",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "interface Maker do\n  fn make(self)\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Maker for Item do\n  fn make(self) = self.make()\nend\n\nfn main() = Item { n: 0 }.make()\n",
+        "fixed": "interface Maker do\n  fn make(self) -> Int\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Maker for Item do\n  fn make(self) -> Int = self.n\nend\n\nfn main() = Item { n: 0 }.make()\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0089",
+      "name": "spawn-computed",
+      "severity": "error",
+      "category": "semantic",
+      "title": "spawn of a computed function",
+      "summary": "`spawn` is given a function computed at run time, and a process starts from a compiled entry that only a name gives.",
+      "repair": "Name the actor in the call, as `spawn(worker, arg)`. To choose one at run time, spawn each by name where it is chosen.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0089",
+      "guide": {
+        "explain": "meshc explain E0089",
+        "skill": "references/diagnostics.md#e0089",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "actor worker() do\n  receive do\n    msg -> msg + 1\n  end\nend\n\nfn pick() = worker\n\nfn main() = spawn(pick())\n",
+        "fixed": "actor worker() do\n  receive do\n    msg -> msg + 1\n  end\nend\n\nfn pick() = worker\n\nfn main() = spawn(worker)\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0090",
+      "name": "spawn-not-actor",
+      "severity": "error",
+      "category": "semantic",
+      "title": "spawn of a function that is not an actor",
+      "summary": "`spawn` names a plain `fn`, and only an `actor` runs as a process of its own.",
+      "repair": "Define what runs in the new process as `actor name(...) do ... end` and spawn that, or call the function directly.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0090",
+      "guide": {
+        "explain": "meshc explain E0090",
+        "skill": "references/diagnostics.md#e0090",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "fn hello() do\n  println(\"hi\")\nend\n\nfn main() do\n  let _ = spawn(hello)\nend\n",
+        "fixed": "actor hello() do\n  println(\"hi\")\nend\n\nfn main() do\n  let _ = spawn(hello)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0091",
+      "name": "decode-type-unknown",
+      "severity": "error",
+      "category": "semantic",
+      "title": "decoded type unknown",
+      "summary": "A generic type's `from_json` is called where nothing fixes its type arguments.",
+      "repair": "Annotate the result with the full type, as `let r :: Result<Box<Int>, String> = Box.from_json(text)`.",
+      "topic": "strings",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0091",
+      "guide": {
+        "explain": "meshc explain E0091",
+        "skill": "references/diagnostics.md#e0091",
+        "topic": "strings"
+      },
+      "example": {
+        "bad": "struct Box<T> do\n  value :: T\nend deriving(Json)\n\nfn main() do\n  let _r = Box.from_json(\"{}\")\nend\n",
+        "fixed": "struct Box<T> do\n  value :: T\nend deriving(Json)\n\nfn main() do\n  let _r :: Result<Box<Int>, String> = Box.from_json(\"{}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0092",
+      "name": "underivable-field-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "field type lacks the derived interface",
+      "summary": "A derived interface needs every field to implement it, and one field's type does not.",
+      "repair": "Derive or implement the interface for the field's type, or remove the interface from the `deriving` list.",
+      "topic": "traits",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0092",
+      "guide": {
+        "explain": "meshc explain E0092",
+        "skill": "references/diagnostics.md#e0092",
+        "topic": "traits"
+      },
+      "example": {
+        "bad": "struct Inner do\n  x :: Int\nend deriving(Display)\n\nstruct Outer do\n  inner :: Inner\nend deriving(Eq)\n\nfn main() do\nend\n",
+        "fixed": "struct Inner do\n  x :: Int\nend deriving(Display, Eq)\n\nstruct Outer do\n  inner :: Inner\nend deriving(Eq)\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0093",
+      "name": "plaintext-violation",
+      "severity": "error",
+      "category": "semantic",
+      "title": "plaintext leaves the program",
+      "summary": "A `Plaintext` value, or one holding it, reaches a way out of the program other than a seal, an `@display` export, or `declassify`.",
+      "repair": "Seal the value with `Crypto.aead_seal_plaintext`, `Crypto.hpke_seal_plaintext`, or `Plaintext.seal_for_storage`, export it through `@display`, or release it with `declassify(value, \"reason\")`. Transform it in place with `Plaintext.map`.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0093",
+      "guide": {
+        "explain": "meshc explain E0093",
+        "skill": "references/diagnostics.md#e0093",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn show(text :: Plaintext<String>) = declassify(text, \"\")\n",
+        "fixed": "fn show(text :: Plaintext<String>) = declassify(text, \"explicit display\")\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0094",
+      "name": "invalid-jobs-start",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid `Jobs.start` call",
+      "summary": "`Jobs.start` is used indirectly or given a handler the compiler cannot check.",
+      "repair": "Call `Jobs.start` directly, and pass a named function of type `fn(String) -> String` as its handler.",
+      "topic": "database",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0094",
+      "guide": {
+        "explain": "meshc explain E0094",
+        "skill": "references/diagnostics.md#e0094",
+        "topic": "database"
+      },
+      "example": {
+        "bad": "fn start(pool :: PoolHandle) do\n  Jobs.start(pool, \"{}\", fn job -> job end)\nend\n",
+        "fixed": "fn handle(job :: String) -> String = job\n\nfn start(pool :: PoolHandle) do\n  Jobs.start(pool, \"{}\", handle)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0095",
+      "name": "invalid-nat-index",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid Nat index",
+      "summary": "A static `Nat` index is malformed: an index parameter is not of kind `Nat` or is not on a sum type, variant, or function; a literal does not fit in 64 bits; a type and a Nat index stand in each other's place; or an index escapes the case arm that binds it.",
+      "repair": "Declare each index parameter as `n :: Nat` on a sum type, variant, or function, and write each index from `Nat` literals, those parameters, and `Succ<...>`, with types only in type positions. Return a value whose type names no index bound inside a case arm.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0095",
+      "guide": {
+        "explain": "meshc explain E0095",
+        "skill": "references/diagnostics.md#e0095",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "fn count<n :: Int>() -> Int = 0\n\nfn main() do\nend\n",
+        "fixed": "fn count<n :: Nat>() -> Int = 0\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0096",
+      "name": "invalid-indexed-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid indexed type",
+      "summary": "An indexed sum type, one of its constructors, or a function with index parameters breaks a rule of indexed types, or an indexed type is used without its arguments or matched by a constructor it cannot have.",
+      "repair": "Give each constructor of an indexed type a result `-> Family<...>` of its own family that keeps the type parameters and binds every constructor index; write the family with all its arguments; declare index parameters once, without trait bounds, on a function of one clause; derive nothing; and match its constructors in a direct `case` arm.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0096",
+      "guide": {
+        "explain": "meshc explain E0096",
+        "skill": "references/diagnostics.md#e0096",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "type Vec<T, n :: Nat> do\n  Empty\n  Push<k :: Nat>(T, Vec<T, k>) -> Vec<T, Succ<k>>\nend\n\nfn main() do\nend\n",
+        "fixed": "type Vec<T, n :: Nat> do\n  Empty -> Vec<T, 0>\n  Push<k :: Nat>(T, Vec<T, k>) -> Vec<T, Succ<k>>\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0097",
+      "name": "reserved-proof-name",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`Proof` is a reserved type name",
+      "summary": "A struct, sum type, or type alias is named `Proof`, the name of the type of proof values.",
+      "repair": "Rename the type, for example to `Evidence`, and update its uses.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0097",
+      "guide": {
+        "explain": "meshc explain E0097",
+        "skill": "references/diagnostics.md#e0097",
+        "topic": "verification"
+      },
+      "example": {
+        "bad": "struct Proof do\n  value :: Int\nend\n\nfn main() do\nend\n",
+        "fixed": "struct Evidence do\n  value :: Int\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0098",
+      "name": "missing-embedded-proof",
+      "severity": "error",
+      "category": "semantic",
+      "title": "exported theorem without a proof",
+      "summary": "A `pub theorem` in a `logic do` block has no `proof` of the same name in the module, so there is no proof value to export.",
+      "repair": "Write `proof name do ... end` for the theorem in a `logic do` block of the same module, or remove `pub` to keep the theorem out of Mesh code.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0098",
+      "guide": {
+        "explain": "meshc explain E0098",
+        "skill": "references/diagnostics.md#e0098",
+        "topic": "verification"
+      },
+      "example": {
+        "bad": "logic do\n  pub theorem two() do 2 == 2 end\nend\n\nfn main() do\nend\n",
+        "fixed": "logic do\n  pub theorem two() do 2 == 2 end\n  proof two do refl end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0099",
+      "name": "duplicate-proof-value",
+      "severity": "error",
+      "category": "semantic",
+      "title": "proof value defined twice",
+      "summary": "Two `pub theorem`s in one module's `logic do` blocks have the same name, so the name would stand for two proof values.",
+      "repair": "Rename one of the theorems and its `proof`, and update the calls that use it.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0099",
+      "guide": {
+        "explain": "meshc explain E0099",
+        "skill": "references/diagnostics.md#e0099",
+        "topic": "verification"
+      },
+      "example": {
+        "bad": "logic do\n  pub theorem two() do 2 == 2 end\n  proof two do refl end\n  pub theorem two() do 1 + 1 == 2 end\nend\n\nfn main() do\nend\n",
+        "fixed": "logic do\n  pub theorem two() do 2 == 2 end\n  proof two do refl end\n  pub theorem sum() do 1 + 1 == 2 end\n  proof sum do refl end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0100",
+      "name": "invalid-proposition",
+      "severity": "error",
+      "category": "semantic",
+      "title": "invalid proposition",
+      "summary": "A proposition has no Mesh proof type: an exported theorem or a `Proof<...>` annotation states something other than a known `Prop` predicate of Nat arguments or a `NatEq` of two Nat terms, or a theorem that takes parameters is used without them.",
+      "repair": "State the proposition as a predicate declared `-> Prop` in a `logic do` block, applied to Nat literals, `Nat.succ`, or index parameters, or as an equality of Nat terms (`Proof<NatEq<a, b>>` in a type). Call a theorem with parameters as `name(indices..., proofs...)`.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0100",
+      "guide": {
+        "explain": "meshc explain E0100",
+        "skill": "references/diagnostics.md#e0100",
+        "topic": "verification"
+      },
+      "example": {
+        "bad": "fn accept(evidence :: Proof<NatEq<2>>) -> Int = 2\n\nfn main() do\nend\n",
+        "fixed": "fn accept(evidence :: Proof<NatEq<2, 2>>) -> Int = 2\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0101",
+      "name": "resource-crosses-boundary",
+      "severity": "error",
+      "category": "semantic",
+      "title": "resource crosses an ownership boundary",
+      "summary": "A resource reaches an operation that cannot preserve its single owner, such as an actor message, job, collection, or serialization.",
+      "repair": "Keep the resource in an ownership-aware scope and pass an unrestricted value instead, such as an ID or the data the resource represents.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0101",
+      "guide": {
+        "explain": "meshc explain E0101",
+        "skill": "references/diagnostics.md#e0101",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "resource struct Handle do\n  id :: Int\nend\n\nfn forward(pid :: Pid, handle :: Handle) = send(pid, handle)\n",
+        "fixed": "resource struct Handle do\n  id :: Int\nend\n\nfn forward(pid :: Pid, handle :: Handle) = send(pid, handle.id)\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0102",
+      "name": "duplicate-type-across-modules",
+      "severity": "error",
+      "category": "semantic",
+      "title": "type name shared by multiple modules",
+      "summary": "Two modules define the same struct, sum type, interface, actor, service, or supervisor name. These declarations share a project-wide namespace, even when private.",
+      "repair": "Rename all but one definition and update its uses, or keep one shared definition and import it where needed.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0102",
+      "guide": {
+        "explain": "meshc explain E0102",
+        "skill": "references/diagnostics.md#e0102",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "module A do\n  struct State do\n    count :: Int\n  end\nend\n\nmodule B do\n  struct State do\n    name :: String\n  end\nend\n",
+        "fixed": "module A do\n  struct State do\n    count :: Int\n  end\nend\n\nmodule B do\n  struct NamedState do\n    name :: String\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0103",
+      "name": "duplicate-pub-fn-across-modules",
+      "severity": "error",
+      "category": "semantic",
+      "title": "public function symbol shared by multiple modules",
+      "summary": "Two modules export a public function with the same compiler symbol. Calls could run only one of the definitions even when the import names the other module.",
+      "repair": "Rename all but one public function and update its callers, or make the other functions private if their callers are in the same module.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0103",
+      "guide": {
+        "explain": "meshc explain E0103",
+        "skill": "references/diagnostics.md#e0103",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "module A do\n  pub fn count() do\n    1\n  end\nend\n\nmodule B do\n  pub fn count() do\n    2\n  end\nend\n",
+        "fixed": "module A do\n  pub fn count() do\n    1\n  end\nend\n\nmodule B do\n  pub fn total() do\n    2\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0104",
+      "name": "recursive-by-value-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "struct holds itself by value",
+      "summary": "A struct holds itself by value, directly or through other structs, so a value of it would contain itself and could never be built.",
+      "repair": "Hold the recursive field through a type that ends the recursion: an `Option<...>` or a `List<...>` of the struct, or a sum type with a variant that does not hold it.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0104",
+      "guide": {
+        "explain": "meshc explain E0104",
+        "skill": "references/diagnostics.md#e0104",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "struct Node do\n  next :: Node\nend\n\nfn main() do\nend\n",
+        "fixed": "struct Node do\n  next :: Option<Node>\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0105",
+      "name": "runtime-symbol-collision",
+      "severity": "error",
+      "category": "semantic",
+      "title": "name already used by the runtime",
+      "summary": "A public function or a native binding takes a symbol that the Mesh runtime, the compiler, or another native binding already uses, so calls could reach the wrong code.",
+      "repair": "Rename the function, leaving names that start with `mesh_` to the runtime, and bind each native symbol once with one signature.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0105",
+      "guide": {
+        "explain": "meshc explain E0105",
+        "skill": "references/diagnostics.md#e0105",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "pub fn mesh_string_length(text :: String) -> Int = 0\n\nfn main() do\n  println(\"${mesh_string_length(\"abc\")}\")\nend\n",
+        "fixed": "pub fn text_length(text :: String) -> Int = 0\n\nfn main() do\n  println(\"${text_length(\"abc\")}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0106",
+      "name": "spawn-grouped-unsafe",
+      "severity": "error",
+      "category": "semantic",
+      "title": "grouped actor may block its worker",
+      "summary": "An actor started with `spawn grouped`, or its `terminate` callback, can reach code the compiler cannot prove yields or returns without blocking the shared worker (a native or unaudited runtime call such as I/O, an indirect call, recursion that grows the stack, or a loop in a terminate callback), or `spawn grouped` starts a supervisor child.",
+      "repair": "Start the actor with plain `spawn`, or move the call the notes trace into an actor started with `spawn` and message it. Write recursion as a tail call, and keep loops out of terminate callbacks.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0106",
+      "guide": {
+        "explain": "meshc explain E0106",
+        "skill": "references/diagnostics.md#e0106",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "actor worker() do\n  IO.eprintln(\"working\")\nend\n\nfn main() do\n  spawn grouped(worker)\nend\n",
+        "fixed": "actor worker() do\n  IO.eprintln(\"working\")\nend\n\nfn main() do\n  spawn(worker)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0107",
+      "name": "node-spawn-argument",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`Node.spawn` cannot start this on another node",
+      "summary": "`Node.spawn` or `Node.spawn_link` is given a closure instead of a function defined at the top level, or an argument of a type that cannot cross the connection.",
+      "repair": "Name a top-level actor as the second argument, and pass it only `Int`, `Float`, `Bool`, `String`, `Pid`, or `()` arguments, encoding other data as a `String`.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0107",
+      "guide": {
+        "explain": "meshc explain E0107",
+        "skill": "references/diagnostics.md#e0107",
+        "topic": "clustering"
+      },
+      "example": {
+        "bad": "actor spawner(host :: String) do\n  let _ = Node.spawn(host, fn () -> self() end)\nend\n\nfn main() do\n  let _ = spawn(spawner, \"absent@127.0.0.1:1\")\nend\n",
+        "fixed": "actor remote() do\n  println(\"started\")\nend\n\nactor spawner(host :: String) do\n  let _ = Node.spawn(host, remote)\nend\n\nfn main() do\n  let _ = spawn(spawner, \"absent@127.0.0.1:1\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0108",
+      "name": "export-symbol-collision",
+      "severity": "error",
+      "category": "semantic",
+      "title": "exported symbol already taken",
+      "summary": "An `@export` C symbol is also another export's, a public Mesh function's, or the Mesh runtime's, so a host could not tell which one it calls.",
+      "repair": "Give each `@export` its own C symbol, prefixed with the library's name as in `@export(\"greeter_echo\")`, that no public function or `mesh_` runtime symbol uses.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0108",
+      "guide": {
+        "explain": "meshc explain E0108",
+        "skill": "references/diagnostics.md#e0108",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "@export(\"mesh_println\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n\nfn main() do\nend\n",
+        "fixed": "@export(\"greeter_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "I0001",
+      "name": "internal-compiler-error",
+      "severity": "error",
+      "category": "internal",
+      "title": "internal compiler error",
+      "summary": "The compiler reached a state it should never reach; the program may well be valid.",
+      "repair": "Report it with the notes and the smallest program that reproduces it. Until it is fixed, rewrite the construct the notes name another way.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#i0001",
+      "guide": {
+        "explain": "meshc explain I0001",
+        "skill": "references/diagnostics.md#i0001",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "I0002",
+      "name": "internal-consistency-warning",
+      "severity": "warning",
+      "category": "internal",
+      "title": "internal compiler consistency warning",
+      "summary": "During lowering, the compiler could not confirm the target trait method for a call that passed type checking.",
+      "repair": "Report the method name, receiver type, and a small program that reproduces the warning. Use an explicit function call if it resolves the intended method.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#i0002",
+      "guide": {
+        "explain": "meshc explain I0002",
+        "skill": "references/diagnostics.md#i0002",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "L0001",
+      "name": "deep-nesting",
+      "severity": "warning",
+      "category": "lint",
+      "title": "control flow nested too deeply",
+      "summary": "An `if`, `case`, loop, `receive`, or closure is nested more than four levels deep in one function, counted from the function, handler, actor body, or top-level test block that holds it.",
+      "repair": "Move the construct the label points at into a function of its own and call it, return early from the enclosing function, or use `?` in place of a `case` that only passes an error on.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#l0001",
+      "guide": {
+        "explain": "meshc explain L0001",
+        "skill": "references/diagnostics.md#l0001",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = 5\n  if n > 0 do\n    if n > 1 do\n      if n > 2 do\n        if n > 3 do\n          if n > 4 do\n            println(\"deep\")\n          end\n        end\n      end\n    end\n  end\nend\n",
+        "fixed": "fn report(n :: Int) do\n  if n > 4 do\n    println(\"deep\")\n  end\nend\n\nfn main() do\n  let n = 5\n  if n > 0 do\n    if n > 1 do\n      if n > 2 do\n        if n > 3 do\n          report(n)\n        end\n      end\n    end\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "L0002",
+      "name": "collapsible-else-if",
+      "severity": "warning",
+      "category": "lint",
+      "title": "`else` holding only an `if`",
+      "summary": "The whole body of an `else` is one `if` expression, which `else if` says one level shallower.",
+      "repair": "Join `else` and the `if` it holds into `else if ... do`, outdent that `if`'s branches one level, and delete the `end` that closed the `else`, so the inner `if`'s `end` closes the whole chain.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#l0002",
+      "guide": {
+        "explain": "meshc explain L0002",
+        "skill": "references/diagnostics.md#l0002",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn sign(n :: Int) -> String do\n  if n > 0 do\n    \"positive\"\n  else\n    if n < 0 do\n      \"negative\"\n    else\n      \"zero\"\n    end\n  end\nend\n\nfn main() do\n  println(sign(-1))\nend\n",
+        "fixed": "fn sign(n :: Int) -> String do\n  if n > 0 do\n    \"positive\"\n  else if n < 0 do\n    \"negative\"\n  else\n    \"zero\"\n  end\nend\n\nfn main() do\n  println(sign(-1))\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "L0003",
+      "name": "pass-through-arm",
+      "severity": "warning",
+      "category": "lint",
+      "title": "match arm returning what it matched",
+      "summary": "A `case` arm's value is its own pattern written again, as in `Ok(n) -> Ok(n)`, which the pattern alone already means.",
+      "repair": "Delete the `->` and the value, and leave the pattern on its own as the arm: `Ok(n)`.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#l0003",
+      "guide": {
+        "explain": "meshc explain L0003",
+        "skill": "references/diagnostics.md#l0003",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn check(r) do\n  case r do\n    Ok(n) -> Ok(n)\n    Err(e) -> Err(\"check failed: #{e}\")\n  end\nend\n\nfn main() do\n  let _r = check(Err(\"no input\"))\nend\n",
+        "fixed": "fn check(r) do\n  case r do\n    Ok(n)\n    Err(e) -> Err(\"check failed: #{e}\")\n  end\nend\n\nfn main() do\n  let _r = check(Err(\"no input\"))\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "L0004",
+      "name": "bool-comparison",
+      "severity": "warning",
+      "category": "lint",
+      "title": "comparison with a Bool literal",
+      "summary": "A value is compared with `true` or `false` using `==` or `!=`, which is the value itself or its negation.",
+      "repair": "Write the value alone in place of `== true` or `!= false`, and `not` the value in place of `== false` or `!= true`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#l0004",
+      "guide": {
+        "explain": "meshc explain L0004",
+        "skill": "references/diagnostics.md#l0004",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let ready = true\n  if ready == true do\n    println(\"ready\")\n  end\nend\n",
+        "fixed": "fn main() do\n  let ready = true\n  if ready do\n    println(\"ready\")\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "M0001",
+      "name": "manifest-unreadable",
+      "severity": "error",
+      "category": "project",
+      "title": "cannot read package manifest",
+      "summary": "The project manifest could not be opened or read as UTF-8.",
+      "repair": "Create mesh.toml in the project directory or restore read access to it.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0001",
+      "guide": {
+        "explain": "meshc explain M0001",
+        "skill": "references/diagnostics.md#m0001",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0002",
+      "name": "manifest-invalid",
+      "severity": "error",
+      "category": "project",
+      "title": "invalid package manifest",
+      "summary": "The manifest contains invalid TOML or violates the package schema.",
+      "repair": "Correct the indicated field in mesh.toml. Include a [package] table with string name and version fields.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0002",
+      "guide": {
+        "explain": "meshc explain M0002",
+        "skill": "references/diagnostics.md#m0002",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0003",
+      "name": "entrypoint-not-found",
+      "severity": "error",
+      "category": "project",
+      "title": "entrypoint not found",
+      "summary": "The project does not contain the expected Mesh entrypoint file.",
+      "repair": "Set [package].entrypoint to an existing project-relative .mpl file or remove it and create main.mpl.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0003",
+      "guide": {
+        "explain": "meshc explain M0003",
+        "skill": "references/diagnostics.md#m0003",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0101",
+      "name": "lockfile-invalid",
+      "severity": "error",
+      "category": "project",
+      "title": "cannot use dependency lockfile",
+      "summary": "The mesh.lock file could not be read, parsed, or written.",
+      "repair": "Fix the indicated TOML or restore access to mesh.lock, then rerun the dependency command.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0101",
+      "guide": {
+        "explain": "meshc explain M0101",
+        "skill": "references/diagnostics.md#m0101",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0102",
+      "name": "dependency-unresolvable",
+      "severity": "error",
+      "category": "project",
+      "title": "cannot resolve dependency",
+      "summary": "A dependency could not be located, fetched, or checked out.",
+      "repair": "Correct the dependency path or Git source in mesh.toml and run meshc deps, or run meshpkg install for a registry dependency.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0102",
+      "guide": {
+        "explain": "meshc explain M0102",
+        "skill": "references/diagnostics.md#m0102",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0103",
+      "name": "dependency-cycle",
+      "severity": "error",
+      "category": "project",
+      "title": "dependency cycle",
+      "summary": "The package dependency chain returns to a package it already visits.",
+      "repair": "Remove a dependency from the cycle or move shared code into a package both sides can depend on.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0103",
+      "guide": {
+        "explain": "meshc explain M0103",
+        "skill": "references/diagnostics.md#m0103",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0104",
+      "name": "dependency-conflict",
+      "severity": "error",
+      "category": "project",
+      "title": "conflicting dependency sources",
+      "summary": "The same dependency name is required from different sources.",
+      "repair": "Update the dependency declarations to use a single source for that name.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0104",
+      "guide": {
+        "explain": "meshc explain M0104",
+        "skill": "references/diagnostics.md#m0104",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0201",
+      "name": "module-cycle",
+      "severity": "error",
+      "category": "project",
+      "title": "module import cycle",
+      "summary": "The import chain returns to a module it already visits.",
+      "repair": "Remove an import from the cycle or move shared definitions to a separate module.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0201",
+      "guide": {
+        "explain": "meshc explain M0201",
+        "skill": "references/diagnostics.md#m0201",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0202",
+      "name": "module-unreadable",
+      "severity": "error",
+      "category": "project",
+      "title": "cannot load project module",
+      "summary": "A module could not be read or assigned an unambiguous name inside the project.",
+      "repair": "Check the module path and its read permissions. Use a uniquely named .mpl file inside the project with no symbolic links.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0202",
+      "guide": {
+        "explain": "meshc explain M0202",
+        "skill": "references/diagnostics.md#m0202",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0301",
+      "name": "native-binding-invalid",
+      "severity": "error",
+      "category": "project",
+      "title": "invalid native binding",
+      "summary": "A manifest-declared native binding could not be loaded as a package file.",
+      "repair": "Set [native].bindings to package-relative paths to regular .mpl files outside the test tree.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0301",
+      "guide": {
+        "explain": "meshc explain M0301",
+        "skill": "references/diagnostics.md#m0301",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0302",
+      "name": "native-declaration-outside-binding",
+      "severity": "error",
+      "category": "project",
+      "title": "native declaration outside a binding file",
+      "summary": "A native declaration occurs in a module that is not listed as a native binding.",
+      "repair": "Move the declaration into a file listed in [native].bindings or add its file to that list and provide the native archive.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0302",
+      "guide": {
+        "explain": "meshc explain M0302",
+        "skill": "references/diagnostics.md#m0302",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "M0303",
+      "name": "native-archive-missing",
+      "severity": "error",
+      "category": "project",
+      "title": "native archive missing or invalid",
+      "summary": "The requested target has no readable, checksum-verified static archive in the native package.",
+      "repair": "Provide the static archive for the requested target and record its package-relative path and SHA-256 in [[native.libraries]].",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#m0303",
+      "guide": {
+        "explain": "meshc explain M0303",
+        "skill": "references/diagnostics.md#m0303",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "P0001",
+      "name": "unexpected-token",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unexpected token",
+      "summary": "The parser reached a token the grammar does not allow at this point.",
+      "repair": "Remove the token, or replace it with what the label says the grammar expects here.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0001",
+      "guide": {
+        "explain": "meshc explain P0001",
+        "skill": "references/diagnostics.md#p0001",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let = 1\nend\n",
+        "fixed": "fn main() do\n  let _x = 1\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0002",
+      "name": "expected-token",
+      "severity": "error",
+      "category": "syntax",
+      "title": "expected token missing",
+      "summary": "The grammar requires one particular token here, such as `do`, `->`, `in`, or a name, and the source has another one.",
+      "repair": "Write the token the message expects where the label points, or replace the token found there with it.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0002",
+      "guide": {
+        "explain": "meshc explain P0002",
+        "skill": "references/diagnostics.md#p0002",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  for x [1, 2] do\n    println(\"#{x}\")\n  end\nend\n",
+        "fixed": "fn main() do\n  for x in [1, 2] do\n    println(\"#{x}\")\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0003",
+      "name": "unclosed-delimiter",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unclosed delimiter",
+      "summary": "A `(`, `[`, `{`, or string interpolation is still open where its contents end.",
+      "repair": "Add the matching `)`, `]`, or `}` where the contents end; the related span shows where the delimiter was opened. If the contents are a list, separate its items with `,`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0003",
+      "guide": {
+        "explain": "meshc explain P0003",
+        "skill": "references/diagnostics.md#p0003",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  println(\"hi\"\nend\n",
+        "fixed": "fn main() do\n  println(\"hi\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0004",
+      "name": "missing-end",
+      "severity": "error",
+      "category": "syntax",
+      "title": "missing `end`",
+      "summary": "A block opened with `do`, such as a function, `if`, `case`, loop, closure, or type body, has no `end` that closes it.",
+      "repair": "Add `end` where the block's body ends; the related span shows the `do` it closes. Each `do` takes its own `end`, so count them in nested blocks.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0004",
+      "guide": {
+        "explain": "meshc explain P0004",
+        "skill": "references/diagnostics.md#p0004",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  println(\"hi\")\n",
+        "fixed": "fn main() do\n  println(\"hi\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0101",
+      "name": "unknown-character",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unknown character",
+      "summary": "The source has a character that starts no Mesh token, such as `$`, `^`, or a backtick, outside a string or comment.",
+      "repair": "Delete the character, or move it into a string or a comment. For an operator, write one Mesh has, such as `*`, `&&`, or `<>`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0101",
+      "guide": {
+        "explain": "meshc explain P0101",
+        "skill": "references/diagnostics.md#p0101",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = 2 ^ 3\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn main() do\n  let n = 2 * 3\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0102",
+      "name": "unterminated-string",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unterminated string",
+      "summary": "A string literal has no closing quote, so it runs to the end of the file.",
+      "repair": "Add the closing `\"` (`\"\"\"` for a triple-quoted string) where the text ends. Inside the string, write a quote as `\\\"`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0102",
+      "guide": {
+        "explain": "meshc explain P0102",
+        "skill": "references/diagnostics.md#p0102",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  println(\"hello)\nend\n",
+        "fixed": "fn main() do\n  println(\"hello\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0103",
+      "name": "unterminated-interpolation",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unterminated interpolation",
+      "summary": "A string interpolation opened with `#{` or `${` has no closing `}`, so it runs to the end of the file.",
+      "repair": "Close the interpolation with `}` after its expression, then close the string with `\"`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0103",
+      "guide": {
+        "explain": "meshc explain P0103",
+        "skill": "references/diagnostics.md#p0103",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let x = 1\n  println(\"x is #{x",
+        "fixed": "fn main() do\n  let x = 1\n  println(\"x is #{x}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0104",
+      "name": "unterminated-block-comment",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unterminated block comment",
+      "summary": "A block comment opened with `#=` has no closing `=#`, so it runs to the end of the file. Block comments nest: each `#=` inside one needs its own `=#`.",
+      "repair": "Add `=#` where the comment ends, one for each `#=` it contains.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0104",
+      "guide": {
+        "explain": "meshc explain P0104",
+        "skill": "references/diagnostics.md#p0104",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "#= Prints a greeting.\nfn main() do\n  println(\"hi\")\nend\n",
+        "fixed": "#= Prints a greeting. =#\nfn main() do\n  println(\"hi\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0105",
+      "name": "invalid-slot-pipe",
+      "severity": "error",
+      "category": "syntax",
+      "title": "invalid slot pipe",
+      "summary": "A pipe is written `|0>`, `|1>`, or `|N` without `>`. Slot pipes are numbered from 2, because `|>` already pipes into the first argument.",
+      "repair": "Write `|>` to pipe into the first argument, or `|N>` with N from 2 up to pipe into argument N.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0105",
+      "guide": {
+        "explain": "meshc explain P0105",
+        "skill": "references/diagnostics.md#p0105",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  let n = 1 |1> add(2)\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  let n = 1 |> add(2)\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0106",
+      "name": "invalid-regex-literal",
+      "severity": "error",
+      "category": "syntax",
+      "title": "invalid regex literal",
+      "summary": "A `~` does not start a well-formed regex literal `~r/pattern/flags`: the `r/` is missing, the pattern has no closing `/`, or a flag is not `i`, `m`, or `s`.",
+      "repair": "Write the literal as `~r/pattern/flags`: escape a `/` in the pattern as `\\/`, end the pattern with `/`, and use only the flags `i`, `m`, and `s`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0106",
+      "guide": {
+        "explain": "meshc explain P0106",
+        "skill": "references/diagnostics.md#p0106",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let rx = ~r/[a-z]+/x\n  println(\"#{Regex.is_match(rx, \"abc\")}\")\nend\n",
+        "fixed": "fn main() do\n  let rx = ~r/[a-z]+/i\n  println(\"#{Regex.is_match(rx, \"abc\")}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0107",
+      "name": "single-ampersand",
+      "severity": "error",
+      "category": "syntax",
+      "title": "single `&`",
+      "summary": "A lone `&` stands where an operator is expected. Mesh has no `&` operator: logical and is `&&` or `and`.",
+      "repair": "Write `&&` or `and` for a logical and.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0107",
+      "guide": {
+        "explain": "meshc explain P0107",
+        "skill": "references/diagnostics.md#p0107",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let ok = true & false\n  println(\"#{ok}\")\nend\n",
+        "fixed": "fn main() do\n  let ok = true && false\n  println(\"#{ok}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0201",
+      "name": "law-syntax",
+      "severity": "error",
+      "category": "syntax",
+      "title": "law file syntax error",
+      "summary": "A `.law` file does not follow the law grammar: `from Module import name` lines, then `law` declarations written like functions, then `proof` blocks.",
+      "repair": "Write target imports first, then `law name(param :: Type, ...) -> Type do ... end` for each imported function, then `proof name do ... end` with `refl`, `exact`, `congr`, `induction`, or `cases`, one entry per line.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0201",
+      "guide": {
+        "explain": "meshc explain P0201",
+        "skill": "references/diagnostics.md#p0201",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "P0202",
+      "name": "law-too-large",
+      "severity": "error",
+      "category": "syntax",
+      "title": "law file nested too deeply",
+      "summary": "A law body or proof in a `.law` file nests deeper than the law parser accepts.",
+      "repair": "Flatten the deepest part: move a nested expression into a helper function of the module under test, or split a deep proof into lemmas used with `exact`.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0202",
+      "guide": {
+        "explain": "meshc explain P0202",
+        "skill": "references/diagnostics.md#p0202",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "P0301",
+      "name": "logic-syntax",
+      "severity": "error",
+      "category": "syntax",
+      "title": "logic syntax error",
+      "summary": "A `logic do ... end` block or a `.law` file starting with `logic` does not follow the logic grammar of `from` imports, then `inductive`, `fn`, `theorem`, and `proof` declarations.",
+      "repair": "Write the token the message expects where the label points: separate entries with new lines or `;`, close each `do` with `end`, write equality as `==`, and annotate binders as `name :: Type`.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0301",
+      "guide": {
+        "explain": "meshc explain P0301",
+        "skill": "references/diagnostics.md#p0301",
+        "topic": "verification"
+      },
+      "example": {
+        "bad": "logic do\n  theorem two() do 2 = 2 end\nend\n\nfn main() do\nend\n",
+        "fixed": "logic do\n  theorem two() do 2 == 2 end\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0302",
+      "name": "logic-too-large",
+      "severity": "error",
+      "category": "syntax",
+      "title": "logic source too large",
+      "summary": "A logic block or file nests terms or proofs deeper than the logic parser accepts, or is larger than 4 GiB.",
+      "repair": "Name the deepest subterm with `let` or a separate `fn` declaration, split a deep proof into lemmas used with `exact`, or split the file.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0302",
+      "guide": {
+        "explain": "meshc explain P0302",
+        "skill": "references/diagnostics.md#p0302",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "P0401",
+      "name": "test-file-syntax",
+      "severity": "error",
+      "category": "syntax",
+      "title": "test file structure error",
+      "summary": "A `describe` block in a `.test.mpl` file has its `setup` after one of its tests, or more than one `teardown`.",
+      "repair": "Put a describe's `setup` before its first `test` or nested `describe`, and merge its teardowns into one `teardown do ... end`.",
+      "topic": "testing",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0401",
+      "guide": {
+        "explain": "meshc explain P0401",
+        "skill": "references/diagnostics.md#p0401",
+        "topic": "testing"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0001",
+      "name": "panic",
+      "severity": "error",
+      "category": "runtime",
+      "title": "runtime panic",
+      "summary": "The program panicked while it ran: it called `panic(...)`, or hit a runtime error such as `List.get` past the end, `Map.get` of a missing key, a value no match arm or function clause accepts, or an integer division by zero. The panic ends the actor it ran in, or the program with exit status 101 when it ran in `main`.",
+      "repair": "Handle the case the message names before the operation runs: check an index against `List.length`, a key with `Map.has_key`, a divisor against zero, or add the missing match arm. Return a `Result` instead of calling `panic` for a failure the caller should handle, and supervise an actor that may still fail so it restarts.",
+      "topic": "error-handling",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0001",
+      "guide": {
+        "explain": "meshc explain R0001",
+        "skill": "references/diagnostics.md#r0001",
+        "topic": "error-handling"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0002",
+      "name": "stack-overflow",
+      "severity": "error",
+      "category": "runtime",
+      "title": "stack overflow",
+      "summary": "A function recursed deeper than the stack of the program or actor it ran in allows, and the runtime aborted the whole process.",
+      "repair": "Make the recursion a direct self-call in tail position, which runs as a loop in constant stack, often by carrying the result in an accumulator parameter; or rewrite it with `List.reduce` or another iterator.",
+      "topic": "error-handling",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0002",
+      "guide": {
+        "explain": "meshc explain R0002",
+        "skill": "references/diagnostics.md#r0002",
+        "topic": "error-handling"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0101",
+      "name": "actor-crashed",
+      "severity": "error",
+      "category": "runtime",
+      "title": "actor crashed in the runtime",
+      "summary": "An actor ended with a failure that is not a Mesh panic: the runtime, or native code the actor called, failed while it ran. Linked actors and the actor's supervisor receive its exit as they would a panic's.",
+      "repair": "Read the runtime's report above this diagnostic. Report it with the program that reproduces it; until it is fixed, avoid the call the report names, and supervise the actor so a supervisor restarts it.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0101",
+      "guide": {
+        "explain": "meshc explain R0101",
+        "skill": "references/diagnostics.md#r0101",
+        "topic": "actors"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0102",
+      "name": "supervisor-gave-up",
+      "severity": "error",
+      "category": "runtime",
+      "title": "supervisor gave up",
+      "summary": "A supervisor's children failed more often than its `max_restarts` within `max_seconds` allow, so it stopped all of its children and exited instead of restarting them again.",
+      "repair": "Fix the failure that makes the child crash on start or soon after, which the runtime reports before this diagnostic. Raise `max_restarts` or `max_seconds` only if the failures are expected and transient.",
+      "topic": "supervisors",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0102",
+      "guide": {
+        "explain": "meshc explain R0102",
+        "skill": "references/diagnostics.md#r0102",
+        "topic": "supervisors"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0201",
+      "name": "library-invalid-argument",
+      "severity": "error",
+      "category": "runtime",
+      "title": "invalid library call argument",
+      "summary": "A host called the library with a `NULL` response pointer, a `NULL` request with a non-zero length, or a `NULL` callback table; the call returned status 1 (`MESH_LIBRARY_ERR_INVALID_ARGUMENT`).",
+      "repair": "Pass a pointer to a zero-initialized `MeshLibraryBytes` for the response, a request pointer whenever its length is not zero, and a callback table built from the generated header.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0201",
+      "guide": {
+        "explain": "meshc explain R0201",
+        "skill": "references/diagnostics.md#r0201",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0202",
+      "name": "library-not-initialized",
+      "severity": "error",
+      "category": "runtime",
+      "title": "library not initialized",
+      "summary": "A host called the library before `mesh_library_init`, or after `mesh_library_shutdown`; the call returned status 2 (`MESH_LIBRARY_ERR_NOT_INITIALIZED`).",
+      "repair": "Call `mesh_library_init` once, check that it returns 0, then make the other calls. A library cannot be started again in the same process after `mesh_library_shutdown`, so shut it down only as the process ends.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0202",
+      "guide": {
+        "explain": "meshc explain R0202",
+        "skill": "references/diagnostics.md#r0202",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0203",
+      "name": "library-busy",
+      "severity": "error",
+      "category": "runtime",
+      "title": "library call already in progress",
+      "summary": "A host called an exported function while another exported call was running in the same process; the library runs one call at a time, and this one returned status 3 (`MESH_LIBRARY_ERR_BUSY`).",
+      "repair": "Make the calls one at a time, from one serial queue or behind a lock, or retry the call after the one in progress returns.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0203",
+      "guide": {
+        "explain": "meshc explain R0203",
+        "skill": "references/diagnostics.md#r0203",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0206",
+      "name": "library-output-too-large",
+      "severity": "error",
+      "category": "runtime",
+      "title": "library payload too large",
+      "summary": "A request or a result crossing the library boundary was larger than 1 MiB, or the host's allocator could not allocate the response; the call returned status 6 (`MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE`).",
+      "repair": "Keep each request and result under 1 MiB: split a large payload across several calls, or pass a reference such as a key or a path instead of the data.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0206",
+      "guide": {
+        "explain": "meshc explain R0206",
+        "skill": "references/diagnostics.md#r0206",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0207",
+      "name": "library-abi-mismatch",
+      "severity": "error",
+      "category": "runtime",
+      "title": "library ABI mismatch",
+      "summary": "The host's callback table has an `abi_version` other than the runtime's (1), or a `struct_size` other than the size of `MeshLibraryHostCallbacksV1`; registration returned status 7 (`MESH_LIBRARY_ERR_ABI`).",
+      "repair": "Build the callback table from the header generated with the library: set `abi_version` to `MESH_LIBRARY_ABI_VERSION` and `struct_size` to `sizeof(MeshLibraryHostCallbacksV1)`, and rebuild the host after regenerating the library.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0207",
+      "guide": {
+        "explain": "meshc explain R0207",
+        "skill": "references/diagnostics.md#r0207",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "R0301",
+      "name": "node-connect-failed",
+      "severity": "error",
+      "category": "runtime",
+      "title": "node connection failed",
+      "summary": "`Node.connect` could not reach or authenticate the remote node, or this node was never started.",
+      "repair": "Start this node with `Node.start(name, cookie)` before connecting, give `Node.connect` the peer's `name@host:port` with the peer listening there, and start both nodes with the same cookie.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#r0301",
+      "guide": {
+        "explain": "meshc explain R0301",
+        "skill": "references/diagnostics.md#r0301",
+        "topic": "clustering"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "T0001",
+      "name": "assert-failed",
+      "severity": "error",
+      "category": "test",
+      "title": "`assert` failed",
+      "summary": "The condition of an `assert` was false, which ends and fails its test.",
+      "repair": "Fix the code under test so the condition holds, or correct the condition if it states the wrong expectation; the message shows it as written.",
+      "topic": "testing",
+      "docs_url": "https://meshlang.dev/docs/errors/#t0001",
+      "guide": {
+        "explain": "meshc explain T0001",
+        "skill": "references/diagnostics.md#t0001",
+        "topic": "testing"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "T0002",
+      "name": "assert-eq-failed",
+      "severity": "error",
+      "category": "test",
+      "title": "`assert_eq` sides differ",
+      "summary": "The two sides of an `assert_eq` show different text, compared as `\"#{value}\"` shows them, which ends and fails its test.",
+      "repair": "Compare the `left` and `right` values in the message, and fix the code under test or the expected value, whichever is wrong.",
+      "topic": "testing",
+      "docs_url": "https://meshlang.dev/docs/errors/#t0002",
+      "guide": {
+        "explain": "meshc explain T0002",
+        "skill": "references/diagnostics.md#t0002",
+        "topic": "testing"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "T0003",
+      "name": "assert-ne-failed",
+      "severity": "error",
+      "category": "test",
+      "title": "`assert_ne` sides are equal",
+      "summary": "The two sides of an `assert_ne` show the same text, which ends and fails its test.",
+      "repair": "Fix the code under test so the values differ, or correct the assertion if they are meant to be equal.",
+      "topic": "testing",
+      "docs_url": "https://meshlang.dev/docs/errors/#t0003",
+      "guide": {
+        "explain": "meshc explain T0003",
+        "skill": "references/diagnostics.md#t0003",
+        "topic": "testing"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "T0004",
+      "name": "assert-raises-failed",
+      "severity": "error",
+      "category": "test",
+      "title": "`assert_raises` did not raise",
+      "summary": "The function given to `assert_raises` returned without panicking or failing an assertion.",
+      "repair": "Make the function perform the operation that should fail, such as `List.get` past the end or a `panic(...)`, or drop the `assert_raises` if the operation is meant to succeed.",
+      "topic": "testing",
+      "docs_url": "https://meshlang.dev/docs/errors/#t0004",
+      "guide": {
+        "explain": "meshc explain T0004",
+        "skill": "references/diagnostics.md#t0004",
+        "topic": "testing"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "T0005",
+      "name": "assert-receive-failed",
+      "severity": "error",
+      "category": "test",
+      "title": "`assert_receive` got no matching message",
+      "summary": "No message arrived before the `assert_receive` timeout (100 ms unless given), or the first message to arrive did not match its pattern.",
+      "repair": "Check that the code under test sends the message to the test's process (`self()`) and that the pattern matches its exact shape, or give a slow sender more time with `assert_receive PATTERN, TIMEOUT_MS`.",
+      "topic": "testing",
+      "docs_url": "https://meshlang.dev/docs/errors/#t0005",
+      "guide": {
+        "explain": "meshc explain T0005",
+        "skill": "references/diagnostics.md#t0005",
+        "topic": "testing"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "T0101",
+      "name": "test-panicked",
+      "severity": "error",
+      "category": "test",
+      "title": "test failed in the runtime",
+      "summary": "A test, or the test program running it, failed in a way that is not a Mesh panic or a failed assertion: the runtime panicked, or the program was killed by a signal or exited without reporting a failure.",
+      "repair": "Read the runtime's report above this diagnostic. Report it with the test that reproduces it; if the program was killed, check the memory and resource limits it ran under.",
+      "topic": "testing",
+      "docs_url": "https://meshlang.dev/docs/errors/#t0101",
+      "guide": {
+        "explain": "meshc explain T0101",
+        "skill": "references/diagnostics.md#t0101",
+        "topic": "testing"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "T0103",
+      "name": "no-tests",
+      "severity": "error",
+      "category": "test",
+      "title": "no tests found",
+      "summary": "`meshc test` found no `*.test.mpl` file at its target.",
+      "repair": "Run `meshc test` from the project root or pass it the directory or `*.test.mpl` file that holds the tests, and name test files `<name>.test.mpl`.",
+      "topic": "testing",
+      "docs_url": "https://meshlang.dev/docs/errors/#t0103",
+      "guide": {
+        "explain": "meshc explain T0103",
+        "skill": "references/diagnostics.md#t0103",
+        "topic": "testing"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0001",
+      "name": "law-falsified",
+      "severity": "error",
+      "category": "verify",
+      "title": "law falsified",
+      "summary": "Verification found inputs for which the implementation and law disagree.",
+      "repair": "Reproduce the counterexample in the note and fix the implementation or correct the stated law.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0001",
+      "guide": {
+        "explain": "meshc explain V0001",
+        "skill": "references/diagnostics.md#v0001",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0002",
+      "name": "law-unverified",
+      "severity": "error",
+      "category": "verify",
+      "title": "law unverified",
+      "summary": "Verification could not establish a verdict for the law inventory.",
+      "repair": "Read the reason and resolve the reported obligation before treating the law as verified.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0002",
+      "guide": {
+        "explain": "meshc explain V0002",
+        "skill": "references/diagnostics.md#v0002",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0003",
+      "name": "law-unsupported",
+      "severity": "error",
+      "category": "verify",
+      "title": "law unsupported",
+      "summary": "The verifier cannot model the law or a construct that it depends on.",
+      "repair": "Rewrite the marked expression using the supported verification fragment.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0003",
+      "guide": {
+        "explain": "meshc explain V0003",
+        "skill": "references/diagnostics.md#v0003",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0101",
+      "name": "law-binding-unresolved",
+      "severity": "error",
+      "category": "verify",
+      "title": "law binding unresolved",
+      "summary": "A law, import, or proof could not be bound to a unique declaration.",
+      "repair": "Check the law name and its target import, including the module, visibility, and number of parameters.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0101",
+      "guide": {
+        "explain": "meshc explain V0101",
+        "skill": "references/diagnostics.md#v0101",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0102",
+      "name": "law-signature-mismatch",
+      "severity": "error",
+      "category": "verify",
+      "title": "law signature mismatch",
+      "summary": "The law does not declare the same concrete function signature as its target.",
+      "repair": "Match the target parameter and return types in the law declaration.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0102",
+      "guide": {
+        "explain": "meshc explain V0102",
+        "skill": "references/diagnostics.md#v0102",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0201",
+      "name": "solver-missing",
+      "severity": "error",
+      "category": "verify",
+      "title": "required Z3 solver unavailable",
+      "summary": "Verification could not use the required Z3 4.15.7 solver.",
+      "repair": "Install Z3 4.15.7 and put it on `PATH` or set `MESH_VERIFY_Z3` to its executable.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0201",
+      "guide": {
+        "explain": "meshc explain V0201",
+        "skill": "references/diagnostics.md#v0201",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0202",
+      "name": "prover-missing",
+      "severity": "error",
+      "category": "verify",
+      "title": "required Lean toolchain unavailable",
+      "summary": "Verification could not use the required Lean 4.36.0 toolchain.",
+      "repair": "Install Lean 4.36.0 and set `MESH_VERIFY_LEAN` to the trusted Lean executable. For `--verdict`, install the replay tools in the toolchain as well.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0202",
+      "guide": {
+        "explain": "meshc explain V0202",
+        "skill": "references/diagnostics.md#v0202",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0203",
+      "name": "solver-timeout",
+      "severity": "error",
+      "category": "verify",
+      "title": "verification time budget exhausted",
+      "summary": "A verification tool did not finish within the time budget.",
+      "repair": "Simplify the obligation or increase `MESH_VERIFY_TIMEOUT_MS` in milliseconds and retry.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0203",
+      "guide": {
+        "explain": "meshc explain V0203",
+        "skill": "references/diagnostics.md#v0203",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0301",
+      "name": "proof-rejected",
+      "severity": "error",
+      "category": "verify",
+      "title": "proof rejected",
+      "summary": "A proof checker or proof scenario failed.",
+      "repair": "Read the checker or scenario failure and correct the proof or the condition it checks.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0301",
+      "guide": {
+        "explain": "meshc explain V0301",
+        "skill": "references/diagnostics.md#v0301",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "V0302",
+      "name": "proof-replay-mismatch",
+      "severity": "error",
+      "category": "verify",
+      "title": "proof replay mismatch",
+      "summary": "The independent replay failed to confirm the exported proof.",
+      "repair": "Inspect the export and independent checker output, fix the proof or replay toolchain, and rerun `meshc verify --verdict`.",
+      "topic": "verification",
+      "docs_url": "https://meshlang.dev/docs/errors/#v0302",
+      "guide": {
+        "explain": "meshc explain V0302",
+        "skill": "references/diagnostics.md#v0302",
+        "topic": "verification"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "W0001",
+      "name": "redundant-arm",
+      "severity": "warning",
+      "category": "semantic",
+      "title": "redundant match arm",
+      "summary": "A match arm can never run, because earlier arms already match every value it would.",
+      "repair": "Remove the arm, or move it before the arm that covers it.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#w0001",
+      "guide": {
+        "explain": "meshc explain W0001",
+        "skill": "references/diagnostics.md#w0001",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = case 1 do\n    _ -> 0\n    1 -> 2\n  end\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn main() do\n  let n = case 1 do\n    1 -> 2\n    _ -> 0\n  end\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "W0002",
+      "name": "non-first-clause-annotation",
+      "severity": "warning",
+      "category": "semantic",
+      "title": "annotation on a later clause is ignored",
+      "summary": "Visibility, type parameters, or a return type are written on a clause other than the first of a multi-clause function, where they have no effect.",
+      "repair": "Write the annotation on the first clause only, and remove it from the later ones.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#w0002",
+      "guide": {
+        "explain": "meshc explain W0002",
+        "skill": "references/diagnostics.md#w0002",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn label(0) -> String = \"zero\"\nfn label(n) -> String = \"other\"\n\nfn main() do\n  println(label(0))\nend\n",
+        "fixed": "fn label(0) -> String = \"zero\"\nfn label(n) = \"other\"\n\nfn main() do\n  println(label(0))\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "W0003",
+      "name": "non-exhaustive-clauses",
+      "severity": "warning",
+      "category": "semantic",
+      "title": "function clauses do not cover every argument",
+      "summary": "A multi-clause function or closure has no clause for some arguments, and a call with one of them panics at run time.",
+      "repair": "Add a clause for each missing pattern, or a final catch-all clause.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#w0003",
+      "guide": {
+        "explain": "meshc explain W0003",
+        "skill": "references/diagnostics.md#w0003",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn label(0) = \"zero\"\nfn label(1) = \"one\"\n\nfn main() do\n  println(label(0))\nend\n",
+        "fixed": "fn label(0) = \"zero\"\nfn label(n) = \"other\"\n\nfn main() do\n  println(label(0))\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "X0001",
+      "name": "invalid-arguments",
+      "severity": "error",
+      "category": "cli",
+      "title": "invalid command arguments",
+      "summary": "An option, value, or combination of arguments is invalid.",
+      "repair": "Run the command with `--help` and correct the invocation.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0001",
+      "guide": {
+        "explain": "meshc explain X0001",
+        "skill": "references/diagnostics.md#x0001",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0002",
+      "name": "path-not-found",
+      "severity": "error",
+      "category": "cli",
+      "title": "path unavailable",
+      "summary": "A command could not access the input or output path it needs.",
+      "repair": "Check the path and its permissions. For output, use a writable directory.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0002",
+      "guide": {
+        "explain": "meshc explain X0002",
+        "skill": "references/diagnostics.md#x0002",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0101",
+      "name": "unknown-guide-topic",
+      "severity": "error",
+      "category": "cli",
+      "title": "unknown guide topic",
+      "summary": "The embedded guide has no reference with this name.",
+      "repair": "Run `meshc guide` to list topics.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0101",
+      "guide": {
+        "explain": "meshc explain X0101",
+        "skill": "references/diagnostics.md#x0101",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0102",
+      "name": "unknown-diagnostic-code",
+      "severity": "error",
+      "category": "cli",
+      "title": "unknown diagnostic code",
+      "summary": "The catalog does not recognize the requested code or name.",
+      "repair": "Run `meshc explain` to list diagnostic codes.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0102",
+      "guide": {
+        "explain": "meshc explain X0102",
+        "skill": "references/diagnostics.md#x0102",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0103",
+      "name": "skills-install-conflict",
+      "severity": "error",
+      "category": "cli",
+      "title": "skill installation conflict",
+      "summary": "An existing skill or installation receipt prevents Mesh from updating the skill safely.",
+      "repair": "Inspect the existing destination. Move it aside if you want Mesh to manage that location, then retry setup.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0103",
+      "guide": {
+        "explain": "meshc explain X0103",
+        "skill": "references/diagnostics.md#x0103",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0104",
+      "name": "skills-setup-needs-target",
+      "severity": "error",
+      "category": "cli",
+      "title": "non-interactive setup requires a target",
+      "summary": "Skill setup requires explicit approval and a coding tool when it cannot prompt.",
+      "repair": "Run `meshc skills setup --yes --target <agent>`. Run `meshc skills setup --help` to list agents.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0104",
+      "guide": {
+        "explain": "meshc explain X0104",
+        "skill": "references/diagnostics.md#x0104",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0201",
+      "name": "would-reformat",
+      "severity": "error",
+      "category": "cli",
+      "title": "file would be reformatted",
+      "summary": "The file differs from the formatter output.",
+      "repair": "Run `meshc fmt <path>` to format the file.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0201",
+      "guide": {
+        "explain": "meshc explain X0201",
+        "skill": "references/diagnostics.md#x0201",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0301",
+      "name": "update-failed",
+      "severity": "error",
+      "category": "cli",
+      "title": "toolchain update failed",
+      "summary": "The updater could not download or run the canonical installer.",
+      "repair": "Correct the failing installer step named in the message and rerun the update.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0301",
+      "guide": {
+        "explain": "meshc explain X0301",
+        "skill": "references/diagnostics.md#x0301",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0401",
+      "name": "registry-unreachable",
+      "severity": "error",
+      "category": "cli",
+      "title": "registry request failed",
+      "summary": "A transport or server failure prevented the registry request from completing.",
+      "repair": "Check the registry URL, network connection, and registry availability, then retry.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0401",
+      "guide": {
+        "explain": "meshc explain X0401",
+        "skill": "references/diagnostics.md#x0401",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0402",
+      "name": "registry-auth-failed",
+      "severity": "error",
+      "category": "cli",
+      "title": "registry authentication failed",
+      "summary": "The command could not obtain a token with access to the registry operation.",
+      "repair": "Run `meshpkg login` with a valid token that has permission for the operation.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0402",
+      "guide": {
+        "explain": "meshc explain X0402",
+        "skill": "references/diagnostics.md#x0402",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0403",
+      "name": "publish-conflict",
+      "severity": "error",
+      "category": "cli",
+      "title": "package version already published",
+      "summary": "The registry already has the package version being published.",
+      "repair": "Increase the package version in `mesh.toml` and publish the new version.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0403",
+      "guide": {
+        "explain": "meshc explain X0403",
+        "skill": "references/diagnostics.md#x0403",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0404",
+      "name": "registry-response-invalid",
+      "severity": "error",
+      "category": "cli",
+      "title": "registry response invalid",
+      "summary": "The registry returned an unexpected status, invalid data, or a package that did not match its checksum.",
+      "repair": "Check the package name, version, and registry URL. Report invalid metadata or checksum mismatches to the registry operator.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0404",
+      "guide": {
+        "explain": "meshc explain X0404",
+        "skill": "references/diagnostics.md#x0404",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0501",
+      "name": "cluster-command-failed",
+      "severity": "error",
+      "category": "cli",
+      "title": "cluster command failed",
+      "summary": "A cluster operator request could not complete.",
+      "repair": "Check the target node and operator configuration named in the error before retrying.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0501",
+      "guide": {
+        "explain": "meshc explain X0501",
+        "skill": "references/diagnostics.md#x0501",
+        "topic": "clustering"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0601",
+      "name": "migration-failed",
+      "severity": "error",
+      "category": "cli",
+      "title": "migration failed",
+      "summary": "A database migration command could not complete.",
+      "repair": "Fix the reported migration or database connection failure, then check migration status before retrying.",
+      "topic": "database",
+      "docs_url": "https://meshlang.dev/docs/errors/#x0601",
+      "guide": {
+        "explain": "meshc explain X0601",
+        "skill": "references/diagnostics.md#x0601",
+        "topic": "database"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "X0701",
+      "name": "plaintext-report-changed",
+      "severity": "error",
+      "category": "cli",
+      "title": "plaintext report changed",
+      "summary": "The current report differs from the committed plaintext report.",
+      "repair": "Review the changes, then regenerate the committed report with `meshc plaintext-report --output <path>`.",
+      "topic": null,
+      "docs_url": "https://meshlang.dev/docs/errors/#x0701",
+      "guide": {
+        "explain": "meshc explain X0701",
+        "skill": "references/diagnostics.md#x0701",
+        "topic": null
+      },
+      "example": null,
+      "status": "active"
+    }
+  ],
+  "retired": [
+    "C0001",
+    "E0013",
+    "E0024",
+    "E0025",
+    "E0043"
+  ]
+}

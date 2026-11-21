@@ -1851,7 +1851,7 @@ fn e2e_multi_file_parse_error_in_non_entry() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Parse error") || stderr.contains("error"),
+        stderr.contains("[P0001] Error:"),
         "expected parse error diagnostic, got: {}",
         stderr
     );
@@ -2779,7 +2779,9 @@ end
         ),
     ]);
     assert!(
-        error.contains("`mesh_string_length` is already the name of a runtime or native function"),
+        error.contains(
+            "[E0105] Error: `Text.mesh_string_length` is already the name of a runtime or native function"
+        ),
         "{error}"
     );
 }

@@ -5,6 +5,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_int, c_void};
 use std::path::{Path, PathBuf};
 use std::ptr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -1705,8 +1706,11 @@ fn prove_snapshot_resume(
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
+    // Concurrent proof runs can share a clock tick.
+    static NEXT_PROOF: AtomicU64 = AtomicU64::new(0);
+    let sequence = NEXT_PROOF.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-        "mesh-snapshot-resume-proof-{}-{stamp}.db",
+        "mesh-snapshot-resume-proof-{}-{stamp}-{sequence}.db",
         std::process::id()
     ));
     let result = (|| {

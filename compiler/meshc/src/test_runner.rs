@@ -24,11 +24,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use mesh_parser::test_harness::preprocess_test_source;
+use crate::{ReportResult, ReportText};
+use mesh_diagnostics::{Code, Diagnostic, Failed, Lookup, Reporter, Severity, SourceFile};
+
+use mesh_parser::test_harness::{preprocess_test_source, TestProgram};
+use mesh_pkg::frontend::{self, CheckOptions, Target};
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
 };
-use mesh_typeck::diagnostics::DiagnosticOptions;
 
 /// Whether output goes to a color terminal (and `NO_COLOR` is unset). The
 /// test binaries learn it through `MESH_TEST_COLOR`: their stdout is a pipe.
@@ -46,24 +49,19 @@ fn palette(color: bool) -> (&'static str, &'static str, &'static str, &'static s
     }
 }
 
-/// Summary of a test run.
-#[allow(dead_code)]
-pub struct TestSummary {
-    /// Number of test files that passed (exit code 0).
-    pub passed: usize,
-    /// Number of test files that failed (compile error or exit code non-zero).
-    pub failed: usize,
-}
-
 /// The target as an absolute path; without one, the current directory.
-fn resolve_target_path(target: Option<&Path>) -> Result<PathBuf, String> {
+fn resolve_target_path(target: Option<&Path>) -> Result<PathBuf, Diagnostic> {
     let target = target.unwrap_or(Path::new("."));
+    let unavailable = |message| Diagnostic::new(Code::PathNotFound, message);
     let abs = std::path::absolute(target)
-        .map_err(|e| format!("Failed to resolve '{}': {e}", target.display()))?;
+        .map_err(|e| unavailable(format!("Failed to resolve '{}': {e}", target.display())))?;
     if abs.exists() {
         Ok(abs)
     } else {
-        Err(format!("Test target '{}' does not exist", abs.display()))
+        Err(unavailable(format!(
+            "Test target '{}' does not exist",
+            abs.display()
+        )))
     }
 }
 
@@ -92,12 +90,16 @@ fn resolve_project_dir(target: &Path) -> Result<PathBuf, String> {
         })
 }
 
-fn resolve_test_project(target: &Path) -> Result<ResolvedTestProject, String> {
-    let project_dir = resolve_project_dir(target)?;
+fn resolve_test_project(target: &Path) -> Result<ResolvedTestProject, Diagnostic> {
+    let project_dir = resolve_project_dir(target).map_err(|message| {
+        Diagnostic::in_file(
+            Code::ManifestUnreadable,
+            &SourceFile::unread(target),
+            message,
+        )
+    })?;
     let manifest_path = project_dir.join("mesh.toml");
-    let manifest_source = std::fs::read_to_string(&manifest_path)
-        .map_err(|e| format!("Failed to read '{}': {}", manifest_path.display(), e))?;
-    let manifest = Manifest::from_file(&manifest_path)?;
+    let (manifest, manifest_source) = Manifest::from_file_with_source(&manifest_path)?;
     let entry_relative_path = if manifest.package.entrypoint.is_none()
         && !project_dir.join(DEFAULT_ENTRYPOINT).exists()
     {
@@ -113,19 +115,24 @@ fn resolve_test_project(target: &Path) -> Result<ResolvedTestProject, String> {
     })
 }
 
-fn resolve_test_files(target: &Path) -> Result<Vec<PathBuf>, String> {
-    if target.is_dir() {
-        discover_test_files(target)
-    } else if target
-        .file_name()
+pub(crate) fn is_test_file(path: &Path) -> bool {
+    path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.ends_with(".test.mpl"))
-    {
+}
+
+fn resolve_test_files(target: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
+    if target.is_dir() {
+        discover_test_files(target).map_err(|message| Diagnostic::new(Code::PathNotFound, message))
+    } else if is_test_file(target) {
         Ok(vec![target.to_path_buf()])
     } else {
-        Err(format!(
-            "'{}' is not a directory or a *.test.mpl file",
-            target.display()
+        Err(Diagnostic::new(
+            Code::InvalidArguments,
+            format!(
+                "'{}' is not a directory or a *.test.mpl file",
+                target.display()
+            ),
         ))
     }
 }
@@ -136,16 +143,25 @@ fn prepare_temp_test_project(
     test_project: &ResolvedTestProject,
     tmp_dir: &Path,
     preprocessed_source: &str,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
+    let staging_error = |message| {
+        Diagnostic::in_file(
+            Code::ModuleUnreadable,
+            &SourceFile::unread(&test_project.project_dir),
+            message,
+        )
+        .with_repair("Restore access to the source and temporary directories used by meshc test.")
+    };
     copy_project_sources_to_tmp(
         &test_project.project_dir,
         tmp_dir,
         &test_project.entry_relative_path,
-    )?;
+    )
+    .map_err(staging_error)?;
     let manifest_source =
         rewrite_test_manifest_source(&test_project.manifest_source, &test_project.project_dir)?;
-    write_file(&tmp_dir.join("mesh.toml"), manifest_source)?;
-    write_file(&tmp_dir.join(DEFAULT_ENTRYPOINT), preprocessed_source)
+    write_file(&tmp_dir.join("mesh.toml"), manifest_source).map_err(staging_error)?;
+    write_file(&tmp_dir.join(DEFAULT_ENTRYPOINT), preprocessed_source).map_err(staging_error)
 }
 
 fn read_file(path: &Path) -> Result<Vec<u8>, String> {
@@ -156,156 +172,268 @@ fn write_file(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), String> {
     std::fs::write(path, contents).map_err(|e| format!("Failed to write '{}': {e}", path.display()))
 }
 
-/// Run tests from the current project, a project root, a test directory, or a specific test file.
+fn with_test_project<T>(
+    test_project: &ResolvedTestProject,
+    test_file: &Path,
+    report_problem: impl Fn(&str),
+    reporter: &mut Reporter,
+    run: impl FnOnce(&Path, &mut Reporter) -> Result<T, Failed>,
+) -> Result<T, Failed> {
+    let source = mesh_pkg::project::read_file(test_file).reported(reporter)?;
+    let written = SourceFile::new(test_file, source.as_str());
+    let TestProgram { text, map } = preprocess_test_source(&source).map_err(|error| {
+        report_problem("COMPILE ERROR");
+        reporter.fail(error.to_diagnostic(&written))
+    })?;
+    let temporary = tempfile::tempdir()
+        .map_err(|e| format!("Failed to create temp dir: {e}"))
+        .reported_as(Code::PathNotFound, reporter)?;
+    let root = temporary.path();
+    let program = root.join(DEFAULT_ENTRYPOINT);
+    reporter.with_path_aliases(
+        [
+            (program.clone(), test_file.to_path_buf()),
+            (root.to_path_buf(), test_project.project_dir.clone()),
+        ],
+        |reporter| {
+            reporter.with_generated_file(program, written, map, |reporter| {
+                prepare_temp_test_project(test_project, root, &text)
+                    .inspect_err(|_| report_problem("SETUP ERROR"))
+                    .reported(reporter)?;
+                run(root, reporter)
+            })
+        },
+    )
+}
+
+pub(crate) fn check_tests(target: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
+    let target = resolve_target_path(Some(target)).reported(reporter)?;
+    let tests = resolve_test_files(&target).reported(reporter)?;
+    if tests.is_empty() {
+        return Ok(());
+    }
+    let project = resolve_test_project(&target).reported(reporter)?;
+    let mut failure = None;
+    for file in tests {
+        if let Err(error) = with_test_project(
+            &project,
+            &file,
+            |_| {},
+            reporter,
+            |root, reporter| {
+                let options = CheckOptions {
+                    test_builtins: true,
+                    require_entrypoint: true,
+                    ..CheckOptions::cli()
+                };
+                frontend::check(Target::Project { root }, &options)
+                    .report(reporter)
+                    .map(|_| ())
+            },
+        ) {
+            failure = Some(error);
+        }
+    }
+    failure.map_or(Ok(()), Err)
+}
+
+/// Run tests from a project root, test directory, or specific *.test.mpl file.
 ///
-/// - `target`: optional project root, directory, or specific `*.test.mpl` file.
-/// - `quiet`: compact output (a dot per passing test instead of its name).
-/// - `coverage`: currently unsupported and returns an explicit error.
+/// Each test program reports its diagnostics (a failed assertion's `T`
+/// code, a panic's `R` code) as JSON lines on its stderr; they are reported
+/// here, naming the test file as written, in the format the command was
+/// asked for. Any other line a program writes there is its own output.
 pub fn run_tests(
     target: Option<&Path>,
     quiet: bool,
     coverage: bool,
-) -> Result<TestSummary, String> {
+    json: bool,
+    no_color: bool,
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
     if coverage {
         return Err(
             "coverage reporting is not implemented for `meshc test`; run the command without --coverage"
                 .to_string(),
-        );
+        ).reported_as(Code::InvalidArguments, reporter);
     }
 
-    let target = resolve_target_path(target)?;
-    let test_project = resolve_test_project(&target)?;
-    let project_dir = &test_project.project_dir;
-    let test_files = resolve_test_files(&target)?;
+    let target = resolve_target_path(target).reported(reporter)?;
+    let test_project = resolve_test_project(&target).reported(reporter)?;
+    let test_files = resolve_test_files(&target).reported(reporter)?;
 
     if test_files.is_empty() {
-        println!("No *.test.mpl files found.");
-        return Ok(TestSummary {
-            passed: 0,
-            failed: 0,
-        });
+        return Err(reporter.fail(Diagnostic::in_file(
+            Code::NoTests,
+            &SourceFile::unread(&target),
+            format!("no *.test.mpl files found under '{}'", target.display()),
+        )));
     }
 
     let start = Instant::now();
     let mut passed = 0usize;
     let mut failed = 0usize;
-    let color = use_color();
+    let mut failure = None;
+    let color = !json && !no_color && use_color();
     let (green, red, bold, reset) = palette(color);
 
     for test_file in &test_files {
-        // The project root is an ancestor of every test file.
         let label = test_file
-            .strip_prefix(project_dir)
+            .strip_prefix(&test_project.project_dir)
             .unwrap_or(test_file)
-            .display()
-            .to_string();
+            .display();
+        let report_problem = |kind: &str| println!("{red}{bold}{kind}{reset}: {label}");
+        let result = with_test_project(
+            &test_project,
+            test_file,
+            report_problem,
+            reporter,
+            |root, reporter| {
+                let bin_path = root.join("test_bin");
+                crate::build(
+                    root,
+                    0,
+                    false,
+                    Some(&bin_path),
+                    None,
+                    crate::BuildArtifact::Executable,
+                    true,
+                    reporter,
+                )
+                .inspect_err(|_| report_problem("COMPILE ERROR"))?;
 
-        // Read the .test.mpl source and preprocess it into a valid Mesh program.
-        let source = std::fs::read_to_string(test_file)
-            .map_err(|e| format!("Failed to read '{}': {}", test_file.display(), e))?;
+                let output = Command::new(&bin_path)
+                    .env("MESH_TEST_QUIET", if quiet { "1" } else { "0" })
+                    .env("MESH_TEST_COLOR", if color { "1" } else { "0" })
+                    .env("MESH_DIAGNOSTICS", "json")
+                    .output()
+                    .map_err(|e| format!("Failed to execute test file '{label}': {e}"))
+                    .reported_as(Code::PathNotFound, reporter)?;
 
-        let preprocessed = match preprocess_test_source(&source) {
-            Ok(preprocessed) => preprocessed,
-            Err(e) => {
-                println!("{red}{bold}COMPILE ERROR{reset}: {label}");
-                println!("  {e}");
-                failed += 1;
-                continue;
-            }
-        };
+                print!("{}", String::from_utf8_lossy(&output.stdout));
+                // The proof of the first failure that ends a test: a failed
+                // assertion, a panic, a stack overflow. An error a test
+                // handled (a `Node.connect` that failed) explains nothing.
+                let mut ended = None;
+                for line in String::from_utf8_lossy(&output.stderr).lines() {
+                    match runtime_diagnostic(line, root) {
+                        Some(diagnostic) if diagnostic.severity() == Severity::Error => {
+                            let ends_a_test = ends_a_test(diagnostic.code());
+                            let failed = reporter.fail(diagnostic);
+                            if ends_a_test {
+                                ended.get_or_insert(failed);
+                            }
+                        }
+                        Some(diagnostic) => reporter.emit(diagnostic),
+                        None if json => println!("{line}"),
+                        None => eprintln!("{line}"),
+                    }
+                }
 
-        // Compile the preprocessed source to a temp binary.
-        let tmp_dir =
-            tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {}", e))?;
-        let bin_path = tmp_dir.path().join("test_bin");
-
-        if let Err(e) = prepare_temp_test_project(&test_project, tmp_dir.path(), &preprocessed) {
-            println!("{red}{bold}SETUP ERROR{reset}: {label}");
-            println!("  {}", e);
-            failed += 1;
-            continue;
-        }
-
-        // Diagnostics name the test file and the project's files, not
-        // their copies in the temporary project.
-        let diag_opts = DiagnosticOptions {
-            color,
-            json: false,
-            display_paths: vec![
-                (tmp_dir.path().join(DEFAULT_ENTRYPOINT), test_file.clone()),
-                (tmp_dir.path().to_path_buf(), project_dir.to_path_buf()),
-            ],
-        };
-        let compile_result = crate::build(
-            tmp_dir.path(),
-            0,     // opt_level: debug
-            false, // emit_llvm
-            Some(&bin_path),
-            None, // target: native
-            crate::BuildArtifact::Executable,
-            true, // test-only compiler builtins
-            &diag_opts,
+                if output.status.success() {
+                    return Ok(());
+                }
+                let killed = output.status.code().is_none();
+                if killed {
+                    println!("{red}{bold}CRASHED{reset}: {label} ({})", output.status);
+                }
+                // A failure is reported as it happens, a stack overflow's
+                // too; a program that ended without reporting one crashed.
+                if let Some(failed) = ended {
+                    return Err(failed);
+                }
+                let how = if killed {
+                    "was killed"
+                } else {
+                    "ended without reporting a failure"
+                };
+                Err(reporter.fail(Diagnostic::new(
+                    Code::TestPanicked,
+                    format!("the test program for '{label}' {how} ({})", output.status),
+                )))
+            },
         );
-
-        if let Err(e) = compile_result {
-            println!("{red}{bold}COMPILE ERROR{reset}: {label}");
-            println!("  {}", e);
-            failed += 1;
-            continue;
-        }
-
-        // Execute the compiled binary. It prints a line per test, or a `.`
-        // or `F` in quiet mode.
-        let output = Command::new(&bin_path)
-            .env("MESH_TEST_QUIET", if quiet { "1" } else { "0" })
-            .env("MESH_TEST_COLOR", if color { "1" } else { "0" })
-            .output()
-            .map_err(|e| format!("Failed to execute '{}': {}", bin_path.display(), e))?;
-
-        // Pass stdout/stderr through to terminal
-        if !output.stdout.is_empty() {
-            print!("{}", String::from_utf8_lossy(&output.stdout));
-        }
-        if !output.stderr.is_empty() {
-            eprint!("{}", String::from_utf8_lossy(&output.stderr));
-        }
-
-        if output.status.success() {
-            passed += 1;
-        } else {
-            // A binary killed by a signal reported nothing itself, and lost
-            // the output it had buffered: say what happened to it.
-            if output.status.code().is_none() {
-                println!("{red}{bold}CRASHED{reset}: {label} ({})", output.status);
+        match result {
+            Ok(()) => passed += 1,
+            Err(error) => {
+                failed += 1;
+                failure = Some(error);
             }
-            failed += 1;
         }
     }
 
-    let elapsed = start.elapsed();
-    let elapsed_secs = elapsed.as_secs_f64();
-
-    // Summary line. It counts files: each file's binary already printed its
-    // own test counts, so a bare "1 passed" here read like a lost test.
+    let elapsed_secs = start.elapsed().as_secs_f64();
     let files = |n: usize| if n == 1 { "test file" } else { "test files" };
-    if failed > 0 {
+    if let Some(failure) = failure {
         println!(
             "\n{red}{bold}{failed} {} failed{reset}, {passed} passed in {elapsed_secs:.2}s",
             files(failed)
         );
+        Err(failure)
     } else {
         println!(
             "\n{green}{bold}{passed} {} passed{reset} in {elapsed_secs:.2}s",
             files(passed)
         );
+        Ok(())
     }
-
-    Ok(TestSummary { passed, failed })
 }
 
-// ── Source Preprocessor ───────────────────────────────────────────────────
+/// Whether a test program reporting `code` has a test that failed by it,
+/// which explains the program failing.
+fn ends_a_test(code: Code) -> bool {
+    matches!(
+        code,
+        Code::Panic
+            | Code::StackOverflow
+            | Code::AssertFailed
+            | Code::AssertEqFailed
+            | Code::AssertNeFailed
+            | Code::AssertRaisesFailed
+            | Code::AssertReceiveFailed
+            | Code::TestPanicked
+    )
+}
 
-// ── Copy project sources into temp dir for cross-module test compilation ──
+/// The diagnostic one line of a test program's stderr is: a JSON object
+/// with a catalog code, as `MESH_DIAGNOSTICS=json` has the runtime write
+/// one. A file it names relative to the program's build is under `root`.
+fn runtime_diagnostic(line: &str, root: &Path) -> Option<Diagnostic> {
+    let wire: serde_json::Value = serde_json::from_str(line).ok()?;
+    let id = wire["code"].as_str()?;
+    let Lookup::Found(code) = Code::lookup(id) else {
+        return None;
+    };
+    if code.id() != id {
+        return None;
+    }
+    let message = wire["message"].as_str()?;
+    let file = wire["file"]
+        .as_str()
+        .filter(|file| !file.is_empty())
+        .map(|file| SourceFile::unread(root.join(file)));
+    let line = wire["line"]
+        .as_u64()
+        .and_then(|line| u32::try_from(line).ok());
+    let mut diagnostic = match (file, line) {
+        (Some(file), Some(line)) if line > 0 => {
+            let at = Diagnostic::at_line(code, file, line, message);
+            match wire["col"].as_u64().and_then(|col| u32::try_from(col).ok()) {
+                Some(col) => at.at_column(col),
+                None => at,
+            }
+        }
+        (Some(file), _) => Diagnostic::in_file(code, &file, message),
+        (None, _) => Diagnostic::new(code, message),
+    };
+    if let Some(fix) = wire["fix"].as_str().filter(|fix| !fix.is_empty()) {
+        diagnostic = diagnostic.with_repair(fix.to_string());
+    }
+    for note in wire["notes"].as_array().into_iter().flatten() {
+        diagnostic = diagnostic.with_note(note.as_str()?);
+    }
+    Some(diagnostic)
+}
 
 /// Copy all non-test .mpl source files from `project_dir` into `tmp_dir`,
 /// preserving relative directory structure.
@@ -762,6 +890,43 @@ mod tests {
         assert!(tmp.path().join(DEFAULT_ENTRYPOINT).exists());
     }
 
+    /// A diagnostic a test program wrote as JSON is the diagnostic again,
+    /// its file under the program's build root; any other line is output.
+    #[test]
+    fn a_test_program_diagnostic_is_read_back_from_its_json_line() {
+        let written = Diagnostic::at_line(
+            Code::AssertEqFailed,
+            SourceFile::unread("main.mpl"),
+            6,
+            "assert_eq failed: 1 == 2",
+        )
+        .at_column(3)
+        .with_note("a note");
+        let mut line = Vec::new();
+        Reporter::new(mesh_diagnostics::Format::Json, &mut line).emit(written);
+        let line = String::from_utf8(line).unwrap();
+
+        let read = runtime_diagnostic(line.trim_end(), Path::new("/build")).unwrap();
+        assert_eq!(read.code(), Code::AssertEqFailed);
+        assert_eq!(read.message(), "assert_eq failed: 1 == 2");
+        assert_eq!(read.file().unwrap().path(), Path::new("/build/main.mpl"));
+        assert_eq!((read.line(), read.col()), (Some(6), Some(3)));
+        assert_eq!(read.repair(), Code::AssertEqFailed.info().repair);
+        assert_eq!(read.notes(), ["a note"]);
+
+        for other in [
+            "noise",
+            "{\"code\":\"Z9999\",\"message\":\"x\"}",
+            "{\"code\":\"assert-eq-failed\",\"message\":\"a name, not an ID\"}",
+            "{\"code\":\"T0002\"}",
+        ] {
+            assert!(
+                runtime_diagnostic(other, Path::new("/build")).is_none(),
+                "{other}"
+            );
+        }
+    }
+
     /// A source the copy refuses stops the preparation before the manifest
     /// and the test program are written.
     #[test]
@@ -781,7 +946,11 @@ mod tests {
         let err = prepare_temp_test_project(&test_project, tmp.path(), "fn main() do\nend\n")
             .unwrap_err();
 
-        assert!(err.contains("missing.test-support.mpl"), "{err}");
+        assert_eq!(err.code().id(), "M0202");
+        assert!(
+            err.message().contains("missing.test-support.mpl"),
+            "{err:?}"
+        );
         assert!(!tmp.path().join("mesh.toml").exists());
         assert!(!tmp.path().join(DEFAULT_ENTRYPOINT).exists());
     }

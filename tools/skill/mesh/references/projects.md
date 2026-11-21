@@ -4,6 +4,8 @@
 For installed toolchains, see the [install and update guide](https://meshlang.dev/docs/tooling/#update-an-installed-toolchain).
 The [environment-variable reference](https://meshlang.dev/docs/environment-variables/)
 covers compiler, runtime, registry, and checker settings.
+Run `meshc skills setup --yes --target <agent>` to install the skill for
+a coding tool in the current project without prompts.
 
 ## Build, run, and diagnose
 
@@ -20,8 +22,12 @@ meshc lint .
 Use `[package].entrypoint` in `mesh.toml` to select a different source file
 for `fn main()`. A dependency-free executable can build without a manifest.
 Add a manifest for package metadata, dependencies, and project test discovery.
-Use `meshc build . --json` for newline-delimited diagnostic objects on
-stderr. Read the primary span and any help text before changing the code.
+Run `meshc check [path]` to parse and type-check without building. Add
+`--tests` to include the project's test files. With `--json`, diagnostics
+arrive as one JSON v2 object per line on stderr. Use the primary location and
+the `fix` field to repair the problem. Run `meshc explain <CODE>` for the
+full entry or `meshc explain --json` for the catalog on stdout.
+See [Mesh diagnostics](diagnostics.md) for the stream fields.
 For editor integration use `meshc lsp`, and for small interactive checks
 use `meshc repl`. Use a build or test when behavior depends on a project,
 linking, or the native runtime. [Getting started](https://meshlang.dev/docs/getting-started/) · [Developer tools](https://meshlang.dev/docs/tooling/)

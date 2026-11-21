@@ -722,7 +722,7 @@ end deriving(Json)
         ),
         [
             "cannot derive `Frobnicate` for `Odd` -- structs derive Eq, Ord, Display, Debug, Hash, Json, Row, and Schema; sum types all but Row and Schema",
-            "resource ownership violation: resource type `Holder` cannot derive `Eq`",
+            "resource crosses a boundary: resource type `Holder` cannot derive `Eq`",
             "field `Ping::to` of type `Pid<Int>` is not JSON-serializable",
             "field `Pong::0` of type `Pid<Int>` is not JSON-serializable",
         ]
