@@ -9178,6 +9178,291 @@
     },
     "result": "Fewer scheduled-work probes and no repeatable throughput gain."
   },
+  "linux_fenced_jobs_noop64_launch_segments": {
+    "scope": "Two trace-on launch attribution groups with two identical trace-off controls",
+    "profile": "noop-1r-64s",
+    "revision": "2456283bd5e029346acfd19fdfe4cfdb17be0325",
+    "fixture_sha256": "a4e35a944c8cdf7e485587f2b68447af0c05fabac8e6aa25d961aea263aa9c79",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "scored_jobs": 6144,
+    "groups": [
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-launch-segments-0",
+        "receipt_sha256": "431c8662b3a601ba48c1d54a8f526944a418e971d36c277b737126b7fa2d1dcc",
+        "order": [
+          "mesh",
+          "mesh-timing",
+          "mesh-repeat"
+        ],
+        "trials_sha256": "a18d829a9c4c14a714c442649ad4fe170072c89baf0445b5af7914ae5fcec528",
+        "jobs_per_second_by_arm": {
+          "mesh": 1468.860762862719,
+          "mesh-timing": 1471.7718547016614,
+          "mesh-repeat": 595.5233069281289
+        },
+        "trace": {
+          "warmup-mesh-timing": {
+            "raw_sha256": "3b42fe812b2b3e0b068b3816b0f3bd98a0f6f33854605791c064a2e399c0b02c",
+            "full_16_child_batches": 64,
+            "stages_ms": {
+              "launch_control_and_output_start": {
+                "count": 64,
+                "mean": 0.16995128125,
+                "p50": 0.130081,
+                "p95": 0.33675
+              },
+              "launch_post_spawn_before_registration": {
+                "count": 64,
+                "mean": 0.190464234375,
+                "p50": 0.147961,
+                "p95": 0.355082
+              },
+              "launch_pre_spawn": {
+                "count": 64,
+                "mean": 0.33117396875,
+                "p50": 0.204918,
+                "p95": 0.871331
+              },
+              "launch_private_sockets_and_env": {
+                "count": 64,
+                "mean": 0.12320690625,
+                "p50": 0.050832,
+                "p95": 0.246248
+              },
+              "launch_registration": {
+                "count": 64,
+                "mean": 0.022282796875,
+                "p50": 0.00979,
+                "p95": 0.080332
+              },
+              "launch_relay_start": {
+                "count": 64,
+                "mean": 0.11853496875,
+                "p50": 0.069666,
+                "p95": 0.329543
+              },
+              "launch_spawn_call": {
+                "count": 64,
+                "mean": 4.767385375,
+                "p50": 4.442378,
+                "p95": 6.817585
+              },
+              "launch_total": {
+                "count": 64,
+                "mean": 5.311306375,
+                "p50": 4.900042,
+                "p95": 7.567832
+              },
+              "launch_worker_command": {
+                "count": 64,
+                "mean": 0.032930265625,
+                "p50": 0.030083,
+                "p95": 0.037666
+              }
+            }
+          },
+          "0-mesh-timing": {
+            "raw_sha256": "f9247c0cfb64abf7d5bb1878cd1310671bc2e8d39029fa68edc7cb00ddc297c1",
+            "full_16_child_batches": 64,
+            "stages_ms": {
+              "launch_control_and_output_start": {
+                "count": 64,
+                "mean": 0.189381703125,
+                "p50": 0.141416,
+                "p95": 0.458832
+              },
+              "launch_post_spawn_before_registration": {
+                "count": 64,
+                "mean": 0.209006390625,
+                "p50": 0.161125,
+                "p95": 0.479749
+              },
+              "launch_pre_spawn": {
+                "count": 64,
+                "mean": 0.2857063125,
+                "p50": 0.222082,
+                "p95": 0.653
+              },
+              "launch_private_sockets_and_env": {
+                "count": 64,
+                "mean": 0.058778343749999996,
+                "p50": 0.056582,
+                "p95": 0.072081
+              },
+              "launch_registration": {
+                "count": 64,
+                "mean": 0.017181609375,
+                "p50": 0.010957,
+                "p95": 0.031874
+              },
+              "launch_relay_start": {
+                "count": 64,
+                "mean": 0.1164806875,
+                "p50": 0.076253,
+                "p95": 0.485209
+              },
+              "launch_spawn_call": {
+                "count": 64,
+                "mean": 5.0412520625,
+                "p50": 4.637125,
+                "p95": 6.922918
+              },
+              "launch_total": {
+                "count": 64,
+                "mean": 5.553146375,
+                "p50": 5.075832,
+                "p95": 7.874333
+              },
+              "launch_worker_command": {
+                "count": 64,
+                "mean": 0.051625609375,
+                "p50": 0.036334,
+                "p95": 0.202122
+              }
+            }
+          }
+        }
+      },
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-launch-segments-1",
+        "receipt_sha256": "5c8c0f58446309327dc88d71fae2cc8380b15190182c78247c34be2c5b87b6dc",
+        "order": [
+          "mesh-timing",
+          "mesh-repeat",
+          "mesh"
+        ],
+        "trials_sha256": "cfcfdd4810b7b0277a78c93feb32d00ee9dd377a61acd41ef7184008e5511d6d",
+        "jobs_per_second_by_arm": {
+          "mesh-timing": 1438.4084139078593,
+          "mesh-repeat": 1540.5418905934587,
+          "mesh": 1456.007731486367
+        },
+        "trace": {
+          "warmup-mesh-timing": {
+            "raw_sha256": "04cba56d2045db42384e14b674e8a53ed10b5bfdd224e58c08a3168407ff189d",
+            "full_16_child_batches": 64,
+            "stages_ms": {
+              "launch_control_and_output_start": {
+                "count": 64,
+                "mean": 0.49026928125,
+                "p50": 0.261914,
+                "p95": 1.987793
+              },
+              "launch_post_spawn_before_registration": {
+                "count": 64,
+                "mean": 0.539175140625,
+                "p50": 0.302582,
+                "p95": 2.036125
+              },
+              "launch_pre_spawn": {
+                "count": 64,
+                "mean": 0.564790359375,
+                "p50": 0.479666,
+                "p95": 1.000794
+              },
+              "launch_private_sockets_and_env": {
+                "count": 64,
+                "mean": 0.11455084375,
+                "p50": 0.106334,
+                "p95": 0.132002
+              },
+              "launch_registration": {
+                "count": 64,
+                "mean": 0.03505009375,
+                "p50": 0.03,
+                "p95": 0.073584
+              },
+              "launch_relay_start": {
+                "count": 64,
+                "mean": 0.19604234375000001,
+                "p50": 0.135376,
+                "p95": 0.393458
+              },
+              "launch_spawn_call": {
+                "count": 64,
+                "mean": 8.37915634375,
+                "p50": 7.973501,
+                "p95": 12.717587
+              },
+              "launch_total": {
+                "count": 64,
+                "mean": 9.5181719375,
+                "p50": 9.073376,
+                "p95": 13.526209
+              },
+              "launch_worker_command": {
+                "count": 64,
+                "mean": 0.126076078125,
+                "p50": 0.096501,
+                "p95": 0.154376
+              }
+            }
+          },
+          "0-mesh-timing": {
+            "raw_sha256": "df25d8970ebcd30983c1146184fbc409c5d96efae89d90968bf833c647e65dc0",
+            "full_16_child_batches": 64,
+            "stages_ms": {
+              "launch_control_and_output_start": {
+                "count": 64,
+                "mean": 0.197884625,
+                "p50": 0.149579,
+                "p95": 0.383457
+              },
+              "launch_post_spawn_before_registration": {
+                "count": 64,
+                "mean": 0.219375828125,
+                "p50": 0.1705,
+                "p95": 0.424126
+              },
+              "launch_pre_spawn": {
+                "count": 64,
+                "mean": 0.275461046875,
+                "p50": 0.222456,
+                "p95": 0.55925
+              },
+              "launch_private_sockets_and_env": {
+                "count": 64,
+                "mean": 0.065597984375,
+                "p50": 0.054375,
+                "p95": 0.087167
+              },
+              "launch_registration": {
+                "count": 64,
+                "mean": 0.015225890625,
+                "p50": 0.010623,
+                "p95": 0.030499
+              },
+              "launch_relay_start": {
+                "count": 64,
+                "mean": 0.102764453125,
+                "p50": 0.074167,
+                "p95": 0.232253
+              },
+              "launch_spawn_call": {
+                "count": 64,
+                "mean": 5.0567094062499995,
+                "p50": 4.62154,
+                "p95": 6.914581
+              },
+              "launch_total": {
+                "count": 64,
+                "mean": 5.566772171875,
+                "p50": 5.285084,
+                "p95": 7.562792
+              },
+              "launch_worker_command": {
+                "count": 64,
+                "mean": 0.05062259375,
+                "p50": 0.033458,
+                "p95": 0.059416
+              }
+            }
+          }
+        }
+      }
+    ],
+    "result": "Most serial launch time is inside Command::spawn. Preparation and registration have less than 1 ms of median headroom per full batch."
+  },
   "linux_fenced_jobs_noop64_guest_cpu_screen": {
     "profile": "noop-1r-64s",
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",

@@ -2578,6 +2578,17 @@ group. The trace identified native spawn and the next claim as the
 largest measured parts of the refill cycle.
 [Claim and launch timing receipt](../proof/jobs-parity/qualification-v1.json)
 
+The `2456283b` trace separated preparation and registration from
+native spawn in two additional matched groups. Both measured
+traces matched 1,024 job IDs and exact child PIDs. Across the
+64 full batches in each trace, median native spawn was 4.64
+and 4.62 ms per batch. Preparation took 0.22 ms in each.
+Post-spawn setup took 0.16 and 0.17 ms, and registration took
+about 0.01 ms. The median preparation and registration stages
+offer little room for a 1 ms saving per batch. The slower
+warmup trace also spent most of its time inside native spawn.
+[Launch segment receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Test overlapping the next claim with serial launch
 
 The fixture-only `fabe3099` candidate prepared the next claim on the
