@@ -2608,6 +2608,40 @@ and pickup p99 against Oban, and passed the resource limits.
 The queue wait remains experimental.
 [Five-group queue wait receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Attribute CPU during the no-op drain
+
+One group per 64-slot no-op topology attributed CPU with Linux
+cgroups on the same two-vCPU guest. Each group ran two identical
+`c271319e` Mesh arms and stock Oban. The 6,144 scored jobs
+reconciled. The measurements include reaped workers, PostgreSQL
+backends, and the benchmark observer. The overlay keeps the
+original throughput and runner-tree CPU scoring.
+
+| Runners | Mesh arm | Runner CPU/job | PostgreSQL CPU/job | Driver CPU/job |
+| --- | --- | ---: | ---: | ---: |
+| 1 | Control A | 1.31 ms | 1.64 ms | 0.28 ms |
+| 1 | Control B | 1.46 ms | 1.83 ms | 0.32 ms |
+| 8 | Control A | 0.87 ms | 1.50 ms | 0.13 ms |
+| 8 | Control B | 1.15 ms | 1.88 ms | 0.16 ms |
+
+The readings start just before producer submit and end at the
+first terminal poll. PostgreSQL includes producer and observer SQL.
+The driver includes their client processes. The total attributed CPU
+agreed with guest-wide busy CPU within 20 ms in each scored arm.
+
+To bound CPU inside the durable interval, the reducer subtracts the
+most work two vCPUs could perform outside that interval, with margins
+for the clocks and counters. The runner and PostgreSQL combined
+still used at least 2.07–2.42 ms/job at one runner and 1.92–2.50 ms/job
+at eight. Matching the Oban rate on those boots would allow about
+1.44 and 0.78 ms/job across both CPUs. At eight runners, the observed
+PostgreSQL path alone had a lower bound of 1.06–1.35 ms/job.
+
+These two groups measure database work with the existing observer
+traffic and runner behavior. They leave CPU attribution to individual
+SQL statements and the repeatability of the split open.
+[Active CPU receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare the 16-slot slow profile
 
 Five matched Linux groups at `c271319e` reconciled all 1,920
