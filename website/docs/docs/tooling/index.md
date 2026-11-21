@@ -912,8 +912,9 @@ than the lockfile and every git dependency is checked out, it prints
 
 A git dependency is fetched at its `rev`, the head of its `branch`, its `tag`,
 or the remote's default branch. The build compiles each checkout like a path
-dependency; building before `meshc deps` has fetched one fails with
-"Git dependency `name` is not fetched; run `meshc deps`". A dependency name
+dependency; building before `meshc deps` has fetched one fails with `M0103`
+("Git dependency `name` is not fetched at '...'") and suggests running
+`meshc deps`. A dependency name
 reached from two different sources, or a cycle, is an error.
 
 Registry downloads belong to `meshpkg install`, which `meshc deps` leaves

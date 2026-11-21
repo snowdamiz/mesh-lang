@@ -157,7 +157,7 @@ const STEPS: Step[] = [
         do: 'print',
         ms: 45,
         rows: [
-          row({ cls: 'err', text: '[E0014] Error: message type mismatch: expected `Message`, found `String`' }),
+          row({ cls: 'err', text: '[E0014] Error:' }, { cls: 'hdr', text: ' message type mismatch: expected `Message`, found `String`' }),
           diag({ cls: 'box', text: '    ╭─[ ' }, { cls: 'dim', text: './main.mpl:18:3' }, { cls: 'box', text: ' ]' }),
           diag({ cls: 'box', text: '    │' }),
           diag({ cls: 'dim', text: ' 18' }, { cls: 'box', text: ' │ ' }, { cls: 'hdr', text: '  send(pid, "forty")' }),
@@ -166,7 +166,8 @@ const STEPS: Step[] = [
           diag({ cls: 'box', text: '    │' }),
           diag({ cls: 'box', text: '    │ ' }, { cls: 'hint', text: 'Help: this Pid accepts messages of type Message' }),
           diag({ cls: 'box', text: '────╯' }),
-          row({ cls: 'err', text: 'error: Compilation failed due to errors above.' }),
+          row({ cls: 'dim', text: '  = E0014: meshc explain E0014 · skill diagnostics.md#e0014 · https://meshlang.dev/docs/errors/#e0014' }),
+          row({ cls: 'err', text: 'error:' }, { cls: 'hdr', text: ' 1 error (E0014)' }),
         ],
       },
       { do: 'still' },
