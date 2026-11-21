@@ -1705,8 +1705,12 @@ measured profile limit. Median time from durable enqueue to first claim
 fell from 222.9 to 2.7 ms with the listener. Each enabled trial verified
 the registered listener, a notification-triggered scan, and both writes
 for each job on a prewarmed backend. Host one-minute load ranged from
-19.0 to 34.9 on 15 logical CPUs. The effect relay is private fixture
-code. The receipt covers one frozen profile with that route.
+19.0 to 34.9 on 15 logical CPUs. The pinned Oban fixture used its
+in-VM notifier and a 250 ms staging poll, so the separate enqueue
+process could not wake its runner across VMs. From first claim to final
+settlement, medians were 232.7 ms for listener-on Mesh and 150.7 ms for
+Oban. The effect relay is private fixture code. The receipt covers one
+frozen profile with that route.
 [Warm sessions and notification receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Measure stock Linux Jobs with 64 slow-job slots
