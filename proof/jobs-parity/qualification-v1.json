@@ -10803,6 +10803,719 @@
     },
     "identical_arm_absolute_median_jobs_per_second": 132.758454849288
   },
+  "linux_fenced_jobs_staged_short_topology_followups": {
+    "profiles": {
+      "short-1r-64s": {
+        "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+        "profile": "short-1r-64s",
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/stock1/short-1r-64s",
+        "scope": "Local Linux ARM64 staged comparison, a full warmup and fresh database per scored group",
+        "guest_memory_gib": 2,
+        "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+        "scored_jobs": 7680,
+        "report_receipt_sha256": "07eea264b6b552409105b64e8c06733170c8b8e3e703a4c637371edaaa3d1673",
+        "report_trials_sha256": "9fed1f8e503f2a59364e6105d6be2bfc3b3c566ca8ccdfee0fe8c24d4795701e",
+        "stages": {
+          "pilot": {
+            "archive_sha256": "5444a0b66be5169abb454e756750f2be594c066a97525afbdee36f1ec669685a",
+            "extraction_sha256": "5717125de71834bb24b662cb17a675a777ce25a17e16b630a2f456299ce6c568",
+            "host_load_average_1m_max": 5.921875,
+            "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+            "jobs": 512,
+            "pack_sha256": "1fa501dc7d9b49f7f550420a83288afd870d6239ab9eca9e3b7eb329b1ab5c6b",
+            "transport": {
+              "evidence_files": 45,
+              "expanded_evidence_bytes": 2194523,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 510507,
+              "gzip_limit": 4194304,
+              "serial_bytes": 689302,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 11.621119667004677,
+            "stage_sha256": "2c5e90644e8b321e2c49b7562523b2126bf17ad8524110d28d219a07cec75590"
+          },
+          "0": {
+            "archive_sha256": "4c466edb5c6686b6a6e5da0131a463d97b99df872023c8d90cc9edf43b43b168",
+            "extraction_sha256": "114d21b86716e3e009050a943ea7d7c8b03ad11ee46cc721e127a274b91fdf5b",
+            "host_load_average_1m_max": 5.4912109375,
+            "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+            "jobs": 512,
+            "pack_sha256": "48cbae3563137a6fe0543a85bd75b6bfff8727069a63ed48059a031e7e84c486",
+            "transport": {
+              "evidence_files": 107,
+              "expanded_evidence_bytes": 4505658,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 963331,
+              "gzip_limit": 4194304,
+              "serial_bytes": 1302436,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 36.24873616700643,
+            "stage_sha256": "3787f5402952cf1065e65fcf744fc60e1035925433ec885bae16dd7a2f81572b"
+          },
+          "1": {
+            "archive_sha256": "6e946598ff7f2690a0ac54e74ed260c7c938eb57a59ea063d9731f7373583179",
+            "extraction_sha256": "d2b19cad343e4e6662ac53866780329575abfbc8e169ec52e4bfc71faf78f473",
+            "host_load_average_1m_max": 9.33544921875,
+            "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+            "jobs": 512,
+            "pack_sha256": "6943240d751700e3b6a6f34cb6fdbe6334b8c9e9ca72f8e05bd72efdd96d911a",
+            "transport": {
+              "evidence_files": 107,
+              "expanded_evidence_bytes": 4505531,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 971159,
+              "gzip_limit": 4194304,
+              "serial_bytes": 1313000,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 40.60176104099082,
+            "stage_sha256": "590146ef74b1527a5cf87fabb38cd5c2d238976847b08a73312e0ea2c7df221b"
+          },
+          "2": {
+            "archive_sha256": "c77e0803f5c01f4beaad8849ee57799b7bd4993e3a6ae7ee615435445071f888",
+            "extraction_sha256": "e8c98973aa3bc1d7c4fedb75f7ea8c897e7073741299fd992cd0cd40a43195bd",
+            "host_load_average_1m_max": 9.38818359375,
+            "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+            "jobs": 512,
+            "pack_sha256": "1c943ea44d7ec020df90bae2c363841684c4c613b49215875bf6da3a5fbee0bf",
+            "transport": {
+              "evidence_files": 107,
+              "expanded_evidence_bytes": 4504799,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 964964,
+              "gzip_limit": 4194304,
+              "serial_bytes": 1304651,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 37.40698183300265,
+            "stage_sha256": "2d41d000b497c27c1959f57a69951ef4c173f7583d9477b9206ff41464cd47b4"
+          },
+          "3": {
+            "archive_sha256": "4aa35cdd13a5eff24b991f8fece8c71697ade7665628e832ca0f1c9232732e74",
+            "extraction_sha256": "0d53dd454ce74363730e970d886324974417fea51441a81fcf2314bea928092a",
+            "host_load_average_1m_max": 9.40576171875,
+            "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+            "jobs": 512,
+            "pack_sha256": "0bf0b55cf34a77a2f8473c972438b2e40890ff00ac544e0ec075501f204951dd",
+            "transport": {
+              "evidence_files": 107,
+              "expanded_evidence_bytes": 4507983,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 971012,
+              "gzip_limit": 4194304,
+              "serial_bytes": 1312862,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 42.87003029200423,
+            "stage_sha256": "060f918555526fc8684643198a0901bca5479394115a1c53dc186c4c3c5bdd1f"
+          },
+          "4": {
+            "archive_sha256": "ce98a402502052ec7179b6b30c3cb6e3d7a26c177cd6dccda0407e55da038034",
+            "extraction_sha256": "54faa3ada4761f73c191fd589ce18c9fa410b7ce004c0dccc366e80f5c398234",
+            "host_load_average_1m_max": 8.4267578125,
+            "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+            "jobs": 512,
+            "pack_sha256": "840c8e6d799858286b9534aeee57c66e9bec4570c96122d4759d1848f8af62f9",
+            "transport": {
+              "evidence_files": 107,
+              "expanded_evidence_bytes": 4505101,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 968030,
+              "gzip_limit": 4194304,
+              "serial_bytes": 1308782,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 37.39283058300498,
+            "stage_sha256": "a8b9d0c560038064121527add53207a6a680adce95cc78ed3db5f1491aab5dd5"
+          }
+        },
+        "gates": {
+          "mesh": {
+            "all_canonical_conditions_met": true,
+            "breaches": [],
+            "strict_median_throughput_above_oban": true
+          },
+          "mesh-repeat": {
+            "all_canonical_conditions_met": true,
+            "breaches": [],
+            "strict_median_throughput_above_oban": true
+          }
+        },
+        "observed_ranges": {
+          "mesh": {
+            "claim_calls_per_job": {
+              "max": 0.072265625,
+              "median": 0.068359375,
+              "min": 0.06640625
+            },
+            "claim_p99_ms": {
+              "max": 751.1630859375,
+              "median": 387.60693359375,
+              "min": 343.195068359375
+            },
+            "cpu_seconds_per_job": {
+              "max": 0.0012916191406249999,
+              "median": 0.000782107421875,
+              "min": 0.000689302734375
+            },
+            "idle_queries_per_minute": {
+              "max": 1766.4705519922916,
+              "median": 1762.4422070570672,
+              "min": 1685.88534529394
+            },
+            "jobs_per_second": {
+              "max": 1441.0513896514312,
+              "median": 1272.7267210150976,
+              "min": 662.5103499867159
+            },
+            "peak_connections": {
+              "max": 68,
+              "median": 68,
+              "min": 68
+            },
+            "peak_processes": {
+              "max": 14,
+              "median": 9,
+              "min": 5
+            },
+            "peak_rss_bytes": {
+              "max": 185565184,
+              "median": 118272000,
+              "min": 82198528
+            },
+            "peak_threads": {
+              "max": 100,
+              "median": 69,
+              "min": 47
+            },
+            "pickup_p99_ms": {
+              "max": 762.3291015625,
+              "median": 395.260009765625,
+              "min": 349.38818359375
+            },
+            "settlement_p99_ms": {
+              "max": 771.231201171875,
+              "median": 401.81103515625,
+              "min": 353.56201171875
+            },
+            "sql_calls_per_job": {
+              "max": 5.34375,
+              "median": 5.330078125,
+              "min": 5.306640625
+            }
+          },
+          "mesh-repeat": {
+            "claim_calls_per_job": {
+              "max": 0.072265625,
+              "median": 0.068359375,
+              "min": 0.06640625
+            },
+            "claim_p99_ms": {
+              "max": 772.8740234375,
+              "median": 372.950927734375,
+              "min": 358.947021484375
+            },
+            "cpu_seconds_per_job": {
+              "max": 0.00121412890625,
+              "median": 0.000777349609375,
+              "min": 0.0007290937499999999
+            },
+            "idle_queries_per_minute": {
+              "max": 1766.424584286001,
+              "median": 1762.874821095069,
+              "min": 1759.61053637127
+            },
+            "jobs_per_second": {
+              "max": 1359.8038185866585,
+              "median": 1329.021456088752,
+              "min": 638.4430546722759
+            },
+            "peak_connections": {
+              "max": 68,
+              "median": 68,
+              "min": 68
+            },
+            "peak_processes": {
+              "max": 14,
+              "median": 6,
+              "min": 5
+            },
+            "peak_rss_bytes": {
+              "max": 188051456,
+              "median": 87703552,
+              "min": 77062144
+            },
+            "peak_threads": {
+              "max": 93,
+              "median": 47,
+              "min": 34
+            },
+            "pickup_p99_ms": {
+              "max": 784.135009765625,
+              "median": 379.81396484375,
+              "min": 365.43408203125
+            },
+            "settlement_p99_ms": {
+              "max": 797.2060546875,
+              "median": 384.64697265625,
+              "min": 369.77001953125
+            },
+            "sql_calls_per_job": {
+              "max": 5.34765625,
+              "median": 5.314453125,
+              "min": 5.306640625
+            }
+          },
+          "oban": {
+            "claim_calls_per_job": {
+              "max": 0.029296875,
+              "median": 0.02734375,
+              "min": 0.0234375
+            },
+            "claim_p99_ms": {
+              "max": 420.384033203125,
+              "median": 397.22900390625,
+              "min": 209.095947265625
+            },
+            "cpu_seconds_per_job": {
+              "max": 0.001925537109375,
+              "median": 0.0013939609375,
+              "min": 0.001022369140625
+            },
+            "idle_queries_per_minute": {
+              "max": 947.6639550447178,
+              "median": 870.9088001814995,
+              "min": 865.9357358881056
+            },
+            "jobs_per_second": {
+              "max": 2269.7039749950213,
+              "median": 1254.7390337953254,
+              "min": 1175.7142072268946
+            },
+            "peak_connections": {
+              "max": 68,
+              "median": 67,
+              "min": 66
+            },
+            "peak_processes": {
+              "max": 2,
+              "median": 2,
+              "min": 2
+            },
+            "peak_rss_bytes": {
+              "max": 151060480,
+              "median": 148287488,
+              "min": 145502208
+            },
+            "peak_threads": {
+              "max": 12,
+              "median": 12,
+              "min": 12
+            },
+            "pickup_p99_ms": {
+              "max": 424.7568359375,
+              "median": 400.575927734375,
+              "min": 211.1298828125
+            },
+            "settlement_p99_ms": {
+              "max": 435.071044921875,
+              "median": 407.386962890625,
+              "min": 222.718994140625
+            },
+            "sql_calls_per_job": {
+              "max": 3.14453125,
+              "median": 3.123046875,
+              "min": 3.1171875
+            }
+          }
+        },
+        "throughput_pair_wins": {
+          "mesh": 1,
+          "mesh-repeat": 1
+        },
+        "identical_arm_absolute_median_jobs_per_second": 24.067295314440003,
+        "median_occupancy_and_pickup": {
+          "mesh": {
+            "occupied_slots": 17.104041024137416,
+            "first_pickup_ms": 2.60693359375,
+            "first_claim_to_final_settlement_ms": 399.678955078125
+          },
+          "mesh-repeat": {
+            "occupied_slots": 17.093234750687724,
+            "first_pickup_ms": 1.8740234375,
+            "first_claim_to_final_settlement_ms": 384.294921875
+          },
+          "oban": {
+            "occupied_slots": 42.17244950642589,
+            "first_pickup_ms": 165.817138671875,
+            "first_claim_to_final_settlement_ms": 216.898193359375
+          }
+        }
+      },
+      "short-8r-16s": {
+        "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+        "profile": "short-8r-16s",
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/stock1/short-8r-16s",
+        "scope": "Local Linux ARM64 staged comparison, a full warmup and fresh database per scored group",
+        "guest_memory_gib": 2,
+        "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+        "scored_jobs": 1920,
+        "report_receipt_sha256": "8dbdd7a1deb0acd77166cc628c028daba76e103af07e8acd55d160048b60b0c1",
+        "report_trials_sha256": "3fddd9471cebcee818b76f611d9284ea1c8af964fc45f393ea661af3cf5e59fc",
+        "stages": {
+          "pilot": {
+            "archive_sha256": "fc804c8081785c87213c4e56178e773e9210f7bba97e564be48fe7a537397d37",
+            "extraction_sha256": "d9df8cb137598c3c1f43497adbe3f02807ed6f6114480975d507b2f146a48278",
+            "host_load_average_1m_max": 7.76220703125,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs": 128,
+            "pack_sha256": "7dac46f6feb8b14a82b5d15ae5948581a34c03b3d59e107f3ba8eea86c58c491",
+            "transport": {
+              "evidence_files": 59,
+              "expanded_evidence_bytes": 789817,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 194523,
+              "gzip_limit": 4194304,
+              "serial_bytes": 263578,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 13.035415208010818,
+            "stage_sha256": "a1b1aa6cebed20db062d27b3b08b600ea7840a101a063770b5552f92963e311e"
+          },
+          "0": {
+            "archive_sha256": "c3f4204feaa9e0b711422755ddda1b82e9cbc4f889b4b990d23564b60399b9dc",
+            "extraction_sha256": "735765152f03eb99b6a1b7da698dbece818eb0fa847df3ae8e5bbb63e0976a9e",
+            "host_load_average_1m_max": 7.23828125,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs": 128,
+            "pack_sha256": "728c0f5d546618cdeb91084a9a0ec2256e62c7f755a0d495c35dcb850786d71f",
+            "transport": {
+              "evidence_files": 149,
+              "expanded_evidence_bytes": 1476681,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 320326,
+              "gzip_limit": 4194304,
+              "serial_bytes": 436186,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 45.842777540994575,
+            "stage_sha256": "4881406ec5f6498da46e8a5264d747cf4d4742419137af5d9d3c90a58eca8ccd"
+          },
+          "1": {
+            "archive_sha256": "afa092fe5091b301db632f597cd157c05f7d93660c530caa261b397189737b20",
+            "extraction_sha256": "cf756c12f05f4801103d25ed7d52e8e35150227474f5154d1689a0315424e5aa",
+            "host_load_average_1m_max": 8.72705078125,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs": 128,
+            "pack_sha256": "9f2d65e9c7c0833a7eaf4572847b25f9e0ffb827590a9443ecdc3f1f3f8bcfe1",
+            "transport": {
+              "evidence_files": 149,
+              "expanded_evidence_bytes": 1476683,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 321416,
+              "gzip_limit": 4194304,
+              "serial_bytes": 437642,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 55.26191470900085,
+            "stage_sha256": "d48500f3e8f740660bd05d3ab9c78e2839af93ef9666d411a13a06018757ca75"
+          },
+          "2": {
+            "archive_sha256": "17963bba0e9d8b3d189360538f277f359ec5a8de4c15975e95e6c365454e56b4",
+            "extraction_sha256": "aa181931192b2fb6770fcae6a0bf5addc7c7f7e8b2397df79314925114790073",
+            "host_load_average_1m_max": 8.02001953125,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs": 128,
+            "pack_sha256": "072341d2f1021e7efbac598fd6b9a80c58523a079db978c4fd42bffed4615e29",
+            "transport": {
+              "evidence_files": 149,
+              "expanded_evidence_bytes": 1475893,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 319974,
+              "gzip_limit": 4194304,
+              "serial_bytes": 435688,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 46.49488724999537,
+            "stage_sha256": "8ce04add3af9a781aa2907760fd7f30054d2c45fffb1e7eca390489499557f35"
+          },
+          "3": {
+            "archive_sha256": "021cabe31179c23bb02e28dd55d59c8c8bceca921d560a6700a1fb6593af7bb7",
+            "extraction_sha256": "ac5e92ac2be95f34923761a340ab062ee9ae6d4378bc426ed628a732b65d9737",
+            "host_load_average_1m_max": 7.9833984375,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs": 128,
+            "pack_sha256": "ba822cfe2035c0e8a6343ea8a9681e208f1e4198fb34e848aa169fef0a721c71",
+            "transport": {
+              "evidence_files": 149,
+              "expanded_evidence_bytes": 1475736,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 319916,
+              "gzip_limit": 4194304,
+              "serial_bytes": 435614,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 47.92846024999744,
+            "stage_sha256": "8995b4ede268783873a41d7788ab354b0ce5738abf2a4ae1874dfd5fbe4d4f1b"
+          },
+          "4": {
+            "archive_sha256": "5e17de91bc8d4c0dfca49c27435d70838d6f090822152b2e8d3a7f5971108876",
+            "extraction_sha256": "980f0cc7d1989f0a4bbce3d7b04b701f4577acde706b64ebb392ca8f303af9e9",
+            "host_load_average_1m_max": 6.41943359375,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs": 128,
+            "pack_sha256": "d3c89dd4d8d893b0f66a513bb81cee7ee49b815f04f5e8bd687b3ece5887647b",
+            "transport": {
+              "evidence_files": 149,
+              "expanded_evidence_bytes": 1474262,
+              "expanded_tar_limit": 33554432,
+              "gzip_bytes": 319156,
+              "gzip_limit": 4194304,
+              "serial_bytes": 434584,
+              "serial_limit": 8388608
+            },
+            "vm_seconds": 43.597477125003934,
+            "stage_sha256": "5194e5cf2dda4362ad9e6593c5dc5b2e5ffd87ce2e8eb6146b37b8e4410efe99"
+          }
+        },
+        "gates": {
+          "mesh": {
+            "all_canonical_conditions_met": true,
+            "breaches": [],
+            "strict_median_throughput_above_oban": true
+          },
+          "mesh-repeat": {
+            "all_canonical_conditions_met": false,
+            "breaches": [
+              {
+                "mesh_median": 617.8561327425285,
+                "metric": "jobs_per_second",
+                "ratio_limit": 1.0,
+                "reference": "oban",
+                "reference_median": 620.919166151492,
+                "scope": "comparison",
+                "within_limit": false
+              }
+            ],
+            "strict_median_throughput_above_oban": false
+          }
+        },
+        "observed_ranges": {
+          "mesh": {
+            "claim_calls_per_job": {
+              "max": 1.5390625,
+              "median": 1.4375,
+              "min": 1.265625
+            },
+            "claim_p99_ms": {
+              "max": 371.139892578125,
+              "median": 189.263916015625,
+              "min": 170.364990234375
+            },
+            "cpu_seconds_per_job": {
+              "max": 0.0042021796875,
+              "median": 0.0034479140625000002,
+              "min": 0.0027292578124999997
+            },
+            "idle_queries_per_minute": {
+              "max": 14005.21526534811,
+              "median": 13969.880626707167,
+              "min": 13912.617677006148
+            },
+            "jobs_per_second": {
+              "max": 721.3013713707103,
+              "median": 631.3847428520505,
+              "min": 331.95979161337544
+            },
+            "peak_connections": {
+              "max": 48,
+              "median": 48,
+              "min": 48
+            },
+            "peak_processes": {
+              "max": 11,
+              "median": 10,
+              "min": 8
+            },
+            "peak_rss_bytes": {
+              "max": 300396544,
+              "median": 279072768,
+              "min": 260829184
+            },
+            "peak_threads": {
+              "max": 84,
+              "median": 80,
+              "min": 67
+            },
+            "pickup_p99_ms": {
+              "max": 377.700927734375,
+              "median": 191.302978515625,
+              "min": 173.8740234375
+            },
+            "settlement_p99_ms": {
+              "max": 383.23681640625,
+              "median": 200.1240234375,
+              "min": 176.861083984375
+            },
+            "sql_calls_per_job": {
+              "max": 11.7265625,
+              "median": 11.1015625,
+              "min": 10.359375
+            }
+          },
+          "mesh-repeat": {
+            "claim_calls_per_job": {
+              "max": 1.515625,
+              "median": 1.4453125,
+              "min": 1.3984375
+            },
+            "claim_p99_ms": {
+              "max": 296.666015625,
+              "median": 196.843017578125,
+              "min": 165.56201171875
+            },
+            "cpu_seconds_per_job": {
+              "max": 0.0050654765625,
+              "median": 0.0038776328125,
+              "min": 0.0032540078124999997
+            },
+            "idle_queries_per_minute": {
+              "max": 14186.047452511011,
+              "median": 13989.005576851448,
+              "min": 13883.597603103393
+            },
+            "jobs_per_second": {
+              "max": 733.6423946703012,
+              "median": 617.8561327425285,
+              "min": 414.79793664356464
+            },
+            "peak_connections": {
+              "max": 48,
+              "median": 48,
+              "min": 48
+            },
+            "peak_processes": {
+              "max": 10,
+              "median": 9,
+              "min": 8
+            },
+            "peak_rss_bytes": {
+              "max": 294338560,
+              "median": 272830464,
+              "min": 271364096
+            },
+            "peak_threads": {
+              "max": 84,
+              "median": 72,
+              "min": 70
+            },
+            "pickup_p99_ms": {
+              "max": 299.7099609375,
+              "median": 199.317138671875,
+              "min": 167.712890625
+            },
+            "settlement_p99_ms": {
+              "max": 308.0830078125,
+              "median": 205.2958984375,
+              "min": 171.693115234375
+            },
+            "sql_calls_per_job": {
+              "max": 11.546875,
+              "median": 11.1640625,
+              "min": 10.9140625
+            }
+          },
+          "oban": {
+            "claim_calls_per_job": {
+              "max": 0.5625,
+              "median": 0.5546875,
+              "min": 0.546875
+            },
+            "claim_p99_ms": {
+              "max": 244.994873046875,
+              "median": 203.826904296875,
+              "min": 178.1630859375
+            },
+            "cpu_seconds_per_job": {
+              "max": 0.035545484375,
+              "median": 0.024119492187499997,
+              "min": 0.022791710937499994
+            },
+            "idle_queries_per_minute": {
+              "max": 7610.336665125407,
+              "median": 7600.12876478576,
+              "min": 7419.349207574708
+            },
+            "jobs_per_second": {
+              "max": 659.5697036334404,
+              "median": 620.919166151492,
+              "min": 512.7671477249166
+            },
+            "peak_connections": {
+              "max": 34,
+              "median": 32,
+              "min": 32
+            },
+            "peak_processes": {
+              "max": 16,
+              "median": 16,
+              "min": 16
+            },
+            "peak_rss_bytes": {
+              "max": 974876672,
+              "median": 968347648,
+              "min": 964337664
+            },
+            "peak_threads": {
+              "max": 96,
+              "median": 96,
+              "min": 96
+            },
+            "pickup_p99_ms": {
+              "max": 246.2578125,
+              "median": 204.284912109375,
+              "min": 184.593017578125
+            },
+            "settlement_p99_ms": {
+              "max": 249.50390625,
+              "median": 206.090087890625,
+              "min": 193.902099609375
+            },
+            "sql_calls_per_job": {
+              "max": 5.4609375,
+              "median": 5.3671875,
+              "min": 5.296875
+            }
+          }
+        },
+        "throughput_pair_wins": {
+          "mesh": 3,
+          "mesh-repeat": 3
+        },
+        "identical_arm_absolute_median_jobs_per_second": 103.44523862818176,
+        "median_occupancy_and_pickup": {
+          "mesh": {
+            "occupied_slots": 5.731371749045493,
+            "first_pickup_ms": 2.263916015625,
+            "first_claim_to_final_settlement_ms": 200.465087890625
+          },
+          "mesh-repeat": {
+            "occupied_slots": 5.836028748439208,
+            "first_pickup_ms": 2.843017578125,
+            "first_claim_to_final_settlement_ms": 204.324951171875
+          },
+          "oban": {
+            "occupied_slots": 3.2334407427332272,
+            "first_pickup_ms": 26.506103515625,
+            "first_claim_to_final_settlement_ms": 176.0810546875
+          }
+        }
+      }
+    },
+    "scope": "Local staged Linux ARM64 short-job topology comparisons"
+  },
   "linux_fenced_jobs_staged_sparse_eight_runner": {
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
     "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/stock1/sparse-8r-64s",

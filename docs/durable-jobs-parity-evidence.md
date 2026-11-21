@@ -2540,6 +2540,25 @@ launching the current batch improves throughput within the existing
 slot and context budgets.
 [Claim and launch timing receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare two more short-job topologies on Linux
+
+The staged `c271319e` fixture reconciled all 7,680 measured jobs for
+one runner at 64 slots and 1,920 for eight runners at 16 slots. Both
+ran the same warm fenced sessions and stock Oban comparator as the
+earlier staged runs.
+
+| Profile | Mesh jobs/s | Identical Mesh repeat | Stock Oban jobs/s | Scored result |
+| --- | ---: | ---: | ---: | --- |
+| Short, 1 runner and 64 slots | 1,272.7 | 1,329.0 | 1,254.7 | Both arms passed the median gates |
+| Short, 8 runners and 16 slots | 631.4 | 617.9 | 620.9 | Repeat arm missed throughput |
+
+Each Mesh arm won one of five matched 64-slot groups, despite the
+higher individual medians. At eight runners, each Mesh arm won three
+groups and the median absolute difference between identical controls
+was 103 jobs/s. Both topologies passed pickup and resource limits.
+The timing spread leaves throughput open for repeatable confirmation.
+[Short topology receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
