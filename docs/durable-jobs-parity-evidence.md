@@ -2295,6 +2295,17 @@ and 106.10 ms for Oban. From first claim to final settlement, the medians
 were 125.41, 145.15 and 104.09 ms. The replay still covers one local
 profile. [Deadline and accounting replay](../proof/jobs-parity/qualification-v1.json)
 
+The topology driver at `c271319e` passed both traced modes on macOS
+for short one-slot, short four-runner at 16 slots, slow one-runner at
+64 slots, and sparse four-runner at 16 slots. It reconciled 128, 128,
+512, and 24 jobs per mode, respectively. Prewarmed lane allocations
+were 1, 4/4/4/3, 63, and 4/4/4/3. The one-slot case used polling and
+kept five workload clients. The other cases used LISTEN, with workload
+caps of 32, 68, and 32. Each runner's prewarmed backends returned to its
+own idle pool. These runs exercised the actual compiled fixture and
+PostgreSQL recovery paths without scoring throughput.
+[Topology pilot receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs

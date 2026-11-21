@@ -7666,6 +7666,195 @@
     },
     "scope": "Local Linux ARM64 repeat of a single frozen profile. The throughput endpoint is final durable settlement. Cleanup verification and its runner cost are recorded outside the durable interval. No dedicated-host or full-matrix qualification."
   },
+  "macos_fenced_jobs_topology_pilots": {
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "postgres": "17.11 verified TLS/SCRAM",
+    "compiler_input_equivalence": {
+      "compiler_build": "33a20cfc18270e67116f9ca491ba2728d21931e8",
+      "harness": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+      "matching_paths": [
+        "compiler",
+        "Cargo.toml",
+        "Cargo.lock",
+        "tests/e2e/durable_jobs/.parity"
+      ]
+    },
+    "cases": {
+      "short-1r-1s": {
+        "run": "target/jobs-parity/two-write-local/startup-deadline-source/target/jobs-parity/c271319e84624bd00b0a62a7bb07a45602ee948b/j1-two-write-proof-jm0urw0e",
+        "log_sha256": "021859ff42f30be01318f71431ae6e378eb80c2c6db012a2b19b351f4b958e4c",
+        "manifest_sha256": "fd8af6f3c3db62d4fedb75c6b2687485165150ea2391054e73ea9faebc4b3776",
+        "result_sha256": "2d1cec2e70225aae69502c024a37a85758b6481aaf365c373b349089c33437eb",
+        "listen": false,
+        "client_cap": 5,
+        "observer_slots": 1,
+        "arms": {
+          "fresh": {
+            "jobs": 128,
+            "claims_by_runner": [
+              128
+            ],
+            "startup_lanes_by_runner": [
+              0
+            ],
+            "effect_reset_count": 0,
+            "peak_sampled_clients": 4,
+            "raw_sha256": "ad29558e16fd784e453c601c2269025956fd41cc370be1bf0a4771155d3d60d5",
+            "role_budget_sha256": "d5ae584a83147a3366f0d37692ef9adb5ed379cd47bd5a75aa324aac8844109e"
+          },
+          "prewarmed": {
+            "jobs": 128,
+            "claims_by_runner": [
+              128
+            ],
+            "startup_lanes_by_runner": [
+              1
+            ],
+            "effect_reset_count": 128,
+            "peak_sampled_clients": 5,
+            "raw_sha256": "4ea7584fcf7453f597748058af49687388a3173ac26f32eeab7d0581fe7b56a0",
+            "role_budget_sha256": "d5ae584a83147a3366f0d37692ef9adb5ed379cd47bd5a75aa324aac8844109e"
+          }
+        }
+      },
+      "short-4r-16s": {
+        "run": "target/jobs-parity/two-write-local/startup-deadline-source/target/jobs-parity/c271319e84624bd00b0a62a7bb07a45602ee948b/j1-two-write-proof-_yp9pjsf",
+        "log_sha256": "27253ca70662e64946c538789142b621536728564a01c63864bf266c5f5c6262",
+        "manifest_sha256": "60c742c9e0b1d91b57510dd43b7c738d7fd19057fde16bfe10012c3c51ebb0ea",
+        "result_sha256": "2d1cec2e70225aae69502c024a37a85758b6481aaf365c373b349089c33437eb",
+        "listen": true,
+        "client_cap": 32,
+        "observer_slots": 1,
+        "arms": {
+          "fresh": {
+            "jobs": 128,
+            "claims_by_runner": [
+              31,
+              31,
+              33,
+              33
+            ],
+            "startup_lanes_by_runner": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "effect_reset_count": 0,
+            "peak_sampled_clients": 20,
+            "raw_sha256": "162dff367e85784c600abcedf3e2e3ea7778025956b5495032cc3e7b2af7eeac",
+            "role_budget_sha256": "0b33a783d4f07aef2f4e061e37b9cec0b2e2893e011b9559214d2ac1f005191a"
+          },
+          "prewarmed": {
+            "jobs": 128,
+            "claims_by_runner": [
+              30,
+              30,
+              34,
+              34
+            ],
+            "startup_lanes_by_runner": [
+              4,
+              4,
+              4,
+              3
+            ],
+            "effect_reset_count": 128,
+            "peak_sampled_clients": 32,
+            "raw_sha256": "9dcc61ea16f953aa9746e8d9fdb49da96b6c63a99987d67b9639add34f477856",
+            "role_budget_sha256": "0b33a783d4f07aef2f4e061e37b9cec0b2e2893e011b9559214d2ac1f005191a"
+          }
+        }
+      },
+      "slow-1r-64s": {
+        "run": "target/jobs-parity/two-write-local/startup-deadline-source/target/jobs-parity/c271319e84624bd00b0a62a7bb07a45602ee948b/j1-two-write-proof-0z_w88ug",
+        "log_sha256": "14e9ead52d939f3a549b2be7e1440d4cf98c6f88284c277b6559eb208bf537b3",
+        "manifest_sha256": "6b9a3d02699e389676ecdd76d13a6d75702b82455f225748b8263192f3b94f7d",
+        "result_sha256": "2d1cec2e70225aae69502c024a37a85758b6481aaf365c373b349089c33437eb",
+        "listen": true,
+        "client_cap": 68,
+        "observer_slots": 1,
+        "arms": {
+          "fresh": {
+            "jobs": 512,
+            "claims_by_runner": [
+              512
+            ],
+            "startup_lanes_by_runner": [
+              0
+            ],
+            "effect_reset_count": 0,
+            "peak_sampled_clients": 50,
+            "raw_sha256": "577c6bc5f6c981a77868aa95619b93952beb383673bba942773dfeab74e83f8c",
+            "role_budget_sha256": "1c7ed66c7ab9c55bc0e61480ef193c2dc72325c32dece5ddbf6a5fde34a8d2e0"
+          },
+          "prewarmed": {
+            "jobs": 512,
+            "claims_by_runner": [
+              512
+            ],
+            "startup_lanes_by_runner": [
+              63
+            ],
+            "effect_reset_count": 512,
+            "peak_sampled_clients": 68,
+            "raw_sha256": "0fd5a1db66c1af4d08328b0c69dbd3955eec4d9d7df31162bb87855a6c311db7",
+            "role_budget_sha256": "1c7ed66c7ab9c55bc0e61480ef193c2dc72325c32dece5ddbf6a5fde34a8d2e0"
+          }
+        }
+      },
+      "sparse-4r-16s": {
+        "run": "target/jobs-parity/two-write-local/startup-deadline-source/target/jobs-parity/c271319e84624bd00b0a62a7bb07a45602ee948b/j1-two-write-proof-0ph10673",
+        "log_sha256": "f3d7aa85a63b233f985b4d03fe78ac57b88dfd1780a9200bd62c8f274ba3b12c",
+        "manifest_sha256": "dc9a02cbe7b9a8a5d368d3a8aec6201c5b95daef9e4e12806473a86b7d645437",
+        "result_sha256": "2d1cec2e70225aae69502c024a37a85758b6481aaf365c373b349089c33437eb",
+        "listen": true,
+        "client_cap": 32,
+        "observer_slots": 1,
+        "arms": {
+          "fresh": {
+            "jobs": 24,
+            "claims_by_runner": [
+              10,
+              5,
+              3,
+              6
+            ],
+            "startup_lanes_by_runner": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "effect_reset_count": 0,
+            "peak_sampled_clients": 17,
+            "raw_sha256": "86677de23d7de9136f6a425ef251089a6523b3d62b9a7ebc19028d4fe4d70c52",
+            "role_budget_sha256": "0b33a783d4f07aef2f4e061e37b9cec0b2e2893e011b9559214d2ac1f005191a"
+          },
+          "prewarmed": {
+            "jobs": 24,
+            "claims_by_runner": [
+              11,
+              8,
+              3,
+              2
+            ],
+            "startup_lanes_by_runner": [
+              4,
+              4,
+              4,
+              3
+            ],
+            "effect_reset_count": 24,
+            "peak_sampled_clients": 31,
+            "raw_sha256": "6a2182a3263af8fbe2e7c3019ddeb2b425e38c40dd5473320ccea9d0ee761783",
+            "role_budget_sha256": "0b33a783d4f07aef2f4e061e37b9cec0b2e2893e011b9559214d2ac1f005191a"
+          }
+        }
+      }
+    },
+    "scope": "Four local macOS ARM64 traced correctness profiles. Every route reconciled both ordered writes, exact children, leases, and cleanup. No comparative throughput claim."
+  },
   "linux_worker_phase_residency_and_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "postgres": "17.11 verified TLS and SCRAM",
