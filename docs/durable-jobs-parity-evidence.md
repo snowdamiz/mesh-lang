@@ -2616,6 +2616,36 @@ A runtime flag permits a separate comparison with the same
 executable in every Mesh arm.
 [Worker-local THP trial receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Confirm worker THP disablement with one executable
+
+Five matched groups at `239c8445` ran the same Linux arm64
+executable in both Mesh controls and the THP treatment. With
+`MESH_DIAGNOSTIC_JOB_DISABLE_THP=1`, the exact job worker disables
+transparent huge pages before handling the attempt. The runner itself
+keeps the guest's default policy. PostgreSQL 17.11 uses verified TLS
+and SCRAM, and all 2,560 scored jobs reconciled.
+
+| Arm | Jobs/s | Peak RSS | Pickup p99 | CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control | 134.2 | 205.7 MiB | 848 ms | 1.61 ms |
+| Mesh repeat | 133.7 | 202.3 MiB | 846 ms | 1.80 ms |
+| Mesh, worker THP disabled | 135.1 | 103.6 MiB | 843 ms | 1.58 ms |
+| Oban Basic 2.24.2 | 125.4 | 122.2 MiB | 913 ms | 3.72 ms |
+
+The treatment met every slow-16 gate and beat Oban's throughput in
+all five groups. Both controls missed RSS. The median paired drops in
+peak RSS were 102.1 and 100.0 MiB. Throughput stayed within about
+1.5 jobs/s of the controls on the median paired comparisons.
+
+The pilot observed 115 control children and 114 treatment children
+during the handler hold. Separate bootstrap checks observed both
+worker selectors after scheduler startup. The unset flag and values
+`0` and `01` inherited the guest policy. Only `1` disabled THP.
+Closing input during bootstrap returned status 174 in all eight cases.
+The memory result covers the local 16-slot profile with the fenced
+effect fixture. Worker THP disablement remains opt-in.
+[Same-executable trial receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Trace the no-op claim and launch cycle
 
 One warmed and one measured matched group at `1d9d7e41` recorded

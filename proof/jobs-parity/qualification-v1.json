@@ -14273,6 +14273,402 @@
     },
     "identical_arm_absolute_median_jobs_per_second": 132.758454849288
   },
+  "linux_fenced_jobs_slow16_runtime_worker_thp": {
+    "profile": "slow-1r-16s",
+    "scope": "local-linux-aarch64-fenced-slow16-runtime-worker-thp",
+    "revision": "239c8445114453607e1e2a316214622c918ee9ba",
+    "input_sha256": "ef74797d08ae51cda180cc40784cb4176df922a42c057a5247d25177ad74f835",
+    "kernel_policy": {
+      "after": {
+        "fault_around_bytes": null,
+        "page_bytes": 4096,
+        "thp_defrag": null,
+        "thp_enabled": null
+      },
+      "before": {
+        "fault_around_bytes": null,
+        "page_bytes": 4096,
+        "thp_defrag": null,
+        "thp_enabled": null
+      }
+    },
+    "fixture_proof": {
+      "runner_executables": {
+        "mesh": "/proof/mesh-parity-fixture",
+        "mesh-repeat": "/proof/mesh-parity-fixture",
+        "mesh-thp-off": "/proof/mesh-parity-thp-off",
+        "oban": "/opt/otp/erts-17.1/bin/beam.smp"
+      },
+      "same_binary_at_two_fixture_paths": true,
+      "scope": "local-linux-aarch64-fenced-slow16-runtime-worker-thp",
+      "stock_release": {
+        "build": {
+          "artifacts_sha256": {
+            "libmesh_rt.a": "330b68ddc87c6ab0efa486c8e3fd01a026ff93e900db56365e86dac611412a22",
+            "libworker_identity.a": "80baa7c7cde76c0acf7b1cc0e79c63c2a0bd985b87147f6f0d15d72fe3d8cea3",
+            "mesh-parity-fixture": "8c3c890368862aa6ee74004ee36a21a7bce27b33916a6eed6a96a2aaa8b07c6b",
+            "meshc": "9218cffc0f1df626c5f18d6c5f7ee05d4af5a43f2be813ae227f28e357aae621"
+          },
+          "generated_mesh_toml_sha256": "119a7b9ccc0d8075ad7194bc8378aab696e76020e67da58ce9d84ac4d48f0730",
+          "native_source_sha256": {
+            "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+            "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+            "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+            "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+          },
+          "parent_manifest_sha256": "c6baba3fd216e095dbb757d8a526d3c92134c870975f9e1c4d3a2ef79d15c58f",
+          "profile": "release",
+          "requested_runtime_features": [
+            "jobs-effect-fixture"
+          ],
+          "revision": "239c8445114453607e1e2a316214622c918ee9ba",
+          "target": "aarch64-unknown-linux-gnu"
+        },
+        "path": "/proof/mesh-parity-fixture",
+        "sha256": "8c3c890368862aa6ee74004ee36a21a7bce27b33916a6eed6a96a2aaa8b07c6b"
+      },
+      "treatment_scope": "Runtime worker-local PR_SET_THP_DISABLE via the inherited diagnostic flag",
+      "worker_argv_marker": "--mesh-internal-job-attempt-effect-v1",
+      "worker_thp_off_release": {
+        "build": {
+          "artifacts_sha256": {
+            "libmesh_rt.a": "330b68ddc87c6ab0efa486c8e3fd01a026ff93e900db56365e86dac611412a22",
+            "libworker_identity.a": "80baa7c7cde76c0acf7b1cc0e79c63c2a0bd985b87147f6f0d15d72fe3d8cea3",
+            "mesh-parity-fixture": "8c3c890368862aa6ee74004ee36a21a7bce27b33916a6eed6a96a2aaa8b07c6b",
+            "meshc": "9218cffc0f1df626c5f18d6c5f7ee05d4af5a43f2be813ae227f28e357aae621"
+          },
+          "generated_mesh_toml_sha256": "119a7b9ccc0d8075ad7194bc8378aab696e76020e67da58ce9d84ac4d48f0730",
+          "native_source_sha256": {
+            "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+            "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+            "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+            "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+          },
+          "parent_manifest_sha256": "c6baba3fd216e095dbb757d8a526d3c92134c870975f9e1c4d3a2ef79d15c58f",
+          "profile": "release",
+          "requested_runtime_features": [
+            "jobs-effect-fixture"
+          ],
+          "revision": "239c8445114453607e1e2a316214622c918ee9ba",
+          "target": "aarch64-unknown-linux-gnu"
+        },
+        "path": "/proof/mesh-parity-thp-off",
+        "sha256": "8c3c890368862aa6ee74004ee36a21a7bce27b33916a6eed6a96a2aaa8b07c6b"
+      }
+    },
+    "gates": {
+      "mesh": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 215691264,
+            "metric": "peak_rss_bytes",
+            "oban_median": 128176128,
+            "relative_limit": 1.5,
+            "scope": "budgets",
+            "within_limit": false
+          }
+        ]
+      },
+      "mesh-repeat": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 212099072,
+            "metric": "peak_rss_bytes",
+            "oban_median": 128176128,
+            "relative_limit": 1.5,
+            "scope": "budgets",
+            "within_limit": false
+          }
+        ]
+      },
+      "mesh-thp-off": {
+        "all_canonical_conditions_met": true,
+        "breaches": []
+      }
+    },
+    "stage_receipt_sha256": {
+      "0": "5e2abce60e4586666b34d161d1250ecfe4a66f3d9d9d176836836fd2e77e0877",
+      "1": "46551094819029c745d329ea6c7ae9e51bbee18a96a08b86d57de6ce0d753819",
+      "2": "e28525def5717091765733f1b9d4b5f5f116b68f806fbeeb961f2994f2de75f4",
+      "3": "3814b991458c66f001a72d80df2a68606a7ba83fdef7d62034b54b9354d08dd5",
+      "4": "56b5ded5735dae4113c4dc44b04676a3f01b2eb3d5136e98613282745e81b32a",
+      "pilot": "cab59be9b991f1c0259d4d07f56e0f1b26cb1a81aae580b9705b882d5fc19cce"
+    },
+    "pilot_held_children": {
+      "pilot-mesh": 115,
+      "pilot-mesh-thp-off": 114
+    },
+    "reconciled_scored_jobs": 2560,
+    "throughput_wins_vs_oban": {
+      "mesh": 5,
+      "mesh-repeat": 5,
+      "mesh-thp-off": 5
+    },
+    "paired_medians": {
+      "mesh-repeat_minus_mesh": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": 8.321093750000017e-05
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -2473984
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -2473984
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": -1.7099441940132465
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -2473984
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": 5.44287109375
+        }
+      },
+      "mesh-repeat_minus_oban": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -0.0018080546874999998
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 85221376
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 85221376
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 8.294126793593136
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 83853312
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -67.197998046875
+        }
+      },
+      "mesh-thp-off_minus_mesh": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -5.163281250000003e-05
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -107073536
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -107073536
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 0.43186689298917713
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -107073536
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -2.781982421875
+        }
+      },
+      "mesh-thp-off_minus_mesh-repeat": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -0.00024258593750000018
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -104906752
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -104906752
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 1.4562495886412705
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -104906752
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -3.213134765625
+        }
+      },
+      "mesh-thp-off_minus_oban": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -0.0021759609374999997
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -18731008
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -18731008
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 8.830701531560777
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -20365312
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -68.73193359375
+        }
+      },
+      "mesh_minus_oban": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -0.0020616874999999997
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 88203264
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 88203264
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 10.55435028684073
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 85716992
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -73.6708984375
+        }
+      }
+    },
+    "run": "target/jobs-parity/linux-arm-ownership-guest/slow16-worker-thp-comparison/runs/runtime-thp-02",
+    "report_sha256": "7d1710ea12d74f3f25a33d0aa2bd31355e55e7e4aeb7f562e94411eb280df6c3",
+    "bootstrap_policy": {
+      "receipt_sha256": "bb5ffd4cca5265a685cb551ec890f6f58bdc37c76bfcd645d005927cfb4cf15b",
+      "cases": [
+        {
+          "exit_status": 174,
+          "flag": null,
+          "pid": 417,
+          "selector": "--mesh-internal-job-attempt-v1",
+          "thp_enabled": 1
+        },
+        {
+          "exit_status": 174,
+          "flag": "0",
+          "pid": 419,
+          "selector": "--mesh-internal-job-attempt-v1",
+          "thp_enabled": 1
+        },
+        {
+          "exit_status": 174,
+          "flag": "01",
+          "pid": 421,
+          "selector": "--mesh-internal-job-attempt-v1",
+          "thp_enabled": 1
+        },
+        {
+          "exit_status": 174,
+          "flag": "1",
+          "pid": 423,
+          "selector": "--mesh-internal-job-attempt-v1",
+          "thp_enabled": 0
+        },
+        {
+          "exit_status": 174,
+          "flag": null,
+          "pid": 425,
+          "selector": "--mesh-internal-job-attempt-effect-v1",
+          "thp_enabled": 1
+        },
+        {
+          "exit_status": 174,
+          "flag": "0",
+          "pid": 427,
+          "selector": "--mesh-internal-job-attempt-effect-v1",
+          "thp_enabled": 1
+        },
+        {
+          "exit_status": 174,
+          "flag": "01",
+          "pid": 429,
+          "selector": "--mesh-internal-job-attempt-effect-v1",
+          "thp_enabled": 1
+        },
+        {
+          "exit_status": 174,
+          "flag": "1",
+          "pid": 431,
+          "selector": "--mesh-internal-job-attempt-effect-v1",
+          "thp_enabled": 0
+        }
+      ],
+      "scope": "Observed after scheduler startup, with EOF during worker bootstrap."
+    },
+    "median_by_arm": {
+      "mesh": {
+        "jobs_per_second": 134.21058155495336,
+        "peak_rss_bytes": 215691264,
+        "pickup_p99_ms": 847.903076171875,
+        "cpu_seconds_per_job": 0.0016086718749999999
+      },
+      "mesh-repeat": {
+        "jobs_per_second": 133.68746149672185,
+        "peak_rss_bytes": 212099072,
+        "pickup_p99_ms": 846.2509765625,
+        "cpu_seconds_per_job": 0.0018029140625
+      },
+      "mesh-thp-off": {
+        "jobs_per_second": 135.14371108536312,
+        "peak_rss_bytes": 108617728,
+        "pickup_p99_ms": 843.110107421875,
+        "cpu_seconds_per_job": 0.0015750468749999998
+      },
+      "oban": {
+        "jobs_per_second": 125.40438037982872,
+        "peak_rss_bytes": 128176128,
+        "pickup_p99_ms": 913.448974609375,
+        "cpu_seconds_per_job": 0.0037159999999999997
+      }
+    },
+    "host_load_1m_max_by_stage": {
+      "0": 6.3056640625,
+      "1": 5.8115234375,
+      "2": 5.92724609375,
+      "3": 7.41015625,
+      "4": 7.103515625,
+      "pilot": 10.45458984375
+    },
+    "result": "Worker-local THP disablement passed all slow-16 gates. Both identical-binary controls missed RSS.",
+    "earlier_failed_stage": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/slow16-worker-thp-comparison/runs/runtime-thp-01/pilot",
+      "failure": "The packed guest plan retained the prior revision. The corrected series binds the exact release revision.",
+      "serial_sha256": "45bcecc1f6a604c246b98dd67ce37d0a330c6e5e3d48156f110740f2f30517f0"
+    }
+  },
   "linux_fenced_jobs_slow16_worker_local_thp": {
     "profile": "slow-1r-16s",
     "scope": "local-linux-aarch64-fenced-slow16-worker-thp-comparison",
