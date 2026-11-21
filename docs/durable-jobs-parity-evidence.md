@@ -2545,6 +2545,16 @@ the first claim in about 3 ms versus 37 ms for Oban and took
 arm medians, versus 382 ms for Oban.
 [Eight-runner no-op receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare the 16-slot slow profile
+
+Five matched Linux groups at `c271319e` reconciled all 1,920
+measured jobs. Both Mesh controls won every group. Their median
+throughput was 133.5 and 135.1 jobs/s versus 118.1 for Oban.
+Pickup p99 and CPU passed. The two arms missed the RSS gate
+at 203.5 and 203.8 MiB, against a 190.2 MiB ceiling from
+Oban's median 126.8 MiB.
+[16-slot slow receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Trace the no-op claim and launch cycle
 
 One warmed and one measured matched group at `1d9d7e41` recorded
