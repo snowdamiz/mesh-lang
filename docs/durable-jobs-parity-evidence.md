@@ -3626,6 +3626,28 @@ coverage. It did not cut an in-flight shared COMMIT or measure
 performance.
 [Compiled refill pilot](../proof/jobs-parity/qualification-v1.json)
 
+Five trace-off Linux groups then compared the opt-in against two
+identical Mesh controls and Oban Basic 2.24.2 Isolated. All 20,480
+scored jobs reconciled on the same frozen two-vCPU profile.
+
+| Arm | Median jobs/s | Range | Median pickup p99 | Runner SQL calls/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 626 | 452–847 | 1,614 ms | 12.84 |
+| Mesh repeat | 706 | 300–964 | 1,435 ms | 12.82 |
+| Mesh with shared refill | 558 | 522–801 | 1,818 ms | 12.91 |
+| Oban | 1,107 | 370–1,932 | 854 ms | 3.88 |
+
+The treatment committed 25–29 shared turns per group, covering
+82–104 of the 1,024 predecessors. There were no uncertain shared
+commits. It beat both Mesh controls in two groups. The median
+paired throughput delta versus the faster Mesh control was
+−252 jobs/s, with 185 jobs/s of median absolute control spread.
+Peak one-minute host load was 14.3–17.3 on 15 logical CPUs.
+The treatment missed throughput and pickup against Oban. Its
+limited use and SQL call counts leave no measured gain to
+carry into release qualification.
+[Matched compiled refill receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse recently active effect sessions
 
 Five Linux ARM64 boots compared FIFO and LIFO checkout from the
