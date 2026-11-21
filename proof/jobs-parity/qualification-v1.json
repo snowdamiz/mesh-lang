@@ -4275,6 +4275,44 @@
     "earlier_full_runner_cpu_ceiling_ms_per_job": 2.061,
     "scope": "Compiled worker, exact reaps, and independently reconciled durable effects over the warmed route. CPU includes launcher and relay, including prewarm. These standalone waves do not claim or settle Jobs in PostgreSQL. An initial series with mismatched harness revisions is excluded."
   },
+  "worker_scheduler_deferral_after_fork": {
+    "experimental_runtime": "cfd857062c424c3c9860be6770775f0d1a196760",
+    "relay_runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "run": "target/jobs-parity/cfd857062c424c3c9860be6770775f0d1a196760/scheduler-deferral/paired-fork.MyXstR",
+    "summary_sha256": "60b5003aeeb18116857899d8f7acf88f505c6475f741cbfefb691128d4a14679",
+    "pairs": 5,
+    "jobs_per_arm": 512,
+    "slots": 64,
+    "reconciled_workers": 5120,
+    "warm_effect_backends_per_arm": 64,
+    "one_minute_host_load": {"min": 10.488, "max": 11.608},
+    "child_cpu_ms_per_job": {"eager": 1.264, "deferred": 0.824},
+    "launcher_cpu_ms_per_job": {"eager": 0.542, "deferred": 0.558},
+    "relay_cpu_ms_per_job": {"eager": 0.213, "deferred": 0.212},
+    "total_cpu_ms_per_job": {"eager": 2.018, "deferred": 1.597},
+    "paired_cpu_saved_ms_per_job": {"min": 0.116, "median": 0.450, "max": 0.610},
+    "deferred_cpu_wins": 5,
+    "earlier_full_runner_cpu_ceiling_ms_per_job": 2.061,
+    "compiled_thread_witness": {
+      "per_mode_and_launch": 8,
+      "threads_at_first_effect": {"eager": 4, "deferred": 3},
+      "exec_result": "target/jobs-parity/worker-cost-screen/worker-scheduler-effects-c208u8jt/result.json",
+      "exec_sha256": "11890061d24d77d1e46e571a2053250941d993f060ce8da0df8031dfcdaf2cbf",
+      "fork_result": "target/jobs-parity/worker-cost-screen/worker-scheduler-effects-uhsun0z_/result.json",
+      "fork_sha256": "efd8486206ff45c095d1838bcf50db82b316fc8e5f28408a4a9e47d36d2f4d73"
+    },
+    "correctness_logs": {
+      "run": "target/jobs-parity/cfd857062c424c3c9860be6770775f0d1a196760/scheduler-deferral",
+      "release_build_sha256": "06e764d06badb4308c46e8a2a1ee3a13f6d8bea074b8e4c345082646a8808aab",
+      "argv_unit_exact_sha256": "fdcc0dfbdbcc8ea4c73c6c3cb2edd8cc2ec26bf2cefb53874f3144d4298d4b59",
+      "concurrent_first_spawn_sha256": "ea90aa38eb359f9091406a6199817d61d377bb791ebaca6e79bede7f60170213",
+      "compiled_first_actor_sha256": "aef256114f623cf8d5ddc4a243504b6a75e69162aaa7b8be62d993a7d2e8a1a3"
+    },
+    "scope": "Paired warmed real-handler fork diagnostic. No Jobs dispatch or settlement. Only the scheduler deferral flag varies between timed arms. Runtime-only reference linkage and REPL symbol registration are open review findings for this experimental commit."
+  },
   "effect_transaction_lease_admission": {
     "test_commit": "acd1d9b0a43ca9dca16b176a8ab90ff28cbc36dd",
     "host": "Darwin arm64",

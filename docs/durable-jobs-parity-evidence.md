@@ -1448,6 +1448,37 @@ standalone launcher and relay, with no Jobs dispatcher or durable
 settlement. The paired results use one pinned harness revision.
 [Real handler receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Defer scheduler threads in the forked handler
+
+The experimental `cfd85706` compiler passes the worker entry's C
+arguments to the runtime. The compiled thread witness observed four
+threads with eager startup and three with deferral, at the first handler
+effect. The witness reconciled 32 attempts across fresh exec and fork.
+The compiled Jobs proof on PostgreSQL 17.11 also awaited a captured
+string after the first actor spawn under GC stress. The deferred attempt
+went from three to four threads in the original PID. The exact-argument
+and concurrent-first-spawn unit tests passed.
+
+Five alternating pairs held the fork launcher, compiled image,
+100 ms workload, and warmed effect relay fixed. All 5,120 attempts
+reconciled with normal watchdogs and both durable writes. The thread
+witness was disabled during timing. One-minute host load ranged from
+10.49 to 11.61.
+
+| CPU/job | Eager | Deferred |
+| --- | ---: | ---: |
+| Children | 1.26 ms | 0.82 ms |
+| Launcher and reap | 0.54 ms | 0.56 ms |
+| Warm relay including prewarm | 0.21 ms | 0.21 ms |
+| Total | 2.02 ms | 1.60 ms |
+
+Deferral reduced CPU in all five pairs. The median paired saving was
+0.45 ms/job, with a range of 0.12 to 0.61. The deferred total leaves
+0.46 ms/job against the earlier full-runner budget for the dispatcher
+and settlement omitted by this fixture. The experimental compiler
+also needs compatibility fixes for runtime-only reference builds and
+the REPL's symbol table. [Scheduler diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse effect sessions inside the runner
 
 The local `02afc9e2` diagnostic moved the helper into a thread in the Jobs
