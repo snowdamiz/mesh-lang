@@ -2642,6 +2642,30 @@ traffic and runner behavior. They leave CPU attribution to individual
 SQL statements and the repeatability of the split open.
 [Active CPU receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Attribute PostgreSQL statement time on the eight-runner no-op profile
+
+One group on the same two-vCPU guest reconciled all 3,072 scored
+jobs. The diagnostic read `pg_stat_statements` just outside each
+CPU boundary. Settlement and reset-drain reads shared existing
+round trips. The statement timings sum elapsed execution across
+backends and include waiting. PostgreSQL CPU comes from a separate
+cgroup counter.
+
+| Executor time per job | Mesh control A | Mesh control B | Oban |
+| --- | ---: | ---: | ---: |
+| Attempt and effect writes | 1.293 ms | 0.899 ms | 0.046 ms |
+| Claim and lifecycle | 1.594 ms | 1.035 ms | 0.097 ms |
+| Effect session reset | 0.015 ms | 0.005 ms | |
+| Terminal polls | 0.029 ms | 0.022 ms | 0.018 ms |
+
+Each Mesh trial recorded 2,048 calls to the fenced effect function
+and 1,024 resets. PostgreSQL used 1.50 and 1.16 ms of CPU per Mesh
+job in the observed window, versus 0.32 ms for Oban. The effect
+function and claim and lifecycle statements account for the main
+recorded SQL time. The measurement leaves the effect function's
+internal planning and lock costs unresolved.
+[Statement fingerprint receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
@@ -3239,3 +3263,16 @@ claim to clear before stopping with the cron lock held. This lets the test
 check that a drained runner still waits for maintenance. The corrected
 PostgreSQL 19.0 run passed all 45 Jobs runtime tests and both compiled
 proofs on macOS arm64. [Maintenance-join receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Recheck PostgreSQL 17.11 on the Jobs branch
+
+The macOS arm64 verification at `6ef9e640` passed 53 Jobs runtime
+tests, all three compiled Jobs suites, and the scoped-role proof on
+both a fresh and upgraded database. It used PostgreSQL 17.11 over
+TLS 1.3 with SCRAM. The parity harness passed 18 self-checks and all
+12 fault-driver tests.
+
+The first build reused older Cargo artifacts and failed to resolve
+compiler interfaces. The rerun set `CARGO_INCREMENTAL=0` and rebuilt
+the path dependencies before running the proof.
+[Exact-revision PostgreSQL receipt](../proof/jobs-parity/qualification-v1.json)

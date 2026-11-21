@@ -12340,6 +12340,266 @@
       }
     }
   },
+  "linux_fenced_jobs_noop64_sql_fingerprints": {
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "profile": "noop-8r-64s",
+    "scope": "One instrumented group with two identical Mesh controls and Oban. Statement counters measure executor elapsed time across backends.",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "archive_sha256": "ff6f9d0fc728b0d123b8c8a62defaf4ce0108faf7a75d45dcd9c43905bc40a23",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/fingerprint-overlay/runs/noop8r64-fingerprints-01",
+    "host_load_1m_max": 5.51953125,
+    "receipts_sha256": {
+      "stage.json": "b1676f014a179c4cc8eba26e106e24f39374370f0ebff50f473bbab1abf3acb2",
+      "statement-fingerprints.json": "1c6c784f2fe8b38531ae68cb92d362f115509acd6dc1dea59a8be5cc39802b2d",
+      "cpu-attribution.json": "99f4c884c977cd39ca655f9ef47a0128301a76d08246f9d8aed0eaa04f2ac9b3"
+    },
+    "source_sha256": {
+      "run.py": "768037e7b5aecd6e4469a452f725f2f4c53919adb74b52c0f872c0a5cb6271aa",
+      "fingerprints.py": "fa07eb2d421c2754a6506af74c70baa2a8025dec1198287a63b4c370e5eb3a6e",
+      "self_check.py": "45717f1c9ced0043616cc71a9e805547933560771be606b636ffcff18e326c9b"
+    },
+    "arms": {
+      "mesh": {
+        "jobs_per_second": 838.4308526587565,
+        "postgres_observed_cpu_ms_per_job": 1.502435546875,
+        "postgres_scored_window_cpu_lower_bound_ms_per_job": 1.0650126953125,
+        "runner_observed_cpu_ms_per_job": 0.8955439453125,
+        "pre_submit_to_first_terminal_statement_deltas": {
+          "by_family": {
+            "claim_lifecycle": {
+              "calls": 2844,
+              "rows": 2830,
+              "total_exec_time": 1631.8158709999998
+            },
+            "effects_combined": {
+              "calls": 2048,
+              "rows": 2048,
+              "total_exec_time": 1324.461618999996
+            },
+            "observer": {
+              "calls": 12,
+              "rows": 12,
+              "total_exec_time": 29.688915000000005
+            },
+            "producer": {
+              "calls": 1053,
+              "rows": 1034,
+              "total_exec_time": 83.32706299999997
+            },
+            "reset": {
+              "calls": 1024,
+              "rows": 0,
+              "total_exec_time": 15.461742000000024
+            }
+          },
+          "by_kind": {
+            "claim": {
+              "calls": 412,
+              "rows": 1258,
+              "total_exec_time": 640.6772910000001
+            },
+            "discard_all": {
+              "calls": 1024,
+              "rows": 0,
+              "total_exec_time": 15.461742000000024
+            },
+            "effect_write_function": {
+              "calls": 2048,
+              "rows": 2048,
+              "total_exec_time": 1324.461618999996
+            },
+            "fingerprint_snapshot": {
+              "calls": 1,
+              "rows": 1,
+              "total_exec_time": 0.26304099999999997
+            },
+            "lifecycle_or_session": {
+              "calls": 2432,
+              "rows": 1572,
+              "total_exec_time": 991.1385799999997
+            },
+            "other_observer": {
+              "calls": 1,
+              "rows": 1,
+              "total_exec_time": 0.018082
+            },
+            "producer": {
+              "calls": 1053,
+              "rows": 1034,
+              "total_exec_time": 83.32706299999997
+            },
+            "terminal_poll": {
+              "calls": 10,
+              "rows": 10,
+              "total_exec_time": 29.407792000000004
+            }
+          }
+        },
+        "raw_arm_sha256": {
+          "statement-fingerprints.json": "9dffd4a8d2de02679b15124a6e0f2a74b1e4f143bfa12e39dab7bfa2f43285f4",
+          "cpu-observation.json": "6965b21167f727d816bd605a68f1839f436ad8cf540b341870dfdfcadc9aed65"
+        }
+      },
+      "mesh-repeat": {
+        "jobs_per_second": 1125.609929553841,
+        "postgres_observed_cpu_ms_per_job": 1.1562080078125,
+        "postgres_scored_window_cpu_lower_bound_ms_per_job": 0.6744326171875,
+        "runner_observed_cpu_ms_per_job": 0.66526171875,
+        "pre_submit_to_first_terminal_statement_deltas": {
+          "by_family": {
+            "claim_lifecycle": {
+              "calls": 2772,
+              "rows": 2790,
+              "total_exec_time": 1060.1041889999995
+            },
+            "effects_combined": {
+              "calls": 2048,
+              "rows": 2048,
+              "total_exec_time": 920.1821590000005
+            },
+            "observer": {
+              "calls": 11,
+              "rows": 11,
+              "total_exec_time": 22.842292
+            },
+            "producer": {
+              "calls": 1053,
+              "rows": 1034,
+              "total_exec_time": 90.6876710000001
+            },
+            "reset": {
+              "calls": 1024,
+              "rows": 0,
+              "total_exec_time": 5.37281099999999
+            }
+          },
+          "by_kind": {
+            "claim": {
+              "calls": 402,
+              "rows": 1254,
+              "total_exec_time": 424.3045959999997
+            },
+            "discard_all": {
+              "calls": 1024,
+              "rows": 0,
+              "total_exec_time": 5.37281099999999
+            },
+            "effect_write_function": {
+              "calls": 2048,
+              "rows": 2048,
+              "total_exec_time": 920.1821590000005
+            },
+            "fingerprint_snapshot": {
+              "calls": 1,
+              "rows": 1,
+              "total_exec_time": 0.241625
+            },
+            "lifecycle_or_session": {
+              "calls": 2370,
+              "rows": 1536,
+              "total_exec_time": 635.7995929999996
+            },
+            "other_observer": {
+              "calls": 1,
+              "rows": 1,
+              "total_exec_time": 0.013834
+            },
+            "producer": {
+              "calls": 1053,
+              "rows": 1034,
+              "total_exec_time": 90.6876710000001
+            },
+            "terminal_poll": {
+              "calls": 9,
+              "rows": 9,
+              "total_exec_time": 22.586833000000002
+            }
+          }
+        },
+        "raw_arm_sha256": {
+          "statement-fingerprints.json": "50b7333b364b55e12b4df327724b6f0181d03efdce5ecedb4168c039dca5722f",
+          "cpu-observation.json": "32336f2820638a2afc140d5d2cf4b9fe4b88b8f32f0c9ea38751c48e17ce5b93"
+        }
+      },
+      "oban": {
+        "jobs_per_second": 2447.9049576696048,
+        "postgres_observed_cpu_ms_per_job": 0.322083984375,
+        "postgres_scored_window_cpu_lower_bound_ms_per_job": 0.0,
+        "runner_observed_cpu_ms_per_job": 0.2821923828125,
+        "pre_submit_to_first_terminal_statement_deltas": {
+          "by_family": {
+            "claim_lifecycle": {
+              "calls": 1575,
+              "rows": 2058,
+              "total_exec_time": 99.13678600000001
+            },
+            "effects_combined": {
+              "calls": 2048,
+              "rows": 2048,
+              "total_exec_time": 46.96380999999998
+            },
+            "observer": {
+              "calls": 11,
+              "rows": 11,
+              "total_exec_time": 18.525042000000003
+            },
+            "producer": {
+              "calls": 13,
+              "rows": 1223,
+              "total_exec_time": 7.5440819999999995
+            }
+          },
+          "by_kind": {
+            "claim": {
+              "calls": 141,
+              "rows": 1024,
+              "total_exec_time": 26.154040999999992
+            },
+            "effect_attempt_insert": {
+              "calls": 1024,
+              "rows": 1024,
+              "total_exec_time": 28.261846000000002
+            },
+            "effect_insert": {
+              "calls": 1024,
+              "rows": 1024,
+              "total_exec_time": 18.70196399999998
+            },
+            "fingerprint_snapshot": {
+              "calls": 1,
+              "rows": 1,
+              "total_exec_time": 0.194125
+            },
+            "lifecycle_or_session": {
+              "calls": 1434,
+              "rows": 1034,
+              "total_exec_time": 72.98274500000002
+            },
+            "other_observer": {
+              "calls": 1,
+              "rows": 1,
+              "total_exec_time": 0.017499999999999998
+            },
+            "producer": {
+              "calls": 13,
+              "rows": 1223,
+              "total_exec_time": 7.5440819999999995
+            },
+            "terminal_poll": {
+              "calls": 9,
+              "rows": 9,
+              "total_exec_time": 18.313417
+            }
+          }
+        },
+        "raw_arm_sha256": {
+          "statement-fingerprints.json": "37a7e95095685bd2d0a753aadd20dc2e4d932ba70eff42b7b9c65a925d3b31cf",
+          "cpu-observation.json": "12380b3839b0c6b257f2247d38afd973f8ab067158b4a85675c9479e0c00f1b8"
+        }
+      }
+    },
+    "scored_jobs": 3072
+  },
   "linux_fenced_jobs_noop64_active_cpu_attribution": {
     "scope": "One traced group on each frozen no-op topology. Two vCPUs and 2 GiB. The observation window spans producer submit through the first terminal poll.",
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
@@ -24771,6 +25031,34 @@
     "raw_directory": "target/jobs-parity/e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff/workspace-macos",
     "result": "pass",
     "revision": "e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff"
+  },
+  "postgres17_exact_head_native_followup": {
+    "revision": "6ef9e64000616b1797e6084c34a026e555a7c9bf",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "TLSv1.3 and SCRAM",
+    "command": "env -u MESH_TEST_DATABASE_URL CARGO_INCREMENTAL=0 bash scripts/verify-postgres-jobs.sh --compatibility 17.11 --parity-driver-check --j6-roles",
+    "result": "passed",
+    "log": "target/jobs-parity/exact-head-native/6ef9e64000616b1797e6084c34a026e555a7c9bf-no-incremental.log",
+    "log_sha256": "8ac2c865f1d75f256382d1249cd51826523af9c1ed951638a4497e0a7be7f817",
+    "jobs_tests_passed": 53,
+    "compiled_jobs_suites_passed": 3,
+    "postgres_driver_unit_tests_passed": 36,
+    "postgres_driver_unit_tests_ignored": 6,
+    "postgres_compatibility_tests_passed": 1,
+    "compiled_connection_values_and_migration_tests_passed": 7,
+    "parity_driver_checks_passed": 18,
+    "parity_fault_driver_tests_passed": 12,
+    "scoped_role_proof": [
+      "fresh",
+      "upgrade"
+    ],
+    "initial_incremental_attempt": {
+      "log": "target/jobs-parity/exact-head-native/6ef9e64000616b1797e6084c34a026e555a7c9bf.log",
+      "sha256": "332ee1ba697c0e2a460ce256245399058fe98e5b4b63c1e173cbfd79ba2485d1",
+      "result": "Cached path-dependency artifacts did not contain the current compiler interfaces. The non-incremental run recompiled the path dependencies."
+    },
+    "scope": "PostgreSQL correctness and compatibility proof. Full workspace and frozen performance qualification are separate gates."
   },
   "workspace_gate_latest": {
     "checks": [
