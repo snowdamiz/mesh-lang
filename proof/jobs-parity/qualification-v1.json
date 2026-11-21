@@ -3796,6 +3796,30 @@
       "child_cpu_ms_per_job": [6.187, 6.016],
       "held_children_rss_bytes": [539688960, 510296064]
     },
+    "empty_bootstrap_pipe_residency": {
+      "scope": "One child at a time, with zero bootstrap bytes and no database session. Stdout redirection and the constructor marker confirm worker entry.",
+      "run": "target/jobs-parity/worker-cost-screen/bootstrap-residency-xsjyjgdp",
+      "result_sha256": "68b40e45e2b8c8dfb444069447690cc719ac1dc017d8851b93803ae1000d9cd7",
+      "rss_kib": {"standard_stock": 7008, "standard_smaller": 6944, "dead_strip_stock": 6592, "dead_strip_smaller": 6352},
+      "bootstrap_eof_exit": 174
+    },
+    "empty_bootstrap_framework_relinks": {
+      "pairs_per_image": 3,
+      "dead_strip_dylibs": {
+        "run": "target/jobs-parity/worker-cost-screen/bootstrap-dylibs-x0dyykl1",
+        "manifest_sha256": "77030309081c80a7d9fe36f9d8ed82cee3650077d7cefd93c4def1e04298da64",
+        "result_sha256": "b753a514bd67b86251e6322a0f51af5f14b8e95b802c2d169ec59d1145339476",
+        "removed": ["Security"],
+        "median_rss_kib": {"stock": {"keep": 6576, "strip": 6576}, "smaller": {"keep": 6400, "strip": 6352}}
+      },
+      "omit_explicit_frameworks": {
+        "run": "target/jobs-parity/worker-cost-screen/bootstrap-dylibs-mk30mlv5",
+        "manifest_sha256": "0976b8ed39e222ded9d718130e8a93d23b52152a2781e9d40f6cccef069f0c8c",
+        "result_sha256": "73bb19e19d111c7193b4e68ac6bf9fcf3f34fc8a6eac80a0ac936c62cc000f5c",
+        "removed": ["Security", "CoreFoundation"],
+        "median_rss_kib": {"stock": {"keep": 6592, "omit": 3008}, "smaller": {"keep": 6384, "omit": 2784}}
+      }
+    },
     "scope": "component only, real compiled direct-write handler with synthetic worker bootstrap; CPU excludes the runner and PostgreSQL, RSS reads all children at the same blocked write"
   },
   "batch_claim_ordinality": {
@@ -4077,6 +4101,69 @@
     "relay_reuse_throughput_wins": {"direct": 2, "relay_fresh": 3, "oban": 0},
     "relay_reuse_breaches": ["throughput", "cpu_per_job", "peak_rss"]
   },
+  "held_worker_residency_at_effect_write": {
+    "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "harness": "898c1c8b3b502228ec0a1afdc4b1f15ac2b4e777",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verify-full TLS",
+    "workload": "slow",
+    "jobs_per_cohort": 64,
+    "cohorts_per_link_and_arm": 2,
+    "reconciled_jobs": 768,
+    "subject_connection_cap": 68,
+    "phase": "64 active isolated workers and verified TLS statements blocked before the effect write. Capture both worker and tree RSS and reconcile after release.",
+    "input_sha256": "0cd38dd14e20a2ef97ab21f40067723279c08339d5a7969a193d9e41a397c820",
+    "standard": {
+      "run": "target/jobs-parity/effect-session-study/held-resident-aorn7fbo",
+      "manifest_sha256": "456c26f532b454d0d7309fd00bbc18283955aedac69fd617182eb6335b34ed5e",
+      "result_sha256": "a22e0663456a15bcce66389a840bf685f5d6574ebd15982588439f107c154b89",
+      "tree_rss_mib": {"direct": 624.992, "relay_reused": 503.148},
+      "rss_per_worker_mib": {"direct": 9.533, "relay_reused": 7.426}
+    },
+    "dead_strip": {
+      "run": "target/jobs-parity/effect-session-study/held-resident-z3spk92y",
+      "manifest_sha256": "5f331af3fd0900168d180cd720086e1348b3dc74a3d2cecf6fc1daa222d02f31",
+      "result_sha256": "9c4f1ccf9e64776e4d7683cea40e609253022f60d425afaf27c809c8c2d4083e",
+      "tree_rss_mib": {"direct": 527.117, "relay_reused": 463.992},
+      "rss_per_worker_mib": {"direct": 8.042, "relay_reused": 6.851}
+    },
+    "dead_strip_omit_frameworks": {
+      "run": "target/jobs-parity/effect-session-study/held-resident-moiu2s5x",
+      "manifest_sha256": "cde4c0828d5c518c068262e79d8b15a35b473534656431576ca411b4da201772",
+      "result_sha256": "a44f46733d77bdecaa5d893911a9b6d5af11a405685d27321d081b0231389701",
+      "tree_rss_mib": {"direct": 297.547, "relay_reused": 235.844},
+      "rss_per_worker_mib": {"direct": 4.508, "relay_reused": 3.340}
+    },
+    "unheld_frozen_64_slot_slow_omit_frameworks": {
+      "profile": "slow-1r-64s",
+      "oban": "2.24.2",
+      "run": "target/jobs-parity/effect-session-study/slow-64-slot-omit-frameworks-all2qn1h",
+      "manifest_sha256": "6cdc2aec62f793462c82d2ab3524a7294e28a927df3af19b71e4e1cbf6098eec",
+      "result_sha256": "cc1c71a6081111b55b26406db4eaea77e33c59b2b59f8e7e56d452e8968db941",
+      "measured_groups": 5,
+      "jobs_per_trial": 512,
+      "reconciled_jobs": 10240,
+      "peak_one_minute_host_load": 14.398,
+      "jobs_per_second": {"direct": 419.096, "relay_fresh": 436.877, "relay_reused": 425.446, "oban": 498.224},
+      "entry_to_first_write_ms": {"direct": 7.914, "relay_fresh": 8.157, "relay_reused": 0.246, "oban": 0.402},
+      "cpu_ms_per_job": {"direct": 4.823, "relay_fresh": 4.708, "relay_reused": 3.895, "oban": 1.672},
+      "sampled_peak_rss_mib": {"direct": 216.469, "relay_fresh": 205.062, "relay_reused": 178.359, "oban": 118.266},
+      "pickup_p99_ms": {"direct": 1099.331, "relay_fresh": 1049.168, "relay_reused": 1093.664, "oban": 924.418},
+      "reused_throughput_wins_against_oban": 0,
+      "reused_breaches": ["throughput", "cpu_per_job", "peak_rss"]
+    }
+  },
+  "effect_send_admission_loopback": {
+    "test_commit": "4818f8a069b25e48f7f7044c2756116d6375de45",
+    "host": "Darwin arm64",
+    "transport": ["plain loopback TCP", "rustls over loopback TCP"],
+    "command": "cargo test --locked -j2 -p mesh-rt --lib db::pg::effect_admission::",
+    "log": "target/jobs-parity/4818f8a069b25e48f7f7044c2756116d6375de45/effect-transport/loopback-tls.log",
+    "sha256": "db001a762cbbd5109877c2836672fdcb0ccbe8b5b2175348f471d29c8fe9ee73",
+    "passed_tests": 4,
+    "scope": "Test-only component using a single-use permit and an established connection. Byte admission, partial and fully submitted ambiguity, and fallback denial are covered. Runner wakeup, replies, and durable checks remain open."
+  },
   "inrunner_effect_session_reuse_one_slot": {
     "runtime_base": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "diagnostic_commit": "02afc9e28bae0a05630d2f1f665dc89d32d1927f",
@@ -4213,6 +4300,23 @@
       "compiled_proofs_passed": 3,
       "log": "target/jobs-parity/b7550dcedfd3d6cb27df2b336dfa95a5bbd2f742/current-main/postgres-17.11.log",
       "sha256": "9e763aaf9f06c29f4242d5274044afe667da1bc2e66a9a58ad93907feef44c62"
+    },
+    "additional_postgres_versions": {
+      "command": "bash scripts/verify-postgres-jobs.sh --compatibility VERSION --j6-roles",
+      "transport": "SCRAM with verified TLS",
+      "postgres_driver_tests_passed_per_version": 36,
+      "runtime_tests_passed_per_version": 53,
+      "compiled_proofs_passed_per_version": 3,
+      "logs": {
+        "18.7": {
+          "log": "target/jobs-parity/b7550dcedfd3d6cb27df2b336dfa95a5bbd2f742/current-main/postgres-18.7.log",
+          "sha256": "90e550b25502e849491b86062532652f1020d8acd55b1403bb188bf2bfe59a6b"
+        },
+        "19.0": {
+          "log": "target/jobs-parity/b7550dcedfd3d6cb27df2b336dfa95a5bbd2f742/current-main/postgres-19.0.log",
+          "sha256": "35289ee1049f083caf5bc70df0180235cfed4e293701d86d148aa4e4e10efadd"
+        }
+      }
     }
   },
   "main_integration_guide_and_smoke": {

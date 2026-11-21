@@ -1147,6 +1147,21 @@ profile. This local component result supports keeping the current worker
 image while investigating the remaining per-attempt costs.
 [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
+A local macOS arm64 check held each of the four linked images at its
+empty bootstrap pipe after worker entry. One child at a time used
+6.2–6.8 MiB of RSS before receiving a job context or opening PostgreSQL.
+Closing the empty pipe ended each child through the expected bootstrap
+error path.
+
+With the same dead-stripped objects and runtime, the linker's unused
+dylib stripping removed Security and retained CoreFoundation. Startup
+RSS changed by at most 48 KiB in the three-pair medians. Omitting both
+explicit framework arguments left only libSystem as a direct dylib
+dependency and lowered the stock image's median from 6,592 to 3,008 KiB
+and the smaller image's from 6,384 to 2,784 KiB. The undefined symbol sets
+matched. These are bootstrap component measurements on the exact linked
+fixtures. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Keep batch claim ordering outside PostgreSQL's context sort
 
 The query in `9bd80627` returns each row's batch position. Mesh validates
@@ -1284,6 +1299,40 @@ medians describe each workload's observed peak. The 64-worker samples
 show that the RSS limit still requires a smaller worker footprint on this
 host. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Attribute memory with all 64 workers at the same write
+
+The same fixture sources and toolchain were linked three ways and ran two
+counterbalanced cohorts per effect route. Every capture independently
+observed 64 attempt children, 64 committed attempt identities, and 64
+verified-TLS effect writes waiting on the observer's table lock. The
+producer committed before runner startup
+to leave room for the observer under the existing database connection cap.
+The harness released the gate and reconciled all 768 jobs.
+
+| Fixture link | Direct tree RSS | Reused tree RSS | Reused RSS per worker |
+| --- | ---: | ---: | ---: |
+| Standard | 625.0 MiB | 503.1 MiB | 7.43 MiB |
+| Dead strip, both frameworks | 527.1 MiB | 464.0 MiB | 6.85 MiB |
+| Dead strip, omit both frameworks | 297.5 MiB | 235.8 MiB | 3.34 MiB |
+
+All values are medians of the first held snapshot in each cohort. The
+reuse totals include the relay and the runner. The linker trace and
+Mach-O dependency list confirm the omitted-framework build uses only
+libSystem as a direct dylib dependency. The 235.8 MiB held total remains
+above the earlier 177.1 MiB comparison limit. The `vmmap` files preserve
+separate per-process physical-footprint, stack, and heap estimates for
+the two sampled jobs in each cohort.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+Five unheld groups then ran the frozen 64-slot slow profile using the
+framework-omitting fixture. All 10,240 jobs reconciled. The reused arm
+measured 425.4 jobs/s, 3.90 ms CPU per job, and 178.4 MiB sampled peak RSS.
+Oban measured 498.2 jobs/s, 1.67 ms CPU per job, and 118.3 MiB sampled
+peak RSS. The reused arm met the pickup limit and missed throughput,
+CPU, and RSS. Its RSS was about 1 MiB above that run's 1.5× limit.
+The held measurement and the unheld benchmark have separate receipts.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse effect sessions inside the runner
 
 The local `02afc9e2` diagnostic moved the helper into a thread in the Jobs
@@ -1308,6 +1357,16 @@ the helper thread and prewarming. The diagnostic covers steady-state
 writes through the private one-slot route. A general application path
 still needs proof for interruption, lease loss, and session reuse across
 attempts. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+The `4818f8a0` transport experiment passed four focused tests on macOS
+arm64 using owned TCP peers with plain and rustls streams. Revocation
+before the first write produced zero observed bytes, including when
+rustls already held the request. Stop after partial or full submission
+yielded an unknown result and no fallback write. The tests also rejected
+stale and expired permits. The experiment starts on an established
+connection. Runner wakeup, PostgreSQL result reconciliation, child reply
+handling, and transaction-level lease checks remain integration work.
+[Transport test receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 
@@ -1352,10 +1411,11 @@ suites and the PostgreSQL-backed runtime tests.
 
 After integrating compiler proof support from `27cc2c7b`, the
 `b7550dce` checkout passed four proof-value tests and the callable-theorem
-rejection cases. The macOS arm64 PostgreSQL 17.11 run over verified TLS
-passed 53 Jobs runtime tests and all three compiled Jobs suites, including
-fresh and upgraded scoped worker roles. An independent source review
-checked the resolved Jobs direct-call and theorem-application guards.
+rejection cases. The macOS arm64 runs on PostgreSQL 17.11, 18.7, and 19.0
+over verified TLS each passed 53 Jobs runtime tests and all three compiled
+Jobs suites, including fresh and upgraded scoped worker roles. An
+independent source review checked the resolved Jobs direct-call and
+theorem-application guards.
 [Integration receipt](../proof/jobs-parity/qualification-v1.json)
 
 The Jobs compatibility script exercises the compiled producer and worker,
