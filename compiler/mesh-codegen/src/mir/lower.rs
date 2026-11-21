@@ -6,6 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use mesh_common::span::Span;
+use mesh_diagnostics::{Code, Diagnostic};
 use mesh_parser::ast::expr::{
     BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, ForInExpr, IfExpr, JsonExpr,
     LinkExpr, ListLiteral, Literal, MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr,
@@ -13,8 +14,9 @@ use mesh_parser::ast::expr::{
     TryExpr, TupleExpr, UnaryExpr, WhileExpr,
 };
 use mesh_parser::ast::item::{
-    ActorDef, Block, FnDef, GuardClause, ImplDef, InterfaceMethod, Item, LetBinding, ParamList,
-    ParamOwnership, RelationshipDecl, ServiceDef, SourceFile, StructDef, SumTypeDef, SupervisorDef,
+    ActorDef, Block, FnDef, GuardClause, ImplDef, InterfaceMethod, Item, LetBinding, Name,
+    ParamList, ParamOwnership, RelationshipDecl, ServiceDef, SourceFile, StructDef, SumTypeDef,
+    SupervisorDef,
 };
 use mesh_parser::ast::pat::Pattern;
 use mesh_parser::ast::AstNode;
@@ -30,10 +32,11 @@ use crate::declared::declared_route_wrapper_name;
 
 use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, resolve_type};
 use super::{
-    sum_type_base, BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule,
-    MirNativeFunction, MirPattern, MirResourceDestructor, MirResourceField, MirResourceMoveSource,
-    MirResourceVariant, MirSourceId, MirSourceSpan, MirStructDef, MirSumTypeDef, MirType,
-    MirVariantDef, MsgShape, ServiceDispatch, SpawnPlacement, UnaryOp,
+    diagnostic_at, sum_type_base, BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral,
+    MirMatchArm, MirModule, MirNativeFunction, MirPattern, MirResourceDestructor, MirResourceField,
+    MirResourceMoveSource, MirResourceVariant, MirSourceId, MirSourceSpan, MirStructDef,
+    MirSumTypeDef, MirSymbol, MirType, MirVariantDef, MsgShape, ServiceDispatch, SpawnPlacement,
+    UnaryOp,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -270,6 +273,10 @@ struct Lowerer<'a> {
     /// method's range there.
     foreign_defaults: HashMap<(String, String), ForeignDefault<'a>>,
     source_file: Option<MirSourceId>,
+    /// Each source file by `MirSourceId`, for diagnostics.
+    files: &'a [mesh_diagnostics::SourceFile],
+    /// The definitions lowered, by MIR name (see `MirModule::symbols`).
+    symbols: FxHashMap<String, MirSymbol>,
     /// Functions being built.
     functions: Vec<MirFunction>,
     lowered_signatures: Option<Vec<LoweredSignature>>,
@@ -378,8 +385,6 @@ struct Lowerer<'a> {
     discarded_callback_results: &'a FxHashSet<TextRange>,
     /// `Json` arguments passed where a `String` is expected (see `json_text`).
     json_text_arguments: &'a FxHashSet<TextRange>,
-    /// Fail-closed lowering errors gathered while rewriting clustered routes.
-    lowering_errors: Vec<String>,
     /// Each service loop's handlers, calls and casts: tag, function and
     /// argument count.
     service_dispatch: ServiceDispatch,
@@ -730,6 +735,8 @@ impl<'a> Lowerer<'a> {
             parse,
             foreign_defaults: HashMap::new(),
             source_file: None,
+            files: &[],
+            symbols: FxHashMap::default(),
             functions: Vec::new(),
             lowered_signatures: None,
             native_functions: Vec::new(),
@@ -778,7 +785,6 @@ impl<'a> Lowerer<'a> {
             consumed_clustered_route_wrappers: HashSet::new(),
             discarded_callback_results: &typeck.discarded_callback_results,
             json_text_arguments: &typeck.json_text_arguments,
-            lowering_errors: Vec::new(),
             supervised_spawn: None,
             service_dispatch: HashMap::new(),
             actors: Vec::new(),
@@ -5164,6 +5170,7 @@ impl<'a> Lowerer<'a> {
                     )
                 })
                 .collect();
+            self.record_function(&base_name, fn_def);
             self.native_functions.push(MirNativeFunction {
                 name: base_name,
                 symbol: native.symbol().unwrap_or_default(),
@@ -5215,6 +5222,7 @@ impl<'a> Lowerer<'a> {
         update_original_name: bool,
     ) {
         let fn_def = clauses[0];
+        self.record_function(&emitted_name, fn_def);
         let mut params = Vec::new();
         let mut owned_resource_params = Vec::new();
         self.push_scope();
@@ -5667,6 +5675,7 @@ impl<'a> Lowerer<'a> {
             .name()
             .and_then(|n| n.text())
             .expect("the parser names every struct");
+        self.record_symbol(&name, name.clone(), struct_def.name());
         let registry = self.registry;
         let info = registry
             .struct_defs
@@ -7931,12 +7940,61 @@ impl<'a> Lowerer<'a> {
     }
 
     fn record_source_span(&self, expr: &mut MirExpr, range: TextRange) {
-        if let Some(file) = self.source_file {
-            expr.set_source_span(MirSourceSpan {
-                file,
-                span: Span::new(range.start().into(), range.end().into()),
-            });
+        if let Some(location) = self.source_location(range) {
+            expr.set_source_span(location);
         }
+    }
+
+    fn source_location(&self, range: TextRange) -> Option<MirSourceSpan> {
+        Some(MirSourceSpan {
+            file: self.source_file?,
+            span: Span::new(range.start().into(), range.end().into()),
+        })
+    }
+
+    fn diagnostic(
+        &self,
+        range: TextRange,
+        code: Code,
+        message: impl Into<String>,
+        label: impl Into<String>,
+    ) -> Diagnostic {
+        diagnostic_at(
+            self.files,
+            self.source_location(range),
+            code,
+            message,
+            label,
+        )
+    }
+
+    /// Records `symbol` as the lowering of the definition `name` names.
+    fn record_symbol(&mut self, symbol: &str, source_name: String, name: Option<Name>) {
+        let definition = name.and_then(|name| self.source_location(name.syntax().text_range()));
+        self.symbols.entry(symbol.to_string()).or_insert(MirSymbol {
+            source_name,
+            definition,
+        });
+    }
+
+    /// Records `symbol` as a lowering of `fn_def`, named as the source
+    /// spells it with its module: `Math.add`, `Math.add/2` for an overload.
+    fn record_function(&mut self, symbol: &str, fn_def: &FnDef) {
+        let Some(written) = fn_def.name().and_then(|name| name.text()) else {
+            return;
+        };
+        let checked = self.fn_def_name(fn_def);
+        let mut source_name = match checked
+            .strip_prefix(written.as_str())
+            .and_then(|suffix| suffix.strip_prefix("__"))
+        {
+            Some(arity) => format!("{written}/{arity}"),
+            None => written,
+        };
+        if !self.module_name.is_empty() {
+            source_name = format!("{}.{source_name}", self.module_name);
+        }
+        self.record_symbol(symbol, source_name, fn_def.name());
     }
 
     /// A `Json` argument passed where a `String` is expected, which the type
@@ -13607,6 +13665,12 @@ impl<'a> Lowerer<'a> {
             .name()
             .and_then(|n| n.text())
             .unwrap_or_else(|| "<anonymous_actor>".to_string());
+        self.record_symbol(&name, name.clone(), actor_def.name());
+        self.record_symbol(
+            &format!("__actor_{name}_body"),
+            name.clone(),
+            actor_def.name(),
+        );
         self.actors.push(super::MirActor {
             entry: name.clone(),
             terminate: actor_def
@@ -13892,17 +13956,31 @@ impl<'a> Lowerer<'a> {
         };
         let spawn = body.as_ref().and_then(Block::tail_expr);
         let (Some(body), Some(Expr::SpawnExpr(spawn))) = (body, spawn) else {
-            self.lowering_errors.push(format!(
-                "the child `{child}` of supervisor `{supervisor}` must start as \
-                 `fn -> spawn(actor, ...) end`"
-            ));
+            let error = self.diagnostic(
+                block.syntax().text_range(),
+                Code::InvalidChildStart,
+                format!(
+                    "the child `{child}` of supervisor `{supervisor}` must start as \
+                     `fn -> spawn(actor, ...) end`"
+                ),
+                "not a closure ending in `spawn(actor, ...)`",
+            );
+            self.diagnostics.push(error);
             return None;
         };
         if spawn.placement() == SpawnPlacement::Grouped {
-            self.lowering_errors.push(format!(
-                "`spawn grouped` cannot start child `{child}` of supervisor `{supervisor}` \
-                 because the supervisor runs the actor inside the process it starts"
-            ));
+            let error = self
+                .diagnostic(
+                    spawn.syntax().text_range(),
+                    Code::SpawnGroupedUnsafe,
+                    format!(
+                        "`spawn grouped` cannot start child `{child}` of supervisor `{supervisor}`"
+                    ),
+                    "spawned grouped here",
+                )
+                .with_note("The supervisor runs a child's actor inside the process it starts, which cannot join a group.")
+                .with_repair("Start the child with plain `spawn`, as `start: fn -> spawn(worker) end`.");
+            self.diagnostics.push(error);
             return None;
         }
         let entry = format!("__supervisor_{supervisor}_{child}");
@@ -16371,7 +16449,7 @@ pub fn lower_to_mir(
     module_name: &str,
     pub_fns: &HashSet<String>,
     inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
-) -> Result<MirModule, String> {
+) -> Result<MirModule, Diagnostic> {
     lower_module_to_mir(
         parse,
         typeck,
@@ -16437,7 +16515,7 @@ pub fn lower_module_to_mir<'a>(
     pub_fns: &HashSet<String>,
     inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
     other_modules: &[(&'a Parse, &'a TypeckResult)],
-) -> Result<MirModule, String> {
+) -> Result<MirModule, Diagnostic> {
     lower_module_to_mir_with_sources(
         parse,
         typeck,
@@ -16459,7 +16537,7 @@ pub fn lower_module_to_mir_with_sources<'a>(
     inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
     other_modules: &[(&'a Parse, &'a TypeckResult)],
     source_id: impl Fn(&Parse) -> Option<MirSourceId>,
-) -> Result<MirModule, String> {
+) -> Result<MirModule, Diagnostic> {
     lower_module_with_diagnostics(
         parse,
         typeck,
@@ -16468,8 +16546,10 @@ pub fn lower_module_to_mir_with_sources<'a>(
         inferred_fn_usage_types,
         other_modules,
         source_id,
+        &[],
         false,
     )
+    .and_then(LoweredModule::without_errors)
     .map(|lowered| lowered.module)
 }
 
@@ -16499,7 +16579,7 @@ pub fn lower_module_to_mir_with_signatures<'a>(
     inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
     other_modules: &[(&'a Parse, &'a TypeckResult)],
     source_id: impl Fn(&Parse) -> Option<MirSourceId>,
-) -> Result<(MirModule, Vec<LoweredSignature>), String> {
+) -> Result<(MirModule, Vec<LoweredSignature>), Diagnostic> {
     lower_module_with_diagnostics(
         parse,
         typeck,
@@ -16508,18 +16588,37 @@ pub fn lower_module_to_mir_with_signatures<'a>(
         inferred_fn_usage_types,
         other_modules,
         source_id,
+        &[],
         true,
     )
+    .and_then(LoweredModule::without_errors)
     .map(|lowered| (lowered.module, lowered.signatures))
 }
 
 pub struct LoweredModule {
     pub module: MirModule,
     pub signatures: Vec<LoweredSignature>,
-    pub diagnostics: Vec<mesh_diagnostics::Diagnostic>,
+    /// What lowering reports. An error among them means the module must
+    /// not be compiled.
+    pub diagnostics: Vec<Diagnostic>,
 }
 
-/// Lower one module and return diagnostics to the caller for rendering.
+impl LoweredModule {
+    /// The module, or the first error lowering reported for it.
+    fn without_errors(mut self) -> Result<Self, Diagnostic> {
+        match self
+            .diagnostics
+            .iter()
+            .position(|diagnostic| diagnostic.severity() == mesh_diagnostics::Severity::Error)
+        {
+            Some(index) => Err(self.diagnostics.swap_remove(index)),
+            None => Ok(self),
+        }
+    }
+}
+
+/// Lower one module and return its diagnostics to the caller for rendering.
+/// `files` holds each source file by `MirSourceId`, which `source_id` assigns.
 pub fn lower_module_with_diagnostics<'a>(
     parse: &'a Parse,
     typeck: &'a TypeckResult,
@@ -16528,22 +16627,25 @@ pub fn lower_module_with_diagnostics<'a>(
     inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
     other_modules: &[(&'a Parse, &'a TypeckResult)],
     source_id: impl Fn(&Parse) -> Option<MirSourceId>,
+    files: &'a [mesh_diagnostics::SourceFile],
     collect_signatures: bool,
-) -> Result<LoweredModule, String> {
+) -> Result<LoweredModule, Diagnostic> {
     if !collect_signatures
         && (!typeck.proof_values.is_empty() || typeck.types.values().any(Ty::contains_proof))
     {
-        return Err("Mesh proof values require a project build with proof checking".into());
+        return Err(Diagnostic::internal(
+            "proof values reached a lowering that does not check proofs",
+        ));
     }
-    if let Some(reason) = typeck.errors.iter().find_map(|error| match error {
-        TypeError::ResourceCrossesBoundary { reason, .. }
-            if reason.contains("cannot be captured by a closure") =>
-        {
-            Some(reason)
-        }
-        _ => None,
+    let file = source_id(parse).and_then(|id| files.get(id.0));
+    if let Some(error) = typeck.errors.iter().find(|error| {
+        matches!(error, TypeError::ResourceCrossesBoundary { reason, .. }
+            if reason.contains("cannot be captured by a closure"))
     }) {
-        return Err(format!("unsafe resource closure rejected: {reason}"));
+        return Err(match file {
+            Some(file) => error.to_diagnostic(file),
+            None => Diagnostic::new(Code::ResourceCrossesBoundary, error.to_string()),
+        });
     }
 
     let source_file = parse.tree();
@@ -16551,6 +16653,7 @@ pub fn lower_module_with_diagnostics<'a>(
     let mut lowerer = Lowerer::new(typeck, parse, module_name, pub_fns, inferred_fn_usage_types);
     lowerer.lowered_signatures = collect_signatures.then(Vec::new);
     lowerer.source_file = source_id(parse);
+    lowerer.files = files;
     for &(other_parse, other) in other_modules {
         for (key, &range) in &other.default_method_bodies {
             if !typeck.default_method_bodies.contains_key(key) {
@@ -16856,10 +16959,6 @@ pub fn lower_module_with_diagnostics<'a>(
 
     lowerer.lower_source_file(source_file);
 
-    if !lowerer.lowering_errors.is_empty() {
-        return Err(lowerer.lowering_errors.join("\n"));
-    }
-
     let unlowered_clustered_routes = typeck
         .clustered_route_wrappers
         .iter()
@@ -16867,15 +16966,10 @@ pub fn lower_module_with_diagnostics<'a>(
         .map(|(_range, metadata)| metadata.runtime_name.clone())
         .collect::<Vec<_>>();
     if !unlowered_clustered_routes.is_empty() {
-        return Err(unlowered_clustered_routes
-            .into_iter()
-            .map(|runtime_name| {
-                format!(
-                    "clustered route wrapper `{runtime_name}` did not lower to a concrete route shim"
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n"));
+        return Err(Diagnostic::internal(format!(
+            "clustered route wrappers did not lower to concrete route shims: {}",
+            unlowered_clustered_routes.join(", ")
+        )));
     }
 
     // A wrapper passes its callback on as a direct call does.
@@ -16901,6 +16995,7 @@ pub fn lower_module_with_diagnostics<'a>(
         entry_function: lowerer.entry_function,
         service_dispatch: lowerer.service_dispatch,
         actors: lowerer.actors,
+        symbols: lowerer.symbols,
     };
     Ok(LoweredModule {
         module: mir,
@@ -18227,9 +18322,10 @@ fn examples() = (rebuild(Node([1])), rebuild(Node([true])))
         let error = lower_to_mir(&parse, &typeck, "", &HashSet::new(), &HashMap::new())
             .map(|mir| mir.functions.len())
             .expect_err("the route is never lowered");
+        assert_eq!(error.code(), mesh_diagnostics::Code::InternalCompilerError);
         assert!(
-            error.contains("did not lower to a concrete route shim"),
-            "{error}"
+            error.notes()[0].contains("did not lower to concrete route shims"),
+            "{error:?}"
         );
     }
 
@@ -19069,7 +19165,14 @@ end
         let error = lower_to_mir(&parse, &typeck, "", &HashSet::new(), &HashMap::new())
             .expect_err("resource capture must never reach closure conversion");
 
-        assert!(error.contains("cannot be captured by a closure"), "{error}");
+        assert_eq!(
+            error.code(),
+            mesh_diagnostics::Code::ResourceCrossesBoundary
+        );
+        assert!(
+            error.message().contains("cannot be captured by a closure"),
+            "{error:?}"
+        );
     }
 
     #[test]

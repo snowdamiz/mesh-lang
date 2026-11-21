@@ -13,6 +13,16 @@ use mesh_pkg::frontend::{self, CheckOptions, Target};
 use serde_json::{json, Value};
 use tower_lsp::lsp_types::Url;
 
+/// The codes only code generation reports, which the editor never sees.
+/// `meshc`'s `catalog_examples` runs their examples through `meshc build`.
+const CODEGEN_ONLY: &[Code] = &[
+    Code::RecursiveByValueType,
+    Code::RuntimeSymbolCollision,
+    Code::SpawnGroupedUnsafe,
+    Code::NodeSpawnArgument,
+    Code::ExportSymbolCollision,
+];
+
 /// The codes of `check`'s diagnostics and of the lint findings in each file
 /// that parsed, sorted: a multiset.
 fn frontend_codes(target: Target<'_>) -> Vec<&'static str> {
@@ -89,13 +99,12 @@ async fn the_editor_publishes_what_the_compiler_reports() {
     let projects = tempfile::tempdir().unwrap();
     let projects = projects.path().canonicalize().unwrap();
     let mut failures = Vec::new();
-    // No code that only codegen reports has an example yet.
     let examples = Code::all()
         .filter(|code| {
             matches!(
                 code.family(),
                 Family::Syntax | Family::Semantic | Family::Lint
-            )
+            ) && !CODEGEN_ONLY.contains(code)
         })
         .filter_map(|code| Some((code, code.info().example?)));
     for (index, (code, example)) in examples.enumerate() {

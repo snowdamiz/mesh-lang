@@ -5,6 +5,42 @@
 
 catalog! {
     retired: [E0013, E0024, E0025, E0043],
+    TargetUnsupported = B0001 "target-unsupported" Error {
+        title: "unsupported build target",
+        summary: "The target triple names a platform Mesh cannot compile or link for, or an artifact kind that the target does not support.",
+        repair: "Pass `--target` a supported triple, a Unix-like one (macOS, iOS, Linux, Android, or a BSD) or a Windows MSVC one, or omit it to build for the host. Build an executable or a `cdylib` where the target has no `staticlib` support.",
+        topic: "projects",
+    },
+    LinkerNotFound = B0101 "linker-not-found" Error {
+        title: "linker not found",
+        summary: "The C compiler, linker, or archiver the target links with could not be found or started.",
+        repair: "Install the tool the message names and put it on `PATH`: a C compiler (`cc`) on Unix-like targets, `clang` from LLVM 21 for Windows MSVC (or set `LLVM_SYS_211_PREFIX` to that LLVM), or the Android NDK with `ANDROID_NDK_HOME` set.",
+        topic: "projects",
+    },
+    LinkFailed = B0102 "link-failed" Error {
+        title: "linking failed",
+        summary: "The linker or archiver ran and reported a failure; its output is in the notes.",
+        repair: "Fix what the linker output in the notes names: supply a missing native library or archive, and rebuild the Mesh runtime for the same target when its symbols are missing.",
+        topic: "projects",
+    },
+    RuntimeLibraryMissing = B0201 "runtime-library-missing" Error {
+        title: "runtime library missing",
+        summary: "The Mesh runtime static library for the target was not found, or `MESH_RT_LIB_PATH` or `MESH_TEST_RT_LIB_PATH` does not name one.",
+        repair: "Reinstall Mesh so the `lib` directory beside `meshc` holds the runtime, or in a source checkout run `cargo build -p mesh-rt` (`-p mesh-test-rt` for `meshc test`, with `--target` for another target). Point `MESH_RT_LIB_PATH` at the library file itself, or unset it.",
+        topic: "projects",
+    },
+    OutputUnwritable = B0301 "output-unwritable" Error {
+        title: "cannot write build output",
+        summary: "The object file, LLVM IR, executable, or library could not be written at its output path.",
+        repair: "Create the output directory, or pass `--output` a path in a writable directory where no directory of the same name exists.",
+        topic: "projects",
+    },
+    ArtifactEntryMissing = B0302 "artifact-entry-missing" Error {
+        title: "artifact has no entry point",
+        summary: "An executable build found no `fn main()` in the entry module, or a `staticlib` or `cdylib` build found no `@export` function for a host to call.",
+        repair: "Define `fn main()` in the entrypoint to build an executable, or mark a public function `@export(\"symbol\")` to build a library, or pass `--artifact` the kind of artifact the program provides.",
+        topic: "projects",
+    },
     Uncategorized = C0001 "uncategorized" Error transitional {
         title: "uncategorized failure",
         summary: "A failure on a path that has no catalog code yet.",
@@ -1000,6 +1036,56 @@ catalog! {
         example: (
             "module A do\n  pub fn count() do\n    1\n  end\nend\n\nmodule B do\n  pub fn count() do\n    2\n  end\nend\n",
             "module A do\n  pub fn count() do\n    1\n  end\nend\n\nmodule B do\n  pub fn total() do\n    2\n  end\nend\n",
+        ),
+    },
+    RecursiveByValueType = E0104 "recursive-by-value-type" Error {
+        title: "struct holds itself by value",
+        summary: "A struct holds itself by value, directly or through other structs, so a value of it would contain itself and could never be built.",
+        repair: "Hold the recursive field through a type that ends the recursion: an `Option<...>` or a `List<...>` of the struct, or a sum type with a variant that does not hold it.",
+        topic: "types",
+        example: (
+            "struct Node do\n  next :: Node\nend\n\nfn main() do\nend\n",
+            "struct Node do\n  next :: Option<Node>\nend\n\nfn main() do\nend\n",
+        ),
+    },
+    RuntimeSymbolCollision = E0105 "runtime-symbol-collision" Error {
+        title: "name already used by the runtime",
+        summary: "A public function or a native binding takes a symbol that the Mesh runtime, the compiler, or another native binding already uses, so calls could reach the wrong code.",
+        repair: "Rename the function, leaving names that start with `mesh_` to the runtime, and bind each native symbol once with one signature.",
+        topic: "projects",
+        example: (
+            "pub fn mesh_string_length(text :: String) -> Int = 0\n\nfn main() do\n  println(\"${mesh_string_length(\"abc\")}\")\nend\n",
+            "pub fn text_length(text :: String) -> Int = 0\n\nfn main() do\n  println(\"${text_length(\"abc\")}\")\nend\n",
+        ),
+    },
+    SpawnGroupedUnsafe = E0106 "spawn-grouped-unsafe" Error {
+        title: "grouped actor may block its worker",
+        summary: "An actor started with `spawn grouped`, or its `terminate` callback, can reach code the compiler cannot prove yields or returns without blocking the shared worker (a native or unaudited runtime call such as I/O, an indirect call, recursion that grows the stack, or a loop in a terminate callback), or `spawn grouped` starts a supervisor child.",
+        repair: "Start the actor with plain `spawn`, or move the call the notes trace into an actor started with `spawn` and message it. Write recursion as a tail call, and keep loops out of terminate callbacks.",
+        topic: "actors",
+        example: (
+            "actor worker() do\n  IO.eprintln(\"working\")\nend\n\nfn main() do\n  spawn grouped(worker)\nend\n",
+            "actor worker() do\n  IO.eprintln(\"working\")\nend\n\nfn main() do\n  spawn(worker)\nend\n",
+        ),
+    },
+    NodeSpawnArgument = E0107 "node-spawn-argument" Error {
+        title: "`Node.spawn` cannot start this on another node",
+        summary: "`Node.spawn` or `Node.spawn_link` is given a closure instead of a function defined at the top level, or an argument of a type that cannot cross the connection.",
+        repair: "Name a top-level actor as the second argument, and pass it only `Int`, `Float`, `Bool`, `String`, `Pid`, or `()` arguments, encoding other data as a `String`.",
+        topic: "clustering",
+        example: (
+            "actor spawner(host :: String) do\n  let _ = Node.spawn(host, fn () -> self() end)\nend\n\nfn main() do\n  let _ = spawn(spawner, \"absent@127.0.0.1:1\")\nend\n",
+            "actor remote() do\n  println(\"started\")\nend\n\nactor spawner(host :: String) do\n  let _ = Node.spawn(host, remote)\nend\n\nfn main() do\n  let _ = spawn(spawner, \"absent@127.0.0.1:1\")\nend\n",
+        ),
+    },
+    ExportSymbolCollision = E0108 "export-symbol-collision" Error {
+        title: "exported symbol already taken",
+        summary: "An `@export` C symbol is also another export's, a public Mesh function's, or the Mesh runtime's, so a host could not tell which one it calls.",
+        repair: "Give each `@export` its own C symbol, prefixed with the library's name as in `@export(\"greeter_echo\")`, that no public function or `mesh_` runtime symbol uses.",
+        topic: "projects",
+        example: (
+            "@export(\"mesh_println\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n\nfn main() do\nend\n",
+            "@export(\"greeter_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n\nfn main() do\nend\n",
         ),
     },
     InternalCompilerError = I0001 "internal-compiler-error" Error {

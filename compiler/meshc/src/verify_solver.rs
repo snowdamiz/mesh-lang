@@ -64,6 +64,12 @@ impl From<&str> for EncodingError {
     }
 }
 
+impl From<mesh_diagnostics::Diagnostic> for EncodingError {
+    fn from(error: mesh_diagnostics::Diagnostic) -> Self {
+        crate::diagnostic_reason(&error).into()
+    }
+}
+
 pub(crate) fn check(
     program: &[MirModule],
     target: &MirFunction,

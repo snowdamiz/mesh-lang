@@ -140,6 +140,7 @@ mod library_tests {
             entry_function: None,
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
+            symbols: Default::default(),
         };
         monomorphize_with_roots(&mut module, &["exported".to_string()]);
         assert_eq!(
@@ -166,6 +167,7 @@ mod library_tests {
                 entry: "relay".to_string(),
                 terminate: None,
             }],
+            symbols: Default::default(),
         };
         monomorphize(&mut module);
         let kept: Vec<_> = module.functions.iter().map(|f| f.name.as_str()).collect();
@@ -259,6 +261,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         monomorphize(&mut module);
@@ -306,6 +309,7 @@ mod tests {
                 params: vec![],
                 return_type: MirType::Unit,
             }],
+            symbols: Default::default(),
         };
 
         monomorphize(&mut module);

@@ -761,8 +761,9 @@ fn lower_template(
     )
     .map_err(|error| {
         format!(
-            "{}: Could not lower the generic template: {error}",
-            import.location
+            "{}: Could not lower the generic template: {}",
+            import.location,
+            crate::diagnostic_reason(&error)
         )
     })?;
     let entries = entries

@@ -37,11 +37,12 @@ use inkwell::targets::{
 use inkwell::types::StructType;
 use inkwell::values::{BasicValueEnum, FunctionValue, InstructionOpcode, PointerValue};
 use inkwell::OptimizationLevel;
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::mir::{
-    by_sum_type_name, sum_type_base, MirExpr, MirFunction, MirModule, MirNativeFunction,
-    MirStructDef, MirSumTypeDef, MirType,
+    by_sum_type_name, diagnostic_at, sum_type_base, MirExpr, MirFunction, MirModule,
+    MirNativeFunction, MirSourceSpan, MirStructDef, MirSumTypeDef, MirSymbol, MirType,
 };
 use crate::DeclaredRuntimeRegistration;
 use crate::StartupWorkRegistration;
@@ -164,6 +165,9 @@ pub struct CodeGen<'ctx> {
     /// Bodyful Mesh functions exposed through the stable binary library ABI.
     pub(crate) library_exports: Vec<crate::LibraryExport>,
 
+    /// Each source file by `MirSourceId`, for the program's diagnostics.
+    pub(crate) files: Vec<SourceFile>,
+
     /// TCE loop header block for the current tail-recursive function.
     /// Set during compile_function when has_tail_calls is true. NOT on loop_stack
     /// (separate from user while/for loops so break/continue don't interfere).
@@ -212,13 +216,16 @@ impl<'ctx> CodeGen<'ctx> {
         module_name: &str,
         opt_level: u8,
         target_triple: Option<&str>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, Diagnostic> {
         let initialization = InitializationConfig::default();
         if target_triple.is_some() {
             Target::initialize_all(&initialization);
         } else {
-            Target::initialize_native(&initialization)
-                .map_err(|e| format!("Failed to initialize native target: {}", e))?;
+            Target::initialize_native(&initialization).map_err(|error| {
+                Diagnostic::internal(format!(
+                    "LLVM could not initialize the host target: {error}"
+                ))
+            })?;
         }
 
         let triple = match target_triple {
@@ -226,8 +233,13 @@ impl<'ctx> CodeGen<'ctx> {
             None => TargetMachine::get_default_triple(),
         };
 
-        let target = Target::from_triple(&triple)
-            .map_err(|e| format!("Invalid target triple '{}': {}", triple, e))?;
+        let target = Target::from_triple(&triple).map_err(|error| {
+            Diagnostic::new(
+                Code::TargetUnsupported,
+                format!("LLVM has no target for the triple `{triple}`"),
+            )
+            .with_note(error.to_string())
+        })?;
 
         let opt = match opt_level {
             0 => OptimizationLevel::None,
@@ -244,7 +256,12 @@ impl<'ctx> CodeGen<'ctx> {
                 RelocMode::PIC,
                 CodeModel::Default,
             )
-            .ok_or_else(|| format!("Failed to create target machine for '{}'", triple))?;
+            .ok_or_else(|| {
+                Diagnostic::new(
+                    Code::TargetUnsupported,
+                    format!("LLVM cannot create a machine for the target `{triple}`"),
+                )
+            })?;
 
         let module = context.create_module(module_name);
         module.set_triple(&triple);
@@ -287,6 +304,7 @@ impl<'ctx> CodeGen<'ctx> {
             autonomous_config_json: None,
             disable_core_dumps: opt_level >= 2,
             library_exports: Vec::new(),
+            files: Vec::new(),
             tce_loop_header: None,
             inline_tail_reductions: opt_level >= 2,
             tce_reduction_state: None,
@@ -315,6 +333,22 @@ impl<'ctx> CodeGen<'ctx> {
         self.library_exports = exports.to_vec();
     }
 
+    /// The source files the MIR's spans index, by `MirSourceId`.
+    pub fn set_source_files(&mut self, files: &[SourceFile]) {
+        self.files = files.to_vec();
+    }
+
+    /// `code` at `at`, in the file it names.
+    pub(crate) fn diagnostic_at(
+        &self,
+        at: Option<MirSourceSpan>,
+        code: Code,
+        message: impl Into<String>,
+        label: impl Into<String>,
+    ) -> Diagnostic {
+        diagnostic_at(&self.files, at, code, message, label)
+    }
+
     /// Compile a MIR module to LLVM IR.
     ///
     /// This is the main compilation entry point. It:
@@ -324,7 +358,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// 4. Compiles function bodies
     /// 5. Generates a main wrapper (if entry function exists)
     /// 6. Verifies the LLVM module
-    pub fn compile(&mut self, mir: &MirModule) -> Result<(), String> {
+    pub fn compile(&mut self, mir: &MirModule) -> Result<(), Diagnostic> {
         // Store MIR functions for arm body lookup during pattern codegen.
         self.mir_functions = mir.functions.clone();
 
@@ -353,15 +387,15 @@ impl<'ctx> CodeGen<'ctx> {
             self.struct_types.insert(s.name.clone(), struct_type);
         }
         self.create_sum_type_layouts(&mir.sum_types)?;
-        self.create_struct_types(&mir.structs)?;
+        self.create_struct_types(&mir.structs, &mir.symbols)?;
         for s in &mir.structs {
             self.mir_struct_defs
                 .insert(s.name.clone(), s.fields.clone());
         }
 
         // Step 3: Forward-declare all functions.
-        self.declare_native_functions(&mir.native_functions)?;
-        self.declare_functions(&mir.functions)?;
+        self.declare_native_functions(&mir.native_functions, &mir.symbols)?;
+        self.declare_functions(&mir.functions, &mir.symbols)?;
 
         // Step 4: Compile function bodies.
         for func in &mir.functions {
@@ -369,10 +403,16 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Step 5: Generate stable binary ABI wrappers for library exports.
-        self.generate_library_export_wrappers()?;
+        self.generate_library_export_wrappers(&mir.symbols)?;
 
         // Step 6: Verify and lower grouped actor code before fingerprinting the program.
-        group_safety::certify(&self.grouped_spawns, &mir.actors, &mir.native_functions)?;
+        group_safety::certify(
+            &self.grouped_spawns,
+            &mir.actors,
+            &mir.native_functions,
+            &mir.symbols,
+            &self.files,
+        )?;
         self.lower_grouped_steps(mir)?;
         self.hoist_static_allocas();
 
@@ -386,7 +426,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Verify the module, naming the function verification fails in.
-    fn verify(&self) -> Result<(), String> {
+    fn verify(&self) -> Result<(), Diagnostic> {
         self.module.verify().map_err(|error| {
             let function = self
                 .module
@@ -394,7 +434,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .find(|function| !function.verify(false))
                 .map(|function| format!(" in `{}`", function.get_name().to_string_lossy()))
                 .unwrap_or_default();
-            format!("LLVM module verification failed{function}: {error}")
+            Diagnostic::internal(format!(
+                "LLVM module verification failed{function}: {error}"
+            ))
         })
     }
 
@@ -438,7 +480,10 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn generate_library_export_wrappers(&mut self) -> Result<(), String> {
+    fn generate_library_export_wrappers(
+        &mut self,
+        symbols: &FxHashMap<String, MirSymbol>,
+    ) -> Result<(), Diagnostic> {
         let exports = self.library_exports.clone();
         let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
         let i64_type = self.context.i64_type();
@@ -451,9 +496,21 @@ impl<'ctx> CodeGen<'ctx> {
             // Type checking made the export a lowered, public function.
             let function = self.functions[&export.function];
             if self.module.get_function(&export.symbol).is_some() {
-                return Err(format!(
-                    "Exported symbol '{}' conflicts with another generated or runtime symbol",
-                    export.symbol
+                let owner = match symbols.get(&export.symbol) {
+                    Some(symbol) => format!("the function `{}`", symbol.source_name),
+                    None => "a runtime or generated function".to_string(),
+                };
+                let definition = symbols
+                    .get(&export.function)
+                    .and_then(|symbol| symbol.definition);
+                return Err(self.diagnostic_at(
+                    definition,
+                    Code::ExportSymbolCollision,
+                    format!(
+                        "exported symbol `{}` is already the symbol of {owner}",
+                        export.symbol
+                    ),
+                    format!("exported as `{}`", export.symbol),
                 ));
             }
             // LLVM's aggregate return convention is not the platform C ABI on
@@ -474,19 +531,19 @@ impl<'ctx> CodeGen<'ctx> {
                     &[entrypoint.get_nth_param(0).unwrap().into()],
                     "result",
                 )
-                .map_err(|error| error.to_string())?
+                .map_err(Diagnostic::internal)?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("Library entrypoint must return a result")?;
+                .ok_or_else(|| Diagnostic::internal("Library entrypoint must return a result"))?;
             self.builder
                 .build_store(
                     entrypoint.get_nth_param(1).unwrap().into_pointer_value(),
                     result,
                 )
-                .map_err(|error| error.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_return(None)
-                .map_err(|error| error.to_string())?;
+                .map_err(Diagnostic::internal)?;
             let wrapper = self.module.add_function(&export.symbol, wrapper_type, None);
             if self
                 .module
@@ -516,45 +573,44 @@ impl<'ctx> CodeGen<'ctx> {
                     ],
                     "library_status",
                 )
-                .map_err(|error| error.to_string())?
+                .map_err(Diagnostic::internal)?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("mesh_library_invoke must return a status")?;
+                .ok_or_else(|| Diagnostic::internal("mesh_library_invoke must return a status"))?;
             self.builder
                 .build_return(Some(&status))
-                .map_err(|error| error.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
         Ok(())
     }
 
     /// Run LLVM optimization passes on the module (none at level 0).
-    pub fn run_optimization_passes(&self, opt_level: u8) -> Result<(), String> {
+    pub fn run_optimization_passes(&self, opt_level: u8) -> Result<(), Diagnostic> {
         let passes = match opt_level {
             0 => return Ok(()),
             1 => "default<O1>",
             _ => "default<O2>",
         };
         if opt_level >= 2 {
-            self.inline_list_reads()
-                .map_err(|error| error.to_string())?;
+            self.inline_list_reads().map_err(Diagnostic::internal)?;
         }
         self.module
             .run_passes(passes, &self.target_machine, PassBuilderOptions::create())
-            .map_err(|e| format!("Optimization passes failed: {}", e))
+            .map_err(|error| Diagnostic::internal(format!("LLVM optimization failed: {error}")))
     }
 
     /// Emit the LLVM module as an object file.
-    pub fn emit_object(&self, path: &Path) -> Result<(), String> {
+    pub fn emit_object(&self, path: &Path) -> Result<(), Diagnostic> {
         self.target_machine
             .write_to_file(&self.module, FileType::Object, path)
-            .map_err(|e| format!("Failed to emit object file: {}", e))
+            .map_err(|error| output_unwritable("object file", path, error))
     }
 
     /// Emit the LLVM module as human-readable LLVM IR (.ll file).
-    pub fn emit_llvm_ir(&self, path: &Path) -> Result<(), String> {
+    pub fn emit_llvm_ir(&self, path: &Path) -> Result<(), Diagnostic> {
         self.module
             .print_to_file(path)
-            .map_err(|e| format!("Failed to emit LLVM IR: {}", e))
+            .map_err(|error| output_unwritable("LLVM IR", path, error))
     }
 
     /// Get the LLVM IR as a string (for testing).
@@ -575,7 +631,11 @@ impl<'ctx> CodeGen<'ctx> {
     /// Give each struct its fields. A struct that holds itself by value,
     /// directly or through other structs, has no size: no value of it can
     /// exist, and every use of one failed LLVM's verification.
-    fn create_struct_types(&mut self, structs: &[MirStructDef]) -> Result<(), String> {
+    fn create_struct_types(
+        &mut self,
+        structs: &[MirStructDef],
+        symbols: &FxHashMap<String, MirSymbol>,
+    ) -> Result<(), Diagnostic> {
         for s in structs {
             let field_types: Vec<inkwell::types::BasicTypeEnum<'ctx>> = s
                 .fields
@@ -588,10 +648,14 @@ impl<'ctx> CodeGen<'ctx> {
             struct_ty.set_body(&field_types, false);
         }
         match structs.iter().find(|s| holds_itself(s, structs)) {
-            Some(s) => Err(format!(
-                "struct `{}` holds itself by value, so no value of it can exist: hold it in an \
-                 Option or a List instead",
-                s.name
+            Some(s) => Err(self.diagnostic_at(
+                symbols.get(&s.name).and_then(|symbol| symbol.definition),
+                Code::RecursiveByValueType,
+                format!(
+                    "struct `{}` holds itself by value, so no value of it can exist",
+                    s.name
+                ),
+                "holds itself by value",
             )),
             None => Ok(()),
         }
@@ -617,7 +681,7 @@ impl<'ctx> CodeGen<'ctx> {
             .expect("every sum type a value has is defined")
     }
 
-    fn create_sum_type_layouts(&mut self, sum_types: &[MirSumTypeDef]) -> Result<(), String> {
+    fn create_sum_type_layouts(&mut self, sum_types: &[MirSumTypeDef]) -> Result<(), Diagnostic> {
         let known_names = sum_types
             .iter()
             .map(|sum_type| sum_type.name.clone())
@@ -641,9 +705,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .map(|sum_type| sum_type.name.as_str())
                     .collect::<Vec<_>>()
                     .join(", ");
-                return Err(format!(
+                return Err(Diagnostic::internal(format!(
                     "recursive by-value sum type layout dependency: {names}"
-                ));
+                )));
             };
 
             let st = remaining.remove(index);
@@ -668,12 +732,22 @@ impl<'ctx> CodeGen<'ctx> {
     /// (so does any function of a single-file program), which a runtime
     /// function may already have: LLVM would rename the program's, and a
     /// call of the runtime's would run it instead.
-    fn declare_functions(&mut self, functions: &[MirFunction]) -> Result<(), String> {
+    fn declare_functions(
+        &mut self,
+        functions: &[MirFunction],
+        symbols: &FxHashMap<String, MirSymbol>,
+    ) -> Result<(), Diagnostic> {
         for func in functions {
             if self.module.get_function(&func.name).is_some() {
-                return Err(format!(
-                    "`{}` is already the name of a runtime or native function; rename the function",
-                    func.name
+                let symbol = symbols.get(&func.name);
+                return Err(self.diagnostic_at(
+                    symbol.and_then(|symbol| symbol.definition),
+                    Code::RuntimeSymbolCollision,
+                    format!(
+                        "`{}` is already the name of a runtime or native function",
+                        symbol.map_or(func.name.as_str(), |symbol| &symbol.source_name)
+                    ),
+                    "takes a runtime symbol",
                 ));
             }
             let fn_type = if func.is_closure_fn {
@@ -710,15 +784,27 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    fn declare_native_functions(&mut self, functions: &[MirNativeFunction]) -> Result<(), String> {
+    fn declare_native_functions(
+        &mut self,
+        functions: &[MirNativeFunction],
+        symbols: &FxHashMap<String, MirSymbol>,
+    ) -> Result<(), Diagnostic> {
         for function in functions {
+            let definition = symbols
+                .get(&function.name)
+                .and_then(|symbol| symbol.definition);
             if matches!(
                 function.symbol.as_str(),
                 "mesh_actor_spawn_step" | "mesh_actor_spawn_movable_step" | "mesh_step_charge"
             ) {
-                return Err(format!(
-                    "Native symbol `{}` is reserved for grouped actor codegen",
-                    function.symbol
+                return Err(self.diagnostic_at(
+                    definition,
+                    Code::RuntimeSymbolCollision,
+                    format!(
+                        "native symbol `{}` is reserved for grouped actor codegen",
+                        function.symbol
+                    ),
+                    "binds a reserved runtime symbol",
                 ));
             }
             let params = function
@@ -735,9 +821,14 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let value = if let Some(existing) = self.module.get_function(&function.symbol) {
                 if existing.get_type() != function_type {
-                    return Err(format!(
-                        "Native symbol `{}` is declared with incompatible signatures",
-                        function.symbol
+                    return Err(self.diagnostic_at(
+                        definition,
+                        Code::RuntimeSymbolCollision,
+                        format!(
+                            "native symbol `{}` is declared with incompatible signatures",
+                            function.symbol
+                        ),
+                        "binds the symbol with another signature",
                     ));
                 }
                 existing
@@ -753,20 +844,19 @@ impl<'ctx> CodeGen<'ctx> {
                 .insert(function.name.clone(), value)
                 .is_some()
             {
-                return Err(format!(
+                return Err(Diagnostic::internal(format!(
                     "Native binding `{}` is declared more than once",
                     function.name
-                ));
+                )));
             }
         }
         Ok(())
     }
 
-    fn compile_function(&mut self, func: &MirFunction) -> Result<(), String> {
-        let fn_val = *self
-            .functions
-            .get(&func.name)
-            .ok_or_else(|| format!("Function '{}' not declared", func.name))?;
+    fn compile_function(&mut self, func: &MirFunction) -> Result<(), Diagnostic> {
+        let fn_val = *self.functions.get(&func.name).ok_or_else(|| {
+            Diagnostic::internal(format!("Function '{}' not declared", func.name))
+        })?;
 
         self.current_fn = Some(fn_val);
         self.locals.clear();
@@ -778,19 +868,20 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Alloca for each parameter and store incoming values.
         for (i, (name, ty)) in func.params.iter().enumerate() {
-            let param_val = fn_val
-                .get_nth_param(i as u32)
-                .ok_or_else(|| format!("Missing parameter {} for function '{}'", i, func.name))?;
+            let param_val = fn_val.get_nth_param(i as u32).ok_or_else(|| {
+                Diagnostic::internal(format!(
+                    "Missing parameter {} for function '{}'",
+                    i, func.name
+                ))
+            })?;
             self.bind_local(name, ty, param_val)?;
         }
 
         // For closure functions, load captured variables from the __env struct.
         if func.is_closure_fn && !func.captures.is_empty() {
-            let env_alloca = self
-                .locals
-                .get("__env")
-                .copied()
-                .ok_or("Missing __env parameter in closure function")?;
+            let env_alloca = self.locals.get("__env").copied().ok_or_else(|| {
+                Diagnostic::internal("Missing __env parameter in closure function")
+            })?;
             let env_ptr = self
                 .builder
                 .build_load(
@@ -798,7 +889,7 @@ impl<'ctx> CodeGen<'ctx> {
                     env_alloca,
                     "env_ptr",
                 )
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
                 .into_pointer_value();
 
             // The env struct, as `codegen_make_closure` lays it out: the
@@ -824,11 +915,11 @@ impl<'ctx> CodeGen<'ctx> {
                         i as u32 + 1,
                         &format!("cap_{}", name),
                     )
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 let val = self
                     .builder
                     .build_load(cap_llvm_ty, field_ptr, name)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.bind_local(name, ty, val)?;
             }
         }
@@ -838,7 +929,7 @@ impl<'ctx> CodeGen<'ctx> {
         if func.has_tail_calls {
             if self.inline_tail_reductions {
                 self.codegen_int_list_fold(func, fn_val)
-                    .map_err(|error| error.to_string())?;
+                    .map_err(Diagnostic::internal)?;
             }
             // Receive loops already stop at the mailbox. Keeping the cached
             // pointer live across receives can add spills to the message path.
@@ -857,7 +948,7 @@ impl<'ctx> CodeGen<'ctx> {
             let tce_loop_bb = self.context.append_basic_block(fn_val, "tce_loop");
             self.builder
                 .build_unconditional_branch(tce_loop_bb)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder.position_at_end(tce_loop_bb);
             self.tce_loop_header = Some(tce_loop_bb);
             self.tce_param_slots = func
@@ -899,7 +990,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let unit_val = self.context.struct_type(&[], false).const_zero();
                     self.builder
                         .build_return(Some(&unit_val))
-                        .map_err(|e| e.to_string())?;
+                        .map_err(Diagnostic::internal)?;
                 }
                 _ => {
                     // Coerce the return value to match the function's declared return type.
@@ -911,7 +1002,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let coerced_result = self.coerce_value_to_type(result, fn_ret_ty)?;
                     self.builder
                         .build_return(Some(&coerced_result))
-                        .map_err(|e| e.to_string())?;
+                        .map_err(Diagnostic::internal)?;
                 }
             }
         }
@@ -934,7 +1025,7 @@ impl<'ctx> CodeGen<'ctx> {
         &self,
         result: inkwell::values::BasicValueEnum<'ctx>,
         expected_ty: inkwell::types::BasicTypeEnum<'ctx>,
-    ) -> Result<inkwell::values::BasicValueEnum<'ctx>, String> {
+    ) -> Result<inkwell::values::BasicValueEnum<'ctx>, Diagnostic> {
         use inkwell::values::BasicValueEnum;
 
         let result_ty = result.get_type();
@@ -950,7 +1041,7 @@ impl<'ctx> CodeGen<'ctx> {
             (BasicValueEnum::PointerValue(pv), expected) if expected.is_struct_type() => self
                 .builder
                 .build_load(expected, pv, "ret_coerce_load")
-                .map_err(|e| e.to_string()),
+                .map_err(Diagnostic::internal),
 
             // struct -> ptr: heap-alloc + store + return pointer
             (BasicValueEnum::StructValue(sv), expected) if expected.is_pointer_type() => {
@@ -963,7 +1054,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let cast = self
                     .builder
                     .build_int_to_ptr(iv, ptr_ty, "ret_coerce_inttoptr")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 Ok(cast.into())
             }
 
@@ -972,7 +1063,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let cast = self
                     .builder
                     .build_ptr_to_int(pv, expected.into_int_type(), "ret_coerce_ptrtoint")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 Ok(cast.into())
             }
 
@@ -982,13 +1073,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let alloca = self
                     .builder
                     .build_alloca(sv.get_type(), "ret_coerce_tmp")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.builder
                     .build_store(alloca, sv)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.builder
                     .build_load(expected, alloca, "ret_coerce_reinterpret")
-                    .map_err(|e| e.to_string())
+                    .map_err(Diagnostic::internal)
             }
 
             // No coercion possible - return as-is (LLVM may still error)
@@ -1000,7 +1091,7 @@ impl<'ctx> CodeGen<'ctx> {
     ///
     /// Creates: `main(argc: i32, argv: ptr) -> i32` that calls
     /// `mesh_rt_init()`, then calls the Mesh entry function, then returns 0.
-    fn generate_main_wrapper(&mut self, entry_name: &str) -> Result<(), String> {
+    fn generate_main_wrapper(&mut self, entry_name: &str) -> Result<(), Diagnostic> {
         let jobs_fingerprint = if self.jobs_handlers.is_empty() {
             String::new()
         } else {
@@ -1021,14 +1112,14 @@ impl<'ctx> CodeGen<'ctx> {
             let disable = intrinsics::get_intrinsic(&self.module, "mesh_rt_disable_core_dumps");
             self.builder
                 .build_call(disable, &[], "")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         // Call mesh_rt_init()
         let rt_init = intrinsics::get_intrinsic(&self.module, "mesh_rt_init");
         self.builder
             .build_call(rt_init, &[], "")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Register the validated manifest before any runtime subsystem reads
         // scheduler, routing, admission, or continuity defaults.
@@ -1038,7 +1129,7 @@ impl<'ctx> CodeGen<'ctx> {
             let config_global = self
                 .builder
                 .build_global_string_ptr(config_json, "mesh_autonomous_config_json")
-                .map_err(|error| error.to_string())?;
+                .map_err(Diagnostic::internal)?;
             let config_len = self
                 .context
                 .i64_type()
@@ -1049,7 +1140,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &[config_global.as_pointer_value().into(), config_len.into()],
                     "",
                 )
-                .map_err(|error| error.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         // Call mesh_rt_init_actor(0) after configuration registration so the
@@ -1058,7 +1149,7 @@ impl<'ctx> CodeGen<'ctx> {
         let zero = self.context.i32_type().const_int(0, false);
         self.builder
             .build_call(rt_init_actor, &[zero.into()], "")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Register all top-level functions for remote spawn (Phase 67).
         // Must happen before the entry function runs because the entry function
@@ -1089,7 +1180,7 @@ impl<'ctx> CodeGen<'ctx> {
             let name_global = self
                 .builder
                 .build_global_string_ptr(&mir_fn.name, &format!("fn_reg_{}", mir_fn.name))
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
 
             let name_len = self
                 .context
@@ -1110,17 +1201,17 @@ impl<'ctx> CodeGen<'ctx> {
                     ],
                     "",
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         let register_declared_handler =
             intrinsics::get_intrinsic(&self.module, "mesh_register_declared_handler");
         for handler in &self.declared_handlers {
             let Some(fn_val) = self.functions.get(&handler.executable_symbol) else {
-                return Err(format!(
+                return Err(Diagnostic::internal(format!(
                     "Declared handler executable '{}' was not lowered into the LLVM module",
                     handler.executable_symbol
-                ));
+                )));
             };
 
             let runtime_name_global = self
@@ -1134,7 +1225,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
                     ),
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             let runtime_name_len = self
                 .context
                 .i64_type()
@@ -1145,7 +1236,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &handler.executable_symbol,
                     &format!("declared_exec_reg_{}", handler.executable_symbol),
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             let executable_name_len = self
                 .context
                 .i64_type()
@@ -1168,7 +1259,7 @@ impl<'ctx> CodeGen<'ctx> {
                     ],
                     "",
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         if !self.startup_work_registrations.is_empty() {
@@ -1188,7 +1279,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
                         ),
                     )
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 let runtime_name_len = self
                     .context
                     .i64_type()
@@ -1203,7 +1294,7 @@ impl<'ctx> CodeGen<'ctx> {
                         ],
                         "",
                     )
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
             }
         }
 
@@ -1214,7 +1305,7 @@ impl<'ctx> CodeGen<'ctx> {
             let name_global = self
                 .builder
                 .build_global_string_ptr(&name, &format!("jobs_handler_{symbol}"))
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             let name_len = self.context.i64_type().const_int(name.len() as u64, false);
             self.builder
                 .build_call(
@@ -1226,7 +1317,7 @@ impl<'ctx> CodeGen<'ctx> {
                     ],
                     "",
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         let enter_worker = intrinsics::get_intrinsic(&self.module, "mesh_jobs_enter_worker");
@@ -1239,17 +1330,16 @@ impl<'ctx> CodeGen<'ctx> {
                 ],
                 "",
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Call the Mesh entry function on the main thread, through the runtime
         // so that a panic in it ends the process cleanly.
         // mesh_main runs synchronously, spawning service/job actors along the way.
         // The runtime handles service calls from the main thread context by using
         // a dedicated main process entry in the process table.
-        let mesh_main = self
-            .functions
-            .get(entry_name)
-            .ok_or_else(|| format!("Entry function '{}' not found", entry_name))?;
+        let mesh_main = self.functions.get(entry_name).ok_or_else(|| {
+            Diagnostic::internal(format!("Entry function '{}' not found", entry_name))
+        })?;
         let run_main = intrinsics::get_intrinsic(&self.module, "mesh_run_main");
         self.builder
             .build_call(
@@ -1257,14 +1347,14 @@ impl<'ctx> CodeGen<'ctx> {
                 &[mesh_main.as_global_value().as_pointer_value().into()],
                 "",
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         if !self.startup_work_registrations.is_empty() {
             let trigger_startup_work =
                 intrinsics::get_intrinsic(&self.module, "mesh_trigger_startup_work");
             self.builder
                 .build_call(trigger_startup_work, &[], "")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         // Run the actor scheduler to process all spawned actors.
@@ -1272,12 +1362,12 @@ impl<'ctx> CodeGen<'ctx> {
         let rt_run_scheduler = intrinsics::get_intrinsic(&self.module, "mesh_rt_run_scheduler");
         self.builder
             .build_call(rt_run_scheduler, &[], "")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Return 0
         self.builder
             .build_return(Some(&i32_type.const_int(0, false)))
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         Ok(())
     }
@@ -1381,14 +1471,14 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         ty: &MirType,
         value: BasicValueEnum<'ctx>,
-    ) -> Result<SavedLocal<'ctx>, String> {
+    ) -> Result<SavedLocal<'ctx>, Diagnostic> {
         let slot = self
             .builder
             .build_alloca(self.llvm_type(ty), name)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(slot, value)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         Ok((
             name.to_string(),
             self.locals.insert(name.to_string(), slot),
@@ -1414,6 +1504,15 @@ impl<'ctx> CodeGen<'ctx> {
 /// What a local name meant before a binding shadowed it: its slot and type.
 pub(crate) type SavedLocal<'ctx> = (String, Option<PointerValue<'ctx>>, Option<MirType>);
 
+/// `what` could not be written at `path`.
+fn output_unwritable(what: &str, path: &Path, error: impl std::fmt::Display) -> Diagnostic {
+    Diagnostic::new(
+        Code::OutputUnwritable,
+        format!("cannot write the {what} `{}`", path.display()),
+    )
+    .with_note(error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1432,6 +1531,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         }
     }
 
@@ -1491,6 +1591,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         }
     }
 
@@ -1586,21 +1687,25 @@ mod tests {
             binding("second", MirType::Int),
         ])
         .unwrap();
+        let error = compile(vec![
+            binding("first", MirType::Int),
+            binding("second", MirType::Bool),
+        ])
+        .unwrap_err();
+        assert_eq!(error.code(), Code::RuntimeSymbolCollision);
         assert_eq!(
-            compile(vec![
-                binding("first", MirType::Int),
-                binding("second", MirType::Bool)
-            ])
-            .unwrap_err(),
-            "Native symbol `c_native` is declared with incompatible signatures"
+            error.message(),
+            "native symbol `c_native` is declared with incompatible signatures"
         );
+        let error = compile(vec![
+            binding("first", MirType::Int),
+            binding("first", MirType::Int),
+        ])
+        .unwrap_err();
+        assert_eq!(error.code(), Code::InternalCompilerError);
         assert_eq!(
-            compile(vec![
-                binding("first", MirType::Int),
-                binding("first", MirType::Int)
-            ])
-            .unwrap_err(),
-            "Native binding `first` is declared more than once"
+            error.notes(),
+            ["Native binding `first` is declared more than once"]
         );
     }
 
@@ -1623,7 +1728,11 @@ mod tests {
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "cyclic_sums", 0, None).unwrap();
         let error = codegen.compile(&mir).unwrap_err();
-        assert_eq!(error, "recursive by-value sum type layout dependency: A, B");
+        assert_eq!(error.code(), Code::InternalCompilerError);
+        assert_eq!(
+            error.notes(),
+            ["recursive by-value sum type layout dependency: A, B"]
+        );
     }
 
     /// A struct holding itself by value, directly or through another
@@ -1644,12 +1753,12 @@ mod tests {
             let context = Context::create();
             let mut codegen = CodeGen::new(&context, "cyclic_structs", 0, None).unwrap();
             let error = codegen.compile(&mir).unwrap_err();
+            assert_eq!(error.code(), Code::RecursiveByValueType);
             assert!(
-                error.ends_with(
-                    "holds itself by value, so no value of it can exist: hold it in an Option \
-                     or a List instead"
-                ),
-                "{error}"
+                error
+                    .message()
+                    .ends_with("holds itself by value, so no value of it can exist"),
+                "{error:?}"
             );
         }
     }
@@ -1679,11 +1788,8 @@ mod tests {
         match result {
             Ok(_) => panic!("Invalid triple should return error"),
             Err(err) => {
-                assert!(
-                    err.contains("Invalid target triple") || err.contains("invalid-triple-xxx"),
-                    "Error should mention the invalid triple, got: {}",
-                    err
-                );
+                assert_eq!(err.code(), Code::TargetUnsupported);
+                assert!(err.message().contains("invalid-triple-xxx"), "{err:?}");
             }
         }
     }
@@ -1700,9 +1806,10 @@ mod tests {
                 .add_function("broken", context.void_type().fn_type(&[], false), None);
         context.append_basic_block(broken, "entry");
         let error = codegen.verify().unwrap_err();
+        assert_eq!(error.code(), Code::InternalCompilerError);
         assert!(
-            error.starts_with("LLVM module verification failed in `broken`: "),
-            "{error}"
+            error.notes()[0].starts_with("LLVM module verification failed in `broken`: "),
+            "{error:?}"
         );
     }
 
@@ -1860,6 +1967,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -1886,6 +1994,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -1977,6 +2086,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -2043,6 +2153,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -2137,6 +2248,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -2207,6 +2319,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -2245,9 +2358,11 @@ mod tests {
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
         codegen.set_declared_handlers(&declared_handlers);
-        codegen
-            .compile(&mir)
-            .expect_err("declared handler drift should fail compilation")
+        crate::error_text(
+            &codegen
+                .compile(&mir)
+                .expect_err("declared handler drift should fail compilation"),
+        )
     }
 
     #[test]
@@ -2288,6 +2403,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let ir = compile_with_declared_handlers_to_ir(
@@ -2349,6 +2465,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let ir = compile_with_declared_handlers_to_ir(
@@ -2580,6 +2697,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -2627,6 +2745,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -2683,6 +2802,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -2757,6 +2877,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -2839,6 +2960,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -2905,6 +3027,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -3021,6 +3144,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -3164,6 +3288,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
@@ -3311,6 +3436,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -3402,6 +3528,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -3757,6 +3884,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -3833,6 +3961,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();
@@ -3970,6 +4099,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: vec![],
+            symbols: Default::default(),
         };
 
         let context = Context::create();

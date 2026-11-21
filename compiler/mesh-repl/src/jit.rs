@@ -2684,11 +2684,21 @@ pub(crate) fn render_type_errors(
     name: &str,
 ) -> String {
     let file = mesh_diagnostics::SourceFile::new(name, source);
+    render(typeck.errors.iter().map(|error| error.to_diagnostic(&file)))
+}
+
+/// `diagnostics` as the REPL shows them.
+fn render(diagnostics: impl IntoIterator<Item = mesh_diagnostics::Diagnostic>) -> String {
     let mut out = Vec::new();
     let _ =
         mesh_diagnostics::Reporter::new(mesh_diagnostics::Format::Human { color: false }, &mut out)
-            .emit_all(typeck.errors.iter().map(|error| error.to_diagnostic(&file)));
+            .emit_all(diagnostics);
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// A compiler diagnostic as the REPL shows it.
+fn rendered(diagnostic: mesh_diagnostics::Diagnostic) -> String {
+    render([diagnostic])
 }
 
 /// What the wrapper function checked last (`() -> T`) returns: T. A source
@@ -2718,11 +2728,11 @@ fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     };
     let value = match shown {
         Some(((parse, typeck), wrapper)) => {
-            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck)?;
+            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck).map_err(rendered)?;
             jit_execute(&mir, &wrapper, SHOWN)?
         }
         None => {
-            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck)?;
+            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck).map_err(rendered)?;
             jit_execute(&mir, &wrapper_fn, &result_type_name)?
         }
     };
@@ -2749,8 +2759,8 @@ fn jit_execute(
     use mesh_codegen::codegen::CodeGen;
 
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "repl_jit", 0, None)?;
-    codegen.compile(mir)?;
+    let mut codegen = CodeGen::new(&context, "repl_jit", 0, None).map_err(rendered)?;
+    codegen.compile(mir).map_err(rendered)?;
 
     let module = codegen.into_module();
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]

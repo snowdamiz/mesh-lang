@@ -12,6 +12,7 @@ use inkwell::values::{
     StructValue,
 };
 use inkwell::IntPredicate;
+use mesh_diagnostics::{Code, Diagnostic};
 
 use super::group_safety::GroupedSpawn;
 use super::intrinsics::get_intrinsic;
@@ -21,7 +22,7 @@ use super::{CodeGen, BUILT};
 use crate::mir::types::mir_type_to_impl_name;
 use crate::mir::{
     BinOp, MirChildSpec, MirExpr, MirMatchArm, MirResourceDestructor, MirResourceField,
-    MirResourceMoveSource, MirType, SpawnPlacement, UnaryOp,
+    MirResourceMoveSource, MirSourceSpan, MirType, SpawnPlacement, UnaryOp,
 };
 use crate::pattern::compile::{self, compile_match};
 
@@ -29,7 +30,10 @@ impl<'ctx> CodeGen<'ctx> {
     /// Generate LLVM IR for a MIR expression.
     ///
     /// Returns the LLVM value representing the expression result.
-    pub(crate) fn codegen_expr(&mut self, expr: &MirExpr) -> Result<BasicValueEnum<'ctx>, String> {
+    pub(crate) fn codegen_expr(
+        &mut self,
+        expr: &MirExpr,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         match expr {
             MirExpr::IntLit(val, _) => {
                 Ok(self.context.i64_type().const_int(*val as u64, true).into())
@@ -55,8 +59,13 @@ impl<'ctx> CodeGen<'ctx> {
                 op, operand, ty, ..
             } => self.codegen_unaryop(op, operand, ty),
 
-            MirExpr::Call { func, args, ty, .. } => {
-                let value = self.codegen_call(func, args, ty)?;
+            MirExpr::Call {
+                func,
+                args,
+                ty,
+                source_span,
+            } => {
+                let value = self.codegen_call(func, args, ty, *source_span)?;
                 self.end_after_never(ty)?;
                 Ok(value)
             }
@@ -163,13 +172,14 @@ impl<'ctx> CodeGen<'ctx> {
                 placement,
                 terminate_callback,
                 ty: _,
-                ..
+                source_span,
             } => self.codegen_actor_spawn(
                 func,
                 args,
                 *priority,
                 *placement,
                 terminate_callback.as_deref(),
+                *source_span,
             ),
 
             MirExpr::ActorSend {
@@ -299,7 +309,7 @@ impl<'ctx> CodeGen<'ctx> {
                 for (slot, value) in self.tce_param_slots.clone().into_iter().zip(new_vals) {
                     self.builder
                         .build_store(slot, value)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(Diagnostic::internal)?;
                 }
 
                 // Step 3: Emit reduction check for preemptive scheduling.
@@ -308,12 +318,12 @@ impl<'ctx> CodeGen<'ctx> {
                     self.emit_reduction_check();
                     self.builder
                         .build_return(Some(&self.context.i8_type().const_int(1, false)))
-                        .map_err(|e| e.to_string())?;
+                        .map_err(Diagnostic::internal)?;
                     return Ok(self.context.i64_type().const_zero().into());
                 }
                 let tce_loop_bb = self
                     .tce_loop_header
-                    .ok_or("missing tail-call loop header")?;
+                    .ok_or_else(|| Diagnostic::internal("missing tail-call loop header"))?;
                 // Step 4: Branch to loop header.
                 if let Some(state) = self.tce_reduction_state {
                     self.emit_inline_reduction_check(state, tce_loop_bb);
@@ -350,7 +360,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         value: &MirExpr,
         source: &MirResourceMoveSource,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let moved = self.codegen_expr(value)?;
         match source {
             MirResourceMoveSource::Slot(local) => self.clear_resource_local(local),
@@ -716,7 +726,7 @@ impl<'ctx> CodeGen<'ctx> {
         value: &MirExpr,
         resource_ty: &MirType,
         destructor: &MirResourceDestructor,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let owned = self.codegen_expr(value)?;
         self.codegen_resource_destructor(owned, resource_ty, destructor);
         if let MirExpr::Var(name, _) = value {
@@ -730,7 +740,10 @@ impl<'ctx> CodeGen<'ctx> {
     /// Mesh strings are never mutated in place and the GC ignores pointers
     /// outside its own pages, so a literal needs no allocation or copy each
     /// time it is evaluated.
-    pub(crate) fn codegen_string_lit(&mut self, s: &str) -> Result<BasicValueEnum<'ctx>, String> {
+    pub(crate) fn codegen_string_lit(
+        &mut self,
+        s: &str,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let len = self.context.i64_type().const_int(s.len() as u64, false);
         let bytes = self.context.const_string(s.as_bytes(), false);
         let literal = self
@@ -748,7 +761,11 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Variable reference ───────────────────────────────────────────
 
-    fn codegen_var(&mut self, name: &str, ty: &MirType) -> Result<BasicValueEnum<'ctx>, String> {
+    fn codegen_var(
+        &mut self,
+        name: &str,
+        ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // Math.pi constant (Phase 43) -- accessed without parentheses as a variable
         if name == "mesh_math_pi" {
             return Ok(self
@@ -768,7 +785,7 @@ impl<'ctx> CodeGen<'ctx> {
             let val = self
                 .builder
                 .build_load(llvm_ty, alloca, name)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             return Ok(val);
         }
         // Lowering names only bound variables and functions: this is a
@@ -820,7 +837,7 @@ impl<'ctx> CodeGen<'ctx> {
         lhs: &MirExpr,
         rhs: &MirExpr,
         _ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // Short-circuit for boolean And/Or
         match op {
             BinOp::And => return self.codegen_short_circuit_and(lhs, rhs),
@@ -863,7 +880,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "bcmp",
                     )
                     .map(Into::into)
-                    .map_err(|e| e.to_string())
+                    .map_err(Diagnostic::internal)
             }
             _ => self.codegen_string_compare(op, lhs_val, rhs_val),
         }
@@ -892,7 +909,7 @@ impl<'ctx> CodeGen<'ctx> {
         op: &BinOp,
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let l = lhs.into_int_value();
         let r = rhs.into_int_value();
         let result = match op {
@@ -904,7 +921,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_int_compare(int_predicate(op, true), l, r, "cmp"),
         };
-        result.map(Into::into).map_err(|e| e.to_string())
+        result.map(Into::into).map_err(Diagnostic::internal)
     }
 
     fn codegen_float_binop(
@@ -912,7 +929,7 @@ impl<'ctx> CodeGen<'ctx> {
         op: &BinOp,
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let l = lhs.into_float_value();
         let r = rhs.into_float_value();
         let result: Result<BasicValueEnum<'ctx>, _> = match op {
@@ -936,13 +953,13 @@ impl<'ctx> CodeGen<'ctx> {
                     .map(Into::into)
             }
         };
-        result.map_err(|e| e.to_string())
+        result.map_err(Diagnostic::internal)
     }
     fn codegen_short_circuit_and(
         &mut self,
         lhs: &MirExpr,
         rhs: &MirExpr,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let fn_val = self.current_function();
         let lhs_val = self.codegen_expr(lhs)?.into_int_value();
         let lhs_end_bb = self.builder.get_insert_block().unwrap();
@@ -952,7 +969,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder
             .build_conditional_branch(lhs_val, rhs_bb, merge_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // RHS block
         self.builder.position_at_end(rhs_bb);
@@ -960,14 +977,14 @@ impl<'ctx> CodeGen<'ctx> {
         let rhs_end_bb = self.builder.get_insert_block().unwrap();
         self.builder
             .build_unconditional_branch(merge_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Merge block with phi
         self.builder.position_at_end(merge_bb);
         let phi = self
             .builder
             .build_phi(self.context.bool_type(), "and_result")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let false_val = self.context.bool_type().const_int(0, false);
         phi.add_incoming(&[(&false_val, lhs_end_bb), (&rhs_val, rhs_end_bb)]);
@@ -979,7 +996,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         lhs: &MirExpr,
         rhs: &MirExpr,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let fn_val = self.current_function();
         let lhs_val = self.codegen_expr(lhs)?.into_int_value();
 
@@ -988,7 +1005,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder
             .build_conditional_branch(lhs_val, merge_bb, rhs_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let lhs_end_bb = self.builder.get_insert_block().unwrap();
 
@@ -998,14 +1015,14 @@ impl<'ctx> CodeGen<'ctx> {
         let rhs_end_bb = self.builder.get_insert_block().unwrap();
         self.builder
             .build_unconditional_branch(merge_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Merge
         self.builder.position_at_end(merge_bb);
         let phi = self
             .builder
             .build_phi(self.context.bool_type(), "or_result")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let true_val = self.context.bool_type().const_int(1, false);
         phi.add_incoming(&[(&true_val, lhs_end_bb), (&rhs_val, rhs_end_bb)]);
@@ -1018,7 +1035,7 @@ impl<'ctx> CodeGen<'ctx> {
         op: &BinOp,
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let args = [lhs.into(), rhs.into()];
         if matches!(op, BinOp::Eq | BinOp::NotEq) {
             // mesh_string_eq gives 1 when equal, 0 when not.
@@ -1034,7 +1051,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_int_compare(predicate, equal, zero, "str_eq_bool")
                 .map(Into::into)
-                .map_err(|e| e.to_string());
+                .map_err(Diagnostic::internal);
         }
         // mesh_string_compare gives -1, 0 or 1: compare that with zero.
         let order = self
@@ -1044,7 +1061,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_int_compare(int_predicate(op, true), order, zero, "str_ord")
             .map(Into::into)
-            .map_err(|e| e.to_string())
+            .map_err(Diagnostic::internal)
     }
 
     // ── Unary operations ─────────────────────────────────────────────
@@ -1054,7 +1071,7 @@ impl<'ctx> CodeGen<'ctx> {
         op: &UnaryOp,
         operand: &MirExpr,
         _ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let val = self.codegen_expr(operand)?;
         match op {
             // Lowering calls a user type's Neg impl; the hardware negates
@@ -1062,19 +1079,19 @@ impl<'ctx> CodeGen<'ctx> {
             UnaryOp::Neg if val.is_int_value() => Ok(self
                 .builder
                 .build_int_neg(val.into_int_value(), "neg")
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
                 .into()),
             UnaryOp::Neg => Ok(self
                 .builder
                 .build_float_neg(val.into_float_value(), "fneg")
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
                 .into()),
             UnaryOp::Not => {
                 let bool_val = val.into_int_value();
                 Ok(self
                     .builder
                     .build_not(bool_val, "not")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
                     .into())
             }
         }
@@ -1090,7 +1107,8 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         args: &[MirExpr],
         ty: &MirType,
-    ) -> Result<Option<BasicValueEnum<'ctx>>, String> {
+        at: Option<MirSourceSpan>,
+    ) -> Result<Option<BasicValueEnum<'ctx>>, Diagnostic> {
         let value = match name {
             "__mesh_uniform_decode" => {
                 let raw = self.codegen_expr(&args[0])?.into_int_value();
@@ -1110,8 +1128,8 @@ impl<'ctx> CodeGen<'ctx> {
             "mesh_node_connect" | "mesh_global_whereis" | "mesh_global_unregister" => {
                 self.codegen_node_string_call(args, name)?
             }
-            "mesh_node_spawn" => self.codegen_node_spawn(args, 0)?,
-            "mesh_node_spawn_link" => self.codegen_node_spawn(args, 1)?,
+            "mesh_node_spawn" => self.codegen_node_spawn(args, 0, at)?,
+            "mesh_node_spawn_link" => self.codegen_node_spawn(args, 1, at)?,
             "mesh_global_register" => self.codegen_global_register(args)?,
             // Strings compare by their bytes, not their pointers.
             "mesh_list_contains" if matches!(args[1].ty(), MirType::String) => {
@@ -1126,14 +1144,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_int_value();
                 self.builder
                     .build_int_truncate(found, self.context.bool_type(), "list_contains_bool")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
                     .into()
             }
             "mesh_int_to_float" => {
                 let int_val = self.codegen_expr(&args[0])?.into_int_value();
                 self.builder
                     .build_signed_int_to_float(int_val, self.context.f64_type(), "int_to_float")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
                     .into()
             }
             "mesh_float_to_int" => {
@@ -1177,16 +1195,16 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         overload: inkwell::types::BasicTypeEnum<'ctx>,
         args: &[BasicMetadataValueEnum<'ctx>],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let declaration = Intrinsic::find(name)
             .and_then(|intrinsic| intrinsic.get_declaration(&self.module, &[overload]))
-            .ok_or_else(|| format!("{name} not found"))?;
+            .ok_or_else(|| Diagnostic::internal(format!("{name} not found")))?;
         self.builder
             .build_call(declaration, args, name.trim_start_matches("llvm."))
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| format!("{name} returned void"))
+            .ok_or_else(|| Diagnostic::internal(format!("{name} returned void")))
     }
 
     /// `word`, what the runtime function `name` returned, as a value of type
@@ -1199,8 +1217,8 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         word: inkwell::values::IntValue<'ctx>,
         ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
-        let error = |e: inkwell::builder::BuilderError| e.to_string();
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
+        let error = |e: inkwell::builder::BuilderError| Diagnostic::internal(e);
         Ok(match ty {
             MirType::Bool => self
                 .builder
@@ -1243,9 +1261,10 @@ impl<'ctx> CodeGen<'ctx> {
         func: &MirExpr,
         args: &[MirExpr],
         ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+        at: Option<MirSourceSpan>,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         if let MirExpr::Var(name, _) = func {
-            if let Some(value) = self.codegen_builtin_call(name, args, ty)? {
+            if let Some(value) = self.codegen_builtin_call(name, args, ty, at)? {
                 return Ok(value);
             }
         }
@@ -1339,7 +1358,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let part = self
                         .builder
                         .build_extract_value(closure, index, name)
-                        .map_err(|e| e.to_string())?;
+                        .map_err(Diagnostic::internal)?;
                     arg_vals.push(part.into());
                 }
             } else {
@@ -1405,7 +1424,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let call = self
                     .builder
                     .build_call(fn_val, &coerced_args, "call")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
 
                 // Insert reduction check after function call
                 self.emit_reduction_check();
@@ -1417,7 +1436,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let result = call
                     .try_as_basic_value()
                     .basic()
-                    .ok_or_else(|| "Function call returned void".to_string())?;
+                    .ok_or_else(|| Diagnostic::internal("Function call returned void"))?;
 
                 // User function returning struct when MIR expects Ptr (e.g.,
                 // From conversion returning a struct that goes into Result's
@@ -1437,7 +1456,14 @@ impl<'ctx> CodeGen<'ctx> {
                         .get(2)
                         .and_then(MirExpr::var_name)
                         .and_then(|name| self.fn_item(name))
-                        .ok_or("Jobs.start requires a named handler")?;
+                        .ok_or_else(|| {
+                            self.diagnostic_at(
+                                at,
+                                Code::InvalidJobsStart,
+                                "`Jobs.start` needs a named handler",
+                                "the handler is not a named function",
+                            )
+                        })?;
                     let symbol = handler.get_name().to_string_lossy().into_owned();
                     self.jobs_handlers.insert(symbol, handler);
                 }
@@ -1446,7 +1472,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let call = self
                     .builder
                     .build_call(fn_val, &coerced_args, "call")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
 
                 if matches!(ty, MirType::Unit) {
                     return Ok(self.context.struct_type(&[], false).const_zero().into());
@@ -1455,7 +1481,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let result = call
                     .try_as_basic_value()
                     .basic()
-                    .ok_or_else(|| "Function call returned void".to_string())?;
+                    .ok_or_else(|| Diagnostic::internal("Function call returned void"))?;
                 return match result {
                     BasicValueEnum::IntValue(word) => self.runtime_word_as(name, word, ty),
                     // A scalar handed back as a pointer-sized word
@@ -1469,7 +1495,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let word = self
                             .builder
                             .build_ptr_to_int(word, self.context.i64_type(), "word")
-                            .map_err(|e| e.to_string())?;
+                            .map_err(Diagnostic::internal)?;
                         self.runtime_word_as(name, word, ty)
                     }
                     other => Ok(other),
@@ -1493,14 +1519,14 @@ impl<'ctx> CodeGen<'ctx> {
         let call = self
             .builder
             .build_indirect_call(fn_type, fn_ptr.into_pointer_value(), &arg_vals, "icall")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Insert reduction check after indirect call
         self.emit_reduction_check();
 
         call.try_as_basic_value()
             .basic()
-            .ok_or_else(|| "Indirect call returned void".to_string())
+            .ok_or_else(|| Diagnostic::internal("Indirect call returned void"))
     }
 
     // ── Closure calls ────────────────────────────────────────────────
@@ -1510,7 +1536,7 @@ impl<'ctx> CodeGen<'ctx> {
         closure: &MirExpr,
         args: &[MirExpr],
         ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let closure_val = self.codegen_expr(closure)?;
         let closure_ty = closure_type(self.context);
 
@@ -1518,16 +1544,16 @@ impl<'ctx> CodeGen<'ctx> {
         let closure_alloca = self
             .builder
             .build_alloca(closure_ty, "closure_tmp")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(closure_alloca, closure_val)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Load fn_ptr (field 0)
         let fn_ptr_ptr = self
             .builder
             .build_struct_gep(closure_ty, closure_alloca, 0, "fn_ptr_ptr")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let fn_ptr = self
             .builder
             .build_load(
@@ -1535,13 +1561,13 @@ impl<'ctx> CodeGen<'ctx> {
                 fn_ptr_ptr,
                 "fn_ptr",
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Load env_ptr (field 1)
         let env_ptr_ptr = self
             .builder
             .build_struct_gep(closure_ty, closure_alloca, 1, "env_ptr_ptr")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let env_ptr = self
             .builder
             .build_load(
@@ -1549,7 +1575,7 @@ impl<'ctx> CodeGen<'ctx> {
                 env_ptr_ptr,
                 "env_ptr",
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         let fn_ptr = fn_ptr.into_pointer_value();
@@ -1592,10 +1618,10 @@ impl<'ctx> CodeGen<'ctx> {
         let is_bare = self
             .builder
             .build_is_null(env_ptr, "env_is_null")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_conditional_branch(is_bare, bare_bb, closure_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         self.builder.position_at_end(bare_bb);
         let bare_call = self
@@ -1606,10 +1632,10 @@ impl<'ctx> CodeGen<'ctx> {
                 &user_args,
                 "fncall",
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_unconditional_branch(merge_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         self.builder.position_at_end(closure_bb);
         let mut closure_param_types = vec![ptr_ty.into()];
@@ -1624,10 +1650,10 @@ impl<'ctx> CodeGen<'ctx> {
                 &closure_args,
                 "clscall",
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_unconditional_branch(merge_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         self.builder.position_at_end(merge_bb);
         if matches!(ty, MirType::Unit) {
@@ -1639,12 +1665,12 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .basic()
             .zip(closure_call.try_as_basic_value().basic())
-            .ok_or("Closure call returned void")?;
+            .ok_or_else(|| Diagnostic::internal("Closure call returned void"))?;
         // The phi has to lead its block, so the reduction check follows it.
         let result = self
             .builder
             .build_phi(ret_ty, "fn_value_result")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         result.add_incoming(&[(&bare_val, bare_bb), (&closure_val, closure_bb)]);
         self.emit_reduction_check();
         Ok(result.as_basic_value())
@@ -1658,7 +1684,7 @@ impl<'ctx> CodeGen<'ctx> {
         then_body: &MirExpr,
         else_body: &MirExpr,
         ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let fn_val = self.current_function();
         let cond_val = self.codegen_expr(cond)?.into_int_value();
 
@@ -1667,7 +1693,7 @@ impl<'ctx> CodeGen<'ctx> {
         let cond_i1 = if cond_val.get_type().get_bit_width() != 1 {
             self.builder
                 .build_int_truncate(cond_val, self.context.bool_type(), "cond_i1")
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
         } else {
             cond_val
         };
@@ -1677,7 +1703,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result_alloca = self
             .builder
             .build_alloca(result_ty, "if_result")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let then_bb = self.context.append_basic_block(fn_val, "then");
         let else_bb = self.context.append_basic_block(fn_val, "else");
@@ -1685,7 +1711,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder
             .build_conditional_branch(cond_i1, then_bb, else_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Then branch
         self.builder.position_at_end(then_bb);
@@ -1696,10 +1722,10 @@ impl<'ctx> CodeGen<'ctx> {
             let then_val = self.coerce_value_to_type(then_val, result_ty)?;
             self.builder
                 .build_store(result_alloca, then_val)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_unconditional_branch(merge_bb)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         // Else branch
@@ -1709,10 +1735,10 @@ impl<'ctx> CodeGen<'ctx> {
             let else_val = self.coerce_value_to_type(else_val, result_ty)?;
             self.builder
                 .build_store(result_alloca, else_val)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_unconditional_branch(merge_bb)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         self.merged_value(merge_bb, result_ty, result_alloca, "if_val")
@@ -1728,25 +1754,25 @@ impl<'ctx> CodeGen<'ctx> {
         ty: inkwell::types::BasicTypeEnum<'ctx>,
         slot: PointerValue<'ctx>,
         name: &str,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         self.builder.position_at_end(merge_bb);
         if merge_bb.get_first_use().is_none() {
             self.builder
                 .build_unreachable()
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             return Ok(ty.const_zero());
         }
         self.builder
             .build_load(ty, slot, name)
-            .map_err(|e| e.to_string())
+            .map_err(Diagnostic::internal)
     }
 
     /// A call of type Never does not return: its block ends there.
-    fn end_after_never(&self, ty: &MirType) -> Result<(), String> {
+    fn end_after_never(&self, ty: &MirType) -> Result<(), Diagnostic> {
         if *ty == MirType::Never && self.block_is_open() {
             self.builder
                 .build_unreachable()
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
         Ok(())
     }
@@ -1759,7 +1785,7 @@ impl<'ctx> CodeGen<'ctx> {
         ty: &MirType,
         value: &MirExpr,
         body: &MirExpr,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let val = self.codegen_expr(value)?;
         // A runtime function returns a struct or sum value (a `MeshResult`
         // from `mesh_file_read`, a nested struct from `from_json`) as a
@@ -1768,7 +1794,7 @@ impl<'ctx> CodeGen<'ctx> {
             if matches!(ty, MirType::SumType(_) | MirType::Struct(_)) && val.is_pointer_value() {
                 self.builder
                     .build_load(self.llvm_type(ty), val.into_pointer_value(), "deref_sum")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             } else {
                 val
             };
@@ -1780,7 +1806,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Block expression ─────────────────────────────────────────────
 
-    fn codegen_block(&mut self, exprs: &[MirExpr]) -> Result<BasicValueEnum<'ctx>, String> {
+    fn codegen_block(&mut self, exprs: &[MirExpr]) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let mut result = self.context.struct_type(&[], false).const_zero().into();
         for expr in exprs {
             // What follows a `break`, `continue`, `return` or panic never runs.
@@ -1799,7 +1825,7 @@ impl<'ctx> CodeGen<'ctx> {
         scrutinee: &MirExpr,
         arms: &[MirMatchArm],
         ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // `case (a, b) do (0, y) -> .. end` (and a clause function's
         // parameters) match the values as columns, without building the tuple.
         if let MirExpr::Call { func, args, .. } = scrutinee {
@@ -1829,10 +1855,10 @@ impl<'ctx> CodeGen<'ctx> {
             let alloca = self
                 .builder
                 .build_alloca(scrutinee_llvm_ty, "scrutinee")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_store(alloca, scrutinee_val)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             alloca
         };
 
@@ -1845,7 +1871,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result_alloca = self
             .builder
             .build_alloca(result_ty, "match_result")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let fn_val = self.current_function();
         let merge_bb = self.context.append_basic_block(fn_val, "match_merge");
@@ -1873,14 +1899,14 @@ impl<'ctx> CodeGen<'ctx> {
         values: &[MirExpr],
         arms: &[MirMatchArm],
         ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let column_types: Vec<MirType> = values.iter().map(|value| value.ty().clone()).collect();
         let scrutinee_ty = MirType::Tuple(column_types.clone());
         let struct_ty = self.llvm_type(&scrutinee_ty).into_struct_type();
         let scrutinee_alloca = self
             .builder
             .build_alloca(struct_ty, "columns")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         for (index, (value, column_ty)) in values.iter().zip(&column_types).enumerate() {
             let value = self.codegen_expr(value)?;
             // A runtime function returns an Option or a Result as a pointer
@@ -1891,17 +1917,17 @@ impl<'ctx> CodeGen<'ctx> {
             let value = if value.is_pointer_value() && !column_llvm.is_pointer_type() {
                 self.builder
                     .build_load(column_llvm, value.into_pointer_value(), "column_value")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             } else {
                 value
             };
             let slot = self
                 .builder
                 .build_struct_gep(struct_ty, scrutinee_alloca, index as u32, "column")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_store(slot, value)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         let fn_name = self.current_function_name();
@@ -1911,7 +1937,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result_alloca = self
             .builder
             .build_alloca(result_ty, "match_result")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let merge_bb = self
             .context
             .append_basic_block(self.current_function(), "match_merge");
@@ -1938,16 +1964,16 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         name: &str,
         fields: &[(String, MirExpr)],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let (struct_ty, declared) = self.struct_layout(&MirType::Struct(name.to_string()));
 
         let alloca = self
             .builder
             .build_alloca(struct_ty, "struct_lit")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(alloca, struct_ty.const_zero())
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         for (field_name, field_expr) in fields {
             let val = self.codegen_expr(field_expr)?;
@@ -1958,16 +1984,16 @@ impl<'ctx> CodeGen<'ctx> {
             let field_ptr = self
                 .builder
                 .build_struct_gep(struct_ty, alloca, index as u32, "field_ptr")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_store(field_ptr, val)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         let result = self
             .builder
             .build_load(struct_ty.as_basic_type_enum(), alloca, "struct_val")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         Ok(result)
     }
@@ -1992,7 +2018,7 @@ impl<'ctx> CodeGen<'ctx> {
         overrides: &[(String, MirExpr)],
         resource_overrides: &[MirResourceField],
         ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let (_, field_defs) = self.struct_layout(ty);
         let base_val = self.codegen_expr(base)?.into_struct_value();
         let mut updated = base_val;
@@ -2007,13 +2033,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let old_value = self
                     .builder
                     .build_extract_value(base_val, index, "old_resource")
-                    .map_err(|error| error.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.codegen_field_destructor(old_value, resource);
             }
             updated = self
                 .builder
                 .build_insert_value(updated, replacement, index, "struct_update")
-                .map_err(|error| error.to_string())?
+                .map_err(Diagnostic::internal)?
                 .into_struct_value();
         }
         Ok(updated.into())
@@ -2026,32 +2052,34 @@ impl<'ctx> CodeGen<'ctx> {
         object: &MirExpr,
         field: &str,
         ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let obj_val = self.codegen_expr(object)?;
         let (struct_ty, fields) = self.struct_layout(object.ty());
         let field_idx = fields
             .iter()
             .position(|(name, _)| name == field)
-            .ok_or_else(|| format!("no field `{field}` in {:?}", object.ty()))?;
+            .ok_or_else(|| {
+                Diagnostic::internal(format!("no field `{field}` in {:?}", object.ty()))
+            })?;
 
         let alloca = self
             .builder
             .build_alloca(struct_ty.as_basic_type_enum(), "obj_tmp")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(alloca, obj_val)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let field_ptr = self
             .builder
             .build_struct_gep(struct_ty, alloca, field_idx as u32, "field_ptr")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let result_ty = self.llvm_type(ty);
         let result = self
             .builder
             .build_load(result_ty, field_ptr, "field_val")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         Ok(result)
     }
@@ -2063,22 +2091,24 @@ impl<'ctx> CodeGen<'ctx> {
         type_name: &str,
         variant: &str,
         fields: &[MirExpr],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let sum_layout = self
             .lookup_sum_type_layout(type_name)
-            .ok_or_else(|| format!("Unknown sum type '{}'", type_name))?;
+            .ok_or_else(|| Diagnostic::internal(format!("Unknown sum type '{}'", type_name)))?;
         let sum_layout = *sum_layout;
 
         let sum_def = self
             .lookup_sum_type_def(type_name)
-            .ok_or_else(|| format!("Unknown sum type def '{}'", type_name))?
+            .ok_or_else(|| Diagnostic::internal(format!("Unknown sum type def '{}'", type_name)))?
             .clone();
 
         let variant_def = sum_def
             .variants
             .iter()
             .find(|v| v.name == variant)
-            .ok_or_else(|| format!("Unknown variant '{}.{}'", type_name, variant))?;
+            .ok_or_else(|| {
+                Diagnostic::internal(format!("Unknown variant '{}.{}'", type_name, variant))
+            })?;
 
         let tag = variant_def.tag;
 
@@ -2086,16 +2116,16 @@ impl<'ctx> CodeGen<'ctx> {
         let alloca = self
             .builder
             .build_alloca(sum_layout.as_basic_type_enum(), "variant")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Store the tag at field 0
         let tag_ptr = self
             .builder
             .build_struct_gep(sum_layout, alloca, 0, "tag_ptr")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(tag_ptr, self.context.i8_type().const_int(tag as u64, false))
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Store fields: create variant overlay struct type and GEP into it
         if !fields.is_empty() {
@@ -2128,10 +2158,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let field_ptr = self
                     .builder
                     .build_struct_gep(variant_ty, alloca, (i + 1) as u32, "vfield_ptr")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.builder
                     .build_store(field_ptr, val)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
             }
         }
 
@@ -2139,7 +2169,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self
             .builder
             .build_load(sum_layout.as_basic_type_enum(), alloca, "variant_val")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         Ok(result)
     }
@@ -2151,12 +2181,12 @@ impl<'ctx> CodeGen<'ctx> {
         &self,
         val: BasicValueEnum<'ctx>,
         name: &str,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let size = val.get_type().size_of().expect("a value's type has a size");
         let heap_ptr = self.gc_alloc(size, name);
         self.builder
             .build_store(heap_ptr, val)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         Ok(heap_ptr.into())
     }
 
@@ -2172,7 +2202,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         words: &[IntValue<'ctx>],
         name: &str,
-    ) -> Result<PointerValue<'ctx>, String> {
+    ) -> Result<PointerValue<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
         let buffer = self.gc_alloc(i64_ty.const_int(8 * words.len() as u64, false), name);
         for (index, &word) in words.iter().enumerate() {
@@ -2184,11 +2214,11 @@ impl<'ctx> CodeGen<'ctx> {
                         &[i64_ty.const_int(index as u64, false)],
                         "word",
                     )
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             };
             self.builder
                 .build_store(slot, word)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
         Ok(buffer)
     }
@@ -2203,7 +2233,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         args: &[BasicMetadataValueEnum<'ctx>],
         params: &[BasicMetadataTypeEnum<'ctx>],
-    ) -> Result<Vec<BasicMetadataValueEnum<'ctx>>, String> {
+    ) -> Result<Vec<BasicMetadataValueEnum<'ctx>>, Diagnostic> {
         let mut coerced = args.to_vec();
         for (arg, param) in coerced.iter_mut().zip(params) {
             *arg = self.coerce_argument(*arg, *param)?;
@@ -2215,10 +2245,10 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         arg: BasicMetadataValueEnum<'ctx>,
         param: BasicMetadataTypeEnum<'ctx>,
-    ) -> Result<BasicMetadataValueEnum<'ctx>, String> {
+    ) -> Result<BasicMetadataValueEnum<'ctx>, Diagnostic> {
         use BasicMetadataTypeEnum as Param;
         use BasicMetadataValueEnum as Arg;
-        let error = |e: inkwell::builder::BuilderError| e.to_string();
+        let error = |e: inkwell::builder::BuilderError| Diagnostic::internal(e);
         Ok(match (arg, param) {
             (Arg::IntValue(value), Param::IntType(param))
                 if value.get_type().get_bit_width() < param.get_bit_width() =>
@@ -2261,14 +2291,13 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         fn_name: &str,
         captures: &[MirExpr],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let cls_ty = closure_type(self.context);
 
         // Get the function pointer
-        let fn_val = self
-            .functions
-            .get(fn_name)
-            .ok_or_else(|| format!("Closure function '{}' not found", fn_name))?;
+        let fn_val = self.functions.get(fn_name).ok_or_else(|| {
+            Diagnostic::internal(format!("Closure function '{}' not found", fn_name))
+        })?;
         let fn_ptr = fn_val.as_global_value().as_pointer_value();
 
         // Allocate environment on GC heap.
@@ -2303,7 +2332,7 @@ impl<'ctx> CodeGen<'ctx> {
             if let Some(env_shape) = env_shape {
                 self.builder
                     .build_store(env_ptr_val, env_shape)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
             }
 
             // Store each captured value into the env struct
@@ -2312,10 +2341,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let field_ptr = self
                     .builder
                     .build_struct_gep(env_struct_ty, env_ptr_val, i as u32 + 1, "cap_ptr")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.builder
                     .build_store(field_ptr, val)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
             }
 
             env_ptr_val
@@ -2325,35 +2354,35 @@ impl<'ctx> CodeGen<'ctx> {
         let closure_alloca = self
             .builder
             .build_alloca(cls_ty, "closure")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let fn_slot = self
             .builder
             .build_struct_gep(cls_ty, closure_alloca, 0, "fn_slot")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(fn_slot, fn_ptr)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let env_slot = self
             .builder
             .build_struct_gep(cls_ty, closure_alloca, 1, "env_slot")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(env_slot, env_ptr)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let result = self
             .builder
             .build_load(cls_ty.as_basic_type_enum(), closure_alloca, "closure_val")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         Ok(result)
     }
 
     // ── Return ───────────────────────────────────────────────────────
 
-    fn codegen_return(&mut self, inner: &MirExpr) -> Result<BasicValueEnum<'ctx>, String> {
+    fn codegen_return(&mut self, inner: &MirExpr) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let val = self.codegen_expr(inner)?;
         // The value in the function's own return representation, as a
         // function's last expression is (`compile_function`).
@@ -2366,7 +2395,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder
             .build_return(Some(&return_val))
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         // Return a dummy value since we've already emitted a return
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
@@ -2380,7 +2409,8 @@ impl<'ctx> CodeGen<'ctx> {
         priority: u8,
         placement: SpawnPlacement,
         terminate_callback: Option<&MirExpr>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+        at: Option<MirSourceSpan>,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         let i64_ty = self.context.i64_type();
 
@@ -2389,18 +2419,18 @@ impl<'ctx> CodeGen<'ctx> {
         let entry_name = func
             .var_name()
             .expect("the type checker spawns an actor by its name (E0089)");
-        let entry = self
-            .fn_item(entry_name)
-            .ok_or_else(|| format!("unresolved spawn entry `{entry_name}`"))?;
+        let entry = self.fn_item(entry_name).ok_or_else(|| {
+            Diagnostic::internal(format!("unresolved spawn entry `{entry_name}`"))
+        })?;
         let fn_ptr = entry.as_global_value().as_pointer_value();
         let terminate = terminate_callback
             .map(|callback| {
                 let name = callback
                     .var_name()
-                    .ok_or("expected a named terminate callback")?;
-                self.module
-                    .get_function(name)
-                    .ok_or_else(|| format!("unresolved terminate callback `{name}`"))
+                    .ok_or_else(|| Diagnostic::internal("expected a named terminate callback"))?;
+                self.module.get_function(name).ok_or_else(|| {
+                    Diagnostic::internal(format!("unresolved terminate callback `{name}`"))
+                })
             })
             .transpose()?;
 
@@ -2444,11 +2474,15 @@ impl<'ctx> CodeGen<'ctx> {
                     &self.sum_type_layouts,
                 );
                 if terminate.is_some_and(|callback| callback.get_type() != expected) {
-                    return Err(format!(
+                    return Err(Diagnostic::internal(format!(
                         "invalid terminate callback signature for `{entry_name}`"
-                    ));
+                    )));
                 }
-                self.grouped_spawns.push(GroupedSpawn { entry, terminate });
+                self.grouped_spawns.push(GroupedSpawn {
+                    entry,
+                    terminate,
+                    at,
+                });
                 spawn_args.push(shape.unwrap_or_else(|| ptr_ty.const_null()).into());
                 let callback = terminate
                     .map(|callback| callback.as_global_value().as_pointer_value())
@@ -2497,7 +2531,7 @@ impl<'ctx> CodeGen<'ctx> {
             let set_terminate_fn = get_intrinsic(&self.module, "mesh_actor_set_terminate");
             self.builder
                 .build_call(set_terminate_fn, &[pid_val.into(), cb_ptr.into()], "")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         Ok(pid_val)
@@ -2507,7 +2541,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         target: &MirExpr,
         message: &MirExpr,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // Evaluate the target PID (i64).
         let target_val = self.codegen_expr(target)?.into_int_value();
 
@@ -2542,7 +2576,7 @@ impl<'ctx> CodeGen<'ctx> {
             inkwell::values::IntValue<'ctx>,
             Option<inkwell::values::PointerValue<'ctx>>,
         ),
-        String,
+        Diagnostic,
     > {
         let i64_ty = self.context.i64_type();
         if matches!(message.ty(), MirType::Unit) {
@@ -2557,10 +2591,10 @@ impl<'ctx> CodeGen<'ctx> {
         let msg_alloca = self
             .builder
             .build_alloca(msg_ty, "msg_buf")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(msg_alloca, value)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let size = self
             .target_machine
             .get_target_data()
@@ -2574,7 +2608,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         args: &[MirExpr],
         intrinsic_name: &str,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // The type checker gives each monitor its target and its message.
         let (target, message) = (&args[0], &args[1]);
         let target_val = self.codegen_expr(target)?;
@@ -2607,7 +2641,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         args: &[MirExpr],
         evaluated: &[BasicMetadataValueEnum<'ctx>],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // The caller has already evaluated the arguments. Evaluating them
         // again here ran the message expression, and its side effects, twice.
         let value = |index: usize| {
@@ -2633,7 +2667,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
         self.builder
             .build_call(get_intrinsic(&self.module, send_after_fn), &call_args, "")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Returns Unit.
         Ok(self.context.struct_type(&[], false).const_zero().into())
@@ -2654,7 +2688,7 @@ impl<'ctx> CodeGen<'ctx> {
             inkwell::values::PointerValue<'ctx>,
             inkwell::values::IntValue<'ctx>,
         ),
-        String,
+        Diagnostic,
     > {
         let i64_ty = self.context.i64_type();
         let string_ptr = string_val.into_pointer_value();
@@ -2663,7 +2697,7 @@ impl<'ctx> CodeGen<'ctx> {
         let len_val = self
             .builder
             .build_load(i64_ty, string_ptr, "str_len")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value();
 
         // Data pointer is string_ptr + 8 bytes (after the u64 len field).
@@ -2671,7 +2705,7 @@ impl<'ctx> CodeGen<'ctx> {
         let data_ptr = unsafe {
             self.builder
                 .build_gep(self.context.i8_type(), string_ptr, &[eight], "str_data")
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
         };
 
         Ok((data_ptr, len_val))
@@ -2681,7 +2715,7 @@ impl<'ctx> CodeGen<'ctx> {
     ///
     /// Unpacks two MeshString args into (ptr, len) pairs and calls
     /// mesh_node_start(name_ptr, name_len, cookie_ptr, cookie_len).
-    fn codegen_node_start(&mut self, args: &[MirExpr]) -> Result<BasicValueEnum<'ctx>, String> {
+    fn codegen_node_start(&mut self, args: &[MirExpr]) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let name_val = self.codegen_expr(&args[0])?;
         let cookie_val = self.codegen_expr(&args[1])?;
 
@@ -2707,7 +2741,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         args: &[MirExpr],
         intrinsic_name: &str,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let str_val = self.codegen_expr(&args[0])?;
         let (data_ptr, data_len) = self.codegen_unpack_string(str_val)?;
 
@@ -2725,7 +2759,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_global_register(
         &mut self,
         args: &[MirExpr],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // Unpack string argument (name)
         let str_val = self.codegen_expr(&args[0])?;
         let (name_ptr, name_len) = self.codegen_unpack_string(str_val)?;
@@ -2742,18 +2776,15 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Runtime `REMOTE_SPAWN_ARG_*` tag for a remotely transferable value type.
     /// Must stay in sync with the decoder in `mesh-rt/src/dist/node.rs`.
-    pub(crate) fn remote_spawn_arg_tag(&self, ty: &MirType) -> Result<u8, String> {
+    pub(crate) fn remote_spawn_arg_tag(&self, ty: &MirType) -> Option<u8> {
         match ty {
-            MirType::Int => Ok(1),
-            MirType::Float => Ok(2),
-            MirType::Bool => Ok(3),
-            MirType::String => Ok(4),
-            MirType::Pid(_) => Ok(5),
-            MirType::Unit => Ok(6),
-            other => Err(format!(
-                "Node.spawn does not yet support remote argument type {}",
-                other
-            )),
+            MirType::Int => Some(1),
+            MirType::Float => Some(2),
+            MirType::Bool => Some(3),
+            MirType::String => Some(4),
+            MirType::Pid(_) => Some(5),
+            MirType::Unit => Some(6),
+            _ => None,
         }
     }
 
@@ -2770,7 +2801,8 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         args: &[MirExpr],
         link_flag: u8,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+        at: Option<MirSourceSpan>,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
         let i8_ty = self.context.i8_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
@@ -2785,12 +2817,14 @@ impl<'ctx> CodeGen<'ctx> {
             MirExpr::Var(name, MirType::FnPtr(params, _) | MirType::Closure(params, _)) => {
                 (name.clone(), params.clone())
             }
-            _ => {
-                return Err(
-                    "Node.spawn needs a function defined at the top level: the remote node \
-                     starts it by name"
-                        .to_string(),
-                )
+            closure => {
+                return Err(self.diagnostic_at(
+                    closure.source_span().or(at),
+                    Code::NodeSpawnArgument,
+                    "`Node.spawn` needs a function defined at the top level: the remote node \
+                     starts it by name",
+                    "not a top-level function",
+                ))
             }
         };
 
@@ -2798,7 +2832,7 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_name_global = self
             .builder
             .build_global_string_ptr(&fn_name, "spawn_fn_name")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let fn_name_len = i64_ty.const_int(fn_name.len() as u64, false);
 
         // args[2..] = actor arguments. Pack raw values into a u64 array (same as
@@ -2818,10 +2852,25 @@ impl<'ctx> CodeGen<'ctx> {
                 .enumerate()
                 .map(|(i, arg)| expected_arg_types.get(i).unwrap_or(arg.ty()).clone())
                 .collect();
-            let arg_tags: Vec<u8> = arg_types
+            let arg_tags = spawn_args
                 .iter()
-                .map(|ty| self.remote_spawn_arg_tag(ty))
-                .collect::<Result<Vec<_>, _>>()?;
+                .zip(&arg_types)
+                .enumerate()
+                .map(|(index, (arg, ty))| {
+                    self.remote_spawn_arg_tag(ty).ok_or_else(|| {
+                        self.diagnostic_at(
+                            arg.source_span().or(at),
+                            Code::NodeSpawnArgument,
+                            format!(
+                                "argument {} of the actor `Node.spawn` starts cannot cross to \
+                                 another node",
+                                index + 1
+                            ),
+                            "not an `Int`, `Float`, `Bool`, `String`, `Pid`, or `()`",
+                        )
+                    })
+                })
+                .collect::<Result<Vec<u8>, _>>()?;
             // Each argument as its raw word, the way a list slot holds it.
             let mut arg_vals = Vec::with_capacity(spawn_args.len());
             for (arg, ty) in spawn_args.iter().zip(&arg_types) {
@@ -2838,10 +2887,10 @@ impl<'ctx> CodeGen<'ctx> {
             let tag_buf_ptr = self
                 .builder
                 .build_alloca(tags.get_type(), "spawn_arg_tags")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_store(tag_buf_ptr, tags)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
 
             (
                 buffer,
@@ -2878,7 +2927,7 @@ impl<'ctx> CodeGen<'ctx> {
         timeout_ms: Option<&MirExpr>,
         timeout_body: Option<&MirExpr>,
         result_ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
 
         // Evaluate timeout: -1 for infinite wait, or the specified value.
@@ -2893,7 +2942,7 @@ impl<'ctx> CodeGen<'ctx> {
             let wait = get_intrinsic(&self.module, "mesh_actor_wait_timeout");
             self.builder
                 .build_call(wait, &[timeout_val.into()], "")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             return self.codegen_expr(body);
         }
 
@@ -2910,11 +2959,11 @@ impl<'ctx> CodeGen<'ctx> {
             let slot = self
                 .builder
                 .build_alloca(i64_ty, "recv_scalar")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             slot.as_instruction_value()
                 .unwrap()
                 .set_alignment(8)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.codegen_runtime_call(
                 "mesh_actor_receive_scalar",
                 &[
@@ -2938,7 +2987,7 @@ impl<'ctx> CodeGen<'ctx> {
             let result_alloca = self
                 .builder
                 .build_alloca(result_llvm_ty, "recv_result")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
 
             let timeout_bb = self.context.append_basic_block(fn_val, "timeout_bb");
             let msg_bb = self.context.append_basic_block(fn_val, "msg_bb");
@@ -2948,10 +2997,10 @@ impl<'ctx> CodeGen<'ctx> {
             let is_null = self
                 .builder
                 .build_is_null(msg_ptr, "msg_is_null")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_conditional_branch(is_null, timeout_bb, msg_bb)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
 
             // timeout_bb: execute the timeout body expression.
             self.builder.position_at_end(timeout_bb);
@@ -2959,10 +3008,10 @@ impl<'ctx> CodeGen<'ctx> {
             if self.block_is_open() {
                 self.builder
                     .build_store(result_alloca, timeout_val)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.builder
                     .build_unconditional_branch(recv_merge_bb)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
             }
 
             // msg_bb: process the received message (existing logic).
@@ -2971,10 +3020,10 @@ impl<'ctx> CodeGen<'ctx> {
             if self.block_is_open() {
                 self.builder
                     .build_store(result_alloca, msg_result)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.builder
                     .build_unconditional_branch(recv_merge_bb)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
             }
 
             self.merged_value(recv_merge_bb, result_llvm_ty, result_alloca, "recv_val")
@@ -2985,18 +3034,18 @@ impl<'ctx> CodeGen<'ctx> {
             let empty = self
                 .builder
                 .build_is_null(msg_ptr, "receive_empty")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_conditional_branch(empty, stopped, received)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder.position_at_end(stopped);
             let stop = get_intrinsic(&self.module, "mesh_actor_stop");
             self.builder
                 .build_call(stop, &[], "")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_unreachable()
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder.position_at_end(received);
             self.codegen_recv_handler(handler, msg_ptr, result_ty, scalar_ty)
         }
@@ -3008,7 +3057,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         msg_ptr: inkwell::values::PointerValue<'ctx>,
         result_ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
 
@@ -3021,7 +3070,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &[i64_ty.const_int(16, false)],
                     "data_ptr",
                 )
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
         };
 
         // Load the message data as the expected type.
@@ -3029,23 +3078,23 @@ impl<'ctx> CodeGen<'ctx> {
             MirType::Int => self
                 .builder
                 .build_load(i64_ty, data_ptr, "msg_int")
-                .map_err(|e| e.to_string())?,
+                .map_err(Diagnostic::internal)?,
             MirType::Float => self
                 .builder
                 .build_load(self.context.f64_type(), data_ptr, "msg_float")
-                .map_err(|e| e.to_string())?,
+                .map_err(Diagnostic::internal)?,
             MirType::Bool => self
                 .builder
                 .build_load(self.context.i8_type(), data_ptr, "msg_bool")
-                .map_err(|e| e.to_string())?,
+                .map_err(Diagnostic::internal)?,
             MirType::String => self
                 .builder
                 .build_load(ptr_ty, data_ptr, "msg_string")
-                .map_err(|e| e.to_string())?,
+                .map_err(Diagnostic::internal)?,
             _ => self
                 .builder
                 .build_load(i64_ty, data_ptr, "msg_data")
-                .map_err(|e| e.to_string())?,
+                .map_err(Diagnostic::internal)?,
         };
 
         Ok(msg_val)
@@ -3064,7 +3113,7 @@ impl<'ctx> CodeGen<'ctx> {
         msg_ptr: inkwell::values::PointerValue<'ctx>,
         ty: &MirType,
         msg_val: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         if matches!(ty, MirType::Unit | MirType::Never) {
             return Ok(msg_val);
         }
@@ -3084,12 +3133,12 @@ impl<'ctx> CodeGen<'ctx> {
             let data_ptr = unsafe {
                 self.builder
                     .build_gep(i8_ty, msg_ptr, &[i64_ty.const_int(16, false)], "msg_word")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             };
             return self
                 .builder
                 .build_load(llvm_ty, data_ptr, "msg_value")
-                .map_err(|e| e.to_string());
+                .map_err(Diagnostic::internal);
         }
 
         // Message layout: [u64 type_tag][u64 data_len][data...]
@@ -3097,41 +3146,41 @@ impl<'ctx> CodeGen<'ctx> {
             (
                 self.builder
                     .build_gep(i8_ty, msg_ptr, &[i64_ty.const_int(8, false)], "len_ptr")
-                    .map_err(|e| e.to_string())?,
+                    .map_err(Diagnostic::internal)?,
                 self.builder
                     .build_gep(i8_ty, msg_ptr, &[i64_ty.const_int(16, false)], "wide_ptr")
-                    .map_err(|e| e.to_string())?,
+                    .map_err(Diagnostic::internal)?,
             )
         };
         let delivered = self
             .builder
             .build_load(i64_ty, len_ptr, "data_len")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value();
         let wanted = i64_ty.const_int(size, false);
         let shorter = self
             .builder
             .build_int_compare(IntPredicate::ULT, delivered, wanted, "msg_is_short")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let copied = self
             .builder
             .build_select(shorter, delivered, wanted, "msg_bytes")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value();
 
         let wide = self
             .builder
             .build_alloca(llvm_ty, "msg_wide")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(wide, llvm_ty.const_zero())
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_memcpy(wide, 8, data_ptr, 8, copied)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_load(llvm_ty, wide, "msg_value")
-            .map_err(|e| e.to_string())
+            .map_err(Diagnostic::internal)
     }
 
     /// Bind the received message to the handler's variable and run its
@@ -3142,11 +3191,11 @@ impl<'ctx> CodeGen<'ctx> {
         msg_ptr: inkwell::values::PointerValue<'ctx>,
         result_ty: &MirType,
         scalar_ty: Option<inkwell::types::BasicTypeEnum<'ctx>>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let msg_val = if let Some(ty) = scalar_ty {
             self.builder
                 .build_load(ty, msg_ptr, "msg_scalar")
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
         } else {
             let value = self.codegen_recv_load_message(msg_ptr, result_ty)?;
             match handler {
@@ -3160,10 +3209,10 @@ impl<'ctx> CodeGen<'ctx> {
         let alloca = self
             .builder
             .build_alloca(msg_val.get_type(), name)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(alloca, msg_val)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.locals.insert(name.clone(), alloca);
         self.codegen_expr(body)
     }
@@ -3176,7 +3225,7 @@ impl<'ctx> CodeGen<'ctx> {
         op: &BinOp,
         l: inkwell::values::IntValue<'ctx>,
         r: inkwell::values::IntValue<'ctx>,
-    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+    ) -> Result<inkwell::values::IntValue<'ctx>, Diagnostic> {
         let int_ty = r.get_type();
         let function = self.current_function();
         let zero_bb = self.context.append_basic_block(function, "div_by_zero");
@@ -3184,10 +3233,10 @@ impl<'ctx> CodeGen<'ctx> {
         let is_zero = self
             .builder
             .build_int_compare(IntPredicate::EQ, r, int_ty.const_zero(), "div_is_zero")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_conditional_branch(is_zero, zero_bb, ok_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         self.builder.position_at_end(zero_bb);
         self.codegen_panic("division by zero", &self.current_function_name(), 0)?;
@@ -3197,33 +3246,33 @@ impl<'ctx> CodeGen<'ctx> {
         let is_minus_one = self
             .builder
             .build_int_compare(IntPredicate::EQ, r, minus_one, "div_by_minus_one")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let divisor = self
             .builder
             .build_select(is_minus_one, int_ty.const_int(1, false), r, "divisor")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value();
         let (value, by_minus_one) = if matches!(op, BinOp::Div) {
             let quotient = self
                 .builder
                 .build_int_signed_div(l, divisor, "div")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             let negated = self
                 .builder
                 .build_int_sub(int_ty.const_zero(), l, "div_neg")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             (quotient, negated)
         } else {
             let remainder = self
                 .builder
                 .build_int_signed_rem(l, divisor, "mod")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             (remainder, int_ty.const_zero())
         };
         Ok(self
             .builder
             .build_select(is_minus_one, by_minus_one, value, "div_result")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value())
     }
 
@@ -3234,8 +3283,9 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         value: inkwell::values::FloatValue<'ctx>,
         name: &str,
-    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
-        let intrinsic = Intrinsic::find("llvm.fptosi.sat").ok_or("llvm.fptosi.sat not found")?;
+    ) -> Result<inkwell::values::IntValue<'ctx>, Diagnostic> {
+        let intrinsic = Intrinsic::find("llvm.fptosi.sat")
+            .ok_or_else(|| Diagnostic::internal("llvm.fptosi.sat not found"))?;
         let decl = intrinsic
             .get_declaration(
                 &self.module,
@@ -3244,22 +3294,22 @@ impl<'ctx> CodeGen<'ctx> {
                     self.context.f64_type().into(),
                 ],
             )
-            .ok_or("Failed to get llvm.fptosi.sat declaration")?;
+            .ok_or_else(|| Diagnostic::internal("Failed to get llvm.fptosi.sat declaration"))?;
         Ok(self
             .builder
             .build_call(decl, &[value.into()], name)
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .try_as_basic_value()
             .basic()
-            .ok_or("fptosi.sat returned void")?
+            .ok_or_else(|| Diagnostic::internal("fptosi.sat returned void"))?
             .into_int_value())
     }
 
-    fn codegen_actor_self(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+    fn codegen_actor_self(&mut self) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         Ok(self.codegen_runtime_call("mesh_actor_self", &[], "self_pid"))
     }
 
-    fn codegen_actor_link(&mut self, target: &MirExpr) -> Result<BasicValueEnum<'ctx>, String> {
+    fn codegen_actor_link(&mut self, target: &MirExpr) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // Evaluate the target PID.
         let target_val = self.codegen_expr(target)?.into_int_value();
 
@@ -3267,7 +3317,7 @@ impl<'ctx> CodeGen<'ctx> {
         let link_fn = get_intrinsic(&self.module, "mesh_actor_link");
         self.builder
             .build_call(link_fn, &[target_val.into()], "")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Link returns Unit.
         Ok(self.context.struct_type(&[], false).const_zero().into())
@@ -3280,7 +3330,7 @@ impl<'ctx> CodeGen<'ctx> {
         cond: &MirExpr,
         body: &MirExpr,
         _ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let fn_val = self.current_function();
 
         // Create basic blocks: cond_check, body, merge
@@ -3294,14 +3344,14 @@ impl<'ctx> CodeGen<'ctx> {
         // Branch from current block to cond_check
         self.builder
             .build_unconditional_branch(cond_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // -- Condition check block --
         self.builder.position_at_end(cond_bb);
         let cond_val = self.codegen_expr(cond)?.into_int_value();
         self.builder
             .build_conditional_branch(cond_val, body_bb, merge_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // -- Body block --
         self.builder.position_at_end(body_bb);
@@ -3313,7 +3363,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.emit_reduction_check();
             self.builder
                 .build_unconditional_branch(cond_bb)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         // Pop loop context
@@ -3335,7 +3385,7 @@ impl<'ctx> CodeGen<'ctx> {
         end_expr: &MirExpr,
         filter: Option<&MirExpr>,
         body: &MirExpr,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let start = self.codegen_expr(start_expr)?.into_int_value();
         let end = self.codegen_expr(end_expr)?.into_int_value();
         // The list holds max(0, end - start) values.
@@ -3343,15 +3393,15 @@ impl<'ctx> CodeGen<'ctx> {
         let diff = self
             .builder
             .build_int_sub(end, start, "range_diff")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let is_positive = self
             .builder
             .build_int_compare(IntPredicate::SGT, diff, zero, "is_positive")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let range_len = self
             .builder
             .build_select(is_positive, diff, zero, "range_len")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value();
         self.codegen_indexed_comprehension(
             (start, end),
@@ -3378,10 +3428,10 @@ impl<'ctx> CodeGen<'ctx> {
         vars: &[(&str, &MirType)],
         filter: Option<&MirExpr>,
         body: &MirExpr,
-        header: impl FnOnce(&mut Self, BasicBlock<'ctx>, BasicBlock<'ctx>) -> Result<T, String>,
-        element: impl FnOnce(&mut Self, T) -> Result<Vec<BasicValueEnum<'ctx>>, String>,
-        advance: impl FnOnce(&mut Self) -> Result<(), String>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+        header: impl FnOnce(&mut Self, BasicBlock<'ctx>, BasicBlock<'ctx>) -> Result<T, Diagnostic>,
+        element: impl FnOnce(&mut Self, T) -> Result<Vec<BasicValueEnum<'ctx>>, Diagnostic>,
+        advance: impl FnOnce(&mut Self) -> Result<(), Diagnostic>,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let fn_val = self.current_function();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         // The list builder moves when it grows, so it lives in a slot.
@@ -3390,10 +3440,10 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self
             .builder
             .build_alloca(ptr_ty, "result_alloca")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(result, list)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         let header_bb = self.context.append_basic_block(fn_val, "forin_header");
         let body_bb = self.context.append_basic_block(fn_val, "forin_body");
@@ -3401,7 +3451,7 @@ impl<'ctx> CodeGen<'ctx> {
         let merge_bb = self.context.append_basic_block(fn_val, "forin_merge");
         self.builder
             .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder.position_at_end(header_bb);
         let current = header(self, body_bb, merge_bb)?;
 
@@ -3417,7 +3467,7 @@ impl<'ctx> CodeGen<'ctx> {
             let keep_bb = self.context.append_basic_block(fn_val, "forin_do_body");
             self.builder
                 .build_conditional_branch(keep, keep_bb, latch_bb)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder.position_at_end(keep_bb);
         }
         let value = self.codegen_expr(body)?;
@@ -3427,7 +3477,7 @@ impl<'ctx> CodeGen<'ctx> {
             let list = self
                 .builder
                 .build_load(ptr_ty, result, "res_list")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             let pushed = self.codegen_runtime_call(
                 "mesh_list_builder_push",
                 &[list.into(), value.into()],
@@ -3435,10 +3485,10 @@ impl<'ctx> CodeGen<'ctx> {
             );
             self.builder
                 .build_store(result, pushed)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_unconditional_branch(latch_bb)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
         self.loop_stack.pop();
         self.restore_locals(saved);
@@ -3448,12 +3498,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.emit_reduction_check();
         self.builder
             .build_unconditional_branch(header_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         self.builder.position_at_end(merge_bb);
         self.builder
             .build_load(ptr_ty, result, "forin_result")
-            .map_err(|e| e.to_string())
+            .map_err(Diagnostic::internal)
     }
 
     /// A for-in loop over the indexes from `start` up to `end`: `element`
@@ -3465,16 +3515,16 @@ impl<'ctx> CodeGen<'ctx> {
         vars: &[(&str, &MirType)],
         filter: Option<&MirExpr>,
         body: &MirExpr,
-        element: impl FnOnce(&mut Self, IntValue<'ctx>) -> Result<Vec<BasicValueEnum<'ctx>>, String>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+        element: impl FnOnce(&mut Self, IntValue<'ctx>) -> Result<Vec<BasicValueEnum<'ctx>>, Diagnostic>,
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
         let counter = self
             .builder
             .build_alloca(i64_ty, "forin_counter")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(counter, start)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.codegen_comprehension(
             capacity,
             vars,
@@ -3484,15 +3534,15 @@ impl<'ctx> CodeGen<'ctx> {
                 let index = cg
                     .builder
                     .build_load(i64_ty, counter, "idx")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
                     .into_int_value();
                 let more = cg
                     .builder
                     .build_int_compare(IntPredicate::SLT, index, end, "forin_cmp")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 cg.builder
                     .build_conditional_branch(more, body_bb, merge_bb)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 Ok(index)
             },
             element,
@@ -3500,48 +3550,48 @@ impl<'ctx> CodeGen<'ctx> {
                 let index = cg
                     .builder
                     .build_load(i64_ty, counter, "idx_latch")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
                     .into_int_value();
                 let next = cg
                     .builder
                     .build_int_add(index, i64_ty.const_int(1, false), "idx_next")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 cg.builder
                     .build_store(counter, next)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 Ok(())
             },
         )
     }
 
-    fn codegen_break(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+    fn codegen_break(&mut self) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let (_, merge_bb) = self
             .loop_stack
             .last()
             .copied()
-            .ok_or_else(|| "break outside loop".to_string())?;
+            .ok_or_else(|| Diagnostic::internal("break outside loop"))?;
 
         self.builder
             .build_unconditional_branch(merge_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Return a dummy Unit value (unreachable code after break)
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
 
-    fn codegen_continue(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+    fn codegen_continue(&mut self) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let (cond_bb, _) = self
             .loop_stack
             .last()
             .copied()
-            .ok_or_else(|| "continue outside loop".to_string())?;
+            .ok_or_else(|| Diagnostic::internal("continue outside loop"))?;
 
         // Continue is also a back-edge -- emit reduction check
         self.emit_reduction_check();
 
         self.builder
             .build_unconditional_branch(cond_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Return a dummy Unit value (unreachable code after continue)
         Ok(self.context.struct_type(&[], false).const_zero().into())
@@ -3556,7 +3606,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn coerce_to_i64(
         &mut self,
         val: BasicValueEnum<'ctx>,
-    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+    ) -> Result<inkwell::values::IntValue<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
         let BasicValueEnum::StructValue(sv) = val else {
             return Ok(self
@@ -3572,23 +3622,23 @@ impl<'ctx> CodeGen<'ctx> {
             return self
                 .builder
                 .build_ptr_to_int(boxed, i64_ty, "arg_box_to_i64")
-                .map_err(|e| e.to_string());
+                .map_err(Diagnostic::internal);
         }
         // Zeroed first: the bits are narrower than the word read back.
         let alloca = self
             .builder
             .build_alloca(i64_ty, "struct_tmp")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(alloca, i64_ty.const_zero())
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(alloca, sv)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         Ok(self
             .builder
             .build_load(i64_ty, alloca, "struct_to_i64")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value())
     }
 
@@ -3598,8 +3648,8 @@ impl<'ctx> CodeGen<'ctx> {
         word: inkwell::values::IntValue<'ctx>,
         ty: inkwell::types::BasicTypeEnum<'ctx>,
         name: &str,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
-        let error = |e: inkwell::builder::BuilderError| e.to_string();
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
+        let error = |e: inkwell::builder::BuilderError| Diagnostic::internal(e);
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         Ok(match ty {
             inkwell::types::BasicTypeEnum::IntType(int_ty) if int_ty.get_bit_width() < 64 => self
@@ -3697,7 +3747,7 @@ impl<'ctx> CodeGen<'ctx> {
         max_restarts: u32,
         max_seconds: u64,
         children: &[MirChildSpec],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
 
         // Build the binary config buffer for mesh_supervisor_start.
@@ -3783,7 +3833,7 @@ impl<'ctx> CodeGen<'ctx> {
         let config_alloca = self
             .builder
             .build_alloca(config_arr_ty, "sup_config")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Memcpy from global to stack.
         let config_global_ptr = config_global.as_pointer_value();
@@ -3795,7 +3845,7 @@ impl<'ctx> CodeGen<'ctx> {
                 1,
                 i64_ty.const_int(config_size, false),
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Patch function pointers into the stack copy.
         for (offset, fn_name) in &fn_ptr_offsets {
@@ -3805,7 +3855,7 @@ impl<'ctx> CodeGen<'ctx> {
             let fn_ptr_int = self
                 .builder
                 .build_ptr_to_int(fn_ptr_val, i64_ty, "fn_ptr_int")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
 
             // GEP to the offset in the config buffer.
             let offset_val = self.context.i32_type().const_int(*offset as u64, false);
@@ -3818,13 +3868,13 @@ impl<'ctx> CodeGen<'ctx> {
                         &[zero, offset_val],
                         "fn_ptr_slot",
                     )
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             };
 
             // Store the fn_ptr as i64 into the config buffer.
             self.builder
                 .build_store(elem_ptr, fn_ptr_int)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         // Call mesh_supervisor_start(config_ptr, config_size) -> i64 (PID)
@@ -3842,7 +3892,7 @@ impl<'ctx> CodeGen<'ctx> {
         message: &str,
         file: &str,
         line: u32,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let panic_fn = get_intrinsic(&self.module, "mesh_panic");
 
         // Create global constants for message and file strings
@@ -3881,11 +3931,11 @@ impl<'ctx> CodeGen<'ctx> {
                 ],
                 "",
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         self.builder
             .build_unreachable()
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Return a dummy value (unreachable)
         Ok(self.context.i8_type().const_int(0, false).into())
@@ -3907,7 +3957,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         call_handlers: &[(u64, String, usize)],
         cast_handlers: &[(u64, String, usize)],
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         let i64_ty = self.context.i64_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         let i8_ty = self.context.i8_type();
@@ -3933,12 +3983,12 @@ impl<'ctx> CodeGen<'ctx> {
         let args_ptr_val = self
             .builder
             .build_load(ptr_ty, self.locals["__args_ptr"], "args_ptr_val")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_pointer_value();
         let init_word = self
             .builder
             .build_load(i64_ty, args_ptr_val, "init_state_word")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value();
         let init_state = self.word_as(init_word, state_llvm_ty, "init_state")?;
 
@@ -3946,23 +3996,23 @@ impl<'ctx> CodeGen<'ctx> {
         let state_alloca = self
             .builder
             .build_alloca(state_llvm_ty, "__state")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_store(state_alloca, init_state)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Create the loop block.
         let loop_bb = self.context.append_basic_block(fn_val, "loop");
         self.builder
             .build_unconditional_branch(loop_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder.position_at_end(loop_bb);
 
         // Load the current state from the state alloca.
         let state_val = self
             .builder
             .build_load(state_llvm_ty, state_alloca, "state")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Call mesh_actor_receive(-1) -> ptr (blocks until message arrives).
         let timeout = i64_ty.const_int(u64::MAX, true); // -1
@@ -3976,16 +4026,16 @@ impl<'ctx> CodeGen<'ctx> {
         let is_null = self
             .builder
             .build_is_null(msg_ptr, "msg_is_null")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder
             .build_conditional_branch(is_null, exit_bb, continue_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Exit block: return from the service loop function.
         self.builder.position_at_end(exit_bb);
         self.builder
             .build_return(Some(&self.context.struct_type(&[], false).const_zero()))
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Continue block: process the message normally.
         self.builder.position_at_end(continue_bb);
@@ -4001,12 +4051,12 @@ impl<'ctx> CodeGen<'ctx> {
                         &[i64_ty.const_int(16 + offset, false)],
                         name,
                     )
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             };
             this.builder
                 .build_load(i64_ty, word_ptr, name)
                 .map(|word| word.into_int_value())
-                .map_err(|e| e.to_string())
+                .map_err(Diagnostic::internal)
         };
         let type_tag = data_word(self, 0, "type_tag")?;
         let caller_pid = data_word(self, 8, "caller_pid")?;
@@ -4024,11 +4074,11 @@ impl<'ctx> CodeGen<'ctx> {
             .collect();
         self.builder
             .build_switch(type_tag, default_bb, &handler_blocks)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         self.builder.position_at_end(default_bb);
         self.builder
             .build_unconditional_branch(loop_bb)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Generate code for each handler.
         for ((_, handler_fn, num_args, is_call), (_, bb)) in
@@ -4044,8 +4094,10 @@ impl<'ctx> CodeGen<'ctx> {
             for (arg_idx, param_ty) in param_types.iter().skip(1).take(*num_args).enumerate() {
                 let name = format!("arg_{arg_idx}");
                 let word = data_word(self, 16 + 8 * arg_idx as u64, &name)?;
-                let param_ty = inkwell::types::BasicTypeEnum::try_from(*param_ty)
-                    .map_err(|_| format!("handler parameter {arg_idx} is not a value"))?;
+                let param_ty =
+                    inkwell::types::BasicTypeEnum::try_from(*param_ty).map_err(|_| {
+                        Diagnostic::internal(format!("handler parameter {arg_idx} is not a value"))
+                    })?;
                 handler_args.push(self.word_as(word, param_ty, &name)?.into());
             }
 
@@ -4053,10 +4105,10 @@ impl<'ctx> CodeGen<'ctx> {
             let handler_result = self
                 .builder
                 .build_call(*handler_fn, &handler_args, "handler_result")
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
                 .try_as_basic_value()
                 .basic()
-                .ok_or("Handler returned void")?;
+                .ok_or_else(|| Diagnostic::internal("Handler returned void"))?;
 
             // A cast handler returns the new state; a call handler the tuple
             // `(new_state, reply)`.
@@ -4073,10 +4125,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let reply_alloca = self
                     .builder
                     .build_alloca(i64_ty, "reply_buf")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.builder
                     .build_store(reply_alloca, reply_val)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 let reply_size = i64_ty.const_int(8, false);
 
                 // The reply is one tuple slot. What it references must outlive
@@ -4106,7 +4158,7 @@ impl<'ctx> CodeGen<'ctx> {
                         &reply_args,
                         "",
                     )
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 self.word_as(new_state_word, state_llvm_ty, "new_state")?
             } else {
                 handler_result
@@ -4115,10 +4167,10 @@ impl<'ctx> CodeGen<'ctx> {
             // Update the state alloca and branch back to loop.
             self.builder
                 .build_store(state_alloca, new_state)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
             self.builder
                 .build_unconditional_branch(loop_bb)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         Ok(())
@@ -4135,14 +4187,14 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         wrapper_name: &str,
         body_fn_name: &str,
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         let i64_ty = self.context.i64_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         let body_fn = self.functions[body_fn_name];
         let args_ptr_val = self
             .builder
             .build_load(ptr_ty, self.locals["__args_ptr"], "args_ptr_val")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_pointer_value();
 
         // Each argument is a word `coerce_to_i64` made, in 8-byte slots.
@@ -4158,22 +4210,22 @@ impl<'ctx> CodeGen<'ctx> {
                         &[i64_ty.const_int(i as u64, false)],
                         &name,
                     )
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             };
             let word = self
                 .builder
                 .build_load(i64_ty, slot, &name)
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
                 .into_int_value();
             let param_ty = inkwell::types::BasicTypeEnum::try_from(*param_ty)
-                .map_err(|_| format!("actor parameter {i} is not a value"))?;
+                .map_err(|_| Diagnostic::internal(format!("actor parameter {i} is not a value")))?;
             call_args.push(self.word_as(word, param_ty, &name)?.into());
         }
 
         // Call the body function with deserialized arguments.
         self.builder
             .build_call(body_fn, &call_args, "body_call")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // A declared work wrapper's body takes the request key and attempt id
         // it reports its completion with (`generate_declared_work_wrapper`).
@@ -4186,14 +4238,14 @@ impl<'ctx> CodeGen<'ctx> {
                     &[call_args[0], call_args[1]],
                     "declared_work_complete",
                 )
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         // Return Unit (empty struct).
         let unit_val = self.context.struct_type(&[], false).const_zero();
         self.builder
             .build_return(Some(&unit_val))
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         Ok(())
     }
@@ -4203,7 +4255,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_make_tuple(
         &mut self,
         elements: &[BasicMetadataValueEnum<'ctx>],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let mut words = vec![self
             .context
             .i64_type()
@@ -4234,7 +4286,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         args: &[MirExpr],
         reply_ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         let i8_ty = self.context.i8_type();
@@ -4262,7 +4314,7 @@ impl<'ctx> CodeGen<'ctx> {
             let buf = self
                 .builder
                 .build_alloca(arr_ty, "call_payload")
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
 
             for (i, arg) in handler_args.iter().enumerate() {
                 let idx = self.context.i32_type().const_int(i as u64, false);
@@ -4270,11 +4322,11 @@ impl<'ctx> CodeGen<'ctx> {
                 let elem_ptr = unsafe {
                     self.builder
                         .build_gep(arr_ty, buf, &[zero, idx], "payload_elem")
-                        .map_err(|e| e.to_string())?
+                        .map_err(Diagnostic::internal)?
                 };
                 self.builder
                     .build_store(elem_ptr, *arg)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
             }
 
             (buf, i64_ty.const_int(payload_size as u64, false))
@@ -4306,12 +4358,12 @@ impl<'ctx> CodeGen<'ctx> {
                     &[i64_ty.const_int(16, false)],
                     "reply_data",
                 )
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
         };
         let reply_i64 = self
             .builder
             .build_load(i64_ty, reply_data_ptr, "reply_i64")
-            .map_err(|e| e.to_string())?
+            .map_err(Diagnostic::internal)?
             .into_int_value();
 
         // The reply is the handler's reply tuple slot, a word `coerce_to_i64`
@@ -4328,7 +4380,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_service_cast_helper(
         &mut self,
         args: &[MirExpr],
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
 
         // First arg is pid, second is tag, rest are handler args.
@@ -4350,29 +4402,29 @@ impl<'ctx> CodeGen<'ctx> {
         let buf = self
             .builder
             .build_alloca(arr_ty, "cast_msg")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Store type_tag.
         let zero = self.context.i32_type().const_int(0, false);
         let tag_ptr = unsafe {
             self.builder
                 .build_gep(arr_ty, buf, &[zero, zero], "tag_slot")
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
         };
         self.builder
             .build_store(tag_ptr, tag_val)
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Store caller_pid = 0 (fire-and-forget, no reply expected).
         let one = self.context.i32_type().const_int(1, false);
         let caller_ptr = unsafe {
             self.builder
                 .build_gep(arr_ty, buf, &[zero, one], "caller_slot")
-                .map_err(|e| e.to_string())?
+                .map_err(Diagnostic::internal)?
         };
         self.builder
             .build_store(caller_ptr, i64_ty.const_int(0, false))
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Store handler args.
         for (i, arg) in handler_args.iter().enumerate() {
@@ -4380,11 +4432,11 @@ impl<'ctx> CodeGen<'ctx> {
             let elem_ptr = unsafe {
                 self.builder
                     .build_gep(arr_ty, buf, &[zero, idx], "arg_slot")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             };
             self.builder
                 .build_store(elem_ptr, *arg)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         let msg_size = i64_ty.const_int((num_elements * 8) as u64, false);
@@ -4403,7 +4455,7 @@ impl<'ctx> CodeGen<'ctx> {
                 ],
                 "",
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         // Cast returns Unit.
         Ok(self.context.struct_type(&[], false).const_zero().into())
@@ -4411,7 +4463,10 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── List literal codegen ─────────────────────────────────────────
 
-    fn codegen_list_lit(&mut self, elements: &[MirExpr]) -> Result<BasicValueEnum<'ctx>, String> {
+    fn codegen_list_lit(
+        &mut self,
+        elements: &[MirExpr],
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // Placeholder: will be fully implemented in Task 2.
         // For now, stack-allocate an i64 array and call mesh_list_from_array.
         let i64_type = self.context.i64_type();
@@ -4421,7 +4476,7 @@ impl<'ctx> CodeGen<'ctx> {
         let array_alloca = self
             .builder
             .build_alloca(array_type, "list_arr")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
 
         for (i, elem) in elements.iter().enumerate() {
             let val = self.codegen_expr(elem)?;
@@ -4432,17 +4487,17 @@ impl<'ctx> CodeGen<'ctx> {
             let gep = unsafe {
                 self.builder
                     .build_gep(array_type, array_alloca, &[zero, idx], "elem_ptr")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
             };
             self.builder
                 .build_store(gep, val_as_i64)
-                .map_err(|e| e.to_string())?;
+                .map_err(Diagnostic::internal)?;
         }
 
         let array_ptr = self
             .builder
             .build_pointer_cast(array_alloca, ptr_type, "arr_ptr")
-            .map_err(|e| e.to_string())?;
+            .map_err(Diagnostic::internal)?;
         let count_val = i64_type.const_int(count as u64, false);
 
         Ok(self.codegen_runtime_call(
@@ -4461,7 +4516,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
         mir_ty: &MirType,
-    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+    ) -> Result<inkwell::values::IntValue<'ctx>, Diagnostic> {
         let i64_type = self.context.i64_type();
         // A unit value (`{}`) has no bits to store; whatever MIR calls it.
         if matches!(val, BasicValueEnum::StructValue(sv) if sv.get_type().count_fields() == 0) {
@@ -4472,14 +4527,14 @@ impl<'ctx> CodeGen<'ctx> {
                 let bool_val = val.into_int_value();
                 self.builder
                     .build_int_z_extend(bool_val, i64_type, "bool_to_i64")
-                    .map_err(|e| e.to_string())
+                    .map_err(Diagnostic::internal)
             }
             MirType::Float => {
                 let float_val = val.into_float_value();
                 let cast_result = self
                     .builder
                     .build_bit_cast(float_val, i64_type, "float_to_i64")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 Ok(cast_result.into_int_value())
             }
             // A tuple is a pointer to the runtime tuple.
@@ -4487,14 +4542,14 @@ impl<'ctx> CodeGen<'ctx> {
                 let ptr_val = val.into_pointer_value();
                 self.builder
                     .build_ptr_to_int(ptr_val, i64_type, "ptr_to_i64")
-                    .map_err(|e| e.to_string())
+                    .map_err(Diagnostic::internal)
             }
             MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(_, _) => {
                 // An aggregate sits in the uniform slot boxed.
                 let boxed = self.box_value(val, "heap_alloc")?.into_pointer_value();
                 self.builder
                     .build_ptr_to_int(boxed, i64_type, "struct_ptr_to_i64")
-                    .map_err(|e| e.to_string())
+                    .map_err(Diagnostic::internal)
             }
             // An Int or a Pid word. A unit value was stored above, and a
             // value that never comes into being is never stored.
@@ -4553,7 +4608,7 @@ impl<'ctx> CodeGen<'ctx> {
         filter: Option<&MirExpr>,
         body: &MirExpr,
         elem_ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let list = self.codegen_expr(collection)?;
         let len = self
             .codegen_runtime_call("mesh_list_length", &[list.into()], "len")
@@ -4588,7 +4643,7 @@ impl<'ctx> CodeGen<'ctx> {
         body: &MirExpr,
         key_ty: &MirType,
         val_ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let map = self.codegen_expr(collection)?;
         let len = self
             .codegen_runtime_call("mesh_map_size", &[map.into()], "map_len")
@@ -4619,7 +4674,7 @@ impl<'ctx> CodeGen<'ctx> {
         filter: Option<&MirExpr>,
         body: &MirExpr,
         elem_ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let set = self.codegen_expr(collection)?;
         let len = self
             .codegen_runtime_call("mesh_set_size", &[set.into()], "set_len")
@@ -4656,7 +4711,7 @@ impl<'ctx> CodeGen<'ctx> {
         elem_ty: &MirType,
         next_fn: &str,
         iter_fn: Option<&str>,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let i64_ty = self.context.i64_type();
         let i8_ty = self.context.i8_type();
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
@@ -4684,10 +4739,10 @@ impl<'ctx> CodeGen<'ctx> {
                         let slot = cg
                             .builder
                             .build_alloca(option_ty, "next_option")
-                            .map_err(|e| e.to_string())?;
+                            .map_err(Diagnostic::internal)?;
                         cg.builder
                             .build_store(slot, option)
-                            .map_err(|e| e.to_string())?;
+                            .map_err(Diagnostic::internal)?;
                         (slot, option_ty, true)
                     }
                     other => (
@@ -4700,30 +4755,30 @@ impl<'ctx> CodeGen<'ctx> {
                 let tag_ptr = cg
                     .builder
                     .build_struct_gep(option_ty, option, 0, "tag_ptr")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 let tag = cg
                     .builder
                     .build_load(i8_ty, tag_ptr, "tag")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
                     .into_int_value();
                 let is_some = cg
                     .builder
                     .build_int_compare(IntPredicate::EQ, tag, i8_ty.const_zero(), "is_some")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 cg.builder
                     .build_conditional_branch(is_some, body_bb, merge_bb)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 Ok((option, option_ty, boxed))
             },
             |cg, (option, option_ty, boxed)| {
                 let value_ptr = cg
                     .builder
                     .build_struct_gep(option_ty, option, 1, "value_ptr")
-                    .map_err(|e| e.to_string())?;
+                    .map_err(Diagnostic::internal)?;
                 let raw = cg
                     .builder
                     .build_load(ptr_ty, value_ptr, "raw_value")
-                    .map_err(|e| e.to_string())?
+                    .map_err(Diagnostic::internal)?
                     .into_pointer_value();
                 // A boxed payload holds the value itself behind the pointer.
                 // A runtime iterator hands over the element's collection
@@ -4732,12 +4787,12 @@ impl<'ctx> CodeGen<'ctx> {
                 let value = if boxed && !matches!(elem_ty, MirType::Ptr | MirType::String) {
                     cg.builder
                         .build_load(cg.llvm_type(elem_ty), raw, "unboxed_elem")
-                        .map_err(|e| e.to_string())?
+                        .map_err(Diagnostic::internal)?
                 } else {
                     let slot = cg
                         .builder
                         .build_ptr_to_int(raw, i64_ty, "elem_slot")
-                        .map_err(|e| e.to_string())?;
+                        .map_err(Diagnostic::internal)?;
                     cg.convert_from_list_element(slot, elem_ty)
                 };
                 Ok(vec![value])

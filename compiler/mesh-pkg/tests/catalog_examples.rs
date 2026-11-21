@@ -5,6 +5,16 @@ use std::{fs, path::Path};
 use mesh_diagnostics::{Code, Family};
 use mesh_pkg::frontend::{check, CheckOptions, Target};
 
+/// The codes code generation reports for a program the frontend accepts.
+/// `meshc`'s `catalog_examples` runs their examples through `meshc build`.
+const CODEGEN_ONLY: &[Code] = &[
+    Code::RecursiveByValueType,
+    Code::RuntimeSymbolCollision,
+    Code::SpawnGroupedUnsafe,
+    Code::NodeSpawnArgument,
+    Code::ExportSymbolCollision,
+];
+
 /// The codes `meshc check main.mpl` and `meshc lint main.mpl` report for
 /// `source` as a lone file, sorted, one per diagnostic.
 fn codes(source: &str) -> Vec<&'static str> {
@@ -43,7 +53,14 @@ fn catalog_examples_get_exactly_their_code() {
             continue;
         };
         let bad = codes(example.bad);
-        if bad != [code.id()] {
+        if CODEGEN_ONLY.contains(&code) {
+            if !bad.is_empty() {
+                failures.push(format!(
+                    "{}: codegen reports it, but the frontend gets {bad:?}",
+                    code.id()
+                ));
+            }
+        } else if bad != [code.id()] {
             failures.push(format!("{}: the bad example gets {bad:?}", code.id()));
         }
         let fixed = codes(example.fixed);

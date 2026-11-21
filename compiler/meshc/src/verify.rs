@@ -35,9 +35,11 @@ fn source_ids(
 
 /// Lower the same project that will be built, retaining verifier metadata only
 /// when a source module declares an embedded proof obligation.
+/// `files` holds each module's file by module id.
 pub(crate) fn lower_for_build(
     project: &ProjectData,
     checked: &mut CheckedProject,
+    files: &[SourceFile],
     package: &str,
     reporter: &mut Reporter,
 ) -> Result<Vec<MirModule>, Failed> {
@@ -46,21 +48,23 @@ pub(crate) fn lower_for_build(
         .add_project_blocks(project, checked)
         .reported(reporter)?;
     let inventory = proofs.inventory(package).reported(reporter)?;
+    let sources = source_ids(project);
+    let source_id = |parse: &mesh_parser::Parse| sources.get(&std::ptr::from_ref(parse)).copied();
     if inventory.is_empty()
         && !checked.typeck.iter().any(|module| {
             !module.proof_values.is_empty() || module.types.values().any(Ty::contains_proof)
         })
     {
-        return crate::lower_checked_modules(project, checked, |_| None, None, reporter)
+        return crate::lower_checked_modules(project, checked, source_id, files, None, reporter)
             .reported(reporter);
     }
 
-    let sources = source_ids(project);
     let mut lowering = proofs.verification_lowering();
     let modules = crate::lower_checked_modules(
         project,
         checked,
-        |parse| sources.get(&std::ptr::from_ref(parse)).copied(),
+        source_id,
+        files,
         Some(&mut lowering),
         reporter,
     )
@@ -300,6 +304,7 @@ fn verify_laws(
         manifest,
         project,
         mut checked,
+        files: module_files,
         ..
     } = analysis;
     let package = manifest.as_ref().map_or_else(
@@ -365,6 +370,7 @@ fn verify_laws(
             &project,
             &mut checked,
             |parse| source_ids.get(&std::ptr::from_ref(parse)).copied(),
+            &module_files,
             Some(&mut lowering),
             reporter,
         ))
@@ -418,7 +424,7 @@ fn verify_laws(
                 &lowering.signatures,
                 proof_settings,
             ),
-            Err(error) => Err(error.clone().into()),
+            Err(error) => Err(crate::diagnostic_reason(error).into()),
         })
     };
     for theorem in &theorems {

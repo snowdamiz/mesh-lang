@@ -15,6 +15,7 @@ pub use mesh_parser::ast::expr::SpawnPlacement;
 use std::fmt;
 
 use mesh_common::span::Span;
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 use rustc_hash::FxHashMap;
 
 /// Delimits a sum instantiation's base name if it contains underscores.
@@ -57,6 +58,19 @@ pub struct MirModule {
     /// Every actor's entry function. Another node may spawn any of them by
     /// name, so none is pruned as unreachable.
     pub actors: Vec<MirActor>,
+    /// The source names and definitions of the functions, actors, and
+    /// structs the program defines, by MIR name.
+    pub symbols: FxHashMap<String, MirSymbol>,
+}
+
+/// How a message names a definition the program wrote, and where it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MirSymbol {
+    /// The name as the source spells it, with its module in a project:
+    /// `Math.add`, `add/2` for an arity overload.
+    pub source_name: String,
+    /// The name where it is defined.
+    pub definition: Option<MirSourceSpan>,
 }
 
 #[derive(Debug, Clone)]
@@ -340,6 +354,21 @@ pub struct MirSourceId(pub usize);
 pub struct MirSourceSpan {
     pub file: MirSourceId,
     pub span: Span,
+}
+
+/// `code` at `at`, in its file among `files` (which `MirSourceId` indexes),
+/// or about no file when the location or its file is unknown.
+pub fn diagnostic_at(
+    files: &[SourceFile],
+    at: Option<MirSourceSpan>,
+    code: Code,
+    message: impl Into<String>,
+    label: impl Into<String>,
+) -> Diagnostic {
+    match at.and_then(|at| Some((files.get(at.file.0)?, at.span))) {
+        Some((file, span)) => Diagnostic::in_file(code, file, message).at(span, label),
+        None => Diagnostic::new(code, message),
+    }
 }
 
 /// A MIR expression node. Each variant carries its resolved type.

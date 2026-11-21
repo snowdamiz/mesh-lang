@@ -54,6 +54,66 @@ With a compiler that supports diagnostic JSON v2, use this loop.
 | `I` | `internal` | Internal compiler diagnostics |
 | `C` | `uncategorized` | Transitional diagnostics |
 
+## B0001
+
+**target-unsupported** · error · build · guide: `meshc guide projects`
+
+The target triple names a platform Mesh cannot compile or link for, or an artifact kind that the target does not support.
+
+**Repair:** Pass `--target` a supported triple, a Unix-like one (macOS, iOS, Linux, Android, or a BSD) or a Windows MSVC one, or omit it to build for the host. Build an executable or a `cdylib` where the target has no `staticlib` support.
+
+Docs: https://meshlang.dev/docs/errors/#b0001
+
+## B0101
+
+**linker-not-found** · error · build · guide: `meshc guide projects`
+
+The C compiler, linker, or archiver the target links with could not be found or started.
+
+**Repair:** Install the tool the message names and put it on `PATH`: a C compiler (`cc`) on Unix-like targets, `clang` from LLVM 21 for Windows MSVC (or set `LLVM_SYS_211_PREFIX` to that LLVM), or the Android NDK with `ANDROID_NDK_HOME` set.
+
+Docs: https://meshlang.dev/docs/errors/#b0101
+
+## B0102
+
+**link-failed** · error · build · guide: `meshc guide projects`
+
+The linker or archiver ran and reported a failure; its output is in the notes.
+
+**Repair:** Fix what the linker output in the notes names: supply a missing native library or archive, and rebuild the Mesh runtime for the same target when its symbols are missing.
+
+Docs: https://meshlang.dev/docs/errors/#b0102
+
+## B0201
+
+**runtime-library-missing** · error · build · guide: `meshc guide projects`
+
+The Mesh runtime static library for the target was not found, or `MESH_RT_LIB_PATH` or `MESH_TEST_RT_LIB_PATH` does not name one.
+
+**Repair:** Reinstall Mesh so the `lib` directory beside `meshc` holds the runtime, or in a source checkout run `cargo build -p mesh-rt` (`-p mesh-test-rt` for `meshc test`, with `--target` for another target). Point `MESH_RT_LIB_PATH` at the library file itself, or unset it.
+
+Docs: https://meshlang.dev/docs/errors/#b0201
+
+## B0301
+
+**output-unwritable** · error · build · guide: `meshc guide projects`
+
+The object file, LLVM IR, executable, or library could not be written at its output path.
+
+**Repair:** Create the output directory, or pass `--output` a path in a writable directory where no directory of the same name exists.
+
+Docs: https://meshlang.dev/docs/errors/#b0301
+
+## B0302
+
+**artifact-entry-missing** · error · build · guide: `meshc guide projects`
+
+An executable build found no `fn main()` in the entry module, or a `staticlib` or `cdylib` build found no `@export` function for a host to call.
+
+**Repair:** Define `fn main()` in the entrypoint to build an executable, or mark a public function `@export("symbol")` to build a library, or pass `--artifact` the kind of artifact the program provides.
+
+Docs: https://meshlang.dev/docs/errors/#b0302
+
 ## C0001
 
 **uncategorized** · error · uncategorized
@@ -3250,6 +3310,164 @@ end
 ```
 
 Docs: https://meshlang.dev/docs/errors/#e0103
+
+## E0104
+
+**recursive-by-value-type** · error · semantic · guide: `meshc guide types`
+
+A struct holds itself by value, directly or through other structs, so a value of it would contain itself and could never be built.
+
+**Repair:** Hold the recursive field through a type that ends the recursion: an `Option<...>` or a `List<...>` of the struct, or a sum type with a variant that does not hold it.
+
+**Example**
+```mesh
+struct Node do
+  next :: Node
+end
+
+fn main() do
+end
+```
+
+**Fixed**
+```mesh
+struct Node do
+  next :: Option<Node>
+end
+
+fn main() do
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#e0104
+
+## E0105
+
+**runtime-symbol-collision** · error · semantic · guide: `meshc guide projects`
+
+A public function or a native binding takes a symbol that the Mesh runtime, the compiler, or another native binding already uses, so calls could reach the wrong code.
+
+**Repair:** Rename the function, leaving names that start with `mesh_` to the runtime, and bind each native symbol once with one signature.
+
+**Example**
+```mesh
+pub fn mesh_string_length(text :: String) -> Int = 0
+
+fn main() do
+  println("${mesh_string_length("abc")}")
+end
+```
+
+**Fixed**
+```mesh
+pub fn text_length(text :: String) -> Int = 0
+
+fn main() do
+  println("${text_length("abc")}")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#e0105
+
+## E0106
+
+**spawn-grouped-unsafe** · error · semantic · guide: `meshc guide actors`
+
+An actor started with `spawn grouped`, or its `terminate` callback, can reach code the compiler cannot prove yields or returns without blocking the shared worker (a native or unaudited runtime call such as I/O, an indirect call, recursion that grows the stack, or a loop in a terminate callback), or `spawn grouped` starts a supervisor child.
+
+**Repair:** Start the actor with plain `spawn`, or move the call the notes trace into an actor started with `spawn` and message it. Write recursion as a tail call, and keep loops out of terminate callbacks.
+
+**Example**
+```mesh
+actor worker() do
+  IO.eprintln("working")
+end
+
+fn main() do
+  spawn grouped(worker)
+end
+```
+
+**Fixed**
+```mesh
+actor worker() do
+  IO.eprintln("working")
+end
+
+fn main() do
+  spawn(worker)
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#e0106
+
+## E0107
+
+**node-spawn-argument** · error · semantic · guide: `meshc guide clustering`
+
+`Node.spawn` or `Node.spawn_link` is given a closure instead of a function defined at the top level, or an argument of a type that cannot cross the connection.
+
+**Repair:** Name a top-level actor as the second argument, and pass it only `Int`, `Float`, `Bool`, `String`, `Pid`, or `()` arguments, encoding other data as a `String`.
+
+**Example**
+```mesh
+actor spawner(host :: String) do
+  let _ = Node.spawn(host, fn () -> self() end)
+end
+
+fn main() do
+  let _ = spawn(spawner, "absent@127.0.0.1:1")
+end
+```
+
+**Fixed**
+```mesh
+actor remote() do
+  println("started")
+end
+
+actor spawner(host :: String) do
+  let _ = Node.spawn(host, remote)
+end
+
+fn main() do
+  let _ = spawn(spawner, "absent@127.0.0.1:1")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#e0107
+
+## E0108
+
+**export-symbol-collision** · error · semantic · guide: `meshc guide projects`
+
+An `@export` C symbol is also another export's, a public Mesh function's, or the Mesh runtime's, so a host could not tell which one it calls.
+
+**Repair:** Give each `@export` its own C symbol, prefixed with the library's name as in `@export("greeter_echo")`, that no public function or `mesh_` runtime symbol uses.
+
+**Example**
+```mesh
+@export("mesh_println")
+pub fn echo(request :: Bytes) -> Bytes ! String do
+  Ok(request)
+end
+
+fn main() do
+end
+```
+
+**Fixed**
+```mesh
+@export("greeter_echo")
+pub fn echo(request :: Bytes) -> Bytes ! String do
+  Ok(request)
+end
+
+fn main() do
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#e0108
 
 ## I0001
 

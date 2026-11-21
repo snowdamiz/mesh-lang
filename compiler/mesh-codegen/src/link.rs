@@ -9,9 +9,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use mesh_diagnostics::{Code, Diagnostic};
+
 use crate::build_trace;
 
-pub fn effective_target_triple(target_triple: Option<&str>) -> Result<String, String> {
+pub fn effective_target_triple(target_triple: Option<&str>) -> Result<String, Diagnostic> {
     LinkTarget::detect(target_triple).map(|target| target.display_triple())
 }
 
@@ -49,7 +51,7 @@ pub(crate) fn prepare_link_with_native(
     target_triple: Option<&str>,
     rt_lib_path: Option<&Path>,
     native_archives: &[PathBuf],
-) -> Result<LinkPlan, String> {
+) -> Result<LinkPlan, Diagnostic> {
     prepare_link_for_runtime(
         target_triple,
         rt_lib_path,
@@ -62,7 +64,7 @@ pub(crate) fn prepare_test_link_with_native(
     target_triple: Option<&str>,
     rt_lib_path: Option<&Path>,
     native_archives: &[PathBuf],
-) -> Result<LinkPlan, String> {
+) -> Result<LinkPlan, Diagnostic> {
     prepare_link_for_runtime(
         target_triple,
         rt_lib_path,
@@ -76,11 +78,11 @@ fn prepare_link_for_runtime(
     rt_lib_path: Option<&Path>,
     native_archives: &[PathBuf],
     runtime_flavor: RuntimeFlavor,
-) -> Result<LinkPlan, String> {
+) -> Result<LinkPlan, Diagnostic> {
     let target = LinkTarget::detect(target_triple)?;
     build_trace::set_stage("resolve-runtime-library");
     // The build trace records the runtime this got to before `error`.
-    let fail = |error: String, runtime: Option<&Path>| {
+    let fail = |error: Diagnostic, runtime: Option<&Path>| {
         let exists = runtime.is_some_and(Path::exists);
         build_trace::set_link_context(&target.display_triple(), runtime, Some(exists), None);
         build_trace::record_error(&error);
@@ -105,15 +107,21 @@ fn prepare_link_for_runtime(
     );
 
     if !runtime_exists {
-        let error = format!(
-            "{} static library not found at '{}'. Expected {} for target '{}'. Run `cargo build -p {}{}` first.",
-            runtime_flavor.display_name(),
-            rt_path.display(),
+        let error = Diagnostic::new(
+            Code::RuntimeLibraryMissing,
+            format!(
+                "{} static library not found at '{}'",
+                runtime_flavor.display_name(),
+                rt_path.display(),
+            ),
+        )
+        .with_note(format!(
+            "Expected {} for target '{}'. Run `cargo build -p {}{}` first.",
             target.runtime_filename(runtime_flavor),
             target.display_triple(),
             runtime_flavor.package_name(),
             target.cargo_build_hint(),
-        );
+        ));
         build_trace::record_error(&error);
         return Err(error);
     }
@@ -134,19 +142,17 @@ pub(crate) fn link_with_plan(
     object_path: &Path,
     output_path: &Path,
     plan: &LinkPlan,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     let mut cmd = build_link_command(object_path, output_path, plan);
 
     build_trace::mark_link_started();
     let output = match cmd.output() {
         Ok(output) => output,
         Err(error) => {
-            let error = format!(
-                "Failed to invoke linker '{}': {}.{}",
-                plan.linker_program.display(),
-                error,
-                plan.target.linker_help_suffix(),
-            );
+            let mut error = tool_not_started("linker", &plan.linker_program, error);
+            if let Some(repair) = plan.target.linker_repair() {
+                error = error.with_repair(repair);
+            }
             build_trace::record_error(&error);
             return Err(error);
         }
@@ -166,13 +172,16 @@ pub(crate) fn link_with_plan(
             )
         };
 
-        let error = format!(
-            "Linking failed for target '{}'.\nlinker: {}\nruntime: {}\n{}",
-            plan.target.display_triple(),
-            plan.linker_program.display(),
-            plan.rt_path.display(),
-            detail,
-        );
+        let error = Diagnostic::new(
+            Code::LinkFailed,
+            format!(
+                "Linking failed for target '{}'",
+                plan.target.display_triple()
+            ),
+        )
+        .with_note(format!("linker: {}", plan.linker_program.display()))
+        .with_note(format!("runtime: {}", plan.rt_path.display()))
+        .with_note(detail);
         build_trace::record_error(&error);
         return Err(error);
     }
@@ -199,16 +208,25 @@ pub(crate) fn archive_with_plan(
     object_path: &Path,
     output_path: &Path,
     plan: &LinkPlan,
-) -> Result<(), String> {
-    let output = if plan.target.is_apple() {
-        apple_archive_command(object_path, output_path, plan).output()
+) -> Result<(), Diagnostic> {
+    let (archiver, output) = if plan.target.is_apple() {
+        let mut command = apple_archive_command(object_path, output_path, plan);
+        (PathBuf::from(command.get_program()), command.output())
     } else if plan.target.kind == LinkTargetKind::Unix {
         let script = archiver_script(object_path, output_path, plan);
-        run_archiver(&plan.target.archiver_program()?, &script)
+        let archiver = plan.target.archiver_program()?;
+        let output = run_archiver(&archiver, &script);
+        (archiver, output)
     } else {
-        return Err("static library artifacts are not yet supported for Windows MSVC".to_string());
-    }
-    .map_err(|error| format!("Failed to create static library: {error}"))?;
+        return Err(Diagnostic::new(
+            Code::TargetUnsupported,
+            format!(
+                "static library artifacts are not yet supported for Windows MSVC target '{}'",
+                plan.target.display_triple()
+            ),
+        ));
+    };
+    let output = output.map_err(|error| tool_not_started("archiver", &archiver, error))?;
 
     finish_library_link(output, object_path, output_path, "Static library creation")
 }
@@ -262,10 +280,12 @@ pub(crate) fn link_dynamic_with_plan(
     object_path: &Path,
     output_path: &Path,
     plan: &LinkPlan,
-) -> Result<(), String> {
-    let output = dynamic_link_command(object_path, output_path, plan)?
+) -> Result<(), Diagnostic> {
+    let mut command = dynamic_link_command(object_path, output_path, plan)?;
+    let linker = PathBuf::from(command.get_program());
+    let output = command
         .output()
-        .map_err(|error| format!("Failed to invoke dynamic linker: {error}"))?;
+        .map_err(|error| tool_not_started("dynamic linker", &linker, error))?;
     finish_library_link(output, object_path, output_path, "Dynamic library linking")
 }
 
@@ -274,7 +294,7 @@ fn dynamic_link_command(
     object_path: &Path,
     output_path: &Path,
     plan: &LinkPlan,
-) -> Result<Command, String> {
+) -> Result<Command, Diagnostic> {
     if plan.target.kind == LinkTargetKind::WindowsMsvc {
         let mut command = build_link_command(object_path, output_path, plan);
         command.arg("-shared");
@@ -317,15 +337,23 @@ fn finish_library_link(
     object_path: &Path,
     output_path: &Path,
     operation: &str,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         let detail = if stderr.is_empty() { stdout } else { stderr };
-        return Err(format!(
-            "{operation} failed for '{}': {detail}",
-            output_path.display()
-        ));
+        let error = Diagnostic::new(
+            Code::LinkFailed,
+            format!("{operation} failed for '{}'", output_path.display()),
+        );
+        return Err(if detail.is_empty() {
+            error.with_note(format!(
+                "exited with status {} without output",
+                output.status
+            ))
+        } else {
+            error.with_note(detail)
+        });
     }
     std::fs::remove_file(object_path).ok();
     Ok(())
@@ -388,7 +416,7 @@ fn build_link_command(object_path: &Path, output_path: &Path, plan: &LinkPlan) -
 /// Searches in the workspace target directory under both `debug` and `release`
 /// profiles. Prefers the profile matching the compiler's own build: a release
 /// `meshc` links the release runtime, a debug `meshc` links the debug runtime.
-fn find_mesh_rt(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Result<PathBuf, String> {
+fn find_mesh_rt(target: &LinkTarget, runtime_flavor: RuntimeFlavor) -> Result<PathBuf, Diagnostic> {
     const PROFILES: [&str; 2] = if cfg!(debug_assertions) {
         ["debug", "release"]
     } else {
@@ -412,7 +440,7 @@ fn first_existing_runtime(
     candidates: impl IntoIterator<Item = PathBuf>,
     target: &LinkTarget,
     runtime_flavor: RuntimeFlavor,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, Diagnostic> {
     let mut searched = String::new();
     for candidate in candidates {
         if candidate.exists() {
@@ -421,14 +449,21 @@ fn first_existing_runtime(
         searched.push_str(&format!("\n  - {}", candidate.display()));
     }
 
-    Err(format!(
-        "Could not locate {} static library for target '{}'. Expected {} in the `lib` directory beside the installed meshc; reinstall Mesh, or in a source checkout run `cargo build -p {}{}` first.\nSearched:{searched}",
-        runtime_flavor.display_name(),
-        target.display_triple(),
+    Err(Diagnostic::new(
+        Code::RuntimeLibraryMissing,
+        format!(
+            "Could not locate {} static library for target '{}'",
+            runtime_flavor.display_name(),
+            target.display_triple(),
+        ),
+    )
+    .with_note(format!(
+        "Expected {} in the `lib` directory beside the installed meshc; reinstall Mesh, or in a source checkout run `cargo build -p {}{}` first.",
         target.runtime_filename(runtime_flavor),
         runtime_flavor.package_name(),
         target.cargo_build_hint(),
     ))
+    .with_note(format!("Searched:{searched}")))
 }
 
 /// Where an installed toolchain keeps the runtime: `<prefix>/lib/` beside
@@ -493,33 +528,42 @@ fn validate_runtime_override(
     path: &Path,
     target: &LinkTarget,
     runtime_flavor: RuntimeFlavor,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
-        return Err(format!(
-            "Mesh runtime override '{}' does not name a file. Expected {} for target '{}'.",
-            path.display(),
-            target.runtime_filename(runtime_flavor),
-            target.display_triple(),
+        return Err(Diagnostic::new(
+            Code::RuntimeLibraryMissing,
+            format!(
+                "Mesh runtime override '{}' does not name a file. Expected {} for target '{}'.",
+                path.display(),
+                target.runtime_filename(runtime_flavor),
+                target.display_triple(),
+            ),
         ));
     };
 
     if file_name != target.runtime_filename(runtime_flavor) {
-        return Err(format!(
-            "Mesh runtime override '{}' does not match expected filename '{}' for target '{}'.",
-            path.display(),
-            target.runtime_filename(runtime_flavor),
-            target.display_triple(),
+        return Err(Diagnostic::new(
+            Code::RuntimeLibraryMissing,
+            format!(
+                "Mesh runtime override '{}' does not match expected filename '{}' for target '{}'.",
+                path.display(),
+                target.runtime_filename(runtime_flavor),
+                target.display_triple(),
+            ),
         ));
     }
 
     Ok(())
 }
 
-fn validate_native_archive(path: &Path, target: &LinkTarget) -> Result<(), String> {
+fn validate_native_archive(path: &Path, target: &LinkTarget) -> Result<(), Diagnostic> {
     if !path.is_absolute() || !path.is_file() {
-        return Err(format!(
-            "Native archive '{}' must be an existing absolute file path",
-            path.display()
+        return Err(Diagnostic::new(
+            Code::NativeArchiveMissing,
+            format!(
+                "Native archive '{}' must be an existing absolute file path",
+                path.display()
+            ),
         ));
     }
     let extension = path.extension().and_then(|value| value.to_str());
@@ -528,10 +572,13 @@ fn validate_native_archive(path: &Path, target: &LinkTarget) -> Result<(), Strin
         LinkTargetKind::WindowsMsvc => "lib",
     };
     if extension != Some(expected) {
-        return Err(format!(
-            "Native archive '{}' must use the `.{expected}` static-library extension for target '{}'",
-            path.display(),
-            target.display_triple()
+        return Err(Diagnostic::new(
+            Code::NativeArchiveMissing,
+            format!(
+                "Native archive '{}' must use the `.{expected}` static-library extension for target '{}'",
+                path.display(),
+                target.display_triple()
+            ),
         ));
     }
     Ok(())
@@ -550,7 +597,7 @@ struct LinkTarget {
 }
 
 impl LinkTarget {
-    fn detect(target_triple: Option<&str>) -> Result<Self, String> {
+    fn detect(target_triple: Option<&str>) -> Result<Self, Diagnostic> {
         let kind = match target_triple {
             Some(triple) => classify_requested_target(triple)?,
             None => classify_host_target()?,
@@ -577,7 +624,7 @@ impl LinkTarget {
         }
     }
 
-    fn linker_program(&self) -> Result<PathBuf, String> {
+    fn linker_program(&self) -> Result<PathBuf, Diagnostic> {
         match self.kind {
             LinkTargetKind::Unix => Ok(PathBuf::from("cc")),
             LinkTargetKind::WindowsMsvc => {
@@ -593,12 +640,12 @@ impl LinkTarget {
             .unwrap_or_default()
     }
 
-    fn linker_help_suffix(&self) -> &'static str {
+    fn linker_repair(&self) -> Option<&'static str> {
         match self.kind {
-            LinkTargetKind::Unix => "",
-            LinkTargetKind::WindowsMsvc => {
-                " Set LLVM_SYS_211_PREFIX to an LLVM install containing clang.exe or ensure clang.exe is on PATH."
-            }
+            LinkTargetKind::Unix => None,
+            LinkTargetKind::WindowsMsvc => Some(
+                "Set LLVM_SYS_211_PREFIX to an LLVM install containing clang.exe or ensure clang.exe is on PATH.",
+            ),
         }
     }
 
@@ -616,14 +663,14 @@ impl LinkTarget {
             .unwrap_or(cfg!(target_os = "macos"))
     }
 
-    fn archiver_program(&self) -> Result<PathBuf, String> {
+    fn archiver_program(&self) -> Result<PathBuf, Diagnostic> {
         match self.requested_triple.as_deref() {
             Some(triple) if triple.contains("linux-android") => android_tool("llvm-ar"),
             _ => Ok(PathBuf::from("ar")),
         }
     }
 
-    fn dynamic_linker_command(&self) -> Result<Command, String> {
+    fn dynamic_linker_command(&self) -> Result<Command, Diagnostic> {
         let Some(triple) = self.requested_triple.as_deref() else {
             return Ok(Command::new("cc"));
         };
@@ -663,20 +710,29 @@ fn ndk_clang_triple(triple: &str) -> String {
     triple.to_string()
 }
 
-fn android_tool(name: &str) -> Result<PathBuf, String> {
+fn android_tool(name: &str) -> Result<PathBuf, Diagnostic> {
     let ndk = std::env::var_os("ANDROID_NDK_HOME").or_else(|| std::env::var_os("ANDROID_NDK_ROOT"));
     android_tool_in(ndk.map(PathBuf::from), name)
 }
 
 /// The NDK tool `name` in the NDK at `ndk`.
-fn android_tool_in(ndk: Option<PathBuf>, name: &str) -> Result<PathBuf, String> {
-    let ndk = ndk.ok_or("Android target requires ANDROID_NDK_HOME or ANDROID_NDK_ROOT")?;
+fn android_tool_in(ndk: Option<PathBuf>, name: &str) -> Result<PathBuf, Diagnostic> {
+    let ndk = ndk.ok_or_else(|| {
+        Diagnostic::new(
+            Code::LinkerNotFound,
+            "Android target requires ANDROID_NDK_HOME or ANDROID_NDK_ROOT",
+        )
+    })?;
     let prebuilt = ndk.join("toolchains/llvm/prebuilt");
     let entries = std::fs::read_dir(&prebuilt).map_err(|error| {
-        format!(
-            "Android NDK toolchain directory '{}' is unavailable: {error}",
-            prebuilt.display()
+        Diagnostic::new(
+            Code::LinkerNotFound,
+            format!(
+                "Android NDK toolchain directory '{}' is unavailable",
+                prebuilt.display()
+            ),
         )
+        .with_note(error.to_string())
     })?;
     for entry in entries.flatten() {
         let candidate = entry.path().join("bin").join(name);
@@ -684,20 +740,26 @@ fn android_tool_in(ndk: Option<PathBuf>, name: &str) -> Result<PathBuf, String> 
             return Ok(candidate);
         }
     }
-    Err(format!(
-        "Android NDK tool '{name}' was not found under '{}'",
-        prebuilt.display()
+    Err(Diagnostic::new(
+        Code::LinkerNotFound,
+        format!(
+            "Android NDK tool '{name}' was not found under '{}'",
+            prebuilt.display()
+        ),
     ))
 }
 
-fn classify_requested_target(target_triple: &str) -> Result<LinkTargetKind, String> {
+fn classify_requested_target(target_triple: &str) -> Result<LinkTargetKind, Diagnostic> {
     if target_triple.contains("windows-msvc") {
         return Ok(LinkTargetKind::WindowsMsvc);
     }
 
     if target_triple.contains("windows") {
-        return Err(format!(
-            "Unsupported linker target triple '{target_triple}'. Only Windows MSVC targets are supported on Windows."
+        return Err(Diagnostic::new(
+            Code::TargetUnsupported,
+            format!(
+                "Unsupported linker target triple '{target_triple}'. Only Windows MSVC targets are supported on Windows."
+            ),
         ));
     }
 
@@ -705,8 +767,11 @@ fn classify_requested_target(target_triple: &str) -> Result<LinkTargetKind, Stri
         return Ok(LinkTargetKind::Unix);
     }
 
-    Err(format!(
-        "Unsupported linker target triple '{target_triple}'. Supported linker families are Unix-like targets and Windows MSVC targets."
+    Err(Diagnostic::new(
+        Code::TargetUnsupported,
+        format!(
+            "Unsupported linker target triple '{target_triple}'. Supported linker families are Unix-like targets and Windows MSVC targets."
+        ),
     ))
 }
 
@@ -720,8 +785,8 @@ const HOST_LINK_TARGET: Option<LinkTargetKind> =
         None
     };
 
-fn classify_host_target() -> Result<LinkTargetKind, String> {
-    HOST_LINK_TARGET.ok_or_else(|| UNSUPPORTED_HOST.to_string())
+fn classify_host_target() -> Result<LinkTargetKind, Diagnostic> {
+    HOST_LINK_TARGET.ok_or_else(|| Diagnostic::new(Code::TargetUnsupported, UNSUPPORTED_HOST))
 }
 
 const UNSUPPORTED_HOST: &str = "Unsupported host linker target: meshc links for Unix-like and Windows MSVC hosts; pass `--target` with a supported triple.";
@@ -760,7 +825,7 @@ fn host_target_triple() -> String {
 
 /// The clang that links for Windows: the one in the LLVM at `llvm_prefix`
 /// (`LLVM_SYS_211_PREFIX`), or else `clang` on the `PATH`.
-fn windows_clang_path(llvm_prefix: Option<String>) -> Result<PathBuf, String> {
+fn windows_clang_path(llvm_prefix: Option<String>) -> Result<PathBuf, Diagnostic> {
     let Some(prefix) = llvm_prefix else {
         return Ok(PathBuf::from("clang"));
     };
@@ -768,10 +833,13 @@ fn windows_clang_path(llvm_prefix: Option<String>) -> Result<PathBuf, String> {
     if candidate.exists() {
         return Ok(candidate);
     }
-    Err(format!(
-        "LLVM_SYS_211_PREFIX='{}' does not contain bin/clang.exe at '{}'. Install LLVM 21 or set LLVM_SYS_211_PREFIX correctly.",
-        prefix,
-        candidate.display(),
+    Err(Diagnostic::new(
+        Code::LinkerNotFound,
+        format!(
+            "LLVM_SYS_211_PREFIX='{}' does not contain bin/clang.exe at '{}'. Install LLVM 21 or set LLVM_SYS_211_PREFIX correctly.",
+            prefix,
+            candidate.display(),
+        ),
     ))
 }
 
@@ -810,6 +878,15 @@ fn target_dirs_above(path: &Path) -> Vec<PathBuf> {
         }
     }
     dirs
+}
+
+/// The `tool` at `program` could not be started.
+fn tool_not_started(tool: &str, program: &Path, error: std::io::Error) -> Diagnostic {
+    Diagnostic::new(
+        Code::LinkerNotFound,
+        format!("Failed to invoke {tool} '{}'", program.display()),
+    )
+    .with_note(error.to_string())
 }
 
 #[cfg(test)]
@@ -864,7 +941,8 @@ mod tests {
 
     #[test]
     fn classify_requested_target_should_reject_unknown_windows_flavor() {
-        let error = classify_requested_target("x86_64-pc-windows-gnu").unwrap_err();
+        let error =
+            crate::error_text(&classify_requested_target("x86_64-pc-windows-gnu").unwrap_err());
         assert!(
             error.contains("Only Windows MSVC targets are supported on Windows."),
             "unexpected error: {error}"
@@ -1009,13 +1087,15 @@ mod tests {
         assert_eq!(found, runtime);
 
         fs::remove_file(&runtime).unwrap();
-        let error = find_mesh_rt_in(
-            std::slice::from_ref(&temp_target),
-            &target,
-            &["debug", "release"],
-            RuntimeFlavor::Test,
-        )
-        .unwrap_err();
+        let error = crate::error_text(
+            &find_mesh_rt_in(
+                std::slice::from_ref(&temp_target),
+                &target,
+                &["debug", "release"],
+                RuntimeFlavor::Test,
+            )
+            .unwrap_err(),
+        );
         assert!(error.contains("libmesh_test_rt.a"), "{error}");
         assert!(error.contains("cargo build -p mesh-test-rt"), "{error}");
 
@@ -1027,13 +1107,15 @@ mod tests {
         let temp_target = unique_temp_target_dir("windows-missing-runtime");
         let target = LinkTarget::detect(Some("x86_64-pc-windows-msvc")).unwrap();
 
-        let error = find_mesh_rt_in(
-            std::slice::from_ref(&temp_target),
-            &target,
-            &["debug", "release"],
-            RuntimeFlavor::Standard,
-        )
-        .unwrap_err();
+        let error = crate::error_text(
+            &find_mesh_rt_in(
+                std::slice::from_ref(&temp_target),
+                &target,
+                &["debug", "release"],
+                RuntimeFlavor::Standard,
+            )
+            .unwrap_err(),
+        );
         assert!(
             error.contains("mesh_rt.lib"),
             "missing runtime error should name mesh_rt.lib: {error}"
@@ -1049,12 +1131,14 @@ mod tests {
     #[test]
     fn explicit_runtime_override_should_reject_wrong_filename_for_windows_target() {
         let target = LinkTarget::detect(Some("x86_64-pc-windows-msvc")).unwrap();
-        let error = validate_runtime_override(
-            Path::new("/tmp/libmesh_rt.a"),
-            &target,
-            RuntimeFlavor::Standard,
-        )
-        .unwrap_err();
+        let error = crate::error_text(
+            &validate_runtime_override(
+                Path::new("/tmp/libmesh_rt.a"),
+                &target,
+                RuntimeFlavor::Standard,
+            )
+            .unwrap_err(),
+        );
         assert!(
             error.contains("expected filename 'mesh_rt.lib'"),
             "unexpected error: {error}"
@@ -1111,7 +1195,8 @@ mod tests {
     fn windows_links_with_the_clang_of_the_named_llvm_or_the_path() {
         assert_eq!(windows_clang_path(None), Ok(PathBuf::from("clang")));
         let llvm = unique_temp_target_dir("llvm-prefix");
-        let missing = windows_clang_path(Some(llvm.display().to_string())).unwrap_err();
+        let missing =
+            crate::error_text(&windows_clang_path(Some(llvm.display().to_string())).unwrap_err());
         assert!(
             missing.contains("does not contain bin/clang.exe"),
             "{missing}"
@@ -1128,14 +1213,14 @@ mod tests {
 
     #[test]
     fn android_tools_come_from_the_ndk_prebuilt_toolchain() {
-        let error = android_tool_in(None, "llvm-ar").unwrap_err();
+        let error = crate::error_text(&android_tool_in(None, "llvm-ar").unwrap_err());
         assert!(error.contains("ANDROID_NDK_HOME"), "{error}");
         let ndk = unique_temp_target_dir("ndk");
-        let error = android_tool_in(Some(ndk.clone()), "llvm-ar").unwrap_err();
+        let error = crate::error_text(&android_tool_in(Some(ndk.clone()), "llvm-ar").unwrap_err());
         assert!(error.contains("is unavailable"), "{error}");
         let bin = ndk.join("toolchains/llvm/prebuilt/host/bin");
         fs::create_dir_all(&bin).unwrap();
-        let error = android_tool_in(Some(ndk.clone()), "llvm-ar").unwrap_err();
+        let error = crate::error_text(&android_tool_in(Some(ndk.clone()), "llvm-ar").unwrap_err());
         assert!(error.contains("'llvm-ar' was not found"), "{error}");
         fs::write(bin.join("llvm-ar"), b"").unwrap();
         assert_eq!(
@@ -1311,12 +1396,14 @@ mod tests {
         assert_eq!(fs::read_to_string(&received).unwrap(), script);
 
         // A failed archive says why; Windows has none yet.
-        let error =
-            archive_with_plan(&dir.join("missing.o"), &dir.join("libapp.a"), &plan).unwrap_err();
+        let error = crate::error_text(
+            &archive_with_plan(&dir.join("missing.o"), &dir.join("libapp.a"), &plan).unwrap_err(),
+        );
         assert!(error.to_lowercase().contains("static library"), "{error}");
         let windows = plan_for("x86_64-pc-windows-msvc");
-        let error =
-            archive_with_plan(&dir.join("lib.o"), &dir.join("app.lib"), &windows).unwrap_err();
+        let error = crate::error_text(
+            &archive_with_plan(&dir.join("lib.o"), &dir.join("app.lib"), &windows).unwrap_err(),
+        );
         assert!(
             error.contains("not yet supported for Windows MSVC"),
             "{error}"
@@ -1341,12 +1428,20 @@ mod tests {
             stderr: stderr.as_bytes().to_vec(),
         };
         let lib = dir.join("libapp.a");
-        let error =
-            finish_library_link(output(1, "out", " err "), &object, &lib, "Linking").unwrap_err();
-        assert!(error.ends_with("libapp.a': err"), "{error}");
-        let error =
-            finish_library_link(output(1, " out ", ""), &object, &lib, "Linking").unwrap_err();
-        assert!(error.ends_with("libapp.a': out"), "{error}");
+        let error = crate::error_text(
+            &finish_library_link(output(1, "out", " err "), &object, &lib, "Linking").unwrap_err(),
+        );
+        assert_eq!(
+            error,
+            format!("[B0102] Linking failed for '{}'\nerr", lib.display())
+        );
+        let error = crate::error_text(
+            &finish_library_link(output(1, " out ", ""), &object, &lib, "Linking").unwrap_err(),
+        );
+        assert_eq!(
+            error,
+            format!("[B0102] Linking failed for '{}'\nout", lib.display())
+        );
         assert!(object.exists());
         finish_library_link(output(0, "", ""), &object, &lib, "Linking").unwrap();
         assert!(!object.exists());
@@ -1361,41 +1456,49 @@ mod tests {
             windows.runtime_filename(RuntimeFlavor::Test),
             "mesh_test_rt.lib"
         );
-        let error =
-            validate_runtime_override(Path::new("/"), &unix, RuntimeFlavor::Standard).unwrap_err();
+        let error = crate::error_text(
+            &validate_runtime_override(Path::new("/"), &unix, RuntimeFlavor::Standard).unwrap_err(),
+        );
         assert!(error.contains("does not name a file"), "{error}");
 
         let dir = unique_temp_target_dir("native-archives");
-        let relative = validate_native_archive(Path::new("libnative.a"), &unix).unwrap_err();
+        let relative = crate::error_text(
+            &validate_native_archive(Path::new("libnative.a"), &unix).unwrap_err(),
+        );
         assert!(
             relative.contains("existing absolute file path"),
             "{relative}"
         );
-        let missing = validate_native_archive(&dir.join("libnative.a"), &unix).unwrap_err();
+        let missing = crate::error_text(
+            &validate_native_archive(&dir.join("libnative.a"), &unix).unwrap_err(),
+        );
         assert!(missing.contains("existing absolute file path"), "{missing}");
         let archive = dir.join("libnative.a");
         fs::write(&archive, b"").unwrap();
         assert_eq!(validate_native_archive(&archive, &unix), Ok(()));
-        let error = validate_native_archive(&archive, &windows).unwrap_err();
+        let error = crate::error_text(&validate_native_archive(&archive, &windows).unwrap_err());
         assert!(error.contains("`.lib` static-library extension"), "{error}");
         fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn unsupported_targets_are_refused() {
-        let error = classify_requested_target("wasm32-unknown-unknown").unwrap_err();
+        let error =
+            crate::error_text(&classify_requested_target("wasm32-unknown-unknown").unwrap_err());
         assert!(error.contains("Supported linker families"), "{error}");
     }
 
     #[test]
     fn a_missing_runtime_lists_where_it_was_looked_for() {
         let target = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
-        let error = first_existing_runtime(
-            [PathBuf::from("/nowhere/a"), PathBuf::from("/nowhere/b")],
-            &target,
-            RuntimeFlavor::Standard,
-        )
-        .unwrap_err();
+        let error = crate::error_text(
+            &first_existing_runtime(
+                [PathBuf::from("/nowhere/a"), PathBuf::from("/nowhere/b")],
+                &target,
+                RuntimeFlavor::Standard,
+            )
+            .unwrap_err(),
+        );
         assert!(
             error.ends_with("first.\nSearched:\n  - /nowhere/a\n  - /nowhere/b"),
             "{error}"
@@ -1421,9 +1524,12 @@ mod tests {
                 linker_program: linker,
                 ..plan_for("x86_64-unknown-linux-gnu")
             };
-            link_with_plan(&dir.join("main.o"), &dir.join("app"), &plan).unwrap_err()
+            crate::error_text(
+                &link_with_plan(&dir.join("main.o"), &dir.join("app"), &plan).unwrap_err(),
+            )
         };
         let error = link_error("#!/bin/sh\necho undefined symbol\nexit 1\n");
+        assert!(error.starts_with("[B0102] Linking failed"), "{error}");
         assert!(error.ends_with("stdout:\nundefined symbol"), "{error}");
         let error = link_error("#!/bin/sh\nexit 1\n");
         assert!(error.contains("without emitting output"), "{error}");
@@ -1435,7 +1541,7 @@ mod tests {
         target: &LinkTarget,
         profiles: &[&str],
         runtime_flavor: RuntimeFlavor,
-    ) -> Result<PathBuf, String> {
+    ) -> Result<PathBuf, Diagnostic> {
         first_existing_runtime(
             target_dirs
                 .iter()
@@ -1475,35 +1581,41 @@ mod tests {
         assert_eq!(apple[framework + 1], "Security");
         let linux = link_args(&plan_for("x86_64-unknown-linux-gnu"));
         assert!(!linux.contains(&"-framework".to_string()), "{linux:?}");
-        assert!(!LinkTarget::detect(Some("x86_64-pc-windows-msvc"))
+        assert!(LinkTarget::detect(Some("x86_64-pc-windows-msvc"))
             .unwrap()
-            .linker_help_suffix()
-            .is_empty());
+            .linker_repair()
+            .is_some());
     }
 
     /// Why a link could not start or failed, named for what went wrong.
     #[test]
     fn a_link_that_cannot_run_or_fails_says_why() {
-        let override_error = prepare_link_for_runtime(
-            None,
-            Some(Path::new("/nowhere/libwrong.a")),
-            &[],
-            RuntimeFlavor::Standard,
-        )
-        .unwrap_err();
+        let override_error = crate::error_text(
+            &prepare_link_for_runtime(
+                None,
+                Some(Path::new("/nowhere/libwrong.a")),
+                &[],
+                RuntimeFlavor::Standard,
+            )
+            .unwrap_err(),
+        );
         assert!(
             override_error.contains("does not match expected filename"),
             "{override_error}"
         );
-        let missing = prepare_link_for_runtime(
-            None,
-            Some(Path::new("/nowhere/libmesh_rt.a")),
-            &[],
-            RuntimeFlavor::Standard,
-        )
-        .unwrap_err();
+        let missing = crate::error_text(
+            &prepare_link_for_runtime(
+                None,
+                Some(Path::new("/nowhere/libmesh_rt.a")),
+                &[],
+                RuntimeFlavor::Standard,
+            )
+            .unwrap_err(),
+        );
         assert!(
-            missing.contains("static library not found at '/nowhere/libmesh_rt.a'"),
+            missing.starts_with(
+                "[B0201] Mesh runtime static library not found at '/nowhere/libmesh_rt.a'"
+            ),
             "{missing}"
         );
         assert!(missing.contains("cargo build -p mesh-rt"), "{missing}");
@@ -1514,14 +1626,24 @@ mod tests {
             linker_program: dir.join("no-such-linker"),
             ..plan_for(&host.display_triple())
         };
-        let error = link_with_plan(&dir.join("main.o"), &dir.join("app"), &plan).unwrap_err();
-        assert!(error.contains("Failed to invoke linker"), "{error}");
+        let error = crate::error_text(
+            &link_with_plan(&dir.join("main.o"), &dir.join("app"), &plan).unwrap_err(),
+        );
+        assert!(
+            error.starts_with("[B0101] Failed to invoke linker"),
+            "{error}"
+        );
         let plan = LinkPlan {
             linker_program: PathBuf::from("cc"),
             ..plan
         };
-        let error = link_with_plan(&dir.join("missing.o"), &dir.join("app"), &plan).unwrap_err();
-        assert!(error.contains("Linking failed for target"), "{error}");
+        let error = crate::error_text(
+            &link_with_plan(&dir.join("missing.o"), &dir.join("app"), &plan).unwrap_err(),
+        );
+        assert!(
+            error.starts_with("[B0102] Linking failed for target"),
+            "{error}"
+        );
         assert!(error.contains("stderr:"), "{error}");
         fs::remove_dir_all(dir).unwrap();
     }

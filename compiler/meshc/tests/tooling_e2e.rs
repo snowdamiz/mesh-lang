@@ -341,7 +341,7 @@ fn test_build_without_main_names_the_entrypoint() {
     assert!(!output.status.success(), "build without main must fail");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("main.mpl has no `fn main()`"),
+        stderr.contains("[B0302] Error: main.mpl has no `fn main()`"),
         "stderr: {stderr}"
     );
     assert!(!stderr.contains("Linking failed"), "stderr: {stderr}");

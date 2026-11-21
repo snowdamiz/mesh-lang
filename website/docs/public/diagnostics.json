@@ -3,6 +3,114 @@
   "docs_base": "https://meshlang.dev/docs/errors/",
   "codes": [
     {
+      "code": "B0001",
+      "name": "target-unsupported",
+      "severity": "error",
+      "category": "build",
+      "title": "unsupported build target",
+      "summary": "The target triple names a platform Mesh cannot compile or link for, or an artifact kind that the target does not support.",
+      "repair": "Pass `--target` a supported triple, a Unix-like one (macOS, iOS, Linux, Android, or a BSD) or a Windows MSVC one, or omit it to build for the host. Build an executable or a `cdylib` where the target has no `staticlib` support.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0001",
+      "guide": {
+        "explain": "meshc explain B0001",
+        "skill": "references/diagnostics.md#b0001",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0101",
+      "name": "linker-not-found",
+      "severity": "error",
+      "category": "build",
+      "title": "linker not found",
+      "summary": "The C compiler, linker, or archiver the target links with could not be found or started.",
+      "repair": "Install the tool the message names and put it on `PATH`: a C compiler (`cc`) on Unix-like targets, `clang` from LLVM 21 for Windows MSVC (or set `LLVM_SYS_211_PREFIX` to that LLVM), or the Android NDK with `ANDROID_NDK_HOME` set.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0101",
+      "guide": {
+        "explain": "meshc explain B0101",
+        "skill": "references/diagnostics.md#b0101",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0102",
+      "name": "link-failed",
+      "severity": "error",
+      "category": "build",
+      "title": "linking failed",
+      "summary": "The linker or archiver ran and reported a failure; its output is in the notes.",
+      "repair": "Fix what the linker output in the notes names: supply a missing native library or archive, and rebuild the Mesh runtime for the same target when its symbols are missing.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0102",
+      "guide": {
+        "explain": "meshc explain B0102",
+        "skill": "references/diagnostics.md#b0102",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0201",
+      "name": "runtime-library-missing",
+      "severity": "error",
+      "category": "build",
+      "title": "runtime library missing",
+      "summary": "The Mesh runtime static library for the target was not found, or `MESH_RT_LIB_PATH` or `MESH_TEST_RT_LIB_PATH` does not name one.",
+      "repair": "Reinstall Mesh so the `lib` directory beside `meshc` holds the runtime, or in a source checkout run `cargo build -p mesh-rt` (`-p mesh-test-rt` for `meshc test`, with `--target` for another target). Point `MESH_RT_LIB_PATH` at the library file itself, or unset it.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0201",
+      "guide": {
+        "explain": "meshc explain B0201",
+        "skill": "references/diagnostics.md#b0201",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0301",
+      "name": "output-unwritable",
+      "severity": "error",
+      "category": "build",
+      "title": "cannot write build output",
+      "summary": "The object file, LLVM IR, executable, or library could not be written at its output path.",
+      "repair": "Create the output directory, or pass `--output` a path in a writable directory where no directory of the same name exists.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0301",
+      "guide": {
+        "explain": "meshc explain B0301",
+        "skill": "references/diagnostics.md#b0301",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
+      "code": "B0302",
+      "name": "artifact-entry-missing",
+      "severity": "error",
+      "category": "build",
+      "title": "artifact has no entry point",
+      "summary": "An executable build found no `fn main()` in the entry module, or a `staticlib` or `cdylib` build found no `@export` function for a host to call.",
+      "repair": "Define `fn main()` in the entrypoint to build an executable, or mark a public function `@export(\"symbol\")` to build a library, or pass `--artifact` the kind of artifact the program provides.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#b0302",
+      "guide": {
+        "explain": "meshc explain B0302",
+        "skill": "references/diagnostics.md#b0302",
+        "topic": "projects"
+      },
+      "example": null,
+      "status": "active"
+    },
+    {
       "code": "C0001",
       "name": "uncategorized",
       "severity": "error",
@@ -2111,6 +2219,111 @@
       "example": {
         "bad": "module A do\n  pub fn count() do\n    1\n  end\nend\n\nmodule B do\n  pub fn count() do\n    2\n  end\nend\n",
         "fixed": "module A do\n  pub fn count() do\n    1\n  end\nend\n\nmodule B do\n  pub fn total() do\n    2\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0104",
+      "name": "recursive-by-value-type",
+      "severity": "error",
+      "category": "semantic",
+      "title": "struct holds itself by value",
+      "summary": "A struct holds itself by value, directly or through other structs, so a value of it would contain itself and could never be built.",
+      "repair": "Hold the recursive field through a type that ends the recursion: an `Option<...>` or a `List<...>` of the struct, or a sum type with a variant that does not hold it.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0104",
+      "guide": {
+        "explain": "meshc explain E0104",
+        "skill": "references/diagnostics.md#e0104",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "struct Node do\n  next :: Node\nend\n\nfn main() do\nend\n",
+        "fixed": "struct Node do\n  next :: Option<Node>\nend\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0105",
+      "name": "runtime-symbol-collision",
+      "severity": "error",
+      "category": "semantic",
+      "title": "name already used by the runtime",
+      "summary": "A public function or a native binding takes a symbol that the Mesh runtime, the compiler, or another native binding already uses, so calls could reach the wrong code.",
+      "repair": "Rename the function, leaving names that start with `mesh_` to the runtime, and bind each native symbol once with one signature.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0105",
+      "guide": {
+        "explain": "meshc explain E0105",
+        "skill": "references/diagnostics.md#e0105",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "pub fn mesh_string_length(text :: String) -> Int = 0\n\nfn main() do\n  println(\"${mesh_string_length(\"abc\")}\")\nend\n",
+        "fixed": "pub fn text_length(text :: String) -> Int = 0\n\nfn main() do\n  println(\"${text_length(\"abc\")}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0106",
+      "name": "spawn-grouped-unsafe",
+      "severity": "error",
+      "category": "semantic",
+      "title": "grouped actor may block its worker",
+      "summary": "An actor started with `spawn grouped`, or its `terminate` callback, can reach code the compiler cannot prove yields or returns without blocking the shared worker (a native or unaudited runtime call such as I/O, an indirect call, recursion that grows the stack, or a loop in a terminate callback), or `spawn grouped` starts a supervisor child.",
+      "repair": "Start the actor with plain `spawn`, or move the call the notes trace into an actor started with `spawn` and message it. Write recursion as a tail call, and keep loops out of terminate callbacks.",
+      "topic": "actors",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0106",
+      "guide": {
+        "explain": "meshc explain E0106",
+        "skill": "references/diagnostics.md#e0106",
+        "topic": "actors"
+      },
+      "example": {
+        "bad": "actor worker() do\n  IO.eprintln(\"working\")\nend\n\nfn main() do\n  spawn grouped(worker)\nend\n",
+        "fixed": "actor worker() do\n  IO.eprintln(\"working\")\nend\n\nfn main() do\n  spawn(worker)\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0107",
+      "name": "node-spawn-argument",
+      "severity": "error",
+      "category": "semantic",
+      "title": "`Node.spawn` cannot start this on another node",
+      "summary": "`Node.spawn` or `Node.spawn_link` is given a closure instead of a function defined at the top level, or an argument of a type that cannot cross the connection.",
+      "repair": "Name a top-level actor as the second argument, and pass it only `Int`, `Float`, `Bool`, `String`, `Pid`, or `()` arguments, encoding other data as a `String`.",
+      "topic": "clustering",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0107",
+      "guide": {
+        "explain": "meshc explain E0107",
+        "skill": "references/diagnostics.md#e0107",
+        "topic": "clustering"
+      },
+      "example": {
+        "bad": "actor spawner(host :: String) do\n  let _ = Node.spawn(host, fn () -> self() end)\nend\n\nfn main() do\n  let _ = spawn(spawner, \"absent@127.0.0.1:1\")\nend\n",
+        "fixed": "actor remote() do\n  println(\"started\")\nend\n\nactor spawner(host :: String) do\n  let _ = Node.spawn(host, remote)\nend\n\nfn main() do\n  let _ = spawn(spawner, \"absent@127.0.0.1:1\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0108",
+      "name": "export-symbol-collision",
+      "severity": "error",
+      "category": "semantic",
+      "title": "exported symbol already taken",
+      "summary": "An `@export` C symbol is also another export's, a public Mesh function's, or the Mesh runtime's, so a host could not tell which one it calls.",
+      "repair": "Give each `@export` its own C symbol, prefixed with the library's name as in `@export(\"greeter_echo\")`, that no public function or `mesh_` runtime symbol uses.",
+      "topic": "projects",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0108",
+      "guide": {
+        "explain": "meshc explain E0108",
+        "skill": "references/diagnostics.md#e0108",
+        "topic": "projects"
+      },
+      "example": {
+        "bad": "@export(\"mesh_println\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n\nfn main() do\nend\n",
+        "fixed": "@export(\"greeter_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n\nfn main() do\nend\n"
       },
       "status": "active"
     },

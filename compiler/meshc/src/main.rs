@@ -63,7 +63,7 @@ use mesh_parser::ast::AstNode;
 use mesh_pkg::frontend::{self, Analysis, CheckOptions, Target};
 use mesh_pkg::manifest::ClusteredExecutionMetadata;
 
-use mesh_diagnostics::{Diagnostic, Failed, Format, Reporter, SourceFile};
+use mesh_diagnostics::{Code, Diagnostic, Failed, Format, Reporter, Severity, SourceFile};
 use mesh_typeck::ty::Ty;
 
 #[derive(Parser)]
@@ -518,6 +518,14 @@ fn dispatch(cli: Cli, reporter: &mut Reporter) -> Result<(), Failed> {
     }
 }
 
+/// `error`'s message and notes as one line, for a verification reason.
+pub(crate) fn diagnostic_reason(error: &Diagnostic) -> String {
+    std::iter::once(error.message())
+        .chain(error.notes().iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join(": ")
+}
+
 /// Convert a legacy string error at the CLI boundary until its producer is migrated.
 trait ReportResult<T> {
     fn reported(self, reporter: &mut Reporter) -> Result<T, Failed>;
@@ -564,6 +572,26 @@ pub(crate) struct PreparedBuild {
     pub(crate) autonomous_config_json: Option<String>,
     /// Every `declassify` and `@display` export, for `--plaintext-report`.
     pub(crate) plaintext_report: plaintext_report::Report,
+    /// Each module's file, by module id: the MIR's source spans index it.
+    pub(crate) files: Vec<SourceFile>,
+}
+
+impl PreparedBuild {
+    fn codegen_input<'a>(
+        &'a self,
+        mir: &'a mesh_codegen::mir::MirModule,
+        declared_handlers: &'a [mesh_codegen::DeclaredRuntimeRegistration],
+        startup_work_registrations: &'a [mesh_codegen::StartupWorkRegistration],
+    ) -> mesh_codegen::CodegenInput<'a> {
+        mesh_codegen::CodegenInput {
+            mir,
+            declared_handlers,
+            startup_work_registrations,
+            autonomous_config_json: self.autonomous_config_json.as_deref(),
+            library_exports: &self.library_exports,
+            files: &self.files,
+        }
+    }
 }
 
 fn runtime_autonomous_config_json(
@@ -744,11 +772,21 @@ pub(crate) fn build_with_report(
     // Without an entry function codegen emits no C `main`, and the linker's
     // "_main not found" is all the user would see.
     if artifact == BuildArtifact::Executable && prepared.merged_mir.entry_function.is_none() {
-        return Err(format!(
+        let message = format!(
             "{} has no `fn main()`: an executable starts there",
             prepared.entry_relative_path.display()
-        ))
-        .reported(reporter);
+        );
+        let entry = prepared
+            .files
+            .iter()
+            .find(|file| file.path().ends_with(&prepared.entry_relative_path));
+        let error = match entry {
+            Some(file) => Diagnostic::in_file(Code::ArtifactEntryMissing, file, message),
+            None => Diagnostic::new(Code::ArtifactEntryMissing, message),
+        };
+        return Err(reporter.fail(error.with_repair(
+            "Define `fn main()` in the entrypoint, or build a library with `--artifact staticlib` or `--artifact cdylib` from `@export` functions.",
+        )));
     }
     let declared_handler_plan = prepare_declared_handler_plan(
         &prepared.clustered_execution_plan,
@@ -759,6 +797,7 @@ pub(crate) fn build_with_report(
     let declared_handlers = mesh_codegen::prepare_declared_runtime_handlers(
         &mut prepared.merged_mir,
         &declared_handler_plan,
+        &prepared.files,
     )
     .reported(reporter)?;
 
@@ -775,11 +814,7 @@ pub(crate) fn build_with_report(
             llvm_mir.entry_function = None;
         }
         mesh_codegen::compile_mir_to_llvm_ir(
-            &llvm_mir,
-            &declared_handlers,
-            &startup_work_registrations,
-            prepared.autonomous_config_json.as_deref(),
-            &prepared.library_exports,
+            prepared.codegen_input(&llvm_mir, &declared_handlers, &startup_work_registrations),
             &ll_path,
             opt_level,
             target,
@@ -808,11 +843,11 @@ pub(crate) fn build_with_report(
     };
     match artifact {
         BuildArtifact::Executable => mesh_codegen::compile_mir_to_binary(
-            &prepared.merged_mir,
-            &declared_handlers,
-            &startup_work_registrations,
-            prepared.autonomous_config_json.as_deref(),
-            &prepared.library_exports,
+            prepared.codegen_input(
+                &prepared.merged_mir,
+                &declared_handlers,
+                &startup_work_registrations,
+            ),
             &output_path,
             opt_level,
             target,
@@ -823,11 +858,11 @@ pub(crate) fn build_with_report(
         .reported(reporter)?,
         BuildArtifact::Staticlib | BuildArtifact::Cdylib => {
             mesh_codegen::compile_mir_to_library(
-                &prepared.merged_mir,
-                &declared_handlers,
-                &startup_work_registrations,
-                prepared.autonomous_config_json.as_deref(),
-                &prepared.library_exports,
+                prepared.codegen_input(
+                    &prepared.merged_mir,
+                    &declared_handlers,
+                    &startup_work_registrations,
+                ),
                 if artifact == BuildArtifact::Staticlib {
                     mesh_codegen::LibraryArtifact::Static
                 } else {
@@ -895,6 +930,7 @@ pub(crate) fn prepare_project_build(
         project,
         mut checked,
         mut clustered_execution_plan,
+        files,
         ..
     } = frontend::check(Target::Project { root: dir }, &options).report(reporter)?;
     let entry_relative_path = entry.expect("build requires an entrypoint");
@@ -931,8 +967,9 @@ pub(crate) fn prepare_project_build(
     let clustered_route_handler_plan =
         mesh_codegen::prepare_clustered_route_handler_plan(checked.typeck.iter(), default_replicas)
             .reported(reporter)?;
-    let library_exports = collect_library_exports(&project.module_parses).reported(reporter)?;
-    let mir_modules = verify::lower_for_build(&project, &mut checked, &package, reporter)?;
+    let library_exports =
+        collect_library_exports(&project.module_parses, &files).reported(reporter)?;
+    let mir_modules = verify::lower_for_build(&project, &mut checked, &files, &package, reporter)?;
     let entry_mir_idx = project
         .compilation_order
         .iter()
@@ -964,18 +1001,23 @@ pub(crate) fn prepare_project_build(
         )
         .reported(reporter)?,
         plaintext_report,
+        files,
     })
 }
 
 /// Lower checked modules in compilation order, before the native build prunes
 /// unreachable functions. Verification also needs unused function bodies.
+/// `files` holds each module's file by the `MirSourceId` that `source_id`
+/// assigns. Every diagnostic lowering reports is emitted, except the last
+/// error of a module, which is returned.
 fn lower_checked_modules(
     project: &mesh_pkg::project::ProjectData,
     checked: &mut mesh_pkg::project::CheckedProject,
     source_id: impl Fn(&mesh_parser::Parse) -> Option<mesh_codegen::mir::MirSourceId>,
+    files: &[SourceFile],
     mut verification: Option<&mut VerificationLowering>,
     reporter: &mut Reporter,
-) -> Result<Vec<mesh_codegen::mir::MirModule>, String> {
+) -> Result<Vec<mesh_codegen::mir::MirModule>, Diagnostic> {
     let mesh_pkg::project::CheckedProject {
         typeck: all_typeck,
         exports: all_exports,
@@ -1073,10 +1115,19 @@ fn lower_checked_modules(
             &inferred_fn_usage_types,
             &other_modules,
             &source_id,
+            files,
             verification.is_some(),
         )?;
-        for diagnostic in lowered.diagnostics {
+        let (mut errors, others): (Vec<_>, Vec<_>) = lowered
+            .diagnostics
+            .into_iter()
+            .partition(|diagnostic| diagnostic.severity() == Severity::Error);
+        let last_error = errors.pop();
+        for diagnostic in others.into_iter().chain(errors) {
             reporter.emit(diagnostic);
+        }
+        if let Some(error) = last_error {
+            return Err(error);
         }
         if let Some(verification) = verification.as_deref_mut() {
             verification.signatures.push(lowered.signatures);
@@ -1086,12 +1137,14 @@ fn lower_checked_modules(
     Ok(mir_modules)
 }
 
+/// `files` holds each module's file by module id, the index of its parse.
 fn collect_library_exports(
     parses: &[mesh_parser::Parse],
-) -> Result<Vec<mesh_codegen::LibraryExport>, String> {
-    let mut symbols = HashSet::new();
+    files: &[SourceFile],
+) -> Result<Vec<mesh_codegen::LibraryExport>, Diagnostic> {
+    let mut symbols = HashMap::new();
     let mut exports = Vec::new();
-    for parse in parses {
+    for (parse, file) in parses.iter().zip(files) {
         for function in parse.tree().fn_defs() {
             let Some(declaration) = function.export_decl() else {
                 continue;
@@ -1099,12 +1152,22 @@ fn collect_library_exports(
             let function_name = function
                 .name()
                 .and_then(|name| name.text())
-                .ok_or("exported function is missing a name")?;
+                .ok_or_else(|| Diagnostic::internal("exported function is missing a name"))?;
             let symbol = declaration
                 .symbol()
-                .ok_or("exported function is missing a symbol")?;
-            if !symbols.insert(symbol.clone()) {
-                return Err(format!("duplicate exported symbol '{symbol}'"));
+                .ok_or_else(|| Diagnostic::internal("exported function is missing a symbol"))?;
+            let range = declaration.syntax().text_range();
+            let span = mesh_common::span::Span::new(range.start().into(), range.end().into());
+            if let Some((first_file, first_span)) =
+                symbols.insert(symbol.clone(), (file.clone(), span))
+            {
+                return Err(Diagnostic::in_file(
+                    Code::ExportSymbolCollision,
+                    file,
+                    format!("exported symbol `{symbol}` is exported twice"),
+                )
+                .at(span, "exported again here")
+                .with_label_in(&first_file, first_span, "first exported here"));
             }
             exports.push(mesh_codegen::LibraryExport {
                 function: function_name,
@@ -1143,7 +1206,7 @@ fn default_output_path(dir: &Path, artifact: BuildArtifact, target: Option<&str>
 
 fn runtime_lib_override_from_env(
     runtime_flavor: mesh_codegen::link::RuntimeFlavor,
-) -> Result<Option<PathBuf>, String> {
+) -> Result<Option<PathBuf>, Diagnostic> {
     let variable = match runtime_flavor {
         mesh_codegen::link::RuntimeFlavor::Standard => "MESH_RT_LIB_PATH",
         mesh_codegen::link::RuntimeFlavor::Test => "MESH_TEST_RT_LIB_PATH",
@@ -1153,9 +1216,13 @@ fn runtime_lib_override_from_env(
     };
 
     if raw.is_empty() {
-        return Err(format!(
-            "{variable} was set but empty. Provide an absolute path to the selected Mesh runtime static library or unset it."
-        ));
+        return Err(Diagnostic::new(
+            Code::RuntimeLibraryMissing,
+            format!("{variable} was set but empty"),
+        )
+        .with_repair(format!(
+            "Set {variable} to an absolute path to the selected Mesh runtime static library, or unset it."
+        )));
     }
 
     Ok(Some(PathBuf::from(raw)))
@@ -1405,27 +1472,37 @@ mod autonomous_config_tests {
 
     #[test]
     fn library_exports_are_collected_as_reachability_roots_and_symbols_are_unique() {
-        let first = mesh_parser::parse(
-            "@export(\"mesh_mobile_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
-        );
-        let second = mesh_parser::parse(
-            "@export(\"mesh_mobile_status\")\npub fn status(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
-        );
-        let exports = collect_library_exports(&[first, second]).expect("valid exports");
+        let collect = |sources: &[&str]| {
+            let parses: Vec<_> = sources
+                .iter()
+                .map(|text| mesh_parser::parse(text))
+                .collect();
+            let files: Vec<_> = sources
+                .iter()
+                .enumerate()
+                .map(|(index, text)| SourceFile::new(format!("m{index}.mpl"), *text))
+                .collect();
+            collect_library_exports(&parses, &files)
+        };
+        let echo = "@export(\"mesh_mobile_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n";
+        let status = "@export(\"mesh_mobile_status\")\npub fn status(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n";
+        let exports = collect(&[echo, status]).expect("valid exports");
         assert_eq!(exports[0].function, "echo");
         assert_eq!(exports[0].symbol, "mesh_mobile_echo");
 
-        let duplicate = mesh_parser::parse(
-            "@export(\"mesh_mobile_echo\")\npub fn again(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
+        let again = "@export(\"mesh_mobile_echo\")\npub fn again(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n";
+        let error = collect(&[echo, again]).unwrap_err();
+        assert_eq!(error.code(), Code::ExportSymbolCollision);
+        assert_eq!(
+            error.message(),
+            "exported symbol `mesh_mobile_echo` is exported twice"
         );
-        assert!(collect_library_exports(&[
-            mesh_parser::parse(
-                "@export(\"mesh_mobile_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
-            ),
-            duplicate,
-        ])
-        .unwrap_err()
-        .contains("duplicate exported symbol"));
+        assert_eq!(error.file().unwrap().path(), Path::new("m1.mpl"));
+        assert_eq!(error.line(), Some(1));
+        let [first] = error.labels() else {
+            panic!("{:?}", error.labels());
+        };
+        assert_eq!(first.file().unwrap().path(), Path::new("m0.mpl"));
     }
 
     #[test]

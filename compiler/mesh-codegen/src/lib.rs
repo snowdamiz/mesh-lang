@@ -17,8 +17,13 @@
 //! ```
 
 // Lowering and code generation thread their state through many parameters,
-// and some intermediate shapes are spelled out where they are built.
-#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+// some intermediate shapes are spelled out where they are built, and every
+// failure carries a whole diagnostic.
+#![allow(
+    clippy::result_large_err,
+    clippy::too_many_arguments,
+    clippy::type_complexity
+)]
 
 pub mod codegen;
 pub mod declared;
@@ -37,6 +42,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use inkwell::context::Context;
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 
 use codegen::CodeGen;
 use mir::lower::lower_to_mir;
@@ -205,11 +211,21 @@ pub(crate) mod build_trace {
         });
     }
 
-    pub(crate) fn record_error(error: &str) {
+    pub(crate) fn record_error(error: &mesh_diagnostics::Diagnostic) {
         update(|doc| {
-            doc.insert("error".to_string(), json!(error));
+            doc.insert("error".to_string(), json!(crate::error_text(error)));
         });
     }
+}
+
+/// `error` as one text: `[CODE] message`, then each note on a line.
+pub(crate) fn error_text(error: &Diagnostic) -> String {
+    let mut text = format!("[{}] {}", error.code().id(), error.message());
+    for note in error.notes() {
+        text.push('\n');
+        text.push_str(note);
+    }
+    text
 }
 
 /// Lower a parsed and type-checked Mesh program to MIR.
@@ -220,11 +236,11 @@ pub(crate) mod build_trace {
 ///
 /// # Errors
 ///
-/// Returns an error string if MIR lowering fails.
+/// Returns the first error MIR lowering reports.
 pub fn lower_to_mir_module(
     parse: &mesh_parser::Parse,
     typeck: &mesh_typeck::TypeckResult,
-) -> Result<mir::MirModule, String> {
+) -> Result<mir::MirModule, Diagnostic> {
     let empty_pub_fns = HashSet::new();
     let empty_inferred_fn_usage_types: HashMap<String, Vec<mesh_typeck::ty::Ty>> = HashMap::new();
     lower_to_mir(
@@ -250,7 +266,7 @@ pub fn lower_module_to_mir_raw<'a>(
     pub_fns: &HashSet<String>,
     inferred_fn_usage_types: &HashMap<String, Vec<mesh_typeck::ty::Ty>>,
     other_modules: &[(&'a mesh_parser::Parse, &'a mesh_typeck::TypeckResult)],
-) -> Result<mir::MirModule, String> {
+) -> Result<mir::MirModule, Diagnostic> {
     mir::lower::lower_module_to_mir(
         parse,
         typeck,
@@ -268,7 +284,7 @@ fn compile_to_llvm_ir(
     typeck: &mesh_typeck::TypeckResult,
     output: &Path,
     target_triple: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     let mir = lower_to_mir_module(parse, typeck)?;
 
     let context = Context::create();
@@ -281,23 +297,63 @@ fn compile_to_llvm_ir(
 
 // ── Multi-Module Compilation (Phase 39) ────────────────────────────────
 
+/// What code generation compiles: the program, what the build declares
+/// around it, and the files its diagnostics point into.
+#[derive(Clone, Copy)]
+pub struct CodegenInput<'a> {
+    pub mir: &'a mir::MirModule,
+    pub declared_handlers: &'a [DeclaredRuntimeRegistration],
+    pub startup_work_registrations: &'a [StartupWorkRegistration],
+    pub autonomous_config_json: Option<&'a str>,
+    pub library_exports: &'a [LibraryExport],
+    /// Each source file by `MirSourceId`.
+    pub files: &'a [SourceFile],
+}
+
+impl<'a> CodegenInput<'a> {
+    /// `mir` alone: nothing declared or exported, and no file to point into.
+    pub fn new(mir: &'a mir::MirModule) -> Self {
+        Self {
+            mir,
+            declared_handlers: &[],
+            startup_work_registrations: &[],
+            autonomous_config_json: None,
+            library_exports: &[],
+            files: &[],
+        }
+    }
+
+    /// A code generator set up for this input, before it compiles the MIR.
+    fn codegen<'ctx>(
+        &self,
+        context: &'ctx Context,
+        module_name: &str,
+        opt_level: u8,
+        target_triple: Option<&str>,
+    ) -> Result<CodeGen<'ctx>, Diagnostic> {
+        let mut codegen = CodeGen::new(context, module_name, opt_level, target_triple)?;
+        codegen.set_declared_handlers(self.declared_handlers);
+        codegen.set_startup_work_registrations(self.startup_work_registrations);
+        codegen.set_autonomous_config_json(self.autonomous_config_json);
+        codegen.set_library_exports(self.library_exports);
+        codegen.set_source_files(self.files);
+        Ok(codegen)
+    }
+}
+
 /// Compile a pre-built MIR module to a native binary.
 ///
 /// This accepts a MIR module directly (already lowered and optionally merged
 /// from multiple source modules) and produces a native executable.
 pub fn compile_mir_to_binary(
-    mir: &mir::MirModule,
-    declared_handlers: &[DeclaredRuntimeRegistration],
-    startup_work_registrations: &[StartupWorkRegistration],
-    autonomous_config_json: Option<&str>,
-    library_exports: &[LibraryExport],
+    input: CodegenInput<'_>,
     output: &Path,
     opt_level: u8,
     target_triple: Option<&str>,
     runtime_flavor: link::RuntimeFlavor,
     rt_lib_path: Option<&Path>,
     native_archives: &[PathBuf],
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     let obj_path = output.with_extension("o");
     build_trace::set_compile_context(output, &obj_path, target_triple);
     let link_plan = match runtime_flavor {
@@ -309,17 +365,13 @@ pub fn compile_mir_to_binary(
         }
     }?;
 
-    let result: Result<(), String> = (|| -> Result<(), String> {
+    let result: Result<(), Diagnostic> = (|| -> Result<(), Diagnostic> {
         build_trace::set_stage("pre-llvm-init");
         let context = Context::create();
-        let mut codegen = CodeGen::new(&context, "mesh_module", opt_level, target_triple)?;
-        codegen.set_declared_handlers(declared_handlers);
-        codegen.set_startup_work_registrations(startup_work_registrations);
-        codegen.set_autonomous_config_json(autonomous_config_json);
-        codegen.set_library_exports(library_exports);
+        let mut codegen = input.codegen(&context, "mesh_module", opt_level, target_triple)?;
 
         build_trace::set_stage("compile-llvm-module");
-        codegen.compile(mir)?;
+        codegen.compile(input.mir)?;
 
         build_trace::set_stage("run-optimization-passes");
         codegen.run_optimization_passes(opt_level)?;
@@ -336,27 +388,29 @@ pub fn compile_mir_to_binary(
 }
 
 /// Record how the build ended in the build trace.
-fn finish_trace(result: Result<(), String>) -> Result<(), String> {
+fn finish_trace(result: Result<(), Diagnostic>) -> Result<(), Diagnostic> {
     result
         .inspect(|()| build_trace::mark_success())
-        .inspect_err(|error| build_trace::record_error(error))
+        .inspect_err(build_trace::record_error)
 }
 
 pub fn compile_mir_to_library(
-    mir: &mir::MirModule,
-    declared_handlers: &[DeclaredRuntimeRegistration],
-    startup_work_registrations: &[StartupWorkRegistration],
-    autonomous_config_json: Option<&str>,
-    library_exports: &[LibraryExport],
+    input: CodegenInput<'_>,
     artifact: LibraryArtifact,
     output: &Path,
     opt_level: u8,
     target_triple: Option<&str>,
     rt_lib_path: Option<&Path>,
     native_archives: &[PathBuf],
-) -> Result<(), String> {
-    if library_exports.is_empty() {
-        return Err("library artifacts require at least one `@export` function".to_string());
+) -> Result<(), Diagnostic> {
+    if input.library_exports.is_empty() {
+        return Err(Diagnostic::new(
+            Code::ArtifactEntryMissing,
+            "library artifacts require at least one `@export` function",
+        )
+        .with_repair(
+            "Mark a public function `@export(\"symbol\")` for a host to call, or build an executable from a program with `fn main()`.",
+        ));
     }
     let obj_path = output.with_extension("o");
     build_trace::set_compile_context(output, &obj_path, target_triple);
@@ -364,13 +418,9 @@ pub fn compile_mir_to_library(
 
     let result = (|| {
         let context = Context::create();
-        let mut codegen = CodeGen::new(&context, "mesh_library", opt_level, target_triple)?;
-        codegen.set_declared_handlers(declared_handlers);
-        codegen.set_startup_work_registrations(startup_work_registrations);
-        codegen.set_autonomous_config_json(autonomous_config_json);
-        codegen.set_library_exports(library_exports);
+        let mut codegen = input.codegen(&context, "mesh_library", opt_level, target_triple)?;
 
-        let mut library_mir = mir.clone();
+        let mut library_mir = input.mir.clone();
         library_mir.entry_function = None;
         codegen.compile(&library_mir)?;
         codegen.run_optimization_passes(opt_level)?;
@@ -386,25 +436,15 @@ pub fn compile_mir_to_library(
 
 /// Compile a pre-built MIR module to LLVM IR text.
 pub fn compile_mir_to_llvm_ir(
-    mir: &mir::MirModule,
-    declared_handlers: &[DeclaredRuntimeRegistration],
-    startup_work_registrations: &[StartupWorkRegistration],
-    autonomous_config_json: Option<&str>,
-    library_exports: &[LibraryExport],
+    input: CodegenInput<'_>,
     output: &Path,
     opt_level: u8,
     target_triple: Option<&str>,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "mesh_module", opt_level, target_triple)?;
-    codegen.set_declared_handlers(declared_handlers);
-    codegen.set_startup_work_registrations(startup_work_registrations);
-    codegen.set_autonomous_config_json(autonomous_config_json);
-    codegen.set_library_exports(library_exports);
-    codegen.compile(mir)?;
-
-    codegen.emit_llvm_ir(output)?;
-    Ok(())
+    let mut codegen = input.codegen(&context, "mesh_module", opt_level, target_triple)?;
+    codegen.compile(input.mir)?;
+    codegen.emit_llvm_ir(output)
 }
 
 /// Merge multiple MIR modules into a single module.
@@ -431,6 +471,7 @@ pub fn merge_mir_modules(
         entry_function: None,
         service_dispatch: std::collections::HashMap::new(),
         actors: Vec::new(),
+        symbols: Default::default(),
     };
 
     let mut seen_functions: HashSet<String> = HashSet::new();
@@ -472,6 +513,12 @@ pub fn merge_mir_modules(
                 .or_insert_with(|| value.clone());
         }
         merged.actors.extend(module.actors.iter().cloned());
+        for (name, symbol) in &module.symbols {
+            merged
+                .symbols
+                .entry(name.clone())
+                .or_insert_with(|| symbol.clone());
+        }
     };
 
     if let Some(entry) = modules.get(entry_module_idx) {
@@ -911,6 +958,7 @@ end
                     service_dispatch: std::collections::HashMap::new(),
                     actors: Vec::new(),
                     native_functions: Vec::new(),
+                    symbols: Default::default(),
                 },
                 MirModule {
                     functions: vec![MirFunction {
@@ -928,6 +976,7 @@ end
                     service_dispatch: std::collections::HashMap::new(),
                     actors: Vec::new(),
                     native_functions: Vec::new(),
+                    symbols: Default::default(),
                 },
             ],
             1,

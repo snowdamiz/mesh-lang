@@ -366,7 +366,9 @@ fn declared_work_with_parameters_fails_the_build() {
     let text = command_output_text(&output);
     assert!(!output.status.success(), "{text}");
     assert!(
-        text.contains("declared work target `Work.handle_submit` must use `pub fn name() -> ...`"),
+        text.contains(
+            "[CFG0001] Error: declared work target `Work.handle_submit` must use `pub fn name() -> ...`"
+        ),
         "{text}"
     );
 }
@@ -390,5 +392,8 @@ fn llvm_ir_that_cannot_be_written_fails_the_build() {
         .expect("meshc build runs");
     let text = command_output_text(&output);
     assert!(!output.status.success(), "{text}");
-    assert!(text.contains("Failed to emit LLVM IR"), "{text}");
+    assert!(
+        text.contains("[B0301] Error: cannot write the LLVM IR"),
+        "{text}"
+    );
 }

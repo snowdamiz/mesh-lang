@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
+use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 use mesh_typeck::TypeckResult;
 
-use crate::mir::{MirExpr, MirFunction, MirModule, MirType};
+use crate::mir::{diagnostic_at, MirExpr, MirFunction, MirModule, MirType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeclaredHandlerKind {
@@ -35,7 +36,7 @@ pub struct StartupWorkRegistration {
 pub fn prepare_clustered_route_handler_plan<'a>(
     typecks: impl IntoIterator<Item = &'a TypeckResult>,
     default_replicas: u32,
-) -> Result<Vec<DeclaredHandlerPlanEntry>, String> {
+) -> Result<Vec<DeclaredHandlerPlanEntry>, Diagnostic> {
     let mut planned_routes = BTreeMap::<String, u64>::new();
 
     for typeck in typecks {
@@ -53,8 +54,16 @@ pub fn prepare_clustered_route_handler_plan<'a>(
 
             if let Some(existing_count) = planned_routes.get(runtime_registration_name) {
                 if *existing_count != replication_count {
-                    return Err(format!(
-                        "clustered route handler `{runtime_registration_name}` lowered with conflicting replication counts {existing_count} and {replication_count}"
+                    return Err(Diagnostic::new(
+                        Code::ClusterDeclarationInvalid,
+                        format!(
+                            "clustered route handler `{runtime_registration_name}` is declared with \
+                             replication counts {existing_count} and {replication_count}"
+                        ),
+                    )
+                    .with_repair(
+                        "Give every `HTTP.clustered` of the handler the same replication count, \
+                         or leave the count out of each to use `[cluster].default_replicas`.",
                     ));
                 }
                 continue;
@@ -88,10 +97,12 @@ pub fn prepare_startup_work_registrations(
         .collect()
 }
 
+/// `files` holds each source file by `MirSourceId`, for diagnostics.
 pub fn prepare_declared_runtime_handlers(
     mir: &mut MirModule,
     plan: &[DeclaredHandlerPlanEntry],
-) -> Result<Vec<DeclaredRuntimeRegistration>, String> {
+    files: &[SourceFile],
+) -> Result<Vec<DeclaredRuntimeRegistration>, Diagnostic> {
     let mut registrations = Vec::with_capacity(plan.len());
 
     for entry in plan {
@@ -100,6 +111,7 @@ pub fn prepare_declared_runtime_handlers(
                 mir,
                 &entry.runtime_registration_name,
                 &entry.executable_symbol,
+                files,
             )?,
             DeclaredHandlerKind::Route => validate_declared_route_wrapper(
                 mir,
@@ -122,19 +134,34 @@ fn generate_declared_work_wrapper(
     mir: &mut MirModule,
     runtime_registration_name: &str,
     executable_symbol: &str,
-) -> Result<String, String> {
+    files: &[SourceFile],
+) -> Result<String, Diagnostic> {
     let original = mir
         .functions
         .iter()
         .find(|func| func.name == executable_symbol)
         .ok_or_else(|| {
-            format!(
+            Diagnostic::internal(format!(
                 "declared work target `{runtime_registration_name}` has no lowered function `{executable_symbol}`"
-            )
+            ))
         })?;
     if !original.params.is_empty() {
-        return Err(format!(
-            "declared work target `{runtime_registration_name}` must use `pub fn name() -> ...`; continuity metadata is runtime-owned"
+        let definition = mir
+            .symbols
+            .get(executable_symbol)
+            .and_then(|symbol| symbol.definition);
+        return Err(diagnostic_at(
+            files,
+            definition,
+            Code::ClusterDeclarationInvalid,
+            format!(
+                "declared work target `{runtime_registration_name}` must use `pub fn name() -> ...`"
+            ),
+            "takes parameters",
+        )
+        .with_note("The runtime owns the continuity metadata a declared work target runs with.")
+        .with_repair(
+            "Remove the parameters of the `@cluster` function, and read what it needs inside its body.",
         ));
     }
     let return_type = original.return_type.clone();
@@ -182,7 +209,7 @@ fn validate_declared_route_wrapper(
     mir: &MirModule,
     runtime_registration_name: &str,
     executable_symbol: &str,
-) -> Result<String, String> {
+) -> Result<String, Diagnostic> {
     if mir
         .functions
         .iter()
@@ -190,9 +217,9 @@ fn validate_declared_route_wrapper(
     {
         Ok(executable_symbol.to_string())
     } else {
-        Err(format!(
+        Err(Diagnostic::internal(format!(
             "declared route target `{runtime_registration_name}` has no lowered function `{executable_symbol}`"
-        ))
+        )))
     }
 }
 
@@ -240,6 +267,7 @@ mod tests {
             service_dispatch: std::collections::HashMap::new(),
             actors: Vec::new(),
             native_functions: Vec::new(),
+            symbols: Default::default(),
         }
     }
 
@@ -388,12 +416,14 @@ end
             "handle_list_todos",
         );
 
-        let error = prepare_clustered_route_handler_plan([&defaulted, &explicit], 2)
-            .expect_err("conflicting imported route counts must fail closed");
+        let error = crate::error_text(
+            &prepare_clustered_route_handler_plan([&defaulted, &explicit], 2)
+                .expect_err("conflicting imported route counts must fail closed"),
+        );
 
         assert!(
             error.contains("Api.Todos.handle_list_todos")
-                && error.contains("conflicting replication counts 2 and 3"),
+                && error.contains("replication counts 2 and 3"),
             "unexpected error: {error}"
         );
     }
@@ -419,6 +449,7 @@ end
                 executable_symbol: declared_route_wrapper_name("Api.Todos.handle_list_todos"),
                 replication_count: 3,
             }],
+            &[],
         )
         .expect("route shims should register without startup wrappers");
 
@@ -436,16 +467,19 @@ end
     fn declared_route_handlers_reject_missing_lowered_symbol_before_registration() {
         let mut mir = empty_module();
 
-        let error = prepare_declared_runtime_handlers(
-            &mut mir,
-            &[DeclaredHandlerPlanEntry {
-                kind: DeclaredHandlerKind::Route,
-                runtime_registration_name: "Api.Todos.handle_list_todos".to_string(),
-                executable_symbol: declared_route_wrapper_name("Api.Todos.handle_list_todos"),
-                replication_count: 2,
-            }],
-        )
-        .expect_err("missing lowered route shim must fail before registration");
+        let error = crate::error_text(
+            &prepare_declared_runtime_handlers(
+                &mut mir,
+                &[DeclaredHandlerPlanEntry {
+                    kind: DeclaredHandlerKind::Route,
+                    runtime_registration_name: "Api.Todos.handle_list_todos".to_string(),
+                    executable_symbol: declared_route_wrapper_name("Api.Todos.handle_list_todos"),
+                    replication_count: 2,
+                }],
+                &[],
+            )
+            .expect_err("missing lowered route shim must fail before registration"),
+        );
 
         assert!(
             error.contains(
@@ -493,6 +527,7 @@ end
                     replication_count: 3,
                 },
             ],
+            &[],
         )
         .expect("declared work helpers should wrap cleanly");
 
@@ -544,6 +579,7 @@ end
                 executable_symbol: "add".to_string(),
                 replication_count: 2,
             }],
+            &[],
         )
         .expect("zero-arg declared work should wrap cleanly");
 
@@ -582,19 +618,24 @@ end
             has_tail_calls: false,
         });
 
-        let error = prepare_declared_runtime_handlers(
-            &mut mir,
-            &[DeclaredHandlerPlanEntry {
-                kind: DeclaredHandlerKind::Work,
-                runtime_registration_name: "Work.add".to_string(),
-                executable_symbol: "add".to_string(),
-                replication_count: 2,
-            }],
-        )
-        .expect_err("public continuity parameters must be rejected");
+        let error = crate::error_text(
+            &prepare_declared_runtime_handlers(
+                &mut mir,
+                &[DeclaredHandlerPlanEntry {
+                    kind: DeclaredHandlerKind::Work,
+                    runtime_registration_name: "Work.add".to_string(),
+                    executable_symbol: "add".to_string(),
+                    replication_count: 2,
+                }],
+                &[],
+            )
+            .expect_err("public continuity parameters must be rejected"),
+        );
 
         assert!(
-            error.contains("continuity metadata is runtime-owned"),
+            error.starts_with(
+                "[CFG0001] declared work target `Work.add` must use `pub fn name() -> ...`"
+            ),
             "unexpected error: {error}"
         );
     }
@@ -603,16 +644,19 @@ end
     fn declared_runtime_handlers_reject_missing_lowered_symbol_before_registration() {
         let mut mir = empty_module();
 
-        let error = prepare_declared_runtime_handlers(
-            &mut mir,
-            &[DeclaredHandlerPlanEntry {
-                kind: DeclaredHandlerKind::Work,
-                runtime_registration_name: "Work.handle_submit".to_string(),
-                executable_symbol: "missing_handle_submit".to_string(),
-                replication_count: 2,
-            }],
-        )
-        .expect_err("missing lowered work symbol must fail before registration");
+        let error = crate::error_text(
+            &prepare_declared_runtime_handlers(
+                &mut mir,
+                &[DeclaredHandlerPlanEntry {
+                    kind: DeclaredHandlerKind::Work,
+                    runtime_registration_name: "Work.handle_submit".to_string(),
+                    executable_symbol: "missing_handle_submit".to_string(),
+                    replication_count: 2,
+                }],
+                &[],
+            )
+            .expect_err("missing lowered work symbol must fail before registration"),
+        );
 
         assert!(
             error.contains(

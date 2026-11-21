@@ -3165,6 +3165,7 @@ end
                 &project,
                 &mut checked,
                 |_| None,
+                &[],
                 Some(&mut verification),
                 &mut mesh_diagnostics::Reporter::stderr(mesh_diagnostics::Format::Json),
             )
@@ -3415,8 +3416,13 @@ end
         let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
         std::fs::create_dir_all(&output).unwrap();
         let ir = tempfile::NamedTempFile::new_in(output).unwrap();
-        mesh_codegen::compile_mir_to_llvm_ir(&native, &[], &[], None, &[], ir.path(), 0, None)
-            .unwrap();
+        mesh_codegen::compile_mir_to_llvm_ir(
+            mesh_codegen::CodegenInput::new(&native),
+            ir.path(),
+            0,
+            None,
+        )
+        .unwrap();
 
         let declarations = ["Packet", "Chain", "Arrival"].map(|name| NominalDeclaration {
             name: name.into(),
@@ -3547,8 +3553,13 @@ end
         let native = mesh_codegen::merge_mir_modules(vec![module.clone()], 0, &["sample".into()]);
         let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
         let ir = tempfile::NamedTempFile::new_in(output).unwrap();
-        mesh_codegen::compile_mir_to_llvm_ir(&native, &[], &[], None, &[], ir.path(), 0, None)
-            .unwrap();
+        mesh_codegen::compile_mir_to_llvm_ir(
+            mesh_codegen::CodegenInput::new(&native),
+            ir.path(),
+            0,
+            None,
+        )
+        .unwrap();
         let llvm = std::fs::read_to_string(ir.path()).unwrap();
         assert!(llvm.contains("@firstInts(") && llvm.contains("@firstBools("));
 

@@ -5,6 +5,7 @@ use inkwell::module::Linkage;
 use inkwell::values::{
     BasicValue, CallSiteValue, FunctionValue, InstructionOpcode, IntValue, PointerValue,
 };
+use mesh_diagnostics::Diagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::{CodeGen, BUILT};
@@ -228,7 +229,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .all(|child| self.step_expression_supported(child, handler, mir, natives))
     }
 
-    pub(super) fn lower_grouped_steps(&mut self, mir: &MirModule) -> Result<(), String> {
+    pub(super) fn lower_grouped_steps(&mut self, mir: &MirModule) -> Result<(), Diagnostic> {
         if self.step_sites.is_empty() {
             return Ok(());
         }
@@ -314,7 +315,11 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    fn emit_step(&mut self, actor: &str, h: Handler<'_>) -> Result<FunctionValue<'ctx>, String> {
+    fn emit_step(
+        &mut self,
+        actor: &str,
+        h: Handler<'_>,
+    ) -> Result<FunctionValue<'ctx>, Diagnostic> {
         let ptr = self.context.ptr_type(Default::default());
         let status = self.context.i8_type();
         let word = self.context.i64_type();
