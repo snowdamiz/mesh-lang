@@ -30877,5 +30877,235 @@
         "strict_median_throughput_above_oban": false
       }
     }
+  },
+  "linux_jobs_settlement_refill_cpu_floor": {
+    "scope": "instrumented_local_linux_settlement_refill_budget",
+    "profile": "noop-8r-64s",
+    "revision": "f82c66b4ff1898c04b92b291bd493479def7a036",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "worker_flags": {
+      "mesh": {
+        "MESH_DIAGNOSTIC_DEFER_JOB_SCHEDULER": "0",
+        "MESH_DIAGNOSTIC_SINGLE_JOB_WATCHDOG": "0"
+      },
+      "mesh-bootstrap": {
+        "MESH_DIAGNOSTIC_DEFER_JOB_SCHEDULER": "1",
+        "MESH_DIAGNOSTIC_SINGLE_JOB_WATCHDOG": "1"
+      },
+      "mesh-repeat": {
+        "MESH_DIAGNOSTIC_DEFER_JOB_SCHEDULER": "0",
+        "MESH_DIAGNOSTIC_SINGLE_JOB_WATCHDOG": "0"
+      }
+    },
+    "postgres_version": "17.11",
+    "vcpu": 2,
+    "jobs_reconciled": 12288,
+    "pilot": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-bootfloor-01/noop-8r-64s/pilot/stage.json",
+      "sha256": "5c27731acb3693a9e2de3137e5e1b6edb20a11308b2d550c0af8f659b69955e2"
+    },
+    "groups": [
+      {
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-bootfloor-01/noop-8r-64s/0/stage.json",
+          "sha256": "cc5f54ef7248d40ca6e30f45234d810a96f755aaa457a9f3c3b89b1c150711fa"
+        },
+        "attribution": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-bootfloor-01/noop-8r-64s/0/cpu-attribution.json",
+          "sha256": "221ee6398dafc08adcde2818f5e501bb49b2154acd6bb2782c152cd86f2a3527"
+        },
+        "host_load_average_1m_max": 9.23046875,
+        "arms": {
+          "mesh": {
+            "settlement_refill_floor": {
+              "exact_child_cpu_ms_per_job_floor": 0.479484375,
+              "effect_backend": {
+                "observed_cpu_ns": 311978400,
+                "outside_wall_ns": 161654382,
+                "accounting_margin_ns": 126630000,
+                "outer_floor_cpu_ns": 0,
+                "interior_floor_cpu_ns": 120885107,
+                "interior_frames": 6,
+                "cpu_ms_per_job": 0.1180518623046875
+              },
+              "joint_cpu_ms_per_job_floor": 0.5975362373046875,
+              "same_boot_oban_cpu_budget_ms_per_job": 0.8955097198486328,
+              "budget_at_or_below_floor": false
+            },
+            "runner_postgres_floor_cpu_ms_per_job": 1.4887685546875
+          },
+          "mesh-repeat": {
+            "settlement_refill_floor": {
+              "exact_child_cpu_ms_per_job_floor": 0.477,
+              "effect_backend": {
+                "observed_cpu_ns": 316916867,
+                "outside_wall_ns": 157925439,
+                "accounting_margin_ns": 126630000,
+                "outer_floor_cpu_ns": 0,
+                "interior_floor_cpu_ns": 74376171,
+                "interior_frames": 5,
+                "cpu_ms_per_job": 0.0726329794921875
+              },
+              "joint_cpu_ms_per_job_floor": 0.5496329794921875,
+              "same_boot_oban_cpu_budget_ms_per_job": 0.8955097198486328,
+              "budget_at_or_below_floor": false
+            },
+            "runner_postgres_floor_cpu_ms_per_job": 1.4795859375
+          },
+          "mesh-bootstrap": {
+            "settlement_refill_floor": {
+              "exact_child_cpu_ms_per_job_floor": 0.6571748046875,
+              "effect_backend": {
+                "observed_cpu_ns": 672178965,
+                "outside_wall_ns": 457713363,
+                "accounting_margin_ns": 126630000,
+                "outer_floor_cpu_ns": 0,
+                "interior_floor_cpu_ns": 476395127,
+                "interior_frames": 8,
+                "cpu_ms_per_job": 0.4652296162109375
+              },
+              "joint_cpu_ms_per_job_floor": 1.1224044208984374,
+              "same_boot_oban_cpu_budget_ms_per_job": 0.8955097198486328,
+              "budget_at_or_below_floor": true
+            },
+            "runner_postgres_floor_cpu_ms_per_job": 2.819990234375
+          }
+        }
+      },
+      {
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-bootfloor-01/noop-8r-64s/1/stage.json",
+          "sha256": "8ee6c0ca221f796cba042db97985502d52829d36922729acf17789d68cbabc7a"
+        },
+        "attribution": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-bootfloor-01/noop-8r-64s/1/cpu-attribution.json",
+          "sha256": "ae6dc7676d0e42b36108d251fbfb587fa88a13ee052a285f315070d87ff591f8"
+        },
+        "host_load_average_1m_max": 12.44970703125,
+        "arms": {
+          "mesh": {
+            "settlement_refill_floor": {
+              "exact_child_cpu_ms_per_job_floor": 0.4662265625,
+              "effect_backend": {
+                "observed_cpu_ns": 297745369,
+                "outside_wall_ns": 194965971,
+                "accounting_margin_ns": 126630000,
+                "outer_floor_cpu_ns": 0,
+                "interior_floor_cpu_ns": 72362458,
+                "interior_frames": 5,
+                "cpu_ms_per_job": 0.070666462890625
+              },
+              "joint_cpu_ms_per_job_floor": 0.536893025390625,
+              "same_boot_oban_cpu_budget_ms_per_job": 0.8967418670654297,
+              "budget_at_or_below_floor": false
+            },
+            "runner_postgres_floor_cpu_ms_per_job": 1.3561396484375
+          },
+          "mesh-repeat": {
+            "settlement_refill_floor": {
+              "exact_child_cpu_ms_per_job_floor": 0.8503056640625,
+              "effect_backend": {
+                "observed_cpu_ns": 619721797,
+                "outside_wall_ns": 263055127,
+                "accounting_margin_ns": 126630000,
+                "outer_floor_cpu_ns": 0,
+                "interior_floor_cpu_ns": 487363002,
+                "interior_frames": 9,
+                "cpu_ms_per_job": 0.475940431640625
+              },
+              "joint_cpu_ms_per_job_floor": 1.326246095703125,
+              "same_boot_oban_cpu_budget_ms_per_job": 0.8967418670654297,
+              "budget_at_or_below_floor": true
+            },
+            "runner_postgres_floor_cpu_ms_per_job": 3.2359677734375
+          },
+          "mesh-bootstrap": {
+            "settlement_refill_floor": {
+              "exact_child_cpu_ms_per_job_floor": 0.410869140625,
+              "effect_backend": {
+                "observed_cpu_ns": 352187066,
+                "outside_wall_ns": 287896595,
+                "accounting_margin_ns": 126630000,
+                "outer_floor_cpu_ns": 0,
+                "interior_floor_cpu_ns": 156702436,
+                "interior_frames": 6,
+                "cpu_ms_per_job": 0.15302972265625
+              },
+              "joint_cpu_ms_per_job_floor": 0.56389886328125,
+              "same_boot_oban_cpu_budget_ms_per_job": 0.8967418670654297,
+              "budget_at_or_below_floor": false
+            },
+            "runner_postgres_floor_cpu_ms_per_job": 1.463267578125
+          }
+        }
+      },
+      {
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-bootfloor-01/noop-8r-64s/2/stage.json",
+          "sha256": "a29505dd7d55c9ab614f41eed7e33c77706f5c4c513b4b7f08bc76cfd9743470"
+        },
+        "attribution": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/fresh-bootstrap-guest/runs/set-update-cpu-bootfloor-01/noop-8r-64s/2/cpu-attribution.json",
+          "sha256": "41494e9429821e6b53aebf94f509f2e80e7564d42480ac6bfe5bfab64b91f9c7"
+        },
+        "host_load_average_1m_max": 14.3828125,
+        "arms": {
+          "mesh": {
+            "settlement_refill_floor": {
+              "exact_child_cpu_ms_per_job_floor": 0.4973486328125,
+              "effect_backend": {
+                "observed_cpu_ns": 329641920,
+                "outside_wall_ns": 232487564,
+                "accounting_margin_ns": 126630000,
+                "outer_floor_cpu_ns": 0,
+                "interior_floor_cpu_ns": 125491826,
+                "interior_frames": 6,
+                "cpu_ms_per_job": 0.122550611328125
+              },
+              "joint_cpu_ms_per_job_floor": 0.619899244140625,
+              "same_boot_oban_cpu_budget_ms_per_job": 0.8368010520935059,
+              "budget_at_or_below_floor": false
+            },
+            "runner_postgres_floor_cpu_ms_per_job": 1.446576171875
+          },
+          "mesh-repeat": {
+            "settlement_refill_floor": {
+              "exact_child_cpu_ms_per_job_floor": 0.47603125,
+              "effect_backend": {
+                "observed_cpu_ns": 314326248,
+                "outside_wall_ns": 261769075,
+                "accounting_margin_ns": 126630000,
+                "outer_floor_cpu_ns": 0,
+                "interior_floor_cpu_ns": 112691144,
+                "interior_frames": 6,
+                "cpu_ms_per_job": 0.1100499453125
+              },
+              "joint_cpu_ms_per_job_floor": 0.5860811953125,
+              "same_boot_oban_cpu_budget_ms_per_job": 0.8368010520935059,
+              "budget_at_or_below_floor": false
+            },
+            "runner_postgres_floor_cpu_ms_per_job": 1.3234365234375
+          },
+          "mesh-bootstrap": {
+            "settlement_refill_floor": {
+              "exact_child_cpu_ms_per_job_floor": 0.66556640625,
+              "effect_backend": {
+                "observed_cpu_ns": 642963736,
+                "outside_wall_ns": 561669884,
+                "accounting_margin_ns": 126630000,
+                "outer_floor_cpu_ns": 0,
+                "interior_floor_cpu_ns": 399540578,
+                "interior_frames": 8,
+                "cpu_ms_per_job": 0.390176345703125
+              },
+              "joint_cpu_ms_per_job_floor": 1.055742751953125,
+              "same_boot_oban_cpu_budget_ms_per_job": 0.8368010520935059,
+              "budget_at_or_below_floor": true
+            },
+            "runner_postgres_floor_cpu_ms_per_job": 2.5595625
+          }
+        }
+      }
+    ]
   }
 }

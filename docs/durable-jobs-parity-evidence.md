@@ -3097,6 +3097,38 @@ spread. The treatment passed the resource gates and missed throughput
 and pickup. This result leaves each switch's individual effect open.
 [Matched bootstrap receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Bound the CPU available for combined settlement and refill
+
+Three instrumented groups used the same `f82c66b4` ELF, stock claims,
+and plan-retaining reset. The probe joined each `wait4` record to the
+durable attempt. It also sampled the 63 admitted effect backends at
+the existing observer polls without adding SQL. The backend floor
+uses the stronger of the samples wholly inside the durable interval
+and the outer reads after a two-vCPU edge allowance. Both calculations
+include an accounting margin.
+
+| Group | Mesh control floor | Mesh repeat floor | Combined switches floor | Same-boot Oban budget |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 0.598 | 0.550 | 1.122 | 0.896 |
+| 1 | 0.537 | 1.326 | 0.564 | 0.897 |
+| 2 | 0.620 | 0.586 | 1.056 | 0.837 |
+
+All values are CPU-ms/job. Each floor includes only exact child CPU
+and effect-backend CPU. The available budget assumes both vCPUs
+are fully available at Oban's durable throughput in that boot.
+The sum exceeded the budget in two of three combined-switch trials
+and one of six control trials. The other five controls left at most
+0.217–0.360 CPU-ms/job for all remaining work. In those same five
+controls, the full runner and PostgreSQL floor exceeded the budget
+by 0.459–0.610 CPU-ms/job.
+
+The probe reconciled 12,288 scored jobs and stayed separate from the
+trace-off comparison. The spread between identical Mesh controls
+leaves settlement and refill open as a component experiment. A
+standalone change to that path would have to remove a large share
+of the remaining CPU to close the gap.
+[Settlement and refill CPU receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
