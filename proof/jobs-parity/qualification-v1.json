@@ -15863,6 +15863,393 @@
       }
     }
   },
+  "linux_fenced_jobs_staged_short_eight_runner_64": {
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "profile": "short-8r-64s",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/stock1/short-8r-64s",
+    "scope": "Local Linux ARM64 staged comparison, a full warmup and fresh database per scored group",
+    "guest_memory_gib": 2,
+    "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+    "scored_jobs": 7680,
+    "report_receipt_sha256": "4ca6dc40214c227d288ec2df6f5a313e082477dba6bf5d9b7526a7ed96761408",
+    "report_trials_sha256": "389041775f7834c71fafe6aa78e3304cace252b577dad1d11a4daa70b5f5bc87",
+    "stages": {
+      "pilot": {
+        "archive_sha256": "fe0261a01e91411d062ac0d9459adb6be19a262c2b17dd4ea9c8a0282e71cd03",
+        "extraction_sha256": "95704639779f7af458e2b2f671775fc026e8c4ae108688e5b185a886c0de5453",
+        "host_load_average_1m_max": 13.81591796875,
+        "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+        "jobs": 512,
+        "pack_sha256": "367a1fe25aa2c8c280a4c4e665281f43a43e829d2b52edf640b403e15dd9cebf",
+        "transport": {
+          "evidence_files": 59,
+          "expanded_evidence_bytes": 2252149,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 521753,
+          "gzip_limit": 4194304,
+          "serial_bytes": 704513,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 14.317555000001448,
+        "stage_sha256": "5e0c414e5ce0cdde5c410768ca3bd0d16880406ae923dc27e667bcba3610c3e5"
+      },
+      "0": {
+        "archive_sha256": "08564b9c9ebfc99e3a0de79bd3c994ac72ab158eb7b8c2fc2318d25c409df538",
+        "extraction_sha256": "13d662f69c1c4c12890022061286c9017de61fb7bb6c04316faf897449a93309",
+        "host_load_average_1m_max": 12.4453125,
+        "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+        "jobs": 512,
+        "pack_sha256": "a10032503dcad5c17472713cea36c32b2d8c983ea1e191e39f1c77413e7911b6",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 4628696,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 994030,
+          "gzip_limit": 4194304,
+          "serial_bytes": 1343797,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 45.83441287500318,
+        "stage_sha256": "ecb9941c75bcd02d7bf5539aaf2e660cbf0e2a85b02fb4db4a2fee1695856e11"
+      },
+      "1": {
+        "archive_sha256": "498169f1ea63eb420d30490af7b21431695ced0b7a002412f76da53cf7920c7f",
+        "extraction_sha256": "f8c3d046a2c2bbb400ec85a3bceea986b94342b18ec7f68554f8950920c2142a",
+        "host_load_average_1m_max": 8.14599609375,
+        "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+        "jobs": 512,
+        "pack_sha256": "44b6d75b0b3840dd4f3090e5b0dfea486bb7af405056f840d8243030ab940a42",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 4632175,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 997187,
+          "gzip_limit": 4194304,
+          "serial_bytes": 1348062,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 50.29703637500643,
+        "stage_sha256": "86c51ea988f80c8eeeae4f86362ed4a28ca6336743144a4299f83b57746ce777"
+      },
+      "2": {
+        "archive_sha256": "62cc11b215881c753da01411325fde64a07df910e1a2686809b1146b645b6601",
+        "extraction_sha256": "995bc2062f92beb052854c29b8848929ec13265d712e9c9cb1dad130849f1725",
+        "host_load_average_1m_max": 7.90869140625,
+        "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+        "jobs": 512,
+        "pack_sha256": "c9575f348232b1f5799b35b984f291857025befe9043d01220226063ebb0713e",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 4628741,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 991329,
+          "gzip_limit": 4194304,
+          "serial_bytes": 1340174,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 46.562518459002604,
+        "stage_sha256": "c3df8ee484e6f83e3ec16cba66fa49d88340f986bd1712eaf8807d760d1d4399"
+      },
+      "3": {
+        "archive_sha256": "c7104fdc5037364801e54b9e89228d11a9e184410cbf49c8e1806e13efb3a3c0",
+        "extraction_sha256": "a86bbed3ebbc024e88325de179cf67f347d5cf47595575bf60d34d3c7d7540e7",
+        "host_load_average_1m_max": 8.56103515625,
+        "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+        "jobs": 512,
+        "pack_sha256": "e8de778a55d8fa57923c0c6b2577d6ef39fbe76e9ac6642de0b95b5fc09b2512",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 4632138,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 997893,
+          "gzip_limit": 4194304,
+          "serial_bytes": 1349021,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 48.949366624990944,
+        "stage_sha256": "338ba9c315fc8128ec3431fba933498ed8968583fb56eafde2e6430339591e7f"
+      },
+      "4": {
+        "archive_sha256": "824a7b5906b420ffdfa9bbe8c538228357c0b9c1a118b8f4f04eb6a1e11735a3",
+        "extraction_sha256": "4ab9694034b9fb88b67ef5feadab3d1d96c272a9246b1ce685d65512e05fb914",
+        "host_load_average_1m_max": 7.14990234375,
+        "input_sha256": "5e8a588da39b555b9a0390778ff429153565267ebabef93ec2fd9d2112633376",
+        "jobs": 512,
+        "pack_sha256": "cde0effc411cff8127d04b07dcb767dfd907b1bb18febb230f5139072227ea52",
+        "transport": {
+          "evidence_files": 149,
+          "expanded_evidence_bytes": 4633125,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 995666,
+          "gzip_limit": 4194304,
+          "serial_bytes": 1346028,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 47.182172832996,
+        "stage_sha256": "4836e329eba65ed52c3708af5b59eaf48b2ea2ca5cb09e1fafbf45a5eb8b128d"
+      }
+    },
+    "gates": {
+      "mesh": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1037.3190140594272,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 1700.0920917804845,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 477.510009765625,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 288.06298828125,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-repeat": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1005.6233141925505,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 1700.0920917804845,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 496.7080078125,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 288.06298828125,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      }
+    },
+    "observed_ranges": {
+      "mesh": {
+        "claim_calls_per_job": {
+          "max": 0.47265625,
+          "median": 0.435546875,
+          "min": 0.419921875
+        },
+        "claim_p99_ms": {
+          "max": 862.60888671875,
+          "median": 466.64501953125,
+          "min": 453.639892578125
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0021059003906249998,
+          "median": 0.001490294921875,
+          "min": 0.0013746640625
+        },
+        "idle_queries_per_minute": {
+          "max": 14104.801164766548,
+          "median": 14038.014650066854,
+          "min": 13847.681841976537
+        },
+        "jobs_per_second": {
+          "max": 1095.8693371124236,
+          "median": 1037.3190140594272,
+          "min": 568.3458891542965
+        },
+        "peak_connections": {
+          "max": 96,
+          "median": 96,
+          "min": 96
+        },
+        "peak_processes": {
+          "max": 18,
+          "median": 13,
+          "min": 12
+        },
+        "peak_rss_bytes": {
+          "max": 375767040,
+          "median": 332075008,
+          "min": 320475136
+        },
+        "peak_threads": {
+          "max": 150,
+          "median": 143,
+          "min": 113
+        },
+        "pickup_p99_ms": {
+          "max": 881.802978515625,
+          "median": 477.510009765625,
+          "min": 459.458984375
+        },
+        "settlement_p99_ms": {
+          "max": 898.98095703125,
+          "median": 486.739013671875,
+          "min": 462.725830078125
+        },
+        "sql_calls_per_job": {
+          "max": 7.171875,
+          "median": 6.927734375,
+          "min": 6.869140625
+        }
+      },
+      "mesh-repeat": {
+        "claim_calls_per_job": {
+          "max": 0.4765625,
+          "median": 0.443359375,
+          "min": 0.416015625
+        },
+        "claim_p99_ms": {
+          "max": 709.6201171875,
+          "median": 485.85107421875,
+          "min": 458.548095703125
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0016888183593749997,
+          "median": 0.0014003261718750003,
+          "min": 0.0011404394531249998
+        },
+        "idle_queries_per_minute": {
+          "max": 13970.828761549828,
+          "median": 13875.920547152922,
+          "min": 13816.871752884632
+        },
+        "jobs_per_second": {
+          "max": 1077.2552272884877,
+          "median": 1005.6233141925505,
+          "min": 702.4225289464525
+        },
+        "peak_connections": {
+          "max": 96,
+          "median": 96,
+          "min": 96
+        },
+        "peak_processes": {
+          "max": 22,
+          "median": 15,
+          "min": 12
+        },
+        "peak_rss_bytes": {
+          "max": 402509824,
+          "median": 350470144,
+          "min": 327036928
+        },
+        "peak_threads": {
+          "max": 197,
+          "median": 126,
+          "min": 114
+        },
+        "pickup_p99_ms": {
+          "max": 718.149169921875,
+          "median": 496.7080078125,
+          "min": 463.1630859375
+        },
+        "settlement_p99_ms": {
+          "max": 725.090087890625,
+          "median": 505.884033203125,
+          "min": 468.965087890625
+        },
+        "sql_calls_per_job": {
+          "max": 7.166015625,
+          "median": 6.98828125,
+          "min": 6.8359375
+        }
+      },
+      "oban": {
+        "claim_calls_per_job": {
+          "max": 0.203125,
+          "median": 0.162109375,
+          "min": 0.140625
+        },
+        "claim_p99_ms": {
+          "max": 368.06591796875,
+          "median": 282.56103515625,
+          "min": 219.52392578125
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.010534232421875,
+          "median": 0.006489861328124999,
+          "min": 0.006267720703125
+        },
+        "idle_queries_per_minute": {
+          "max": 7539.190767044582,
+          "median": 7501.618355713641,
+          "min": 7338.630474736609
+        },
+        "jobs_per_second": {
+          "max": 2209.4192187630047,
+          "median": 1700.0920917804845,
+          "min": 1323.7949573190708
+        },
+        "peak_connections": {
+          "max": 82,
+          "median": 80,
+          "min": 80
+        },
+        "peak_processes": {
+          "max": 16,
+          "median": 16,
+          "min": 16
+        },
+        "peak_rss_bytes": {
+          "max": 1001906176,
+          "median": 993669120,
+          "min": 990683136
+        },
+        "peak_threads": {
+          "max": 96,
+          "median": 96,
+          "min": 96
+        },
+        "pickup_p99_ms": {
+          "max": 373.809814453125,
+          "median": 288.06298828125,
+          "min": 225.803955078125
+        },
+        "settlement_p99_ms": {
+          "max": 384.17578125,
+          "median": 296.648193359375,
+          "min": 230.026123046875
+        },
+        "sql_calls_per_job": {
+          "max": 3.876953125,
+          "median": 3.71484375,
+          "min": 3.626953125
+        }
+      }
+    },
+    "throughput_pair_wins": {
+      "mesh": 0,
+      "mesh-repeat": 0
+    },
+    "identical_arm_absolute_median_jobs_per_second": 334.36987036923495,
+    "median_occupancy_and_pickup": {
+      "mesh": {
+        "occupied_slots": 23.558050849763546,
+        "first_pickup_ms": 1.468994140625,
+        "first_claim_to_final_settlement_ms": 492.111083984375
+      },
+      "mesh-repeat": {
+        "occupied_slots": 23.59283016089281,
+        "first_pickup_ms": 3.548095703125,
+        "first_claim_to_final_settlement_ms": 507.285888671875
+      },
+      "oban": {
+        "occupied_slots": 27.091365002108454,
+        "first_pickup_ms": 20.72705078125,
+        "first_claim_to_final_settlement_ms": 249.85009765625
+      }
+    }
+  },
   "linux_fenced_jobs_staged_short_four_runner_64": {
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
     "profile": "short-4r-64s",

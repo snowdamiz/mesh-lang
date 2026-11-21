@@ -2847,6 +2847,22 @@ versus 277 ms. Mesh averaged about 44 claimed slots during
 that drain, compared with 33 for Oban.
 [Four-runner short-64 receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare eight runners at 64 slots on short jobs
+
+Five matched Linux groups at `c271319e` reconciled all 7,680
+scored jobs. Mesh reached 1,037 and 1,006 jobs/s, with pickup
+p99 of 478 and 497 ms. Oban reached 1,700 jobs/s and 288 ms
+p99. Neither Mesh arm won a throughput pair. Both passed the
+resource limits and missed throughput and pickup p99.
+
+Mesh first claimed work in 1.5–3.5 ms versus Oban's 20.7 ms.
+After the first claim, Mesh took 492–507 ms to settle the
+backlog versus 250 ms for Oban. Mesh made 0.436 and 0.443
+claim calls per job, compared with Oban's 0.162. Mesh averaged
+about 24 claimed slots through this drain, compared with 27
+for Oban.
+[Eight-runner short-64 receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare one-slot sparse polling on Linux
 
 The `c271319e` staged run used one prewarmed effect session and no
