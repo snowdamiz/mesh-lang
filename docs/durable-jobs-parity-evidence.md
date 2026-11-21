@@ -2282,6 +2282,19 @@ successful `posix_spawnp` calls from their own runner and exact reaps.
 The trace reported zero lost events.
 [Admission and reset receipts](../proof/jobs-parity/qualification-v1.json)
 
+The follow-up at `33a20cfc` uses one deadline across effect socket
+startup and a common settlement cutoff for SQL counters. The traced
+Linux pilot reconciled both modes and all four revocations. In the
+trace-off replay, identical warm Mesh arms reached 1,007.5 and 866.7
+jobs/s versus 607.3 for stock Oban. Both passed the scored limits.
+The Mesh arms won five and four of five groups, respectively, and the
+median absolute difference between identical arms was 203.1 jobs/s.
+Each warmed trial verified 128 resets and return of the original 15
+backends. Median enqueue-to-first-claim was 1.57 and 1.86 ms for Mesh
+and 106.10 ms for Oban. From first claim to final settlement, the medians
+were 125.41, 145.15 and 104.09 ms. The replay still covers one local
+profile. [Deadline and accounting replay](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
