@@ -4179,6 +4179,33 @@ and blocked receipt publication for a previously committed write.
 The native result applies to the one-slot Linux GNU ARM64 draft.
 [Relay and fault proof receipts](../proof/jobs-parity/qualification-v1.json)
 
+The same `30a0432c` executable and libc observer passed all 12
+native fault cases on Linux ARM64 with PostgreSQL 19.0. The 18.7
+run reached the reset-loss case and timed out waiting for the
+retryable row after the consuming wait. The shutdown report
+recorded one retryable outcome. The run remains a failed proof,
+and the archived results retain both the wait and shutdown evidence.
+[Versioned native fault receipts](../proof/jobs-parity/qualification-v1.json)
+
+The corrected bounded-pool draft at `ee686882` passed 35 sampled
+Linux ARM64 runtime tests. The three-worker PostgreSQL 17.11 gate
+proved that two operations held exclusive connections, a third
+worker acquired the released session, and the surviving session
+stayed usable after the other retired. The replacement attempt
+kept the committed write and its XID and committed the second write
+separately. The trace reconciled four spawns and consuming waits.
+
+One LISTEN-off feasibility group ran the same release ELF and frozen
+`short-1r-16s` input with 16 Jobs slots and four, eight, or 16 app
+sessions. Each of the four measured arms reconciled 128 jobs, 256
+separate writes, 256 full resets, and 128 exact reaps. Four and eight
+sessions reached 958 and 940 jobs/s within peak connection counts of
+8 and 12. The identical 16-session arms reached 482 and 935 jobs/s,
+each at 20 connections. The large repeat spread leaves the throughput
+ordering unresolved. Process samples missed peak occupancy in the
+shortest arm, so this run cannot qualify the full-slot RSS budget.
+[Bounded-pool native and timing receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
@@ -4351,6 +4378,13 @@ The Jobs compatibility script exercises the compiled producer and worker,
 the PostgreSQL driver, leases, cancellation, timeout, recovery, and
 shutdown. The full-role variant adds scoped migrator, producer, worker,
 operator, and inspector logins, plus cron takeover and reindex.
+
+An isolated Cargo target at `f6997587` passed the compiled and scoped-role
+compatibility checks on macOS ARM64 with PostgreSQL 17.11, 18.7, and 19.0.
+Each version passed 53 Jobs runtime cases and all three compiled Jobs suites.
+The standalone effect fence also passed on each server version. The shared
+target's earlier compile failure is retained alongside the clean-target logs.
+[Current checkout verification receipts](../proof/jobs-parity/qualification-v1.json)
 
 The paired recovery baseline passed on hosted Linux x86_64 and local
 macOS arm64 with release Mesh `7c162056` and Oban Basic 2.24.2.

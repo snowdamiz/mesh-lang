@@ -37080,6 +37080,258 @@
       "sha256": "70782c2e398142b437c3c783ec0f94515c52f67098719547b59d3e251c733514"
     }
   },
+  "stock_current_postgres_verification": {
+    "revision": "f699758702a3ff460987f6bd476db02f3a062dd7",
+    "platform": "macOS ARM64",
+    "scope": "Isolated Cargo target, verified TLS/SCRAM compatibility, fresh and upgraded scoped roles, parity driver checks, 53 Jobs runtime cases, three compiled Jobs suites and a separate SQL-only effect-fence check on each server.",
+    "versions": {
+      "17.11": {
+        "compiled_and_scoped_roles": {
+          "path": "target/jobs-parity/current-stock-verification/f699758702a3ff460987f6bd476db02f3a062dd7/isolated-pg17.11.log",
+          "sha256": "b684dd37321f4b5db0fb7f87ad871a434db95a4cdfbac055d3ec89ee4bb13493"
+        },
+        "sql_effect_fence": {
+          "path": "target/jobs-parity/current-stock-verification/f699758702a3ff460987f6bd476db02f3a062dd7/effect-fence-pg17.11.log",
+          "sha256": "348e957199a0b088e9e51738e92a1fc7c8815dce13da6efd6d5821b452f85ecd"
+        }
+      },
+      "18.7": {
+        "compiled_and_scoped_roles": {
+          "path": "target/jobs-parity/current-stock-verification/f699758702a3ff460987f6bd476db02f3a062dd7/isolated-pg18.7.log",
+          "sha256": "21722c99ef599d5404140ad0ad743eb010a2021f8ab4ff313a3463b398b344d1"
+        },
+        "sql_effect_fence": {
+          "path": "target/jobs-parity/current-stock-verification/f699758702a3ff460987f6bd476db02f3a062dd7/effect-fence-pg18.7.log",
+          "sha256": "a8951088e0a3eda4fec1917441f0018cd2b5bebcd8ee263e773c6a81fc7a965d"
+        }
+      },
+      "19.0": {
+        "compiled_and_scoped_roles": {
+          "path": "target/jobs-parity/current-stock-verification/f699758702a3ff460987f6bd476db02f3a062dd7/isolated-pg19.0.log",
+          "sha256": "31f19c6c936a6fe2b47aa454f5649d732207b65bd8736ad53e52ea8837b3a178"
+        },
+        "sql_effect_fence": {
+          "path": "target/jobs-parity/current-stock-verification/f699758702a3ff460987f6bd476db02f3a062dd7/effect-fence-pg19.0.log",
+          "sha256": "35daae98eb17d34e76635b3b34f9bae7baa744bc1faceeb6dbaf31d0a09ff0fc"
+        }
+      }
+    },
+    "shared_target_initial_compile_failure": {
+      "path": "target/jobs-parity/current-stock-verification/f699758702a3ff460987f6bd476db02f3a062dd7/pg17.11.log",
+      "sha256": "cbc1185e92d1de9264223d06afde007dbddf66bf6e3de8f77379bf5d8fe6d6f8"
+    }
+  },
+  "linux_compiled_jobs_effect_versioned_faults": {
+    "revision": "30a0432c402993f3de6c7b545c4b7c7af8820c12",
+    "scope": "Same already-linked one-slot GNU ARM64 release and observer, cap five.",
+    "versions": {
+      "18.7": {
+        "status": "failed",
+        "verified_cases": 4,
+        "result": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-1/extracted/evidence/result.json",
+          "sha256": "afb773b4bf06b6dfb633554ffca98804a3a8bc02a7f7f5323ce3efcd120f2e8a"
+        },
+        "faults": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-1/extracted/evidence/faults.json",
+          "sha256": "3399ad9478902345e62b0a865500a5c4199b6309ecf43cde62ab4adea13df1c9"
+        },
+        "postgres_identity": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-1/extracted/evidence/postgres-identity.json",
+          "sha256": "4c64ced5d8541d033adece1bb33c2bcde92ec95d3e1b76f25a11cbb9f2789aec"
+        },
+        "authentication": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-1/extracted/evidence/postgres-auth.json",
+          "sha256": "8b98e5deff5bf32e98730ad5de440dcdb936511f4627568b031149a1cf01b8c0"
+        },
+        "pack": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-1/pack.json",
+          "sha256": "231bd7dd5772f0ae68d81d325d191d5be362f3899b33879505d5094e3784ed78"
+        },
+        "reset_loss_shutdown": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-1/extracted/evidence/reset-loss-runner.log",
+          "sha256": "ee3498aa4a518865247cd79f0189c539d20c9165887793eae8f24b9bbcf9f280"
+        },
+        "reset_loss_events": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-1/extracted/evidence/reset-loss-events.log",
+          "sha256": "4f22a2316048a3d5a6738199ed25ccc6995bdb4b48dcf1be0b9882cafb829a20"
+        }
+      },
+      "19.0": {
+        "status": "complete",
+        "verified_cases": 12,
+        "result": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg19.0-1/extracted/evidence/result.json",
+          "sha256": "2f211dbc6c4dd7997e96eb97566ca5375f051e1ae0bf8adc7d2f84a778393d4d"
+        },
+        "faults": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg19.0-1/extracted/evidence/faults.json",
+          "sha256": "a80d6e53324b733f3b25a4e7ccb36bc2f9a413728e8ffad14b07ad906e9c203f"
+        },
+        "postgres_identity": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg19.0-1/extracted/evidence/postgres-identity.json",
+          "sha256": "e34d14c7671c0f0b8a841dbe161ed875d91883ecb0ae283dd221350e00d71b34"
+        },
+        "authentication": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg19.0-1/extracted/evidence/postgres-auth.json",
+          "sha256": "8b98e5deff5bf32e98730ad5de440dcdb936511f4627568b031149a1cf01b8c0"
+        },
+        "pack": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg19.0-1/pack.json",
+          "sha256": "783648f6101479818ed2e9287863a8d52da0ea7a9f003c90d8c8a534d61dd311"
+        }
+      }
+    }
+  },
+  "linux_compiled_jobs_effect_c16_feasibility": {
+    "revision": "ee68688207a76078b01cb13c45762f6f8d6072b3",
+    "scope": "One LISTEN-off group on Linux ARM64 2 vCPUs / PostgreSQL 17.11, 16 Jobs slots and frozen short-1r-16s input. No current Oban arm. RSS samples can miss full occupancy.",
+    "unit_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-unit-c16-r1/extracted/evidence/result.json",
+      "sha256": "de765d4033e710decfc60263a09c47bb9a00717d4b3b1c18e7d42152b056ff28"
+    },
+    "unit_passed": 35,
+    "link": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/exact-link/link.json",
+      "sha256": "3dc5ac54d6ee2bb2fb6a751416b3a474513d54c82f388a5cdb1f1c86cba6765b"
+    },
+    "gate_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/proof-04/extracted/evidence/result.json",
+      "sha256": "85c9af1ed3034db96f298879cf2a9652bb1ebc3e5fed47a9e153178a17e09d8b"
+    },
+    "gate": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/proof-04/extracted/evidence/correctness/proof.json",
+      "sha256": "82f4f6a48f5535de254e5196cf17a1870213199dc8503932980fff7cc6acab0e"
+    },
+    "gate_wait": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/proof-04/extracted/evidence/correctness/bounded-wait.json",
+      "sha256": "65c1a832aae2f0fe023f8b832ca48ecb898d3abed649a30cacd8c33bcf9c3367"
+    },
+    "screen_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/result.json",
+      "sha256": "171976c333f8131016c7b0985b16b29824ac49853bc4b6f10e87cf0e5c45a775"
+    },
+    "summary": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/screen.json",
+      "sha256": "5d1a78cdb1b8f870596af91ba28baca32069b7d9412806ea22465099acdc7fff"
+    },
+    "host_before": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/host-before.json",
+      "sha256": "9f8748333491667ddb6df662a999a3f9f0b8924de72d09e70e3d1946ca6f0afe"
+    },
+    "host_after": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/host-after.json",
+      "sha256": "fa0d1e8d8593ebddb1b112deb68018e507fd3fe9841c9e5d6cef8d28430f72fc"
+    },
+    "earlier_fixture_failures": [
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/proof-01/extracted/evidence/result.json",
+        "sha256": "9b95825e97d8b814f55ca435a0a3ed532daf5d830fad64f9916ff02e4af7b947"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/proof-02/extracted/evidence/result.json",
+        "sha256": "9d31553f53fe4c953bbffc9f72c7855910d5bd6638a01736e15f6114b8b9022c"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/proof-03/extracted/evidence/result.json",
+        "sha256": "a6ac4ced159fee3541e798261e0b07e7ce61dd5ae2122001eab4d3905115bfce"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-01/extracted/evidence/result.json",
+        "sha256": "26f94e9424efab0911e2f26c099daab0091a995b538f1ed8e0e3c5c9dc85a815"
+      }
+    ],
+    "measured_arms": [
+      {
+        "label": "c16",
+        "lanes": 16,
+        "completed": 128,
+        "jobs_per_second": 482.3909029095931,
+        "peak_connections": 20,
+        "pickup_p99_ms": 256.98486328125,
+        "peak_processes": 3,
+        "peak_rss_bytes": 61378560,
+        "metrics": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c16/metrics.json",
+          "sha256": "b7d616655f6fcead79efaa4c3df213cb0d4ca6893bead353663080bdf3e4d9fb"
+        },
+        "writes": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c16/writes.json",
+          "sha256": "4304e6709b7aa80994714da0a2717b481d52eb0a8aa03fab132ec1fee0a75a98"
+        },
+        "active_cpu": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c16/active-cpu.json",
+          "sha256": "7465d9cf2e41b5bf92d59d9e9d93f0651107b2f2878182a3622c81c700803290"
+        }
+      },
+      {
+        "label": "c04",
+        "lanes": 4,
+        "completed": 128,
+        "jobs_per_second": 957.6246420012858,
+        "peak_connections": 8,
+        "pickup_p99_ms": 126.260009765625,
+        "peak_processes": 3,
+        "peak_rss_bytes": 64987136,
+        "metrics": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c04/metrics.json",
+          "sha256": "034334f336a27741f6fea4b5dad56acd70dbc9fe37974694edd2bc96665314d6"
+        },
+        "writes": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c04/writes.json",
+          "sha256": "f23cc8e220b3a03453eeb22ddbcc98a539aceda344dc1d352e30b19b33c27c28"
+        },
+        "active_cpu": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c04/active-cpu.json",
+          "sha256": "25d6e526c0e0615e43afdaf06900a7f3c4f3e6d7d616cd0fdc22b62a92fb2463"
+        }
+      },
+      {
+        "label": "c16-repeat",
+        "lanes": 16,
+        "completed": 128,
+        "jobs_per_second": 934.5380588328612,
+        "peak_connections": 20,
+        "pickup_p99_ms": 125.756103515625,
+        "peak_processes": 5,
+        "peak_rss_bytes": 76148736,
+        "metrics": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c16-repeat/metrics.json",
+          "sha256": "2372bc5c43424a0b612f390d1188d775246f2802b7a47ec75e4f6af02d0c523c"
+        },
+        "writes": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c16-repeat/writes.json",
+          "sha256": "12e5cad5f89a873b87227d719999a4c7728d33be6880ac467d7910635a32d66f"
+        },
+        "active_cpu": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c16-repeat/active-cpu.json",
+          "sha256": "6d3c7a902b4a99f083fcb98ca7c0d2885d81d32d9c33e81cf8e93b9f57389365"
+        }
+      },
+      {
+        "label": "c08",
+        "lanes": 8,
+        "completed": 128,
+        "jobs_per_second": 939.9531357288972,
+        "peak_connections": 12,
+        "pickup_p99_ms": 125.031005859375,
+        "peak_processes": 1,
+        "peak_rss_bytes": 40321024,
+        "metrics": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c08/metrics.json",
+          "sha256": "47539fb843d4b1cf118ecbd550104deaa4eb394f407da3d44b6b06fa645391ec"
+        },
+        "writes": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c08/writes.json",
+          "sha256": "fba94b3de2abea2c549566b8dfc66fc6695bd37ce229eef5b0eed5d75b881cbd"
+        },
+        "active_cpu": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/screen-02/extracted/evidence/measured-c08/active-cpu.json",
+          "sha256": "7101ca2c5d674191ba0df045f96066a91e27eb6c2a5a7cac8c9a9405598c259b"
+        }
+      }
+    ]
+  },
   "linux_compiled_jobs_effect_relay_faults": {
     "revision": "30a0432c402993f3de6c7b545c4b7c7af8820c12",
     "scope": "One-slot Linux GNU ARM64 release, PostgreSQL 17.11, cap five. Transport and exact wait witness is fixture-only. No scored profiles.",
