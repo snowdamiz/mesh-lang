@@ -124,6 +124,46 @@ Commit the workload settings before using the baseline to evaluate changes.
 Both fixtures receive the same seeded inputs and write an attempt and an
 idempotent effect for each completed job.
 
+### Run the comparison on dedicated Linux CPUs
+
+Use one dedicated-CPU Ubuntu x86-64 instance for both engines and the
+disposable PostgreSQL server. Keep builds and other workloads outside the
+measurement window. Record the CPU model, logical CPU count, and starting
+load. Record host CPU steal and I/O wait during the run so the receipt can
+be interpreted alongside the per-trial load samples.
+
+Install the pinned Rust, LLVM, Erlang, and Elixir versions in
+[versions.env](../tools/performance/versions.env). Use the Ubuntu setup
+and PostgreSQL 17.11 source pin in the
+[authoritative workflow](../.github/workflows/authoritative-verification.yml).
+Include `pg_stat_statements` and point `PG_BIN_DIR` to the pinned server
+tools. Set `LLVM_SYS_211_PREFIX` to the LLVM installation and run from the
+clean checkout as a non-root user.
+
+```bash
+export CARGO_BUILD_JOBS=2
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$PWD/scripts/ci-x86_64-linux-gnu-clang"
+export MIX_HOME="$PWD/target/jobs-parity/build/oban/mix"
+export HEX_HOME="$PWD/target/jobs-parity/build/oban/hex"
+mix local.rebar --force
+mesh_ref="$(git rev-parse HEAD)"
+python3 -B scripts/jobs-parity.py --smoke --release --mesh-batch \
+  --postgres-version 17.11 --mesh-ref "$mesh_ref"
+
+python3 -B scripts/jobs-parity.py --load --mesh-batch \
+  --postgres-version 17.11 --mesh-ref "$mesh_ref" \
+  --toolchains "$PWD/target/jobs-parity/build"
+```
+
+The smoke builds the pinned release artifacts and verifies fixture access
+to the database. The load command verifies those artifact hashes before
+linking and runs all 35 profiles. Preserve the manifest, per-trial raw
+files, summaries, and `result.json` from the printed evidence directory.
+Check that collection passed and `budget_breaches` is empty before
+reporting that the comparison met the throughput and resource limits.
+
+### Inspect the workload and measurements
+
 Sparse trials start one producer process before starting the runners. Each
 enqueue opens and closes its database connections for that transaction.
 The driver submits one job at a time after the previous job settles and the
@@ -1044,6 +1084,76 @@ beat both direct controls for throughput in four short groups and all
 five 100 ms groups. Both profiles met the measured pickup and resource
 limits, with throughput below Oban. The relay is a diagnostic fixture.
 [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Deferred scheduler startup in attempts
+
+On PostgreSQL 17.11, the compiled proof for `6745d08d` observed four
+threads in an eager attempt and three with deferral enabled. An opted-in
+child created its scheduler on the first `Job.async` and completed
+`Job.await` in the same process. The runtime test also passed concurrent
+first spawns through one scheduler start.
+
+Five groups per 64-slot profile used the same release binary in all three
+arms, with deferral enabled only on the candidate. All 15,360 jobs
+reconciled. Median CPU fell from 6.50 to 6.28 ms per short job and from
+7.42 to 7.02 ms per 100 ms job. The candidate used less CPU than both
+controls in four of five groups on each profile. Throughput varied by group,
+and sampled peak RSS on the 100 ms profile was between the two controls.
+The deferral stays experimental. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Smaller worker image screen
+
+Two macOS arm64 fixture images used the same compiled handler, native
+constructor, watchdog, and verified-TLS PostgreSQL writes. The smaller
+image omitted the fixture's coordinator entry and unused registrations.
+Each of five alternating pairs reconciled 64 worker starts, attempt
+writes, and effects per image. The component measures child CPU without
+a Jobs runner and samples all 64 children before releasing their effect
+writes. It uses a separate blocked-write run for RSS.
+
+| Link | Stock → smaller image | Stock → smaller child CPU/job | Stock → smaller RSS at 64 live children |
+| --- | ---: | ---: | ---: |
+| Standard | 26.05 → 26.03 MiB | 6.64 → 6.68 ms | 618 → 608 MiB |
+| macOS dead stripping | 7.44 → 4.31 MiB | 6.19 → 6.02 ms | 515 → 487 MiB |
+
+The smallest child group alone used substantially more resident memory
+than the historical 189 MiB ceiling for the one-runner, 64-slot slow
+profile. This local component result supports keeping the current worker
+image while investigating the remaining per-attempt costs.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Keep batch claim ordering outside PostgreSQL's context sort
+
+The query in `9bd80627` returns each row's batch position. Mesh validates
+the positions and restores the claim and diagnostic order before it
+commits the transaction. PostgreSQL no longer sorts the context payloads.
+The claim function, role grants, and commit confirmation remain the same.
+
+On PostgreSQL 17.11, 18.7, and 19.0, the repository's worker grants allowed both
+queries to return 16 contexts with 512 KiB payloads. With 4 MiB `work_mem`,
+the original plan spilled an 8,224 KiB sort. The new plan removed that
+sort. The claim function still buffers its result. Temporary block reads
+and writes changed from 2,053 and 2,054 to 1,025 and 1,025 on each version.
+
+The macOS release comparison used five groups per profile with two
+identical `b81c2819` controls and reconciled 3,120 jobs. On both large-job
+profiles, the candidate had lower median claim-to-handler-entry time than
+both controls in all five groups. End-to-end throughput beat both controls
+in three of five groups on each large-job profile. The short-job control
+varied across groups. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+The exact candidate passed 53 Jobs runtime tests and three compiled
+suites on each of PostgreSQL 17.11, 18.7, and 19.0 with verified TLS,
+including large contexts and scoped workers on fresh and upgraded
+schemas. The PostgreSQL 17.11 release build passed all 12 recovery and
+commit-loss cases with loopback SCRAM.
+[Correctness receipts](../proof/jobs-parity/qualification-v1.json)
+
+The separate five-pair comparison with Oban Basic 2.24.2 on PostgreSQL
+17.11 still missed the strict throughput target. Mesh reached 97.5 jobs/s
+versus 137.2 at 16 slots, and 152.0 versus 179.0 at 64 slots, with one
+runner in both profiles. Pickup p99 also missed its limit at 16 slots.
+These are local macOS comparisons. [Receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 

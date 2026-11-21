@@ -3745,6 +3745,134 @@
     },
     "scope": "local fixture diagnostic, with relay CPU and sessions included and no production runtime change"
   },
+  "isolated_attempt_scheduler_deferral": {
+    "runtime": "6745d08d8883cd55add5a1b50a0867524c190205",
+    "harness": "9bda49a00299bfaa9980b313276947356d08cea6",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "correctness": {
+      "receipt": "target/jobs-parity/scheduler-proof-i_tulldh/result.json",
+      "sha256": "db6c83f8bbfca9909c298293a72706e0f5e8c65ced4d7f8ce920992e9ea52071",
+      "threads": {"eager": 4, "deferred_before_spawn": 3, "deferred_after_first_spawn": 4},
+      "concurrent_first_spawn_test": "passed"
+    },
+    "measured_trials": 30,
+    "reconciled_jobs": 15360,
+    "peak_one_minute_host_load": 33.085,
+    "raw_path": "target/jobs-parity/reply-reap-integration/comparison-zga4x0ad",
+    "manifest_sha256": "26651a7b0a647bd8d1d5c4c6058226b011ac0c5e55a4dc063be40cd697101854",
+    "result_sha256": "9af4d88c9d5f9d05ef1106ce8cbf152037de2043481eb531c7f3a3ff27b4420b",
+    "metric_order": ["eager", "eager_repeat", "deferred"],
+    "profiles": {
+      "short-1r-64s": {"jobs_per_second": [322.870, 287.453, 317.806], "cpu_ms_per_job": [6.503, 6.688, 6.282], "peak_rss_bytes": [13828096, 14188544, 13844480], "deferred_cpu_wins_against_both": 4},
+      "slow-1r-64s": {"jobs_per_second": [265.176, 257.437, 280.853], "cpu_ms_per_job": [7.415, 7.732, 7.023], "peak_rss_bytes": [346619904, 312901632, 314753024], "deferred_cpu_wins_against_both": 4}
+    },
+    "scope": "same release image, optional deferred scheduler and two eager controls on a varying-load host"
+  },
+  "smaller_worker_image_screen": {
+    "source": "bdb1bd423ceb1d3b5e659a77b559ff8816ce42d1",
+    "toolchain": "b81c2819deb8dec7c667bf2294491ded20b13125",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "pairs_by_link_and_metric": 5,
+    "workers_per_arm": 64,
+    "reconciled_attempts": 2560,
+    "metric_order": ["stock", "smaller"],
+    "standard_link": {
+      "raw_path": "target/jobs-parity/worker-cost-screen/worker-cost-qlfti8l4",
+      "manifest_sha256": "30d79c24e56bea8a46f9243ed434ac3debb57ab7d3639261968febcbc1da1ba0",
+      "result_sha256": "a2fe6219538184caeb06952f3e3f751d646c21a93961dbcc1c6e2f92987d6d0c",
+      "image_bytes": [27320440, 27292864],
+      "child_cpu_ms_per_job": [6.640, 6.677],
+      "held_children_rss_bytes": [648282112, 637091840]
+    },
+    "dead_strip_link": {
+      "raw_path": "target/jobs-parity/worker-cost-screen/worker-cost-7rkhedxd",
+      "manifest_sha256": "e27ea6850b3e9a82e615a461cf47e8d13549bef9f9c6c051f1efd96c01384254",
+      "result_sha256": "eedc906a05e342060406d30d2e755ec02a3c4a33805515c086432c6d4e9f4b0c",
+      "image_bytes": [7800040, 4521776],
+      "child_cpu_ms_per_job": [6.187, 6.016],
+      "held_children_rss_bytes": [539688960, 510296064]
+    },
+    "scope": "component only, real compiled direct-write handler with synthetic worker bootstrap; CPU excludes the runner and PostgreSQL, RSS reads all children at the same blocked write"
+  },
+  "batch_claim_ordinality": {
+    "candidate": "9bd80627830d331aaba09d4a3283bdfa2b810ad2",
+    "baseline_and_repeat": "b81c2819deb8dec7c667bf2294491ded20b13125",
+    "harness": "9bda49a00299bfaa9980b313276947356d08cea6",
+    "host": "Darwin arm64",
+    "transport": "SCRAM with verified TLS",
+    "correctness": {
+      "runtime_tests_passed_per_version": 53,
+      "compiled_proofs_passed_per_version": 3,
+      "compiled_log_directory": "target/jobs-parity/claim-order-study",
+      "compiled_log_sha256_by_version": {
+        "17.11": "b371b1860df604606210eef334c6d1855b5c8d6aa34a189f54b7fbb958524577",
+        "18.7": "5f0b684cebcd5e387e68727732a48f13e78d919f492c730558899c5b0b2cdada",
+        "19.0": "5fb9da389469c8fc0d243e89ba81afa78755c04691c87052e5b1116a21169c09"
+      },
+      "scoped_fresh_and_upgrade_roles": "passed",
+      "release_fault_cases_passed": 12,
+      "fault_postgres_version": "17.11",
+      "fault_transport": "loopback SCRAM",
+      "fault_run": "target/jobs-parity/9bd80627830d331aaba09d4a3283bdfa2b810ad2/j1-fault-u0zfjxlx",
+      "fault_manifest_sha256": "da633906b6936ea2ed8901bdbfbe736b24c967d2bd037b95a6ef8a4941ea74ac",
+      "fault_result_sha256": "48436d736163c2f302623635e97fb6aa84793feff0999b47ecd49cb2b4851706"
+    },
+    "explain": {
+      "effective_role": "scoped worker grants from the repository",
+      "returned_contexts": 16,
+      "job_payload_bytes": 524288,
+      "work_mem_mib": 4,
+      "stock_sort_disk_kib": 8224,
+      "temp_blocks": {"stock": {"read": 2053, "written": 2054}, "candidate": {"read": 1025, "written": 1025}},
+      "17.11": {"run": "explain-dqi_n6u0", "stock_plan_sha256": "101596ced70bb079bb1f19b14e55d3d30f7e385b45e2d9851410c46be90328d0", "candidate_plan_sha256": "faa981df91824750b928a0085f49e2fe21734a6f310f4c11c0d00caccb67a71d"},
+      "18.7": {"run": "explain-ey2mqtt0", "stock_plan_sha256": "7714b95b1a954ea7bc06224d46c5407698db52802a8a7f1c501de9774ddec3a6", "candidate_plan_sha256": "8cc14859c293ab06f861651cf20dd42da605ec712c455d2a9212f73fd75293a0"},
+      "19.0": {"run": "explain-i4a7b_4s", "stock_plan_sha256": "0b62fce5a0c59af87f0b8646298e8ead07a7803e03f5d4f95a91f92d2446cfea", "candidate_plan_sha256": "cf48319b35132fec35767c7bd0786f25401f4e9248decd6a29062e5eb911c5b6"}
+    },
+    "release_comparison": {
+      "postgres_version": "17.11",
+      "raw_path": "target/jobs-parity/reply-reap-integration/comparison-kd44ncwo",
+      "manifest_sha256": "f430f70345470db708d96f2b9a649cb61eaa45040042e345095877090c4acaab",
+      "result_sha256": "ce30f41ab2e2c3e0120139d230d3da2ba3c531804767ffe8296a55ff0eb225a2",
+      "measured_trials": 45,
+      "reconciled_jobs": 3120,
+      "peak_one_minute_host_load": 15.337,
+      "metric_order": ["baseline", "baseline_repeat", "candidate"],
+      "profiles": {
+        "large-1r-16s": {"jobs_per_second": [59.160, 59.075, 62.640], "claim_to_entry_ms": [45.737, 33.153, 27.107], "claim_to_entry_wins_against_both": 5},
+        "large-1r-64s": {"jobs_per_second": [159.837, 141.250, 170.652], "claim_to_entry_ms": [43.656, 36.457, 27.345], "claim_to_entry_wins_against_both": 5},
+        "short-1r-16s": {"jobs_per_second": [451.356, 549.840, 478.850], "claim_to_entry_ms": [6.662, 6.397, 6.711], "claim_to_entry_wins_against_both": 1}
+      }
+    },
+    "oban_comparison": {
+      "oban": "Basic 2.24.2",
+      "postgres_version": "17.11",
+      "measured_pairs_per_profile": 5,
+      "large-1r-16s": {
+        "run": "j1-load-da0m1iht",
+        "manifest_sha256": "006b49725d0a79c9ee34fd8afa69338b5107486d51d7f12e49c09000f196b4aa",
+        "result_sha256": "888ef8a2b61b86ceea3950ab10169248da809bd5edabb111cbbf4b27b07f4b29",
+        "mesh_jobs_per_second": 97.536,
+        "oban_jobs_per_second": 137.182,
+        "mesh_pickup_p99_ms": 136.259,
+        "oban_pickup_p99_ms": 105.081,
+        "breaches": ["throughput", "pickup_p99"]
+      },
+      "large-1r-64s": {
+        "run": "j1-load-h3agcstp",
+        "manifest_sha256": "c4409921ce77f9eff42bf352ae7754db388bbcf7ff49f71b8be0f3ed4f1f1fa3",
+        "result_sha256": "ebc1b9015528828778ad36b174759b260016411d01a259fb1f8a627d4b0b9cbf",
+        "mesh_jobs_per_second": 151.977,
+        "oban_jobs_per_second": 178.990,
+        "mesh_pickup_p99_ms": 402.778,
+        "oban_pickup_p99_ms": 332.344,
+        "breaches": ["throughput"]
+      }
+    }
+  },
   "sparse_identical_binary_control": {
     "harness": "bdb1bd423ceb1d3b5e659a77b559ff8816ce42d1",
     "both_arms": "7c1620563614a04a573aef806a6d019a2af4dfe9",
