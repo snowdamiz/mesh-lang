@@ -2436,6 +2436,24 @@ untraced arms. Use these timings to select a dispatcher experiment.
 The untraced comparisons supply the throughput evidence.
 [Post-effect timing receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Test completion batching on the fenced slow-64 fixture
+
+The opt-in `e98650d4` port passed two PostgreSQL 17.11 store tests
+and two acknowledgement replay tests on macOS. The store tests
+covered cancellation, stale tokens, locked rows, and result ordering
+at the full batch limit. The Linux comparison used a single release
+binary with two unbatched controls and one batched arm. All 7,680
+scored jobs reconciled. PostgreSQL recorded 55–83 batch SQL calls
+in each measured batch trial and zero in the controls.
+
+The batch arm used 4.11 runner SQL calls per job versus 4.67 and
+4.61 in the controls. Median throughput was 393, 392, and 369 jobs/s,
+respectively. The median paired throughput improvement over the
+first control was 1.2 jobs/s, within the 42.2 jobs/s median absolute
+delta between identical controls. The improvement in SQL call
+counts is repeatable. Completion batching remains experimental.
+[Completion batch receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare sparse workloads with eight runners in staged Linux guests
 
 The `c271319e` fixture ran the frozen sparse workload with eight
