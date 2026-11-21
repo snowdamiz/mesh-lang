@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "compiler/mesh-common",
+    "compiler/mesh-diagnostics",
     "compiler/mesh-lexer",
     "compiler/mesh-parser",
     "compiler/mesh-typeck",

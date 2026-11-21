@@ -17,4 +17,5 @@ ureq = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
+mesh-diagnostics = { path = "../mesh-diagnostics" }
 tempfile = "3"

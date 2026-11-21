@@ -12,6 +12,7 @@
 use std::ops::Range;
 
 use ariadne::{Color, Config, Report, ReportKind};
+use mesh_diagnostics::{Code, Severity};
 use serde::Serialize;
 
 use crate::error::{ConstraintOrigin, TypeError};
@@ -116,115 +117,128 @@ pub struct JsonDiagnostic {
 
 // ── Error Codes ────────────────────────────────────────────────────────
 
-/// The code shared by terminal, JSON and LSP type diagnostics.
-pub fn error_code(err: &TypeError) -> &'static str {
-    match err {
-        TypeError::Mismatch { .. } => "E0001",
-        TypeError::InfiniteType { .. } => "E0002",
-        TypeError::ArityMismatch { .. } | TypeError::TupleParameterSplit { .. } => "E0003",
-        TypeError::UnboundVariable { .. } => "E0004",
-        TypeError::NotAFunction { .. } => "E0005",
-        TypeError::TraitNotSatisfied { .. } => "E0006",
-        TypeError::MissingTraitMethod { .. } => "E0007",
-        TypeError::TraitMethodSignatureMismatch { .. } => "E0008",
-        TypeError::MissingField { .. }
-        | TypeError::UnknownField { .. }
-        | TypeError::NoSuchField { .. } => "E0009",
-        TypeError::NoSuchMethod { .. } => "E0030",
-        TypeError::ManualContinuityPromotionDisabled { .. } => "E0046",
-        TypeError::UnknownVariant { .. } => "E0010",
-        TypeError::OrPatternBindingMismatch { .. } => "E0011",
-        TypeError::NonExhaustiveMatch { .. } => "E0012",
-        TypeError::RedundantArm { .. } => "W0001",
-        TypeError::NonExhaustiveClauses { .. } => "W0003",
-        TypeError::SendTypeMismatch { .. } => "E0014",
-        TypeError::SelfOutsideActor { .. } => "E0015",
-        TypeError::MonitorOutsideActor { .. } => "E0086",
-        TypeError::SpawnNonFunction { .. } => "E0016",
-        TypeError::ReceiveOutsideActor { .. } => "E0017",
-        TypeError::InvalidChildStart { .. } => "E0018",
-        TypeError::InvalidStrategy { .. } => "E0019",
-        TypeError::InvalidRestartType { .. } => "E0020",
-        TypeError::InvalidShutdownValue { .. } => "E0021",
-        TypeError::CatchAllNotLast { .. } => "E0022",
-        TypeError::NonConsecutiveClauses { .. } => "E0023",
-        TypeError::NonFirstClauseAnnotation { .. } => "W0002",
-        TypeError::DuplicateImpl { .. } => "E0026",
-        TypeError::AmbiguousMethod { .. } => "E0027",
-        TypeError::UnsupportedDerive { .. } => "E0028",
-        TypeError::MissingDerivePrerequisite { .. } => "E0029",
-        TypeError::BreakOutsideLoop { .. } => "E0032",
-        TypeError::ContinueOutsideLoop { .. } => "E0033",
-        TypeError::ImportModuleNotFound { .. } => "E0031",
-        TypeError::ImportNameNotFound { .. } => "E0034",
-        TypeError::PrivateItem { .. } => "E0035",
-        TypeError::HttpClusteredInvalidArguments { .. } => "E0047",
-        TypeError::HttpClusteredPrivateHandler { .. } => "E0048",
-        TypeError::HttpClusteredOutsideRouteHandlerPosition { .. } => "E0049",
-        TypeError::HttpClusteredConflictingReplicationCount { .. } => "E0050",
-        TypeError::HttpClusteredImportedOriginMissing { .. } => "E0051",
-        TypeError::TryIncompatibleReturn { .. } => "E0036",
-        TypeError::TryOnNonResultOption { .. } => "E0037",
-        TypeError::NonSerializableField { .. } => "E0038",
-        TypeError::NonMappableField { .. } => "E0039",
-        TypeError::MissingAssocType { .. } => "E0040",
-        TypeError::ExtraAssocType { .. } => "E0041",
-        TypeError::UnresolvedAssocType { .. } => "E0042",
-        TypeError::SlotPipeOutOfRange { .. } => "E0044",
-        TypeError::UndefinedType { .. } => "E0045",
-        TypeError::NativeDeclarationInvalid { .. } => "E0052",
-        TypeError::ExportDeclarationInvalid { .. } => "E0055",
-        TypeError::ResourceViolation { .. } => "E0053",
-        TypeError::InvalidLetPattern { .. } => "E0054",
-        TypeError::InvalidPassThroughArm { .. } => "E0056",
-        TypeError::DuplicateBinding { .. } => "E0057",
-        TypeError::DuplicateField { .. } => "E0058",
-        TypeError::NotAStruct { .. } => "E0059",
-        TypeError::UnderivableField { .. } => "E0060",
-        TypeError::DuplicateVariant { .. } => "E0061",
-        TypeError::CyclicAlias { .. } => "E0062",
-        TypeError::UnboundedTypeParam { .. } => "E0063",
-        TypeError::AmbiguousDefault { .. } => "E0064",
-        TypeError::AmbiguousImplMethod { .. } => "E0065",
-        TypeError::AmbiguousStaticMethod { .. } => "E0066",
-        TypeError::RigidTypeParam { .. } => "E0067",
-        TypeError::DuplicateDefinition { .. } => "E0068",
-        TypeError::UnknownType { .. } => "E0069",
-        TypeError::UnknownFieldOwner { .. } => "E0070",
-        TypeError::UnknownInterface { .. } => "E0071",
-        TypeError::InvalidLiteral { .. } => "E0072",
-        TypeError::InvalidConcat { .. } => "E0073",
-        TypeError::NoSuchModuleFunction { .. } => "E0074",
-        TypeError::OverloadedFunctionValue { .. } => "E0075",
-        TypeError::GenericImplTarget { .. } => "E0076",
-        TypeError::AssertReceiveOutsideTest { .. } => "E0077",
-        TypeError::IndexingUnsupported { .. } => "E0078",
-        TypeError::ActorMessageTypeUnknown { .. } => "E0079",
-        TypeError::TopLevelLet { .. } => "E0080",
-        TypeError::ModuleNotImported { .. } => "E0081",
-        TypeError::UntypedMethodParam { .. } => "E0082",
-        TypeError::TypeNotValue { .. } => "E0083",
-        TypeError::NestedDefinition { .. } => "E0084",
-        TypeError::TypeArgumentCount { .. } => "E0085",
-        TypeError::TopLevelStatement { .. } => "E0087",
-        TypeError::MethodReturnUnknown { .. } => "E0088",
-        TypeError::SpawnByName { .. } => "E0089",
-        TypeError::SpawnNotActor { .. } => "E0090",
-        TypeError::DecodeTypeUnknown { .. } => "E0091",
-        TypeError::UnderivableFieldType { .. } => "E0092",
-        TypeError::PlaintextViolation { .. } => "E0093",
-        TypeError::JobsStartInvalid { .. } => "E0094",
-        TypeError::InvalidIndex { .. } => "E0095",
+impl TypeError {
+    /// The catalog code shared by terminal, JSON and LSP type diagnostics.
+    pub fn code(&self) -> Code {
+        match self {
+            TypeError::Mismatch { .. } => Code::TypeMismatch,
+            TypeError::InfiniteType { .. } => Code::InfiniteType,
+            TypeError::ArityMismatch { .. } | TypeError::TupleParameterSplit { .. } => {
+                Code::ArityMismatch
+            }
+            TypeError::UnboundVariable { .. } => Code::UnboundVariable,
+            TypeError::NotAFunction { .. } => Code::NotAFunction,
+            TypeError::TraitNotSatisfied { .. } => Code::TraitNotSatisfied,
+            TypeError::MissingTraitMethod { .. } => Code::MissingTraitMethod,
+            TypeError::TraitMethodSignatureMismatch { .. } => Code::TraitMethodSignatureMismatch,
+            TypeError::MissingField { .. }
+            | TypeError::UnknownField { .. }
+            | TypeError::NoSuchField { .. } => Code::InvalidField,
+            TypeError::NoSuchMethod { .. } => Code::NoSuchMethod,
+            TypeError::ManualContinuityPromotionDisabled { .. } => Code::ManualContinuityPromotion,
+            TypeError::UnknownVariant { .. } => Code::UnknownVariant,
+            TypeError::OrPatternBindingMismatch { .. } => Code::OrPatternBindingMismatch,
+            TypeError::NonExhaustiveMatch { .. } => Code::NonExhaustiveMatch,
+            TypeError::RedundantArm { .. } => Code::RedundantArm,
+            TypeError::NonExhaustiveClauses { .. } => Code::NonExhaustiveClauses,
+            TypeError::SendTypeMismatch { .. } => Code::MessageTypeMismatch,
+            TypeError::SelfOutsideActor { .. } => Code::SelfOutsideActor,
+            TypeError::MonitorOutsideActor { .. } => Code::MonitorOutsideActor,
+            TypeError::SpawnNonFunction { .. } => Code::SpawnNonFunction,
+            TypeError::ReceiveOutsideActor { .. } => Code::ReceiveOutsideActor,
+            TypeError::InvalidChildStart { .. } => Code::InvalidChildStart,
+            TypeError::InvalidStrategy { .. } => Code::UnknownSupervisionStrategy,
+            TypeError::InvalidRestartType { .. } => Code::InvalidRestartType,
+            TypeError::InvalidShutdownValue { .. } => Code::InvalidShutdownValue,
+            TypeError::CatchAllNotLast { .. } => Code::CatchAllNotLast,
+            TypeError::NonConsecutiveClauses { .. } => Code::NonConsecutiveClauses,
+            TypeError::NonFirstClauseAnnotation { .. } => Code::NonFirstClauseAnnotation,
+            TypeError::DuplicateImpl { .. } => Code::DuplicateImpl,
+            TypeError::AmbiguousMethod { .. } => Code::AmbiguousMethod,
+            TypeError::UnsupportedDerive { .. } => Code::UnsupportedDerive,
+            TypeError::MissingDerivePrerequisite { .. } => Code::MissingDerivePrerequisite,
+            TypeError::BreakOutsideLoop { .. } => Code::BreakOutsideLoop,
+            TypeError::ContinueOutsideLoop { .. } => Code::ContinueOutsideLoop,
+            TypeError::ImportModuleNotFound { .. } => Code::ModuleNotFound,
+            TypeError::ImportNameNotFound { .. } => Code::ImportNameNotFound,
+            TypeError::PrivateItem { .. } => Code::PrivateItem,
+            TypeError::HttpClusteredInvalidArguments { .. } => Code::ClusteredRouteInvalidArguments,
+            TypeError::HttpClusteredPrivateHandler { .. } => Code::ClusteredRoutePrivateHandler,
+            TypeError::HttpClusteredOutsideRouteHandlerPosition { .. } => {
+                Code::ClusteredRouteMisplaced
+            }
+            TypeError::HttpClusteredConflictingReplicationCount { .. } => {
+                Code::ClusteredRouteConflictingCount
+            }
+            TypeError::HttpClusteredImportedOriginMissing { .. } => {
+                Code::ClusteredRouteOriginMissing
+            }
+            TypeError::TryIncompatibleReturn { .. } => Code::TryIncompatibleReturn,
+            TypeError::TryOnNonResultOption { .. } => Code::TryOnNonResult,
+            TypeError::NonSerializableField { .. } => Code::NonSerializableField,
+            TypeError::NonMappableField { .. } => Code::NonMappableField,
+            TypeError::MissingAssocType { .. } => Code::MissingAssociatedType,
+            TypeError::ExtraAssocType { .. } => Code::ExtraAssociatedType,
+            TypeError::UnresolvedAssocType { .. } => Code::UnresolvedAssociatedType,
+            TypeError::SlotPipeOutOfRange { .. } => Code::SlotPipeOutOfRange,
+            TypeError::UndefinedType { .. } => Code::UndefinedAliasTarget,
+            TypeError::NativeDeclarationInvalid { .. } => Code::InvalidNativeDeclaration,
+            TypeError::ExportDeclarationInvalid { .. } => Code::InvalidExportDeclaration,
+            TypeError::ResourceViolation { .. } => Code::ResourceOwnershipViolation,
+            TypeError::InvalidLetPattern { .. } => Code::InvalidLetPattern,
+            TypeError::InvalidPassThroughArm { .. } => Code::InvalidPassThroughArm,
+            TypeError::DuplicateBinding { .. } => Code::DuplicateBinding,
+            TypeError::DuplicateField { .. } => Code::DuplicateField,
+            TypeError::NotAStruct { .. } => Code::NotAStruct,
+            TypeError::UnderivableField { .. } => Code::UnderivableFunctionField,
+            TypeError::DuplicateVariant { .. } => Code::DuplicateVariant,
+            TypeError::CyclicAlias { .. } => Code::CyclicAlias,
+            TypeError::UnboundedTypeParam { .. } => Code::UnboundedTypeParameter,
+            TypeError::AmbiguousDefault { .. } => Code::AmbiguousDefault,
+            TypeError::AmbiguousImplMethod { .. } => Code::AmbiguousImplMethod,
+            TypeError::AmbiguousStaticMethod { .. } => Code::AmbiguousStaticMethod,
+            TypeError::RigidTypeParam { .. } => Code::RigidTypeParameter,
+            TypeError::DuplicateDefinition { .. } => Code::DuplicateDefinition,
+            TypeError::UnknownType { .. } => Code::UnknownType,
+            TypeError::UnknownFieldOwner { .. } => Code::UnknownFieldOwner,
+            TypeError::UnknownInterface { .. } => Code::UnknownInterface,
+            TypeError::InvalidLiteral { .. } => Code::InvalidLiteral,
+            TypeError::InvalidConcat { .. } => Code::InvalidConcat,
+            TypeError::NoSuchModuleFunction { .. } => Code::NoSuchModuleFunction,
+            TypeError::OverloadedFunctionValue { .. } => Code::OverloadedFunctionValue,
+            TypeError::GenericImplTarget { .. } => Code::GenericImplTarget,
+            TypeError::AssertReceiveOutsideTest { .. } => Code::AssertReceiveOutsideTest,
+            TypeError::IndexingUnsupported { .. } => Code::IndexingUnsupported,
+            TypeError::ActorMessageTypeUnknown { .. } => Code::ActorMessageTypeUnknown,
+            TypeError::TopLevelLet { .. } => Code::TopLevelLet,
+            TypeError::ModuleNotImported { .. } => Code::ModuleNotImported,
+            TypeError::UntypedMethodParam { .. } => Code::UntypedMethodParameter,
+            TypeError::TypeNotValue { .. } => Code::TypeNotValue,
+            TypeError::NestedDefinition { .. } => Code::NestedDefinition,
+            TypeError::TypeArgumentCount { .. } => Code::TypeArgumentCount,
+            TypeError::TopLevelStatement { .. } => Code::TopLevelStatement,
+            TypeError::MethodReturnUnknown { .. } => Code::MethodReturnUnknown,
+            TypeError::SpawnByName { .. } => Code::SpawnComputed,
+            TypeError::SpawnNotActor { .. } => Code::SpawnNotActor,
+            TypeError::DecodeTypeUnknown { .. } => Code::DecodeTypeUnknown,
+            TypeError::UnderivableFieldType { .. } => Code::UnderivableFieldType,
+            TypeError::PlaintextViolation { .. } => Code::PlaintextViolation,
+            TypeError::JobsStartInvalid { .. } => Code::InvalidJobsStart,
+            TypeError::InvalidIndex { .. } => Code::InvalidNatIndex,
+        }
     }
+}
+
+/// The code's ID, as `"E0001"`.
+pub fn error_code(err: &TypeError) -> &'static str {
+    err.code().id()
 }
 
 /// Determine severity string for JSON output.
 fn severity(err: &TypeError) -> &'static str {
-    match err {
-        TypeError::RedundantArm { .. }
-        | TypeError::NonFirstClauseAnnotation { .. }
-        | TypeError::NonExhaustiveClauses { .. } => "warning",
-        _ => "error",
+    match err.code().severity() {
+        Severity::Warning => "warning",
+        Severity::Error => "error",
     }
 }
 
@@ -303,63 +317,11 @@ fn closest_name_help(
 ) -> Option<String> {
     suggestion
         .clone()
-        .or_else(|| find_closest_name(name, suggestions?, 2))
+        .or_else(|| {
+            mesh_diagnostics::closest(name, suggestions?.iter().map(String::as_str), 2)
+                .map(str::to_owned)
+        })
         .map(|closest| format!("did you mean `{closest}`?"))
-}
-
-/// Find the closest name in a list using Levenshtein distance.
-pub(crate) fn find_closest_name(
-    target: &str,
-    candidates: &[String],
-    max_distance: usize,
-) -> Option<String> {
-    let mut best: Option<(usize, &str)> = None;
-    for candidate in candidates {
-        let dist = levenshtein_distance(target, candidate);
-        if dist <= max_distance {
-            if let Some((best_dist, _)) = best {
-                if dist < best_dist {
-                    best = Some((dist, candidate));
-                }
-            } else {
-                best = Some((dist, candidate));
-            }
-        }
-    }
-    best.map(|(_, name)| name.to_string())
-}
-
-/// Compute Levenshtein edit distance between two strings.
-fn levenshtein_distance(a: &str, b: &str) -> usize {
-    let a_chars: Vec<char> = a.chars().collect();
-    let b_chars: Vec<char> = b.chars().collect();
-    let m = a_chars.len();
-    let n = b_chars.len();
-
-    if m == 0 {
-        return n;
-    }
-    if n == 0 {
-        return m;
-    }
-
-    let mut prev: Vec<usize> = (0..=n).collect();
-    let mut curr = vec![0usize; n + 1];
-
-    for i in 1..=m {
-        curr[0] = i;
-        for j in 1..=n {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] {
-                0
-            } else {
-                1
-            };
-            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-
-    prev[n]
 }
 
 // ── JSON Rendering ───────────────────────────────────────────────────
@@ -1978,34 +1940,6 @@ mod tests {
         assert_eq!(report_span(source, 3..3), 3..4);
         assert_eq!(report_span(source, 7..9), 6..7);
         assert_eq!(report_span("", 0..0), 0..0);
-    }
-
-    #[test]
-    fn test_levenshtein_distance() {
-        assert_eq!(levenshtein_distance("kitten", "sitting"), 3);
-        assert_eq!(levenshtein_distance("", "abc"), 3);
-        assert_eq!(levenshtein_distance("abc", ""), 3);
-        assert_eq!(levenshtein_distance("abc", "abc"), 0);
-        assert_eq!(levenshtein_distance("abc", "abd"), 1);
-        assert_eq!(levenshtein_distance("count", "cound"), 1);
-    }
-
-    #[test]
-    fn test_find_closest_name() {
-        let candidates = vec![
-            "count".to_string(),
-            "counter".to_string(),
-            "amount".to_string(),
-        ];
-        assert_eq!(
-            find_closest_name("cont", &candidates, 2),
-            Some("count".to_string())
-        );
-        assert_eq!(find_closest_name("xyz", &candidates, 2), None);
-        assert_eq!(
-            find_closest_name("count", &candidates, 2),
-            Some("count".to_string())
-        );
     }
 
     #[test]

@@ -9984,20 +9984,16 @@ fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Resu
 /// an uppercase name, a variable or function otherwise).
 fn did_you_mean(env: &TypeEnv, name: &str) -> Option<String> {
     let upper = name.starts_with(char::is_uppercase);
-    let candidates: Vec<String> = env
-        .names()
-        .filter(|candidate| {
-            candidate.as_str() != name
-                && candidate.starts_with(char::is_uppercase) == upper
-                && !candidate.starts_with("__")
-                && candidate
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
-        })
-        .cloned()
-        .collect();
+    let candidates = env.names().map(String::as_str).filter(|candidate| {
+        *candidate != name
+            && candidate.starts_with(char::is_uppercase) == upper
+            && !candidate.starts_with("__")
+            && candidate
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+    });
     let max_distance = if name.chars().count() <= 3 { 1 } else { 2 };
-    crate::diagnostics::find_closest_name(name, &candidates, max_distance)
+    mesh_diagnostics::closest(name, candidates, max_distance).map(str::to_owned)
 }
 
 /// Infer the type of a binary expression with trait-based operator dispatch.

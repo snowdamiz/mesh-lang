@@ -1,0 +1,18 @@
+[package]
+name = "mesh-diagnostics"
+version = "0.1.8"
+edition = "2021"
+description = "The Mesh diagnostic catalog and the diagnostic value every tool reports"
+
+[features]
+default = ["terminal"]
+terminal = ["dep:ariadne"]
+
+[dependencies]
+mesh-common = { path = "../mesh-common" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ariadne = { workspace = true, optional = true }
+
+[dev-dependencies]
+insta = { workspace = true }

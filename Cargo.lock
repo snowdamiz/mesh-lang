@@ -1615,6 +1615,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mesh-diagnostics"
+version = "0.1.8"
+dependencies = [
+ "ariadne",
+ "insta",
+ "mesh-common",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "mesh-fmt"
 version = "0.1.8"
 dependencies = [
@@ -1675,6 +1686,7 @@ version = "0.1.8"
 dependencies = [
  "git2",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-parser",
  "mesh-typeck",
  "semver",
@@ -1765,6 +1777,7 @@ dependencies = [
  "ena",
  "insta",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-parser",
  "rowan",
  "rustc-hash 2.1.1",
