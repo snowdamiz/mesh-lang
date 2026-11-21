@@ -7313,6 +7313,61 @@
     },
     "scope": "One pinned local Linux guest profile. Both Mesh arms ran the same release fixture with 15 prewarmed fenced sessions and LISTEN. The comparison uses the stock separate-VM Oban producer and Isolated notifier. Final session resets may finish after the workload's SQL snapshot. No full-core qualification."
   },
+  "fenced_two_write_capacity_and_reset_proof": {
+    "revision": "c3edbaa251d4946e744b67281e035e973bc4d4c1",
+    "previous_fixture": "206d443ad9d29cc8208165ded7c5fedd3494d8e9",
+    "postgres": "17.11 with verified TLS and SCRAM",
+    "macos": {
+      "run": "target/jobs-parity/two-write-local/macos/c3edbaa251d4946e744b67281e035e973bc4d4c1/j1-two-write-proof-sz0jcyub",
+      "sha256": {
+        "fresh-between/connection-budget.json": "c3bf8db0fd424d2328da734cf056ab7fa3dfcc35f912e51661807130f9a50057",
+        "fresh-between/result.json": "3dd0d0f18a6569caf5d8eace56dede3512fbf0699e32d8e54084b3522b4f3c6a",
+        "fresh-final/connection-budget.json": "c3bf8db0fd424d2328da734cf056ab7fa3dfcc35f912e51661807130f9a50057",
+        "fresh-final/result.json": "094b7a35c70324062184aadfe0e0cf69cd73754316b7bb4c131e7f3abfea5b5f",
+        "manifest.json": "7bc291692799c543ec496ce03cd63b5fd274865f688666cb4c689014626af726",
+        "mesh-toolchain.json": "62be2fed836bc2da42d965d03b079dcc0c6389a1f0e87c9ddeb03eb9f22ad84a",
+        "prewarmed-between/connection-budget.json": "c3bf8db0fd424d2328da734cf056ab7fa3dfcc35f912e51661807130f9a50057",
+        "prewarmed-between/result.json": "4b4f1de0a367831196eecb8afa498f43ea1cb5b8b1605b492d68e2fe2a4293d4",
+        "prewarmed-final/connection-budget.json": "c3bf8db0fd424d2328da734cf056ab7fa3dfcc35f912e51661807130f9a50057",
+        "prewarmed-final/result.json": "42e7605b62f6e6e027918186062a6a2fd4e50f51bfae687b05adcb2af2af8aa3",
+        "result.json": "2d1cec2e70225aae69502c024a37a85758b6481aaf365c373b349089c33437eb",
+        "short-1r-16s/0-fresh/connection-budget.json": "c3bf8db0fd424d2328da734cf056ab7fa3dfcc35f912e51661807130f9a50057",
+        "short-1r-16s/0-fresh/raw.json": "f10e35a9c21bf384209752c744b6f43a0052a8b2e07c2f730b68eaedaee0596a",
+        "short-1r-16s/0-prewarmed/connection-budget.json": "c3bf8db0fd424d2328da734cf056ab7fa3dfcc35f912e51661807130f9a50057",
+        "short-1r-16s/0-prewarmed/effect-reset-drain.json": "21c6b1b75948a686cc1a0cd95dd797f9b6f5022bf4a17ecf88869cd692bed923",
+        "short-1r-16s/0-prewarmed/raw.json": "d1aac15b1550c20b05029d74d2bbd36a55e8aacfd44425b972918d3e38dbf447"
+      },
+      "logs": {
+        "two-write-proof.log": "99a28a826c91f4d964fd617a4cc69a429dad84c33d0bd3137dc1d0d3ee337e7f",
+        "one-write-regression.log": "dce7ce2686e27b462625de42c465c0b017b52b3243ca5a7f4ba2217be0437e21",
+        "fresh-startup-retry.log": "3054b893b1115a448438874a494d6c703b452d16fa1dcb5deda2c225d807ee6e"
+      },
+      "compiled_one_write": 7,
+      "two_write_jobs_per_mode": 128,
+      "revocation_cases": 4,
+      "verified_warm_idle_backends": 15,
+      "durable_jobs_with_verified_reset": 128,
+      "focused_startup_retry_test_passed": 1
+    },
+    "linux": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-two-write-oban-r1/candidate-pilot",
+      "receipt_sha256": "a6bd1e04aaff997d24c2b865e6f232cfc3817e84d83dba1d8292d0cbc0275552",
+      "archive_sha256": "6fe89e50bc3ca6a06f1f3b01db35a1a1021e1909d1d220ccf68fa7aa6740ecee",
+      "proof_sha256": "6a2fe8768e054eb66db588e3312fe92ae4330c5c8f0c06878c7821e665c1f933",
+      "verified_warm_idle_backends": 15,
+      "two_write_jobs_per_mode": 128,
+      "revocation_cases": 4
+    },
+    "role_capacity_recovery": {
+      "run": "target/jobs-parity/two-write-local/macos/c3edbaa251d4946e744b67281e035e973bc4d4c1/real-postgres-role-retry-v2",
+      "result_sha256": "e41b3482020aed8266f6b40a55d6b3f87d92b9bd401b61424fd9a8be23e0a307",
+      "raw_sha256": "7ffcfa64e3b76fa6c23f1ec6731f73e79da92db8a13f3e468cb8a2e779d46f94",
+      "effect_sessions_held_at_admission": 15,
+      "server_rejections_observed_by_runner": 2,
+      "first_attempt_settled_with_one_effect": 128
+    },
+    "scope": "Untimed correctness runs at c3edbaa2. Warm reset count is checked before final SQL accounting. Absolute cumulative startup deadline and matched cleanup-window work remain separate."
+  },
   "linux_worker_phase_residency_and_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "postgres": "17.11 verified TLS and SCRAM",

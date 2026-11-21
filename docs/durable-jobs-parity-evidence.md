@@ -2268,6 +2268,17 @@ with a separate enqueue process. This narrow result predates the final
 warm reset accounting and the same-host 35-profile qualification.
 [Linux benchmark receipt](../proof/jobs-parity/qualification-v1.json)
 
+The admission and reset follow-up at `c3edbaa2` passed the two traced
+workload modes and four revocation cases on macOS and Linux. The warm
+run confirmed all 15 original TLS sessions had returned idle after 128
+verified resets. In a separate macOS PostgreSQL 17.11 run, the driver
+occupied the effect role's 15 sessions until the server rejected new
+checkouts. The exact runner recorded two startup capacity rejections and
+then completed all 128 jobs on attempt one, with one effect per job.
+The seven existing one-write cases and the focused startup retry test
+also passed on macOS. These were untimed runs.
+[Admission and reset receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
