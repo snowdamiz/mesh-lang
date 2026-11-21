@@ -439,15 +439,21 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 ### Fence application writes with the current Jobs attempt
 
-The database candidate is a one-time, opt-in SQL migration. Apply it as the Jobs object owner after the normal Jobs migration. `mesh_jobs_effects.fence_v1(text, uuid, bigint, integer, uuid)` takes the namespace, job ID, run, attempt, and lease token. It returns void on success and uses SQLSTATE `55000` for a denied attempt, `55P03` for a contended row, and `25000` outside `READ COMMITTED`. The separate schema lets the application opt in without granting access to `mesh_jobs`. [Fence migration](../compiler/mesh-rt/src/jobs/effect_fence_schema.sql)
+The fence is a one-time, opt-in SQL migration. After the normal Jobs migration, connect as the Jobs object owner and run the file in a standalone `psql` invocation. The file owns its `BEGIN` and `COMMIT`, so run it outside any enclosing transaction. [Fence migration](../compiler/mesh-rt/src/jobs/effect_fence_schema.sql)
+
+```sh
+psql -X -v ON_ERROR_STOP=1 -f compiler/mesh-rt/src/jobs/effect_fence_schema.sql "$DATABASE_URL"
+```
+
+`mesh_jobs_effects.fence_v1(text, uuid, bigint, integer, uuid)` takes the namespace, job ID, run, attempt, and lease token. It returns void on success. SQLSTATE `55000` means the fence denied the attempt, `55P03` means the row was locked, and `25000` means the transaction ran outside `READ COMMITTED`. The separate schema lets the application opt in without granting access to `mesh_jobs`.
 
 Grant the application routine owner `USAGE` on `mesh_jobs_effects` and `EXECUTE` on `fence_v1`. Grant that owner the required application table permissions separately. Give the caller `USAGE` on the application schema and `EXECUTE` on the named application routines only. Use dedicated roles with no inherited access to the queue tables or application tables for the caller. Each application routine calls the fence for its own namespace before it touches application data. [Fixture grants and routines](../scripts/fixtures/jobs-effect-fence/application.sql)
 
-The fence takes the same `FOR NO KEY UPDATE` lock as Jobs lifecycle operations on the exact job row and checks the database clock after acquiring it. Keep the application transaction short. The lock lasts through commit or rollback, so an operator cancellation waits behind an authorized write. A committed cancellation denies the next write. A write that already passed the fence can still commit after the lease expires.
+Use one short, autocommit `READ COMMITTED` call per application effect. The fence takes the same `FOR NO KEY UPDATE` lock as Jobs lifecycle operations on the exact job row. It checks the database clock after acquiring the lock, so a lease can expire while the call waits for a relation lock. Once the fence admits the write, the row lock lasts through commit or rollback. A write can still commit after expiry, and recovery skips the expired row while the write holds the lock. An operator cancellation waits for the lock, and a committed cancellation denies the next write.
 
-Set `statement_timeout` and `lock_timeout` before submitting a routine call. A submitted transaction can commit after the local socket closes, even if the caller receives no reply. Treat that outcome as unknown and reconcile it against the durable effect record. Key the record by the stable Jobs effect key (`id/run`) and the operation name within the application namespace. A replacement attempt uses the same key and its own live lease to replay the operation idempotently.
+Set `statement_timeout` and `lock_timeout` before submitting a routine call. If a client deadline passes or the local socket closes before the reply, the commit outcome is unknown. Reconcile it against the durable effect record. Key the record by the stable Jobs effect key (`id/run`) and the operation name within the application namespace. A replacement attempt uses the same key and its own live lease to replay the operation idempotently.
 
-Run the SQL proof on a disposable PostgreSQL installation with both `dbc55bb1` and `7c162056` available in Git. It checks the scoped roles, owner replay of those SQL revisions with a live claim, distinct autocommit transactions on one session, and the operator cancellation order. PostgreSQL 17, 18, and 19 execution and runner integration are pending for this candidate.
+Run the SQL proof on a disposable PostgreSQL installation with both `dbc55bb1` and `7c162056` available in Git. The proof checks the scoped roles and rolls back an allowed call with the original live token after each owner replay. It also checks distinct autocommit transactions on one session, operator cancellation order, expiry during a relation lock wait, and recovery after an admitted write rolls back.
 
 ```sh
 env -u MESH_TEST_DATABASE_URL PG_BIN_DIR=/path/to/postgresql/bin \

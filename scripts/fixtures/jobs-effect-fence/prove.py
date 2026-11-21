@@ -26,11 +26,17 @@ OPERATOR = ROLE_GRANTS["operator"]
 HELPER = "mesh_jobs_effects.fence_v1(text,uuid,bigint,integer,uuid)"
 LEGACY_CLAIM = "mesh_jobs.claim(text,text,jsonb,bigint)"
 WORKERS = '[{"worker":"proof","version":1}]'
-SPEC = json.dumps(dict(
-    worker="proof", version=1, queue="default", args={}, metadata={}, tags=[], priority=0,
+SPEC = dict(
+    worker="proof", version=1, args={}, metadata={}, tags=[], priority=0,
     max_attempts=3, timeout_ms=60000, backoff_base_ms=0, backoff_max_ms=0,
     suspended=False, unique=None,
-))
+)
+EXPIRY_LEASE_MS = 5000
+UNTIMED_SESSION = """
+    SET statement_timeout = 0;
+    SET lock_timeout = 0;
+    SET idle_in_transaction_session_timeout = 0;
+"""
 
 
 def expect(label, actual, expected):
@@ -91,13 +97,14 @@ class Proof:
         return self.sql("BEGIN; SELECT pg_catalog.pg_advisory_xact_lock(1782495102, 1);\n"
                         + revision_sql(revision, *files) + "\nCOMMIT;", role=MIGRATOR)
 
-    def enqueue(self):
-        return UUID(self.sql(f"SELECT mesh_jobs.enqueue('{NAMESPACE}', '{SPEC}', '', '') ->> 'id';",
+    def enqueue(self, *, queue="default"):
+        spec = json.dumps(dict(SPEC, queue=queue))
+        return UUID(self.sql(f"SELECT mesh_jobs.enqueue('{NAMESPACE}', '{spec}', '', '') ->> 'id';",
                              role=ROLE_GRANTS["producer"]))
 
-    def claim(self, job):
-        claim = self.sql(f"SELECT id, token FROM mesh_jobs.claim('{NAMESPACE}', 'default', "
-                         f"'{WORKERS}', 60000);", role=ROLE_GRANTS["worker"])
+    def claim(self, job, *, queue="default", lease_ms=60000):
+        claim = self.sql(f"SELECT id, token FROM mesh_jobs.claim('{NAMESPACE}', '{queue}', "
+                         f"'{WORKERS}', {lease_ms});", role=ROLE_GRANTS["worker"])
         claimed, token = map(UUID, claim.split("|"))
         expect("claim ID", claimed, job)
         return token
@@ -108,9 +115,11 @@ class Proof:
             WHERE namespace = '{NAMESPACE}' AND id = '{job}' AND state = 'executing' RETURNING id;
         """, role=MIGRATOR), str(job))
 
-    def recover(self):
-        expect("recover exact lease", self.sql(f"SELECT mesh_jobs.recover('{NAMESPACE}', 1, NULL);",
-                                               role=ROLE_GRANTS["worker"]), "1")
+    def recover(self, *, queue=None, expected=1):
+        queue_filter = "NULL" if queue is None else f"'{json.dumps([queue])}'"
+        expect("recover expired leases", self.sql(
+            f"SELECT mesh_jobs.recover('{NAMESPACE}', 1, {queue_filter});",
+            role=ROLE_GRANTS["worker"]), str(expected))
 
     def observe(self, job):
         return json.loads(self.sql(f"""
@@ -205,6 +214,8 @@ def check_owner_replay(proof, job, token):
         expect(f"function ACLs and definitions after owner replay {revision[:8]}", proof.sql(snapshot), before)
         expect("live attempt unchanged by replay", proof.job(job) == job_before, True)
         check_grants(proof, job, token)
+        proof.sql(f"BEGIN;\n{write('first', job, token)}\nROLLBACK;", login=CALLER)
+        expect(f"rolled-back caller write after owner replay {revision[:8]}", proof.observe(job), [])
     expect("legacy worker can still renew", proof.sql(f"""
         SELECT mesh_jobs.renew('{NAMESPACE}', '{job}', '{token}', 60000);
     """, role=ROLE_GRANTS["worker"]), "active")
@@ -304,6 +315,89 @@ def check_cancellation(proof):
     expect("cancellation prevents the next write", proof.observe(job), after)
 
 
+def wait_past_expiry(proof, expires_at):
+    expect("database clock passed lease expiry", proof.sql(f"""
+        SET statement_timeout = 0;
+        SELECT pg_sleep_until(to_timestamp({expires_at + 1} / 1000.0));
+        SELECT mesh_jobs.now_ms() > {expires_at};
+    """), "t")
+
+
+def check_waiting_expiry(proof):
+    queue = "expiry-waiting"
+    job = proof.enqueue(queue=queue)
+    token = proof.claim(job, queue=queue, lease_ms=EXPIRY_LEASE_MS)
+    before = proof.job(job)
+    expires_at = json.loads(before)["lease_expires_at_ms"]
+    activity_name = "jobs-effect-fence-expiry-waiting"
+    with proof.session(None) as gate:
+        ready = marker(gate, f"""{UNTIMED_SESSION}
+            BEGIN;
+            SET LOCAL ROLE {MIGRATOR};
+            LOCK TABLE ONLY mesh_jobs.jobs IN EXCLUSIVE MODE;
+            SELECT pg_backend_pid() AS pid \\gset
+        """, "locked :pid")
+        label, pid = ready.split()
+        expect("relation gate acquired", label, "locked")
+        with proof.session(CALLER, "-c", UNTIMED_SESSION, "-c", write("first", job, token),
+                           application_name=activity_name) as caller:
+            blocked = f"""
+                SELECT EXISTS (
+                    SELECT FROM pg_stat_activity AS a JOIN pg_locks AS l USING (pid)
+                    WHERE a.application_name = '{activity_name}' AND a.usename = '{CALLER}'
+                        AND l.locktype = 'relation' AND l.relation = 'mesh_jobs.jobs'::regclass
+                        AND l.mode = 'RowShareLock' AND NOT l.granted
+                        AND {int(pid)} = ANY(pg_blocking_pids(a.pid))
+                        AND floor(extract(epoch FROM a.query_start) * 1000) < {expires_at}
+                );
+            """
+            deadline = time.monotonic() + 8
+            while proof.sql(blocked) != "t":
+                if caller.poll() is not None or time.monotonic() >= deadline:
+                    raise AssertionError("caller did not start with a live lease and wait at the relation gate")
+                time.sleep(0.02)
+            wait_past_expiry(proof, expires_at)
+            expect("caller still waits after expiry", proof.sql(blocked), "t")
+            expect("relation gate released", marker(gate, "COMMIT;", "released"), "released")
+            _, errors = caller.communicate(timeout=8)
+            state = re.search(r"^ERROR:\s+([0-9A-Z]{5}):", errors, re.MULTILINE)
+            expect(f"waiting call SQLSTATE ({errors.strip()})",
+                   state.group(1) if state and caller.returncode else None, "55000")
+    expect("expired waiting call leaves the job unchanged", proof.job(job), before)
+    expect("expired waiting call leaves no effect", proof.observe(job), [])
+
+
+def check_admitted_expiry(proof):
+    queue = "expiry-admitted"
+    job = proof.enqueue(queue=queue)
+    token = proof.claim(job, queue=queue, lease_ms=EXPIRY_LEASE_MS)
+    before = proof.job(job)
+    expires_at = json.loads(before)["lease_expires_at_ms"]
+    first = write("first", job, token)
+    with proof.session(CALLER) as writer:
+        ready = marker(writer, f"""{UNTIMED_SESSION}
+            BEGIN;
+            SELECT pg_backend_pid() AS pid \\gset
+            {first}
+        """, "authorized :pid")
+        label, pid = ready.split()
+        expect("writer reached its barrier", label, "authorized")
+        expect("write finished in an open transaction while lease was live", proof.sql(f"""
+            SELECT state = 'idle in transaction' AND floor(extract(epoch FROM state_change) * 1000) < {expires_at}
+            FROM pg_stat_activity WHERE pid = {int(pid)};
+        """), "t")
+        wait_past_expiry(proof, expires_at)
+        proof.recover(queue=queue, expected=0)
+        expect("recovery preserves the locked attempt", proof.job(job), before)
+        expect("admitted write still uncommitted", proof.observe(job), [])
+        expect("admitted write rolls back", marker(writer, "ROLLBACK;", "rolled_back"), "rolled_back")
+    proof.recover(queue=queue)
+    recovered = json.loads(proof.job(job))
+    expect("recovered attempt is eligible for retry", recovered["state"] in ("available", "retryable"), True)
+    expect("recovery clears the expired lease", (recovered["lease_token"], recovered["lease_expires_at_ms"]), (None, None))
+    expect("rolled-back write leaves no effect", proof.observe(job), [])
+
+
 def main(data_dir):
     proof = Proof()
     expect("owned PostgreSQL backend over TLS", proof.sql("""
@@ -316,7 +410,9 @@ def main(data_dir):
     check_owner_replay(proof, job, token)
     check_writes(proof, job, token)
     check_cancellation(proof)
-    print("Jobs effect fence proof passed. Two independent commits, owner replay, and cancellation ordering verified.")
+    check_waiting_expiry(proof)
+    check_admitted_expiry(proof)
+    print("Jobs effect fence proof passed. Two independent commits, owner replay, cancellation, and expiry verified.")
 
 
 if __name__ == "__main__":
