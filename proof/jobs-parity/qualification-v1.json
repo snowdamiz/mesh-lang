@@ -12690,6 +12690,475 @@
       }
     }
   },
+  "compiled_effect_reset_plan_retention_bounded_linux": {
+    "revision": "0ee8756a37dc2115f16e33e5b12467547f43a90e",
+    "previous_prototype": "952a2c5c0939e46642b150ba69ed138096f81f43",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/effect-reset-plans-0ee8756a/runs/reset-plans-bounded-linux-1/noop-8r-64s",
+    "build": {
+      "artifacts_sha256": {
+        "libmesh_rt.a": "ad98d6ef45cfe8ff2fc178558eb772737255ef27598d6effb9ef6bd01e51615e",
+        "libworker_identity.a": "00d8a23eab00182e41ee2f5ae49571f79826ce77abba5ce50762dca889b0d6a9",
+        "mesh-parity-fixture": "15a28510793c7122e81281c87dc0e76f7ccde628f3021be789428835eb5516be",
+        "meshc": "99ba9a04b7b2e3bdccad2c4ef206675985eb09a25379dfb6efd6222d7780f85a"
+      },
+      "generated_mesh_toml_sha256": "59367d4fa45590e9f1bd223f5fc4ef1d18823d3a7613334fe72a53e7ad98ba2b",
+      "macos_toolchain_sha256": "d1d985ee22acc7050c65f5b63feaa601af65095ce1ace67e888bce01c45c2cc7",
+      "native_source_sha256": {
+        "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+        "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+        "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+        "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+      },
+      "parent_manifest_sha256": "bc8291bfbcee944961fc351ed1b4e2dee94d7a8439a1748751ccefbd9f76a267",
+      "profile": "release",
+      "requested_runtime_features": [
+        "jobs-effect-fixture"
+      ],
+      "revision": "0ee8756a37dc2115f16e33e5b12467547f43a90e",
+      "status": "verified",
+      "target": "aarch64-unknown-linux-gnu"
+    },
+    "source_review": "R2 passed for the bounded reset and the authoritatively observed revocation retry cleanup.",
+    "native_proofs": {
+      "logs_sha256": {
+        "reset-frames": "0d28e72cab433536314715bf50b88c5ed1b9dfd0bc70bd240d0257e533a1c628",
+        "compiled-effect": "82733480d59f5c878c7f9f24c9f5f043d2db503b50678cb97e99241987fe2291",
+        "two-write-ab-proof": "346cf76bd9786381a05f0c395eccd70f100cd7fa1a8a82d9f09ddd24e014e4ce"
+      },
+      "two_write_run": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-134c7b36/target/jobs-parity-r1-reset-followup/target/jobs-parity/0ee8756a37dc2115f16e33e5b12467547f43a90e/j1-two-write-proof-4q17dkq2",
+      "result_sha256": "2d1cec2e70225aae69502c024a37a85758b6481aaf365c373b349089c33437eb",
+      "revocations": {
+        "fresh-between": {
+          "sha256": "d82c547b33ff3212850f8b31692122b5de140fddcd0ddef4e510f73847551091",
+          "completed_effect_resets": 0,
+          "reset_sql_calls_by_statement": {
+            "CLOSE ALL": 0,
+            "DEALLOCATE ALL": 0,
+            "DISCARD ALL": 0,
+            "DISCARD SEQUENCES": 0,
+            "DISCARD TEMP": 0,
+            "RESET ALL": 0,
+            "SELECT pg_advisory_unlock_all()": 0,
+            "SET SESSION AUTHORIZATION DEFAULT": 0,
+            "UNLISTEN *": 0
+          }
+        },
+        "fresh-final": {
+          "sha256": "1ee508333d7ae1f7edfb5c2b590f497472d12358e8cf5851a76d9b68b9d0325f",
+          "completed_effect_resets": 0,
+          "reset_sql_calls_by_statement": {
+            "CLOSE ALL": 0,
+            "DEALLOCATE ALL": 0,
+            "DISCARD ALL": 0,
+            "DISCARD SEQUENCES": 0,
+            "DISCARD TEMP": 0,
+            "RESET ALL": 0,
+            "SELECT pg_advisory_unlock_all()": 0,
+            "SET SESSION AUTHORIZATION DEFAULT": 0,
+            "UNLISTEN *": 0
+          }
+        },
+        "mesh-no-plans-between": {
+          "sha256": "2b212ebb1daf74081ec43263776f928c8a53a0bdef0f7b45a158e37f634b7eaa",
+          "completed_effect_resets": 1,
+          "reset_sql_calls_by_statement": {
+            "CLOSE ALL": 1,
+            "DEALLOCATE ALL": 1,
+            "DISCARD ALL": 0,
+            "DISCARD SEQUENCES": 1,
+            "DISCARD TEMP": 1,
+            "RESET ALL": 1,
+            "SELECT pg_advisory_unlock_all()": 1,
+            "SET SESSION AUTHORIZATION DEFAULT": 1,
+            "UNLISTEN *": 1
+          }
+        },
+        "mesh-no-plans-final": {
+          "sha256": "8a3d5c6bc68e78600769b0151562207eeca83dd0b2430d277624c3ba7f292535",
+          "completed_effect_resets": 1,
+          "reset_sql_calls_by_statement": {
+            "CLOSE ALL": 1,
+            "DEALLOCATE ALL": 1,
+            "DISCARD ALL": 0,
+            "DISCARD SEQUENCES": 1,
+            "DISCARD TEMP": 1,
+            "RESET ALL": 1,
+            "SELECT pg_advisory_unlock_all()": 1,
+            "SET SESSION AUTHORIZATION DEFAULT": 1,
+            "UNLISTEN *": 1
+          }
+        },
+        "prewarmed-between": {
+          "sha256": "72390c0326c486fe85c3393da53a31c39cb1ce2ab4c76843ec53edcfd5dc9f58",
+          "completed_effect_resets": 1,
+          "reset_sql_calls_by_statement": {
+            "CLOSE ALL": 0,
+            "DEALLOCATE ALL": 0,
+            "DISCARD ALL": 1,
+            "DISCARD SEQUENCES": 0,
+            "DISCARD TEMP": 0,
+            "RESET ALL": 0,
+            "SELECT pg_advisory_unlock_all()": 0,
+            "SET SESSION AUTHORIZATION DEFAULT": 0,
+            "UNLISTEN *": 0
+          }
+        },
+        "prewarmed-final": {
+          "sha256": "99a68f6f7bc00c73c2716575e29c58562f0e9705678c6ce81721a449dedfac10",
+          "completed_effect_resets": 1,
+          "reset_sql_calls_by_statement": {
+            "CLOSE ALL": 0,
+            "DEALLOCATE ALL": 0,
+            "DISCARD ALL": 1,
+            "DISCARD SEQUENCES": 0,
+            "DISCARD TEMP": 0,
+            "RESET ALL": 0,
+            "SELECT pg_advisory_unlock_all()": 0,
+            "SET SESSION AUTHORIZATION DEFAULT": 0,
+            "UNLISTEN *": 0
+          }
+        }
+      }
+    },
+    "report_hashes": {
+      "receipt.json": "8d55e41d69b8bf2576ad6dca7e6c7f023be04d412bd8624faea0a03d4fcc5766",
+      "trials.json": "846e3cc019bec74b25fdc07c7d68fd9fdda07f1ac3b04c183018e9f7e33e8b61",
+      "gates.json": "35831ce675939bc40e387f38480e8040cfb252222d160fb5f3b9a635386f76fd",
+      "paired-deltas.json": "29f1804477906105b4daa079300f85e6421ced8e799d640e4e77e7e5e1956e25"
+    },
+    "embedded_source_sha256": {
+      "stage.py": "50ff62eced6217f61ae58de0b28dc095b80920df8577cb5c6e08f51afebddd14",
+      "plan.py": "0b1bff41906094fb8fc7661b1e0102859d80fc81e9501c02813646e3e140750d",
+      "reset_evidence.py": "13dac289288ea086cf5ca6b488b9b8eeae6c47df0dc7425594694bfe96b08163"
+    },
+    "pilot_stage_sha256": "36f4321d7df562a93e3d3babf97bf2f2c324aa07d1efc352065f2a2a1d917428",
+    "gates": {
+      "mesh": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1118.5523557368056,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2738.362964138141,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 901.830810546875,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 369.0400390625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-no-plans": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1190.6699573785813,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2738.362964138141,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 845.0419921875,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 369.0400390625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-repeat": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1104.2181022830964,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2738.362964138141,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 914.260009765625,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 369.0400390625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      }
+    },
+    "groups": [
+      {
+        "group": 0,
+        "stage_sha256": "74e5f81458e26d75d3fd139724ba62b7d7107e583a5eb0f6306b9440f077f5c6",
+        "trials_sha256": "74b01eed21fb343410a642e992e8930b36b3c7e987455fe5fafa1f3bf4f46f47",
+        "arms": {
+          "mesh": {
+            "jobs_per_second": 1153.856142119244,
+            "cpu_seconds_per_job": 0.0010328798828125,
+            "pickup_p99_ms": 870.36083984375,
+            "peak_rss_bytes": 371552256,
+            "effect_reset_drain_seconds": 0.22608066699999796,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1017.9786167173273,
+            "cpu_seconds_per_job": 0.0010735576171875,
+            "pickup_p99_ms": 993.43310546875,
+            "peak_rss_bytes": 374915072,
+            "effect_reset_drain_seconds": 0.2380346250000045,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          },
+          "oban": {
+            "jobs_per_second": 2615.453879932305,
+            "cpu_seconds_per_job": 0.0032070429687499997,
+            "pickup_p99_ms": 387.49609375,
+            "peak_rss_bytes": 1001578496
+          },
+          "mesh-no-plans": {
+            "jobs_per_second": 1230.1822731674868,
+            "cpu_seconds_per_job": 0.0010234208984374999,
+            "pickup_p99_ms": 820.208984375,
+            "peak_rss_bytes": 336683008,
+            "effect_reset_drain_seconds": 0.23569383400000277,
+            "completed_resets": 1024,
+            "reset_sql_calls": 8192
+          }
+        },
+        "treatment_above_both": true,
+        "treatment_minus_control_mean": 144.26489374920106,
+        "control_abs_difference": 135.8775254019166
+      },
+      {
+        "group": 1,
+        "stage_sha256": "5bade680b5a95caae0e58fcd44cf598494540755f9eab9cc3a0484e572ee408d",
+        "trials_sha256": "eb5920537bae2a57ff9e5c285e2a6f62f004dc204e22c987f32cf3680492515d",
+        "arms": {
+          "mesh-repeat": {
+            "jobs_per_second": 1161.3574548123759,
+            "cpu_seconds_per_job": 0.0010397041015625,
+            "pickup_p99_ms": 865.2509765625,
+            "peak_rss_bytes": 372924416,
+            "effect_reset_drain_seconds": 0.23178029200000339,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          },
+          "mesh-no-plans": {
+            "jobs_per_second": 1109.3920395649193,
+            "cpu_seconds_per_job": 0.0010270537109374998,
+            "pickup_p99_ms": 913.59716796875,
+            "peak_rss_bytes": 376524800,
+            "effect_reset_drain_seconds": 0.2216687500000063,
+            "completed_resets": 1024,
+            "reset_sql_calls": 8192
+          },
+          "mesh": {
+            "jobs_per_second": 1083.193510607115,
+            "cpu_seconds_per_job": 0.001081935546875,
+            "pickup_p99_ms": 929.019775390625,
+            "peak_rss_bytes": 425693184,
+            "effect_reset_drain_seconds": 0.2273299590000022,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          },
+          "oban": {
+            "jobs_per_second": 2639.1752577319585,
+            "cpu_seconds_per_job": 0.0033399550781250003,
+            "pickup_p99_ms": 381.3701171875,
+            "peak_rss_bytes": 1002582016
+          }
+        },
+        "treatment_above_both": false,
+        "treatment_minus_control_mean": -12.883443144826288,
+        "control_abs_difference": 78.1639442052608
+      },
+      {
+        "group": 2,
+        "stage_sha256": "ed040a11d59c411300baf90ecc927216ee742440bc6a9b7a8fa31ae2c3bce570",
+        "trials_sha256": "edba8df1fa07787eb9990fb4f738d231ddd79c18ae1daf29973b37b6de5f678a",
+        "arms": {
+          "mesh-no-plans": {
+            "jobs_per_second": 1190.6699573785813,
+            "cpu_seconds_per_job": 0.0010476289062499998,
+            "pickup_p99_ms": 845.0419921875,
+            "peak_rss_bytes": 363048960,
+            "effect_reset_drain_seconds": 0.23025208299999633,
+            "completed_resets": 1024,
+            "reset_sql_calls": 8192
+          },
+          "oban": {
+            "jobs_per_second": 2828.3229880678236,
+            "cpu_seconds_per_job": 0.003314125,
+            "pickup_p99_ms": 353.93798828125,
+            "peak_rss_bytes": 1003544576
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1025.3422571246833,
+            "cpu_seconds_per_job": 0.0011305849609375,
+            "pickup_p99_ms": 989.77490234375,
+            "peak_rss_bytes": 350171136,
+            "effect_reset_drain_seconds": 0.2254062920000024,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          },
+          "mesh": {
+            "jobs_per_second": 1170.85284613306,
+            "cpu_seconds_per_job": 0.001056162109375,
+            "pickup_p99_ms": 865.1640625,
+            "peak_rss_bytes": 381894656,
+            "effect_reset_drain_seconds": 0.23190454200000232,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          }
+        },
+        "treatment_above_both": true,
+        "treatment_minus_control_mean": 92.57240574970956,
+        "control_abs_difference": 145.51058900837666
+      },
+      {
+        "group": 3,
+        "stage_sha256": "2ab8e3f1a76495dd1e1caa8c55bd243362d72180c3495190793f9184e762b1ae",
+        "trials_sha256": "bcf87ba205d803c4734ebc5ee7636354be465e3e7f11a1c341e4c7f4d0bfc3c0",
+        "arms": {
+          "oban": {
+            "jobs_per_second": 2815.6626497936068,
+            "cpu_seconds_per_job": 0.0031618701171874995,
+            "pickup_p99_ms": 357.59716796875,
+            "peak_rss_bytes": 1002819584
+          },
+          "mesh": {
+            "jobs_per_second": 1075.3704682727173,
+            "cpu_seconds_per_job": 0.001049908203125,
+            "pickup_p99_ms": 936.762939453125,
+            "peak_rss_bytes": 380039168,
+            "effect_reset_drain_seconds": 0.2307113750000056,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          },
+          "mesh-no-plans": {
+            "jobs_per_second": 1172.320920973856,
+            "cpu_seconds_per_job": 0.0010766249999999999,
+            "pickup_p99_ms": 864.166015625,
+            "peak_rss_bytes": 376999936,
+            "effect_reset_drain_seconds": 0.2298688759999976,
+            "completed_resets": 1024,
+            "reset_sql_calls": 8192
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1104.2181022830964,
+            "cpu_seconds_per_job": 0.0010522958984375001,
+            "pickup_p99_ms": 914.260009765625,
+            "peak_rss_bytes": 336916480,
+            "effect_reset_drain_seconds": 0.23347799999999808,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          }
+        },
+        "treatment_above_both": true,
+        "treatment_minus_control_mean": 82.52663569594893,
+        "control_abs_difference": 28.847634010379124
+      },
+      {
+        "group": 4,
+        "stage_sha256": "8dfe3ffe9f1914b101d43808eb736d25badd21f3a6485529d705c7ef9c4c0d6c",
+        "trials_sha256": "ed80fa37840ab10880e18983f91ecae8f7789748c4ccbf7f5d1d5dff06bf854c",
+        "arms": {
+          "mesh-repeat": {
+            "jobs_per_second": 1168.128392346835,
+            "cpu_seconds_per_job": 0.0010038759765625,
+            "pickup_p99_ms": 861.447021484375,
+            "peak_rss_bytes": 345534464,
+            "effect_reset_drain_seconds": 0.2311852499999958,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          },
+          "oban": {
+            "jobs_per_second": 2738.362964138141,
+            "cpu_seconds_per_job": 0.0032618154296875,
+            "pickup_p99_ms": 369.0400390625,
+            "peak_rss_bytes": 997900288
+          },
+          "mesh": {
+            "jobs_per_second": 1118.5523557368056,
+            "cpu_seconds_per_job": 0.0009982314453125,
+            "pickup_p99_ms": 901.830810546875,
+            "peak_rss_bytes": 381734912,
+            "effect_reset_drain_seconds": 0.23086654200000112,
+            "completed_resets": 1024,
+            "reset_sql_calls": 1024
+          },
+          "mesh-no-plans": {
+            "jobs_per_second": 1267.5075005379113,
+            "cpu_seconds_per_job": 0.0010204912109375,
+            "pickup_p99_ms": 794.14892578125,
+            "peak_rss_bytes": 334491648,
+            "effect_reset_drain_seconds": 0.23332849999999894,
+            "completed_resets": 1024,
+            "reset_sql_calls": 8192
+          }
+        },
+        "treatment_above_both": true,
+        "treatment_minus_control_mean": 124.16712649609099,
+        "control_abs_difference": 49.576036610029405
+      }
+    ],
+    "scored_jobs": 20480,
+    "median_by_arm": {
+      "mesh": {
+        "jobs_per_second": 1118.5523557368056,
+        "cpu_seconds_per_job": 0.001049908203125,
+        "pickup_p99_ms": 901.830810546875,
+        "peak_rss_bytes": 381734912,
+        "effect_reset_drain_seconds": 0.2307113750000056
+      },
+      "mesh-repeat": {
+        "jobs_per_second": 1104.2181022830964,
+        "cpu_seconds_per_job": 0.0010522958984375001,
+        "pickup_p99_ms": 914.260009765625,
+        "peak_rss_bytes": 350171136,
+        "effect_reset_drain_seconds": 0.23178029200000339
+      },
+      "mesh-no-plans": {
+        "jobs_per_second": 1190.6699573785813,
+        "cpu_seconds_per_job": 0.0010270537109374998,
+        "pickup_p99_ms": 845.0419921875,
+        "peak_rss_bytes": 363048960,
+        "effect_reset_drain_seconds": 0.23025208299999633
+      },
+      "oban": {
+        "jobs_per_second": 2738.362964138141,
+        "cpu_seconds_per_job": 0.0032618154296875,
+        "pickup_p99_ms": 369.0400390625,
+        "peak_rss_bytes": 1002582016
+      }
+    },
+    "median_paired_gain_jobs_per_second": 92.57240574970956,
+    "median_absolute_control_drift_jobs_per_second": 78.1639442052608,
+    "wins_against_both_controls": 4,
+    "scope_limit": "Local ARM64 guest on one frozen profile with the private compiled effect fixture. All source-reviewed native correctness gates in this receipt passed. The treatment missed throughput and pickup against stock Oban."
+  },
   "compiled_effect_reset_plan_retention_initial": {
     "revision": "952a2c5c0939e46642b150ba69ed138096f81f43",
     "scope": "Initial compiled reset fixture. Native and Linux data predate the whole-exchange deadline correction.",

@@ -2757,6 +2757,31 @@ one group and beat both in the other. Both platform runs predate
 the review correction for a deadline across the full reset exchange.
 [Initial compiled reset receipts](../proof/jobs-parity/qualification-v1.json)
 
+The `0ee8756a` follow-up uses one deadline for the reset write,
+flush, and reads beneath TLS. It restores socket timeouts on
+success and retires a failed checkout. Three focused reset tests,
+the compiled PostgreSQL proof, and the traced two-write proof
+passed. Both revocation placements confirmed that the authorized
+retry completed its reset, with the revoked backend retired.
+
+Five new Linux groups used the same executable in all Mesh arms
+and reconciled 20,480 scored jobs. The plan-retaining arm beat
+both Mesh controls in four groups. Its median paired gain was
+93 jobs/s against the control mean, versus 78 jobs/s absolute
+drift between controls. Every job completed one full reset, and
+all original warm backends returned to idle before scoring.
+
+| Arm | Jobs/s | Pickup p99 | Runner CPU/job |
+| --- | ---: | ---: | ---: |
+| Mesh control | 1,119 | 902 ms | 1.05 ms |
+| Mesh repeat | 1,104 | 914 ms | 1.05 ms |
+| Mesh with retained plans | 1,191 | 845 ms | 1.03 ms |
+| Oban Basic 2.24.2 | 2,738 | 369 ms | 3.26 ms |
+
+The treatment passed resource limits and missed the throughput and
+pickup gates. It remains an opt-in fixture experiment.
+[Bounded compiled reset receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
