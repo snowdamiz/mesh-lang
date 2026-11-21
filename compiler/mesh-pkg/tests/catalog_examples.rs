@@ -1,27 +1,22 @@
-//! Catalog examples that the parser or type checker can diagnose.
+//! Catalog examples that the frontend can diagnose.
 
 use std::collections::BTreeSet;
+use std::path::Path;
 
 use mesh_diagnostics::{Code, Family};
-use mesh_pkg::project::{check_project, single_source_project};
+use mesh_pkg::frontend::{check, CheckOptions, Target};
 
-/// The codes `source` gets: `P0001` for any parse error (every parse error
-/// has that code, and a parse error stops the build), else the errors and
-/// warnings of every module.
+/// The codes the frontend reports for `source` as a lone file, as `meshc
+/// check main.mpl` checks it.
 fn codes(source: &str) -> BTreeSet<&'static str> {
-    let project = single_source_project(source).expect("a single source links");
-    if project
-        .module_parses
+    let target = Target::Source {
+        path: Path::new("main.mpl"),
+        text: source,
+    };
+    check(target, &CheckOptions::cli())
+        .diagnostics
         .iter()
-        .any(|parse| !parse.errors().is_empty())
-    {
-        return BTreeSet::from([Code::UnexpectedToken.id()]);
-    }
-    check_project(&project, false)
-        .typeck
-        .iter()
-        .flat_map(|result| result.errors.iter().chain(&result.warnings))
-        .map(|error| error.code().id())
+        .map(|diagnostic| diagnostic.code().id())
         .collect()
 }
 
@@ -31,13 +26,6 @@ fn catalog_examples_get_exactly_their_code() {
     for code in
         Code::all().filter(|code| matches!(code.family(), Family::Syntax | Family::Semantic))
     {
-        if matches!(
-            code,
-            Code::DuplicateTypeAcrossModules | Code::DuplicatePubFnAcrossModules
-        ) {
-            // These project checks run in meshc. The CLI suite runs their examples.
-            continue;
-        }
         let Some(example) = code.info().example else {
             continue;
         };

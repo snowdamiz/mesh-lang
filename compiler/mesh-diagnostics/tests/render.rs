@@ -218,6 +218,27 @@ fn shown_paths_apply_to_every_file_named() {
 }
 
 #[test]
+fn shown_paths_apply_to_paths_a_message_names() {
+    let diagnostic = Diagnostic::new(
+        Code::ClusterDeclarationInvalid,
+        "Failed to read '/tmp/copy/src/geo.mpl'",
+    );
+    for format in [HUMAN, Format::Json] {
+        let mut out = Vec::new();
+        let mut reporter = Reporter::new(format, &mut out);
+        reporter.show_path_as("/tmp/copy", "project");
+        reporter.emit(diagnostic.clone());
+        reporter.finish();
+        let written = String::from_utf8(out).unwrap();
+        assert!(
+            written.contains("Failed to read 'project/src/geo.mpl'"),
+            "{written}"
+        );
+        assert!(!written.contains("/tmp/copy"), "{written}");
+    }
+}
+
+#[test]
 fn status_lines_are_for_people_only() {
     let mut out = Vec::new();
     let mut reporter = Reporter::new(HUMAN, &mut out);

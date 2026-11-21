@@ -27,6 +27,7 @@ use std::time::Instant;
 use crate::ReportResult;
 use mesh_diagnostics::{Failed, Reporter};
 use mesh_parser::test_harness::preprocess_test_source;
+use mesh_pkg::frontend::{self, CheckOptions, Target};
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
 };
@@ -198,7 +199,16 @@ pub(crate) fn check_tests(target: &Path, reporter: &mut Reporter) -> Result<(), 
             &file,
             |_| {},
             reporter,
-            |root, reporter| crate::load_checked_project(root, true, true, reporter).map(|_| ()),
+            |root, reporter| {
+                let options = CheckOptions {
+                    test_builtins: true,
+                    require_entrypoint: true,
+                    ..CheckOptions::cli()
+                };
+                frontend::check(Target::Project { root }, &options)
+                    .report(reporter)
+                    .map(|_| ())
+            },
         ) {
             failure = Some(error);
         }

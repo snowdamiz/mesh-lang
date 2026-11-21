@@ -56,6 +56,16 @@ pub enum Applicability {
     MaybeIncorrect,
 }
 
+impl Applicability {
+    /// The name tools read: `machine-applicable` or `maybe-incorrect`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Applicability::MachineApplicable => "machine-applicable",
+            Applicability::MaybeIncorrect => "maybe-incorrect",
+        }
+    }
+}
+
 /// A replacement of the text at a span.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Edit {

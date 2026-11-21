@@ -221,10 +221,14 @@ pub(crate) fn run(
             )
         })
         .reported(reporter)?;
-    let checked = crate::load_checked_project(&project_dir, false, false, reporter)?;
+    let analysis = mesh_pkg::frontend::check(
+        mesh_pkg::frontend::Target::Project { root: &project_dir },
+        &mesh_pkg::frontend::CheckOptions::cli(),
+    )
+    .report(reporter)?;
     verify_laws(
         &project_dir,
-        checked,
+        analysis,
         list,
         json,
         preserve,
@@ -236,19 +240,19 @@ pub(crate) fn run(
 
 fn verify_laws(
     project_dir: &Path,
-    checked_build: crate::CheckedBuild,
+    analysis: mesh_pkg::frontend::Analysis,
     list: bool,
     json: bool,
     preserve: Option<&Path>,
     proof_settings: verify_proof::Settings<'_>,
     reporter: &mut Reporter,
 ) -> Result<(), String> {
-    let crate::CheckedBuild {
+    let mesh_pkg::frontend::Analysis {
         manifest,
         project,
         mut checked,
         ..
-    } = checked_build;
+    } = analysis;
     let files = laws::discover(project_dir, manifest.as_ref())?;
 
     let package = manifest.as_ref().map_or_else(

@@ -4,13 +4,13 @@
 use serde::Serialize;
 
 use super::Paths;
-use crate::{Applicability, Diagnostic, SourceFile};
+use crate::{Diagnostic, SourceFile};
 
 #[derive(Serialize)]
 struct Wire<'a> {
     code: &'static str,
     severity: &'static str,
-    message: &'a str,
+    message: String,
     file: String,
     spans: Vec<WireSpan<'a>>,
     fix: &'a str,
@@ -93,7 +93,7 @@ pub(super) fn render<'a>(diagnostic: &'a Diagnostic, paths: &Paths) -> String {
     let wire = Wire {
         code: code.id(),
         severity: diagnostic.severity().as_str(),
-        message: diagnostic.message(),
+        message: paths.remap(diagnostic.message()),
         file: display(own),
         spans,
         fix: diagnostic.repair(),
@@ -116,10 +116,7 @@ pub(super) fn render<'a>(diagnostic: &'a Diagnostic, paths: &Paths) -> String {
                 start: edit.span().start,
                 end: edit.span().end,
                 replacement: edit.replacement(),
-                applicability: match edit.applicability() {
-                    Applicability::MachineApplicable => "machine-applicable",
-                    Applicability::MaybeIncorrect => "maybe-incorrect",
-                },
+                applicability: edit.applicability().as_str(),
             })
             .collect(),
     };

@@ -96,9 +96,10 @@ impl<W: Write> Reporter<W> {
         }
     }
 
-    /// Names `to` in place of `from` in every path written: a file, or a
-    /// directory for the files under it. `meshc test` builds a copy of the
-    /// project in a temporary directory, and names the user's files.
+    /// Names `to` in place of `from` in every path written, messages
+    /// included: a file, or a directory for the files under it. `meshc
+    /// test` builds a copy of the project in a temporary directory, and
+    /// names the user's files.
     pub fn show_path_as(&mut self, from: impl Into<PathBuf>, to: impl Into<PathBuf>) {
         self.paths.0.push((from.into(), to.into()));
     }
@@ -114,14 +115,6 @@ impl<W: Write> Reporter<W> {
         let result = run(self);
         self.paths.0.truncate(before);
         result
-    }
-
-    /// Rewrite paths already interpolated into transitional string errors.
-    pub fn remap_message(&self, mut message: String) -> String {
-        for (from, to) in &self.paths.0 {
-            message = message.replace(from.to_string_lossy().as_ref(), &to.to_string_lossy());
-        }
-        message
     }
 
     pub fn emit(&mut self, diagnostic: Diagnostic) {
@@ -208,6 +201,16 @@ impl<W: Write> Reporter<W> {
 struct Paths(Vec<(PathBuf, PathBuf)>);
 
 impl Paths {
+    /// `message` with each mapped path it names replaced, as transitional
+    /// string errors interpolate paths into their messages.
+    fn remap(&self, message: &str) -> String {
+        let mut message = message.to_string();
+        for (from, to) in &self.0 {
+            message = message.replace(from.to_string_lossy().as_ref(), &to.to_string_lossy());
+        }
+        message
+    }
+
     fn display(&self, path: &Path) -> String {
         for (from, to) in &self.0 {
             if let Ok(rest) = path.strip_prefix(from) {

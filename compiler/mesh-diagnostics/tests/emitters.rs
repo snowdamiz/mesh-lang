@@ -15,7 +15,8 @@ const LIBRARIES: &[&str] = &[
     "mesh-fmt",
 ];
 
-// The CLI's legacy-error conversion and a test of the constructor itself.
+// The frontend's legacy-error conversion, which meshc and the language
+// server share, and a test of the constructor itself.
 // Lower this count as producers adopt their own diagnostic codes.
 const UNCATEGORIZED_SITES: usize = 2;
 

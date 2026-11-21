@@ -30,7 +30,7 @@ fn plain(diagnostic: &Diagnostic, color: bool, paths: &Paths) -> String {
     let mut text = format!(
         "{} {}\n",
         paint(&headline, severity_color(diagnostic.severity()), color),
-        diagnostic.message()
+        paths.remap(diagnostic.message())
     );
     if let Some(file) = diagnostic.file() {
         let mut location = paths.display(file.path());
@@ -165,7 +165,7 @@ mod ariadne_report {
         let range = |span: mesh_common::span::Span| span.start as usize..span.end as usize;
         let mut report = Report::build(kind, (paths.display(file.path()), range(span)))
             .with_code(diagnostic.code().id())
-            .with_message(diagnostic.message())
+            .with_message(paths.remap(diagnostic.message()))
             .with_config(
                 Config::default()
                     .with_color(color)

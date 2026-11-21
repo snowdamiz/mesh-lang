@@ -215,9 +215,10 @@ jobs:
           # Whole crates, not only --lib: the parser, type checker and formatter
           # keep their integration and snapshot tests beside the library, and
           # the runtime's own suite covers the distribution transport. The
-          # diagnostic catalog's invariants are mesh-diagnostics' tests, and
-          # mesh-pkg runs every catalog example through the frontend.
-          cargo test --locked -p mesh-common -p mesh-diagnostics -p mesh-parser -p mesh-typeck -p mesh-pkg -p mesh-codegen -p mesh-fmt -p mesh-lint
+          # diagnostic catalog's invariants are mesh-diagnostics' tests,
+          # mesh-pkg runs every catalog example through the frontend, and
+          # mesh-lsp checks that an editor is sent what the frontend reports.
+          cargo test --locked -p mesh-common -p mesh-diagnostics -p mesh-parser -p mesh-typeck -p mesh-pkg -p mesh-codegen -p mesh-fmt -p mesh-lint -p mesh-lsp
           cargo test --locked -p mesh-rt --lib --test library --test library_memory
           cargo build --workspace --locked
           # The fuzz crate is its own workspace and only runs at release:

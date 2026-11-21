@@ -60,13 +60,10 @@ use std::process;
 use clap::{Parser, Subcommand, ValueEnum};
 use mesh_parser::ast::expr::{FieldAccess, NameRef};
 use mesh_parser::ast::AstNode;
-use mesh_parser::syntax_kind::SyntaxKind;
-use mesh_pkg::manifest::{
-    plan_cluster_declarations, resolve_entrypoint, ClusteredDeclarationError,
-    ClusteredExecutionMetadata, Manifest,
-};
+use mesh_pkg::frontend::{self, Analysis, CheckOptions, Target};
+use mesh_pkg::manifest::ClusteredExecutionMetadata;
 
-use mesh_diagnostics::{Code, Diagnostic, Failed, Format, Reporter, SourceFile};
+use mesh_diagnostics::{Failed, Format, Reporter};
 use mesh_typeck::ty::Ty;
 
 #[derive(Parser)]
@@ -533,10 +530,7 @@ trait ReportResult<T> {
 
 impl<T> ReportResult<T> for Result<T, String> {
     fn reported(self, reporter: &mut Reporter) -> Result<T, Failed> {
-        self.map_err(|message| {
-            let message = reporter.remap_message(message);
-            reporter.fail(Diagnostic::uncategorized(message))
-        })
+        self.map_err(|message| reporter.fail(frontend::uncategorized(message)))
     }
 }
 
@@ -552,7 +546,7 @@ fn run_check(path: &Path, tests: bool, reporter: &mut Reporter) -> Result<(), Fa
     if tests && test_runner::is_test_file(path) {
         return test_runner::check_tests(path, reporter);
     }
-    load_checked_project(path, false, false, reporter)?;
+    frontend::check(Target::Project { root: path }, &CheckOptions::cli()).report(reporter)?;
     if tests && path.is_dir() {
         test_runner::check_tests(path, reporter)?;
     }
@@ -878,199 +872,10 @@ fn prepare_declared_handler_plan(
     plan
 }
 
-struct CheckedBuild {
-    manifest: Option<Manifest>,
-    entry_relative_path: Option<PathBuf>,
-    project: mesh_pkg::project::ProjectData,
-    checked: mesh_pkg::project::CheckedProject,
-    clustered_execution_plan: Vec<ClusteredExecutionMetadata>,
-}
-
 #[derive(Default)]
 struct VerificationLowering {
     requested: HashMap<String, Vec<Ty>>,
     signatures: Vec<Vec<mesh_codegen::mir::lower::LoweredSignature>>,
-}
-
-fn load_checked_project(
-    path: &Path,
-    test_builtins: bool,
-    require_entrypoint: bool,
-    reporter: &mut Reporter,
-) -> Result<CheckedBuild, Failed> {
-    if !path.exists() {
-        return Err(format!(
-            "Project directory '{}' does not exist",
-            path.display()
-        ))
-        .reported(reporter);
-    }
-    let standalone = path.is_file() && path.extension().is_some_and(|ext| ext == "mpl");
-    if !standalone && !path.is_dir() {
-        return Err(format!(
-            "'{}' is not a directory or a .mpl source file",
-            path.display()
-        ))
-        .reported(reporter);
-    }
-
-    let (root, manifest, entry_relative_path, project, native_bindings) = if standalone {
-        let root = path.parent().unwrap_or(Path::new(""));
-        let relative_path = Path::new(path.file_name().expect("a source path has a file name"));
-        let source = mesh_pkg::project::read_file(path).reported(reporter)?;
-        let project = mesh_pkg::project::single_source_project_at(&source, relative_path)
-            .reported(reporter)?;
-        (
-            root,
-            None,
-            Some(relative_path.to_path_buf()),
-            project,
-            Vec::new(),
-        )
-    } else {
-        let manifest_path = path.join("mesh.toml");
-        let manifest = manifest_path
-            .exists()
-            .then(|| Manifest::from_file(&manifest_path))
-            .transpose()
-            .reported(reporter)?;
-        let native_bindings = if manifest.is_some() {
-            mesh_pkg::resolve_native_bindings(path).reported(reporter)?
-        } else {
-            Vec::new()
-        };
-        let has_configured_entrypoint = manifest
-            .as_ref()
-            .is_some_and(|manifest| manifest.package.entrypoint.is_some());
-        let entry_relative_path = if require_entrypoint
-            || has_configured_entrypoint
-            || path.join(mesh_pkg::manifest::DEFAULT_ENTRYPOINT).exists()
-        {
-            Some(resolve_entrypoint(path, manifest.as_ref()).reported(reporter)?)
-        } else {
-            None
-        };
-        let project = mesh_pkg::project::load_modules(
-            path,
-            entry_relative_path.as_deref(),
-            &native_bindings,
-            test_builtins,
-            &mesh_pkg::project::read_file,
-        )
-        .reported(reporter)?;
-        (
-            path,
-            manifest,
-            entry_relative_path,
-            project,
-            native_bindings,
-        )
-    };
-
-    let sources = project_sources(root, &project);
-    reporter.emit_all(project.compilation_order.iter().flat_map(|id| {
-        let idx = id.0 as usize;
-        let file = &sources[idx];
-        project.module_parses[idx]
-            .errors()
-            .iter()
-            .map(move |error| {
-                let diagnostic = Diagnostic::in_file(Code::UnexpectedToken, file, &error.message)
-                    .at(error.span, "");
-                match &error.related {
-                    Some((message, span)) => diagnostic.with_label(*span, message),
-                    None => diagnostic,
-                }
-            })
-    }))?;
-
-    let allowed_native_bindings = native_bindings
-        .iter()
-        .map(|binding| binding.path.as_path())
-        .collect::<HashSet<_>>();
-    for id in &project.compilation_order {
-        let idx = id.0 as usize;
-        if !project.module_parses[idx]
-            .tree()
-            .fn_defs()
-            .any(|function| function.native_decl().is_some())
-        {
-            continue;
-        }
-        let path = sources[idx].path();
-        let canonical = path.canonicalize().ok();
-        if !canonical.is_some_and(|path| allowed_native_bindings.contains(path.as_path())) {
-            return Err(format!(
-                "Native declaration in '{}' is outside a manifest-declared native binding",
-                path.display()
-            ))
-            .reported(reporter);
-        }
-    }
-
-    reject_duplicate_type_names(&project, &sources, reporter)?;
-    let checked = mesh_pkg::project::check_project(&project, test_builtins);
-    reporter.emit_all(project.compilation_order.iter().flat_map(|id| {
-        let idx = id.0 as usize;
-        checked.typeck[idx].diagnostics(&sources[idx])
-    }))?;
-    reject_duplicate_pub_functions(&project, &sources, &checked.exports, reporter)?;
-
-    let clustered_execution_plan =
-        match plan_cluster_declarations(&project.graph, &project.module_parses) {
-            Ok(plan) => plan,
-            Err(issues) => {
-                reporter.emit_all(
-                    issues
-                        .iter()
-                        .map(|issue| clustered_declaration_diagnostic(&project, &sources, issue)),
-                )?;
-                Vec::new()
-            }
-        };
-    Ok(CheckedBuild {
-        manifest,
-        entry_relative_path,
-        project,
-        checked,
-        clustered_execution_plan,
-    })
-}
-
-fn project_sources(dir: &Path, project: &mesh_pkg::project::ProjectData) -> Vec<SourceFile> {
-    let mut by_path = HashMap::new();
-    project
-        .graph
-        .modules
-        .iter()
-        .zip(&project.module_sources)
-        .map(|(module, source)| {
-            // Inline modules share the byte offsets of their containing file.
-            by_path
-                .entry(&module.path)
-                .or_insert_with(|| SourceFile::new(dir.join(&module.path), source.as_str()))
-                .clone()
-        })
-        .collect()
-}
-
-fn clustered_declaration_diagnostic(
-    project: &mesh_pkg::project::ProjectData,
-    sources: &[SourceFile],
-    issue: &ClusteredDeclarationError,
-) -> Diagnostic {
-    let index = project
-        .graph
-        .modules
-        .iter()
-        .position(|module| module.path == issue.file)
-        .expect("an `@cluster` decorator belongs to a project file");
-    Diagnostic::in_file(
-        Code::ClusterDeclarationInvalid,
-        &sources[index],
-        issue.to_string(),
-    )
-    .at(issue.span, &issue.reason)
 }
 
 pub(crate) fn prepare_project_build(
@@ -1078,14 +883,20 @@ pub(crate) fn prepare_project_build(
     test_builtins: bool,
     reporter: &mut Reporter,
 ) -> Result<PreparedBuild, Failed> {
-    let CheckedBuild {
+    let options = CheckOptions {
+        test_builtins,
+        require_entrypoint: true,
+        ..CheckOptions::cli()
+    };
+    let Analysis {
         manifest,
-        entry_relative_path,
+        entry,
         project,
         mut checked,
         mut clustered_execution_plan,
-    } = load_checked_project(dir, test_builtins, true, reporter)?;
-    let entry_relative_path = entry_relative_path.expect("build requires an entrypoint");
+        ..
+    } = frontend::check(Target::Project { root: dir }, &options).report(reporter)?;
+    let entry_relative_path = entry.expect("build requires an entrypoint");
 
     let package = manifest.as_ref().map_or_else(
         || {
@@ -1272,172 +1083,6 @@ fn lower_checked_modules(
         mir_modules.push(lowered.module);
     }
     Ok(mir_modules)
-}
-
-/// Reject a struct, sum type, interface, actor, service or supervisor name
-/// that more than one module defines, public or not. These names are one
-/// namespace across a project: the type checker took two `State` structs
-/// for one type and codegen emitted one of them, so `Z.run_z()` showed its
-/// `State` laid out as `A`'s, and a module's `spawn(worker)` could start
-/// another module's `worker`.
-fn reject_duplicate_type_names(
-    project: &mesh_pkg::project::ProjectData,
-    sources: &[SourceFile],
-    reporter: &mut Reporter,
-) -> Result<(), Failed> {
-    use mesh_parser::ast::item::Item;
-
-    // A struct or sum type copied verbatim into several modules (a private
-    // helper) is one layout, so its definitions are compared by their
-    // tokens; code (actors, services) may call each module's own functions.
-    let fingerprint = |item: &Item| -> Option<String> {
-        if !matches!(item, Item::StructDef(_) | Item::SumTypeDef(_)) {
-            return None;
-        }
-        // An indexed declaration retains its defining module in the checked
-        // type. Even identical source declarations would collide after their
-        // module identity and indices are projected to the native layout.
-        if item.syntax().descendants().any(|node| {
-            matches!(
-                node.kind(),
-                SyntaxKind::INDEX_PARAM | SyntaxKind::VARIANT_RESULT
-            )
-        }) {
-            return None;
-        }
-        let tokens: Vec<String> = item
-            .syntax()
-            .descendants_with_tokens()
-            .filter_map(|element| element.into_token())
-            .filter(|token| !token.kind().is_trivia() && token.kind() != SyntaxKind::PUB_KW)
-            .map(|token| token.text().to_string())
-            .collect();
-        Some(tokens.join(" "))
-    };
-    struct Definition {
-        kind: &'static str,
-        module: mesh_common::module_graph::ModuleId,
-        span: mesh_common::span::Span,
-        fingerprint: Option<String>,
-    }
-    let mut owners = std::collections::BTreeMap::<String, Vec<Definition>>::new();
-    for &id in &project.compilation_order {
-        for item in project.module_parses[id.0 as usize].tree().items() {
-            let (kind, name) = match &item {
-                Item::StructDef(def) => ("struct", def.name()),
-                Item::SumTypeDef(def) => ("type", def.name()),
-                Item::InterfaceDef(def) => ("interface", def.name()),
-                Item::ActorDef(def) => ("actor", def.name()),
-                Item::ServiceDef(def) => ("service", def.name()),
-                Item::SupervisorDef(def) => ("supervisor", def.name()),
-                _ => continue,
-            };
-            if let Some((text, range)) =
-                name.and_then(|name| name.text().map(|text| (text, name.syntax().text_range())))
-            {
-                owners.entry(text).or_default().push(Definition {
-                    kind,
-                    module: id,
-                    span: mesh_common::span::Span::new(range.start().into(), range.end().into()),
-                    fingerprint: fingerprint(&item),
-                });
-            }
-        }
-    }
-
-    reporter.emit_all(owners.iter().filter_map(|(name, defs)| {
-        let first = &defs[0];
-        if defs.iter().all(|def| def.module == first.module) {
-            // One module (a duplicate there is the type checker's E0068).
-            return None;
-        }
-        if first.fingerprint.is_some()
-            && defs.iter().all(|def| def.fingerprint == first.fingerprint)
-        {
-            return None;
-        }
-        let label =
-            |def: &Definition| format!("{} in `{}`", def.kind, project.graph.get(def.module).name);
-        let mut diagnostic = Diagnostic::in_file(
-            Code::DuplicateTypeAcrossModules,
-            &sources[first.module.0 as usize],
-            format!("`{name}` is defined in more than one module"),
-        )
-        .at(first.span, label(first))
-        .with_note("Identical, non-indexed struct and sum type definitions can share a layout.");
-        for def in &defs[1..] {
-            diagnostic =
-                diagnostic.with_label_in(&sources[def.module.0 as usize], def.span, label(def));
-        }
-        Some(diagnostic)
-    }))
-}
-
-/// Reject programs where two modules export a `pub fn` under the same symbol.
-///
-/// `Lowerer::qualify_name` deliberately leaves `pub` function names unqualified so
-/// importing modules can call them by their bare name, and `merge_mir_modules` then
-/// keys merged functions by that bare name, keeping the first one it sees. Two modules
-/// exporting the same name therefore collapse into one symbol: the later module's body
-/// is dropped, and every call site — including `from B import f` — binds to the earlier
-/// module's body while the type checker went on believing it had `B`'s signature. That
-/// mismatch is silent, and when the signatures differ it reinterprets values across
-/// types (an `Int` returned where a `String` was expected becomes a wild pointer).
-///
-/// Until pub symbols are module-qualified, refuse to compile the ambiguous program.
-fn reject_duplicate_pub_functions(
-    project: &mesh_pkg::project::ProjectData,
-    sources: &[SourceFile],
-    all_exports: &[Option<mesh_typeck::ExportedSymbols>],
-    reporter: &mut Reporter,
-) -> Result<(), Failed> {
-    // Export keys are exactly the `pub_fns` handed to the lowerer, so a key collision
-    // is a symbol collision. Same-name/different-arity pub fns inside one module are
-    // already disambiguated by `collect_exports` as `name__<arity>`.
-    let mut owners: std::collections::BTreeMap<&str, Vec<mesh_common::module_graph::ModuleId>> =
-        Default::default();
-    for &id in &project.compilation_order {
-        let exports = all_exports[id.0 as usize].iter();
-        for name in exports.flat_map(|exports| exports.functions.keys()) {
-            owners.entry(name.as_str()).or_default().push(id);
-        }
-    }
-
-    reporter.emit_all(owners.iter().filter(|(_, modules)| modules.len() > 1).map(|(symbol, modules)| {
-        // Strip the `__<arity>` suffix `collect_exports` adds to overloaded pub fns.
-        let (display, arity) = symbol
-            .rsplit_once("__")
-            .and_then(|(base, arity)| arity.parse::<usize>().ok().map(|arity| (base, Some(arity))))
-            .unwrap_or((symbol, None));
-        let mut declarations = modules.iter().filter_map(|&module| {
-            let idx = module.0 as usize;
-            project.module_parses[idx].tree().fn_defs().find_map(|function| {
-                let name = function.name()?;
-                let text = name.text()?;
-                let matches_overload = text == display && arity.is_some_and(|arity| {
-                    function.param_list().map_or(0, |params| params.params().count()) == arity
-                });
-                if function.visibility().is_none() || (text != *symbol && !matches_overload) {
-                    return None;
-                }
-                let range = name.syntax().text_range();
-                Some((&sources[idx], mesh_common::span::Span::new(range.start().into(), range.end().into()), &project.graph.get(module).name))
-            })
-        });
-        let message = format!("public function `{display}` is defined in more than one module");
-        let mut diagnostic = if let Some((file, span, module)) = declarations.next() {
-            Diagnostic::in_file(Code::DuplicatePubFnAcrossModules, file, message)
-                .at(span, format!("public definition in `{module}`"))
-        } else {
-            Diagnostic::new(Code::DuplicatePubFnAcrossModules, message)
-        };
-        for (file, span, module) in declarations {
-            diagnostic = diagnostic.with_label_in(file, span, format!("public definition in `{module}`"));
-        }
-        diagnostic.with_note(format!(
-            "Public function names share one global symbol space, so a call to `{display}` would silently run only one of these definitions."
-        ))
-    }))
 }
 
 fn collect_library_exports(
@@ -1762,6 +1407,7 @@ fn collect_mesh_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io
 #[cfg(test)]
 mod autonomous_config_tests {
     use super::*;
+    use mesh_pkg::manifest::Manifest;
     use std::str::FromStr;
 
     #[test]

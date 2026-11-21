@@ -6,6 +6,7 @@ description = "Mesh language package manager (manifest parsing, dependency resol
 
 [dependencies]
 mesh-common = { path = "../mesh-common" }
+mesh-diagnostics = { path = "../mesh-diagnostics" }
 mesh-parser = { path = "../mesh-parser" }
 mesh-typeck = { path = "../mesh-typeck" }
 toml = { workspace = true }
@@ -17,5 +18,4 @@ ureq = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
-mesh-diagnostics = { path = "../mesh-diagnostics" }
 tempfile = "3"

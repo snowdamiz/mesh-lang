@@ -1,95 +1,10 @@
 //! The language server over JSON-RPC, as an editor drives it: every request
 //! and notification it answers, through an in-memory connection.
 
+mod common;
+
+use common::Client;
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, DuplexStream};
-use tower_lsp::{LspService, Server};
-
-use mesh_lsp::server::MeshBackend;
-
-struct Client {
-    to_server: DuplexStream,
-    from_server: BufReader<DuplexStream>,
-    next_id: i64,
-    /// Notifications the server sent while a response was awaited.
-    notifications: Vec<Value>,
-}
-
-impl Client {
-    fn start() -> Client {
-        let (client_out, server_in) = tokio::io::duplex(1 << 16);
-        let (server_out, client_in) = tokio::io::duplex(1 << 16);
-        let (service, socket) = LspService::new(MeshBackend::new);
-        tokio::spawn(Server::new(server_in, server_out, socket).serve(service));
-        Client {
-            to_server: client_out,
-            from_server: BufReader::new(client_in),
-            next_id: 0,
-            notifications: Vec::new(),
-        }
-    }
-
-    async fn send(&mut self, message: Value) {
-        let body = message.to_string();
-        let frame = format!("Content-Length: {}\r\n\r\n{body}", body.len());
-        self.to_server.write_all(frame.as_bytes()).await.unwrap();
-    }
-
-    async fn receive(&mut self) -> Value {
-        let mut length = 0;
-        loop {
-            let mut line = String::new();
-            self.from_server.read_line(&mut line).await.unwrap();
-            let line = line.trim_end();
-            if line.is_empty() {
-                break;
-            }
-            if let Some(value) = line.strip_prefix("Content-Length: ") {
-                length = value.parse().unwrap();
-            }
-        }
-        let mut body = vec![0; length];
-        self.from_server.read_exact(&mut body).await.unwrap();
-        serde_json::from_slice(&body).unwrap()
-    }
-
-    async fn request(&mut self, method: &str, params: Value) -> Value {
-        self.next_id += 1;
-        let id = self.next_id;
-        self.send(json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}))
-            .await;
-        loop {
-            let message = self.receive().await;
-            if message["id"] == id {
-                return message["result"].clone();
-            }
-            self.notifications.push(message);
-        }
-    }
-
-    async fn notify(&mut self, method: &str, params: Value) {
-        self.send(json!({"jsonrpc": "2.0", "method": method, "params": params}))
-            .await;
-    }
-
-    /// The next notification of `method`, waiting for it if need be.
-    async fn notification(&mut self, method: &str) -> Value {
-        if let Some(index) = self
-            .notifications
-            .iter()
-            .position(|n| n["method"] == method)
-        {
-            return self.notifications.remove(index)["params"].clone();
-        }
-        loop {
-            let message = self.receive().await;
-            if message["method"] == method {
-                return message["params"].clone();
-            }
-            self.notifications.push(message);
-        }
-    }
-}
 
 const URI: &str = "file:///project/main.mpl";
 
@@ -250,10 +165,15 @@ end
         )
         .await;
     let published = client.notification("textDocument/publishDiagnostics").await;
+    assert_eq!(published["version"], 1, "{published}");
     let diagnostics = published["diagnostics"].as_array().unwrap();
     assert_eq!(diagnostics.len(), 2, "{published}");
     let pipe = &diagnostics[0];
     assert_eq!(pipe["code"], "E0003");
+    assert_eq!(
+        pipe["codeDescription"]["href"],
+        "https://meshlang.dev/docs/errors/#e0003"
+    );
     assert_eq!(pipe["severity"], 1);
     assert_eq!(
         pipe["range"],
@@ -265,7 +185,7 @@ end
     assert_eq!(ordinary["code"], "E0003");
     assert_eq!(
         ordinary["message"],
-        "arity mismatch: expected 3 arguments, found 4\n1 extra argument(s)"
+        "arity mismatch: expected 3 arguments, found 4\nhelp: 1 extra argument(s)"
     );
 
     let repaired = source
@@ -278,6 +198,7 @@ end
         )
         .await;
     let published = client.notification("textDocument/publishDiagnostics").await;
+    assert_eq!(published["version"], 2, "{published}");
     assert_eq!(published["diagnostics"], json!([]));
 }
 

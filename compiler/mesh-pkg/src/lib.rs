@@ -1,4 +1,5 @@
 pub mod autonomous;
+pub mod frontend;
 pub mod lockfile;
 pub mod manifest;
 pub mod native;

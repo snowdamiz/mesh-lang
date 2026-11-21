@@ -3,7 +3,7 @@
 //! This crate provides an LSP server for the Mesh programming language,
 //! enabling real-time feedback in editors like VS Code and Neovim:
 //!
-//! - **Diagnostics**: Parse errors and type errors displayed inline
+//! - **Diagnostics**: what `meshc check` reports, displayed inline
 //! - **Hover**: Type information shown on hover
 //! - **Go-to-definition**: Navigate to variable, function, and type definitions
 //! - **Completion**: Keywords, built-in types, snippets, and scope-aware names
@@ -15,6 +15,7 @@
 pub mod analysis;
 pub mod completion;
 pub mod definition;
+mod diagnostics;
 pub mod server;
 pub mod signature_help;
 mod syntax;
