@@ -1475,6 +1475,9 @@ impl<'ctx> CodeGen<'ctx> {
                                 format!("`{operation}` needs a named handler"),
                                 "the handler is not a named function",
                             )
+                            .with_repair(format!(
+                                "Define a named top-level function with type `fn(String) -> String` and pass it directly to `{operation}`."
+                            ))
                         })?;
                     let symbol = handler.get_name().to_string_lossy().into_owned();
                     self.jobs_handlers.insert(symbol, handler);

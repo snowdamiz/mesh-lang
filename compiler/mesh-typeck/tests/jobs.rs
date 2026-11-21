@@ -217,6 +217,8 @@ fn job_test_functions_require_the_test_capability() {
 
 #[test]
 fn job_test_assertions_borrow_the_transaction_connection() {
+    use mesh_diagnostics::Code;
+
     let imports = ImportContext {
         test_builtins: true,
         ..ImportContext::default()
@@ -243,9 +245,9 @@ end
     );
     let checked = mesh_typeck::check_with_imports(&source, &imports);
     assert!(
-        checked.errors.iter().any(|error| matches!(error,
-            TypeError::ResourceViolation { reason, .. } if reason.contains("captured")
-        )),
+        checked.errors.iter().any(|error| {
+            error.code() == Code::ResourceCrossesBoundary && error.to_string().contains("captured")
+        }),
         "{:?}",
         checked.errors
     );
