@@ -1880,9 +1880,13 @@ the local ARM64 guest using a release fixture linked against that
 runtime. Only the exact internal worker invocation with the opt-in set
 to `1` reported `THP_enabled = 0` after scheduler startup. Unset and
 nonmatching values, ordinary application launches, and worker-like
-argument lists reported `THP_enabled = 1`. This run exercised startup
-without a database. The timed result above used a fixture constructor
-to apply the same policy.
+argument lists reported `THP_enabled = 1`. A second run launched two
+compiled jobs through the runner on PostgreSQL 17.11 with verified TLS
+and SCRAM. The runner reported `THP_enabled = 1`, and both children
+reported `0` while their handlers were active. The observed PIDs matched
+the native start markers and both durable attempts. Both jobs completed
+at attempt one with one effect and one receipt each. The timed result
+above used a fixture constructor to apply the policy.
 [Runtime opt-in receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Run the compiled handler through the fork template

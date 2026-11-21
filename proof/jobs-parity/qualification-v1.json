@@ -6690,7 +6690,39 @@
         "exit_status": 174
       }
     ],
-    "scope": "Database-free release fixture verifies early opt-in process policy and exact argument boundaries. No timed workload."
+    "scope": "Database-free release fixture verifies early opt-in process policy and exact argument boundaries. No timed workload.",
+    "postgres_worker_smoke": {
+      "postgres": "17.11 verified TLS and SCRAM",
+      "archive_sha256": "01279cce63c9fc35e562b3309e35b4411d40a711591486d82cb8e64f51230fdf",
+      "fixture_sha256": "03aabc127dc43993ceb5538ee681dad526b1c7693c43b754f08793adc87dc3ce",
+      "script_sha256": "da65c235024b71eee77eb562c80f57a9ecbcb80f71a73d3e92b5bdb2caafb2a0",
+      "serial": "target/jobs-parity/linux-arm-ownership-guest/worker-thp-runtime-proof/guest-postgres.serial",
+      "serial_sha256": "367143d143f4a31b77c376532e90b774d265ae474ec3e39259f637db6bb1c01a",
+      "completed": 2,
+      "attempts": 2,
+      "effects": 2,
+      "receipts": 2,
+      "runner_thp_enabled": 1,
+      "child_thp_enabled": 0,
+      "pids": {
+        "runner": [
+          "407"
+        ],
+        "children": [
+          "423",
+          "427"
+        ],
+        "durable": [
+          "423",
+          "427"
+        ],
+        "native": [
+          "423",
+          "427"
+        ]
+      },
+      "scope": "Release runner, scoped worker THP setting, and two durable jobs. Captured child status during the compiled handler hold and matched exact startup and durable PIDs."
+    }
   },
   "linux_slow_64_timed_worker_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
