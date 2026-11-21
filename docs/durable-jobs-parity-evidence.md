@@ -1479,6 +1479,48 @@ and settlement omitted by this fixture. The experimental compiler
 also needs compatibility fixes for runtime-only reference builds and
 the REPL's symbol table. [Scheduler diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
+The follow-up at `52406a01` keeps the original startup ABI in normal
+builds and selects the new entry only at fixture build time. Its release
+compiler linked the original `7c162056` runtime-only fixture. The earlier
+compiler failed that link on the missing experimental symbol. The
+PostgreSQL 17.11 verifier passed with the old archive pinned, with 54
+Jobs runtime cases and three compiled suites. The reference directly
+exercised sparse polling, persisted pause, and manual enqueue.
+
+The opt-in REPL test evaluated an expression with a stored Jobs main.
+The codegen test exercised both startup entries and checked that the
+handler fingerprint stays stable. The corrected compiler's fork and
+exec witnesses again observed four eager threads and three deferred
+threads across 32 reconciled attempts.
+The compiled first-actor test passed under GC stress on the corrected
+compiler as well. It built the fixture with the experimental entry and
+checked the resulting thread count and `Job.await` in the original PID.
+[Compatibility receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure scheduler deferral through the Jobs dispatcher
+
+The `52406a01` experiment ran the frozen `slow-1r-64s` profile through
+real enqueue, batch claims, fresh worker exec, exact reaps, and durable
+settlement. Both Mesh arms used the same compiled image and warmed effect
+relay. Five counterbalanced groups included Oban Basic 2.24.2. All
+7,680 measured jobs reconciled on macOS arm64 and PostgreSQL 17.11.
+Sampled one-minute host load reached 9.73.
+
+| Arm | Jobs/s | CPU/job | Pickup p99 | Sampled peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh eager | 472.0 | 3.53 ms | 975 ms | 236.2 MiB |
+| Mesh deferred | 408.6 | 3.43 ms | 1,135 ms | 161.8 MiB |
+| Oban | 494.5 | 1.45 ms | 931 ms | 118.5 MiB |
+
+Deferral reduced CPU in four of five pairs, with a median paired saving
+of 0.10 ms/job. Its throughput was lower in every pair. Both Mesh arms
+missed the throughput and CPU limits. Deferral met the sampled RSS and
+pickup limits. The median RSS peak contained 47 processes with deferral
+and 66 with eager startup, leaving memory at equal live counts
+unmeasured. The forked-handler CPU result has a separate receipt and
+leaves dispatch and settlement costs open.
+[Stock-exec comparison receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse effect sessions inside the runner
 
 The local `02afc9e2` diagnostic moved the helper into a thread in the Jobs

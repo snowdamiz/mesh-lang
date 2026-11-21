@@ -4313,6 +4313,67 @@
     },
     "scope": "Paired warmed real-handler fork diagnostic. No Jobs dispatch or settlement. Only the scheduler deferral flag varies between timed arms. Runtime-only reference linkage and REPL symbol registration are open review findings for this experimental commit."
   },
+  "worker_scheduler_entry_compatibility": {
+    "experimental_runtime": "52406a0170e8bf9cca86447ac95e888c76339430",
+    "reference_runtime": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "run": "target/jobs-parity/52406a0170e8bf9cca86447ac95e888c76339430/scheduler-deferral",
+    "logs_sha256": {
+      "release-build.log": "d48f9d95207c2edaff28198faf9bf704212ce5824a133ead263dbf61bd3250dc",
+      "reference-abi.log": "677096224c0de7b90be6efddcbfe5474ba520ce02c3677faa24344859b491d04",
+      "codegen-entries.log": "a8f996d70aff3b7ce31300ed29bf2feebcd7d02cf32edf3ba731b5a27f84ed50",
+      "repl-opt-in.log": "62a0b7f7d71285ba43e67b81ac9c85bf58ca1c4acd481a3336a302fcd2cc4c1b",
+      "postgres-17.11-runtime-only-reference.log": "34e166d3f0a0b6835de6bd489e4f0ddc10e69cebbc7b6591ad2b6db35aa1abf4",
+      "compiled-first-actor.log": "3cb71a7ca16d053654729c968d28af26128e4ab4e775231abc702f2a22775869"
+    },
+    "runtime_only_reference": {
+      "run": "runtime-only-reference.82LPDC",
+      "corrected_link_log_sha256": "54dc3471a195d7d1ffe8134fd893667ff88ab3a45a1038383061efef2a11862d",
+      "before_fix_link_failure_sha256": "7251e1ab4415dba7224187efc0b5f8cd16e825e4298541ec0fd24650df5fb5d1",
+      "corrected_ir_sha256": "12554984ad2ce3fc90b1a43aa2a78f0379193b064acd3ed13a6cc144dfa4252a"
+    },
+    "postgres_driver_tests": 36,
+    "jobs_runtime_tests": 54,
+    "compiled_jobs_suites": 3,
+    "compiled_thread_witness": {
+      "reconciled_workers": 32,
+      "threads_at_first_effect": {"eager": 4, "deferred": 3},
+      "fork_result": "target/jobs-parity/worker-cost-screen/worker-scheduler-effects-pi6k_qmk/result.json",
+      "fork_sha256": "40946fb433829d4ea1e81a4f60f598e5eb5d6a4027f847e78a57205fd619480f",
+      "exec_result": "target/jobs-parity/worker-cost-screen/worker-scheduler-effects-xfjkjhhi/result.json",
+      "exec_sha256": "61c79df1647eb8a3dad069f3fa64995fc08e7cbb5b687cd2428b69490fc6c081"
+    },
+    "scope": "Experimental branch. Runtime-only reference linkage and live reference lanes, REPL opt-in and default versus experimental codegen are verified on macOS. Thread witnesses cover the fork and fresh exec diagnostic paths."
+  },
+  "stock_exec_scheduler_deferral_slow_64": {
+    "experimental_runtime": "52406a0170e8bf9cca86447ac95e888c76339430",
+    "relay_runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "host": "Darwin arm64",
+    "harness": "57ecee2e5379c7a914b6d7654f18785b63946242",
+    "postgres_version": "17.11",
+    "oban": "2.24.2",
+    "profile": "slow-1r-64s",
+    "run": "target/jobs-parity/effect-session-study/stock-exec-scheduler-64-nt72d30m",
+    "manifest_sha256": "c1942d6f5170ef3446b90b16ed0eb01698d8f5e1eafcdeb928f917d436f5597e",
+    "result_sha256": "350cc0825c1212a66fbcbd50ded0570cf3b243ecf9a6b4cc6d90bb1af530e717",
+    "script_sha256": "f90fd07b026740e22b482ba6168defa14b2015c6162d79a920a06b879d6fc599",
+    "measured_groups": 5,
+    "jobs_per_arm": 512,
+    "reconciled_jobs": 7680,
+    "peak_one_minute_host_load": 9.731,
+    "jobs_per_second": {"eager": 472.020, "deferred": 408.562, "oban": 494.527},
+    "cpu_ms_per_job": {"eager": 3.531, "deferred": 3.429, "oban": 1.454},
+    "pickup_p99_ms": {"eager": 974.877, "deferred": 1135.155, "oban": 931.200},
+    "sampled_peak_rss_mib": {"eager": 236.219, "deferred": 161.781, "oban": 118.516},
+    "sampled_processes_at_rss_peak": {"eager": 66, "deferred": 47, "oban": 2},
+    "paired_median_scheduler_cpu_saved_ms_per_job": 0.101,
+    "deferred_cpu_wins_vs_eager": 4,
+    "deferred_throughput_wins_vs_eager": 0,
+    "deferred_comparison_breaches": ["throughput", "cpu_per_job"],
+    "scope": "Experimental compiled release with the stock exec Jobs runner, real claims and durable settlement, and a warmed verified-TLS fixture relay. Same Mesh image in both arms. The RSS peaks represent different numbers of live processes."
+  },
   "effect_transaction_lease_admission": {
     "test_commit": "acd1d9b0a43ca9dca16b176a8ab90ff28cbc36dd",
     "host": "Darwin arm64",
