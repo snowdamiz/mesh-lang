@@ -2781,6 +2781,19 @@ was 103 jobs/s. Both topologies passed pickup and resource limits.
 The timing spread leaves throughput open for repeatable confirmation.
 [Short topology receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Compare four runners at 64 slots on short jobs
+
+Five matched Linux groups at `c271319e` reconciled all 7,680
+measured jobs. Mesh reached 756 and 927 jobs/s, versus Oban's
+1,512. Both controls missed throughput and pickup p99. CPU,
+RSS, and the remaining resource budgets passed.
+
+Mesh recorded a first claim within 2–3 ms, versus 72 ms for
+Oban. Its median drain after the first claim took 550–672 ms
+versus 277 ms. Mesh averaged about 44 claimed slots during
+that drain, compared with 33 for Oban.
+[Four-runner short-64 receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare one-slot sparse polling on Linux
 
 The `c271319e` staged run used one prewarmed effect session and no
