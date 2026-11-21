@@ -943,6 +943,12 @@ PostgreSQL 17.11, 18.7, and 19.0 over verified TLS and SCRAM. The listener
 framing case uses a scripted TCP peer that sends partial, coalesced, and
 malformed frames.
 
+A clean target build at `dbc55bb1` reran the macOS ARM64 compatibility
+script with PostgreSQL 17.11, 18.7, and 19.0. The fresh and upgrade
+grants, runtime Jobs tests, and three compiled Jobs tests passed on
+each version. The manifest records the exact-head replay.
+[Exact-head proof](../proof/jobs-parity/qualification-v1.json)
+
 The `macos_compiled_lanes` entry records the exact checkouts, full logs,
 and named excerpts under `target/jobs-parity/<checkout>/lane-evidence/`.
 Each excerpt identifies the assertion source and the lines from the full
@@ -3316,6 +3322,41 @@ The peak one-minute host load ranged from 7.83 to 13.38 across the
 groups. Worker THP disablement remains opt-in at the tested revision.
 [Ordinary matched run](../proof/jobs-parity/qualification-v1.json)
 
+### Measure ordinary Linux worker memory at 64 slots
+
+A held-worker pilot used the same `25cc1299` release ELF and the
+frozen 512-job `slow-1r-64s` input with PostgreSQL 17.11. It
+matched 435 control and 417 treatment workers to their durable
+attempts. Median held-worker RSS fell from 11.01 to 5.03 MiB
+with THP disabled. Treatment peak runner-tree RSS reached
+295.0 MiB in the pilot.
+
+One separate untraced group ran control, treatment, then stock
+Oban with zero warmups. All 1,536 jobs had one attempt and one
+effect. The maximum observed workload connection count was 68,
+with one separately reserved observer.
+
+| Arm | Jobs/s | Peak RSS | Peak processes | Pickup p99 |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control | 88.9 | 381.0 MiB | 33 | 5,616 ms |
+| Mesh, worker THP disabled | 133.5 | 210.2 MiB | 38 | 3,689 ms |
+| Oban Basic | 445.2 | 143.8 MiB | 2 | 1,044 ms |
+
+The group's RSS reference was 215.7 MiB. Treatment was under
+that value while the runner tree peaked at 38 processes and
+throughput and pickup both trailed Oban. The higher pilot
+peak leaves RSS at full occupancy unproven. Fixed arm order,
+no warmups, and a peak one-minute host load of 18.15 limit
+this run to resource diagnosis.
+
+The first pilot reached PostgreSQL shutdown but failed an
+overstrict procfs check. Guest init had yet to collect the
+detached postmaster. The replay verified that the original
+postmaster had exited, its PID file was gone, and `pg_ctl
+status` returned 3. It records the exited PID and start
+time when a zombie entry remains at proof collection.
+[Ordinary slow-64 canary and held samples](../proof/jobs-parity/qualification-v1.json)
+
 ### Drop cold executable pages before the slow-64 handler
 
 Two Linux boots used the same relinked `f1e2709c` fixture with
@@ -3939,6 +3980,73 @@ control spread. Host load varied across the run. This screen
 does not support advancing Darwin socket tuning for the dense
 first-write gap.
 [Darwin socket attribution receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure fresh PostgreSQL connection CPU on Linux
+
+One local ARM64 guest with two vCPUs and 1 GiB RAM ran PostgreSQL
+17.11 over verified TLS and SCRAM. The comparison linked both arms
+against the stock `25cc1299` release runtime and used the stock two
+parameterized inserts in separate autocommit transactions. At one
+and 16 lanes, five alternating pairs each processed 256 jobs per
+arm. The probe either kept an exclusive connection per lane or
+opened and closed a connection for every job. All 5,120 measured
+jobs reconciled. The pilot joined backend identities to the writes
+and rejected a wrong CA, a wrong SCRAM password, and a plaintext
+connection.
+
+| Lanes | Median fresh minus reused CPU/job | PostgreSQL CPU/job | Client CPU/job | Combined edge envelope |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 3.57 ms | 2.96 ms | 0.61 ms | 3.44–4.03 ms |
+| 16 | 3.46 ms | 2.89 ms | 0.56 ms | 3.19–3.81 ms |
+
+The paired difference includes startup, close, and the difference
+between warm and cold backends for the two writes. Separate cgroups
+include the CPU of PostgreSQL backends that exit before observation.
+Observer SQL runs outside the measured intervals. The reused arm
+measures direct SQL on a retained session. It leaves the cost of
+production authorization, reset, dispatch, and lifecycle for the
+compiled comparison.
+
+The separate unmodified Jobs anchor stopped in the one-slot arm.
+PostgreSQL logged ten workload database connection-limit rejections,
+and durable attempt reconciliation failed. That capture supplies no
+runner CPU result. The probe comparison completed on its own boot.
+
+With one persistent observer reserved, the stock anchor reconciled
+256 jobs at each slot count. The collector matched Linux's
+`/proc/self/exe` worker invocation and joined 28 and 137 live child
+identities to durable worker PIDs at one and 16 slots. The first
+reserved-observer capture retained its reconciled rows but missed
+that identity check because it expected the absolute executable
+path in the child's arguments.
+
+The successful anchor measured 2.76 and 3.54 runner CPU-ms/job
+and 6.99 and 9.29 PostgreSQL CPU-ms/job at one and 16 slots.
+These windows run from runner start through terminal observation,
+including claim, dispatch, settlement, and observer SQL.
+[Linux connection and failed anchor receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Verify the named-operation database fence
+
+The isolated candidate at `b99425cd` installs an opt-in fence in
+its own schema after the ordinary Jobs migration. The application
+routine owner receives access to the fence. Its caller receives
+access only to the declared routines. The fence matches the
+current attempt under a job-row lock and checks the database clock
+after acquiring it. The lock orders an admitted write with
+committed cancellation and recovery.
+
+Disposable macOS ARM64 PostgreSQL 17.11, 18.7, and 19.0 runs
+verified scoped grants, owner replay, denial for stale and locked
+attempts, and two separate committed writes. Cancellation waited
+for the first write's lock, then denied the next write. The
+existing standalone effect-transaction proof also passed on 17.11.
+The follow-up at `0687b4a3` passed on all three versions with
+additional cases for expiry while waiting on a relation lock,
+recovery after a rolled-back admitted write, and a permitted call
+after each owner replay.
+This is a database candidate. The ordinary runner still opens a
+connection in each handler. [Scoped fence receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 

@@ -36188,5 +36188,400 @@
         "pickup_p99_ms": -120.663818359375
       }
     }
+  },
+  "macos_exact_head_stock_postgres_matrix": {
+    "revision": "dbc55bb1018e0d59a1e68e622c11cee80c25a2bb",
+    "command": "bash scripts/verify-postgres-jobs.sh --compatibility VERSION --j6-roles --parity-driver-check",
+    "scope": "Current-head disposable macOS ARM64 PostgreSQL 17.11, 18.7, and 19.0 over verified TLS and SCRAM.",
+    "rust_toolchain": "1.99.0",
+    "isolated_target_directory": true,
+    "parity_driver_self_checks": 18,
+    "proxy_tests": 12,
+    "fresh_role_and_upgrade_role_proofs": true,
+    "native_versions": {
+      "17.11": {
+        "console_log": {
+          "path": "target/jobs-parity/exact-stock-pg-proof/dbc55bb1/pg17.11-isolated-target.log",
+          "sha256": "a2de72506c176405d18cebaeaea0554d48e75732f06675bf87243621fe6214d1"
+        },
+        "successful_rust_test_counts_in_order": [
+          1,
+          4,
+          2,
+          1,
+          36,
+          53,
+          3
+        ]
+      },
+      "18.7": {
+        "console_log": {
+          "path": "target/jobs-parity/exact-stock-pg-proof/dbc55bb1/pg18.7-isolated-target.log",
+          "sha256": "f2679fa875376750e01c7fabbdb57f9689eccdaced6d1785a5a51ffcfe7144ce"
+        },
+        "successful_rust_test_counts_in_order": [
+          1,
+          4,
+          2,
+          1,
+          36,
+          53,
+          3
+        ]
+      },
+      "19.0": {
+        "console_log": {
+          "path": "target/jobs-parity/exact-stock-pg-proof/dbc55bb1/pg19.0-isolated-target.log",
+          "sha256": "0394074d83959e0abefe38963fb05aae2aac38d054b2ab28a6ff6367f7df2057"
+        },
+        "successful_rust_test_counts_in_order": [
+          1,
+          4,
+          2,
+          1,
+          36,
+          53,
+          3
+        ]
+      }
+    }
+  },
+  "linux_stock_pg_connection_component": {
+    "runtime_revision": "25cc1299275a9e0e87e58135178b4fe961225d8f",
+    "scope": "Linux ARM64 local two-vCPU, 1 GiB guest with PostgreSQL 17.11 verified TLS and SCRAM. Exact stock runtime and inserts on retained versus fresh connections. This comparison excludes Jobs dispatch and settlement.",
+    "runbook": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc/README.md",
+      "sha256": "b555dfc6e0e04d5566a9fb47f3b0ec60f0624643ea662a550b2537f99b9b5bed"
+    },
+    "link_receipt": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc/build/link.json",
+      "sha256": "7f72297b891c265a257b208dbf406178f7e02aaab1e0e03bd68e7e9ce8033b08"
+    },
+    "reconciled_measured_jobs": 5120,
+    "jobs_per_arm": 256,
+    "pairs_per_concurrency": 5,
+    "pilot": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc/runs/first-local/pilot/proof/receipt.json",
+      "sha256": "0221cb144599f02b5c51abca2db6323f181993eedf40817fcd3a1150f4b7af25"
+    },
+    "pilot_negative_login_cases": [
+      "wrong_root",
+      "wrong_password",
+      "no_tls"
+    ],
+    "comparison": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc/runs/first-local/compare/proof/receipt.json",
+      "sha256": "7e9593a8fa9321e3938381a229188d39412f18db0d4ab237123bf48a762d1b10"
+    },
+    "comparison_summary": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc/runs/first-local/compare/proof/evidence/summary.json",
+      "sha256": "5b2ebdb156900c41e9f0a9ee3ee8df7a6f3f59b40662628bc1d18b52f6198a96"
+    },
+    "host_trace": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc/runs/first-local/compare/host-trace.jsonl",
+      "sha256": "cc7802a080363bedb883fe64961155e297da080f5881abc8b87cad11aeb8e70f"
+    },
+    "uncorrected_exec_anchor": {
+      "receipt": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc/runs/first-local/anchor/proof/receipt.json",
+        "sha256": "2ebc764a10e66438c3f06c17fa4ea383e2e9d395c62cdf1f79b402095cd06726"
+      },
+      "result": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc/runs/first-local/anchor/proof/evidence/result.json",
+        "sha256": "891637a0dfdeb10deda3b0306df2ac7e3b7384a961e68632d92a49dd03d71431"
+      },
+      "postgres_log": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc/runs/first-local/anchor/proof/evidence/postgres.log",
+        "sha256": "a4b0bceeac1943bd56750b5b4cf42677635722b4e9231e8205d1732df003d067"
+      },
+      "workload_db_capacity_rejections": 10,
+      "scorable": false
+    },
+    "by_concurrency": {
+      "1": {
+        "arm_medians_cpu_usec_per_job": {
+          "R": {
+            "client_plus_postgres": 109.90234375,
+            "postgres": 85.07421875,
+            "runners": 24.828125
+          },
+          "F": {
+            "client_plus_postgres": 3683.0625,
+            "postgres": 3045.90234375,
+            "runners": 637.16015625
+          }
+        },
+        "paired_fresh_minus_reused_cpu_usec_per_job": {
+          "client_plus_postgres": {
+            "edge_envelope_usec_per_job": [
+              3444.3688203125002,
+              4032.255546875
+            ],
+            "includes_zero": false,
+            "median_usec_per_job": 3573.16015625,
+            "range_usec_per_job": [
+              3490.84375,
+              3989.2734375
+            ]
+          },
+          "postgres": {
+            "edge_envelope_usec_per_job": [
+              2863.58203125,
+              3353.5348359375
+            ],
+            "includes_zero": false,
+            "median_usec_per_job": 2960.828125,
+            "range_usec_per_job": [
+              2886.80859375,
+              3331.90625
+            ]
+          },
+          "runners": {
+            "edge_envelope_usec_per_job": [
+              580.7867890625,
+              678.7207109375
+            ],
+            "includes_zero": false,
+            "median_usec_per_job": 612.33203125,
+            "range_usec_per_job": [
+              602.59765625,
+              657.3671875
+            ]
+          }
+        },
+        "paired_fresh_minus_reused_wall_ms_per_256_job_arm": {
+          "median": 777.842834,
+          "range": [
+            771.513001,
+            856.3871670000001
+          ]
+        }
+      },
+      "16": {
+        "arm_medians_cpu_usec_per_job": {
+          "R": {
+            "client_plus_postgres": 140.4453125,
+            "postgres": 119.18359375,
+            "runners": 21.26171875
+          },
+          "F": {
+            "client_plus_postgres": 3548.79296875,
+            "postgres": 2971.41796875,
+            "runners": 577.375
+          }
+        },
+        "paired_fresh_minus_reused_cpu_usec_per_job": {
+          "client_plus_postgres": {
+            "edge_envelope_usec_per_job": [
+              3187.51075,
+              3813.531578125
+            ],
+            "includes_zero": false,
+            "median_usec_per_job": 3457.77734375,
+            "range_usec_per_job": [
+              3232.1796875,
+              3775.8515625
+            ]
+          },
+          "postgres": {
+            "edge_envelope_usec_per_job": [
+              2672.8180390625,
+              3185.213546875
+            ],
+            "includes_zero": false,
+            "median_usec_per_job": 2893.12890625,
+            "range_usec_per_job": [
+              2695.0546875,
+              3166.31640625
+            ]
+          },
+          "runners": {
+            "edge_envelope_usec_per_job": [
+              514.6927109375,
+              628.31803125
+            ],
+            "includes_zero": false,
+            "median_usec_per_job": 564.6484375,
+            "range_usec_per_job": [
+              537.125,
+              609.53515625
+            ]
+          }
+        },
+        "paired_fresh_minus_reused_wall_ms_per_256_job_arm": {
+          "median": 445.487917,
+          "range": [
+            417.681917,
+            486.532959
+          ]
+        }
+      }
+    }
+  },
+  "linux_stock_slow64_worker_thp_canary": {
+    "revision": "25cc1299275a9e0e87e58135178b4fe961225d8f",
+    "profile": "slow-1r-64s",
+    "qualification": false,
+    "scope": "Two-arm held ordinary Linux ARM64 worker pilot and one fixed-order untraced group with no warmups.",
+    "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+    "runbook": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-slow64-canary/README.md",
+      "sha256": "89a320465f4d5a070f1fd313381d7d1921c63bf2ab4a52af67f9b8cb7d0105d4"
+    },
+    "report": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-slow64-canary/runs/stock-thp-slow64-02/report.json",
+      "sha256": "414507df0ff6c54653b6917c186bf58057ca9d2617b90ed0133afdff782e8beb"
+    },
+    "prior_pilot_cleanup_failure": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-slow64-canary/runs/stock-thp-slow64-01/pilot/proof/evidence/result.json",
+      "sha256": "3cda0948636455f2cb0c547ed183b9f81487fb0a506347f777eeb3ca47e1beca"
+    },
+    "pilot_receipt": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-slow64-canary/runs/stock-thp-slow64-02/pilot/proof/receipt.json",
+      "sha256": "c98a498e67706c4cbcf33b55fe86354dbfd8b9fe4ba2220b10c114c8252a3a46"
+    },
+    "group_receipt": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-thp-slow64-canary/runs/stock-thp-slow64-02/0/proof/receipt.json",
+      "sha256": "1c862145c96a9e7a8e9a1420b87481772cae988b962ba80836c3fbf31d2cd9f7"
+    },
+    "pilot_held": {
+      "mesh": {
+        "children": 435,
+        "rss_bytes": {
+          "max": 13635584,
+          "median": 11542528,
+          "min": 11505664
+        },
+        "peak_tree_rss_bytes": 627437568
+      },
+      "mesh-thp-off": {
+        "children": 417,
+        "rss_bytes": {
+          "max": 5296128,
+          "median": 5271552,
+          "min": 5226496
+        },
+        "peak_tree_rss_bytes": 309379072
+      }
+    },
+    "diagnostic_arms": {
+      "mesh": {
+        "jobs_per_second": 88.88492554805856,
+        "pickup_p99_ms": 5616.032958984375,
+        "peak_rss_bytes": 399540224,
+        "cpu_seconds_per_job": 0.0062594824218750005,
+        "peak_connections": 29,
+        "peak_processes": 33,
+        "peak_threads": 212,
+        "completed": 512
+      },
+      "mesh-thp-off": {
+        "jobs_per_second": 133.51448052816207,
+        "pickup_p99_ms": 3688.84716796875,
+        "peak_rss_bytes": 220397568,
+        "cpu_seconds_per_job": 0.004195333984375001,
+        "peak_connections": 31,
+        "peak_processes": 38,
+        "peak_threads": 225,
+        "completed": 512
+      },
+      "oban": {
+        "jobs_per_second": 445.1658849763689,
+        "pickup_p99_ms": 1043.64306640625,
+        "peak_rss_bytes": 150777856,
+        "cpu_seconds_per_job": 0.0025945781249999997,
+        "peak_connections": 68,
+        "peak_processes": 2,
+        "peak_threads": 12,
+        "completed": 512
+      }
+    },
+    "diagnostic_rss_reference_bytes": 226166784.0,
+    "host_one_minute_load_peak": 18.15234375
+  },
+  "macos_scoped_jobs_effect_fence_sql_candidate": {
+    "revision": "b99425cdd38492c0ea3c511cb5a1f50a60dc7ea9",
+    "scope": "Opt-in SQL helper and application routines in a separate worktree. These disposable verified-TLS runs do not cover compiled Jobs integration.",
+    "native_versions": {
+      "17.11": {
+        "path": "target/jobs-parity/effect-fence-native/b99425cd/pg17.11.log",
+        "sha256": "25ba6e4c5ae7279d43671a84a301a71e249c1dd52fe8333f93cce05cfc07b483"
+      },
+      "18.7": {
+        "path": "target/jobs-parity/effect-fence-native/b99425cd/pg18.7.log",
+        "sha256": "c76142560c6154524ae260e3c7195a2ab07f0cbf08c32cddd911728077e1be56"
+      },
+      "19.0": {
+        "path": "target/jobs-parity/effect-fence-native/b99425cd/pg19.0.log",
+        "sha256": "3a67bbb39ddb177b6207401e290858cdbcdb80f68e2e256f3ed6c22b252a851f"
+      }
+    },
+    "legacy_effect_proof_17_11": {
+      "path": "target/jobs-parity/effect-fence-native/b99425cd/legacy-effect-transaction.log",
+      "sha256": "4275ae6dd49d7c83220e020bf358ad26eb30f6e6613145fb5b93c7f737c9681a"
+    }
+  },
+  "linux_stock_pg_exec_anchor_with_reserved_observer": {
+    "scope": "Single diagnostic ARM64 Linux stock Jobs anchor boot. CPU window includes observer SQL, claim, scheduling, exec, and settlement.",
+    "revision": "25cc1299275a9e0e87e58135178b4fe961225d8f",
+    "reconciled_jobs": 512,
+    "receipt": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc-anchor/runs/reserved-observer-02/anchor/proof/receipt.json",
+      "sha256": "c299d613802f06a6009951839a48176fad5cad43d1ac02619a002b67f2d897eb"
+    },
+    "host_trace": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc-anchor/runs/reserved-observer-02/anchor/host-trace.jsonl",
+      "sha256": "a943470578059f00fd0d34eaa31a8da10d327af7ca5f034fb22431a68a932fb9"
+    },
+    "prior_identity_mismatch": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/pg-conn-disc-anchor/runs/reserved-observer-01/anchor/proof/evidence/result.json",
+      "sha256": "34ae711fdda2d8235d79d66aa398ce31a316f24fe00dea548c1bb374e4fd1a7c"
+    },
+    "slots": {
+      "1": {
+        "jobs": 256,
+        "matched_live_worker_identities": 28,
+        "workload_connection_cap": 5,
+        "peak_audited_workload_connections": 5,
+        "peak_executing_observed": 1,
+        "elapsed_to_terminal_observation_ms": 2724.612876,
+        "usage_usec_per_job_to_terminal_observation": {
+          "driver": 134.26953125,
+          "postgres": 6990.1953125,
+          "runners": 2757.0
+        }
+      },
+      "16": {
+        "jobs": 256,
+        "matched_live_worker_identities": 137,
+        "workload_connection_cap": 20,
+        "peak_audited_workload_connections": 8,
+        "peak_executing_observed": 16,
+        "elapsed_to_terminal_observation_ms": 1848.987834,
+        "usage_usec_per_job_to_terminal_observation": {
+          "driver": 344.01171875,
+          "postgres": 9291.25390625,
+          "runners": 3535.98046875
+        }
+      }
+    }
+  },
+  "macos_reviewed_jobs_effect_fence_expiry_and_replay": {
+    "revision": "0687b4a3ed87848fc80000286f1de5df87514b52",
+    "native_versions": {
+      "17.11": {
+        "path": "target/jobs-parity/effect-fence-native/0687b4a3/pg17.11.log",
+        "sha256": "2347f0eef5f3142c967b3107f674fa170a1fee2df3a33872563e4e3d749756bb"
+      },
+      "18.7": {
+        "path": "target/jobs-parity/effect-fence-native/0687b4a3/pg18.7.log",
+        "sha256": "bfe990c1687f9ec8615930ccc59a853501ee7e22236ea2b524e1ffd57cd155b5"
+      },
+      "19.0": {
+        "path": "target/jobs-parity/effect-fence-native/0687b4a3/pg19.0.log",
+        "sha256": "4615ad6a68a7d17c396fbd867faf6780049ef17502a27395109b70f9ddbb520c"
+      }
+    },
+    "scope": "Disposable opt-in SQL fence proof for owner replay and both sides of expiry. Runner integration remains separate."
   }
 }
