@@ -6765,6 +6765,127 @@
     },
     "scope": "Local pinned Linux guest runs the integrated candidate unit executable. No native compiled PostgreSQL or launch backend proof in this receipt."
   },
+  "linux_compiled_effect_pool_proof": {
+    "revision": "64352a8abdcad7b3e76707887afcb224a07b56bb",
+    "target": "aarch64-unknown-linux-gnu",
+    "profile": "release",
+    "runtime_features": [
+      "jobs-effect-fixture"
+    ],
+    "build_sha256": {
+      "libmesh_rt.a": "5824e67dc033b3723bfee0a634a70cca85cbaf0264f6fbfe082c75410f9e661c",
+      "libworker_identity.a": "fd1e7ac8ff4e421641937433c9e717efe73aa16868a9faf8e6152d20cc5c2945",
+      "mesh-effect-fixture": "9e3f4e8a804559b8c29b54b3d2b9ee36ef7ffdef59f2c629d78424d9c65ed549",
+      "meshc": "8ef9499cda64b60c3bf8e71305ee8c4f9b089c6249df8eb62dc2f597c59b9d01"
+    },
+    "guest": {
+      "kernel": "6.12.115-0-virt",
+      "libc": "glibc 2.43",
+      "python": "3.14.4",
+      "held_child_observer": "/usr/bin/ps using mounted /proc"
+    },
+    "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+    "postgres": "17.11 with verify-full TLS and SCRAM",
+    "untraced": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/compiled-effect-linux-proof/integrated-64352a8",
+      "extraction": "target/jobs-parity/linux-arm-ownership-guest/compiled-effect-linux-proof/integrated-64352a8/extracted/extraction.json",
+      "extraction_sha256": "d8865b401f9be6acb80112bf5c7ea7d41e069d1771c498de493cbf3cca7610af",
+      "bundle_sha256": "96e5625178c4df8047cb8d9077894fbe742645dd01dc49b0287772ace18aef15",
+      "guest_cpio_sha256": "93eece6668845621ef609946bc89a7d536f414ed741a2d4771ea9230bbe5ef8b",
+      "guest_serial_sha256": "4e0a751b1fd8f36fa8ad1721452442f622601860042e5102be7b6e27df86a044",
+      "proof_sha256": "cda893b5cf435db62935595541c4ee7d5805b32e09a5efd1a1b063da91763112",
+      "evidence_sha256": {
+        "compiled.log": "fce21948378cdfa975f600eaf83d97ce370ca33000e467179b5688b4118b826d",
+        "result.json": "87a3a8969de14b538aa85ba68e1953e3e6e037def96430fe3e4d4efa5cb5b2f7",
+        "setup.log": "5498a4a169940a6ec1f619fea154195161b83d9fc9f5d42f57a5b55b80ddd17e",
+        "transaction.log": "77a6b67078b7ae5b867893bd0f36496de15bd5703ee49d75f247074a24fe1593"
+      },
+      "passed": {
+        "compiled_cases": 7,
+        "exact_handler_children": 9
+      }
+    },
+    "traced": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/compiled-effect-linux-proof/compiled-64352a8-traced-full",
+      "extraction": "target/jobs-parity/linux-arm-ownership-guest/compiled-effect-linux-proof/compiled-64352a8-traced-full/extracted/extraction.json",
+      "extraction_sha256": "4d7136ad1aa6c9f721e048d81c8b8bebed12ceecbfda010f87c227f4073a95a9",
+      "bundle_sha256": "a0fdabe51061be32b4a2d9c4ceef467aeeb59fac372a714e7a87a5fa8abfe18c",
+      "guest_cpio_sha256": "5cf99e7e9aebe62152e217550bc526a26c166507300368d7d48b51d5e427f8fa",
+      "guest_serial_sha256": "e9a6d1809807fccc839adffccda1f7d084eab4e603c15c7294f6390c5ad61df9",
+      "proof_sha256": "b36724179ebff0f74b8f7562c7a7a9b0d876c2cc30f6abdb481987218b440388",
+      "evidence_sha256": {
+        "compiled.log": "ca3b07efc2c48371baae2504f393a55253ae1ca516a38c44b6127f84193cb131",
+        "result.json": "87a3a8969de14b538aa85ba68e1953e3e6e037def96430fe3e4d4efa5cb5b2f7",
+        "setup.log": "7f9ced6fcfc7854a8ee59a7d687fc0367b1348641796be1feb9cc391f35166cc",
+        "transaction.log": "77a6b67078b7ae5b867893bd0f36496de15bd5703ee49d75f247074a24fe1593"
+      },
+      "spawn_observation": {
+        "cases": 7,
+        "children": {
+          "518": {
+            "libc_entry": "posix_spawnp",
+            "parent_tid": 505,
+            "runner_pid": 497
+          },
+          "566": {
+            "libc_entry": "posix_spawnp",
+            "parent_tid": 545,
+            "runner_pid": 537
+          },
+          "588": {
+            "libc_entry": "posix_spawnp",
+            "parent_tid": 545,
+            "runner_pid": 537
+          },
+          "631": {
+            "libc_entry": "posix_spawnp",
+            "parent_tid": 611,
+            "runner_pid": 601
+          },
+          "652": {
+            "libc_entry": "posix_spawnp",
+            "parent_tid": 611,
+            "runner_pid": 601
+          },
+          "677": {
+            "libc_entry": "posix_spawnp",
+            "parent_tid": 611,
+            "runner_pid": 601
+          },
+          "699": {
+            "libc_entry": "posix_spawnp",
+            "parent_tid": 611,
+            "runner_pid": 601
+          },
+          "745": {
+            "libc_entry": "posix_spawnp",
+            "parent_tid": 726,
+            "runner_pid": 714
+          },
+          "766": {
+            "libc_entry": "posix_spawnp",
+            "parent_tid": 726,
+            "runner_pid": 714
+          }
+        },
+        "libc_sha256": "a9cb3bea15a5be124ad570af1ef81409db6acfd5940f5b2b5fbf40e4cdaee624",
+        "lost_trace_events": 0
+      },
+      "filtered_trace_sha256": "a6c6c53ddf27178eb802d7db94b931721f707edd4816c12625754826328753d5",
+      "observer_source_sha256": {
+        "init.c": "8675a6a49251fb36dd18ab6eb97389a15136941e7b8b5517d8be022dc3c6dcec",
+        "observe.py": "81ab7db955b896a15ddc850770068ae07ad0e6ba27d37fc5480aa2b0a9107670",
+        "compiled_observer.py": "4d9b4f5f89ef0fb955a842a45cb9a88aea56f3bc4c12efe8780d424013d9f084",
+        "pack_compiled_trace.py": "ce2d45e260bd895307d9fbdc8b1fbdaa59b65bc0dd0c122e7ce147918cfb883d"
+      },
+      "passed": {
+        "compiled_cases": 7,
+        "exact_handler_children": 9
+      },
+      "held_reply_pid": 518
+    },
+    "scope": "Two local disposable Linux ARM64 guest runs of the compiled fixed-operation proof. One or two effect lanes. The untimed trace joins successful libc calls, matching worker execs, and the compiled proof's exact handler PIDs. No frozen workload timing or release qualification."
+  },
   "linux_worker_phase_residency_and_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "postgres": "17.11 verified TLS and SCRAM",

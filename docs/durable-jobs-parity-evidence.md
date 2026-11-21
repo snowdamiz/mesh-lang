@@ -2188,9 +2188,22 @@ through stdin and sends the effect endpoint before the normal bootstrap
 frames. This removes the fixture's pre-exec hook, which disqualifies
 Rust's `posix_spawn` path. The ARM64 guest passed four descriptor
 transport tests, six effect-admission tests, and the stock
-reply-before-reap test. The actual spawn backend and compiled PostgreSQL
-execution on Linux still require separate verification.
+reply-before-reap test.
 [Linux transport receipt](../proof/jobs-parity/qualification-v1.json) · [Pinned Rust launcher](https://github.com/rust-lang/rust/blob/b940084d7/library/std/src/sys/process/unix/unix.rs#L427-L445)
+
+The release fixture from the same revision passed the durable transaction
+proof and all seven compiled cases in the Linux ARM64 guest on PostgreSQL
+17.11 with verified TLS and SCRAM. Distinct child PIDs shared a prewarmed
+backend. An idle backend terminated by the verifier stayed retired. A
+revoked receipt replayed the same effect under a replacement attempt.
+The held reply left the original job executing until the runner reaped
+the exact child.
+
+A second untimed run matched nine successful `posix_spawnp` calls to the
+nine handler PIDs and their `/proc/self/exe` executions. The trace joined
+the dispatcher thread to its runner and recorded zero lost events. Both
+runs used one fixed operation and at most two effect sessions.
+[Compiled Linux proof and trace receipt](../proof/jobs-parity/qualification-v1.json) · [Linux uprobe documentation](https://github.com/gregkh/linux/blob/v6.12.115/Documentation/trace/uprobetracer.rst)
 
 ### Follow-up correctness proofs
 
