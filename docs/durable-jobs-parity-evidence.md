@@ -2321,7 +2321,7 @@ versus 0.77 ms for Oban. Effect-to-settlement was 5.58 and 5.40 ms
 versus 0.29 ms. Mesh refilled its sole slot faster after settlement,
 with 0.34 and 0.39 ms versus 6.95 ms. This leaves worker startup and
 post-effect settlement as the main measured gaps in this local
-profile. The same candidate still needs a Linux one-slot comparison.
+profile.
 [One-slot comparison](../proof/jobs-parity/qualification-v1.json)
 
 ### Compare four-runner short and one-runner slow on macOS
@@ -2345,6 +2345,44 @@ settlement took 17–18 ms after effect commit, versus about 8 and 2 ms
 for Oban. Linux has a separate run because these costs include
 platform-specific process startup and supervision.
 [Four-runner and slow-64 receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare the fenced topologies on local Linux
+
+The `c271319e` release fixture ran on a two-vCPU ARM64 guest with
+PostgreSQL 17.11 over verified TLS and SCRAM. Each profile ran a traced
+fresh and prewarmed pilot, then three warmups and five counterbalanced
+groups with two identical prewarmed Mesh arms and stock Oban Basic
+2.24.2 using Isolated. Each scored arm reconciled one durable attempt
+and one effect per job. Mesh verified exact-child reaps, one reset per
+job, and return of the original backends to their runners.
+
+| Profile | Mesh jobs/s | Identical Mesh repeat | Stock Oban jobs/s | Scored result |
+| --- | ---: | ---: | ---: | --- |
+| Short, 1 runner and 1 slot | 104.7 | 106.4 | 68.7 | Both passed all limits |
+| Short, 1 runner and 16 slots | 620.0 | 596.1 | 401.6 | Both passed all limits |
+| Short, 4 runners and 16 slots | 656.8 | 693.0 | 459.6 | Both passed all limits |
+| Slow, 1 runner and 64 slots | 389.6 | 390.8 | 404.1 | Both missed throughput and RSS |
+
+At one slot both Mesh arms won all five groups within five workload
+connections and two processes. At 16 slots both Mesh arms won four of
+five groups on each topology. On four runners, the median first claim
+arrived 2.3 and 2.6 ms after enqueue versus 59.7 ms for Oban. From first
+claim through final settlement the medians were 192.6 and 183.1 ms
+versus 179.4 ms. This separates the pickup advantage from the time
+needed to run and settle the jobs.
+
+Slow-64 met pickup, CPU/job, and the absolute resource limits. Median
+summed peak RSS was 589 and 638 MiB versus 147 MiB for Oban, with a
+221 MiB limit. Durable claim-to-settlement intervals occupied about
+80% of available slot-time for Mesh and 90% for Oban. The 31 jobs/s
+median absolute gap between identical Mesh arms exceeded either
+median throughput deficit. Host one-minute load ranged from 10.4
+to 16.1 on 15 logical CPUs in this case and 18.2 to 25.3 during the
+one-slot comparison. The receipts record each arm and host trace.
+
+These are four local profiles using an opt-in fixture. The strict
+35-profile release gate remains open.
+[Local Linux receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 
