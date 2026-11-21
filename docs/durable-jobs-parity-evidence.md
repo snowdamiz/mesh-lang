@@ -2876,6 +2876,46 @@ side. The candidate retains two ordered commits and current-claim
 validation for every job, plus one fresh worker per attempt.
 [Exact-child CPU receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Group PostgreSQL effect transactions
+
+The direct PostgreSQL 17.11 component used the `0ee8756a` effect SQL
+and the frozen `noop-8r-64s` input. It pre-committed the claims and
+called the original effect function under the scoped TLS/SCRAM login.
+The grouped arms sent eight independent jobs per statement. They
+committed the attempt records before submitting the effect stage. Each
+job kept a distinct transaction for each write and its stable effect key.
+
+The native macOS and Linux proofs denied a stale claim token and a
+held row lock in separate cases. In each case the rejected job left
+zero writes, and its seven peers committed both writes under different
+attempt and effect transaction IDs. An observer saw the committed
+attempts before the effect statement was submitted. The session reset
+witness and the scored SQL and row counts also passed.
+
+| Arm | PostgreSQL CPU-ms/job, first series | Reverse series |
+| --- | ---: | ---: |
+| Scalar control | 0.261 | 0.158 |
+| Scalar repeat | 0.287 | 0.177 |
+| Eight jobs, one reset per job | 0.122 | 0.116 |
+| Eight jobs, one reset per group | 0.122 | 0.059 |
+
+The two Linux series ran five counterbalanced groups each and
+reconciled 38,400 scored jobs. The equal-count grouped arm performs
+its resets together at the batch boundary. Its conservative paired
+median savings against the faster control were 0.095 and 0.072
+CPU-ms/job. The first series exceeded the control spread limit. On
+the reverse run, even the optimistic gain plus control spread stayed
+below the 0.28 CPU-ms/job lower cutoff in all five groups. The extra
+paired median saving from one reset per group was 0.0002 and 0.045
+CPU-ms/job in the two series.
+
+The component isolates PostgreSQL calls over one persistent backend.
+It leaves group formation, compiled execution, transport ambiguity,
+and end-to-end scoring open. The saving was too small to close the
+measured dense gap on its own. The next candidate targets concurrent
+admission at the queue capacity boundary.
+[Grouped effect transactions receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360

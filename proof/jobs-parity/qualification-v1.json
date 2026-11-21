@@ -29118,5 +29118,307 @@
       },
       "scope": "Exact successful wait4 lifetime CPU, with a fixed-work bound on complete removal of child CPU. Group 2 had elevated host load and a guest timer warning."
     }
+  },
+  "grouped_postgres_effect_transactions": {
+    "revision": "0ee8756a37dc2115f16e33e5b12467547f43a90e",
+    "postgres": "17.11",
+    "frozen_input": "noop-8r-64s",
+    "payloads_sha256": "41179b698929f1dd64f05b15563b8af93ca29f6b1927a39ee4541e622573935e",
+    "total_scored_jobs": 38400,
+    "scope": "Direct component, one backend, verified TLS/SCRAM, fixed two ordered per-job writes. No compiled dispatch or admission in the score.",
+    "native_mac_proof": {
+      "receipt": "target/jobs-parity/linux-arm-ownership-guest/grouped-effect-component/proof-macos-01.json",
+      "sha256": "ca4ac53185dab38b10b87a9ba6e6b0ac5cff524ec752b31a3bb5ab6fda976931"
+    },
+    "linux_series": [
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/grouped-effect-guest/grouped-effects-02",
+        "reversed": false,
+        "scored_jobs": 19200,
+        "source_archive_sha256": "83c8116e316d15343e329072acfcea8dc84fb5b79e0ee2aea7de25cb71493ac9",
+        "bundle_sha256": "c4cb8b3036e6258cc12617ebf565094708fb6e04cfe5b7f430899dc0ed6c26d4",
+        "component_receipt_sha256": "9c599a6a216faf91e8a72939b9232040380aab0fdd45a2e6d0ab9dc627958b7d",
+        "extraction_sha256": "2afefe94d71a5cfe157599fac26bca0917607ea05d67a59ef4ef0dd9dee17554",
+        "pack_sha256": "f15a892b3415c137cb0f858c5175924259433f7e36ed2254326ae7ded102bf2a",
+        "cpu_ms_per_job_by_arm": {
+          "A": {
+            "component_joint_ms_per_job": {
+              "median": 0.3841688822916667,
+              "range": [
+                0.3189077697916667,
+                0.4385073125
+              ]
+            },
+            "postgres_ms_per_job": {
+              "median": 0.26084814791666666,
+              "range": [
+                0.21676038854166665,
+                0.30002559375
+              ]
+            }
+          },
+          "A-repeat": {
+            "component_joint_ms_per_job": {
+              "median": 0.42219094166666665,
+              "range": [
+                0.26149787395833335,
+                0.4467642989583333
+              ]
+            },
+            "postgres_ms_per_job": {
+              "median": 0.28725140833333335,
+              "range": [
+                0.17772960833333334,
+                0.3036418885416667
+              ]
+            }
+          },
+          "B8": {
+            "component_joint_ms_per_job": {
+              "median": 0.17940242916666665,
+              "range": [
+                0.129382540625,
+                0.21155197604166667
+              ]
+            },
+            "postgres_ms_per_job": {
+              "median": 0.12181241979166667,
+              "range": [
+                0.088469359375,
+                0.144005325
+              ]
+            }
+          },
+          "B8-batch-reset": {
+            "component_joint_ms_per_job": {
+              "median": 0.16111930104166666,
+              "range": [
+                0.08736757083333334,
+                0.290358153125
+              ]
+            },
+            "postgres_ms_per_job": {
+              "median": 0.12161271875,
+              "range": [
+                0.06769999895833333,
+                0.17363780729166667
+              ]
+            }
+          }
+        },
+        "paired_postgres_cpu_ms_per_job": [
+          {
+            "control_spread": 0.08688150000000003,
+            "grouped_lower": 0.09494796874999999,
+            "grouped_upper": 0.18182946875,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.21676038854166665,
+              "A-repeat": 0.3036418885416667,
+              "B8": 0.12181241979166667,
+              "B8-batch-reset": 0.12161271875
+            },
+            "reset_savings": 0.0001997010416666667
+          },
+          {
+            "control_spread": 0.07553760416666666,
+            "grouped_lower": 0.08116941770833333,
+            "grouped_upper": 0.156707021875,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.22517474270833332,
+              "A-repeat": 0.300712346875,
+              "B8": 0.144005325,
+              "B8-batch-reset": 0.17363780729166667
+            },
+            "reset_savings": -0.02963248229166668
+          },
+          {
+            "control_spread": 0.10431563958333334,
+            "grouped_lower": 0.055883135416666674,
+            "grouped_upper": 0.16019877500000002,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.2820452479166667,
+              "A-repeat": 0.17772960833333334,
+              "B8": 0.12184647291666667,
+              "B8-batch-reset": 0.13106432916666666
+            },
+            "reset_savings": -0.00921785624999999
+          },
+          {
+            "control_spread": 0.012774185416666639,
+            "grouped_lower": 0.19878204895833335,
+            "grouped_upper": 0.21155623437499999,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.30002559375,
+              "A-repeat": 0.28725140833333335,
+              "B8": 0.088469359375,
+              "B8-batch-reset": 0.0739741375
+            },
+            "reset_savings": 0.014495221875000006
+          },
+          {
+            "control_spread": 0.051558627083333336,
+            "grouped_lower": 0.10203505208333333,
+            "grouped_upper": 0.15359367916666666,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.26084814791666666,
+              "A-repeat": 0.20928952083333333,
+              "B8": 0.10725446875,
+              "B8-batch-reset": 0.06769999895833333
+            },
+            "reset_savings": 0.03955446979166667
+          }
+        ],
+        "grouped_conservative_gain_median": 0.09494796874999999,
+        "reset_savings_median": 0.0001997010416666667,
+        "decision": "inconclusive at the measured control spread or gap threshold"
+      },
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/grouped-effect-guest/grouped-effects-reverse-01",
+        "reversed": true,
+        "scored_jobs": 19200,
+        "source_archive_sha256": "83c8116e316d15343e329072acfcea8dc84fb5b79e0ee2aea7de25cb71493ac9",
+        "bundle_sha256": "320f47c26364a2698425fa5f39e4aeff94e17fbc429274b5a958a729d087517b",
+        "component_receipt_sha256": "d27c41444ebe9fa7eda756cd81f1e1c83145cba88e33d9015fa9b37eff2d5fd9",
+        "extraction_sha256": "30ea107f2623ac6302d02d7280547d431b16325cee6e2b6760c7d0dd312b9a9e",
+        "pack_sha256": "2c5a7ba3852969b1f1798639c2a3cbc70f198b63690866e8c965aff85537e1af",
+        "cpu_ms_per_job_by_arm": {
+          "A": {
+            "component_joint_ms_per_job": {
+              "median": 0.22783391875,
+              "range": [
+                0.21985209166666667,
+                0.29637658020833335
+              ]
+            },
+            "postgres_ms_per_job": {
+              "median": 0.15752813854166667,
+              "range": [
+                0.14982893958333332,
+                0.20080344583333334
+              ]
+            }
+          },
+          "A-repeat": {
+            "component_joint_ms_per_job": {
+              "median": 0.258641846875,
+              "range": [
+                0.22734043645833332,
+                0.32427194583333335
+              ]
+            },
+            "postgres_ms_per_job": {
+              "median": 0.177411184375,
+              "range": [
+                0.15579083125,
+                0.218594428125
+              ]
+            }
+          },
+          "B8": {
+            "component_joint_ms_per_job": {
+              "median": 0.16919211041666668,
+              "range": [
+                0.11646605625,
+                0.23409933125
+              ]
+            },
+            "postgres_ms_per_job": {
+              "median": 0.11596318854166666,
+              "range": [
+                0.07746059166666666,
+                0.15507958854166667
+              ]
+            }
+          },
+          "B8-batch-reset": {
+            "component_joint_ms_per_job": {
+              "median": 0.07616824270833333,
+              "range": [
+                0.07352968020833334,
+                0.09316488645833333
+              ]
+            },
+            "postgres_ms_per_job": {
+              "median": 0.05919144270833333,
+              "range": [
+                0.05678858333333334,
+                0.07117930104166667
+              ]
+            }
+          }
+        },
+        "paired_postgres_cpu_ms_per_job": [
+          {
+            "control_spread": 0.0043915645833333405,
+            "grouped_lower": 0.08044869270833334,
+            "grouped_upper": 0.08484025729166668,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.20080344583333334,
+              "A-repeat": 0.19641188125,
+              "B8": 0.11596318854166666,
+              "B8-batch-reset": 0.07117930104166667
+            },
+            "reset_savings": 0.044783887499999994
+          },
+          {
+            "control_spread": 0.05931078958333333,
+            "grouped_lower": 0.04102508645833333,
+            "grouped_upper": 0.10033587604166666,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.15928363854166666,
+              "A-repeat": 0.218594428125,
+              "B8": 0.11825855208333333,
+              "B8-batch-reset": 0.05678858333333334
+            },
+            "reset_savings": 0.06146996874999999
+          },
+          {
+            "control_spread": 0.00039560104166666554,
+            "grouped_lower": 0.07699844270833335,
+            "grouped_upper": 0.07739404375000002,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.15539523020833335,
+              "A-repeat": 0.15579083125,
+              "B8": 0.0783967875,
+              "B8-batch-reset": 0.05724666875
+            },
+            "reset_savings": 0.021150118749999995
+          },
+          {
+            "control_spread": 0.01900945625,
+            "grouped_lower": 0.07236834791666666,
+            "grouped_upper": 0.09137780416666666,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.14982893958333332,
+              "A-repeat": 0.16883839583333332,
+              "B8": 0.07746059166666666,
+              "B8-batch-reset": 0.05919144270833333
+            },
+            "reset_savings": 0.01826914895833333
+          },
+          {
+            "control_spread": 0.019883045833333335,
+            "grouped_lower": 0.002448549999999994,
+            "grouped_upper": 0.02233159583333333,
+            "postgres_cpu_ms_per_job": {
+              "A": 0.15752813854166667,
+              "A-repeat": 0.177411184375,
+              "B8": 0.15507958854166667,
+              "B8-batch-reset": 0.06381306770833334
+            },
+            "reset_savings": 0.09126652083333334
+          }
+        ],
+        "grouped_conservative_gain_median": 0.07236834791666666,
+        "reset_savings_median": 0.044783887499999994,
+        "decision": "grouping falls short of the lower gap in all five groups"
+      }
+    ],
+    "first_guest_preflight_failure": {
+      "reason": "libffi dependency missing",
+      "sha256": "a7e4f90bbc2147f20c30e8d65cd204f6ce6bfa91de507db2381e8388b4327ea5",
+      "resolved_dependency_sha256": "cfab73343f076b79df0f4a9d5430319fdb6153760d3e8c2964c448b49edad084"
+    },
+    "finding": "Grouped effect CPU savings stayed below the measured dense joint-work gap. Production routing and ambiguous-commit proofs remain open."
   }
 }
