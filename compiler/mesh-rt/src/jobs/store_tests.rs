@@ -134,16 +134,17 @@ fn id(value: &Value) -> &str {
     value["id"].as_str().unwrap()
 }
 
+fn batch_row(fields: [&str; 8]) -> Vec<(String, String)> {
+    fields
+        .into_iter()
+        .map(|value| (String::new(), value.to_owned()))
+        .collect()
+}
+
 #[test]
 fn batch_contention_sentinel_must_be_the_only_row_with_no_payload() {
-    let row = |fields: [&str; 7]| {
-        fields
-            .into_iter()
-            .map(|value| (String::new(), value.to_owned()))
-            .collect::<Vec<_>>()
-    };
-    let status = ["contention_hint", "", "", "", "", "", ""];
-    let batch = decode_claim_batch(vec![row(status)], 1, true).unwrap();
+    let status = ["contention_hint", "", "", "", "", "", "", ""];
+    let batch = decode_claim_batch(vec![batch_row(status)], 1, true).unwrap();
     assert!(batch.contention_hint);
     assert!(batch.claims.is_empty());
     assert!(batch.oversized.is_empty());
@@ -152,16 +153,80 @@ fn batch_contention_sentinel_must_be_the_only_row_with_no_payload() {
     for index in 1..status.len() {
         let mut invalid = status;
         invalid[index] = "1";
-        assert!(decode_claim_batch(vec![row(invalid)], 1, true).is_err());
+        assert!(decode_claim_batch(vec![batch_row(invalid)], 1, true).is_err());
     }
-    assert!(decode_claim_batch(vec![row(status)[..6].to_vec()], 1, true).is_err());
+    assert!(decode_claim_batch(vec![batch_row(status)[..7].to_vec()], 1, true).is_err());
     for other in [
         status,
-        ["claimed", "id", "token", "{}", "1", "2", "1"],
-        ["oversized", "id", "", "", "", "16777217", ""],
+        ["claimed", "id", "token", "{}", "1", "2", "1", "1"],
+        ["oversized", "id", "", "", "", "16777217", "", "1"],
     ] {
-        assert!(decode_claim_batch(vec![row(status), row(other)], 1, true).is_err());
-        assert!(decode_claim_batch(vec![row(other), row(status)], 1, true).is_err());
+        assert!(decode_claim_batch(vec![batch_row(status), batch_row(other)], 1, true).is_err());
+        assert!(decode_claim_batch(vec![batch_row(other), batch_row(status)], 1, true).is_err());
+    }
+}
+
+#[test]
+fn batch_decoder_restores_mixed_rows_in_numeric_order_without_copying_context() {
+    let mut rows = Vec::new();
+    for position in (1..=20).rev() {
+        let ordinal = position.to_string();
+        rows.push(if position % 5 == 0 {
+            batch_row(["oversized", &ordinal, "", "", "", "16777217", "", &ordinal])
+        } else {
+            batch_row([
+                "claimed", &ordinal, "token", "{}", "1", "2", &ordinal, &ordinal,
+            ])
+        });
+    }
+    let first_context = rows.last().unwrap()[3].1.as_ptr();
+    let batch = decode_claim_batch(rows, 16, true).unwrap();
+    assert!(!batch.contention_hint);
+    assert_eq!(batch.claims[0].context.as_ptr(), first_context);
+    let expected = (1..=20).filter(|position| position % 5 != 0);
+    assert_eq!(batch.claims.len(), 16);
+    for (claim, position) in batch.claims.iter().zip(expected) {
+        assert_eq!(claim.id, position.to_string());
+        assert_eq!(claim.observed_at_ms, Some(position));
+    }
+    assert!(batch
+        .oversized
+        .iter()
+        .map(|row| row.id.as_str())
+        .eq(["5", "10", "15", "20"]));
+}
+
+#[test]
+fn batch_decoder_rejects_invalid_ordinals_widths_and_counts() {
+    let claim = |ordinal| batch_row(["claimed", "id", "token", "{}", "1", "2", "", ordinal]);
+    let oversized = |ordinal| batch_row(["oversized", "id", "", "", "", "16777217", "", ordinal]);
+    assert!(decode_claim_batch(vec![claim("1"); 21], 16, false).is_err());
+    for ordinal in ["", "0", "-1", "+1", "01", "x", "2", "18446744073709551616"] {
+        assert!(
+            decode_claim_batch(vec![claim(ordinal)], 1, false).is_err(),
+            "{ordinal:?}"
+        );
+    }
+    for rows in [
+        vec![claim("1"), oversized("1")],
+        vec![oversized("1"), claim("3")],
+        vec![claim("1"), claim("2")],
+        vec![
+            oversized("1"),
+            oversized("2"),
+            oversized("3"),
+            oversized("4"),
+            oversized("5"),
+        ],
+    ] {
+        assert!(decode_claim_batch(rows, 1, false).is_err());
+    }
+    let mut short = claim("1");
+    short.remove(6);
+    let mut wide = claim("1");
+    wide.insert(6, (String::new(), String::new()));
+    for row in [short, wide] {
+        assert!(decode_claim_batch(vec![row], 1, false).is_err());
     }
 }
 

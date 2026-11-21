@@ -26,6 +26,8 @@ pub(super) struct Claim {
 }
 
 pub(super) const MAX_CLAIM_BATCH: usize = 16;
+// claim_batch_v1 stops scanning after the fourth oversized context.
+const MAX_OVERSIZED_PER_BATCH: usize = 4;
 
 #[derive(Debug, Deserialize)]
 pub(super) struct OversizedClaim {
@@ -757,10 +759,13 @@ pub(super) fn claim_batch_with_timing(
         // The left join supplies one empty row when the claim returns nothing.
         // CASE probes only that row. The optimistic snapshot is advisory, and the
         // function still chooses the live cutoff after it acquires admission.
+        // The two wrapper fields fit the function's 1 KiB framing reserve:
+        // 20 rows * (two 4-byte lengths + 2 ordinal digits) + 16 * 20 bigint bytes = 520.
         let rows = db.query(
             "SELECT coalesce(status, 'contention_hint'), id, token, context, timeout_ms, context_bytes,
                     CASE WHEN $7::boolean AND status = 'claimed'
-                    THEN floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text END
+                    THEN floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text END,
+                    ordinality::text
              FROM (VALUES (1)) AS probe_anchor(dummy)
              LEFT JOIN LATERAL (
                  SELECT * FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,
@@ -787,8 +792,7 @@ pub(super) fn claim_batch_with_timing(
                                  WHERE b.namespace = j.namespace AND b.id = j.id
                                      AND b.row_version = j.xmin AND b.row_location = j.ctid
                                      AND b.encoding = current_setting('client_encoding')::name))
-             ) END
-             ORDER BY ordinality",
+             ) END",
             &[
                 namespace,
                 queue,
@@ -816,31 +820,51 @@ fn decode_claim_batch(
     observe: bool,
 ) -> Result<ClaimBatch, String> {
     let mut batch = ClaimBatch::default();
-    let sole_row = rows.len() == 1;
     let invalid = || "mesh jobs invalid batch claim result from PostgreSQL".to_string();
-    for row in rows {
-        let fields = row.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
-        let [status, id, token, context, timeout_ms, context_bytes, observed_at_ms]: [String; 7] =
-            fields.try_into().map_err(|_| invalid())?;
-        if status == "contention_hint" {
+    let slots = slots.min(MAX_CLAIM_BATCH);
+    let row_count = rows.len();
+    if row_count == 0 {
+        return Ok(batch);
+    }
+    if row_count > slots + MAX_OVERSIZED_PER_BATCH {
+        return Err(invalid());
+    }
+
+    // Reorder row handles so PostgreSQL needn't sort the context payloads.
+    let mut ordered: [Option<Vec<_>>; MAX_CLAIM_BATCH + MAX_OVERSIZED_PER_BATCH] =
+        Default::default();
+    let ordered = &mut ordered[..row_count];
+    for mut row in rows {
+        let (_, ordinal) = row.pop().ok_or_else(invalid)?;
+        if ordinal.is_empty() {
             // The text query decodes SQL NULL as an empty string.
-            if !sole_row
-                || ![
-                    &id,
-                    &token,
-                    &context,
-                    &timeout_ms,
-                    &context_bytes,
-                    &observed_at_ms,
-                ]
-                .into_iter()
-                .all(String::is_empty)
+            if row_count != 1
+                || row.len() != 7
+                || row[0].1 != "contention_hint"
+                || row[1..].iter().any(|(_, value)| !value.is_empty())
             {
                 return Err(invalid());
             }
             batch.contention_hint = true;
             return Ok(batch);
         }
+        if ordinal.len() > 2 || !matches!(ordinal.as_bytes()[0], b'1'..=b'9') {
+            return Err(invalid());
+        }
+        let position = ordinal.parse::<usize>().map_err(|_| invalid())?;
+        let slot = ordered.get_mut(position - 1).ok_or_else(invalid)?;
+        if slot.replace(row).is_some() {
+            return Err(invalid());
+        }
+    }
+    for slot in ordered {
+        let fields: [_; 7] = slot
+            .take()
+            .ok_or_else(invalid)?
+            .try_into()
+            .map_err(|_| invalid())?;
+        let [status, id, token, context, timeout_ms, context_bytes, observed_at_ms] =
+            fields.map(|(_, value)| value);
         let context_bytes = context_bytes.parse::<usize>().map_err(|_| invalid())?;
         match status.as_str() {
             "claimed"
@@ -865,7 +889,7 @@ fn decode_claim_batch(
                     && token.is_empty()
                     && context.is_empty()
                     && timeout_ms.is_empty()
-                    && batch.oversized.len() < MAX_CLAIM_BATCH =>
+                    && batch.oversized.len() < MAX_OVERSIZED_PER_BATCH =>
             {
                 batch.oversized.push(OversizedClaim { id, context_bytes });
             }
