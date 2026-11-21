@@ -2534,11 +2534,33 @@ similar breakdown. Across measured full cycles, spawn accounted for
 45% of elapsed time.
 
 The two identical controls reached 1,508 and 536 jobs/s in this
-group. These runs locate opportunities in the code path. A matched
-trace-off experiment will test whether issuing the next claim while
-launching the current batch improves throughput within the existing
-slot and context budgets.
+group. The trace identified native spawn and the next claim as the
+largest measured parts of the refill cycle.
 [Claim and launch timing receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Test overlapping the next claim with serial launch
+
+The fixture-only `fabe3099` candidate prepared the next claim on the
+existing claim thread while the dispatcher launched the confirmed
+batch. PostgreSQL waited for a bounded grant before committing the
+second batch. Four native tests on PostgreSQL 17.11 passed, including
+a denied claim that rolled back and preserved the final attempt
+credit for both rows during an ordinary refetch.
+
+Five matched no-op groups at one runner and 64 slots reconciled all
+15,360 measured jobs. The flag exercised 62 to 64 overlapping
+requests per group and doubled the peak queued context to 43,392
+bytes. The candidate reached 1,309 jobs/s, versus 1,288 and 1,425
+for the identical controls. It beat both controls in two groups.
+The median paired change against the mean of the controls was
+−56 jobs/s, and the median absolute difference between controls
+was 77 jobs/s.
+
+Keep the change fixture-only. Synchronous lifecycle work can still
+consume the second batch's lease after a grant. Local stop or scale
+can also intervene between the grant and COMMIT. The native rollback
+test covers explicit denial before COMMIT.
+[Claim-ahead comparison and proof](../proof/jobs-parity/qualification-v1.json)
 
 ### Compare two more short-job topologies on Linux
 

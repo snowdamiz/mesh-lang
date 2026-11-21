@@ -8194,6 +8194,322 @@
     "stage_reducer": "Means per trial, then range and median of trial means",
     "scope": "Local macOS ARM64 fenced effect fixture, two identical prewarmed Mesh arms compared with stock Oban. Linux single-slot measurement still required. Sampled process counts can miss short-lived attempt children."
   },
+  "linux_fenced_jobs_noop64_claim_ahead": {
+    "scope": "fixture-only Linux trace-off comparison, two identical controls and one claim-ahead arm",
+    "profile": "noop-1r-64s",
+    "revision": "fabe309965bb8d22f54407cf03049b5ab62f8449",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "postgres": "17.11 over verified TLS and SCRAM",
+    "fixture_sha256": "97c2d070b95a9bc19e2bb3341d2c2ae014ee5e976a4f6cdee8434f050af8e72a",
+    "native_proof": {
+      "result": {
+        "revision": "fabe309965bb8d22f54407cf03049b5ab62f8449",
+        "database": {
+          "version": "17.11 (Homebrew)",
+          "ssl": "on",
+          "password_encryption": "scram-sha-256"
+        },
+        "status": "pass",
+        "results": {
+          "jobs::": "test result: ok. 30 passed; 0 failed; 33 ignored; 0 measured; 1554 filtered out; finished in 0.05s",
+          "jobs::store::store_tests::batch_claim_": "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 1613 filtered out; finished in 2.10s"
+        }
+      },
+      "receipt_sha256": "a30fff003ea348445b3382939b787c1d1b386a47d94111239a5e48c8c9ffcac3",
+      "relative_directory": "target/jobs-parity/two-write-local/macos/fabe309965bb8d22f54407cf03049b5ab62f8449/native-claim-proof",
+      "test_logs_sha256": {
+        "jobs-.log": "35b18a24cadc3f515adc3815f9e023a4d0145e2c799b4a8a290f74f05556f09c",
+        "jobs-store-store_tests-batch_claim_.log": "8868dfd1d1355208e7df1d94cbc335dfc77fd86b548e410f5ad4716644783029"
+      }
+    },
+    "scored_jobs": 15360,
+    "median_jobs_per_second": {
+      "mesh": 1287.9336366134776,
+      "mesh-repeat": 1425.1414929738548,
+      "mesh-ahead": 1308.9623090493797
+    },
+    "candidate_wins_against_both_controls": 2,
+    "identical_arm_absolute_median_jobs_per_second": 77.09266997729901,
+    "candidate_minus_mean_control_median_jobs_per_second": -55.54373980231276,
+    "result": "no repeatable throughput improvement; keep fixture-only",
+    "groups": [
+      {
+        "group": 0,
+        "order": [
+          "mesh",
+          "mesh-ahead",
+          "mesh-repeat"
+        ],
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-claim-ahead-0",
+        "extraction_sha256": "8955e0750373ba9186b17c8b91f144f45523180fd7b22f3e2c6bb5665c8a03b3",
+        "trials_sha256": "4215151ec4d7b8e7e359d9c2982fabbc61be2ad9aa589463d9f37e481dc846a7",
+        "host_load_1m_max": 15.2080078125,
+        "claim_ahead_requests": {
+          "mesh": 0,
+          "mesh-repeat": 0,
+          "mesh-ahead": 62
+        },
+        "metrics": {
+          "mesh": {
+            "jobs_per_second": 1460.945358891406,
+            "pickup_p99_ms": 693.39501953125,
+            "cpu_seconds_per_job": 0.000671740234375,
+            "peak_rss_bytes": 180088832,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 12,
+            "peak_threads": 82,
+            "claim_calls_per_job": 0.0654296875,
+            "runner_sql_calls_per_job": 4.2763671875
+          },
+          "mesh-ahead": {
+            "jobs_per_second": 1188.009732249832,
+            "pickup_p99_ms": 842.349853515625,
+            "cpu_seconds_per_job": 0.0007424228515625,
+            "peak_rss_bytes": 139288576,
+            "peak_queued_context_bytes": 43392,
+            "peak_connections": 68,
+            "peak_processes": 11,
+            "peak_threads": 80,
+            "claim_calls_per_job": 0.06640625,
+            "runner_sql_calls_per_job": 4.2802734375
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1471.46721732178,
+            "pickup_p99_ms": 688.64208984375,
+            "cpu_seconds_per_job": 0.0006440947265625,
+            "peak_rss_bytes": 63410176,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 3,
+            "peak_threads": 31,
+            "claim_calls_per_job": 0.064453125,
+            "runner_sql_calls_per_job": 4.2705078125
+          }
+        }
+      },
+      {
+        "group": 1,
+        "order": [
+          "mesh-ahead",
+          "mesh-repeat",
+          "mesh"
+        ],
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-claim-ahead-1",
+        "extraction_sha256": "73850c914bc606cea23929630b919cfd2444fba0d5bf51b76bcc6a2d3c735856",
+        "trials_sha256": "440571bd10285c1036ddf4486e8fe6845e7304329eaf713e40238e9a07ed1a5f",
+        "host_load_1m_max": 12.2646484375,
+        "claim_ahead_requests": {
+          "mesh": 0,
+          "mesh-repeat": 0,
+          "mesh-ahead": 64
+        },
+        "metrics": {
+          "mesh-ahead": {
+            "jobs_per_second": 1386.2168343402564,
+            "pickup_p99_ms": 732.634033203125,
+            "cpu_seconds_per_job": 0.0006517851562499999,
+            "peak_rss_bytes": 88100864,
+            "peak_queued_context_bytes": 43392,
+            "peak_connections": 68,
+            "peak_processes": 3,
+            "peak_threads": 35,
+            "claim_calls_per_job": 0.0654296875,
+            "runner_sql_calls_per_job": 4.2763671875
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1350.3302499700592,
+            "pickup_p99_ms": 750.778076171875,
+            "cpu_seconds_per_job": 0.0006711425781249999,
+            "peak_rss_bytes": 82706432,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 5,
+            "peak_threads": 35,
+            "claim_calls_per_job": 0.064453125,
+            "runner_sql_calls_per_job": 4.2705078125
+          },
+          "mesh": {
+            "jobs_per_second": 1287.9336366134776,
+            "pickup_p99_ms": 785.966064453125,
+            "cpu_seconds_per_job": 0.0007138232421875,
+            "peak_rss_bytes": 69206016,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 4,
+            "peak_threads": 35,
+            "claim_calls_per_job": 0.0654296875,
+            "runner_sql_calls_per_job": 4.2763671875
+          }
+        }
+      },
+      {
+        "group": 2,
+        "order": [
+          "mesh-repeat",
+          "mesh",
+          "mesh-ahead"
+        ],
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-claim-ahead-2",
+        "extraction_sha256": "81788d073e261b171b180d6befeef945a733c8b507c679fb2eb53107bdc978d9",
+        "trials_sha256": "b5fd523defa6ce9244c1ec615e69fcf1c0cf8fb4c5909c48fb7bf09a1b2860d9",
+        "host_load_1m_max": 10.205078125,
+        "claim_ahead_requests": {
+          "mesh": 0,
+          "mesh-repeat": 0,
+          "mesh-ahead": 64
+        },
+        "metrics": {
+          "mesh-repeat": {
+            "jobs_per_second": 1230.6406731005086,
+            "pickup_p99_ms": 817.94189453125,
+            "cpu_seconds_per_job": 0.0007792011718749999,
+            "peak_rss_bytes": 92172288,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 6,
+            "peak_threads": 57,
+            "claim_calls_per_job": 0.06640625,
+            "runner_sql_calls_per_job": 4.2802734375
+          },
+          "mesh": {
+            "jobs_per_second": 1153.5480031232096,
+            "pickup_p99_ms": 873.30712890625,
+            "cpu_seconds_per_job": 0.0007982138671875,
+            "peak_rss_bytes": 107745280,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 9,
+            "peak_threads": 69,
+            "claim_calls_per_job": 0.0654296875,
+            "runner_sql_calls_per_job": 4.2763671875
+          },
+          "mesh-ahead": {
+            "jobs_per_second": 1349.1614028846288,
+            "pickup_p99_ms": 743.471923828125,
+            "cpu_seconds_per_job": 0.0006815761718749999,
+            "peak_rss_bytes": 88567808,
+            "peak_queued_context_bytes": 43392,
+            "peak_connections": 68,
+            "peak_processes": 3,
+            "peak_threads": 24,
+            "claim_calls_per_job": 0.06640625,
+            "runner_sql_calls_per_job": 4.2783203125
+          }
+        }
+      },
+      {
+        "group": 3,
+        "order": [
+          "mesh-ahead",
+          "mesh",
+          "mesh-repeat"
+        ],
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-claim-ahead-3",
+        "extraction_sha256": "257cfac37acd7d0eae61c538a48ee193b6fbbbd91d186d5417e9cd19c82495c8",
+        "trials_sha256": "4ccee381eb4638af9f68f7e097971f220b80939cc19e122173db3fbf1fc6d644",
+        "host_load_1m_max": 9.2255859375,
+        "claim_ahead_requests": {
+          "mesh": 0,
+          "mesh-repeat": 0,
+          "mesh-ahead": 64
+        },
+        "metrics": {
+          "mesh-ahead": {
+            "jobs_per_second": 1050.0465902496446,
+            "pickup_p99_ms": 962.171875,
+            "cpu_seconds_per_job": 0.000842296875,
+            "peak_rss_bytes": 190402560,
+            "peak_queued_context_bytes": 43392,
+            "peak_connections": 68,
+            "peak_processes": 13,
+            "peak_threads": 91,
+            "claim_calls_per_job": 0.0654296875,
+            "runner_sql_calls_per_job": 4.2763671875
+          },
+          "mesh": {
+            "jobs_per_second": 1236.0429218243307,
+            "pickup_p99_ms": 815.80712890625,
+            "cpu_seconds_per_job": 0.0007515009765624999,
+            "peak_rss_bytes": 126631936,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 9,
+            "peak_threads": 57,
+            "claim_calls_per_job": 0.064453125,
+            "runner_sql_calls_per_job": 4.2724609375
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1429.676208967108,
+            "pickup_p99_ms": 704.695068359375,
+            "cpu_seconds_per_job": 0.000658498046875,
+            "peak_rss_bytes": 63639552,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 3,
+            "peak_threads": 27,
+            "claim_calls_per_job": 0.06640625,
+            "runner_sql_calls_per_job": 4.2783203125
+          }
+        }
+      },
+      {
+        "group": 4,
+        "order": [
+          "mesh-repeat",
+          "mesh-ahead",
+          "mesh"
+        ],
+        "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/noop-64-claim-ahead-4",
+        "extraction_sha256": "5f693b9621a1f2afea0ddb094105452ef6c3b849232abbade7002786dd00689b",
+        "trials_sha256": "b47d51d0281372862d35bcd384a3048bcf529cb3946f67fc832ebaf8e89d5fb2",
+        "host_load_1m_max": 9.17724609375,
+        "claim_ahead_requests": {
+          "mesh": 0,
+          "mesh-repeat": 0,
+          "mesh-ahead": 64
+        },
+        "metrics": {
+          "mesh-repeat": {
+            "jobs_per_second": 1425.1414929738548,
+            "pickup_p99_ms": 711.2099609375,
+            "cpu_seconds_per_job": 0.0006693642578125,
+            "peak_rss_bytes": 105455616,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 7,
+            "peak_threads": 61,
+            "claim_calls_per_job": 0.0654296875,
+            "runner_sql_calls_per_job": 4.2744140625
+          },
+          "mesh-ahead": {
+            "jobs_per_second": 1308.9623090493797,
+            "pickup_p99_ms": 775.364013671875,
+            "cpu_seconds_per_job": 0.0006761347656249999,
+            "peak_rss_bytes": 126066688,
+            "peak_queued_context_bytes": 43392,
+            "peak_connections": 68,
+            "peak_processes": 9,
+            "peak_threads": 68,
+            "claim_calls_per_job": 0.0654296875,
+            "runner_sql_calls_per_job": 4.2763671875
+          },
+          "mesh": {
+            "jobs_per_second": 1303.8706047295302,
+            "pickup_p99_ms": 771.7109375,
+            "cpu_seconds_per_job": 0.000702111328125,
+            "peak_rss_bytes": 137117696,
+            "peak_queued_context_bytes": 21696,
+            "peak_connections": 68,
+            "peak_processes": 11,
+            "peak_threads": 78,
+            "claim_calls_per_job": 0.0654296875,
+            "runner_sql_calls_per_job": 4.2763671875
+          }
+        }
+      }
+    ]
+  },
   "linux_fenced_jobs_noop64_claim_and_spawn_timing": {
     "scope": "Local Linux ARM64 diagnostics, one measured three-arm group per binary",
     "runs": {
