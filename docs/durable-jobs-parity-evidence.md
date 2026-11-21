@@ -2436,6 +2436,24 @@ untraced arms. Use these timings to select a dispatcher experiment.
 The untraced comparisons supply the throughput evidence.
 [Post-effect timing receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare sparse workloads with eight runners in staged Linux guests
+
+The `c271319e` fixture ran the frozen sparse workload with eight
+runners and 64 available slots on the two-vCPU ARM64 guest. The
+traced fresh and warm pilot reconciled 24 jobs per arm. Each of the
+five scored groups booted a fresh PostgreSQL 17.11 cluster and ran
+three same-boot warmups. The group then ran two identical prewarmed
+Mesh arms and stock Oban Basic 2.24.2 with Isolated. TLS and SCRAM
+were verified and the workload connection cap was 96.
+
+Both Mesh arms exceeded Oban in all five groups and passed every
+scored budget. Median throughput was 2.635 and 2.625 jobs/s versus
+2.527. Median pickup p99 was 20.5 and 18.0 ms versus 98.6. All
+360 scored jobs completed on their first attempt with one effect.
+The scored guest boots took 102–106 seconds each. The initial
+pilot and five groups used less than 186 KiB of gzip evidence per boot.
+[Staged sparse receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
