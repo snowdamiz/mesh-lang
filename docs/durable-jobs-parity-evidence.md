@@ -2703,6 +2703,23 @@ The memory result covers the local 16-slot profile with the fenced
 effect fixture. Worker THP disablement remains opt-in.
 [Same-executable trial receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Drop cold executable pages before the slow-64 handler
+
+Two Linux boots used the same relinked `f1e2709c` fixture with
+worker THP disabled and the stock 64 KiB fault-around window.
+Both arms verified the main executable's immutable file-backed
+pages before handler work. The treatment applied
+`MADV_DONTNEED` to the eligible read-only and executable ranges.
+The observer matched 64 held child processes per arm to both
+durable writes and verified their reaps before the runner stopped.
+
+Median held RSS was 4.29 MiB in the control and 3.66 MiB with
+the trim. The median paired saving was 0.63 MiB, almost entirely
+file-backed executable pages. The trim missed the 1.6 MiB
+per-child screen. These boots measured held memory and excluded
+timed throughput and separate watchdog fault cases.
+[Held executable RSS receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Trace the no-op claim and launch cycle
 
 One warmed and one measured matched group at `1d9d7e41` recorded

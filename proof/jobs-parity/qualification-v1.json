@@ -15856,6 +15856,153 @@
     },
     "identical_arm_absolute_median_jobs_per_second": 132.758454849288
   },
+  "linux_fenced_jobs_held_main_elf_trim": {
+    "activation_revision": "f1e2709c0d83c522af26313aef18b377f7b3b4da",
+    "archive_sha256": {
+      "0": "843f50be807070f4563d379973376cb273e930ef61b7cdea52e693ebdf02f44a",
+      "1": "23feffeb2cabee8961beb8f2021cf58a4eb9753460989f770a85dd9e74e66306"
+    },
+    "arm_path": "/proof/mesh-parity-elf-trim-arm",
+    "c_candidate_revision": "58a28ac7388de00d7d0e50dd24040cb331cbb6ec",
+    "case_sha256": "36b086f9ab2ba1e381541ee42280f3c978c6c46544d5acb864865eacab0caac1",
+    "coverage": {
+      "0": 64,
+      "1": 64
+    },
+    "cutoff_mib_per_child": 1.6,
+    "decision": "no-go",
+    "elf_proof_sha256": "83bae69898ce03a2f158599bf97476b9e12c164431bf82f4b6b2c567c6c5ce7a",
+    "fault_around_bytes": 65536,
+    "fenced_harness_revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "fixture_sha256": "26817042a2a047da0c6bb50239727ae5f66d8ddfa21f3af2db6c72008a25fce2",
+    "main_file_reaches_cutoff": false,
+    "median_paired_savings_mib": {
+      "anonymous": 0.0,
+      "main_file": 0.625,
+      "total": 0.62890625
+    },
+    "parent_root": "baf04a3151454563d6bd1f63122121c3ca704024",
+    "required_per_arm": 64,
+    "rss_bytes": {
+      "anonymous": {
+        "arm_0": {
+          "max": 450560,
+          "median": 442368.0,
+          "min": 438272
+        },
+        "arm_1": {
+          "max": 450560,
+          "median": 442368.0,
+          "min": 413696
+        },
+        "paired_0_minus_1": {
+          "max": 36864,
+          "median": 0.0,
+          "min": -12288
+        }
+      },
+      "main_file": {
+        "arm_0": {
+          "max": 2568192,
+          "median": 2568192.0,
+          "min": 2568192
+        },
+        "arm_1": {
+          "max": 1912832,
+          "median": 1912832.0,
+          "min": 1716224
+        },
+        "paired_0_minus_1": {
+          "max": 851968,
+          "median": 655360.0,
+          "min": 655360
+        }
+      },
+      "total": {
+        "arm_0": {
+          "max": 4505600,
+          "median": 4497408.0,
+          "min": 4476928
+        },
+        "arm_1": {
+          "max": 3850240,
+          "median": 3837952.0,
+          "min": 3645440
+        },
+        "paired_0_minus_1": {
+          "max": 856064,
+          "median": 659456.0,
+          "min": 630784
+        }
+      }
+    },
+    "runtime_revision": "239c8445114453607e1e2a316214622c918ee9ba",
+    "scope": "local-linux-aarch64-fenced-held-elf-trim",
+    "span_bytes": [
+      1900544,
+      3477504
+    ],
+    "total_reaches_cutoff": false,
+    "revision": "f1e2709c0d83c522af26313aef18b377f7b3b4da",
+    "report": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-elf-trim/link/f1e2709c0d83c522af26313aef18b377f7b3b4da/held-elf-comparison-03.json",
+    "report_sha256": "57b0693e1e32ff9607c4bf68a6d7d0a25a4ad6b3298f90e4c10b42ed534aa74b",
+    "verified_elf": {
+      "revision": "f1e2709c0d83c522af26313aef18b377f7b3b4da",
+      "elf_sha256": "26817042a2a047da0c6bb50239727ae5f66d8ddfa21f3af2db6c72008a25fce2",
+      "readelf_sha256": "83bae69898ce03a2f158599bf97476b9e12c164431bf82f4b6b2c567c6c5ce7a",
+      "eligible_spans": [
+        {
+          "flags": 4,
+          "start": 16777216,
+          "end": 18677760,
+          "whole_page_bytes": 1900544
+        },
+        {
+          "flags": 5,
+          "start": 18747392,
+          "end": 22224896,
+          "whole_page_bytes": 3477504
+        }
+      ],
+      "dynamic_relocations_to_originally_writable_loads": 162,
+      "arm_path": "/proof/mesh-parity-elf-trim-arm"
+    },
+    "boots": {
+      "0": {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-elf-trim/held-elf-0-03",
+        "archive_sha256": "843f50be807070f4563d379973376cb273e930ef61b7cdea52e693ebdf02f44a",
+        "proof_sha256": "a660da5f38d822667c3e04262a76ebe91f9217bdff79f46e17d16b9775fb760f",
+        "summary_sha256": "6c6e289215c7bb770519be268df235ed257bf33d83170facc2aceb47ea9d2c96"
+      },
+      "1": {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-elf-trim/held-elf-1-02",
+        "archive_sha256": "23feffeb2cabee8961beb8f2021cf58a4eb9753460989f770a85dd9e74e66306",
+        "proof_sha256": "467c17e5287e5af802a30344a9651f8a8c6df31e2aa63fd6f864bcfda2f259f3",
+        "summary_sha256": "4b68cb8814300bfbfb4e7c157240619f16d6777dca352e6e7bfe22587125dde8"
+      }
+    },
+    "earlier_boots": [
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-elf-trim/held-elf-0-01",
+        "coverage": 0,
+        "reason": "Observer matched the path instead of the exact /proc/self/exe argv and collected no samples.",
+        "serial_sha256": "fd7e04cbbd4f70f3aa47326bc842f1ce0bd0c37737fb0c344b2eaca3324d61c3"
+      },
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-elf-trim/held-elf-1-01",
+        "coverage": 0,
+        "reason": "Observer matched the path instead of the exact /proc/self/exe argv and collected no samples.",
+        "serial_sha256": "ed153a556f419fd42bc4ffb779e2df64887af78fc2b2a22f3ed1f6581d8cc307"
+      },
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/worker-rss-elf-trim/held-elf-0-02",
+        "coverage": 63,
+        "reason": "The observer missed the declared hold window for one of 64 reaped workers.",
+        "serial_sha256": "7288db91cbaa834fe9e8904395ade8af3af0278bc87a44a97fdbcef163661c94"
+      }
+    ],
+    "scope_limit": "Held-child RSS component screen. Timed slow-64 and separate watchdog fault injections were outside these boots."
+  },
   "linux_fenced_jobs_slow16_runtime_worker_thp": {
     "profile": "slow-1r-16s",
     "scope": "local-linux-aarch64-fenced-slow16-runtime-worker-thp",
