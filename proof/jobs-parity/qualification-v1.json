@@ -5264,6 +5264,166 @@
     },
     "scope": "Private fixture effect relay on one frozen profile. The listener-on arm passed the strict throughput condition and its other profile limits."
   },
+  "linux_short_16_matched_postgres_notifiers": {
+    "run": "target/jobs-parity/linux-arm-ownership-guest/warm-listen-oban-pg-notifier/short-16-pg-full",
+    "archive_sha256": "6db82cd82f60fd515c7d7d0cb36f60c8d8ca92fbe1da50fa01c6b9ac1141ec01",
+    "serial_sha256": "10e18ecaa5d4babb13e599db8aeb2bb711af2d92e24a3f179d7eedac4a7a2c46",
+    "receipt_sha256": "547b6c5626bee7afa32fd979bfbb002790bdb26ce255010e44bf36ef2cad9b23",
+    "evidence_sha256": {
+      "manifest.json": "9c4728db77ba80a25705481801e63488817386b01f6cb3c78abfe9bd395bbfbc",
+      "trials.json": "f3e2f65805f01d35e90e76f26b137de0062db0102cd02af095346cb6b11bee6c",
+      "gates.json": "efdd74d0b607b1210ab670d564348f6dfcf098cd682456a1facd8de6ba82ffaf",
+      "paired-deltas.json": "a4b2f03dfaafdd14a82e7a91fc30544f23bab7708d0029b764977ee1696265e5",
+      "postgres-stop.json": "b5751ef90f6680301deba4db09b923c27296a600a90028b44c15a24436bdecfe",
+      "mesh-on-vs-oban-isolated-summary.json": "865e6d51e789d5f9c04ea701dcd13f7f46bb58433761d10a979d8c0e8a1891c3",
+      "mesh-on-vs-oban-postgres-summary.json": "0e8416c1d606c3c824a0e49b2c261adabfee298a815eb244db5167a55c29289b"
+    },
+    "profile": "short-1r-16s",
+    "connection_plan": {
+      "mesh-on": {
+        "effect_sessions": 15,
+        "producer_notifier": 0,
+        "producer_sql": 1,
+        "runner_listener": 1,
+        "runner_sql": 3
+      },
+      "oban-isolated": {
+        "producer_notifier": 0,
+        "producer_sql": 2,
+        "runner_listener": 0,
+        "runner_sql": 18
+      },
+      "oban-postgres": {
+        "producer_notifier": 1,
+        "producer_sql": 1,
+        "runner_listener": 1,
+        "runner_sql": 17
+      }
+    },
+    "client_limit": 20,
+    "stock_versions": {
+      "elixir": "1.20.4",
+      "erlang": "29.1.1",
+      "oban": "2.24.2"
+    },
+    "postgres": "17.11 verified TLS and SCRAM",
+    "measured_group_orders": [
+      [
+        "mesh-on",
+        "oban-isolated",
+        "oban-postgres"
+      ],
+      [
+        "oban-isolated",
+        "oban-postgres",
+        "mesh-on"
+      ],
+      [
+        "oban-postgres",
+        "mesh-on",
+        "oban-isolated"
+      ],
+      [
+        "oban-postgres",
+        "oban-isolated",
+        "mesh-on"
+      ],
+      [
+        "mesh-on",
+        "oban-postgres",
+        "oban-isolated"
+      ]
+    ],
+    "measured_jobs_per_arm": 640,
+    "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+    "gates": {
+      "evaluated": true,
+      "oban-isolated": {
+        "all_frozen_conditions_met_against_comparator": true,
+        "breaches": [],
+        "comparator_role": "frozen_isolated_control",
+        "strict_median_throughput_above_oban": true,
+        "throughput_margin_jobs_per_second": 663.9751356312208
+      },
+      "oban-postgres": {
+        "all_frozen_conditions_met_against_comparator": false,
+        "breaches": [
+          {
+            "mesh_median": 1109.0315265767517,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 1120.5847778228995,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "comparator_role": "alternative_notifier_diagnostic",
+        "strict_median_throughput_above_oban": false,
+        "throughput_margin_jobs_per_second": -11.553251246147738
+      }
+    },
+    "arms": {
+      "mesh-on": {
+        "median_jobs_per_second": 1109.0315265767517,
+        "median_cpu_seconds_per_job": 0.001435515625,
+        "median_pickup_p99_ms": 112.87890625,
+        "median_peak_rss_bytes": 114663424,
+        "jobs_per_second_range": [
+          537.4198541358085,
+          1225.9573114839964
+        ],
+        "median_commit_to_first_claim_ms": 1.59912109375,
+        "median_first_claim_to_last_settlement_ms": 113.447021484375,
+        "peak_connections": 20
+      },
+      "oban-isolated": {
+        "median_jobs_per_second": 445.0563909455309,
+        "median_cpu_seconds_per_job": 0.00393746875,
+        "median_pickup_p99_ms": 281.552001953125,
+        "median_peak_rss_bytes": 128573440,
+        "jobs_per_second_range": [
+          432.3215365040936,
+          847.4574079462063
+        ],
+        "median_commit_to_first_claim_ms": 165.828857421875,
+        "median_first_claim_to_last_settlement_ms": 102.387939453125,
+        "peak_connections": 20
+      },
+      "oban-postgres": {
+        "median_jobs_per_second": 1120.5847778228995,
+        "median_cpu_seconds_per_job": 0.003944875,
+        "median_pickup_p99_ms": 110.23193359375,
+        "median_peak_rss_bytes": 129032192,
+        "jobs_per_second_range": [
+          911.233121466349,
+          1386.931908364637
+        ],
+        "median_commit_to_first_claim_ms": 7.211181640625,
+        "median_first_claim_to_last_settlement_ms": 107.65283203125,
+        "peak_connections": 18
+      }
+    },
+    "paired_throughput": {
+      "mesh-on_minus_oban-isolated": {
+        "wins": 5,
+        "delta_median": 378.49990353779003,
+        "delta_range": [
+          92.36346319027757,
+          671.3227585927543
+        ]
+      },
+      "mesh-on_minus_oban-postgres": {
+        "wins": 2,
+        "delta_median": -98.99420590497652,
+        "delta_range": [
+          -576.9413448873231,
+          314.7241900176474
+        ]
+      }
+    },
+    "scope": "Separate local diagnostic with PostgreSQL notifier control. The pinned Isolated arm remains the frozen comparator."
+  },
   "linux_slow_64_stock_mesh_vs_oban": {
     "run": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-slow-64-2g.v3ui3ZIg",
     "evidence": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-slow-64-2g.v3ui3ZIg-proof/evidence",

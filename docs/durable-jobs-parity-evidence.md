@@ -1713,6 +1713,26 @@ Oban. The effect relay is private fixture code. The receipt covers one
 frozen profile with that route.
 [Warm sessions and notification receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Match PostgreSQL notifications in the 16-slot control
+
+A separate five-group Linux diagnostic compared the same warm Mesh
+image with both pinned Oban Isolated and Oban's PostgreSQL notifier.
+The latter used 17 pooled runner connections and a dedicated listener.
+The producer's notification was observed inside its enqueue transaction.
+Each arm reconciled 640 measured jobs under the 20-client budget.
+
+Warm Mesh reached a median 1,109.0 jobs/s (537.4–1,226.0). Oban Isolated
+reached 445.1 (432.3–847.5), and Oban with PostgreSQL notifications
+reached 1,120.6 (911.2–1,386.9). Mesh won two of five pairs against
+the PostgreSQL notifier and met the other measured limits. Its
+throughput median was 1.0% lower. The observed ranges overlap.
+
+Median commit-to-first-claim time was 1.6 ms for Mesh, 165.8 ms for Oban
+Isolated, and 7.2 ms for Oban with the PostgreSQL notifier. The alternate
+notifier changes the comparison configuration. The frozen comparator
+and release qualification rule remain in force.
+[Matched notification control receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Measure stock Linux Jobs with 64 slow-job slots
 
 The frozen `slow-1r-64s` workload ran five alternating pairs against
