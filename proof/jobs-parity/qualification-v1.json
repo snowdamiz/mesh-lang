@@ -4378,6 +4378,85 @@
     },
     "scope": "Direct single-slot compiled worker. Both arms open the pidfd and require exact wait4, valid framed reply and native constructor and handler traces. Early reply keeps an independently scheduled 10 ms sweep. No production dispatcher, warm PostgreSQL workload, or Oban qualification."
   },
+  "linux_pidfd_exit_wake_full_runner": {
+    "experimental_runtime": "03a7a024bec9b19dabd5e7079414258384525335",
+    "runtime_sha256": "a7c8b67d56a33059af7f7ef78a8d828a45b1bdf15a9d25ecc57a23ad8c3c22c1",
+    "fixture_sha256": "cd747bfefac05e28d8deb59bed5bb42a431fcb1dbc0423f995d13c3898a688f9",
+    "adapter_sha256": "89672c562077494d1499bf05ee9d793a723a2e1e8ce44f3925a4b6ccda7b480f",
+    "harness_sha256": "75317cf7ebc0828a27ba47f48b292846c4421d4720745438358e4d89eabbca7d",
+    "guest": "Linux 6.12.115-0-virt aarch64, two vCPUs, Ubuntu Base 26.04.1 userspace",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified loopback TLS",
+    "frozen_profile": "short-1r-1s",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/ubuntu-guest-inputs/paired-short.HnbHZePj",
+    "summary_sha256": "84371bad6ac9d8e8b1fe8dad504ebfe77b4d3dd23b013ca5c63f273c4a8c1a24",
+    "activation_smoke": "target/jobs-parity/linux-arm-ownership-guest/gnu-pidfd-release/smoke.log",
+    "activation_smoke_sha256": "c2eb2dd51365aedfce9703eee52b4793876ae64788d54634c7b12fcf31a89961",
+    "measured_pairs": {"disabled_vs_enabled": 5, "identical_disabled": 2},
+    "measured_jobs": 1792,
+    "host_load_range_on_15_logical_cpus": [18.21, 24.45],
+    "jobs_per_second": {
+      "disabled_median": 16.028,
+      "enabled_median": 17.106,
+      "paired_difference_median": 0.360,
+      "enabled_pairs_won": 3,
+      "identical_policy_difference_range": [-1.643, 2.258]
+    },
+    "effect_commit_to_settlement_ms": {"disabled": 4.626, "enabled": 1.738, "enabled_pairs_won": 5},
+    "entry_to_first_commit_ms": {"disabled": 46.620, "enabled": 46.712},
+    "serial_receipts_sha256": {
+      "warm-ab.serial": "ec010573f97c2768474914c2588b490c1ef915afad0574fa4996c25de1c9f478",
+      "warm-aa.serial": "94b5b733f909a27942f4d74242c27f2719a7423167608c60af554a0aad8ec8b9",
+      "reverse-ab.serial": "2028d85d3011a6e1dec9f87f44cf3f75b07912cc8d840257f848b5ebb33ca60b",
+      "final-ab.serial": "1186b95bee254cb06ecfe6f07e84ce0b741d2bfb0310717841bd0d5c7e8ddc5d"
+    },
+    "scope": "One release fixture with stock exec and batched claims. Archived raw trials use the parity driver's database accounting and reconciliation. An independent privileged guest observer witnesses the opt-in pidfd path in a held two-worker smoke. FD peaks, comparative CPU or throughput qualification, descriptor pressure and Oban remain open."
+  },
+  "linux_postgres_tcp_nodelay_full_runner": {
+    "experimental_runtime": "6f4ee72c5ccda82a495015b6bfc45585dd6230e0",
+    "runtime_sha256": "c40c1128be242c1c4747b652f6e5c6c20cb2e299a6bef28ff7c0ed37ef7291f9",
+    "fixture_sha256": "aa53e3ce7e60f2cb32022123508fde876147a1ad6e68141c1cb3decaba1c1769",
+    "adapter_sha256": "c41e9cd390a44299353d4abb67e999f8105c8dff27dc50d78ff77418a720f95e",
+    "harness_sha256": "75317cf7ebc0828a27ba47f48b292846c4421d4720745438358e4d89eabbca7d",
+    "guest": "Linux 6.12.115-0-virt aarch64, two vCPUs, Ubuntu Base 26.04.1 userspace",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified loopback TLS",
+    "frozen_profile": "short-1r-1s",
+    "runtime_settings": {"pidfd_wake": false, "arm_a_tcp_nodelay": false, "arm_b_tcp_nodelay": true},
+    "run": "target/jobs-parity/linux-arm-ownership-guest/ubuntu-guest-inputs/nodelay-short.cO7T6vTX",
+    "summary_sha256": "a1eb7fceb3511cf9f8b74413dc321cb1d949fb5daeccc571b4464040d544dfd5",
+    "measured_pairs": {"disabled_vs_enabled": 5, "identical_disabled": 2},
+    "measured_jobs": 1792,
+    "host_load_range_on_15_logical_cpus": [14.90, 23.92],
+    "jobs_per_second": {
+      "disabled_median": 15.413,
+      "enabled_median": 72.006,
+      "paired_difference_range": [27.473, 59.433],
+      "enabled_pairs_won": 5,
+      "identical_policy_difference_range": [-0.640, 0.451]
+    },
+    "entry_to_first_commit_ms": {"disabled": 49.994, "enabled": 4.927, "paired_savings_range": [41.308, 47.568]},
+    "runner_tree_cpu_ms_per_job": {"disabled": 9.287, "enabled": 4.235, "enabled_pairs_won": 5},
+    "serial_receipts_sha256": {
+      "warm-ab.serial": "cad8e5e9727a3b6b487e2c109edb3fd9487e8556483d984b7750592f74405f67",
+      "warm-aa.serial": "0b93ce00d81b8e3b5b896d192b11eb632a029953ea42937cc2379c8d63579a29",
+      "reverse-ab.serial": "4d992359a82725ce2ac0b9c0f553dbb52797591922626801b09abcc29c9fc172",
+      "final-ab.serial": "d77c96631feca2b7831f411b03aac8fa0527988bde9a24797c24f123eeb724c1"
+    },
+    "stock_release_smoke": {
+      "runtime_commit": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+      "runtime_sha256": "418d999f989b8a7e92c46f62c3c9adc5c9615485a26a48ed97933ad244c517d9",
+      "fixture_sha256": "a802f91c0e04af70d8f773574f6c946c68d4222d81d229dca521fb709a1c8449",
+      "run": "target/jobs-parity/linux-arm-ownership-guest/gnu-pg-linux-default",
+      "passing_boots": 2,
+      "per_boot": {"jobs": 2, "attempts": 2, "effects": 2, "receipts": 2, "business_rows": 1},
+      "logs_sha256": {
+        "release-smoke-1.log": "e9464aade9976485e01ef2afb48524cc375a51eb8dc6c92a7b6c0c6b9ad769b1",
+        "release-smoke-2.log": "43e83a392d879bdfff162f59b57dd9ebcfc9a209311f0746a6d9fd0cf4a950bd"
+      }
+    },
+    "scope": "Real Linux Mesh runner with batched claims and durable PostgreSQL effects. One fixture with an isolated TCP socket toggle and pinned release runtime. Same-policy control uses both arms disabled. The stock default has a separate exact-runtime smoke. No Oban or higher-slot qualification."
+  },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "host": "Darwin arm64",

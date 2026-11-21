@@ -1497,6 +1497,54 @@ reply. A real-runner comparison must measure acquisition and descriptor
 pressure as well as enqueue-to-settlement throughput.
 [Linux exit-wake receipt](../proof/jobs-parity/qualification-v1.json)
 
+The real-runner follow-up used one release binary at `03a7a024` with
+`MESH_DIAGNOSTIC_JOB_PIDFD_WAKE` set to 0 or 1. The enabled output
+reader sends the ordinary reply wake and can send a second wake when
+the exact child's pidfd becomes readable. A separate held-worker smoke
+observed two pidfds for two live children. Both jobs later settled.
+
+On `short-1r-1s`, five alternating pairs and two identical-policy
+pairs reconciled 1,792 measured jobs over PostgreSQL 17.11 verified
+TLS and SCRAM. The median of trial medians from effect commit to
+settlement fell from 4.63 to 1.74 ms. The enabled arm improved this
+interval in all five pairs, with paired savings of 1.28–4.80 ms.
+Enqueue-to-settlement throughput medians were 16.0 and 17.1 jobs/s.
+The median paired difference was +0.36 jobs/s, within the −1.64 to
++2.26 jobs/s range in the identical-policy control. CPU and throughput
+remain inconclusive under this load. The handler still took 46.6–46.7 ms
+from entry to its first committed write.
+
+The two-vCPU guest ran on a Mac whose one-minute load ranged from 18.21
+to 24.45 on 15 logical CPUs. The optimized worker disables process
+dumpability, so the unprivileged timing observer left FD peaks unreported.
+The smoke used a separate guest-root observer for the pidfd witness.
+Descriptor pressure, failure qualification and comparison to Oban
+remain open. [Full-runner Linux receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Remove Linux PostgreSQL startup buffering
+
+The Linux `short-1r-1s` diagnostic used one release binary at `6f4ee72c`
+with the pidfd wake disabled in both arms. It changed only whether
+`TCP_NODELAY` was set on Mesh's PostgreSQL sockets before TLS startup.
+The parity driver ran five alternating pairs and two identical-policy
+pairs, with warmups excluded. All 1,792 measured jobs reconciled over
+PostgreSQL 17.11 with verified TLS and SCRAM.
+
+Median throughput rose from 15.4 to 72.0 jobs/s. The change improved all
+five pairs by 27.5–59.4 jobs/s. The disabled-policy control differed by
+−0.64 to +0.45 jobs/s. Median handler entry to the first committed write
+fell from 50.0 to 4.9 ms, with paired savings of 41.3–47.6 ms. The host's
+one-minute load ranged from 14.90 to 23.92 on 15 logical CPUs. The trial
+measures the socket option's effect on the real Jobs path. It covers
+one profile on a two-vCPU ARM64 guest and compares two Mesh configurations.
+[Linux socket receipt](../proof/jobs-parity/qualification-v1.json)
+
+The stock Linux connector now sets `TCP_NODELAY` before registering the
+socket and starting TLS. The release runtime at `b67206f4` passed two
+fresh PostgreSQL 17.11 guest smokes with the normal Jobs worker launch.
+Each run independently reconciled the two enqueue receipts and worker
+effects and observed a drained runner. [Stock Linux receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64
