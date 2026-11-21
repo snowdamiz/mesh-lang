@@ -113,7 +113,7 @@ jobs:
           LLVM_VERSION="21.1.8"
           LLVM_ARCHIVE="LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
           LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${LLVM_ARCHIVE}"
-          curl -sSfL "$LLVM_URL" -o llvm.tar.xz
+          curl -sSfL --retry 3 --retry-all-errors "$LLVM_URL" -o llvm.tar.xz
           mkdir -p "$HOME/llvm"
           tar xf llvm.tar.xz --strip-components=1 -C "$HOME/llvm"
           rm llvm.tar.xz
