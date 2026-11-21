@@ -3,7 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tools/skill/mesh");
+    let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let root = manifest_dir.join("../../tools/skill/mesh");
     println!("cargo:rerun-if-changed={}", root.display());
 
     let index = fs::read_to_string(root.join("SKILL.md")).expect("read the Mesh skill index");
