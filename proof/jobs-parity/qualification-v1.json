@@ -12340,6 +12340,493 @@
       }
     }
   },
+  "linux_fenced_jobs_noop_eight_runner_queue_wait_matched": {
+    "scope": "local-linux-aarch64-fenced-noop64-queue-row-wait-matched",
+    "profile": "noop-8r-64s",
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "release_fixture_sha256": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812",
+    "payload_bytes_per_job": 1024,
+    "native_pilot": {
+      "archive_sha256": "c87665ba5834f5ec2c50e1c910b57ef2bdc11bd63bdef209423d5f2ec62412b8",
+      "proof/evidence/prewarmed/queue-lock-native-proof.json": "8a3875f63f94ab6689b95710f0c6e1cd232925179598929e124df2bb2d1775b4",
+      "proof/receipt.json": "602172d118223467bd6faf20f7158f58c95d399c7d130153a89e6a6bac535696",
+      "stage.json": "f2a65091c723616f17ef30a59d9af7602d922d46aad2003b615b4b2404b90b19"
+    },
+    "queue_row_wait": {
+      "candidate_body_sha256": "e84d5a6f8a4a86b34dc9c005367e29aeeada5bfe7bb96b62b3c7df03e6329a14",
+      "overlay_ddl_sha256": "34b81fb19327e652d636a11cbb090c8d7bc12fe8f200654093546dc4928fe0b8",
+      "stock_body_sha256": "930104b61b0fa11519c95a58f8bfe8e9fb28c6b394906ec6b281527b5e342223"
+    },
+    "warmup_order": [
+      "stock-b",
+      "oban",
+      "queue-wait",
+      "stock-a"
+    ],
+    "candidate_diagnostics": {
+      "median_queue_wait_lift_exceeds_max_stock_drift": false,
+      "median_queue_wait_over_oban": 0.3542995804569651,
+      "median_queue_wait_over_stock_geometric_mean": 0.8588757232312115,
+      "queue_wait_above_both_stock_group_count": 1,
+      "stock_max_high_over_low": 1.2536041686753538
+    },
+    "run": "target/jobs-parity/linux-arm-ownership-guest/queue-row-wait-matched/runs/queue-wait-matched-01",
+    "report_sha256": "9fcfe67581893abf073e7de44bb356df2617a7c764173f8017ef129d9dc176c9",
+    "scored_jobs": 20480,
+    "median_by_arm": {
+      "stock-a": {
+        "jobs_per_second": 982.8236252362566,
+        "pickup_p99_ms": 1033.076171875,
+        "claim_calls_per_job": 0.39453125,
+        "runner_sql_calls_per_job": 5.720703125,
+        "cpu_seconds_per_job": 0.0010376982421875,
+        "peak_rss_bytes": 356560896,
+        "runner_jain_index": 0.8865920805205698
+      },
+      "stock-b": {
+        "jobs_per_second": 818.9117814394232,
+        "pickup_p99_ms": 1237.77392578125,
+        "claim_calls_per_job": 0.3974609375,
+        "runner_sql_calls_per_job": 5.7919921875,
+        "cpu_seconds_per_job": 0.001227904296875,
+        "peak_rss_bytes": 361365504,
+        "runner_jain_index": 0.8571279100183102
+      },
+      "queue-wait": {
+        "jobs_per_second": 933.1842660606081,
+        "pickup_p99_ms": 1075.1669921875,
+        "claim_calls_per_job": 0.302734375,
+        "runner_sql_calls_per_job": 5.37890625,
+        "cpu_seconds_per_job": 0.0011994003906249998,
+        "peak_rss_bytes": 397893632,
+        "runner_jain_index": 0.9909277851699528
+      },
+      "oban": {
+        "jobs_per_second": 2541.84529198801,
+        "pickup_p99_ms": 397.5029296875,
+        "claim_calls_per_job": 0.142578125,
+        "runner_sql_calls_per_job": 3.544921875,
+        "cpu_seconds_per_job": 0.0036987294921875,
+        "peak_rss_bytes": 998391808,
+        "runner_jain_index": 0.8965498372048483
+      }
+    },
+    "canonical_gates": {
+      "queue-wait": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 933.1842660606081,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2541.84529198801,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1075.1669921875,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 397.5029296875,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ]
+      },
+      "stock-a": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 982.8236252362566,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2541.84529198801,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1033.076171875,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 397.5029296875,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ]
+      },
+      "stock-b": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 818.9117814394232,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2541.84529198801,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1237.77392578125,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 397.5029296875,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ]
+      }
+    },
+    "groups": [
+      {
+        "group": 0,
+        "order": [
+          "stock-a",
+          "stock-b",
+          "oban",
+          "queue-wait"
+        ],
+        "stage_sha256": "4b66d6437c13fbb89613cac1effda6205e60308b9aa1e860fad6f13fb56d3868",
+        "archive_sha256": "5ba0c8887c9352b23ac51a79a0b6c6b38b35e2d7bba6adaf2c8e2dcb8de41020",
+        "extraction_sha256": "7732a1e832cec085cdee672dbed2d1276dc84ec91a6115c4bee0bf654133a35b",
+        "transport": {
+          "evidence_files": 219,
+          "expanded_evidence_bytes": 11715321,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 2568853,
+          "gzip_limit": 4194304,
+          "serial_bytes": 3466953,
+          "serial_limit": 8388608
+        },
+        "arms": {
+          "oban": {
+            "jobs_per_second": 2881.58400060458,
+            "pickup_p99_ms": 349.55419921875,
+            "claim_calls_per_job": 0.13671875,
+            "runner_sql_calls_per_job": 3.5234375,
+            "cpu_seconds_per_job": 0.0031730917968750003,
+            "peak_rss_bytes": 998658048,
+            "runner_jain_index": 0.8965498372048483
+          },
+          "queue-wait": {
+            "jobs_per_second": 933.1842660606081,
+            "pickup_p99_ms": 1075.1669921875,
+            "claim_calls_per_job": 0.302734375,
+            "runner_sql_calls_per_job": 5.37890625,
+            "cpu_seconds_per_job": 0.0011994003906249998,
+            "peak_rss_bytes": 379179008,
+            "runner_jain_index": 0.9920678171359371
+          },
+          "stock-a": {
+            "jobs_per_second": 1155.09384526114,
+            "pickup_p99_ms": 877.930908203125,
+            "claim_calls_per_job": 0.3916015625,
+            "runner_sql_calls_per_job": 5.6962890625,
+            "cpu_seconds_per_job": 0.0010376982421875,
+            "peak_rss_bytes": 397959168,
+            "runner_jain_index": 0.9045936395759717
+          },
+          "stock-b": {
+            "jobs_per_second": 1022.0141088154146,
+            "pickup_p99_ms": 992.619140625,
+            "claim_calls_per_job": 0.3779296875,
+            "runner_sql_calls_per_job": 5.6650390625,
+            "cpu_seconds_per_job": 0.0011523623046875,
+            "peak_rss_bytes": 342765568,
+            "runner_jain_index": 0.7530709566216605
+          }
+        },
+        "paired_throughput": {
+          "queue_wait_above_both_stock": false,
+          "queue_wait_over_oban": 0.3238442002262708,
+          "queue_wait_over_stock_geometric_mean": 0.8588757232312115,
+          "stock_b_over_a": 0.8847888100246616,
+          "stock_high_over_low": 1.1302132087001948
+        },
+        "host_trace_sha256": "da3dfde0e551b08f0b351d9e6d3c8237f3fd585a64a7ec5c81628170199efcbe",
+        "peak_host_load_1m": 5.98974609375
+      },
+      {
+        "group": 1,
+        "order": [
+          "stock-b",
+          "queue-wait",
+          "stock-a",
+          "oban"
+        ],
+        "stage_sha256": "94063fe7d25a34e82246f37f7b6c51c07648f79c9b2b41dd5722910545133dc0",
+        "archive_sha256": "ec4c520557c39797ae38604bbd702184b27f009723d4378bcb00e8fc00ac5082",
+        "extraction_sha256": "7529673be23d541472308840f56ca40400ba55533567bf7a98fb0206fd7a7328",
+        "transport": {
+          "evidence_files": 219,
+          "expanded_evidence_bytes": 11723472,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 2575116,
+          "gzip_limit": 4194304,
+          "serial_bytes": 3475391,
+          "serial_limit": 8388608
+        },
+        "arms": {
+          "oban": {
+            "jobs_per_second": 1946.1131828244063,
+            "pickup_p99_ms": 518.656005859375,
+            "claim_calls_per_job": 0.150390625,
+            "runner_sql_calls_per_job": 3.591796875,
+            "cpu_seconds_per_job": 0.0040061220703125,
+            "peak_rss_bytes": 996929536,
+            "runner_jain_index": 0.9396920076854693
+          },
+          "queue-wait": {
+            "jobs_per_second": 689.5070841964562,
+            "pickup_p99_ms": 1463.00390625,
+            "claim_calls_per_job": 0.3173828125,
+            "runner_sql_calls_per_job": 5.4873046875,
+            "cpu_seconds_per_job": 0.001390375,
+            "peak_rss_bytes": 397893632,
+            "runner_jain_index": 0.9482990637977687
+          },
+          "stock-a": {
+            "jobs_per_second": 982.8236252362566,
+            "pickup_p99_ms": 1028.8349609375,
+            "claim_calls_per_job": 0.39453125,
+            "runner_sql_calls_per_job": 5.720703125,
+            "cpu_seconds_per_job": 0.0010102080078124998,
+            "peak_rss_bytes": 345878528,
+            "runner_jain_index": 0.8865920805205698
+          },
+          "stock-b": {
+            "jobs_per_second": 818.9117814394232,
+            "pickup_p99_ms": 1237.77392578125,
+            "claim_calls_per_job": 0.408203125,
+            "runner_sql_calls_per_job": 5.8134765625,
+            "cpu_seconds_per_job": 0.001227904296875,
+            "peak_rss_bytes": 361365504,
+            "runner_jain_index": 0.8039056941684454
+          }
+        },
+        "paired_throughput": {
+          "queue_wait_above_both_stock": false,
+          "queue_wait_over_oban": 0.3542995804569651,
+          "queue_wait_over_stock_geometric_mean": 0.7685681432339321,
+          "stock_b_over_a": 0.8332235412458351,
+          "stock_high_over_low": 1.2001581214385768
+        },
+        "host_trace_sha256": "9312ef657fdb2b87784828773f1d5dbb70958d64ae3cbe820d1920fc4578144a",
+        "peak_host_load_1m": 6.34814453125
+      },
+      {
+        "group": 2,
+        "order": [
+          "queue-wait",
+          "oban",
+          "stock-b",
+          "stock-a"
+        ],
+        "stage_sha256": "76c822b4b60609cdd6cf3c73e615099cd615f7bc1b65acc00125125765c5d111",
+        "archive_sha256": "80b1280cf3552f06d93e0f6a6932b51ea3b8f91e3695a4071a587a930b1242cb",
+        "extraction_sha256": "a4216b3cccfe7a2ff7ea25de4c270450837bcff88457548dff02a92c4ca50a65",
+        "transport": {
+          "evidence_files": 219,
+          "expanded_evidence_bytes": 11725484,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 2572697,
+          "gzip_limit": 4194304,
+          "serial_bytes": 3472132,
+          "serial_limit": 8388608
+        },
+        "arms": {
+          "oban": {
+            "jobs_per_second": 2556.2928760537698,
+            "pickup_p99_ms": 383.1669921875,
+            "claim_calls_per_job": 0.1396484375,
+            "runner_sql_calls_per_job": 3.5322265625,
+            "cpu_seconds_per_job": 0.0041298173828125,
+            "peak_rss_bytes": 988807168,
+            "runner_jain_index": 0.814415310053436
+          },
+          "queue-wait": {
+            "jobs_per_second": 949.4616937857097,
+            "pickup_p99_ms": 1058.98388671875,
+            "claim_calls_per_job": 0.2998046875,
+            "runner_sql_calls_per_job": 5.3544921875,
+            "cpu_seconds_per_job": 0.0011274013671875001,
+            "peak_rss_bytes": 371523584,
+            "runner_jain_index": 0.9925486157387775
+          },
+          "stock-a": {
+            "jobs_per_second": 895.0760514087249,
+            "pickup_p99_ms": 1129.02001953125,
+            "claim_calls_per_job": 0.4140625,
+            "runner_sql_calls_per_job": 5.822265625,
+            "cpu_seconds_per_job": 0.0010645654296875,
+            "peak_rss_bytes": 356560896,
+            "runner_jain_index": 0.8919739223932601
+          },
+          "stock-b": {
+            "jobs_per_second": 731.5676284729066,
+            "pickup_p99_ms": 1370.929931640625,
+            "claim_calls_per_job": 0.3974609375,
+            "runner_sql_calls_per_job": 5.7919921875,
+            "cpu_seconds_per_job": 0.00131402734375,
+            "peak_rss_bytes": 381988864,
+            "runner_jain_index": 0.9244875791730734
+          }
+        },
+        "paired_throughput": {
+          "queue_wait_above_both_stock": true,
+          "queue_wait_over_oban": 0.3714213276107172,
+          "queue_wait_over_stock_geometric_mean": 1.1733301733149353,
+          "stock_b_over_a": 0.8173245472510645,
+          "stock_high_over_low": 1.2235041800265685
+        },
+        "host_trace_sha256": "db6757461ce0dc76353cd4d8f85a9d2667b47cddf28f922bd3a083ac1f9017dc",
+        "peak_host_load_1m": 8.81201171875
+      },
+      {
+        "group": 3,
+        "order": [
+          "oban",
+          "stock-a",
+          "queue-wait",
+          "stock-b"
+        ],
+        "stage_sha256": "8a896447c0bb8dada33f17cc8be9d640c422b50f2b853c774275ec6f85cabcee",
+        "archive_sha256": "6b21709ae354c560167ebb5a77856ca9787da582e8e90ce001f1129bca5c94e7",
+        "extraction_sha256": "8667706c51adb4d4b3dcad2483f0565cb4e6f3f2f2d910bf53888a8762198c83",
+        "transport": {
+          "evidence_files": 219,
+          "expanded_evidence_bytes": 11735567,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 2588736,
+          "gzip_limit": 4194304,
+          "serial_bytes": 3493752,
+          "serial_limit": 8388608
+        },
+        "arms": {
+          "oban": {
+            "jobs_per_second": 2541.84529198801,
+            "pickup_p99_ms": 397.5029296875,
+            "claim_calls_per_job": 0.142578125,
+            "runner_sql_calls_per_job": 3.544921875,
+            "cpu_seconds_per_job": 0.0036987294921875,
+            "peak_rss_bytes": 1001680896,
+            "runner_jain_index": 0.8554720133667502
+          },
+          "queue-wait": {
+            "jobs_per_second": 503.1965783193181,
+            "pickup_p99_ms": 2000.285888671875,
+            "claim_calls_per_job": 0.3603515625,
+            "runner_sql_calls_per_job": 5.724609375,
+            "cpu_seconds_per_job": 0.0019229189453125,
+            "peak_rss_bytes": 420327424,
+            "runner_jain_index": 0.9860078837300273
+          },
+          "stock-a": {
+            "jobs_per_second": 726.0360973385626,
+            "pickup_p99_ms": 1386.17822265625,
+            "claim_calls_per_job": 0.41015625,
+            "runner_sql_calls_per_job": 5.83984375,
+            "cpu_seconds_per_job": 0.0012608388671875,
+            "peak_rss_bytes": 333258752,
+            "runner_jain_index": 0.8616355508808835
+          },
+          "stock-b": {
+            "jobs_per_second": 579.1589685807629,
+            "pickup_p99_ms": 1746.574951171875,
+            "claim_calls_per_job": 0.4189453125,
+            "runner_sql_calls_per_job": 5.9189453125,
+            "cpu_seconds_per_job": 0.0016951318359374997,
+            "peak_rss_bytes": 353972224,
+            "runner_jain_index": 0.8571279100183102
+          }
+        },
+        "paired_throughput": {
+          "queue_wait_above_both_stock": false,
+          "queue_wait_over_oban": 0.19796506888338652,
+          "queue_wait_over_stock_geometric_mean": 0.7759963517125362,
+          "stock_b_over_a": 0.7976999638224482,
+          "stock_high_over_low": 1.2536041686753538
+        },
+        "host_trace_sha256": "4197d3a2b2bef078d190344eeac5e340d26fbba09654d858503aa6e3c5fd9c4b",
+        "peak_host_load_1m": 9.24560546875
+      },
+      {
+        "group": 4,
+        "order": [
+          "queue-wait",
+          "stock-b",
+          "oban",
+          "stock-a"
+        ],
+        "stage_sha256": "c514b4684adefe6ab74a56067f22614707ce49b1848b463ef928977c2aeb7193",
+        "archive_sha256": "7a4ac8a69f0c30a34d07344877f4f35ba390ac9538cb479a5620b70e5bf7acc6",
+        "extraction_sha256": "5673d7257a480bb4c09d3964201bb534409ff462f42fb0fc70e1fc817f42cefb",
+        "transport": {
+          "evidence_files": 219,
+          "expanded_evidence_bytes": 11714700,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 2570652,
+          "gzip_limit": 4194304,
+          "serial_bytes": 3469357,
+          "serial_limit": 8388608
+        },
+        "arms": {
+          "oban": {
+            "jobs_per_second": 1795.8674065983282,
+            "pickup_p99_ms": 559.39599609375,
+            "claim_calls_per_job": 0.1640625,
+            "runner_sql_calls_per_job": 3.6083984375,
+            "cpu_seconds_per_job": 0.0036776074218749996,
+            "peak_rss_bytes": 998391808,
+            "runner_jain_index": 0.9041942604856512
+          },
+          "queue-wait": {
+            "jobs_per_second": 1053.2304888377964,
+            "pickup_p99_ms": 955.3408203125,
+            "claim_calls_per_job": 0.298828125,
+            "runner_sql_calls_per_job": 5.3359375,
+            "cpu_seconds_per_job": 0.0009739853515624999,
+            "peak_rss_bytes": 399241216,
+            "runner_jain_index": 0.9909277851699528
+          },
+          "stock-a": {
+            "jobs_per_second": 983.7025390303892,
+            "pickup_p99_ms": 1033.076171875,
+            "claim_calls_per_job": 0.388671875,
+            "runner_sql_calls_per_job": 5.697265625,
+            "cpu_seconds_per_job": 0.0009908564453124998,
+            "peak_rss_bytes": 375521280,
+            "runner_jain_index": 0.8467402258456291
+          },
+          "stock-b": {
+            "jobs_per_second": 1092.9218505468643,
+            "pickup_p99_ms": 918.77099609375,
+            "claim_calls_per_job": 0.3896484375,
+            "runner_sql_calls_per_job": 5.6884765625,
+            "cpu_seconds_per_job": 0.0009667861328125,
+            "peak_rss_bytes": 398086144,
+            "runner_jain_index": 0.9158188932364449
+          }
+        },
+        "paired_throughput": {
+          "queue_wait_above_both_stock": false,
+          "queue_wait_over_oban": 0.5864745275559013,
+          "queue_wait_over_stock_geometric_mean": 1.0157737184869227,
+          "stock_b_over_a": 1.111028799035255,
+          "stock_high_over_low": 1.111028799035255
+        },
+        "host_trace_sha256": "b2bf82105ad3c9d22ce9be8078756fc55ff50666131e5a7d0f1a7f1ef347fcb3",
+        "peak_host_load_1m": 9.10107421875
+      }
+    ],
+    "result": "The bounded wait lowered claim calls and distributed claims more evenly. It missed throughput and pickup p99 against Oban and beat both stock Mesh controls in one group."
+  },
   "linux_fenced_jobs_noop_eight_runner_queue_wait_screen": {
     "scope": "local-linux-aarch64-fenced-noop64-queue-row-wait-screen",
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",

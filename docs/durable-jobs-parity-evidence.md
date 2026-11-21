@@ -2585,6 +2585,29 @@ jobs reconciled. The two-group result supports a wider local
 comparison with an identical Mesh repeat.
 [Queue wait screen and lock proof](../proof/jobs-parity/qualification-v1.json)
 
+### Retest the queue wait against identical Mesh controls
+
+Five counterbalanced groups used the same `c271319e` release for
+both Mesh controls and the 4 ms queue wait. Each group ran a warmup
+of all four arms in a fresh two-vCPU guest. All 20,480 scored jobs
+reconciled against the frozen eight-runner, 64-slot no-op input.
+
+| Arm | Jobs/s | Pickup p99 | Claim calls/job | Runner claim-share fairness |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control A | 983 | 1,033 ms | 0.395 | 0.887 |
+| Mesh control B | 819 | 1,238 ms | 0.397 | 0.857 |
+| Mesh with queue wait | 933 | 1,075 ms | 0.303 | 0.991 |
+| Oban Basic 2.24.2 | 2,542 | 398 ms | 0.143 | 0.897 |
+
+The wait cut median claim traffic by about 23% and made claims more
+even across runner processes. The table uses Jain's fairness index,
+where 1 means each runner claimed the same number of jobs. The
+wait arm beat both Mesh controls in one of five groups. Its median
+paired rate was 86% of their geometric mean. It missed throughput
+and pickup p99 against Oban, and passed the resource limits.
+The queue wait remains experimental.
+[Five-group queue wait receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare the 16-slot slow profile
 
 Five matched Linux groups at `c271319e` reconciled all 1,920
