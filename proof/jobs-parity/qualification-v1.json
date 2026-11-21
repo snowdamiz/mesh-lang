@@ -4248,6 +4248,30 @@
     },
     "scope": "Disposable Unix descriptor handoff and wait ownership. Loss of the runner-owned control stream prevents entry before grant and ends a granted test child. After template death, kqueue reports the exit while the runner's waitpid returns ECHILD. No compiled handler or PostgreSQL settlement was exercised."
   },
+  "linux_clone_parent_ownership": {
+    "source_commit": "0c9b1f51d09bbc36456e7ad4b423a3c8803ead6c",
+    "host": "Darwin arm64",
+    "guest": "Linux 6.12.115-0-virt aarch64, Alpine virt 3.22.8",
+    "virtualization": "Apple Virtualization.framework, two vCPUs and 512 MiB, no persistent disk or network",
+    "compiler": "Zig 0.15.2 aarch64-linux-musl, static link",
+    "run": "target/jobs-parity/linux-arm-ownership-guest",
+    "fixture_source": "target/jobs-parity/worker-cost-screen/linux-launch-ownership/fixture.c",
+    "fixture_sha256": "10692171412df4d88c71e29ff0ccd3e5e66e8d7be12ed47ad73d9f3134f5a7c7",
+    "binary_sha256": "e542e4c04a4ba446b20dccfb04daf286bd5adce45b0a7a0ea0ca5fb7512d58b6",
+    "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+    "initramfs_sha256": "f51ea2dd30347a11ffb7e71132c947c64f41805eb8052fdf6cc7cbcdd350fbef",
+    "clone3_required": true,
+    "identical_passing_runs": 6,
+    "cases": ["exited before transfer", "waiting before transfer", "stopped before transfer", "granted before template death", "unrelated child retained by owning thread"],
+    "case_log_sha256": "3f7ac4ab75d937c6e0275839ba896994c4205f75240643a3b945dc0e25eb1b71",
+    "same_group_sibling_source_sha256": "20710d147fac0d038565a42767488d28c640471d33671ff0e26174990d193fdc",
+    "same_group_sibling_log_sha256": "9d59686efc1c8b48299fcb4f3a82505b1bbb9264d487d91805b13194e0c05b8e",
+    "negative_controls_log_sha256": {
+      "without_thread_filter": "b15f0059207efbbbaf6f495076eff457076dcd4ecefc8734b53062752cddb6f2",
+      "without_clone_parent": "0747265dabf52df22560581a099c63cffaade448925f45a0d798af5843708e24"
+    },
+    "scope": "Synthetic child lifecycle, exact Linux reap, and cleanup ownership after template death. Compiled Mesh handlers, Jobs claim and settlement, and benchmark performance were outside the fixture."
+  },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "host": "Darwin arm64",

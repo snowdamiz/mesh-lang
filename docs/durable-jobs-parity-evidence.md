@@ -1423,6 +1423,24 @@ Removing the pre-launch grant check or letting the child keep the
 template's management socket caused the corresponding case to fail.
 [Handoff probe receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Reap Linux attempts after template loss
+
+A local ARM64 Linux 6.12.115 guest on the Mac ran the ownership fixture
+with `clone3` required. Six boots produced identical results. A dedicated
+runner thread reaped waiting, stopped, and already exited children after
+the template died before sending their pidfds. It also reaped a granted
+child through its exact pidfd after template death. Closing the gate before
+grant prevented the test child from entering its work.
+
+A separate probe put an unrelated child owned by another thread in the
+template's process group. The runner's group-scoped `waitid` with
+`__WNOTHREAD` left that child's exit status for its owning thread. Removing
+the thread filter exposed the unrelated child to the cleanup scan.
+Removing `CLONE_PARENT` broke the pre-transfer reap case. This verifies
+kernel wait ownership for the fixture. Compiled worker entry, PostgreSQL
+settlement, and throughput remain outside this run.
+[Linux ownership receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64
