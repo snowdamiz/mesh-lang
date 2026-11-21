@@ -1419,11 +1419,12 @@ fn error_fn_missing_end_references_do_span() {
         err.related.is_some(),
         "error should have related span referencing `do`"
     );
-    let (related_msg, _) = err.related.as_ref().unwrap();
-    assert!(
-        related_msg.contains("do"),
-        "related message should mention `do`: {}",
-        related_msg
+    let (related_msg, related_span) = err.related.as_ref().unwrap();
+    assert_eq!(err.code.id(), "P0004");
+    assert_eq!(related_msg, "block opened here");
+    assert_eq!(
+        &"fn foo() do\n  1\n"[related_span.start as usize..related_span.end as usize],
+        "do"
     );
 }
 
@@ -1885,7 +1886,8 @@ fn sum_type_stops_at_a_malformed_variant() {
     // as more of the same mistake.
     let parse = parse("type Shape do\n  Circle(Float\n  Square\nend\n");
     let messages: Vec<&str> = parse.errors().iter().map(|e| e.message.as_str()).collect();
-    assert_eq!(messages, ["expected `)`"]);
+    assert_eq!(messages, ["expected `)` to close `(`, found `Square`"]);
+    assert_eq!(parse.errors()[0].code.id(), "P0003");
 }
 
 #[test]
@@ -3972,7 +3974,7 @@ fn malformed_constructs_report_what_was_expected() {
         ),
         (
             "fn f() do\n  fn 0 -> 1 | n do\n    n\n",
-            "unclosed closure clause -- expected `end`",
+            "expected `end` to close closure clause",
         ),
         (
             "impl Show for Int do\n  pub let x = 1\nend",
@@ -4202,7 +4204,7 @@ fn malformed_constructs_report_what_was_expected() {
         ),
         (
             "fn f(x) do\n  case x do\n    \"abc",
-            "unterminated string in pattern",
+            "unterminated string: no closing `\"`",
         ),
         (
             "supervisor S do\n  child c do\n    start: fn -> 1 end\n    1\n  end\nend",
@@ -4211,7 +4213,7 @@ fn malformed_constructs_report_what_was_expected() {
         ("supervisor S do\n  1\nend", "in supervisor body"),
         (
             "struct S do\n  table \"users",
-            "unterminated string in table option",
+            "unterminated string: no closing `\"`",
         ),
         (
             "fn f(p) do\n  case p do\n    Point { x, .. } -> 0\n  end\nend",

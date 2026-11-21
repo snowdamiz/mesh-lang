@@ -19,4 +19,4 @@ SOURCE_FILE@0..12
   EOF@12..12 ""
 
 errors:
-  - expected `end` to close `do` block @12..12
+  - expected `end` to close `do` block, found the end of the file @12..12

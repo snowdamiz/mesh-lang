@@ -1959,6 +1959,216 @@
       "status": "active"
     },
     {
+      "code": "P0002",
+      "name": "expected-token",
+      "severity": "error",
+      "category": "syntax",
+      "title": "expected token missing",
+      "summary": "The grammar requires one particular token here, such as `do`, `->`, `in`, or a name, and the source has another one.",
+      "repair": "Write the token the message expects where the label points, or replace the token found there with it.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0002",
+      "guide": {
+        "explain": "meshc explain P0002",
+        "skill": "references/diagnostics.md#p0002",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  for x [1, 2] do\n    println(\"#{x}\")\n  end\nend\n",
+        "fixed": "fn main() do\n  for x in [1, 2] do\n    println(\"#{x}\")\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0003",
+      "name": "unclosed-delimiter",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unclosed delimiter",
+      "summary": "A `(`, `[`, `{`, or string interpolation is still open where its contents end.",
+      "repair": "Add the matching `)`, `]`, or `}` where the contents end; the related span shows where the delimiter was opened. If the contents are a list, separate its items with `,`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0003",
+      "guide": {
+        "explain": "meshc explain P0003",
+        "skill": "references/diagnostics.md#p0003",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  println(\"hi\"\nend\n",
+        "fixed": "fn main() do\n  println(\"hi\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0004",
+      "name": "missing-end",
+      "severity": "error",
+      "category": "syntax",
+      "title": "missing `end`",
+      "summary": "A block opened with `do`, such as a function, `if`, `case`, loop, closure, or type body, has no `end` that closes it.",
+      "repair": "Add `end` where the block's body ends; the related span shows the `do` it closes. Each `do` takes its own `end`, so count them in nested blocks.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0004",
+      "guide": {
+        "explain": "meshc explain P0004",
+        "skill": "references/diagnostics.md#p0004",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  println(\"hi\")\n",
+        "fixed": "fn main() do\n  println(\"hi\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0101",
+      "name": "unknown-character",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unknown character",
+      "summary": "The source has a character that starts no Mesh token, such as `$`, `^`, or a backtick, outside a string or comment.",
+      "repair": "Delete the character, or move it into a string or a comment. For an operator, write one Mesh has, such as `*`, `&&`, or `<>`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0101",
+      "guide": {
+        "explain": "meshc explain P0101",
+        "skill": "references/diagnostics.md#p0101",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = 2 ^ 3\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn main() do\n  let n = 2 * 3\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0102",
+      "name": "unterminated-string",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unterminated string",
+      "summary": "A string literal has no closing quote, so it runs to the end of the file.",
+      "repair": "Add the closing `\"` (`\"\"\"` for a triple-quoted string) where the text ends. Inside the string, write a quote as `\\\"`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0102",
+      "guide": {
+        "explain": "meshc explain P0102",
+        "skill": "references/diagnostics.md#p0102",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  println(\"hello)\nend\n",
+        "fixed": "fn main() do\n  println(\"hello\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0103",
+      "name": "unterminated-interpolation",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unterminated interpolation",
+      "summary": "A string interpolation opened with `#{` or `${` has no closing `}`, so it runs to the end of the file.",
+      "repair": "Close the interpolation with `}` after its expression, then close the string with `\"`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0103",
+      "guide": {
+        "explain": "meshc explain P0103",
+        "skill": "references/diagnostics.md#p0103",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let x = 1\n  println(\"x is #{x",
+        "fixed": "fn main() do\n  let x = 1\n  println(\"x is #{x}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0104",
+      "name": "unterminated-block-comment",
+      "severity": "error",
+      "category": "syntax",
+      "title": "unterminated block comment",
+      "summary": "A block comment opened with `#=` has no closing `=#`, so it runs to the end of the file. Block comments nest: each `#=` inside one needs its own `=#`.",
+      "repair": "Add `=#` where the comment ends, one for each `#=` it contains.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0104",
+      "guide": {
+        "explain": "meshc explain P0104",
+        "skill": "references/diagnostics.md#p0104",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "#= Prints a greeting.\nfn main() do\n  println(\"hi\")\nend\n",
+        "fixed": "#= Prints a greeting. =#\nfn main() do\n  println(\"hi\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0105",
+      "name": "invalid-slot-pipe",
+      "severity": "error",
+      "category": "syntax",
+      "title": "invalid slot pipe",
+      "summary": "A pipe is written `|0>`, `|1>`, or `|N` without `>`. Slot pipes are numbered from 2, because `|>` already pipes into the first argument.",
+      "repair": "Write `|>` to pipe into the first argument, or `|N>` with N from 2 up to pipe into argument N.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0105",
+      "guide": {
+        "explain": "meshc explain P0105",
+        "skill": "references/diagnostics.md#p0105",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  let n = 1 |1> add(2)\n  println(\"#{n}\")\nend\n",
+        "fixed": "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  let n = 1 |> add(2)\n  println(\"#{n}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0106",
+      "name": "invalid-regex-literal",
+      "severity": "error",
+      "category": "syntax",
+      "title": "invalid regex literal",
+      "summary": "A `~` does not start a well-formed regex literal `~r/pattern/flags`: the `r/` is missing, the pattern has no closing `/`, or a flag is not `i`, `m`, or `s`.",
+      "repair": "Write the literal as `~r/pattern/flags`: escape a `/` in the pattern as `\\/`, end the pattern with `/`, and use only the flags `i`, `m`, and `s`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0106",
+      "guide": {
+        "explain": "meshc explain P0106",
+        "skill": "references/diagnostics.md#p0106",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let rx = ~r/[a-z]+/x\n  println(\"#{Regex.is_match(rx, \"abc\")}\")\nend\n",
+        "fixed": "fn main() do\n  let rx = ~r/[a-z]+/i\n  println(\"#{Regex.is_match(rx, \"abc\")}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "P0107",
+      "name": "single-ampersand",
+      "severity": "error",
+      "category": "syntax",
+      "title": "single `&`",
+      "summary": "A lone `&` stands where an operator is expected. Mesh has no `&` operator: logical and is `&&` or `and`.",
+      "repair": "Write `&&` or `and` for a logical and.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#p0107",
+      "guide": {
+        "explain": "meshc explain P0107",
+        "skill": "references/diagnostics.md#p0107",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let ok = true & false\n  println(\"#{ok}\")\nend\n",
+        "fixed": "fn main() do\n  let ok = true && false\n  println(\"#{ok}\")\nend\n"
+      },
+      "status": "active"
+    },
+    {
       "code": "W0001",
       "name": "redundant-arm",
       "severity": "warning",

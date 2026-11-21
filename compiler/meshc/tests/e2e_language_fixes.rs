@@ -4586,7 +4586,7 @@ fn a_parse_error_at_the_end_of_the_file_is_reported() {
     ] {
         let err = build_error(source);
         assert!(
-            err.contains("[P0001] Error:") && !err.contains("panicked"),
+            err.contains("[P0102] Error:") && !err.contains("panicked"),
             "{err}"
         );
     }
@@ -4597,7 +4597,7 @@ fn an_unterminated_string_is_one_error_at_its_opening_quote() {
     // It was "Parse error" with an empty message at the end of the file,
     // two or three times.
     let err = build_error("fn main() do\n  let s = \"abc\n  println(s)\nend\n");
-    assert_eq!(err.matches("[P0001] Error:").count(), 1, "{err}");
+    assert_eq!(err.matches("[P0102] Error:").count(), 1, "{err}");
     assert!(
         err.contains("unterminated string: no closing `\"`"),
         "{err}"
@@ -4617,7 +4617,7 @@ fn parse_errors_name_tokens_as_written() {
 fn a_parse_error_is_not_repeated_at_the_same_place() {
     // An unclosed interpolation gave four errors on one column.
     let err = build_error("fn main() do\n  let x = 1\n  println(\"a#{x\")\nend\n");
-    assert_eq!(err.matches("[P0001] Error:").count(), 1, "{err}");
+    assert_eq!(err.matches("[P0003] Error:").count(), 1, "{err}");
     assert!(
         err.contains("expected `}` to close the interpolation"),
         "{err}"

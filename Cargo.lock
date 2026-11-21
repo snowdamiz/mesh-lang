@@ -1644,6 +1644,7 @@ version = "0.1.8"
 dependencies = [
  "insta",
  "mesh-common",
+ "mesh-diagnostics",
  "serde",
 ]
 
@@ -1679,6 +1680,7 @@ version = "0.1.8"
 dependencies = [
  "insta",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-lexer",
  "rowan",
  "serde",

@@ -846,6 +846,106 @@ catalog! {
             "fn main() do\n  let _x = 1\nend\n",
         ),
     },
+    ExpectedToken = P0002 "expected-token" Error {
+        title: "expected token missing",
+        summary: "The grammar requires one particular token here, such as `do`, `->`, `in`, or a name, and the source has another one.",
+        repair: "Write the token the message expects where the label points, or replace the token found there with it.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  for x [1, 2] do\n    println(\"#{x}\")\n  end\nend\n",
+            "fn main() do\n  for x in [1, 2] do\n    println(\"#{x}\")\n  end\nend\n",
+        ),
+    },
+    UnclosedDelimiter = P0003 "unclosed-delimiter" Error {
+        title: "unclosed delimiter",
+        summary: "A `(`, `[`, `{`, or string interpolation is still open where its contents end.",
+        repair: "Add the matching `)`, `]`, or `}` where the contents end; the related span shows where the delimiter was opened. If the contents are a list, separate its items with `,`.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  println(\"hi\"\nend\n",
+            "fn main() do\n  println(\"hi\")\nend\n",
+        ),
+    },
+    MissingEnd = P0004 "missing-end" Error {
+        title: "missing `end`",
+        summary: "A block opened with `do`, such as a function, `if`, `case`, loop, closure, or type body, has no `end` that closes it.",
+        repair: "Add `end` where the block's body ends; the related span shows the `do` it closes. Each `do` takes its own `end`, so count them in nested blocks.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  println(\"hi\")\n",
+            "fn main() do\n  println(\"hi\")\nend\n",
+        ),
+    },
+    UnknownCharacter = P0101 "unknown-character" Error {
+        title: "unknown character",
+        summary: "The source has a character that starts no Mesh token, such as `$`, `^`, or a backtick, outside a string or comment.",
+        repair: "Delete the character, or move it into a string or a comment. For an operator, write one Mesh has, such as `*`, `&&`, or `<>`.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  let n = 2 ^ 3\n  println(\"#{n}\")\nend\n",
+            "fn main() do\n  let n = 2 * 3\n  println(\"#{n}\")\nend\n",
+        ),
+    },
+    UnterminatedString = P0102 "unterminated-string" Error {
+        title: "unterminated string",
+        summary: "A string literal has no closing quote, so it runs to the end of the file.",
+        repair: "Add the closing `\"` (`\"\"\"` for a triple-quoted string) where the text ends. Inside the string, write a quote as `\\\"`.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  println(\"hello)\nend\n",
+            "fn main() do\n  println(\"hello\")\nend\n",
+        ),
+    },
+    UnterminatedInterpolation = P0103 "unterminated-interpolation" Error {
+        title: "unterminated interpolation",
+        summary: "A string interpolation opened with `#{` or `${` has no closing `}`, so it runs to the end of the file.",
+        repair: "Close the interpolation with `}` after its expression, then close the string with `\"`.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  let x = 1\n  println(\"x is #{x",
+            "fn main() do\n  let x = 1\n  println(\"x is #{x}\")\nend\n",
+        ),
+    },
+    UnterminatedBlockComment = P0104 "unterminated-block-comment" Error {
+        title: "unterminated block comment",
+        summary: "A block comment opened with `#=` has no closing `=#`, so it runs to the end of the file. Block comments nest: each `#=` inside one needs its own `=#`.",
+        repair: "Add `=#` where the comment ends, one for each `#=` it contains.",
+        topic: "syntax",
+        example: (
+            "#= Prints a greeting.\nfn main() do\n  println(\"hi\")\nend\n",
+            "#= Prints a greeting. =#\nfn main() do\n  println(\"hi\")\nend\n",
+        ),
+    },
+    InvalidSlotPipe = P0105 "invalid-slot-pipe" Error {
+        title: "invalid slot pipe",
+        summary: "A pipe is written `|0>`, `|1>`, or `|N` without `>`. Slot pipes are numbered from 2, because `|>` already pipes into the first argument.",
+        repair: "Write `|>` to pipe into the first argument, or `|N>` with N from 2 up to pipe into argument N.",
+        topic: "syntax",
+        example: (
+            "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  let n = 1 |1> add(2)\n  println(\"#{n}\")\nend\n",
+            "fn add(a :: Int, b :: Int) -> Int = a + b\n\nfn main() do\n  let n = 1 |> add(2)\n  println(\"#{n}\")\nend\n",
+        ),
+    },
+    InvalidRegexLiteral = P0106 "invalid-regex-literal" Error {
+        title: "invalid regex literal",
+        summary: "A `~` does not start a well-formed regex literal `~r/pattern/flags`: the `r/` is missing, the pattern has no closing `/`, or a flag is not `i`, `m`, or `s`.",
+        repair: "Write the literal as `~r/pattern/flags`: escape a `/` in the pattern as `\\/`, end the pattern with `/`, and use only the flags `i`, `m`, and `s`.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  let rx = ~r/[a-z]+/x\n  println(\"#{Regex.is_match(rx, \"abc\")}\")\nend\n",
+            "fn main() do\n  let rx = ~r/[a-z]+/i\n  println(\"#{Regex.is_match(rx, \"abc\")}\")\nend\n",
+        ),
+    },
+    SingleAmpersand = P0107 "single-ampersand" Error {
+        title: "single `&`",
+        summary: "A lone `&` stands where an operator is expected. Mesh has no `&` operator: logical and is `&&` or `and`.",
+        repair: "Write `&&` or `and` for a logical and.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  let ok = true & false\n  println(\"#{ok}\")\nend\n",
+            "fn main() do\n  let ok = true && false\n  println(\"#{ok}\")\nend\n",
+        ),
+    },
     RedundantArm = W0001 "redundant-arm" Warning {
         title: "redundant match arm",
         summary: "A match arm can never run, because earlier arms already match every value it would.",

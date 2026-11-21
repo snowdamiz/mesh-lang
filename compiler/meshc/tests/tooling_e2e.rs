@@ -2568,7 +2568,7 @@ fn json_mode_is_pure_ndjson() {
     );
 
     write_file(&main, "fn main() do\n  println(1)\n");
-    let diagnostics = verify(&["build", ".", "--json"], &["P0001"]);
+    let diagnostics = verify(&["build", ".", "--json"], &["P0004"]);
     assert_eq!(diagnostics[0]["spans"].as_array().unwrap().len(), 2);
 
     write_file(&main, "fn main() do\n  println(missing)\nend\n");

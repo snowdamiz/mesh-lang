@@ -819,7 +819,7 @@ shows the same text. `spans` hold byte offsets into `file`, which is named as
 the build argument names it. The first span is where the error is and the others are places it
 relates to, each labelled as the terminal report labels it; `fix` is the
 report's help, or `null`. Codes starting with `E` are type errors and `W` warnings from the
-type checker; `P0001` is a parse error and `CFG0001` an invalid cluster
+type checker; codes starting with `P` are syntax errors and `CFG0001` an invalid cluster
 declaration. A failed build always ends with one `C0001` object with an empty
 `file`, carrying either the summary above or a failure outside any source file
 (a missing entrypoint, a link error). The exit status is 1 whenever the build

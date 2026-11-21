@@ -2548,6 +2548,264 @@ end
 
 Docs: https://meshlang.dev/docs/errors/#p0001
 
+## P0002
+
+**expected-token** · error · syntax · guide: `meshc guide syntax`
+
+The grammar requires one particular token here, such as `do`, `->`, `in`, or a name, and the source has another one.
+
+**Repair:** Write the token the message expects where the label points, or replace the token found there with it.
+
+**Example**
+```mesh
+fn main() do
+  for x [1, 2] do
+    println("#{x}")
+  end
+end
+```
+
+**Fixed**
+```mesh
+fn main() do
+  for x in [1, 2] do
+    println("#{x}")
+  end
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0002
+
+## P0003
+
+**unclosed-delimiter** · error · syntax · guide: `meshc guide syntax`
+
+A `(`, `[`, `{`, or string interpolation is still open where its contents end.
+
+**Repair:** Add the matching `)`, `]`, or `}` where the contents end; the related span shows where the delimiter was opened. If the contents are a list, separate its items with `,`.
+
+**Example**
+```mesh
+fn main() do
+  println("hi"
+end
+```
+
+**Fixed**
+```mesh
+fn main() do
+  println("hi")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0003
+
+## P0004
+
+**missing-end** · error · syntax · guide: `meshc guide syntax`
+
+A block opened with `do`, such as a function, `if`, `case`, loop, closure, or type body, has no `end` that closes it.
+
+**Repair:** Add `end` where the block's body ends; the related span shows the `do` it closes. Each `do` takes its own `end`, so count them in nested blocks.
+
+**Example**
+```mesh
+fn main() do
+  println("hi")
+```
+
+**Fixed**
+```mesh
+fn main() do
+  println("hi")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0004
+
+## P0101
+
+**unknown-character** · error · syntax · guide: `meshc guide syntax`
+
+The source has a character that starts no Mesh token, such as `$`, `^`, or a backtick, outside a string or comment.
+
+**Repair:** Delete the character, or move it into a string or a comment. For an operator, write one Mesh has, such as `*`, `&&`, or `<>`.
+
+**Example**
+```mesh
+fn main() do
+  let n = 2 ^ 3
+  println("#{n}")
+end
+```
+
+**Fixed**
+```mesh
+fn main() do
+  let n = 2 * 3
+  println("#{n}")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0101
+
+## P0102
+
+**unterminated-string** · error · syntax · guide: `meshc guide syntax`
+
+A string literal has no closing quote, so it runs to the end of the file.
+
+**Repair:** Add the closing `"` (`"""` for a triple-quoted string) where the text ends. Inside the string, write a quote as `\"`.
+
+**Example**
+```mesh
+fn main() do
+  println("hello)
+end
+```
+
+**Fixed**
+```mesh
+fn main() do
+  println("hello")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0102
+
+## P0103
+
+**unterminated-interpolation** · error · syntax · guide: `meshc guide syntax`
+
+A string interpolation opened with `#{` or `${` has no closing `}`, so it runs to the end of the file.
+
+**Repair:** Close the interpolation with `}` after its expression, then close the string with `"`.
+
+**Example**
+```mesh
+fn main() do
+  let x = 1
+  println("x is #{x
+```
+
+**Fixed**
+```mesh
+fn main() do
+  let x = 1
+  println("x is #{x}")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0103
+
+## P0104
+
+**unterminated-block-comment** · error · syntax · guide: `meshc guide syntax`
+
+A block comment opened with `#=` has no closing `=#`, so it runs to the end of the file. Block comments nest: each `#=` inside one needs its own `=#`.
+
+**Repair:** Add `=#` where the comment ends, one for each `#=` it contains.
+
+**Example**
+```mesh
+#= Prints a greeting.
+fn main() do
+  println("hi")
+end
+```
+
+**Fixed**
+```mesh
+#= Prints a greeting. =#
+fn main() do
+  println("hi")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0104
+
+## P0105
+
+**invalid-slot-pipe** · error · syntax · guide: `meshc guide syntax`
+
+A pipe is written `|0>`, `|1>`, or `|N` without `>`. Slot pipes are numbered from 2, because `|>` already pipes into the first argument.
+
+**Repair:** Write `|>` to pipe into the first argument, or `|N>` with N from 2 up to pipe into argument N.
+
+**Example**
+```mesh
+fn add(a :: Int, b :: Int) -> Int = a + b
+
+fn main() do
+  let n = 1 |1> add(2)
+  println("#{n}")
+end
+```
+
+**Fixed**
+```mesh
+fn add(a :: Int, b :: Int) -> Int = a + b
+
+fn main() do
+  let n = 1 |> add(2)
+  println("#{n}")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0105
+
+## P0106
+
+**invalid-regex-literal** · error · syntax · guide: `meshc guide syntax`
+
+A `~` does not start a well-formed regex literal `~r/pattern/flags`: the `r/` is missing, the pattern has no closing `/`, or a flag is not `i`, `m`, or `s`.
+
+**Repair:** Write the literal as `~r/pattern/flags`: escape a `/` in the pattern as `\/`, end the pattern with `/`, and use only the flags `i`, `m`, and `s`.
+
+**Example**
+```mesh
+fn main() do
+  let rx = ~r/[a-z]+/x
+  println("#{Regex.is_match(rx, "abc")}")
+end
+```
+
+**Fixed**
+```mesh
+fn main() do
+  let rx = ~r/[a-z]+/i
+  println("#{Regex.is_match(rx, "abc")}")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0106
+
+## P0107
+
+**single-ampersand** · error · syntax · guide: `meshc guide syntax`
+
+A lone `&` stands where an operator is expected. Mesh has no `&` operator: logical and is `&&` or `and`.
+
+**Repair:** Write `&&` or `and` for a logical and.
+
+**Example**
+```mesh
+fn main() do
+  let ok = true & false
+  println("#{ok}")
+end
+```
+
+**Fixed**
+```mesh
+fn main() do
+  let ok = true && false
+  println("#{ok}")
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#p0107
+
 ## W0001
 
 **redundant-arm** · warning · semantic · guide: `meshc guide pattern-matching`

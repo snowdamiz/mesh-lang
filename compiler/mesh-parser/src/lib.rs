@@ -22,8 +22,8 @@ pub use syntax_kind::SyntaxKind;
 /// Result of parsing a Mesh source file.
 ///
 /// Contains the green tree (the immutable, cheap-to-clone CST) and any
-/// parse errors encountered. With the current first-error-only strategy,
-/// `errors` will contain at most one error.
+/// parse errors encountered. Only the first syntax error is reported, after
+/// any unknown escapes in strings before it.
 pub struct Parse {
     green: rowan::GreenNode,
     errors: Vec<ParseError>,
@@ -60,8 +60,7 @@ impl Parse {
 /// parses the token stream, and returns a [`Parse`] result containing
 /// the syntax tree and any errors.
 pub fn parse(source: &str) -> Parse {
-    let tokens = mesh_lexer::Lexer::tokenize(source);
-    let mut p = parser::Parser::new(tokens, source);
+    let mut p = parser::Parser::new(source);
     parser::parse_source_file(&mut p);
     let (green, errors) = p.build_tree();
     Parse { green, errors }
@@ -121,8 +120,7 @@ pub fn inline_modules(source: &str, parse: &Parse) -> Vec<InlineModule> {
 /// This is primarily useful for testing the expression parser in isolation.
 /// Wraps the expression in a SOURCE_FILE root node.
 pub fn parse_expr(source: &str) -> Parse {
-    let tokens = mesh_lexer::Lexer::tokenize(source);
-    let mut p = parser::Parser::new(tokens, source);
+    let mut p = parser::Parser::new(source);
     let root = p.open();
     parser::expressions::expr(&mut p);
     // Consume any remaining tokens (newlines, EOF).
@@ -141,8 +139,7 @@ pub fn parse_expr(source: &str) -> Parse {
 /// by newlines), wrapped in a SOURCE_FILE root node. Useful for testing
 /// let bindings, return expressions, and multi-statement blocks.
 pub fn parse_block(source: &str) -> Parse {
-    let tokens = mesh_lexer::Lexer::tokenize(source);
-    let mut p = parser::Parser::new(tokens, source);
+    let mut p = parser::Parser::new(source);
     let root = p.open();
     parser::expressions::parse_block_body(&mut p);
     // Consume EOF.

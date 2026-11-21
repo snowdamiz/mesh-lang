@@ -359,15 +359,7 @@ fn syntax_errors(project: &ProjectData, files: &[SourceFile]) -> Vec<Diagnostic>
             project.module_parses[idx]
                 .errors()
                 .iter()
-                .map(move |error| {
-                    let diagnostic =
-                        Diagnostic::in_file(Code::UnexpectedToken, file, &error.message)
-                            .at(error.span, "");
-                    match &error.related {
-                        Some((message, span)) => diagnostic.with_label(*span, message),
-                        None => diagnostic,
-                    }
-                })
+                .map(move |error| error.to_diagnostic(file))
         })
         .collect()
 }
@@ -727,8 +719,8 @@ mod tests {
         let [d] = frontend.diagnostics.as_slice() else {
             panic!("{:?}", frontend.diagnostics);
         };
-        assert_eq!(d.code(), Code::UnexpectedToken);
-        assert_eq!(d.labels()[0].message(), "`do` block started here");
+        assert_eq!(d.code(), Code::MissingEnd);
+        assert_eq!(d.labels()[0].message(), "block opened here");
         assert_eq!(d.labels()[0].span(), Span::new(6, 8));
     }
 

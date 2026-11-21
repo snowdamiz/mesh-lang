@@ -1,23 +1,24 @@
 //! Catalog examples that the frontend can diagnose.
 
-use std::collections::BTreeSet;
 use std::path::Path;
 
 use mesh_diagnostics::{Code, Family};
 use mesh_pkg::frontend::{check, CheckOptions, Target};
 
 /// The codes the frontend reports for `source` as a lone file, as `meshc
-/// check main.mpl` checks it.
-fn codes(source: &str) -> BTreeSet<&'static str> {
+/// check main.mpl` checks it, sorted, one per diagnostic.
+fn codes(source: &str) -> Vec<&'static str> {
     let target = Target::Source {
         path: Path::new("main.mpl"),
         text: source,
     };
-    check(target, &CheckOptions::cli())
+    let mut codes: Vec<_> = check(target, &CheckOptions::cli())
         .diagnostics
         .iter()
         .map(|diagnostic| diagnostic.code().id())
-        .collect()
+        .collect();
+    codes.sort();
+    codes
 }
 
 #[test]
@@ -30,7 +31,7 @@ fn catalog_examples_get_exactly_their_code() {
             continue;
         };
         let bad = codes(example.bad);
-        if bad != BTreeSet::from([code.id()]) {
+        if bad != [code.id()] {
             failures.push(format!("{}: the bad example gets {bad:?}", code.id()));
         }
         let fixed = codes(example.fixed);

@@ -6,6 +6,7 @@
 
 use crate::syntax_kind::SyntaxKind;
 use mesh_common::span::Span;
+use mesh_diagnostics::Code;
 
 use super::expressions::{parse_fn_clause_param_list, parse_param_list};
 use super::{MarkOpened, Parser};
@@ -131,10 +132,12 @@ fn parse_cluster_decorator_decl(p: &mut Parser) -> FnDeclPrefixState {
         }
 
         if !p.eat(SyntaxKind::R_PAREN) {
+            let found = p.found();
             p.error_with_related(
-                "expected `)` to close `@cluster(...)`",
+                Code::UnclosedDelimiter,
+                &format!("expected `)` to close `@cluster(...)`, found {found}"),
                 start_span,
-                "`@cluster(` started here",
+                "opened here",
             );
             valid = false;
         }
@@ -226,10 +229,12 @@ fn parse_abi_symbol_decorator_decl(
 
     // A missing `)` after a malformed argument is already reported.
     if !p.eat(SyntaxKind::R_PAREN) && valid {
+        let found = p.found();
         p.error_with_related(
-            &format!("expected `)` to close `@{decorator}(...)`"),
+            Code::UnclosedDelimiter,
+            &format!("expected `)` to close `@{decorator}(...)`, found {found}"),
             start_span,
-            &format!("`@{decorator}(` started here"),
+            "opened here",
         );
         valid = false;
     }
@@ -291,6 +296,7 @@ fn reject_removed_clustered_work_decl(p: &mut Parser) -> FnDeclPrefixState {
     }
 
     p.error_with_related(
+        Code::UnexpectedToken,
         "`clustered(work)` declarations are not supported; use `@cluster` or `@cluster(N)` before `fn`/`def`",
         start_span,
         "unsupported clustered declaration started here",
@@ -414,15 +420,7 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
 
         super::expressions::parse_block_body(p);
 
-        if !p.at(SyntaxKind::END_KW) {
-            p.error_with_related(
-                "expected `end` to close function body",
-                do_span,
-                "`do` block started here",
-            );
-        } else {
-            p.advance(); // END_KW
-        }
+        p.expect_end("function body", do_span);
     } else {
         p.error("expected `=` or `do` for function body");
     }
@@ -462,15 +460,7 @@ pub(crate) fn parse_module_def(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close module body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("module body", do_span);
 
     p.close(m, SyntaxKind::MODULE_DEF);
 }
@@ -678,15 +668,7 @@ fn parse_struct_def_tail(p: &mut Parser, m: MarkOpened) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close struct body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("struct body", do_span);
 
     // Optional deriving clause: end deriving(Trait1, Trait2, ...)
     if p.at(SyntaxKind::IDENT) && p.current_text() == "deriving" {
@@ -1045,15 +1027,7 @@ pub(crate) fn parse_interface_def(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close interface body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("interface body", do_span);
 
     p.close(m, SyntaxKind::INTERFACE_DEF);
 }
@@ -1104,15 +1078,7 @@ fn parse_interface_method(p: &mut Parser) {
 
         super::expressions::parse_block_body(p);
 
-        if !p.at(SyntaxKind::END_KW) {
-            p.error_with_related(
-                "expected `end` to close default method body",
-                do_span,
-                "`do` block started here",
-            );
-        } else {
-            p.advance(); // END_KW
-        }
+        p.expect_end("default method body", do_span);
     }
 
     p.close(m, SyntaxKind::INTERFACE_METHOD);
@@ -1232,15 +1198,7 @@ pub(crate) fn parse_impl_def(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close impl body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("impl body", do_span);
 
     p.close(m, SyntaxKind::IMPL_DEF);
 }
@@ -1377,15 +1335,7 @@ pub(crate) fn parse_sum_type_def(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close sum type body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("sum type body", do_span);
 
     // Optional deriving clause: end deriving(Trait1, Trait2, ...)
     if p.at(SyntaxKind::IDENT) && p.current_text() == "deriving" {
@@ -1589,15 +1539,7 @@ pub(crate) fn parse_actor_def(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close actor body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("actor body", do_span);
 
     p.close(m, SyntaxKind::ACTOR_DEF);
 }
@@ -1653,15 +1595,7 @@ fn parse_terminate_clause(p: &mut Parser) {
         super::expressions::parse_block_body(p);
     }
 
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close `terminate` block",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("`terminate` block", do_span);
 
     p.close(m, SyntaxKind::TERMINATE_CLAUSE);
 }
@@ -1704,15 +1638,7 @@ pub(crate) fn parse_supervisor_def(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close supervisor body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("supervisor body", do_span);
 
     p.close(m, SyntaxKind::SUPERVISOR_DEF);
 }
@@ -1841,15 +1767,7 @@ fn parse_child_spec(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close child spec body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("child spec body", do_span);
 
     p.close(m, SyntaxKind::CHILD_SPEC_DEF);
 }
@@ -1957,15 +1875,7 @@ pub(crate) fn parse_service_def(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close service body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("service body", do_span);
 
     p.close(m, SyntaxKind::SERVICE_DEF);
 }
@@ -2068,15 +1978,7 @@ fn parse_call_handler(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close call handler body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("call handler body", do_span);
 
     p.close(m, SyntaxKind::CALL_HANDLER);
 }
@@ -2135,15 +2037,7 @@ fn parse_cast_handler(p: &mut Parser) {
     }
 
     // Expect `end`.
-    if !p.at(SyntaxKind::END_KW) {
-        p.error_with_related(
-            "expected `end` to close cast handler body",
-            do_span,
-            "`do` block started here",
-        );
-    } else {
-        p.advance(); // END_KW
-    }
+    p.expect_end("cast handler body", do_span);
 
     p.close(m, SyntaxKind::CAST_HANDLER);
 }

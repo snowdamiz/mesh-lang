@@ -11,6 +11,7 @@
 
 use mesh_common::span::Span;
 use mesh_common::token::{Token, TokenKind};
+use mesh_diagnostics::Code;
 use mesh_lexer::Lexer;
 
 use crate::ParseError;
@@ -219,6 +220,7 @@ impl<'src> Parser<'src> {
     fn new(source: &'src str) -> Result<Self, ParseError> {
         if u32::try_from(source.len()).is_err() {
             return Err(ParseError::new(
+                Code::UnexpectedToken,
                 "logic file exceeds the source size limit",
                 Span::new(0, 0),
             ));
@@ -274,7 +276,7 @@ impl<'src> Parser<'src> {
     }
 
     fn error(&self, message: impl Into<String>) -> ParseError {
-        ParseError::new(message, self.current.span)
+        ParseError::new(Code::UnexpectedToken, message, self.current.span)
     }
 
     fn expect(&mut self, kind: TokenKind, spelling: &str) -> Result<(), ParseError> {
@@ -910,7 +912,11 @@ impl<'src> Parser<'src> {
             }
             "left" => Ok(Proof::Left(self.proof_block(child)?)),
             "right" => Ok(Proof::Right(self.proof_block(child)?)),
-            _ => Err(ParseError::new("expected a logic proof term", span)),
+            _ => Err(ParseError::new(
+                Code::UnexpectedToken,
+                "expected a logic proof term",
+                span,
+            )),
         }
     }
 

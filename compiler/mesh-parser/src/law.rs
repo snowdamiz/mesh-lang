@@ -56,7 +56,7 @@ pub enum ProofTerm {
 
 /// Parse target imports, result laws, and separately declared proofs.
 pub fn parse(source: &str) -> Result<LawFile, ParseError> {
-    let mut parser = Parser::new(mesh_lexer::Lexer::tokenize(source), source);
+    let mut parser = Parser::new(source);
     let root = parser.open();
     let mut imports = Vec::new();
     let mut laws = Vec::new();
@@ -100,10 +100,13 @@ pub fn parse(source: &str) -> Result<LawFile, ParseError> {
                 &source[span.start as usize + "law".len()..span.end as usize]
             ));
             if let Some(error) = expected.errors().first() {
-                return Err(ParseError::new(
-                    &error.message,
-                    Span::new(span.start + error.span.start, span.start + error.span.end),
-                ));
+                let shift = |at: Span| Span::new(span.start + at.start, span.start + at.end);
+                let mut error = error.clone();
+                error.span = shift(error.span);
+                if let Some((_, related)) = &mut error.related {
+                    *related = shift(*related);
+                }
+                return Err(error);
             }
             Ok(LawDeclaration {
                 name,

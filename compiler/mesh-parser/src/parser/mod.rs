@@ -31,6 +31,8 @@ pub(crate) mod patterns;
 
 use mesh_common::span::Span;
 use mesh_common::token::{Token, TokenKind};
+use mesh_diagnostics::Code;
+use mesh_lexer::{LexErrorKind, Lexer};
 
 use crate::error::ParseError;
 use crate::syntax_kind::SyntaxKind;
@@ -77,8 +79,7 @@ pub(crate) struct MarkClosed {
 /// # Usage
 ///
 /// ```text
-/// let tokens = mesh_lexer::Lexer::tokenize(source);
-/// let mut parser = Parser::new(tokens, source);
+/// let mut parser = Parser::new(source);
 /// // ... call parse methods ...
 /// let (green, errors) = parser.build_tree();
 /// ```
@@ -91,41 +92,45 @@ pub(crate) struct Parser<'src> {
     events: Vec<Event>,
     /// Original source text (for extracting token text via spans).
     source: &'src str,
-    /// Parenthesis nesting depth for newline significance.
-    paren_depth: u32,
-    /// Bracket nesting depth for newline significance.
-    bracket_depth: u32,
-    /// Brace nesting depth for newline significance.
-    brace_depth: u32,
+    /// The `(`, `[`, and `{` consumed and not yet closed, innermost last: the
+    /// token that closes each, and where it was opened. Inside any of them
+    /// newlines are insignificant.
+    open_delimiters: Vec<(SyntaxKind, Span)>,
+    /// Why the lexer rejected each `Error` token, by token index.
+    lex_errors: Vec<(usize, LexErrorKind)>,
     /// Collected parse errors.
     errors: Vec<ParseError>,
-    /// Whether an error has been encountered (first-error-only strategy).
+    /// Whether an error has been encountered: only the first is reported,
+    /// as every later one may be a consequence of it.
     has_error: bool,
     /// When true, the Pratt postfix loop will NOT treat `DO_KW` after a call
     /// as a trailing closure. Set by control-flow parsers (`if`, `while`,
     /// `case`, `for`) around their condition/scrutinee/iterable expression
     /// so that `if fn_call() do ... end` parses `do` as the block opener.
     suppress_trailing_closure: bool,
-    /// Set once a string is left open: it runs to the end of the file, so
-    /// every later error would only be a consequence of it.
-    input_swallowed: bool,
 }
 
 impl<'src> Parser<'src> {
-    /// Create a new parser from a token stream and source text.
-    pub(crate) fn new(tokens: Vec<Token>, source: &'src str) -> Self {
+    /// Lex `source` and start parsing at its first token.
+    pub(crate) fn new(source: &'src str) -> Self {
+        let (tokens, lex_errors) = Lexer::tokenize_with_errors(source);
+        let lex_errors = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| token.kind == TokenKind::Error)
+            .map(|(index, _)| index)
+            .zip(lex_errors.into_iter().map(|error| error.kind))
+            .collect();
         Self {
             tokens,
             pos: 0,
             events: Vec::new(),
             source,
-            paren_depth: 0,
-            bracket_depth: 0,
-            brace_depth: 0,
+            open_delimiters: Vec::new(),
+            lex_errors,
             errors: Vec::new(),
             has_error: false,
             suppress_trailing_closure: false,
-            input_swallowed: false,
         }
     }
 
@@ -150,14 +155,16 @@ impl<'src> Parser<'src> {
         })
     }
 
-    /// The Nth significant token ahead, skipping trivia and insignificant
-    /// newlines; `None` past the end.
-    fn nth_token(&self, n: usize) -> Option<&Token> {
-        self.tokens
-            .get(self.pos..)?
-            .iter()
-            .filter(|token| !self.should_skip(&token.kind))
+    /// The index of the Nth significant token ahead, skipping trivia and
+    /// insignificant newlines; `None` past the end.
+    fn nth_index(&self, n: usize) -> Option<usize> {
+        (self.pos..self.tokens.len())
+            .filter(|&index| !self.should_skip(&self.tokens[index].kind))
             .nth(n)
+    }
+
+    fn nth_token(&self, n: usize) -> Option<&Token> {
+        self.nth_index(n).map(|index| &self.tokens[index])
     }
 
     /// The name the last token before the current one that is not a comment
@@ -288,7 +295,7 @@ impl<'src> Parser<'src> {
 
         // Emit Advance for the significant token.
         if self.pos < self.tokens.len() {
-            self.update_delimiter_depth(&self.tokens[self.pos].kind.clone());
+            track_delimiter(&mut self.open_delimiters, &self.tokens[self.pos]);
             self.events.push(Event::Advance);
             self.pos += 1;
         }
@@ -296,13 +303,92 @@ impl<'src> Parser<'src> {
 
     /// If the current token matches `kind`, consume it and return true.
     /// Otherwise, emit an error and return false. Sets the error flag.
+    ///
+    /// A missing `)`, `]`, or `}` is reported as the delimiter left open.
     pub(crate) fn expect(&mut self, kind: SyntaxKind) -> bool {
-        if self.at(kind) {
-            self.advance();
-            true
-        } else {
-            self.error(&format!("expected {}", kind.describe()));
-            false
+        if self.eat(kind) {
+            return true;
+        }
+        let opened = self
+            .open_delimiters
+            .iter()
+            .rev()
+            .find(|(closer, _)| *closer == kind)
+            .map(|&(_, opened)| opened);
+        match opened {
+            Some(opened) => self.unclosed(kind, opened),
+            None => {
+                let expected = kind.describe();
+                let found = self.found();
+                let repair = match self.current() {
+                    SyntaxKind::EOF => format!("Write {expected} before the end of the file."),
+                    SyntaxKind::NEWLINE => format!("Write {expected} before the end of the line."),
+                    _ => format!("Write {expected} before {found}, or in place of it."),
+                };
+                self.report_here(
+                    ParseError::new(
+                        Code::ExpectedToken,
+                        format!("expected {expected}, found {found}"),
+                        self.current_span(),
+                    )
+                    .with_repair(repair),
+                );
+            }
+        }
+        false
+    }
+
+    /// Report that `closer` (`)`, `]`, `}`, or the end of an interpolation)
+    /// is missing here to close the delimiter opened at `opened`.
+    pub(crate) fn unclosed(&mut self, closer: SyntaxKind, opened: Span) {
+        let opener = match closer {
+            SyntaxKind::INTERPOLATION_END => "the interpolation".to_string(),
+            _ => format!(
+                "`{}`",
+                &self.source[opened.start as usize..opened.end as usize]
+            ),
+        };
+        let closer = match closer {
+            SyntaxKind::R_PAREN => "`)`",
+            SyntaxKind::R_BRACKET => "`]`",
+            _ => "`}`",
+        };
+        let found = self.found();
+        self.report_here(
+            ParseError::new(
+                Code::UnclosedDelimiter,
+                format!("expected {closer} to close {opener}, found {found}"),
+                self.current_span(),
+            )
+            .with_related("opened here", opened),
+        );
+    }
+
+    /// Consume the `end` that closes `what` (such as "function body"), the
+    /// block opened at `opened`.
+    pub(crate) fn expect_end(&mut self, what: &str, opened: Span) -> bool {
+        if self.eat(SyntaxKind::END_KW) {
+            return true;
+        }
+        let found = self.found();
+        self.error_with_related(
+            Code::MissingEnd,
+            &format!("expected `end` to close {what}, found {found}"),
+            opened,
+            "block opened here",
+        );
+        false
+    }
+
+    /// The current token as a message names it: its text when it is a name
+    /// or a literal.
+    pub(crate) fn found(&self) -> String {
+        match self.current() {
+            SyntaxKind::IDENT
+            | SyntaxKind::INT_LITERAL
+            | SyntaxKind::FLOAT_LITERAL
+            | SyntaxKind::ATOM_LITERAL => format!("`{}`", self.current_text()),
+            kind => kind.describe(),
         }
     }
 
@@ -382,50 +468,74 @@ impl<'src> Parser<'src> {
 
     // ── Error reporting ────────────────────────────────────────────────
 
-    /// Record a parse error at the current position. Sets the error flag.
+    /// Record an unexpected-token error at the current token. Sets the
+    /// error flag.
     pub(crate) fn error(&mut self, message: &str) {
-        let span = self.current_span();
-        self.error_at(message, span);
+        self.report_here(ParseError::new(
+            Code::UnexpectedToken,
+            message,
+            self.current_span(),
+        ));
     }
 
-    /// Record a parse error at `span` instead of the current token.
-    pub(crate) fn error_at(&mut self, message: &str, span: Span) {
-        if !self.input_swallowed {
-            self.errors.push(ParseError::new(message, span));
+    /// Record `error`, found at the current token. Where the lexer rejected
+    /// that token, the lexer's error says what is wrong instead.
+    pub(crate) fn report_here(&mut self, error: ParseError) {
+        let lex_error = self.nth_index(0).and_then(|index| self.lex_error(index));
+        self.report(lex_error.unwrap_or(error));
+    }
+
+    /// Record `error` at its own span, unless an error came first. Sets the
+    /// error flag.
+    pub(crate) fn report(&mut self, error: ParseError) {
+        if !self.has_error {
+            self.errors.push(error);
         }
         self.has_error = true;
+    }
+
+    /// Why the lexer rejected the current token, when it did.
+    pub(crate) fn current_lex_kind(&self) -> Option<LexErrorKind> {
+        self.nth_index(0).and_then(|index| self.lex_kind(index))
+    }
+
+    fn lex_kind(&self, index: usize) -> Option<LexErrorKind> {
+        self.lex_errors
+            .iter()
+            .find(|&&(at, _)| at == index)
+            .map(|&(_, kind)| kind)
+    }
+
+    /// The lexer's error for the token at `index`, when it rejected it.
+    fn lex_error(&self, index: usize) -> Option<ParseError> {
+        let kind = self.lex_kind(index)?;
+        let span = self.tokens[index].span;
+        let text = &self.source[span.start as usize..span.end as usize];
+        Some(ParseError::new(kind.code(), kind.message(text), span))
     }
 
     /// Record an error in a token's text (an unknown escape) at `span`: the
     /// syntax around it is sound, so parsing goes on as if there were none.
     pub(crate) fn token_error_at(&mut self, message: &str, span: Span) {
-        if !self.input_swallowed {
-            self.errors.push(ParseError::new(message, span));
+        if !self.has_error {
+            self.errors
+                .push(ParseError::new(Code::UnexpectedToken, message, span));
         }
     }
 
-    /// An unclosed string ran to the end of the file: report nothing more.
-    pub(crate) fn input_swallowed(&mut self) {
-        self.input_swallowed = true;
-    }
-
-    /// Record a parse error with a related span for additional context.
+    /// Record an error at the current token with a related span for
+    /// additional context.
     pub(crate) fn error_with_related(
         &mut self,
+        code: Code,
         message: &str,
         related_span: Span,
         related_msg: &str,
     ) {
-        let span = self.current_span();
-        if !self.input_swallowed {
-            self.errors.push(ParseError::with_related(
-                message,
-                span,
-                related_msg,
-                related_span,
-            ));
-        }
-        self.has_error = true;
+        self.report_here(
+            ParseError::new(code, message, self.current_span())
+                .with_related(related_msg, related_span),
+        );
     }
 
     /// Whether the parser has encountered an error.
@@ -445,7 +555,7 @@ impl<'src> Parser<'src> {
 
     /// Whether newlines are currently insignificant (inside delimiters).
     pub(crate) fn is_newline_insignificant(&self) -> bool {
-        self.paren_depth > 0 || self.bracket_depth > 0 || self.brace_depth > 0
+        !self.open_delimiters.is_empty()
     }
 
     /// Whether a token should be skipped by lookahead methods.
@@ -506,19 +616,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    /// Update delimiter depth when consuming a delimiter token.
-    fn update_delimiter_depth(&mut self, kind: &TokenKind) {
-        match kind {
-            TokenKind::LParen => self.paren_depth += 1,
-            TokenKind::RParen => self.paren_depth = self.paren_depth.saturating_sub(1),
-            TokenKind::LBracket => self.bracket_depth += 1,
-            TokenKind::RBracket => self.bracket_depth = self.bracket_depth.saturating_sub(1),
-            TokenKind::LBrace => self.brace_depth += 1,
-            TokenKind::RBrace => self.brace_depth = self.brace_depth.saturating_sub(1),
-            _ => {}
-        }
-    }
-
     // ── Tree building ──────────────────────────────────────────────────
 
     /// Convert collected events into a rowan `GreenNode` and errors.
@@ -533,6 +630,13 @@ impl<'src> Parser<'src> {
     /// (outermost wrapper first). The wrapper Open events are then marked as
     /// TOMBSTONE so they are skipped when encountered later.
     pub(crate) fn build_tree(mut self) -> (rowan::GreenNode, Vec<ParseError>) {
+        // A token the lexer rejected is an error also where the grammar
+        // passes tokens over unread, as in a `logic` block.
+        if let Some(&(index, _)) = self.lex_errors.first() {
+            if let Some(error) = self.lex_error(index) {
+                self.report(error);
+            }
+        }
         let mut builder = rowan::GreenNodeBuilder::new();
         let mut token_pos: usize = 0;
         // End of the last token placed in the tree. The lexer drops spaces
@@ -640,12 +744,27 @@ impl<'src> Parser<'src> {
             i += 1;
         }
 
-        // Recovery after an error can trip over the same token again; the
-        // first error at a position is the one that says what is wrong.
-        let mut errors = self.errors;
-        errors.dedup_by_key(|error| error.span.start);
-        (builder.finish(), errors)
+        (builder.finish(), self.errors)
     }
+}
+
+/// Open or close a delimiter in `open` as its token is consumed. A closer
+/// with no delimiter of its kind open closes nothing.
+fn track_delimiter(open: &mut Vec<(SyntaxKind, Span)>, token: &Token) {
+    let closer = match token.kind {
+        TokenKind::LParen => SyntaxKind::R_PAREN,
+        TokenKind::LBracket => SyntaxKind::R_BRACKET,
+        TokenKind::LBrace => SyntaxKind::R_BRACE,
+        TokenKind::RParen | TokenKind::RBracket | TokenKind::RBrace => {
+            let closer = SyntaxKind::from(token.kind.clone());
+            if let Some(index) = open.iter().rposition(|&(open, _)| open == closer) {
+                open.remove(index);
+            }
+            return;
+        }
+        _ => return,
+    };
+    open.push((closer, token.span));
 }
 
 /// Place the source text between the last emitted token and the token at
@@ -739,11 +858,7 @@ fn parse_logic_block(p: &mut Parser) {
         }
     }
 
-    p.error_with_related(
-        "expected `end` to close logic block",
-        do_span,
-        "`do` block started here",
-    );
+    p.expect_end("logic block", do_span);
     p.close(block, SyntaxKind::ERROR_NODE);
 }
 
@@ -889,7 +1004,6 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
 mod tests {
     use super::*;
     use crate::AstNode;
-    use mesh_lexer::Lexer;
 
     #[test]
     fn logic_blocks_keep_the_opaque_body_and_byte_offsets() {
@@ -931,7 +1045,11 @@ mod tests {
         let [error] = parsed.errors() else {
             panic!("expected a single error");
         };
-        assert_eq!(error.message, "expected `end` to close logic block");
+        assert_eq!(error.code, Code::MissingEnd);
+        assert_eq!(
+            error.message,
+            "expected `end` to close logic block, found the end of the file"
+        );
         assert_eq!(
             error.span,
             Span::new(source.len() as u32, source.len() as u32)
@@ -942,8 +1060,7 @@ mod tests {
     #[test]
     fn smoke_test_parser_produces_green_node() {
         let source = "let x = 5";
-        let tokens = Lexer::tokenize(source);
-        let mut parser = Parser::new(tokens, source);
+        let mut parser = Parser::new(source);
 
         // Open a SOURCE_FILE node.
         let root = parser.open();
@@ -985,8 +1102,7 @@ mod tests {
     fn parser_newline_significance_inside_parens() {
         // Inside parentheses, newlines should be invisible to current()/nth().
         let source = "(\n42\n)";
-        let tokens = Lexer::tokenize(source);
-        let mut parser = Parser::new(tokens, source);
+        let mut parser = Parser::new(source);
 
         // Before consuming '(', newlines are significant.
         assert_eq!(parser.current(), SyntaxKind::L_PAREN);
@@ -1018,8 +1134,7 @@ mod tests {
     fn parser_newline_significant_at_top_level() {
         // At top level (no delimiters), newlines are significant.
         let source = "x\ny";
-        let tokens = Lexer::tokenize(source);
-        let parser = Parser::new(tokens, source);
+        let parser = Parser::new(source);
 
         // First token is IDENT.
         assert_eq!(parser.current(), SyntaxKind::IDENT);
@@ -1035,8 +1150,7 @@ mod tests {
     fn parser_comments_are_trivia() {
         // Comments should be invisible to current()/nth().
         let source = "x # this is a comment\ny";
-        let tokens = Lexer::tokenize(source);
-        let parser = Parser::new(tokens, source);
+        let parser = Parser::new(source);
 
         assert_eq!(parser.current(), SyntaxKind::IDENT);
         // nth(1) should skip the comment and see NEWLINE.
@@ -1048,8 +1162,7 @@ mod tests {
     #[test]
     fn parser_expect_success_and_failure() {
         let source = "let x";
-        let tokens = Lexer::tokenize(source);
-        let mut parser = Parser::new(tokens, source);
+        let mut parser = Parser::new(source);
 
         let root = parser.open();
 
@@ -1073,8 +1186,7 @@ mod tests {
     #[test]
     fn parser_eat_consumes_on_match() {
         let source = "let x";
-        let tokens = Lexer::tokenize(source);
-        let mut parser = Parser::new(tokens, source);
+        let mut parser = Parser::new(source);
 
         // eat LET_KW should succeed.
         assert!(parser.eat(SyntaxKind::LET_KW));
@@ -1088,8 +1200,7 @@ mod tests {
     fn parser_open_before_wraps_completed_node() {
         // Demonstrate wrapping: parse an ident, then wrap it in a call_expr.
         let source = "f(42)";
-        let tokens = Lexer::tokenize(source);
-        let mut parser = Parser::new(tokens, source);
+        let mut parser = Parser::new(source);
 
         let root = parser.open();
 
@@ -1125,8 +1236,7 @@ mod tests {
     #[test]
     fn parser_current_text_returns_token_text() {
         let source = "hello 42";
-        let tokens = Lexer::tokenize(source);
-        let parser = Parser::new(tokens, source);
+        let parser = Parser::new(source);
 
         assert_eq!(parser.current_text(), "hello");
     }
@@ -1134,8 +1244,7 @@ mod tests {
     #[test]
     fn parser_eat_newlines_consumes_significant_newlines() {
         let source = "x\n\ny";
-        let tokens = Lexer::tokenize(source);
-        let mut parser = Parser::new(tokens, source);
+        let mut parser = Parser::new(source);
 
         parser.advance(); // x
         parser.eat_newlines(); // consume both newlines
@@ -1147,31 +1256,44 @@ mod tests {
     #[test]
     fn parser_delimiter_depth_tracking() {
         let source = "([{x}])";
-        let tokens = Lexer::tokenize(source);
-        let mut parser = Parser::new(tokens, source);
+        let mut parser = Parser::new(source);
+        let closers = |parser: &Parser| -> Vec<SyntaxKind> {
+            parser
+                .open_delimiters
+                .iter()
+                .map(|&(closer, _)| closer)
+                .collect()
+        };
 
         let root = parser.open();
 
-        assert_eq!(parser.paren_depth, 0);
+        assert_eq!(closers(&parser), []);
         parser.advance(); // (
-        assert_eq!(parser.paren_depth, 1);
+        assert_eq!(closers(&parser), [SyntaxKind::R_PAREN]);
+        assert_eq!(parser.open_delimiters[0].1, Span::new(0, 1));
 
         parser.advance(); // [
-        assert_eq!(parser.bracket_depth, 1);
-
         parser.advance(); // {
-        assert_eq!(parser.brace_depth, 1);
+        assert_eq!(
+            closers(&parser),
+            [
+                SyntaxKind::R_PAREN,
+                SyntaxKind::R_BRACKET,
+                SyntaxKind::R_BRACE
+            ]
+        );
 
         parser.advance(); // x
 
         parser.advance(); // }
-        assert_eq!(parser.brace_depth, 0);
+        assert_eq!(
+            closers(&parser),
+            [SyntaxKind::R_PAREN, SyntaxKind::R_BRACKET]
+        );
 
         parser.advance(); // ]
-        assert_eq!(parser.bracket_depth, 0);
-
         parser.advance(); // )
-        assert_eq!(parser.paren_depth, 0);
+        assert_eq!(closers(&parser), []);
 
         parser.advance(); // Eof
         parser.close(root, SyntaxKind::SOURCE_FILE);
