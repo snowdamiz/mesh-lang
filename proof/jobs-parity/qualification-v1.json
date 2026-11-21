@@ -4547,6 +4547,53 @@
     },
     "scope": "Local virtual guest, pinned release fixtures and frozen short inputs. Alternate both engines and retain per-trial database, CPU, and sampled resource evidence. The dedicated-machine full matrix remains open."
   },
+  "linux_short_16_wake_diagnostics": {
+    "run": "target/jobs-parity/linux-arm-ownership-guest/ubuntu-guest-inputs/short-16-wakes/wakes.UwDAjPlc",
+    "summary_sha256": "d0613b885c7fdff274af5df7804f6aea2ed834c01e5dbd727888332fb6a5ebd9",
+    "workload": "short-1r-16s",
+    "guest": "Linux 6.12.115-0-virt aarch64, Ubuntu Base 26.04.1 userspace, two vCPUs and 1 GiB RAM",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "measured_pairs_per_run": 5,
+    "measured_jobs_per_arm": 640,
+    "serial_receipts_sha256": {
+      "pidfd.serial": "be3b631afc6e80632ad066cec48ce69756add84397b8a6529299f2d030d0e73b",
+      "aa.serial": "2b290a4f7a5a9c0c656f0f4cc0b08593e2d1fc1da1dd1ca828c534aa7db5bf36",
+      "listen.serial": "7e248a13aece661860cba4420617b5af85c1cf631106b4a1e697c528001462f8"
+    },
+    "pidfd_experiment": {
+      "runtime_commit": "6f4ee72c5ccda82a495015b6bfc45585dd6230e0",
+      "fixture_sha256": "aa53e3ce7e60f2cb32022123508fde876147a1ad6e68141c1cb3decaba1c1769",
+      "jobs_per_second": {"disabled_median": 226.952, "enabled_median": 225.849, "wins": 2},
+      "paired_jobs_per_second_delta_median": -7.597,
+      "identical_policy_delta_range": [-37.720, 38.629],
+      "effect_commit_to_settlement_ms": {"disabled_median": 11.402, "enabled_median": 10.005}
+    },
+    "listen_experiment": {
+      "runtime_commit": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+      "fixture_sha256": "a802f91c0e04af70d8f773574f6c946c68d4222d81d229dca521fb709a1c8449",
+      "jobs_per_second": {"disabled_median": 123.235, "enabled_median": 184.740, "wins": 5},
+      "commit_to_first_claim_ms": {"disabled_median": 177.788, "enabled_median": 4.207},
+      "paired_first_claim_savings_range_ms": [100.453, 235.095],
+      "first_claim_to_last_settlement_pairs_improved": 2
+    },
+    "listen_vs_oban": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-short-16-listen.svBWWjJi-proof/evidence",
+      "serial_sha256": "eac4d15fe1ad86d1b8d6c2c31bbcdf328c42e824931dcec1aa6aa9fdc0ab358a",
+      "receipts_sha256": {
+        "summary.json": "c8c8ce3271e1e7453964d72c8535e64907340ada600f556dd4534cfd37e7e091",
+        "gates.json": "39048198014e232b036d5eb0150417a4e7668af34c4655acff1c662a1720e487",
+        "trials.json": "80af619754a58752b73ac924eed4e609fe541ca33a35edfe1ad87384e932f1f4",
+        "comparison.json": "d45f575fc773aefe6bcd2456216b615cb292496ab5ffb42d4a00d8b05569233a"
+      },
+      "median_jobs_per_second": {"mesh": 228.113, "oban": 546.544},
+      "median_pickup_p99_ms": {"mesh": 531.103, "oban": 229.833},
+      "median_commit_to_first_claim_ms": {"mesh": 2.868, "oban": 125.131},
+      "median_first_claim_to_last_settlement_ms": {"mesh": 558.258, "oban": 138.187},
+      "host_load_before_and_after_on_15_logical_cpus": [32.59, 22.10],
+      "budget_breaches": ["throughput", "pickup"]
+    },
+    "scope": "Local fixture diagnostics. Pidfd wake compares one binary with its private toggle. The stock listener comparison enables committed producer publication and the runner listener together. The matched Oban run uses the stock Mesh socket default and its existing listener opt-in."
+  },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "host": "Darwin arm64",

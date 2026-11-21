@@ -1587,6 +1587,36 @@ for Oban. These intervals locate the remaining delay across dispatch,
 the handler's database write path, and settlement.
 [16-slot Linux receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Separate first pickup from backlog drain on Linux
+
+The two-vCPU Linux guest ran the frozen `short-1r-16s` workload with
+PostgreSQL 17.11 over verified TLS and SCRAM. Each of three runs used
+five alternating pairs after warmup and reconciled 640 jobs per arm.
+The Linux socket setting was enabled in every arm.
+
+The pidfd follow-up at `6f4ee72c` measured 226.95 jobs/s with the wake
+disabled and 225.85 enabled. The enabled arm won two pairs. The
+identical-policy control varied from −37.72 to +38.63 jobs/s, and the
+pidfd median paired change was −7.60 jobs/s. Effect commit to settlement
+fell from 11.40 to 10.01 ms on the arm medians. This result leaves the
+throughput effect inconclusive.
+
+On the stock `b67206f4` binary, enabling `LISTEN` and transactional
+enqueue notifications reduced median time to the first claim from
+177.79 to 4.21 ms. The paired reduction ranged from 100.45 to 235.10 ms.
+Throughput medians were 123.24 and 184.74 jobs/s, with the enabled arm
+faster in each pair. First-claim-to-final-settlement time improved in
+two pairs. [Linux wake diagnostics](../proof/jobs-parity/qualification-v1.json)
+
+In a separate matched run with notifications enabled, Mesh reached
+228.11 jobs/s against Oban's 546.54 and missed the relative pickup limit.
+Mesh took a median 2.87 ms to make its first claim and 558.26 ms to drain
+the backlog. Oban took 125.13 and 138.19 ms respectively. The Mac's
+one-minute load was 32.59 before and 22.10 after the run. These receipts
+support the opt-in wake path for first pickup and leave backlog drain
+as the dominant gap on this profile.
+[Notification comparison](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64
