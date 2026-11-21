@@ -2529,6 +2529,15 @@ launch boundaries will identify which part of the batch cycle can
 be shortened.
 [No-op comparison receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare the one-slot no-op profile
+
+The `c271319e` release fixture reconciled all 3,840 measured
+jobs in five matched groups. The Mesh controls reached 135
+and 117 jobs/s versus 83 for Oban. Both won every group and
+passed all scored gates, including the two-process and
+five-connection workload limits.
+[One-slot no-op receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare the 16-slot no-op profile
 
 Both identical Mesh arms passed the scored gates at `c271319e`.
@@ -2558,6 +2567,23 @@ the first claim in about 3 ms versus 37 ms for Oban and took
 926 to 987 ms from first claim to final settlement on the two
 arm medians, versus 382 ms for Oban.
 [Eight-runner no-op receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Screen a bounded queue wait under eight-runner contention
+
+The disposable `c271319e` comparison changed only queue-row
+admission in the candidate database. It allowed up to 4 ms for
+that row lock while keeping the namespace guard, live capacity
+check, and job-row skip. The native proof passed lock handoff,
+timeout and setting restoration, live cap, pause, namespace
+fence, cutoff, and isolation cases.
+
+The wait arm reached 1,025 and 993 jobs/s versus 822 and 856
+for its same-guest Mesh controls. Claim calls per job fell from
+0.402 and 0.378 to 0.300 and 0.304. It fell short of the
+contemporaneous Oban rate in both groups. All 6,144 measured
+jobs reconciled. The two-group result supports a wider local
+comparison with an identical Mesh repeat.
+[Queue wait screen and lock proof](../proof/jobs-parity/qualification-v1.json)
 
 ### Compare the 16-slot slow profile
 
