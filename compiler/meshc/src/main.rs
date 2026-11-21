@@ -8,6 +8,7 @@
 //! - `meshc deps [dir]` - Resolve and fetch dependencies
 //! - `meshc update` - Refresh installed `meshc` and `meshpkg` through the canonical installer path
 //! - `meshc guide [topic]` - Read the guide embedded in this compiler
+//! - `meshc explain [CODE] [--json]` - Look up a diagnostic or list the catalog
 //! - `meshc skills setup` - Install this compiler's Mesh skill for coding tools
 //! - `meshc fmt <path>` - Format Mesh source files in-place
 //! - `meshc lint [path]` - Report code that compiles but should be written differently
@@ -36,6 +37,7 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod cluster;
+mod explain;
 mod guide;
 mod library_bindings;
 mod migrate;
@@ -79,6 +81,15 @@ enum Commands {
     Guide {
         /// Topic name, such as syntax or testing
         topic: Option<String>,
+    },
+    /// Look up a diagnostic or list the catalog
+    Explain {
+        /// Diagnostic code or name
+        code: Option<String>,
+
+        /// Output the catalog or entry as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Manage the Mesh skill for coding tools
     Skills {
@@ -442,6 +453,9 @@ fn run() {
         Commands::Deps { dir } => or_exit(deps_command(&dir)),
         Commands::Update => or_exit(run_update_command()),
         Commands::Guide { topic } => or_exit(guide::show(topic.as_deref())),
+        Commands::Explain { code, json } => {
+            print!("{}", or_exit(explain::render(code.as_deref(), json)))
+        }
         Commands::Skills { action } => or_exit(skills::run(action)),
         Commands::Verify {
             dir,

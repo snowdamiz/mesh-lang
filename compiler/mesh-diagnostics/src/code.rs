@@ -1,10 +1,20 @@
 use crate::catalog::{CATALOG, RETIRED};
 use crate::Code;
+use serde::Serialize;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Severity {
     Error,
     Warning,
+}
+
+impl Severity {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warning => "warning",
+        }
+    }
 }
 
 /// The family a code's prefix names; JSON calls it `category`.
@@ -23,7 +33,26 @@ pub enum Family {
     Uncategorized,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+impl Family {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Syntax => "syntax",
+            Self::Semantic => "semantic",
+            Self::Lint => "lint",
+            Self::Project => "project",
+            Self::Verify => "verify",
+            Self::Build => "build",
+            Self::Runtime => "runtime",
+            Self::Test => "test",
+            Self::Cli => "cli",
+            Self::Internal => "internal",
+            Self::Uncategorized => "uncategorized",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Status {
     Active,
     /// Kept only while callers migrate off it; deleted once none remain.
@@ -31,7 +60,7 @@ pub enum Status {
 }
 
 /// A minimal program that gets the code, and the same program repaired.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize)]
 pub struct Example {
     pub bad: &'static str,
     pub fixed: &'static str,

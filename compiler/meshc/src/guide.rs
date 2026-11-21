@@ -46,3 +46,33 @@ pub(crate) fn show(topic: Option<&str>) -> Result<(), String> {
     );
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use mesh_diagnostics::{docs, Code};
+
+    use super::files;
+
+    #[test]
+    fn embedded_skill_matches_catalog() {
+        let embedded = files()
+            .find(|(path, _)| *path == "references/diagnostics.md")
+            .expect("embed the diagnostic reference")
+            .1;
+        assert_eq!(std::str::from_utf8(embedded).unwrap(), docs::skill_page());
+    }
+
+    #[test]
+    fn every_catalog_topic_is_embedded() {
+        for code in Code::all() {
+            if let Some(topic) = code.info().topic {
+                let reference = format!("references/{topic}.md");
+                assert!(
+                    files().any(|(path, _)| path == reference),
+                    "{} points to a missing guide topic: {topic}",
+                    code.id(),
+                );
+            }
+        }
+    }
+}

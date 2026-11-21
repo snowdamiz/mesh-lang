@@ -827,8 +827,8 @@ catalog! {
         repair: "Remove the arm, or move it before the arm that covers it.",
         topic: "pattern-matching",
         example: (
-            "fn main() do\n  let n = case 1 do\n    _ -> 0\n    1 -> 1\n  end\n  println(\"#{n}\")\nend\n",
-            "fn main() do\n  let n = case 1 do\n    1 -> 1\n    _ -> 0\n  end\n  println(\"#{n}\")\nend\n",
+            "fn main() do\n  let n = case 1 do\n    _ -> 0\n    1 -> 2\n  end\n  println(\"#{n}\")\nend\n",
+            "fn main() do\n  let n = case 1 do\n    1 -> 2\n    _ -> 0\n  end\n  println(\"#{n}\")\nend\n",
         ),
     },
     NonFirstClauseAnnotation = W0002 "non-first-clause-annotation" Warning {

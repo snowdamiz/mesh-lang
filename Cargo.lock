@@ -1795,6 +1795,7 @@ dependencies = [
  "libc",
  "mesh-codegen",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-fmt",
  "mesh-lexer",
  "mesh-lint",

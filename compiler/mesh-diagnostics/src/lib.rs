@@ -14,6 +14,7 @@ mod catalog_macro;
 mod catalog;
 mod code;
 mod diagnostic;
+pub mod docs;
 mod source;
 
 pub use catalog::Code;

@@ -35,12 +35,9 @@ fn main() {
 
     let mut source = String::from("const FILES: &[(&str, &str)] = &[\n");
     for file in files {
-        writeln!(
-            source,
-            "    ({file:?}, include_str!({:?})),",
-            root.join(&file)
-        )
-        .unwrap();
+        let path = root.join(&file);
+        println!("cargo:rerun-if-changed={}", path.display());
+        writeln!(source, "    ({file:?}, include_str!({path:?})),").unwrap();
     }
     source.push_str("];\n");
     let output = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());

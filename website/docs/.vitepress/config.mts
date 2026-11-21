@@ -303,6 +303,7 @@ export default defineConfig({
           text: 'Tooling',
           items: [
             { text: 'Developer Tools', link: '/docs/tooling/' },
+            { text: 'Error Index', link: '/docs/errors/' },
           ],
         },
         {
