@@ -4197,6 +4197,16 @@
       "postgres-19.0.log": "28634cecbc6506c67979d44cb62a2ff6173b140e264274697cf6b27c1049839c"
     },
     "nowait_removed_negative_control_sha256": "3f3eb5f16f888c0cccb10982c82ce512f4fcce9245dd38f589337d90ad89469f",
+    "replacement_lease_replay": {
+      "test_commit": "b3c84fda3a1b6109ce696067b2ab23705116cb60",
+      "logs": "target/jobs-parity/b3c84fda3a1b6109ce696067b2ab23705116cb60/effect-transaction",
+      "passed_sha256": {
+        "postgres-17.11.log": "40b042558b19e83ced1105941864b9d0b3b06d242192885cf662420ebb64ad87",
+        "postgres-18.7.log": "d75be1ecaf4a1bcffdc2fd8b72a6e117448b989c68c3b777ff22f865dec9ce1d",
+        "postgres-19.0.log": "858c4320d08e820f9ccebe4c8f5f789370d23cc0ffd07ef1a88184d83d22928b"
+      },
+      "scope": "A forced expiry after effect commit invalidates the old writer. The replacement attempt retrieves the original receipt with no additional effect insertion."
+    },
     "scope": "Disposable application fixture validates lease admission under a real job-row lock and reconciles commit, rollback, and idempotent replay with one durable effect. Transport, reusable session, and product integration remain open."
   },
   "effect_send_admission_loopback": {

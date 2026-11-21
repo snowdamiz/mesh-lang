@@ -1402,6 +1402,13 @@ lock contention cases. Removing `NOWAIT` caused the contention case to
 reach its statement timeout on PostgreSQL 17.11. The proof covers
 admission under a real job-row lock. Integrating the transport and
 transaction checks into a reusable runner session remains open.
+
+A follow-up on the same three PostgreSQL versions expired the writer's
+lease after its effect committed and recovered the original job. The
+stale token could no longer resolve the operation. The replacement lease
+retrieved the original receipt with the same operation ID. An independent
+session verified that the effect, receipt, and insertion counter stayed
+unchanged.
 [Transaction proof receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
