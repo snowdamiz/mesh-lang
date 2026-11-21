@@ -2916,6 +2916,53 @@ measured dense gap on its own. The next candidate targets concurrent
 admission at the queue capacity boundary.
 [Grouped effect transactions receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare independently lockable queue slots
+
+Two Linux runs measured the persistent PostgreSQL backends of the exact
+grouped-claim release fixture. Both retained the original 32 runner and
+63 effect sessions. The observer read each admitted PID's `schedstat`
+before producer submit and after the first terminal observation, then
+verified its start time and membership. In the grouped-claim arm, the
+runner-role sessions used 0.639 and 1.486 CPU-ms/job. These sessions
+also handle lifecycle and maintenance SQL. The effect sessions used
+0.345 and 0.840 CPU-ms/job. Subtracting all measured runner-role server
+CPU from the joint floor leaves 1.008 and 2.348 CPU-ms/job, above the
+respective same-boot Oban budgets of 0.795 and 1.841. Run rates and host
+load varied substantially. This bounds direct savings within the sampled
+backend role while holding the remaining work fixed.
+
+A separate PostgreSQL 17.11 component replaced the exclusive queue-row
+claim lock with a shared configuration fence and independently lockable
+durable slot rows. Claim and slot ownership commit in the same
+transaction. Settlement and recovery release the slot held by the
+matching token. The disposable schema denies the legacy claim entry
+points.
+
+Native arm64 macOS and Linux proofs covered simultaneous claims, cap
+shrink and expansion, current and stale tokens, oversized contexts,
+disconnect and rollback, unread COMMIT, and lease expiry. The first
+Linux warmup encountered a settlement `NOWAIT` rejection. The paired
+runner then retained the same token and retried lock rejections at the
+pinned 100 ms interval. Both scored series used that retry policy.
+
+| Paired median change per 1,024-job comparison | First series | Reverse series |
+| --- | ---: | ---: |
+| Claim calls | -195 | -142 |
+| PostgreSQL CPU-ms/job | -0.136 | +0.024 |
+| PostgreSQL and client CPU-ms/job | -0.200 | +0.015 |
+| WAL bytes/job | +1,063 | +1,042 |
+| Settlement lock retries | +72 | +36 |
+
+All 20,480 scored jobs reconciled. Eight closed-loop lanes used the
+stock claim reply shape and real settlements, with a zero-work executor.
+The slot variant reduced claim traffic in all ten pairs. The CPU gain
+reversed, and stock had zero settlement lock retries in both series.
+This variant remains a component. A follow-up puts the slot assignment
+on the job row and rechecks eligibility before taking a physical row
+lock. Both changes need native overlap and WAL evidence before compiled
+dispatch or mixed-version integration.
+[Durable slot admission receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
