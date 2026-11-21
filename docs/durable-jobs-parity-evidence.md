@@ -2505,6 +2505,20 @@ Mesh and 65 ms for Oban. Earlier pickup accounts for most of the
 end-to-end throughput difference on this short burst.
 [One-runner large-payload receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare 512 KiB payloads with four runners and 16 slots
+
+Five matched Linux groups at `c271319e` reconciled all 240
+scored jobs. Both Mesh controls passed every gate and won
+all five throughput comparisons. They reached 285.4 and
+276.0 jobs/s, versus 96.9 for Oban. Pickup p99 was 52.5
+and 49.6 ms versus 162.6 ms.
+
+Mesh first claimed work at 3.6–3.8 ms, versus 86.9 ms for
+Oban. After the first claim, Mesh drained the backlog in
+52.5–54.2 ms versus 67.0 ms. The peak queued-context metric
+was 2,098,480 bytes.
+[Four-runner large-payload receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Measure one-runner no-op drain at 64 slots
 
 The `c271319e` release fixture reconciled 15,360 scored jobs across
