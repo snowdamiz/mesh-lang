@@ -6501,6 +6501,81 @@
     ],
     "scope": "Isolated fixture follow-up. Validates the driver TLS policy before startup, attaches socket authority before TLS negotiation, and starts the relay before the child spawn. Fresh sessions and one dispatcher slot. Independent observation while a child remains alive after sending its reply is a separate proof."
   },
+  "compiled_effect_registration_and_held_reply_proof": {
+    "registration": {
+      "revision": "a77710336f07290f109cacb8312428acd0d4d07b",
+      "parent": "0b4b7d322ee7a4c3e1bf08dfa5d8e1aa98e922b5",
+      "log": "target/jobs-parity/a77710336f07290f109cacb8312428acd0d4d07b/effect-registration-proof/effect-compiled.log",
+      "log_sha256": "e1eb5a4b403338e8a824c59ca9bc3107f7e11e529971caf2f3b534b22c659ee3",
+      "artifacts_sha256": {
+        "meshc": "e49a8082c48db2c8418db43583207ffbf9f6f391bde26a8340b2f0341e55b5f6",
+        "libmesh_rt.a": "b88520ce8e0ce680942b8bf1c3a36d10ad0872219d0a7b0908c88a0139987aed",
+        "libworker_identity.a": "8c84001cd3e957f21fee0cff474f3b97fe4dfe7be6e550f6a6d68d4cce801773",
+        "mesh-effect-fixture": "d3136fe992d972d4db0152c735470ee1fe35adebaf15dc7f87a997cfe45b5e14"
+      },
+      "cases": [
+        {
+          "case": "initial_success",
+          "run": 1,
+          "handler_pids": [
+            47731
+          ],
+          "effect_id": 3,
+          "settled": "completed"
+        },
+        {
+          "case": "revoked_receipt",
+          "run": 1,
+          "handler_pids": [
+            47747,
+            47757
+          ],
+          "effect_id": 4,
+          "settled": "completed"
+        }
+      ]
+    },
+    "held_reply": {
+      "revision": "23cbc458b298f436604eda3effce9f3283796e48",
+      "parent": "a77710336f07290f109cacb8312428acd0d4d07b",
+      "log": "target/jobs-parity/23cbc458b298f436604eda3effce9f3283796e48/effect-held-reply-proof/effect-compiled.log",
+      "log_sha256": "3093085677cb9ccbcb1e2b6ab851ca20582e4d9d4d5e12e5a1e22886ddb68d6e",
+      "artifacts_sha256": {
+        "meshc": "adeb928efba878bb1144d3e65fcc56297e0c9829232f68d4928b73e2645c9e14",
+        "libmesh_rt.a": "bd4668b995548d91274c72aa682041ba38d3a60aad76d8b64b24e16865961b49",
+        "libworker_identity.a": "7e12c1711901f3054562fbeb61a61122459aaf4de3913b3741641b3111464bf9",
+        "mesh-effect-fixture": "086c658b7c3f9c9813f4907e7d0e505023e357d0e8af4048f4081e89a4caa0ee"
+      },
+      "cases": [
+        {
+          "case": "initial_success",
+          "run": 1,
+          "handler_pids": [
+            70257
+          ],
+          "effect_id": 3,
+          "settled": "completed",
+          "pre_reap_pid": 70257,
+          "effect_backend_pid": 70258
+        },
+        {
+          "case": "revoked_receipt",
+          "run": 1,
+          "handler_pids": [
+            70277,
+            70289
+          ],
+          "effect_id": 4,
+          "settled": "completed",
+          "pre_reap_pid": null,
+          "effect_backend_pid": 70278
+        }
+      ]
+    },
+    "host": "macOS arm64",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "scope": "Feature-gated fixture through normal Jobs.start. Relay wakes only after runner registration. A live exact child holds its valid reply until an independent query confirms executing state and current lease. Release then requires exact reap and durable settlement."
+  },
   "linux_worker_phase_residency_and_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "postgres": "17.11 verified TLS and SCRAM",

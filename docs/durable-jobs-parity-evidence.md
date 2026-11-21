@@ -2152,9 +2152,19 @@ spawn. A loopback test held the TLS negotiation open and observed the
 connection close promptly on revocation. A parser test confirmed that
 fixture credentials require the driver's verified TLS mode. Five wire
 tests, the exact-child test, and both compiled cases passed on the same
-PostgreSQL 17.11 setup. An independent observation while a compiled
-child is held alive after its reply is a separate test.
+PostgreSQL 17.11 setup.
 [Startup fence receipt](../proof/jobs-parity/qualification-v1.json)
+
+The next two compiled runs passed on that setup. `a7771033` starts
+serving the child's effect request after the runner registers the exact
+child. `23cbc458` held a compiled child alive after it sent its complete
+reply. The dispatcher observed that reply while the child was running.
+An independent PostgreSQL connection verified the job was still
+executing with a live lease and confirmed the scoped effect login and
+backend PID. The driver then released that exact child and observed its
+reap and the committed settlement. The same-ID revocation and replay
+case also passed. The fixture still used fresh effect sessions.
+[Registration and held-reply receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 
