@@ -5424,6 +5424,218 @@
     },
     "scope": "Separate local diagnostic with PostgreSQL notifier control. The pinned Isolated arm remains the frozen comparator."
   },
+  "linux_short_16_warm_launch_overlap": {
+    "run": "target/jobs-parity/linux-arm-ownership-guest/warm-launch-overlap/short-16-overlap-full",
+    "archive_sha256": "932c59e2d9c9728d4e9413419150e2c2101b94b2029151db4e5cdc3de54aa693",
+    "serial_sha256": "3c60f50cbe52d8829c39b7c84d772c072c0dd28d87a4798e258a6107ebea480f",
+    "receipt_sha256": "541ccb89fa45cbb7a251960ccea03b85dbae5f2158c9be34b56ba66c82798c97",
+    "host_trace_sha256": "726410ef5f72d012784d6d1cde529d0417322b56e4b1cd07b9d3c6f1d1704b16",
+    "host_1m_load_range": [
+      11.7509765625,
+      14.20849609375
+    ],
+    "evidence_sha256": {
+      "manifest.json": "d6e258c300c0393c3fed3fde07fe123008577d4be4eb5bde320db41a699b25a5",
+      "trials.json": "6c33b4d7f1c8edd5184398cb2e2d53aed38082accc9cb7fa291ad6feee694877",
+      "gates.json": "60810aa21d87e4a4a38474662b3ca1cc17aa3af5ae607d508c1aa7a8c627a3ff",
+      "paired-deltas.json": "8882c43adb02f87945daeb67a53de0e24181106840276f267fca36c0755bd3ed",
+      "result.json": "8dc2d3a5a9fb81ed826a33c7b0b304acd5d36c1ea8e96ee424bdced79194ffa5",
+      "postgres-stop.json": "b5751ef90f6680301deba4db09b923c27296a600a90028b44c15a24436bdecfe",
+      "mesh-serial-vs-oban-postgres-summary.json": "8d17d50e4739778ed12cfff3b59015c31755b1ccf1f0867b3f0106756b86d86e",
+      "mesh-overlap-vs-oban-postgres-summary.json": "ee1281317ca60a5309a4943dc2238ada5d5d8de722666981520d4684b7e7c749"
+    },
+    "runtime": "70752964885d467997bf3076325e3a1e454947d0",
+    "fixture_sha256": "9b89ce7ca45bfb06069e483beccd5480a2136f47d46f46383aecaecdbc0b1b0b",
+    "profile": "short-1r-16s",
+    "connection_plan": {
+      "mesh-overlap": {
+        "effect_sessions": 15,
+        "producer_notifier": 0,
+        "producer_sql": 1,
+        "runner_listener": 1,
+        "runner_sql": 3
+      },
+      "mesh-serial": {
+        "effect_sessions": 15,
+        "producer_notifier": 0,
+        "producer_sql": 1,
+        "runner_listener": 1,
+        "runner_sql": 3
+      },
+      "oban-postgres": {
+        "producer_notifier": 1,
+        "producer_sql": 1,
+        "runner_listener": 1,
+        "runner_sql": 17
+      }
+    },
+    "launch_overlap_by_arm": {
+      "mesh-overlap": "1",
+      "mesh-serial": "0"
+    },
+    "client_limit": 20,
+    "stock_versions": {
+      "elixir": "1.20.4",
+      "erlang": "29.1.1",
+      "oban": "2.24.2"
+    },
+    "postgres": "17.11 verified TLS and SCRAM",
+    "measured_group_orders": [
+      [
+        "mesh-overlap",
+        "mesh-serial",
+        "oban-postgres"
+      ],
+      [
+        "mesh-serial",
+        "oban-postgres",
+        "mesh-overlap"
+      ],
+      [
+        "oban-postgres",
+        "mesh-overlap",
+        "mesh-serial"
+      ],
+      [
+        "oban-postgres",
+        "mesh-serial",
+        "mesh-overlap"
+      ],
+      [
+        "mesh-overlap",
+        "oban-postgres",
+        "mesh-serial"
+      ]
+    ],
+    "measured_jobs_per_arm": 640,
+    "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+    "gates": {
+      "evaluated": true,
+      "mesh-overlap": {
+        "all_frozen_conditions_met_against_comparator": false,
+        "breaches": [
+          {
+            "mesh_median": 633.0994325763256,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 862.1101875375116,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 196.44580078125,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 140.656982421875,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "comparator_role": "postgres_notifier_control",
+        "strict_median_throughput_above_oban": false,
+        "throughput_margin_jobs_per_second": -229.01075496118597
+      },
+      "mesh-serial": {
+        "all_frozen_conditions_met_against_comparator": false,
+        "breaches": [
+          {
+            "mesh_median": 694.5757466562096,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 862.1101875375116,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 179.901123046875,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 140.656982421875,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "comparator_role": "postgres_notifier_control",
+        "strict_median_throughput_above_oban": false,
+        "throughput_margin_jobs_per_second": -167.53444088130198
+      }
+    },
+    "arms": {
+      "mesh-serial": {
+        "median_jobs_per_second": 694.5757466562096,
+        "median_pickup_p99_ms": 179.901123046875,
+        "median_cpu_seconds_per_job": 0.0022425234375,
+        "median_first_enqueue_to_first_claim_ms": 1.633056640625,
+        "median_first_claim_to_final_settlement_ms": 182.652099609375,
+        "median_claim_to_entry_ms": 8.133056640625,
+        "median_effect_commit_to_settlement_ms": 5.713623046875,
+        "jobs_per_second_range": [
+          270.78599979030776,
+          727.0992472277234
+        ],
+        "peak_connections": 20
+      },
+      "mesh-overlap": {
+        "median_jobs_per_second": 633.0994325763256,
+        "median_pickup_p99_ms": 196.44580078125,
+        "median_cpu_seconds_per_job": 0.00230346875,
+        "median_first_enqueue_to_first_claim_ms": 2.847900390625,
+        "median_first_claim_to_final_settlement_ms": 200.384033203125,
+        "median_claim_to_entry_ms": 8.4544677734375,
+        "median_effect_commit_to_settlement_ms": 4.6939697265625,
+        "jobs_per_second_range": [
+          344.94742112510835,
+          789.9877347943092
+        ],
+        "peak_connections": 20
+      },
+      "oban-postgres": {
+        "median_jobs_per_second": 862.1101875375116,
+        "median_pickup_p99_ms": 140.656982421875,
+        "median_cpu_seconds_per_job": 0.006796328124999999,
+        "median_first_enqueue_to_first_claim_ms": 10.011962890625,
+        "median_first_claim_to_final_settlement_ms": 134.946044921875,
+        "median_claim_to_entry_ms": 2.9849853515625,
+        "median_effect_commit_to_settlement_ms": 1.3154296875,
+        "jobs_per_second_range": [
+          849.6176390039006,
+          966.1249633755995
+        ],
+        "peak_connections": 20
+      }
+    },
+    "paired_throughput": {
+      "mesh-overlap_minus_mesh-serial": {
+        "wins": 1,
+        "median_delta": -61.47631407988399,
+        "delta_range": [
+          -372.71854378333,
+          519.2017350040014
+        ]
+      },
+      "mesh-overlap_minus_oban-postgres": {
+        "wins": 0,
+        "median_delta": -228.21468173342043,
+        "delta_range": [
+          -560.2600147639162,
+          -65.73560709155697
+        ]
+      },
+      "mesh-serial_minus_oban-postgres": {
+        "wins": 0,
+        "median_delta": -194.65081781282743,
+        "delta_range": [
+          -584.9373420955584,
+          -155.04189234769103
+        ]
+      }
+    },
+    "scope": "Both Mesh arms use the same private warm-session fixture, with launch overlap as the only toggle. Reference uses the PostgreSQL notifier."
+  },
   "linux_slow_64_stock_mesh_vs_oban": {
     "run": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-slow-64-2g.v3ui3ZIg",
     "evidence": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-slow-64-2g.v3ui3ZIg-proof/evidence",

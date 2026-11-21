@@ -1733,6 +1733,24 @@ notifier changes the comparison configuration. The frozen comparator
 and release qualification rule remain in force.
 [Matched notification control receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Test launch overlap with warm sessions and notifications
+
+Five counterbalanced groups compared serial and overlapping launches
+from the same `70752964` release fixture. Both Mesh arms used 15 warm
+effect sessions and PostgreSQL notifications. Oban Basic 2.24.2 used
+its PostgreSQL notifier. All three arms reconciled 640 measured jobs
+each under the 20-client workload budget on the two-vCPU Linux guest.
+
+Serial Mesh reached a median 694.6 jobs/s (270.8–727.1), and overlap
+reached 633.1 (344.9–790.0). Overlap improved throughput in one of five
+pairs. Oban reached 862.1 (849.6–966.1). Both Mesh arms missed the
+throughput and pickup conditions in this comparison. The time from
+enqueue commit to first claim was 1.6 ms for serial launches and 2.8 ms
+with overlap. Median time from first claim to final settlement was
+182.7, 200.4, and 134.9 ms for serial Mesh, overlap Mesh, and Oban. The
+overlap prototype stays outside the product branch.
+[Warm launch overlap receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Measure stock Linux Jobs with 64 slow-job slots
 
 The frozen `slow-1r-64s` workload ran five alternating pairs against
