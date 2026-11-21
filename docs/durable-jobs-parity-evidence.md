@@ -1735,6 +1735,38 @@ These figures identify the attempt processes as the main source of
 measured memory. They leave the contribution of per-attempt PostgreSQL
 sessions open. [64-slot slow-job receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Isolate connection reuse on the 64-slot Linux slow profile
+
+Five counterbalanced groups ran the same slow-job inputs on the two-vCPU,
+2 GiB ARM64 guest. The direct and warm Mesh arms used one release image
+and the same wrapper. The warm arm reused 64 verified PostgreSQL
+sessions. All three arms reconciled 2,560 measured jobs each. The host's
+one-minute load ranged from 26.5 to 42.4 on 15 logical CPUs.
+
+| Arm | Median jobs/s | Range | First write commit after entry | Peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh direct | 137.5 | 94.1–189.0 | 21.44 ms | 404.5 MiB |
+| Mesh warm | 280.6 | 219.6–420.9 | 1.11 ms | 601.4 MiB |
+| Oban Basic 2.24.2 | 345.3 | 268.3–471.3 | 3.12 ms | 147.8 MiB |
+
+The warm arm improved throughput in all five Mesh pairs and beat Oban
+in one. It missed throughput, pickup, and RSS against Oban. The warm
+arm's median sampled process peak was 56 versus 36 with direct writes.
+This comparison shows that reuse removes first-write delay and leaves
+a substantial memory budget to close as more attempt children stay
+active. The RSS metric sums process residency, including pages mapped
+by several processes. [Warm 64-slot receipt](../proof/jobs-parity/qualification-v1.json)
+
+A separate one-group boot read `/proc/PID/status` for live attempt PIDs
+that matched durable writes. Across nonempty samples, median anonymous
+RSS per covered child was 6.53 MiB for direct writes and 6.49 MiB for
+warm sessions. Shared-memory RSS was 4.23 and 3.69 MiB. The census
+covered 420 of 512 direct children and 252 of 512 warm children at least
+once. This diagnostic used a separate boot because the added reads can
+affect timing. The samples identify anonymous memory as a sizable part
+of the remaining worker footprint.
+[Linux residency receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64
@@ -1885,6 +1917,15 @@ retrieved the original receipt with the same operation ID. An independent
 session verified that the effect, receipt, and insertion counter stayed
 unchanged.
 [Transaction proof receipt](../proof/jobs-parity/qualification-v1.json)
+
+The isolated `463b314e` proof ran both boundaries together. The
+disposable PostgreSQL 17.11 cluster used verified TLS and SCRAM on macOS
+arm64. All three native tests passed. The real-server test checks the
+first-write fence, interrupts a submitted operation, holds a committed
+receipt across revocation, and recovers it under a replacement claim.
+It also verifies session reset before reuse. Runner integration, the
+exact-child channel, and scoped application grants are still open.
+[Integrated effect proof receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 

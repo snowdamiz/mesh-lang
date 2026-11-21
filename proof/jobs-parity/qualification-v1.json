@@ -5360,6 +5360,254 @@
     ],
     "mesh_wins": 1
   },
+  "linux_slow_64_warm_mesh_vs_oban": {
+    "separate_residency_census": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/slow64-effect-resident-extended/slow-64-rss",
+      "archive_sha256": "32dfa1f5ab35c2d1b17dac59cc05cfb568cd513559650bf227dde2e8f0109247",
+      "serial_sha256": "1a5e41485d1acf4328356ede41e4badc32c9f8a987cec0c8662d3914696de6ae",
+      "receipt_sha256": "0d3d3f3ba3b4e30de11e3fc5d212deaa8fa8b0ec7d561b40efaf846fef6bf44f",
+      "host_trace_sha256": "2fab7bbcb58f3e4b4670cb4e005a3a1043c84fda0f2e2d6f3e8f7bda24176cdb",
+      "method": "Independent one-group boot, /proc/PID/status for stable durable attempt PIDs. Median of per-sample mean RSS per covered attempt.",
+      "arms": {
+        "direct": {
+          "rss_status_sha256": "5b64f97db1eddda540d275605f9b3d56e8eec5cbb15e62b71bf84668a6f50d05",
+          "distinct_attempt_pids_covered": 420,
+          "total_attempts": 512,
+          "samples_with_coverage": 15,
+          "pid_count_at_peak_sample_start": 42,
+          "covered_pid_count_at_peak_sample": 39,
+          "sample_median_mib_per_covered_attempt": {
+            "RssAnon": 6.528722426470588,
+            "RssFile": 0.00390625,
+            "RssShmem": 4.226004464285714
+          }
+        },
+        "warm": {
+          "rss_status_sha256": "712148fe6f08a8ee94ca3867a19026f96d27f5721e2722afed440a10e5a94e4a",
+          "distinct_attempt_pids_covered": 252,
+          "total_attempts": 512,
+          "samples_with_coverage": 9,
+          "pid_count_at_peak_sample_start": 51,
+          "covered_pid_count_at_peak_sample": 43,
+          "sample_median_mib_per_covered_attempt": {
+            "RssAnon": 6.487326388888889,
+            "RssFile": 0.00390625,
+            "RssShmem": 3.6875
+          }
+        }
+      }
+    },
+    "run": "target/jobs-parity/linux-arm-ownership-guest/slow64-effect-resident-extended/slow-64-full",
+    "archive_sha256": "d4fbe60664bae3d026f736d9ef6480a3c89e6ba9755e9f4f592b1fb5e8eccd71",
+    "serial_sha256": "421298b34a572d733966d17e1668dddda8c4a5d8a3a76b037ba49c4d9a1fc044",
+    "receipt_sha256": "267400c0faf0f13325a3548de37814fae2a928d590b7f0b258444f5601b73aa9",
+    "host_trace_sha256": "d7c5239b76962b01c1e4b3431fe5938c23b77d411aaeb5d9b47989d0168f627d",
+    "host_1m_load_range": [
+      26.4970703125,
+      42.39697265625
+    ],
+    "evidence_sha256": {
+      "manifest.json": "af282c6cea7bb2c923c36df1a803fb4af5f80f916479a8252745c40c33a8d7ee",
+      "trials.json": "d16c8847495efb9ca1850df6fc152f5c37259fb2a3f9671d5856d34226c40a6a",
+      "direct-vs-oban-summary.json": "ce84bf38998609bded1d1c2937d4d4872f8b6b21b199660f60eb4c8db3d526d7",
+      "warm-vs-oban-summary.json": "268df53836d23443b57962daa81a73f2072b76157b2a06c864bd1cb5db85caed",
+      "gates.json": "b7d628a4da36cfd7cf667883e67ad6ba3831b491e780b2d6d410b5f45393c90c",
+      "paired-deltas.json": "449170c868cc75fdc42eb4282097268afa55077f70bcaacd906443d4f56ed4f4",
+      "result.json": "f6739dd1cf89392070e49b6b1fcd502f9596c5df1f3577ddd8ed5a19f397cf5c",
+      "postgres-stop.json": "b5751ef90f6680301deba4db09b923c27296a600a90028b44c15a24436bdecfe"
+    },
+    "profile": "slow-1r-64s",
+    "engine_versions": {
+      "elixir": "1.20.4",
+      "erlang": "29.1.1",
+      "oban": "2.24.2"
+    },
+    "postgres": "17.11 verified TLS and SCRAM",
+    "guest_vcpu": 2,
+    "guest_memory_bytes": 2147483648,
+    "whole_run_budget_seconds": 480,
+    "workload_client_limit": 68,
+    "measured_group_orders": [
+      [
+        "direct",
+        "oban",
+        "warm"
+      ],
+      [
+        "oban",
+        "direct",
+        "warm"
+      ],
+      [
+        "warm",
+        "direct",
+        "oban"
+      ],
+      [
+        "oban",
+        "warm",
+        "direct"
+      ],
+      [
+        "direct",
+        "warm",
+        "oban"
+      ]
+    ],
+    "measured_jobs_per_arm": 2560,
+    "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+    "gates": {
+      "direct": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 424173568,
+            "metric": "peak_rss_bytes",
+            "oban_median": 154972160,
+            "relative_limit": 1.5,
+            "scope": "budgets",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 137.46225060062454,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 345.311269701651,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 3562.18603515625,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 1347.468994140625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "warm": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 630607872,
+            "metric": "peak_rss_bytes",
+            "oban_median": 154972160,
+            "relative_limit": 1.5,
+            "scope": "budgets",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 280.59959667233267,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 345.311269701651,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1708.108154296875,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 1347.468994140625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      }
+    },
+    "arms": {
+      "direct": {
+        "median_jobs_per_second": 137.46225060062454,
+        "median_cpu_seconds_per_job": 0.0039479765625,
+        "median_pickup_p99_ms": 3562.18603515625,
+        "median_peak_rss_bytes": 424173568,
+        "median_peak_processes": 36,
+        "median_entry_to_attempt_commit_ms": 21.4381103515625,
+        "median_effect_commit_to_settlement_ms": 51.405517578125,
+        "jobs_per_second_range": [
+          94.14187728281433,
+          189.0381503980195
+        ],
+        "peak_connections": 37,
+        "peak_threads": 230,
+        "peak_processes": 40
+      },
+      "warm": {
+        "median_jobs_per_second": 280.59959667233267,
+        "median_cpu_seconds_per_job": 0.0032105976562499996,
+        "median_pickup_p99_ms": 1708.108154296875,
+        "median_peak_rss_bytes": 630607872,
+        "median_peak_processes": 56,
+        "median_entry_to_attempt_commit_ms": 1.10693359375,
+        "median_effect_commit_to_settlement_ms": 15.033935546875,
+        "jobs_per_second_range": [
+          219.6087268716779,
+          420.86158189539344
+        ],
+        "peak_connections": 68,
+        "peak_threads": 425,
+        "peak_processes": 59
+      },
+      "oban": {
+        "median_jobs_per_second": 345.311269701651,
+        "median_cpu_seconds_per_job": 0.004022587890625,
+        "median_pickup_p99_ms": 1347.468994140625,
+        "median_peak_rss_bytes": 154972160,
+        "median_peak_processes": 2,
+        "median_entry_to_attempt_commit_ms": 3.1224365234375,
+        "median_effect_commit_to_settlement_ms": 4.6715087890625,
+        "jobs_per_second_range": [
+          268.3062912049636,
+          471.2912939907411
+        ],
+        "peak_connections": 68,
+        "peak_threads": 12,
+        "peak_processes": 2
+      }
+    },
+    "paired_throughput": {
+      "warm_minus_direct": {
+        "wins": 5,
+        "delta_median": 135.52151706688642,
+        "delta_range": [
+          114.10066717857057,
+          231.82343149737395
+        ]
+      },
+      "warm_minus_oban": {
+        "wins": 1,
+        "delta_median": -50.42971209534767,
+        "delta_range": [
+          -117.24154817065016,
+          12.293305467369066
+        ]
+      }
+    },
+    "scope": "Private release fixture compares direct and warm effect writes with one stock Oban control. RSS is summed per process."
+  },
+  "effect_wire_integration_proof": {
+    "revision": "463b314e9e2f411539090922ffa09a0473835ef4",
+    "base": "bfb30d71e8cdebfde9c37bd9507c9c9945f4b568",
+    "host": "macOS arm64",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "command": "bash scripts/verify-postgres-jobs.sh --effect-wire",
+    "log": "target/jobs-parity/463b314e9e2f411539090922ffa09a0473835ef4/effect-wire/verify.log",
+    "log_sha256": "7e47bb36acf729947a6fe58a2961dc18948cef75f6256c33a9eb6a99c775e838",
+    "tests": [
+      "revocation_interrupts_a_held_receive",
+      "revocation_at_socket_write",
+      "revoked_transport_and_durable_receipt"
+    ],
+    "passed": 3,
+    "scope": "Isolated test-only revision. The proof combines loopback transport cuts and a real PostgreSQL lease and receipt transaction. Runner and child handoff remain open."
+  },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "host": "Darwin arm64",
