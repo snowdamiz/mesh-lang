@@ -1823,6 +1823,31 @@ jobs. The snapshots were taken in separate diagnostic runs. They
 establish the source of most anonymous residency on this guest.
 [Phase and huge-page receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Measure worker-local huge-page policy under the slow workload
+
+Five counterbalanced groups compared the same Mesh fixture with its
+worker-local huge-page setting toggled, alongside frozen Oban Basic
+2.24.2. All 7,680 measured jobs reconciled. Both Mesh arms used 64 warm
+effect sessions, 250 ms polling, and no listener. The ARM64 guest had
+two vCPUs and 2 GiB of RAM. PostgreSQL 17.11 used verified TLS and SCRAM.
+The timed runs omitted the per-worker memory probes.
+
+| Median metric | Mesh, guest default | Mesh, worker THP disabled | Oban |
+| --- | ---: | ---: | ---: |
+| Sampled peak tree RSS | 628.9 MiB | 324.3 MiB | 147.5 MiB |
+| Durable jobs/s | 369.4 | 394.6 | 423.6 |
+| Pickup p99 | 1,268 ms | 1,191 ms | 1,101 ms |
+| Runner-tree CPU/job | 1.79 ms | 1.60 ms | 1.82 ms |
+
+Worker-local THP disablement lowered peak RSS in all five groups and
+still exceeded the 221.3 MiB limit. The sampler sums RSS by process and
+counts shared mapped pages in each process that reports them. Throughput
+ranges overlapped at 222–505, 283–496, and 371–498 jobs/s, respectively.
+The disabled arm won three of five groups against default Mesh and two
+against Oban. Pickup, CPU, and absolute resource limits passed. The
+throughput and RSS gates for this profile remain open.
+[Timed huge-page receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64
@@ -1979,9 +2004,22 @@ disposable PostgreSQL 17.11 cluster used verified TLS and SCRAM on macOS
 arm64. All three native tests passed. The real-server test checks the
 first-write fence, interrupts a submitted operation, holds a committed
 receipt across revocation, and recovers it under a replacement claim.
-It also verifies session reset before reuse. Runner integration, the
-exact-child channel, and scoped application grants are still open.
+It also verifies session reset before reuse.
 [Integrated effect proof receipt](../proof/jobs-parity/qualification-v1.json)
+
+The isolated exact-child test passed at `254df3ce` with PostgreSQL
+17.11 over verified TLS and SCRAM. After running the normal Jobs migration,
+the fixture took a confirmed claim and registered a real child through
+the runner's launch path. The child sent a fixed operation ID over a
+private channel. The parent retained the lease credentials and used a
+login with permission to execute the fixture function. The test checked
+revocation before send, a stale generation, a grant presented by a
+different child, confirmed renewal, EOF, and a committed result held
+across revocation. It verified receipt recovery, exact reap, and durable
+settlement by the successor. The test owned the lifecycle calls and used
+a native fixture child. Compiled handler and dispatcher integration
+remain open.
+[Exact-child effect receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 

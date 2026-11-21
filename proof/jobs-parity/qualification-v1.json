@@ -5980,6 +5980,19 @@
     "passed": 3,
     "scope": "Isolated test-only revision. The proof combines loopback transport cuts and a real PostgreSQL lease and receipt transaction. Runner and child handoff remain open."
   },
+  "effect_exact_child_proof": {
+    "revision": "254df3cef64783b6a52c1f7e854ef7c2c374ffc1",
+    "base": "f72e16bb2af77eef144c4c86b06c21e5dd4c4b5c",
+    "implementation": "7b2aa80a2cde980108d5b5b6858f3c7beda95ce4",
+    "host": "macOS arm64",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "command": "bash scripts/verify-postgres-jobs.sh --effect-worker",
+    "log": "target/jobs-parity/254df3cef64783b6a52c1f7e854ef7c2c374ffc1/effect-worker/verify.log",
+    "log_sha256": "10bc3c62674c16764cde104c2aa083d2925214b1e26d0d804d321cb19b47cd9b",
+    "passed": 1,
+    "test": "jobs::runner::effect_proof::exact_child_effect_uses_confirmed_claim_and_reaps",
+    "scope": "Isolated runtime test drives confirmed launch, restricted fixture grants, revocation, recovery, exact reap, and settlement. The fixture child uses a native test entry point and the test owns the lifecycle calls."
+  },
   "linux_worker_phase_residency_and_thp": {
     "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
     "postgres": "17.11 verified TLS and SCRAM",
@@ -6324,6 +6337,262 @@
         }
       }
     }
+  },
+  "linux_slow_64_timed_worker_thp": {
+    "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+    "guest": "Linux 6.12.115-0-virt ARM64, 2 vCPUs and 2 GiB RAM",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "comparator": "Oban Basic 2.24.2 with the frozen Isolated notifier",
+    "profile": "slow-1r-64s",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/slow64-worker-thp-study/slow64-thp-full",
+    "archive_sha256": "82f5e87aa5708dac30576b15a25662d42a8fa192e8352e7ae52c7a92d9f8090e",
+    "serial_sha256": "f04edd878d413898faf293dd72e32c0aa17d27d91b6b65e4f1503afd543a6bbb",
+    "host_trace_sha256": "3ed903b1bd8041334691546c084aa69385af15f069ec8a36c7b91808c96103cb",
+    "receipt_sha256": "f3fc366f18cc00fd84fe334810812516fdff996f6f92a158c50fdf2c6f3d2b97",
+    "proof_sha256": "d9e770b4431a93d8bbb41dd70916fddfb0525c3cd7014eab7c9b153e6a0e5760",
+    "fixture_sha256": "1a0def73fd28cca3ee0d89384189d046f1adefafef6995380967e2e1770462dd",
+    "relay_sha256": "94c2f29f071eb1699b61ef3d852b5b0261107829b897b1b36f05658d23647af5",
+    "evidence_sha256": {
+      "manifest.json": "41664d89ef06debfda13cfe9896e905482071a21565ff8d462c9c21080d5321c",
+      "trials.json": "6657d49c5149c3135c1de6823e7339af57bcabce589a9b63d12c6a76b3336971",
+      "paired-deltas.json": "e1324f818a116b4ddfe4a33f07862a780a383268c94e86bb23d61502f2e085b0",
+      "gates.json": "92e39043ebf41ac2275356bc8d503a842ac13cac3c301c1152e636ebe3153fb2",
+      "observed-ranges.json": "e4a2b3eff8fadd07e07f0ca0e565cc2090a42e57915a80d23c38fd67dfb83a95",
+      "postgres-stop.json": "b5751ef90f6680301deba4db09b923c27296a600a90028b44c15a24436bdecfe"
+    },
+    "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+    "orders": [
+      [
+        "default-thp",
+        "oban",
+        "disabled-thp"
+      ],
+      [
+        "oban",
+        "default-thp",
+        "disabled-thp"
+      ],
+      [
+        "disabled-thp",
+        "default-thp",
+        "oban"
+      ],
+      [
+        "oban",
+        "disabled-thp",
+        "default-thp"
+      ],
+      [
+        "default-thp",
+        "disabled-thp",
+        "oban"
+      ]
+    ],
+    "jobs_reconciled_per_arm": 2560,
+    "settings": {
+      "warm_effect_lanes": 64,
+      "poll_ms": 250,
+      "listener": false,
+      "workload_client_limit": 68,
+      "observer_interval_ms": 100
+    },
+    "observed_ranges": {
+      "default-thp": {
+        "jobs_per_second": {
+          "max": 505.30166877213856,
+          "median": 369.3956160480458,
+          "min": 222.29489005786348
+        },
+        "pickup_p99_ms": {
+          "max": 2154.555908203125,
+          "median": 1267.62890625,
+          "min": 909.7890625
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.003279888671875,
+          "median": 0.00179306640625,
+          "min": 0.0013119433593750001
+        },
+        "peak_rss_bytes": {
+          "max": 763428864,
+          "median": 659427328,
+          "min": 532475904
+        },
+        "peak_processes": {
+          "max": 66,
+          "median": 57,
+          "min": 45
+        },
+        "peak_threads": {
+          "max": 457,
+          "median": 411,
+          "min": 333
+        },
+        "peak_connections": {
+          "max": 68,
+          "median": 68,
+          "min": 68
+        },
+        "peak_one_minute_guest_load_range": [
+          0.58642578125,
+          0.8720703125
+        ]
+      },
+      "disabled-thp": {
+        "jobs_per_second": {
+          "max": 496.0394229329582,
+          "median": 394.5998122164666,
+          "min": 283.1471475363798
+        },
+        "pickup_p99_ms": {
+          "max": 1630.515869140625,
+          "median": 1191.194091796875,
+          "min": 922.927001953125
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0027395781250000003,
+          "median": 0.0016024726562499998,
+          "min": 0.0012232890625
+        },
+        "peak_rss_bytes": {
+          "max": 343875584,
+          "median": 340090880,
+          "min": 293216256
+        },
+        "peak_processes": {
+          "max": 66,
+          "median": 65,
+          "min": 54
+        },
+        "peak_threads": {
+          "max": 457,
+          "median": 451,
+          "min": 392
+        },
+        "peak_connections": {
+          "max": 68,
+          "median": 68,
+          "min": 68
+        },
+        "peak_one_minute_guest_load_range": [
+          0.701171875,
+          2.81689453125
+        ]
+      },
+      "oban": {
+        "jobs_per_second": {
+          "max": 497.77654562419195,
+          "median": 423.634549266925,
+          "min": 370.66746415373404
+        },
+        "pickup_p99_ms": {
+          "max": 1250.135009765625,
+          "median": 1101.329833984375,
+          "min": 922.635986328125
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.0021186640625,
+          "median": 0.0018224843749999999,
+          "min": 0.0012817773437499998
+        },
+        "peak_rss_bytes": {
+          "max": 159096832,
+          "median": 154664960,
+          "min": 152330240
+        },
+        "peak_processes": {
+          "max": 2,
+          "median": 2,
+          "min": 2
+        },
+        "peak_threads": {
+          "max": 12,
+          "median": 12,
+          "min": 12
+        },
+        "peak_connections": {
+          "max": 68,
+          "median": 68,
+          "min": 68
+        },
+        "peak_one_minute_guest_load_range": [
+          0.49560546875,
+          2.81689453125
+        ]
+      }
+    },
+    "disabled_minus_default": {
+      "jobs_per_second": [
+        -9.262245839180366,
+        25.204196168420822,
+        -168.8066568735794,
+        75.77279338212395,
+        60.85225747851632
+      ],
+      "peak_rss_bytes": [
+        -315551744,
+        -449855488,
+        -419602432,
+        -242446336,
+        -226119680
+      ],
+      "cpu_seconds_per_job": [
+        -8.865429687500014e-05,
+        -0.00033965820312499995,
+        0.0003465546875000003,
+        -0.0007982773437500003,
+        -0.0005403105468749997
+      ]
+    },
+    "gates": {
+      "default-thp": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 659427328,
+            "metric": "peak_rss_bytes",
+            "oban_median": 154664960,
+            "relative_limit": 1.5,
+            "scope": "budgets",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 369.3956160480458,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 423.634549266925,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "disabled-thp": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 340090880,
+            "metric": "peak_rss_bytes",
+            "oban_median": 154664960,
+            "relative_limit": 1.5,
+            "scope": "budgets",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 394.5998122164666,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 423.634549266925,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      }
+    },
+    "scope": "Local fixture diagnostic with the same binary and effect routes in both Mesh arms. RSS sums sampled process-tree RSS. Throughput varies widely across groups. The frozen slow-64 throughput and RSS gates remain open."
   },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
