@@ -174,6 +174,10 @@ impl PgJobDb<'_> {
         self.0.txn_status == b'T'
     }
 
+    pub(crate) fn is_idle(&self) -> bool {
+        !self.0.is_broken() && self.0.txn_status == b'I'
+    }
+
     pub(crate) fn transaction<T>(
         &mut self,
         run: impl FnOnce(&mut Self) -> Result<T, String>,

@@ -158,6 +158,21 @@ impl Drop for NativeLease {
 }
 
 pub(super) unsafe fn connection_url(pool: u64) -> Result<String, String> {
+    pool_connection_settings(pool).map(|(url, _)| url)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+pub(crate) unsafe fn effects_connection_url(pool: u64) -> Result<String, String> {
+    let (url, max_conns) = pool_connection_settings(pool)?;
+    if max_conns != 1 {
+        return Err(
+            "Jobs.start_effects requires a PostgreSQL pool with a maximum of one connection".into(),
+        );
+    }
+    Ok(url)
+}
+
+unsafe fn pool_connection_settings(pool: u64) -> Result<(String, usize), String> {
     if pool == 0 {
         return Err("invalid PostgreSQL pool".into());
     }
@@ -165,7 +180,7 @@ pub(super) unsafe fn connection_url(pool: u64) -> Result<String, String> {
     if inner.closed {
         return Err("pool is closed".into());
     }
-    Ok(inner.url.clone())
+    Ok((inner.url.clone(), inner.max_conns))
 }
 
 pub(crate) unsafe fn is_open(pool: u64) -> bool {

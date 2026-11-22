@@ -136,11 +136,20 @@ impl<'de> serde::de::Visitor<'de> for ParsedVisitor {
 /// A `MeshJson` written as JSON text: an object's keys in its map's order
 /// (a literal's as written, a parsed object's as the text had them). A float
 /// that is not finite, and a node of no known tag, is `null`.
-struct Tree(*const MeshJson);
+struct Tree(*const MeshJson, usize);
+
+impl Tree {
+    fn child(&self, pointer: u64) -> Self {
+        Self(pointer as *const MeshJson, self.1 - 1)
+    }
+}
 
 impl serde::Serialize for Tree {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::{SerializeMap, SerializeSeq};
+        use serde::ser::{Error, SerializeMap, SerializeSeq};
+        if self.1 == 0 {
+            return Err(S::Error::custom("JSON exceeds its depth limit"));
+        }
         let (tag, value) = unsafe { ((*self.0).tag, (*self.0).value) };
         match tag {
             JSON_BOOL => serializer.serialize_bool(value != 0),
@@ -153,7 +162,7 @@ impl serde::Serialize for Tree {
                 let len = list::mesh_list_length(items);
                 let mut seq = serializer.serialize_seq(Some(len as usize))?;
                 for i in 0..len {
-                    seq.serialize_element(&Tree(list::mesh_list_get(items, i) as *const MeshJson))?;
+                    seq.serialize_element(&self.child(list::mesh_list_get(items, i)))?;
                 }
                 seq.end()
             }
@@ -166,7 +175,7 @@ impl serde::Serialize for Tree {
                 let mut object = serializer.serialize_map(Some(len as usize))?;
                 for i in 0..len {
                     let key = unsafe { text_of(list::mesh_list_get(keys, i) as *const MeshString) };
-                    let value = Tree(list::mesh_list_get(values, i) as *const MeshJson);
+                    let value = self.child(list::mesh_list_get(values, i));
                     object.serialize_entry(key, &value)?;
                 }
                 object.end()
@@ -201,8 +210,44 @@ pub extern "C-unwind" fn mesh_json_parse(input: *const MeshString) -> *mut MeshR
 pub extern "C-unwind" fn mesh_json_encode(json: *mut u8) -> *mut MeshString {
     // Keys are strings and a float that is not finite is `null`: nothing
     // fails to encode.
-    let text = serde_json::to_string(&Tree(json.cast())).expect("a Json tree encodes");
+    let text = serde_json::to_string(&Tree(json.cast(), usize::MAX)).expect("a Json tree encodes");
     mesh_str(&text)
+}
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+pub(crate) unsafe fn bounded_json(
+    value: *const MeshJson,
+    max_depth: usize,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    use std::io::{self, Write};
+
+    struct Bounded {
+        bytes: Vec<u8>,
+        max: usize,
+    }
+
+    impl Write for Bounded {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if bytes.len() > self.max - self.bytes.len() {
+                return Err(io::Error::other("JSON exceeds its byte limit"));
+            }
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut output = Bounded {
+        bytes: Vec::new(),
+        max: max_bytes,
+    };
+    serde_json::to_writer(&mut output, &Tree(value, max_depth))
+        .map_err(|error| error.to_string())?;
+    Ok(output.bytes)
 }
 
 // ── Convenience encode functions ────────────────────────────────────

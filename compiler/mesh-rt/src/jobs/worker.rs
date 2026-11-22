@@ -19,7 +19,16 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use crate::db::pg::MAX_DB_VALUE_BYTES;
 use crate::string::{mesh_str, MeshString};
 
+#[cfg(any(
+    all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
+    all(target_os = "linux", test),
+))]
+#[path = "worker_effect_endpoint_linux.rs"]
+mod effect_endpoint;
+
 const WORKER_ARG: &str = "--mesh-internal-job-attempt-v1";
+#[cfg(target_os = "linux")]
+const DISABLE_THP_ENV: &str = "MESH_DIAGNOSTIC_JOB_DISABLE_THP";
 const MAX_REQUEST_HEADER: usize = 1024 * 1024;
 const MAX_OUTCOME: usize = 64 * 1024;
 const MAX_REPLY_FRAME: usize = MAX_OUTCOME * 6 + 64;
@@ -121,6 +130,8 @@ struct Request {
 pub(super) enum WorkerPoll {
     Running,
     AwaitingReply,
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    AwaitingEffectRelay,
     Exited(Reply),
     TimedOut,
     LeaseExpired,
@@ -134,6 +145,16 @@ pub(super) struct WorkerProcess {
     reply_deadline: Option<Instant>,
 }
 
+enum WorkerInput {
+    Pipe,
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    Effects {
+        peer: UnixStream,
+        input: OwnedFd,
+        endpoint: OwnedFd,
+    },
+}
+
 impl WorkerProcess {
     pub(super) fn start(
         handler: &str,
@@ -142,6 +163,48 @@ impl WorkerProcess {
         lease_deadline: u64,
         reply_wake: Sender<()>,
     ) -> Result<Self, String> {
+        Self::launch(
+            handler,
+            context,
+            deadline,
+            lease_deadline,
+            reply_wake,
+            WorkerInput::Pipe,
+        )
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    pub(super) fn start_effects(
+        handler: &str,
+        context: String,
+        deadline: Instant,
+        lease_deadline: u64,
+        reply_wake: Sender<()>,
+        endpoint: UnixStream,
+    ) -> Result<Self, String> {
+        let (peer, input) = UnixStream::pair().map_err(|error| error.to_string())?;
+        Self::launch(
+            handler,
+            context,
+            deadline,
+            lease_deadline,
+            reply_wake,
+            WorkerInput::Effects {
+                peer,
+                input: input.into(),
+                endpoint: endpoint.into(),
+            },
+        )
+    }
+
+    fn launch(
+        handler: &str,
+        context: String,
+        deadline: Instant,
+        lease_deadline: u64,
+        reply_wake: Sender<()>,
+        control: WorkerInput,
+    ) -> Result<Self, String> {
         let request = Request {
             handler: handler.to_owned(),
             deadline: host_deadline(deadline)?,
@@ -149,25 +212,52 @@ impl WorkerProcess {
         };
         let mut command = Command::new(executable()?);
         #[cfg(unix)]
-        let mut input = {
+        {
             use std::os::unix::process::CommandExt;
 
-            let (parent, worker) = UnixStream::pair()
-                .map_err(|error| format!("could not open job handler control socket: {error}"))?;
-            command.stdin(Stdio::from(OwnedFd::from(worker)));
             command.process_group(0);
-            parent
+        }
+        #[cfg(unix)]
+        let (input, endpoint) = match control {
+            WorkerInput::Pipe => {
+                let (parent, worker) = UnixStream::pair().map_err(|error| {
+                    format!("could not open job handler control socket: {error}")
+                })?;
+                command
+                    .arg(WORKER_ARG)
+                    .stdin(Stdio::from(OwnedFd::from(worker)));
+                (parent, None::<OwnedFd>)
+            }
+            #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+            WorkerInput::Effects {
+                peer,
+                input,
+                endpoint,
+            } => {
+                configure_effect_worker_env(
+                    &mut command,
+                    std::env::var_os(DISABLE_THP_ENV).as_deref(),
+                );
+                command
+                    .arg(effect_endpoint::WORKER_ARG)
+                    .stdin(Stdio::from(input));
+                (peer, Some(endpoint))
+            }
         };
         #[cfg(not(unix))]
-        command.stdin(Stdio::piped());
+        match control {
+            WorkerInput::Pipe => {
+                command.arg(WORKER_ARG).stdin(Stdio::piped());
+            }
+        }
         let child = command
-            .arg(WORKER_ARG)
             .env("MESH_SCHEDULER_MIN_WORKERS", "1")
             .env("MESH_SCHEDULER_MAX_WORKERS", "1")
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
             .map_err(|error| format!("could not start job handler process: {error}"))?;
+        // Close the parent's child-side stdin before the control writer runs.
         drop(command);
         let (reply, result) = crossbeam_channel::bounded(1);
         let (renewals, renewal_requests) = crossbeam_channel::bounded(1);
@@ -186,26 +276,25 @@ impl WorkerProcess {
             .map_err(|error| error.to_string())?;
 
         #[cfg(not(unix))]
-        let mut input = worker.child.stdin.take().unwrap();
+        let input = worker.child.stdin.take().unwrap();
         let latest = Arc::clone(&worker.lease_deadline);
         std::thread::Builder::new()
             .name("mesh-job-control".into())
             .spawn(move || {
-                if write_frame(&mut input, &request, MAX_REQUEST_HEADER)
-                    .and_then(|()| write_bytes(&mut input, context.as_bytes(), MAX_DB_VALUE_BYTES))
-                    .is_err()
-                {
-                    return;
-                }
-                // Renewal writes only need the deadline. Release the bootstrap
-                // context while the child is still running.
-                drop(context);
-                while renewal_requests.recv().is_ok() {
-                    let lease = latest.load(Ordering::Acquire);
-                    if input.write_all(&lease.to_le_bytes()).is_err() {
-                        break;
+                #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+                if let Some(endpoint) = endpoint {
+                    let sent = effect_endpoint::send(&input, &endpoint);
+                    drop(endpoint);
+                    if sent.is_err() {
+                        return;
                     }
                 }
+                #[cfg(all(
+                    unix,
+                    not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))
+                ))]
+                let _ = endpoint;
+                write_control(input, request, context, renewal_requests, latest);
             })
             .map_err(|error| error.to_string())?;
         Ok(worker)
@@ -254,6 +343,28 @@ impl WorkerProcess {
             Err(TryRecvError::Disconnected) => {}
         }
         WorkerPoll::Exited(Err("job handler returned no result".into()))
+    }
+}
+
+fn write_control(
+    mut input: impl Write,
+    request: Request,
+    context: String,
+    renewal_requests: Receiver<()>,
+    latest: Arc<AtomicU64>,
+) {
+    if write_frame(&mut input, &request, MAX_REQUEST_HEADER)
+        .and_then(|()| write_bytes(&mut input, context.as_bytes(), MAX_DB_VALUE_BYTES))
+        .is_err()
+    {
+        return;
+    }
+    drop(context);
+    while renewal_requests.recv().is_ok() {
+        let lease = latest.load(Ordering::Acquire);
+        if input.write_all(&lease.to_le_bytes()).is_err() {
+            break;
+        }
     }
 }
 
@@ -360,10 +471,171 @@ fn reaped_worker_bounds_wait_for_an_inherited_pipe() {
     reader.join().unwrap();
 }
 
+fn worker_uses_effect_stdin(arg: &[u8]) -> Option<bool> {
+    if arg == WORKER_ARG.as_bytes() {
+        return Some(false);
+    }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    if arg == effect_endpoint::WORKER_ARG.as_bytes() {
+        return Some(true);
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn thp_disable_requested(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("1"))
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(all(target_arch = "aarch64", target_env = "gnu"), test)
+))]
+fn configure_effect_worker_env(command: &mut Command, thp: Option<&std::ffi::OsStr>) {
+    command.env_clear();
+    if thp_disable_requested(thp) {
+        command.env(DISABLE_THP_ENV, "1");
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn apply_worker_startup_policy() {
+    static STARTUP_POLICY: std::sync::Once = std::sync::Once::new();
+    STARTUP_POLICY.call_once(|| {
+        if thp_disable_requested(std::env::var_os(DISABLE_THP_ENV).as_deref())
+            && matches!(is_current_worker(), Ok(true))
+        {
+            disable_worker_thp();
+        }
+    });
+}
+
+#[cfg(target_os = "linux")]
+fn disable_worker_thp() {
+    static WORKER_THP_POLICY: std::sync::Once = std::sync::Once::new();
+    WORKER_THP_POLICY.call_once(|| {
+        let zero: libc::c_ulong = 0;
+        let one: libc::c_ulong = 1;
+        if unsafe { libc::prctl(libc::PR_SET_THP_DISABLE, one, zero, zero, zero) } != 0
+            || unsafe { libc::prctl(libc::PR_GET_THP_DISABLE, zero, zero, zero, zero) } != 1
+        {
+            // The worker watchdogs are not armed yet. Exit without waiting on stderr.
+            exit_worker(BOOTSTRAP_ERROR);
+        }
+    });
+}
+
+#[cfg(target_os = "linux")]
+fn is_current_worker() -> io::Result<bool> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let mut args = std::env::args_os();
+    if args.len() != 0 {
+        return Ok(args.len() == 2
+            && args
+                .nth(1)
+                .is_some_and(|arg| worker_uses_effect_stdin(arg.as_bytes()).is_some()));
+    }
+
+    // C main on musl can leave Rust's argv empty. Read through Linux's
+    // maximum argv[0] (32 pages, at most 2 MiB), the longest accepted marker,
+    // its NUL, and at least one byte of any extra argument.
+    #[cfg(all(target_arch = "aarch64", target_env = "gnu"))]
+    const MARKER_LEN: usize = effect_endpoint::WORKER_ARG.len();
+    #[cfg(not(all(target_arch = "aarch64", target_env = "gnu")))]
+    const MARKER_LEN: usize = WORKER_ARG.len();
+    const LIMIT: u64 = 2 * 1024 * 1024 + MARKER_LEN as u64 + 2;
+    let mut command_line = Vec::new();
+    File::open("/proc/self/cmdline")?
+        .take(LIMIT)
+        .read_to_end(&mut command_line)?;
+    Ok(proc_cmdline_selects_worker(&command_line))
+}
+
+#[cfg(target_os = "linux")]
+fn proc_cmdline_selects_worker(command_line: &[u8]) -> bool {
+    let Some(command_line) = command_line.strip_suffix(b"\0") else {
+        return false;
+    };
+    let mut args = command_line.splitn(3, |byte| *byte == 0);
+    args.nth(1)
+        .is_some_and(|arg| worker_uses_effect_stdin(arg).is_some())
+        && args.next().is_none()
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod thp_tests {
+    use super::*;
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    #[test]
+    fn worker_selectors_require_exact_argument_and_count() {
+        const EFFECT_ARG: &str = "--mesh-internal-job-attempt-effect-v1";
+        let effect_supported = cfg!(all(target_arch = "aarch64", target_env = "gnu"));
+        assert_eq!(worker_uses_effect_stdin(WORKER_ARG.as_bytes()), Some(false));
+        assert_eq!(
+            worker_uses_effect_stdin(EFFECT_ARG.as_bytes()),
+            effect_supported.then_some(true)
+        );
+        assert!(!proc_cmdline_selects_worker(b""));
+        assert!(!proc_cmdline_selects_worker(b"mesh\0"));
+        for (marker, supported) in [(WORKER_ARG, true), (EFFECT_ARG, effect_supported)] {
+            let exact = format!("mesh\0{marker}\0");
+            assert_eq!(proc_cmdline_selects_worker(exact.as_bytes()), supported);
+            for invalid in [
+                format!("{marker}\0"),
+                format!("mesh\0{marker}"),
+                format!("mesh\0{marker}0\0"),
+                format!("mesh\0{marker}\0\0"),
+                format!("mesh\0{marker}\0extra\0"),
+                format!("mesh\0extra\0{marker}\0"),
+            ] {
+                assert!(
+                    !proc_cmdline_selects_worker(invalid.as_bytes()),
+                    "{invalid:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn effect_worker_env_forwards_only_exact_thp_opt_in() {
+        let cases: [(Option<&[u8]>, bool); 8] = [
+            (None, false),
+            (Some(b""), false),
+            (Some(b"0"), false),
+            (Some(b"01"), false),
+            (Some(b" 1"), false),
+            (Some(b"1 "), false),
+            (Some(b"1\xff"), false),
+            (Some(b"1"), true),
+        ];
+        for (raw, enabled) in cases {
+            let mut command = Command::new("unused");
+            command.env("MESH_EFFECT_APP_URL", "test-sentinel");
+            configure_effect_worker_env(&mut command, raw.map(OsStr::from_bytes));
+            let expected: Vec<_> = enabled
+                .then_some((OsStr::new(DISABLE_THP_ENV), Some(OsStr::new("1"))))
+                .into_iter()
+                .collect();
+            assert_eq!(command.get_envs().collect::<Vec<_>>(), expected, "{raw:?}");
+        }
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn mesh_jobs_enter_worker(argc: i32, argv: *const *const c_char) {
-    if argc == 2 && unsafe { CStr::from_ptr(*argv.add(1)) }.to_bytes() == WORKER_ARG.as_bytes() {
-        enter_worker();
+    if argc == 2 {
+        let arg = unsafe { CStr::from_ptr(*argv.add(1)) }.to_bytes();
+        if let Some(effect_stdin) = worker_uses_effect_stdin(arg) {
+            #[cfg(target_os = "linux")]
+            if thp_disable_requested(std::env::var_os(DISABLE_THP_ENV).as_deref()) {
+                // C argv identifies the worker even when early procfs inspection failed.
+                disable_worker_thp();
+            }
+            enter_worker(effect_stdin);
+        }
     }
     if !HANDLERS.lock().is_empty() {
         EXECUTABLE.get_or_init(Executable::locate);
@@ -372,11 +644,14 @@ pub unsafe extern "C" fn mesh_jobs_enter_worker(argc: i32, argv: *const *const c
 
 pub(crate) fn is_worker_process() -> bool {
     let mut args = std::env::args_os();
-    args.len() == 2 && args.nth(1).is_some_and(|arg| arg == WORKER_ARG)
+    args.len() == 2
+        && args
+            .nth(1)
+            .is_some_and(|arg| worker_uses_effect_stdin(arg.as_encoded_bytes()).is_some())
 }
 
-fn enter_worker() -> ! {
-    match run_worker() {
+fn enter_worker(effect_stdin: bool) -> ! {
+    match run_worker(effect_stdin) {
         Ok(()) => exit_worker(0),
         Err(error) => {
             eprintln!("Mesh job handler initialization failed: {error}");
@@ -385,10 +660,15 @@ fn enter_worker() -> ! {
     }
 }
 
-fn run_worker() -> Result<(), String> {
+fn run_worker(_effect_stdin: bool) -> Result<(), String> {
     crate::panic::ignore_sigpipe();
     crate::process_signal::mesh_process_install_shutdown_signals();
     let mut result = redirect_stdout().map_err(|error| error.to_string())?;
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    if _effect_stdin {
+        let socket = effect_endpoint::receive_stdin().map_err(|error| error.to_string())?;
+        super::effects::enter_worker(socket);
+    }
     let (request, context, lease) = read_control_and_watch().map_err(|error| error.to_string())?;
     let handler = HANDLERS
         .lock()
@@ -403,6 +683,12 @@ fn run_worker() -> Result<(), String> {
         remaining(deadline, *lease.lock());
         unsafe { handler(input) }
     });
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    let reply = if _effect_stdin {
+        super::effects::finish_worker(reply)
+    } else {
+        reply
+    };
     remaining(deadline, u64::MAX);
     write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
     Ok(())
@@ -443,10 +729,10 @@ impl Read for ParentControl<'_> {
     }
 }
 
-type WorkerInput = (Request, String, Arc<Mutex<u64>>);
+type LoadedRequest = (Request, String, Arc<Mutex<u64>>);
 
 #[cfg(unix)]
-fn read_control_and_watch() -> io::Result<WorkerInput> {
+fn read_control_and_watch() -> io::Result<LoadedRequest> {
     let (loaded, input) = crossbeam_channel::bounded(1);
     std::thread::Builder::new()
         .name("mesh-job-watchdog".into())
@@ -520,7 +806,7 @@ fn watch_parent(control: ParentControl<'_>, deadline: u64, lease: &Mutex<u64>) {
 }
 
 #[cfg(not(unix))]
-fn read_control_and_watch() -> io::Result<WorkerInput> {
+fn read_control_and_watch() -> io::Result<LoadedRequest> {
     let mut control = io::stdin();
     let (request, context) = read_request(&mut control)?;
     let (renew, updates) = crossbeam_channel::bounded(1);
@@ -657,7 +943,7 @@ fn boot_millis() -> io::Result<u64> {
     Ok(unsafe { GetTickCount64() })
 }
 
-fn read_frame<T: DeserializeOwned>(reader: &mut impl Read, max: usize) -> io::Result<T> {
+pub(super) fn read_frame<T: DeserializeOwned>(reader: &mut impl Read, max: usize) -> io::Result<T> {
     serde_json::from_slice(&read_bytes(reader, max)?).map_err(io::Error::other)
 }
 
@@ -676,7 +962,11 @@ fn read_bytes(reader: &mut impl Read, max: usize) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn write_frame<T: Serialize>(writer: &mut impl Write, value: &T, max: usize) -> io::Result<()> {
+pub(super) fn write_frame<T: Serialize>(
+    writer: &mut impl Write,
+    value: &T,
+    max: usize,
+) -> io::Result<()> {
     let payload = serde_json::to_vec(value).map_err(io::Error::other)?;
     write_bytes(writer, &payload, max)
 }

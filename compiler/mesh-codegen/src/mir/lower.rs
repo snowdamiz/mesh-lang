@@ -4910,6 +4910,18 @@ impl<'a> Lowerer<'a> {
                 vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr],
             ),
             (
+                "mesh_jobs_start_effects_v1",
+                vec![
+                    MirType::Int,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                ],
+            ),
+            ("mesh_jobs_effect_v1", vec![MirType::Ptr, MirType::Ptr]),
+            (
                 "mesh_jobs_drain",
                 vec![
                     MirType::Int,
@@ -15555,6 +15567,8 @@ fn map_builtin_name(name: &str) -> String {
         "jobs_enqueue_in" => "mesh_jobs_enqueue_in".to_string(),
         "jobs_control" => "mesh_jobs_control".to_string(),
         "jobs_start" => "mesh_jobs_start".to_string(),
+        "jobs_start_effects" => "mesh_jobs_start_effects_v1".to_string(),
+        "jobs_effect" => "mesh_jobs_effect_v1".to_string(),
         "jobs_drain" => "mesh_jobs_drain".to_string(),
         "jobs_stop" => "mesh_jobs_stop".to_string(),
         "jobs_join" => "mesh_jobs_join".to_string(),

@@ -1,11 +1,21 @@
 mod cron;
 mod drain_store;
+#[cfg(any(
+    all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
+    test
+))]
+mod effect_pool;
+#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+mod effects;
 mod events;
 mod runner;
 mod store;
 pub mod testing;
 mod worker;
 pub(crate) use worker::is_worker_process;
+
+#[cfg(target_os = "linux")]
+pub(crate) use worker::apply_worker_startup_policy;
 
 use crate::db::jobs_connection::{self, PgJobDb};
 use crate::db::pg::JobsAckError;
@@ -128,6 +138,62 @@ pub extern "C" fn mesh_jobs_start(
     match runner::start(pool, unsafe { text_of(config) }, fn_ptr, env_ptr) {
         Ok(id) => ok_int(id as i64),
         Err(error) => err_result(&error),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_jobs_start_effects_v1(
+    pool: u64,
+    config: *const MeshString,
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+    app_url: *const MeshString,
+    operations: *const crate::json::MeshJson,
+) -> *mut MeshResult {
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    {
+        let result = unsafe {
+            crate::json::bounded_json(operations, 6, effects::MAX_REGISTRY_BYTES).and_then(
+                |operations| {
+                    runner::start_effects(
+                        pool,
+                        text_of(config),
+                        fn_ptr,
+                        env_ptr,
+                        text_of(app_url),
+                        &operations,
+                    )
+                },
+            )
+        };
+        match result {
+            Ok(id) => ok_int(id as i64),
+            Err(error) => err_result(&error),
+        }
+    }
+    #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+    {
+        let _ = (pool, config, fn_ptr, env_ptr, app_url, operations);
+        err_result("Jobs effects require a compiled Linux GNU ARM64 Mesh program")
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_jobs_effect_v1(
+    name: *const MeshString,
+    values: *const crate::json::MeshJson,
+) -> *mut MeshResult {
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    {
+        match unsafe { effects::call(text_of(name), values) } {
+            Ok(applied) => alloc_result(0, crate::io::box_scalar(applied)),
+            Err(error) => err_result(error),
+        }
+    }
+    #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+    {
+        let _ = (name, values);
+        err_result("Jobs effects require a compiled Linux GNU ARM64 Mesh program")
     }
 }
 

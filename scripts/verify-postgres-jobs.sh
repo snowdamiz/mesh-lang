@@ -25,7 +25,7 @@ while (( $# > 0 )); do
       j6_roles=true
       shift
       ;;
-    --effect-transaction|--effect-fence)
+    --effect-transaction|--effect-fence|--effect-compiled)
       if [[ -n "$sql_proof" && "$sql_proof" != "${1#--}" ]]; then
         echo "Select one standalone Jobs SQL proof." >&2
         exit 2
@@ -34,7 +34,7 @@ while (( $# > 0 )); do
       shift
       ;;
     *)
-      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check] [--j6-roles] | --effect-transaction | --effect-fence\n' "$0" >&2
+      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check] [--j6-roles] | --effect-transaction | --effect-fence | --effect-compiled\n' "$0" >&2
       exit 2
       ;;
   esac
@@ -42,6 +42,13 @@ done
 if [[ -n "$sql_proof" ]] && { [[ -n "$postgres_version" ]] || "$parity_driver_check" || "$j6_roles"; }; then
   echo "--$sql_proof runs on its own." >&2
   exit 2
+fi
+
+if [[ "$sql_proof" == effect-compiled ]]; then
+  if [[ "$(uname -s)" != Linux || "$(uname -m)" != aarch64 || "$(getconf GNU_LIBC_VERSION 2>/dev/null)" != glibc* ]]; then
+    echo "--effect-compiled requires Linux GNU ARM64." >&2
+    exit 2
+  fi
 fi
 
 if revision=$(git rev-parse --verify HEAD 2>/dev/null); then

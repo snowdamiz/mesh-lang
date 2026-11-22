@@ -252,3 +252,48 @@ end
         checked.errors
     );
 }
+
+#[test]
+fn jobs_start_effects_checks_the_third_argument_as_a_direct_handler() {
+    for (source, should_pass) in [
+        (
+            r#"Jobs.start_effects(pool, "{}", handler, "url", registry)"#,
+            true,
+        ),
+        (
+            r#"handler |3> start_effects(pool, "{}", "url", registry)"#,
+            true,
+        ),
+        (
+            r#"Jobs.start_effects(pool, "{}", fn(input) do input end, "url", registry)"#,
+            false,
+        ),
+        ("Jobs.start_effects", false),
+        ("start_effects", false),
+    ] {
+        let checked = check(&format!(
+            "from Jobs import start_effects\nfn handler(input :: String) -> String do input end\n\
+             fn run(pool :: PoolHandle, registry :: Json) do {source} end"
+        ));
+        if should_pass {
+            assert!(checked.errors.is_empty(), "{source}: {:?}", checked.errors);
+        } else {
+            assert!(
+                checked
+                    .errors
+                    .iter()
+                    .any(|error| matches!(error, TypeError::JobsStartInvalid { .. })),
+                "{source}: {:?}",
+                checked.errors
+            );
+        }
+    }
+}
+
+#[test]
+fn compiled_jobs_effect_fixture_typechecks() {
+    let checked = check(include_str!(
+        "../../../scripts/fixtures/jobs-effect-compiled/main.mpl"
+    ));
+    assert!(checked.errors.is_empty(), "{:?}", checked.errors);
+}

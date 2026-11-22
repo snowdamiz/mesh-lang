@@ -460,6 +460,19 @@ env -u MESH_TEST_DATABASE_URL PG_BIN_DIR=/path/to/postgresql/bin \
   bash scripts/verify-postgres-jobs.sh --effect-fence
 ```
 
+### Exercise the compiled effect candidate
+
+Use `Jobs.start_effects` to opt in on compiled Linux GNU ARM64. Omit
+`effect_sessions` to prewarm one application session. Set `"listen":true`
+to exercise LISTEN on a non-drain runner.
+
+Run `bash scripts/verify-postgres-jobs.sh --effect-compiled` on a disposable
+PostgreSQL installation. The one-slot fixture checks two independent commits
+on the same warm backend under a five-connection cap. Use the recipe to
+capture exact child reaps before settlement and to stage the separate
+64-slot occupancy proof. The frozen `slow-1r-64s` comparison remains pending.
+[Compiled effect recipe](../scripts/fixtures/jobs-effect-compiled/README.md)
+
 ## Close the program
 
 - [x] The evidence guide records the tested PostgreSQL and OS matrix, scope boundaries, and benchmark results by workload. [Evidence guide](durable-jobs-parity-evidence.md)

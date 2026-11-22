@@ -36,10 +36,15 @@ const QUEUE_STOPPED: &str = "job queue shutdown deadline elapsed";
 const CANCELLED: &str = "job cancelled";
 const LEASE_LOST: &str = "job lease lost";
 
-trait JobProcess: Send {
+pub(super) trait JobProcess: Send {
     fn reply_pending(&self) -> bool;
     fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String>;
     fn renew(&mut self, lease_deadline: u64) -> Result<(), String>;
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    fn activate_effects(&mut self) {}
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    fn confirm_effect_lease(&mut self, _: Instant) {}
+    fn limit_effect_deadline(&mut self, _: Instant) {}
     fn kill(&mut self) -> Result<(), String>;
 }
 
@@ -86,6 +91,11 @@ struct Config {
     event_buffer: usize,
     event_log: bool,
     listen: bool,
+    #[serde(deserialize_with = "effect_session_count")]
+    effect_sessions: Option<usize>,
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[serde(skip)]
+    effects: Option<super::effects::Effects>,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
@@ -117,12 +127,64 @@ impl Default for Config {
             event_buffer: 0,
             event_log: false,
             listen: false,
+            effect_sessions: None,
+            #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+            effects: None,
         }
     }
 }
 
+fn effect_session_count<'de, D: serde::Deserializer<'de>>(
+    decoder: D,
+) -> Result<Option<usize>, D::Error> {
+    usize::deserialize(decoder).map(Some)
+}
+
 impl Config {
+    fn effect_queue(&self) -> Option<(&str, usize)> {
+        self.effect_sessions?;
+        self.queues
+            .first_key_value()
+            .map(|(name, &limit)| (name.as_str(), limit))
+    }
+
     fn parse(json: &str) -> Result<Self, String> {
+        let config = Self::parse_fields(json)?;
+        if config.effect_sessions.is_some() {
+            return Err("effect_sessions requires Jobs.start_effects".into());
+        }
+        Ok(config)
+    }
+
+    #[cfg(any(
+        all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
+        test
+    ))]
+    fn parse_effects(json: &str) -> Result<Self, String> {
+        let mut config = Self::parse_fields(json)?;
+        let slots = config.queues.values().sum::<usize>();
+        if !config.claim_batch || config.queues.len() != 1 || slots > 64 {
+            return Err(
+                "Jobs.start_effects requires one queue with 1 to 64 slots and batch claims".into(),
+            );
+        }
+        if config.listen && config.drain {
+            return Err("Jobs.start_effects requires a non-drain runner for LISTEN".into());
+        }
+        let lanes = config.effect_sessions.unwrap_or(1);
+        if !(1..=slots).contains(&lanes) {
+            return Err(
+                "Jobs effect_sessions must be between 1 and the configured slot limit".into(),
+            );
+        }
+        if lanes > 16 {
+            return Err("Jobs effect_sessions must be at most 16".into());
+        }
+        config.effect_sessions = Some(lanes);
+        Ok(config)
+    }
+
+    fn parse_fields(json: &str) -> Result<Self, String> {
         if json.len() > 128 * 1024 {
             return Err("runner configuration exceeds 128 KiB".into());
         }
@@ -203,7 +265,14 @@ fn grace(ms: u64) -> Result<Duration, String> {
 
 enum Phase {
     Running,
-    Stopping { deadline: Instant },
+    #[cfg(any(
+        all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
+        test
+    ))]
+    DrainingRetiredEffects,
+    Stopping {
+        deadline: Instant,
+    },
     Stopped,
 }
 
@@ -211,6 +280,11 @@ impl Phase {
     fn name(&self) -> &'static str {
         match self {
             Self::Running => "running",
+            #[cfg(any(
+                all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
+                test
+            ))]
+            Self::DrainingRetiredEffects => "stopping",
             Self::Stopping { .. } => "stopping",
             Self::Stopped => "stopped",
         }
@@ -222,9 +296,9 @@ impl Phase {
 
     fn stop_wait_complete(&self) -> bool {
         match self {
-            Self::Running => false,
             Self::Stopping { deadline } => Instant::now() >= *deadline,
             Self::Stopped => true,
+            _ => false,
         }
     }
 }
@@ -406,9 +480,40 @@ impl State {
     fn fail_launch(&mut self, error: String, grace_ms: u64) {
         self.last_error = Some(error.chars().take(1024).collect());
         if matches!(self.phase, Phase::Running) {
-            self.phase = Phase::Stopping {
-                deadline: Instant::now() + Duration::from_millis(grace_ms),
-            };
+            self.stop_at(Instant::now() + Duration::from_millis(grace_ms));
+        }
+    }
+
+    #[cfg(any(
+        all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
+        test
+    ))]
+    fn drain_retired_effects(&mut self) {
+        if matches!(self.phase, Phase::Running) {
+            self.last_error = Some("Jobs effect session retired".into());
+            self.phase = Phase::DrainingRetiredEffects;
+        }
+    }
+
+    fn stop_at(&mut self, deadline: Instant) {
+        let deadline = match self.phase {
+            Phase::Stopping { deadline: current } => current.min(deadline),
+            Phase::Stopped => return,
+            _ => deadline,
+        };
+        self.phase = Phase::Stopping { deadline };
+        self.limit_effect_deadlines(None, deadline);
+    }
+
+    fn limit_effect_deadlines(&mut self, queue: Option<&str>, deadline: Instant) {
+        let affected = self
+            .jobs
+            .values_mut()
+            .filter(|job| queue.is_none_or(|name| job.queue == name));
+        for job in affected {
+            if let Execution::Running(worker) = &mut job.execution {
+                worker.process.limit_effect_deadline(deadline);
+            }
         }
     }
 }
@@ -432,14 +537,7 @@ impl Runner {
     }
 
     fn request_stop(&self, grace: Duration) {
-        let mut state = self.state.lock();
-        let deadline = Instant::now() + grace;
-        match &mut state.phase {
-            Phase::Running => state.phase = Phase::Stopping { deadline },
-            Phase::Stopping { deadline: current } => *current = (*current).min(deadline),
-            Phase::Stopped => {}
-        }
-        drop(state);
+        self.state.lock().stop_at(Instant::now() + grace);
         if let Some(wakeups) = &self.wakeups {
             wakeups.close();
         }
@@ -453,9 +551,9 @@ impl Runner {
         let mut state = self.state.lock();
         let now = Instant::now();
         let shutting_down = match state.phase {
-            Phase::Running => false,
             Phase::Stopping { deadline } => now >= deadline,
             Phase::Stopped => return false,
+            _ => false,
         };
         let mut reply_ready = false;
         let State {
@@ -640,6 +738,35 @@ pub(super) fn start(
     )
 }
 
+#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+pub(super) fn start_effects(
+    pool: u64,
+    config_json: &str,
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+    app_url: &str,
+    operations: &[u8],
+) -> Result<u64, String> {
+    let handler = handler_name(fn_ptr, env_ptr)?;
+    let mut config = Config::parse_effects(config_json)?;
+    let jobs_url = unsafe { crate::db::pool::effects_connection_url(pool)? };
+    config.effects = Some(super::effects::Effects::open(
+        handler.clone(),
+        &jobs_url,
+        app_url,
+        operations,
+        config.effect_sessions.expect("validated effect sessions"),
+    )?);
+    start_configured(
+        pool,
+        config,
+        check_executable,
+        worker_launcher(handler),
+        None,
+    )
+    .map(|runner| runner.id)
+}
+
 fn worker_launcher(handler: String) -> Box<StartWorker> {
     Box::new(move |context, deadline, lease_deadline, reply_wake| {
         Ok(Box::new(WorkerProcess::start(
@@ -784,14 +911,25 @@ fn start_configured(
         }
     })?;
     let sessions = if config.claim_batch {
-        let claims = unsafe { JobSession::from_pool(pool)? };
+        let shared = config.listen && config.effect_queue().is_some_and(|(_, slots)| slots == 1);
+        let claims = (!shared)
+            .then(|| unsafe { JobSession::from_pool(pool) })
+            .transpose()?;
         let mut lifecycle = unsafe { JobSession::from_pool(pool)? };
         lifecycle
-            .with(|_| Ok(()))
+            .with(|db| {
+                if shared && !db.is_idle() {
+                    return Err("Jobs shared session did not start idle".into());
+                }
+                Ok(())
+            })
             .map_err(|error| format!("could not reserve Jobs lifecycle session: {error}"))?;
-        Some((claims, lifecycle))
+        match claims {
+            Some(claims) => DispatchSessions::SplitBatch { claims, lifecycle },
+            None => DispatchSessions::SharedBatch(lifecycle),
+        }
     } else {
-        None
+        DispatchSessions::Pool
     };
     let listener = (config.listen && !config.drain && bounded.is_none())
         .then(|| unsafe { JobListener::from_pool(pool, &config.namespace) })
@@ -888,6 +1026,10 @@ fn start_configured(
                     }
                 }
             }
+            #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+            if let Some(effects) = &dispatcher.config.effects {
+                effects.close();
+            }
             {
                 let mut state = dispatcher.state.lock();
                 dispatcher.publish(Kind::RunnerStopped, None);
@@ -976,8 +1118,15 @@ fn update_queue(
     name: String,
     action: LocalAction,
 ) -> Result<(), String> {
-    if config.drain || !matches!(state.phase, Phase::Running) {
+    let effect_queue = config.effect_queue();
+    let stop_draining_effects = effect_queue.is_some()
+        && matches!(action, LocalAction::Stop { .. })
+        && !state.phase.is_stopped();
+    if config.drain || (!matches!(state.phase, Phase::Running) && !stop_draining_effects) {
         return Err("local queue control requires a running, non-drain runner".into());
+    }
+    if effect_queue.is_some_and(|(queue, _)| queue != name) {
+        return Err("Jobs effects require the configured local queue".into());
     }
     state.refresh_stopping_queues();
     let current = state.queues.get(&name);
@@ -1002,6 +1151,9 @@ fn update_queue(
         _ => None,
     };
     if let Some(limit) = limit {
+        if effect_queue.is_some_and(|(_, cap)| !(1..=cap).contains(&limit)) {
+            return Err("Jobs effects require local slots within the configured limit".into());
+        }
         let other_slots: usize = state
             .queues
             .iter()
@@ -1044,6 +1196,9 @@ fn update_queue(
                 QueuePhase::Stopping(current) => QueuePhase::Stopping(current.min(deadline)),
                 _ => QueuePhase::Stopping(deadline),
             };
+            if let QueuePhase::Stopping(deadline) = queue.phase {
+                state.limit_effect_deadlines(Some(&name), deadline);
+            }
             state.refresh_stopping_queues();
         }
         _ => return Err("local queue must be running or paused".into()),
@@ -1144,6 +1299,11 @@ impl Running {
             Ok(WorkerPoll::AwaitingReply) => {
                 self.reaped = true;
                 return self.stop.take();
+            }
+            #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+            Ok(WorkerPoll::AwaitingEffectRelay) => {
+                self.reaped = true;
+                return None;
             }
             Ok(WorkerPoll::Running) => None,
             Err(error) => {
@@ -1288,6 +1448,8 @@ impl Execution {
                 return false;
             }
         }
+        #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+        worker.process.confirm_effect_lease(renewed.expires_at);
         worker.lease_deadline = renewed.expires_at;
         true
     }
@@ -1759,7 +1921,17 @@ struct BatchRequest {
     slots: usize,
 }
 
-type BatchReply = (String, Result<(Lease, ClaimBatch, Option<Instant>), String>);
+type BatchResult = Result<(Lease, ClaimBatch, Option<Instant>), String>;
+type BatchReply = (String, BatchResult);
+
+enum DispatchSessions {
+    Pool,
+    SplitBatch {
+        claims: JobSession,
+        lifecycle: JobSession,
+    },
+    SharedBatch(JobSession),
+}
 
 struct BatchLane {
     requests: SyncSender<BatchRequest>,
@@ -1789,67 +1961,9 @@ impl BatchLane {
             return;
         }
         match self.results.try_recv() {
-            Ok((queue, result)) => match result {
-                Ok((lease, batch, next_due)) => {
-                    if let Some(row) = batch.oversized.first() {
-                        runner.record_oversized(row);
-                    }
-                    if batch.claims.is_empty() {
-                        let mut state = runner.state.lock();
-                        state.pending = None;
-                        let local = state.queues.get_mut(&queue).expect("known queue");
-                        if batch.contention_hint {
-                            local.retry_batch_claim(
-                                Instant::now(),
-                                runner.config.poll_ms,
-                                next_due,
-                            );
-                            state.counts.batch_contention_hints += 1;
-                        } else {
-                            local.backoff(runner, next_due);
-                        }
-                    } else {
-                        let mut state = runner.state.lock();
-                        state
-                            .queues
-                            .get_mut(&queue)
-                            .expect("known queue")
-                            .batch_retry_ms = 0;
-                        state.pending.as_mut().expect("reserved batch").slots = batch.claims.len();
-                        state.counts.observe_queued_context_bytes(
-                            batch.claims.iter().map(|claim| claim.context.len()).sum(),
-                        );
-                    }
-                    for job in batch.claims {
-                        let mut state = runner.state.lock();
-                        let reservation = state.pending.as_mut().expect("reserved batch");
-                        reservation.slots -= 1;
-                        if reservation.slots == 0 {
-                            state.pending = None;
-                        }
-                        attempts.push(launch_confirmed(
-                            runner,
-                            &mut state,
-                            &queue,
-                            lease,
-                            job,
-                            start_worker,
-                        ));
-                    }
-                }
-                Err(error) => {
-                    {
-                        let mut state = runner.state.lock();
-                        state.pending = None;
-                        state
-                            .queues
-                            .get_mut(&queue)
-                            .expect("known queue")
-                            .backoff(runner, None);
-                    }
-                    runner.storage_failure(Operation::Claim, error, None);
-                }
-            },
+            Ok((queue, result)) => {
+                consume_batch_reply(runner, attempts, start_worker, &queue, result)
+            }
             Err(TryRecvError::Disconnected) => {
                 runner.state.lock().pending = None;
                 runner.storage_failure(
@@ -1864,40 +1978,100 @@ impl BatchLane {
     }
 }
 
+fn consume_batch_reply(
+    runner: &Runner,
+    attempts: &mut Vec<Attempt>,
+    start_worker: &StartWorker,
+    queue: &str,
+    result: BatchResult,
+) {
+    match result {
+        Ok((lease, batch, next_due)) => {
+            if let Some(row) = batch.oversized.first() {
+                runner.record_oversized(row);
+            }
+            if batch.claims.is_empty() {
+                let mut state = runner.state.lock();
+                state.pending = None;
+                let local = state.queues.get_mut(queue).expect("known queue");
+                if batch.contention_hint {
+                    local.retry_batch_claim(Instant::now(), runner.config.poll_ms, next_due);
+                    state.counts.batch_contention_hints += 1;
+                } else {
+                    local.backoff(runner, next_due);
+                }
+            } else {
+                let mut state = runner.state.lock();
+                state
+                    .queues
+                    .get_mut(queue)
+                    .expect("known queue")
+                    .batch_retry_ms = 0;
+                state.pending.as_mut().expect("reserved batch").slots = batch.claims.len();
+                state.counts.observe_queued_context_bytes(
+                    batch.claims.iter().map(|claim| claim.context.len()).sum(),
+                );
+            }
+            for job in batch.claims {
+                let mut state = runner.state.lock();
+                let reservation = state.pending.as_mut().expect("reserved batch");
+                reservation.slots -= 1;
+                if reservation.slots == 0 {
+                    state.pending = None;
+                }
+                attempts.push(launch_confirmed(
+                    runner,
+                    &mut state,
+                    queue,
+                    lease,
+                    job,
+                    start_worker,
+                ));
+            }
+        }
+        Err(error) => {
+            {
+                let mut state = runner.state.lock();
+                state.pending = None;
+                state
+                    .queues
+                    .get_mut(queue)
+                    .expect("known queue")
+                    .backoff(runner, None);
+            }
+            runner.storage_failure(Operation::Claim, error, None);
+        }
+    }
+}
+
 fn dispatch(
     runner: &Runner,
     pool: u64,
     workers: &str,
     start_worker: &StartWorker,
-    sessions: Option<(JobSession, JobSession)>,
+    sessions: DispatchSessions,
 ) {
-    let Some((mut session, lifecycle)) = sessions else {
-        dispatch_queues(runner, pool, workers, start_worker, None, None);
-        return;
+    let (mut session, lifecycle) = match sessions {
+        DispatchSessions::Pool => {
+            dispatch_queues(runner, pool, workers, start_worker, None, None);
+            return;
+        }
+        DispatchSessions::SharedBatch(session) => {
+            dispatch_queues(runner, pool, workers, start_worker, None, Some(session));
+            return;
+        }
+        DispatchSessions::SplitBatch { claims, lifecycle } => (claims, lifecycle),
     };
     std::thread::scope(|scope| {
         let (requests, receive) = mpsc::sync_channel::<BatchRequest>(1);
         let (send, results) = mpsc::sync_channel(1);
-        let config = &runner.config;
         let dispatcher = std::thread::current();
         let worker = std::thread::Builder::new()
             .name(format!("mesh-jobs-claim-{}", runner.id))
             .spawn_scoped(scope, move || {
                 while let Ok(request) = receive.recv() {
                     let result = session.with(|db| {
-                        let next_due = runner.probe_due(db, &request.queue, workers);
-                        let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
-                        let batch = claim_batch_with_timing(
-                            db,
-                            &config.namespace,
-                            &request.queue,
-                            workers,
-                            config.lease_ms,
-                            request.slots,
-                            None,
-                            runner.events.is_some(),
-                        )?;
-                        Ok((lease, batch, next_due))
+                        read_batch_claim(runner, workers, &request.queue, request.slots, db)
                     });
                     if send.send((request.queue, result)).is_err() {
                         break;
@@ -1920,6 +2094,29 @@ fn dispatch(
             }
         }
     });
+}
+
+fn read_batch_claim(
+    runner: &Runner,
+    workers: &str,
+    queue: &str,
+    slots: usize,
+    db: &mut PgJobDb<'_>,
+) -> BatchResult {
+    let config = &runner.config;
+    let next_due = runner.probe_due(db, queue, workers);
+    let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
+    let batch = claim_batch_with_timing(
+        db,
+        &config.namespace,
+        queue,
+        workers,
+        config.lease_ms,
+        slots,
+        None,
+        runner.events.is_some(),
+    )?;
+    Ok((lease, batch, next_due))
 }
 
 fn dispatch_queues(
@@ -1971,11 +2168,12 @@ fn dispatch_queues(
         let (admitting, pending) = {
             let mut state = runner.state.lock();
             state.refresh_stopping_queues();
-            let running = matches!(state.phase, Phase::Running);
-            if attempts.is_empty() && state.pending.is_none() && !running {
+            let admitting = matches!(state.phase, Phase::Running)
+                && !observe_effect_retirement(runner, &mut state);
+            if attempts.is_empty() && state.pending.is_none() && !admitting {
                 return;
             }
-            (running, state.pending.is_some())
+            (admitting, state.pending.is_some())
         };
         if !admitting {
             if let Some(wakeups) = &runner.wakeups {
@@ -2076,6 +2274,28 @@ fn dispatch_queues(
                     }
                     if let Err(error) = lane.request(runner, queue) {
                         runner.storage_failure(Operation::Claim, error, None);
+                    }
+                    continue;
+                }
+                if let Some(session) = &mut io.session {
+                    // A shared batch session is only used by the one-slot effects
+                    // listener. An attempt keeps the slot through settlement.
+                    let slots = reserve_claims(runner, &queue, 1);
+                    if slots != 0 {
+                        let result = session.with(|db| {
+                            let reply = read_batch_claim(runner, workers, &queue, slots, db)?;
+                            if !db.is_idle() {
+                                return Err(
+                                    "Jobs batch claim did not confirm an idle commit".into()
+                                );
+                            }
+                            Ok(reply)
+                        });
+                        // Pool closure can race the synchronous query just like a stop.
+                        if !unsafe { crate::db::pool::is_open(pool) } {
+                            runner.request_stop(Duration::from_millis(config.shutdown_grace_ms));
+                        }
+                        consume_batch_reply(runner, &mut attempts, start_worker, &queue, result);
                     }
                     continue;
                 }
@@ -2290,6 +2510,13 @@ fn reserve_claims(runner: &Runner, queue: &str, slots: usize) -> usize {
         return 0;
     }
     let mut state = runner.state.lock();
+    if runner
+        .config
+        .effect_queue()
+        .is_some_and(|(allowed, _)| queue != allowed)
+    {
+        return 0;
+    }
     if !matches!(state.phase, Phase::Running)
         || !matches!(state.queues[queue].phase, QueuePhase::Running)
         || state.pending.is_some()
@@ -2302,6 +2529,9 @@ fn reserve_claims(runner: &Runner, queue: &str, slots: usize) -> usize {
         .min(state.queues[queue].limit.saturating_sub(active))
         .min(MAX_IN_FLIGHT.saturating_sub(state.jobs.len()));
     if slots > 0 {
+        if observe_effect_retirement(runner, &mut state) {
+            return 0;
+        }
         if let Some(wakeups) = &runner.wakeups {
             let queue = state.queues.get_mut(queue).expect("known queue");
             wakeups.record_scan(queue.source);
@@ -2313,6 +2543,20 @@ fn reserve_claims(runner: &Runner, queue: &str, slots: usize) -> usize {
         });
     }
     slots
+}
+
+fn observe_effect_retirement(_runner: &Runner, _state: &mut State) -> bool {
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    if _runner
+        .config
+        .effects
+        .as_ref()
+        .is_some_and(|effects| effects.exhausted_permanently())
+    {
+        _state.drain_retired_effects();
+        return true;
+    }
+    false
 }
 
 fn launch_confirmed(
@@ -2340,17 +2584,40 @@ fn launch_confirmed(
         || !matches!(state.queues[queue].phase, QueuePhase::Running)
         || state.jobs.values().filter(|job| job.queue == queue).count() >= state.queues[queue].limit
         || crate::process_signal::shutdown_requested()
+        // The capacity check under the pool mutex admits this launch. A launch
+        // admitted before final retirement can still spawn and register, but
+        // cannot check out an application session after the pool retires.
+        || observe_effect_retirement(runner, state)
     {
         Execution::acknowledging(Reply::Unstarted(FailureKind::Shutdown), None)
     } else if let Some(deadline) = deadline {
         // The caller holds runner.state through registration, so the supervisor
         // cannot miss an attempt that replies during launch.
-        match start_worker(
-            context,
-            deadline,
-            lease.worker_expires_at,
-            runner.reply_wake.clone(),
-        ) {
+        let launch = |context| {
+            start_worker(
+                context,
+                deadline,
+                lease.worker_expires_at,
+                runner.reply_wake.clone(),
+            )
+        };
+        #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+        let process = match &runner.config.effects {
+            Some(effects) => effects.start(
+                &runner.config.namespace,
+                &id,
+                &token,
+                context,
+                deadline,
+                lease.expires_at,
+                lease.worker_expires_at,
+                runner.reply_wake.clone(),
+            ),
+            None => launch(context),
+        };
+        #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+        let process = launch(context);
+        match process {
             Ok(process) => {
                 runner.publish(Kind::AttemptStarted, identity.as_ref());
                 Execution::Running(Running {
@@ -2385,6 +2652,12 @@ fn launch_confirmed(
     };
     job.observe_local_lease_loss(runner);
     state.jobs.insert(token.clone(), job);
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    if runner.config.effects.is_some() {
+        if let Execution::Running(worker) = &mut state.jobs.get_mut(&token).unwrap().execution {
+            worker.process.activate_effects();
+        }
+    }
     state.counts.claimed += 1;
     Attempt {
         id,

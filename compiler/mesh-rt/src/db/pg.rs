@@ -69,12 +69,12 @@ pub struct MeshDbValue {
 // ── Stream Abstraction ─────────────────────────────────────────────────
 
 /// A PostgreSQL connection stream that may be plain TCP or TLS-wrapped.
-enum PgStream {
-    Plain(TcpStream),
-    Tls(StreamOwned<ClientConnection, TcpStream>),
+enum PgStream<T: Read + Write = TcpStream> {
+    Plain(T),
+    Tls(StreamOwned<ClientConnection, T>),
 }
 
-impl Read for PgStream {
+impl<T: Read + Write> Read for PgStream<T> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         match self {
             PgStream::Plain(s) => s.read(buf),
@@ -92,7 +92,7 @@ impl PgStream {
     }
 }
 
-impl Write for PgStream {
+impl<T: Read + Write> Write for PgStream<T> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self {
             PgStream::Plain(s) => s.write(buf),
@@ -423,7 +423,7 @@ fn parse_pg_url(url: &str) -> Result<PgUrl, String> {
 /// Format: Int32(length) Int32(196608=v3.0) String("user") String(username)
 ///         String("database") String(dbname)
 ///         String("client_encoding") String("UTF8") Byte1(0)
-fn write_startup_message(buf: &mut Vec<u8>, user: &str, database: &str) {
+fn write_startup_message(buf: &mut Vec<u8>, user: &str, database: &str, options: Option<&str>) {
     let mut body = Vec::new();
     // Protocol version 3.0 = 196608 = 0x00030000
     body.extend_from_slice(&196608_i32.to_be_bytes());
@@ -436,6 +436,11 @@ fn write_startup_message(buf: &mut Vec<u8>, user: &str, database: &str) {
     // Mesh text is UTF-8: the server converts to and from the database's
     // encoding, which it otherwise assumes the client speaks.
     body.extend_from_slice(b"client_encoding\0UTF8\0");
+    if let Some(options) = options {
+        body.extend_from_slice(b"options\0");
+        body.extend_from_slice(options.as_bytes());
+        body.push(0);
+    }
     // Terminator
     body.push(0);
 
@@ -615,11 +620,11 @@ fn write_terminate(buf: &mut Vec<u8>) {
 
 /// Upgrade a TCP stream to a TLS-wrapped stream using rustls, trusting the
 /// public roots and the CAs in `root_cert` (a PEM file), if any.
-fn upgrade_to_tls(
-    stream: TcpStream,
+fn upgrade_to_tls<T: Read + Write>(
+    stream: T,
     hostname: &str,
     root_cert: Option<&str>,
-) -> Result<StreamOwned<ClientConnection, TcpStream>, String> {
+) -> Result<StreamOwned<ClientConnection, T>, String> {
     let mut root_store = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     if let Some(path) = root_cert {
         let unreadable = |error: &dyn std::fmt::Display| format!("sslrootcert {path}: {error}");
@@ -645,7 +650,7 @@ fn upgrade_to_tls(
 /// For prefer/require, sends the SSLRequest message and reads the 1-byte response.
 /// 'S' = server accepts SSL -> upgrade to TLS.
 /// 'N' = server declines -> error on require, fallback on prefer.
-fn negotiate_tls(mut stream: TcpStream, url: &PgUrl) -> Result<PgStream, String> {
+fn negotiate_tls<T: Read + Write>(mut stream: T, url: &PgUrl) -> Result<PgStream<T>, String> {
     let sslmode = url.sslmode;
     if sslmode == SslMode::Disable {
         return Ok(PgStream::Plain(stream));
@@ -679,7 +684,11 @@ fn negotiate_tls(mut stream: TcpStream, url: &PgUrl) -> Result<PgStream, String>
 // ── Wire Protocol Helpers (Message Reading) ────────────────────────────
 
 /// Read a single message from the server: returns (tag_byte, body_bytes).
-fn read_message(stream: &mut PgStream) -> Result<(u8, Vec<u8>), String> {
+fn read_message(stream: &mut impl Read) -> Result<(u8, Vec<u8>), String> {
+    read_message_with_limit(stream, MAX_PG_MESSAGE_BYTES)
+}
+
+fn read_message_with_limit(stream: &mut impl Read, max: usize) -> Result<(u8, Vec<u8>), String> {
     let mut tag = [0u8; 1];
     stream
         .read_exact(&mut tag)
@@ -691,9 +700,9 @@ fn read_message(stream: &mut PgStream) -> Result<(u8, Vec<u8>), String> {
         .map_err(|e| format!("read length: {}", e))?;
     let len = i32::from_be_bytes(len_buf);
 
-    if len < 4 || len as usize > MAX_PG_MESSAGE_BYTES {
+    if len < 4 || len as usize > max {
         return Err(format!(
-            "invalid PostgreSQL message length: {len} (maximum {MAX_PG_MESSAGE_BYTES})"
+            "invalid PostgreSQL message length: {len} (maximum {max})"
         ));
     }
 
@@ -763,10 +772,20 @@ fn sha256(data: &[u8]) -> Vec<u8> {
 
 /// Process SCRAM-SHA-256 client-final-message.
 /// Returns (client_final_message, expected_server_signature).
+#[cfg(test)]
 fn scram_client_final(
     password: &str,
     client_nonce: &str,
     server_first: &str,
+) -> Result<(String, Vec<u8>), String> {
+    scram_client_final_bounded(password, client_nonce, server_first, u32::MAX)
+}
+
+fn scram_client_final_bounded(
+    password: &str,
+    client_nonce: &str,
+    server_first: &str,
+    max_iterations: u32,
 ) -> Result<(String, Vec<u8>), String> {
     // Parse server-first-message: r=<nonce>,s=<salt>,i=<iterations>
     let mut server_nonce = "";
@@ -794,6 +813,10 @@ fn scram_client_final(
         .map_err(|_| "bad salt encoding".to_string())?;
     let iterations =
         NonZeroU32::new(iterations).ok_or_else(|| "missing or zero iteration count".to_string())?;
+
+    if iterations.get() > max_iterations {
+        return Err("SCRAM iteration count exceeds the startup limit".into());
+    }
 
     // SaltedPassword = PBKDF2(password, salt, iterations, SHA-256)
     let mut salted_password = [0u8; 32];
@@ -1469,17 +1492,39 @@ pub(super) fn connect_with_socket(
     let _ = stream.set_read_timeout(Some(ANSWER_TIMEOUT));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
 
-    let mut stream = negotiate_tls(stream, &pg_url).map_err(|e| format!("TLS: {}", e))?;
+    let (stream, txn_status) = finish_startup(stream, &pg_url, None)?;
+    let conn = PgConn {
+        stream,
+        txn_status,
+        broken: false,
+    };
+    // Connected: statements take as long as they take.
+    conn.set_read_timeout(None);
+    Ok(conn)
+}
+
+fn finish_startup<T: Read + Write>(
+    stream: T,
+    pg_url: &PgUrl,
+    options: Option<&str>,
+) -> Result<(PgStream<T>, u8), String> {
+    let frame_limit = if options.is_some() {
+        4096
+    } else {
+        MAX_PG_MESSAGE_BYTES
+    };
+    let mut stream = negotiate_tls(stream, pg_url).map_err(|e| format!("TLS: {}", e))?;
 
     // Send StartupMessage
     let mut buf = Vec::new();
-    write_startup_message(&mut buf, &pg_url.user, &pg_url.database);
+    write_startup_message(&mut buf, &pg_url.user, &pg_url.database, options);
     stream
         .write_all(&buf)
         .map_err(|e| format!("send startup: {}", e))?;
 
     // Read authentication response
-    let (tag, body) = read_message(&mut stream).map_err(|e| format!("read auth: {}", e))?;
+    let (tag, body) = read_message_with_limit(&mut stream, frame_limit)
+        .map_err(|e| format!("read auth: {}", e))?;
     if tag != b'R' {
         if tag == b'E' {
             return Err(parse_error_response(&body));
@@ -1492,6 +1537,9 @@ pub(super) fn connect_with_socket(
 
     let auth_type = i32::from_be_bytes([body[0], body[1], body[2], body[3]]);
 
+    if options.is_some() && auth_type != 10 {
+        return Err("Jobs effect session requires SCRAM-SHA-256".into());
+    }
     match auth_type {
         0 => {} // AuthenticationOk -- no auth required
         3 => {
@@ -1501,8 +1549,8 @@ pub(super) fn connect_with_socket(
             stream
                 .write_all(&buf)
                 .map_err(|e| format!("send password: {}", e))?;
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read auth response: {}", e))?;
+            let (tag, body) = read_message_with_limit(&mut stream, frame_limit)
+                .map_err(|e| format!("read auth response: {}", e))?;
             authentication_body(tag, &body, 0)?;
         }
         5 => {
@@ -1514,8 +1562,8 @@ pub(super) fn connect_with_socket(
             stream
                 .write_all(&buf)
                 .map_err(|e| format!("send md5: {}", e))?;
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read md5 response: {}", e))?;
+            let (tag, body) = read_message_with_limit(&mut stream, frame_limit)
+                .map_err(|e| format!("read md5 response: {}", e))?;
             authentication_body(tag, &body, 0)?;
         }
         10 => {
@@ -1533,12 +1581,16 @@ pub(super) fn connect_with_socket(
                 .write_all(&buf)
                 .map_err(|e| format!("send SASL init: {}", e))?;
 
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read SASL continue: {}", e))?;
+            let (tag, body) = read_message_with_limit(&mut stream, frame_limit)
+                .map_err(|e| format!("read SASL continue: {}", e))?;
             let server_first = std::str::from_utf8(authentication_body(tag, &body, 11)?)
                 .map_err(|_| "invalid SCRAM server-first encoding")?;
-            let (client_final, expected_sig) =
-                scram_client_final(&pg_url.password, &client_nonce, server_first)?;
+            let (client_final, expected_sig) = scram_client_final_bounded(
+                &pg_url.password,
+                &client_nonce,
+                server_first,
+                if options.is_some() { 100_000 } else { u32::MAX },
+            )?;
 
             let mut buf = Vec::new();
             write_sasl_response(&mut buf, client_final.as_bytes());
@@ -1546,11 +1598,11 @@ pub(super) fn connect_with_socket(
                 .write_all(&buf)
                 .map_err(|e| format!("send SASL final: {}", e))?;
 
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read SASL final: {}", e))?;
+            let (tag, body) = read_message_with_limit(&mut stream, frame_limit)
+                .map_err(|e| format!("read SASL final: {}", e))?;
             verify_scram_server_final(authentication_body(tag, &body, 12)?, &expected_sig)?;
-            let (tag, body) =
-                read_message(&mut stream).map_err(|e| format!("read auth ok: {}", e))?;
+            let (tag, body) = read_message_with_limit(&mut stream, frame_limit)
+                .map_err(|e| format!("read auth ok: {}", e))?;
             authentication_body(tag, &body, 0)?;
         }
         _ => {
@@ -1561,12 +1613,15 @@ pub(super) fn connect_with_socket(
     // Read parameter status and ready-for-query messages
     let mut txn_status = b'I';
     loop {
-        let (tag, body) =
-            read_message(&mut stream).map_err(|e| format!("read startup params: {}", e))?;
+        let (tag, body) = read_message_with_limit(&mut stream, frame_limit)
+            .map_err(|e| format!("read startup params: {}", e))?;
         match tag {
             b'K' | b'S' | b'N' => {} // BackendKeyData, ParameterStatus, NoticeResponse
             b'E' => return Err(parse_error_response(&body)),
             b'Z' => {
+                if options.is_some() && body != b"I" {
+                    return Err("Jobs effect session did not start idle".into());
+                }
                 if !body.is_empty() {
                     txn_status = body[0];
                 }
@@ -1576,14 +1631,7 @@ pub(super) fn connect_with_socket(
         }
     }
 
-    let conn = PgConn {
-        stream,
-        txn_status,
-        broken: false,
-    };
-    // Connected: statements take as long as they take.
-    conn.set_read_timeout(None);
-    Ok(conn)
+    Ok((stream, txn_status))
 }
 
 /// Close a PostgreSQL connection.
@@ -1999,6 +2047,12 @@ fn text_query(
 pub fn native_pg_close(conn: NativePgConn) {
     close(conn.inner);
 }
+
+#[cfg(any(
+    all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
+    all(unix, test)
+))]
+pub(crate) mod jobs_effect_session;
 
 #[cfg(test)]
 mod tests {
@@ -2545,7 +2599,7 @@ mod tests {
     #[test]
     fn startup_asks_for_utf8() {
         let mut startup = Vec::new();
-        write_startup_message(&mut startup, "user", "db");
+        write_startup_message(&mut startup, "user", "db", None);
         let asked = b"client_encoding\0UTF8\0";
         assert!(startup.windows(asked.len()).any(|bytes| bytes == asked));
     }

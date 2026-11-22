@@ -1458,17 +1458,18 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Check if it's a runtime intrinsic (don't add reduction check for runtime calls)
             if let Some(fn_val) = self.module.get_function(name) {
-                if matches!(name.as_str(), "mesh_jobs_start" | "mesh_jobs_drain") {
+                let jobs_operation = match name.as_str() {
+                    "mesh_jobs_start" => Some("Jobs.start"),
+                    "mesh_jobs_start_effects_v1" => Some("Jobs.start_effects"),
+                    "mesh_jobs_drain" => Some("Jobs.drain"),
+                    _ => None,
+                };
+                if let Some(operation) = jobs_operation {
                     let handler = args
                         .get(2)
                         .and_then(MirExpr::var_name)
                         .and_then(|name| self.fn_item(name))
                         .ok_or_else(|| {
-                            let operation = if name == "mesh_jobs_start" {
-                                "Jobs.start"
-                            } else {
-                                "Jobs.drain"
-                            };
                             self.diagnostic_at(
                                 at,
                                 Code::InvalidJobsStart,

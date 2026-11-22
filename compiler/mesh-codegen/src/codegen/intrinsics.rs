@@ -3452,6 +3452,21 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             ],
         ),
         (
+            "mesh_jobs_start_effects_v1",
+            vec![
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+        ),
+        (
+            "mesh_jobs_effect_v1",
+            vec![ptr_type.into(), ptr_type.into()],
+        ),
+        (
             "mesh_jobs_drain",
             vec![
                 i64_type.into(),

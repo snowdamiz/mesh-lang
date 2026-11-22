@@ -98,6 +98,8 @@ static ARENA: Mutex<Option<Arena>> = Mutex::new(None);
 /// This function is safe to call multiple times; subsequent calls are no-ops.
 #[no_mangle]
 pub extern "C" fn mesh_rt_init() {
+    #[cfg(target_os = "linux")]
+    crate::jobs::apply_worker_startup_policy();
     crate::stack_overflow::install_for_current_thread();
     crate::panic::install_hook();
     #[cfg(all(mesh_coverage, unix))]
