@@ -69,3 +69,36 @@ on the combined receipt. The scorer verifies five pairs per profile,
 one release ELF and identical common component hashes. It uses
 the existing parity limits for throughput, pickup, CPU, RSS,
 connections, processes, threads and the sparse listener.
+
+## Reproduce the canonical score
+
+Extract the archived receipts to a fresh directory, then run the verifier
+and scorer from the checkout root. The archive includes the original
+guest manifests, job ledgers, resource samples, and measured-arm host
+load for all 25 boots.
+
+```sh
+p=proof/jobs-parity/linux-regression
+c=target/jobs-perf-work/canonical-replay
+mkdir -p "$c"
+tar -xzf proof/jobs-parity/linux-canonical-raw-20261122.tar.gz -C "$c"
+python3 -B "$p/summarize.py" "$c"/{noop,slow,sparse,short,large}-0{1,2,3,4,5} > "$c/receipt.json"
+python3 -B "$p/score.py" "$c/receipt.json" > "$c/score.json"
+cmp "$c/receipt.json" proof/jobs-parity/linux-canonical-receipt-20261122.json
+cmp "$c/score.json" proof/jobs-parity/linux-canonical-score-20261122.json
+```
+
+To run fresh pairs, use the run command above for each of pairs 01
+through 05. Pass `--oban-first` for pairs 02 and 04. Each boot releases
+the same `fcntl` lock before the next boot.
+
+The final 13 groups used `recovery/run.py` from the raw archive as their
+entry point after the adjacent checkout lost `pack_gnu.py` and its base
+image. The entry point uses the frozen driver in
+`target/jobs-perf-work/canonical-source`, the checkpoint manifest in
+`target/jobs-perf-work/canonical/sparse-01/evidence/config.json`, and the
+retained image at `target/large-claim-perf/canonical-01/guest.cpio`.
+Extract the `recovery/run.py` file to
+`target/jobs-perf-work/canonical-recovery/run.py` to use the same entry
+point in the shared checkout. It restores the base and init by SHA-256
+and checks the complete guest manifest before launching.

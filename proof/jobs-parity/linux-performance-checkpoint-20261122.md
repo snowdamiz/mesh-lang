@@ -1,7 +1,11 @@
 # Linux durable Jobs performance checkpoint · 2026-11-22
 
-Work is paused with a verified opt-in named-effects runtime and partial
-canonical comparisons. Ordinary `Jobs.start` keeps its existing path.
+The canonical comparison resumed from this checkpoint and completed all
+25 pairs. The table below preserves the measurements at the pause.
+[Final canonical comparison](../../docs/durable-jobs-parity-evidence.md#complete-the-canonical-linux-comparison)
+
+At the pause, the opt-in named-effects runtime was verified and the
+canonical comparison was partial. Ordinary `Jobs.start` keeps its existing path.
 The retained runtime was built from `d8741576fcceae76b4ef93cfedd0805e414a8bfa`.
 The compiler and runtime tree match after `35fa53ff`, which removed the
 experimental scheduler and watchdog changes. The public warm path is
@@ -34,9 +38,9 @@ producer/observer used one backend per arm. Peaks include
 
 Dense trails on throughput. Slow exceeds the 1.50× RSS limit. The
 sparse Oban tree sampled four processes against the limit of two. Five
-matched pairs per profile remain the gate for scoring. The dispatcher
-stopped after `slow-03` exported a clean receipt. Resume at `sparse-03`
-and retain all twelve completed groups.
+matched pairs per profile were required for scoring. The dispatcher
+stopped after `slow-03` exported a clean receipt. The continuation began
+at `sparse-03` and retained all twelve completed groups.
 [Resume and exact commands](../../target/jobs-perf-work/RESUME.md)
 [Canonical partial receipt](../../target/jobs-perf-work/canonical/checkpoint-receipt.json)
 

@@ -5612,7 +5612,7 @@ does export the pinned flags when invoked through its normal entry
 point, as did the macOS ordinary comparison. Keep the older guest
 measurements in their historical series.
 
-The prospective canonical guest driver reads all four flags from
+The canonical guest driver reads all four flags from
 the frozen profile and verifies each runner's live argv and effective
 Erlang scheduler and async-pool values. The canonical pairs use
 their own series label and receipt.
@@ -5635,3 +5635,59 @@ receipt preserves all measured arms, host load and the initial
 Oban-first large pair as a separate diagnostic. Its generated
 broker source differed by one blank line, so the exact-hash
 series used a repeat in the same arm order.
+
+### Complete the canonical Linux comparison
+
+Short and large passed every configured gate. Dense missed throughput
+and pickup, slow exceeded the RSS ratio, and sparse exceeded the Oban
+process limit. The comparison used the retained named-effects ELF and
+the pinned guest, kernel, and input hashes. The guest verified
+`+S 2:2 +SDcpu 1:1 +SDio 1 +A 2` for all 95 measured Oban runners.
+[Environment pins](../proof/jobs-parity/linux-performance-checkpoint-20261122.md)
+
+Each profile ran five pairs in alternating arm order. Throughput runs
+from the first committed enqueue to final durable settlement. Runner CPU
+includes startup and idle. Each metric column lists Mesh first.
+
+| Profile | Median jobs/s (range) | Mesh throughput wins | Median pickup p99, ms | Median runner CPU-ms/job | Median peak RSS, MiB | Failed gates |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Dense | 936 (703–1,158) / 2,284 (1,565–2,869) | 0/5 | 1,075 / 441 | 1.02 / 3.45 | 319 / 925 | Throughput 0.410×, pickup 2.436× |
+| Slow | 490 (258–533) / 470 (421–482) | 4/5 | 936 / 983 | 1.56 / 1.32 | 330 / 146 | RSS 2.257× |
+| Sparse | 2.900 (2.866–2.904) / 2.037 (2.013–2.052) | 5/5 | 5.74 / 247.15 | 8.47 / 22.67 | 28.7 / 115.0 | Oban processes 4 of 2 allowed |
+| Short | 647 (225–903) / 379 (334–985) | 3/5 | 186 / 334 | 1.58 / 4.56 | 61.4 / 120.1 | None |
+| Large | 250 (188–387) / 204 (116–299) | 4/5 | 251 / 298 | 8.02 / 79.80 | 234 / 992 | None |
+
+The median throughput gate requires a ratio strictly above 1.00×.
+The median pickup, CPU, and RSS limits are 1.25×, 1.25×, and 1.50×.
+Mesh won 0, 4, 5, 3, and 4 pickup pairs in table order. It used less
+runner CPU in 5, 3, 5, 5, and 5 pairs and less peak RSS in all five
+pairs on each profile except slow. The median paired throughput
+differences were −1,280, +45, +0.85, +123, and +72 jobs/s.
+
+| Profile | Peak connections, Mesh / Oban (cap) | Peak processes (cap) | Peak threads (cap) |
+| --- | ---: | ---: | ---: |
+| Dense | 65 / 81 (96) | 18 / 32 (128) | 157 / 112 (672) |
+| Slow | 13 / 67 (68) | 65 / 4 (128) | 456 / 14 (588) |
+| Sparse | 5 / 4 (5) | 2 / 4 (2) | 14 / 14 (84) |
+| Short | 13 / 19 (20) | 11 / 4 (32) | 71 / 14 (204) |
+| Large | 65 / 81 (96) | 13 / 32 (128) | 100 / 112 (672) |
+
+Connection samples include the shared producer and observer backend and
+`compiled_caller`. Both sparse arms stayed within the 750 ms absolute
+pickup limit. Mesh's worst sparse claim p99 was 4.38 ms against 100 ms.
+The largest Mesh queued-context sample was 4,196,960 bytes against 32 MiB.
+
+All 25 boots returned proof status zero. The ledgers reconcile 17,520
+measured jobs and 35,040 writes. Every job had one attempt and one effect
+in distinct ordered commits by settlement. The 16,000 warmup jobs
+passed the same reconciliation. Measured-arm start load ranged from
+7.12 to 57.00 on 15 host logical CPUs. Slow's one throughput loss was
+258 versus 470 jobs/s at loads of 21.62 and 23.24. The large pair with
+the highest load reached 198 versus 123 jobs/s at 57.00 and 54.60. The
+score includes both pairs and all other observations.
+
+[Configured limits](../scripts/jobs-parity-profiles.json)
+[Canonical score](../proof/jobs-parity/linux-canonical-score-20261122.json)
+[Paired receipt](../proof/jobs-parity/linux-canonical-receipt-20261122.json)
+[Raw receipts](../proof/jobs-parity/linux-canonical-raw-20261122.tar.gz)
+[Reproduction](../proof/jobs-parity/linux-regression/README.md#reproduce-the-canonical-score)
