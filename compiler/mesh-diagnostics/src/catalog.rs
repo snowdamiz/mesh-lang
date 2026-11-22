@@ -934,9 +934,9 @@ catalog! {
         ),
     },
     InvalidJobsStart = E0094 "invalid-jobs-start" Error {
-        title: "invalid `Jobs.start` call",
-        summary: "`Jobs.start` is used indirectly or given a handler the compiler cannot check.",
-        repair: "Call `Jobs.start` directly, and pass a named function of type `fn(String) -> String` as its handler.",
+        title: "invalid durable Jobs call",
+        summary: "A call to `Jobs.start` or `Jobs.drain` uses an indirect reference or passes a handler the compiler cannot check.",
+        repair: "Call `Jobs.start` or `Jobs.drain` directly and pass a named function of type `fn(String) -> String` as the handler.",
         topic: "database",
         example: (
             "fn start(pool :: PoolHandle) do\n  Jobs.start(pool, \"{}\", fn job -> job end)\nend\n",

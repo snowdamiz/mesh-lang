@@ -1,9 +1,13 @@
 mod cron;
+mod drain_store;
+mod events;
 mod runner;
 mod store;
+pub mod testing;
 mod worker;
 
 use crate::db::jobs_connection::{self, PgJobDb};
+use crate::db::pg::JobsAckError;
 use crate::io::{alloc_result, err_result, ok_int, MeshResult};
 use crate::string::{mesh_str, text_of, MeshString};
 
@@ -14,6 +18,14 @@ impl store::Database for PgJobDb<'_> {
 
     fn simple(&mut self, sql: &str) -> Result<(), String> {
         PgJobDb::simple(self, sql)
+    }
+
+    fn acknowledge(
+        &mut self,
+        sql: &str,
+        params: &[&str],
+    ) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
+        PgJobDb::acknowledge(self, sql, params)
     }
 
     fn in_transaction(&self) -> bool {
@@ -119,6 +131,18 @@ pub extern "C" fn mesh_jobs_start(
 }
 
 #[no_mangle]
+pub extern "C-unwind" fn mesh_jobs_drain(
+    pool: u64,
+    config: *const MeshString,
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+    options: *const MeshString,
+) -> *mut MeshResult {
+    let (config, options) = unsafe { (text_of(config), text_of(options)) };
+    text_result(runner::drain(pool, config, fn_ptr, env_ptr, options))
+}
+
+#[no_mangle]
 pub extern "C-unwind" fn mesh_jobs_stop(runner: i64, grace_ms: i64) -> *mut MeshResult {
     if runner <= 0 || grace_ms < 0 {
         return err_result("Jobs.stop requires a valid runner and nonnegative grace period");
@@ -140,4 +164,23 @@ pub extern "C" fn mesh_jobs_status(runner: i64) -> *mut MeshResult {
         return err_result("invalid Jobs runner");
     }
     text_result(runner::status(runner as u64))
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_jobs_read_events(runner: i64, limit: i64) -> *mut MeshResult {
+    if runner <= 0 {
+        return err_result("invalid Jobs runner");
+    }
+    text_result(runner::read_events(runner as u64, limit))
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_jobs_local_control(
+    runner: i64,
+    action: *const MeshString,
+) -> *mut MeshResult {
+    if runner <= 0 {
+        return err_result("invalid Jobs runner");
+    }
+    text_result(runner::control(runner as u64, unsafe { text_of(action) }))
 }

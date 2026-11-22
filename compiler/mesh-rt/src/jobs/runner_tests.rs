@@ -1,3 +1,4 @@
+use super::super::store::claim;
 use super::*;
 use serde_json::json;
 use std::sync::mpsc;
@@ -10,6 +11,11 @@ fn config_matches_store_names_and_bounds_runner_capacity() {
     let config = Config::parse(TEST_CONFIG).unwrap();
     assert_eq!(config.namespace, "default");
     assert_eq!(config.queues["default"], 2);
+    assert_eq!(config.event_buffer, 0);
+    assert!(!config.event_log);
+    assert!(!config.listen);
+    assert!(!config.claim_batch);
+    assert_eq!(config.poll_ms, 100);
     assert!(Config::parse(
         r#"{"namespace":"app jobs","queues":{"batch":1},"workers":[{"worker":"test","version":4294967295}]}"#
     )
@@ -20,8 +26,212 @@ fn config_matches_store_names_and_bounds_runner_capacity() {
         r#"{"queues":{"default":1},"workers":[{"worker":"test","version":0}]}"#,
         r#"{"queues":{"default":1},"workers":[{"worker":"test","version":1},{"worker":"test","version":1}]}"#,
         r#"{"queues":{"default":1},"workers":[{"worker":"test","version":1}],"lease_ms":0}"#,
+        r#"{"queues":{"default":1},"workers":[{"worker":"test","version":1}],"event_buffer":1025}"#,
     ] {
         assert!(Config::parse(config).is_err(), "{config}");
+    }
+}
+
+#[test]
+fn wake_hints_coalesce_to_one_bit_per_configured_queue() {
+    let mut config = Config::parse(TEST_CONFIG).unwrap();
+    config.queues = (0..64)
+        .map(|index| (format!("queue-{index:02}"), 1))
+        .collect();
+    let wakes = Wakeups::new(&config);
+    assert!(!wakes.event(ListenEvent::Hint(&wake_key("unknown"))));
+    assert!(wakes.event(ListenEvent::Subscribed));
+    assert!(!wakes.event(ListenEvent::Subscribed));
+    let first = wake_key("queue-00");
+    let last = wake_key("queue-63");
+    for _ in 0..1024 {
+        assert!(!wakes.event(ListenEvent::Hint(&first)));
+        assert!(!wakes.event(ListenEvent::Hint(&last)));
+    }
+    assert_eq!(
+        wakes.take(),
+        WakeHints {
+            configured: 1 | 1 << 63,
+            rescan: true,
+            unknown: false,
+        }
+    );
+    assert_eq!(wakes.take(), WakeHints::default());
+
+    let mut queues = BTreeMap::from([
+        ("queue-63".into(), LocalQueue::new(1)),
+        ("added".into(), LocalQueue::new(1)),
+    ]);
+    let mut freed = HashSet::new();
+    assert!(wakes.event(ListenEvent::Hint(&last)));
+    wakes.apply(&mut queues, &mut freed);
+    assert!(matches!(queues["queue-63"].source, ClaimWake::Notification));
+    assert!(matches!(queues["added"].source, ClaimWake::Ready));
+    let added = wake_key("added");
+    assert!(wakes.event(ListenEvent::Hint(&added)));
+    for _ in 0..1024 {
+        assert!(!wakes.event(ListenEvent::Hint(&added)));
+    }
+    wakes.apply(&mut queues, &mut freed);
+    assert!(matches!(queues["added"].source, ClaimWake::Notification));
+    assert_eq!(wakes.take(), WakeHints::default());
+    wakes.close();
+    assert!(!wakes.event(ListenEvent::Subscribed));
+    assert_eq!(wakes.report()["subscribed"], false);
+    assert_eq!(wakes.report()["subscriptions"], 2);
+}
+
+#[test]
+fn batch_contention_retries_back_off_and_definitive_empty_resets_them() {
+    let mut config = Config::parse(TEST_CONFIG).unwrap();
+    config.claim_batch = true;
+    config.poll_ms = 12;
+    let runner = Runner {
+        id: 0,
+        state: Mutex::new(State::new(&config)),
+        config,
+        check_worker: || Ok(()),
+        dispatcher: OnceLock::new(),
+        reply_wake: crossbeam_channel::bounded(1).0,
+        events: None,
+        wakeups: None,
+    };
+    let (requests, _) = mpsc::sync_channel(1);
+    let (send, results) = mpsc::sync_channel(1);
+    let lane = BatchLane { requests, results };
+    let lease = Lease::begin(Duration::from_secs(30)).unwrap();
+    let poll = |contention_hint, next_due| {
+        runner.state.lock().pending = Some(Reservation {
+            queue: "default".into(),
+            slots: 1,
+        });
+        send.send((
+            "default".into(),
+            Ok((
+                lease,
+                ClaimBatch {
+                    contention_hint,
+                    ..ClaimBatch::default()
+                },
+                next_due,
+            )),
+        ))
+        .unwrap();
+        let before = Instant::now();
+        lane.poll(&runner, &mut Vec::new(), &|_, _, _, _| {
+            panic!("empty batch must not launch a worker")
+        });
+        let state = runner.state.lock();
+        assert!(state.pending.is_none());
+        (before, state.queues["default"].next_claim)
+    };
+
+    for ceiling_ms in [4, 8, 12, 12] {
+        let (before, next) = poll(true, None);
+        assert!(next >= before + Duration::from_millis(ceiling_ms / 2));
+        assert!(next <= Instant::now() + Duration::from_millis(ceiling_ms));
+    }
+    let (before, next) = poll(false, None);
+    assert!(next >= before + Duration::from_millis(12));
+    let (_, next) = poll(true, None);
+    assert!(next <= Instant::now() + Duration::from_millis(4));
+    let due = Instant::now();
+    assert_eq!(poll(true, Some(due)).1, due);
+    let state = runner.state.lock();
+    assert!(matches!(state.queues["default"].source, ClaimWake::Due));
+    let report: serde_json::Value = serde_json::from_str(&runner.report(&state)).unwrap();
+    assert_eq!(report["batch_contention_hints"], 6);
+    assert_eq!(report["claimed"], 0);
+
+    let mut queue = LocalQueue::new(1);
+    let now = Instant::now();
+    for _ in 0..2 {
+        queue.retry_batch_claim(now, 1, None);
+        assert_eq!(queue.next_claim, now + Duration::from_millis(1));
+    }
+}
+
+#[test]
+fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let runner = Runner {
+        id: 0,
+        config: Config::parse(TEST_CONFIG).unwrap(),
+        check_worker: || Ok(()),
+        dispatcher: OnceLock::new(),
+        reply_wake: crossbeam_channel::bounded(1).0,
+        events: None,
+        wakeups: None,
+        state: Mutex::new(State {
+            phase: Phase::Running,
+            pending: Some(Reservation {
+                queue: "default".into(),
+                slots: 3,
+            }),
+            ..State::new(&Config::parse(TEST_CONFIG).unwrap())
+        }),
+    };
+    let (requests, _) = mpsc::sync_channel(1);
+    let (send, results) = mpsc::sync_channel(1);
+    let lane = BatchLane { requests, results };
+    let lease = Lease::begin(Duration::from_secs(30)).unwrap();
+    runner
+        .state
+        .lock()
+        .queues
+        .get_mut("default")
+        .unwrap()
+        .batch_retry_ms = 8;
+    let claims = (1..=3)
+        .map(|index| Claim {
+            id: format!("job-{index}"),
+            token: format!("token-{index}"),
+            context: r#"{"args":{"wait_ms":1000}}"#.into(),
+            timeout_ms: 2000,
+            observed_at_ms: None,
+        })
+        .collect();
+    send.send((
+        "default".into(),
+        Ok((
+            lease,
+            ClaimBatch {
+                claims,
+                ..ClaimBatch::default()
+            },
+            None,
+        )),
+    ))
+    .unwrap();
+    let launches = AtomicUsize::new(0);
+    let launch = move |context, deadline, lease_deadline, reply_wake| {
+        if launches.fetch_add(1, Ordering::Relaxed) == 0 {
+            TimedWorker::start(context, deadline, lease_deadline, reply_wake)
+        } else {
+            Err("injected launch error".into())
+        }
+    };
+    let mut attempts = Vec::new();
+    lane.poll(&runner, &mut attempts, &launch);
+    let state = runner.state.lock();
+    assert!(matches!(state.phase, Phase::Stopping { .. }));
+    assert!(state.pending.is_none());
+    assert_eq!(state.queues["default"].batch_retry_ms, 0);
+    assert_eq!(state.counts.claimed, 3);
+    assert_eq!(attempts.len(), 3);
+    assert!(matches!(
+        state.jobs["token-1"].execution,
+        Execution::Running(_)
+    ));
+    for token in ["token-2", "token-3"] {
+        assert!(matches!(
+            state.jobs[token].execution,
+            Execution::Acknowledging {
+                reply: Reply::Unstarted(_),
+                ..
+            }
+        ));
     }
 }
 
@@ -33,6 +243,10 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     }
 
     impl JobProcess for Worker {
+        fn reply_pending(&self) -> bool {
+            false
+        }
+
         fn poll(&mut self, _: Instant) -> Result<WorkerPoll, String> {
             self.polls.pop_front().unwrap()
         }
@@ -55,20 +269,27 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     let mut attempt = Attempt {
         id: "job-id".into(),
         token: "token".into(),
-        queue: 0,
+        queue: "default".into(),
         lease: None,
+        submissions: 0,
     };
     let runner = Runner {
         id: 0,
         config: Config::parse(TEST_CONFIG).unwrap(),
         check_worker: || Ok(()),
+        dispatcher: OnceLock::new(),
+        reply_wake: crossbeam_channel::bounded(1).0,
+        events: None,
+        wakeups: None,
         state: Mutex::new(State {
             phase: Phase::Running,
             jobs: BTreeMap::from([(
                 "token".into(),
                 ActiveJob {
                     id: "job-id".into(),
-                    queue: 0,
+                    queue: "default".into(),
+                    identity: None,
+                    reported_lease_loss: false,
                     execution: Execution::Running(Running {
                         process: Box::new(Worker {
                             polls: [
@@ -83,35 +304,40 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
                         lease_deadline: now + TEST_WAIT,
                         reaped: false,
                         stop: None,
+                        started_at: None,
                     }),
                 },
             )]),
-            pending_claims: 0,
-            counts: Counts::default(),
-            last_error: None,
+            ..State::new(&Config::parse(TEST_CONFIG).unwrap())
         }),
     };
 
-    runner.supervise();
+    runner.supervise(false);
+    assert!(runner.state.lock().last_error.is_none());
+    runner.supervise(true);
     runner.request_stop(Duration::ZERO);
-    assert!(attempt.poll(&runner, 0));
+    let mut io = LifecycleIo {
+        pool: 0,
+        session: None,
+    };
+    assert!(attempt.poll(&runner, &mut io));
     let report: serde_json::Value =
         serde_json::from_str(&runner.report(&runner.state.lock())).unwrap();
     assert_eq!(report["state"], "stopping");
     assert_eq!(report["undrained_jobs"], json!(["job-id"]));
     assert_eq!(report["finished"], 0);
 
-    runner.supervise();
-    assert!(attempt.poll(&runner, 0));
+    runner.supervise(true);
+    assert!(attempt.poll(&runner, &mut io));
 
-    runner.supervise();
-    assert!(!attempt.poll(&runner, 0));
+    runner.supervise(true);
+    assert!(!attempt.poll(&runner, &mut io));
     let state = runner.state.lock();
     let Execution::Acknowledging { reply, .. } = &state.jobs["token"].execution else {
         panic!("reaped worker must be eligible for settlement");
     };
     assert!(
-        matches!(reply.outcome(), Outcome::Fail { reason } if reason == "could not poll worker")
+        matches!(reply.outcome().0, Outcome::Fail { reason } if reason == "could not poll worker")
     );
 }
 
@@ -127,12 +353,15 @@ fn reaped_worker_reply_survives_timeout_and_shutdown() {
             lease_deadline: now + TEST_WAIT,
             reaped: false,
             stop: None,
+            started_at: None,
         };
-        assert!(running.poll(now, shutting_down, &mut None).is_none());
+        assert!(running
+            .poll(now, shutting_down.then_some(STOPPED), &mut None)
+            .is_none());
         publish.send(reply).unwrap();
-        match running.poll(now, shutting_down, &mut None) {
+        match running.poll(now, shutting_down.then_some(STOPPED), &mut None) {
             Some(Reply::Returned(output)) => assert_eq!(output, "done"),
-            Some(Reply::Failed(reason)) => panic!("reaped worker failed: {reason}"),
+            Some(Reply::Failed(_, reason)) => panic!("reaped worker failed: {reason}"),
             _ => panic!("reaped worker did not return its reply"),
         }
     }
@@ -150,9 +379,10 @@ fn reaped_worker_reply_survives_a_confirmed_late_renewal() {
             lease_deadline: now,
             reaped: false,
             stop: None,
+            started_at: None,
         };
         if observed_exit {
-            assert!(running.poll(now, false, &mut None).is_none());
+            assert!(running.poll(now, None, &mut None).is_none());
         }
         if published_reply {
             publish.send(reply.clone()).unwrap();
@@ -164,7 +394,7 @@ fn reaped_worker_reply_survives_a_confirmed_late_renewal() {
             publish.send(reply).unwrap();
         }
         let result = match execution {
-            Execution::Running(mut worker) => worker.poll(now, false, &mut None),
+            Execution::Running(mut worker) => worker.poll(now, None, &mut None),
             Execution::Acknowledging { reply, .. } => Some(reply),
         };
         assert!(matches!(result, Some(Reply::Returned(output)) if output == "done"));
@@ -182,9 +412,10 @@ fn reaped_worker_keeps_a_previous_stop_while_awaiting_reply() {
         lease_deadline: now + TEST_WAIT,
         reaped: false,
         stop: Some(Reply::Cancelled),
+        started_at: None,
     };
     assert!(matches!(
-        running.poll(now, true, &mut None),
+        running.poll(now, Some(STOPPED), &mut None),
         Some(Reply::Cancelled)
     ));
 }
@@ -192,7 +423,9 @@ fn reaped_worker_keeps_a_previous_stop_while_awaiting_reply() {
 #[test]
 fn invalid_outcomes_are_failures() {
     assert!(matches!(
-        Reply::Returned(r#"{"action":"complete"}"#.into()).outcome(),
+        Reply::Returned(r#"{"action":"complete"}"#.into())
+            .outcome()
+            .0,
         Outcome::Complete
     ));
     for invalid in [
@@ -200,9 +433,123 @@ fn invalid_outcomes_are_failures() {
         r#"{"action":"snooze","delay_ms":18446744073709551615}"#,
     ] {
         assert!(matches!(
-            Reply::Returned(invalid.into()).outcome(),
+            Reply::Returned(invalid.into()).outcome().0,
             Outcome::Fail { .. }
         ));
+    }
+}
+
+#[test]
+fn acknowledgement_retry_preserves_token_without_reconstructing_a_commit() {
+    for confirmed_retry in [Settlement::Stale, Settlement::Completed] {
+        let token = "private-test-token";
+        let job_id = "9f1ae775-5c0d-407e-a322-f04d33db8608";
+        let claim = Claim {
+            id: job_id.into(),
+            token: token.into(),
+            context: r#"{"attempt":1,"scheduled_at_ms":10}"#.into(),
+            timeout_ms: 1000,
+            observed_at_ms: Some(50),
+        };
+        let mut attempt = Attempt {
+            id: job_id.into(),
+            token: token.into(),
+            queue: "default".into(),
+            lease: Some(Lease::begin(TEST_WAIT).unwrap()),
+            submissions: 0,
+        };
+        let config = Config::parse(TEST_CONFIG).unwrap();
+        let state = State::new(&config);
+        let runner = Runner {
+            id: 15,
+            config,
+            check_worker: || Ok(()),
+            dispatcher: OnceLock::new(),
+            reply_wake: crossbeam_channel::bounded(1).0,
+            events: Events::new(8, false).unwrap(),
+            wakeups: None,
+            state: Mutex::new(State {
+                phase: Phase::Running,
+                jobs: BTreeMap::from([(
+                    token.into(),
+                    ActiveJob {
+                        id: job_id.into(),
+                        queue: "default".into(),
+                        identity: Some(Identity::new(&claim)),
+                        reported_lease_loss: false,
+                        execution: Execution::acknowledging(
+                            Reply::Returned(r#"{"action":"complete"}"#.into()),
+                            Some(42),
+                        ),
+                    },
+                )]),
+                ..state
+            }),
+        };
+        let mut io = LifecycleIo {
+            pool: 0,
+            session: None,
+        };
+        assert!(
+            attempt.poll_with_ack(&runner, &mut io, |_, id, sent_token, outcome| {
+                assert_eq!((id, sent_token), (job_id, token));
+                assert!(matches!(outcome, Outcome::Complete));
+                Err(JobsAckError::Unconfirmed(
+                    "sensitive connection error".into(),
+                ))
+            })
+        );
+        let read = || {
+            let batch = runner.events.as_ref().unwrap().read(8).unwrap();
+            assert!(!batch.contains(token));
+            assert!(!batch.contains("sensitive connection error"));
+            serde_json::from_str::<serde_json::Value>(&batch).unwrap()
+        };
+        let first = read();
+        let events = first["events"].as_array().unwrap();
+        assert_eq!(events.len(), 1);
+        let first = &events[0];
+        assert_eq!(first["event"], "ack_uncertain");
+        assert_eq!(first["submission"], 1);
+        assert_eq!(first["handler_duration_ms"], 42);
+        assert!(first.get("settlement").is_none());
+        assert_eq!(runner.state.lock().counts.outcomes.total(), 0);
+        assert_eq!(runner.state.lock().counts.stale_acks, 0);
+
+        // Run the next scheduled poll without depending on wall-clock sleeps.
+        let mut state = runner.state.lock();
+        let Execution::Acknowledging { retry_at, .. } =
+            &mut state.jobs.get_mut(token).unwrap().execution
+        else {
+            panic!("uncertain acknowledgement must remain eligible for retry");
+        };
+        *retry_at = Some(Instant::now());
+        drop(state);
+        assert!(
+            !attempt.poll_with_ack(&runner, &mut io, |_, id, sent_token, outcome| {
+                assert_eq!((id, sent_token), (job_id, token));
+                assert!(matches!(outcome, Outcome::Complete));
+                Ok(confirmed_retry)
+            })
+        );
+        let retry = read();
+        let events = retry["events"].as_array().unwrap();
+        assert_eq!(events.len(), 1);
+        let retry = &events[0];
+        assert_eq!(retry["submission"], 2);
+        assert_eq!(retry["attempt"], first["attempt"]);
+        let state = runner.state.lock();
+        if confirmed_retry == Settlement::Stale {
+            assert_eq!(retry["event"], "ack_stale");
+            assert!(retry.get("settlement").is_none());
+            assert_eq!(state.counts.outcomes.total(), 0);
+            assert_eq!(state.counts.stale_acks, 1);
+        } else {
+            assert_eq!(retry["event"], "settlement_committed");
+            assert_eq!(retry["settlement"], "completed");
+            assert_eq!(state.counts.outcomes.total(), 1);
+            assert_eq!(state.counts.stale_acks, 0);
+        }
     }
 }
 
@@ -215,7 +562,12 @@ struct TimedWorker {
 }
 
 impl TimedWorker {
-    fn start(context: String, _: Instant, _: u64) -> Result<Box<dyn JobProcess>, String> {
+    fn start(
+        context: String,
+        _: Instant,
+        _: u64,
+        _: Sender<()>,
+    ) -> Result<Box<dyn JobProcess>, String> {
         let context: serde_json::Value = serde_json::from_str(&context).unwrap();
         let wait_ms = context["args"]["wait_ms"].as_u64().unwrap();
         let kill_delay = context["args"]["kill_delay_ms"].as_u64().unwrap_or(0);
@@ -228,6 +580,10 @@ impl TimedWorker {
 }
 
 impl JobProcess for TimedWorker {
+    fn reply_pending(&self) -> bool {
+        false
+    }
+
     fn poll(&mut self, _: Instant) -> Result<WorkerPoll, String> {
         let now = Instant::now();
         Ok(match self.reaps_at {
@@ -254,11 +610,18 @@ impl JobProcess for TimedWorker {
 fn a_late_renewal_cannot_extend_an_expired_local_lease() {
     let now = Instant::now();
     let mut execution = Execution::Running(Running {
-        process: TimedWorker::start(r#"{"args":{"wait_ms":2000}}"#.into(), now, 0).unwrap(),
+        process: TimedWorker::start(
+            r#"{"args":{"wait_ms":2000}}"#.into(),
+            now,
+            0,
+            crossbeam_channel::bounded(1).0,
+        )
+        .unwrap(),
         deadline: now + TEST_WAIT,
         lease_deadline: now,
         reaped: false,
         stop: None,
+        started_at: None,
     });
     assert!(!execution.apply_renewal(&Lease::begin(TEST_WAIT).unwrap(), &mut None));
     let Execution::Running(mut worker) = execution else {
@@ -266,8 +629,8 @@ fn a_late_renewal_cannot_extend_an_expired_local_lease() {
     };
     assert_eq!(worker.lease_deadline, now);
     assert!(matches!(
-        worker.poll(now, false, &mut None),
-        Some(Reply::Failed(reason)) if reason == LEASE_LOST
+        worker.poll(now, None, &mut None),
+        Some(Reply::Failed(_, reason)) if reason == LEASE_LOST
     ));
 }
 
@@ -303,6 +666,9 @@ fn join_waits_for_maintenance_after_stop_grace() {
                 || Ok(()),
                 Box::new(TimedWorker::start),
             )?;
+            // Isolate maintenance from the dispatcher's idle claim reservations.
+            control(id, r#"{"queue":"default","action":"pause"}"#)?;
+            let runner = lookup(id)?;
             let deadline = Instant::now() + TEST_WAIT;
             loop {
                 let rows = tx.query(
@@ -311,11 +677,11 @@ fn join_waits_for_maintenance_after_stop_grace() {
                      AND pg_backend_pid() = ANY(pg_blocking_pids(pid)))::text",
                     &[],
                 )?;
-                if rows[0][0].1 == "true" {
+                if rows[0][0].1 == "true" && runner.state.lock().pending.is_none() {
                     break;
                 }
                 if Instant::now() >= deadline {
-                    return Err("runner maintenance did not wait on the table lock".into());
+                    return Err("runner did not become claim-idle with maintenance blocked".into());
                 }
                 std::thread::sleep(TICK);
             }
@@ -363,6 +729,220 @@ fn join_waits_for_maintenance_after_stop_grace() {
 
 #[test]
 #[ignore = "requires MESH_TEST_DATABASE_URL"]
+fn batch_lifecycle_survives_an_exhausted_application_pool() {
+    use crate::db::pool::{mesh_pool_close, mesh_pool_open, unbox_u64_payload};
+    use crate::io::MeshResult;
+    use crate::string::mesh_str;
+
+    crate::gc::mesh_rt_init();
+    actor::mesh_rt_init_actor(2);
+    let url = std::env::var("MESH_TEST_DATABASE_URL").expect("test PostgreSQL URL");
+    let open_pool = || {
+        let result = unsafe { &*mesh_pool_open(mesh_str(&url), 0, 1, 100).cast::<MeshResult>() };
+        assert_eq!(result.tag, 0);
+        unsafe { unbox_u64_payload(result.value) }
+    };
+    let pool = open_pool();
+    let observer = open_pool();
+    with_pool(observer, |db| {
+        super::super::store::migrate(db)?;
+        db.transaction(|tx| super::super::cron::migrate(tx))
+    })
+    .unwrap();
+    let namespace = format!("batch-pool-{}", rand::random::<u64>());
+    let config = json!({
+        "namespace": namespace,
+        "queues": {"default": 1},
+        "workers": [{"worker":"test", "version":1}],
+        "poll_ms": 10,
+        "lease_ms": 500,
+        "claim_batch": true,
+    });
+    let runner = start_runner(
+        pool,
+        &config.to_string(),
+        || Ok(()),
+        Box::new(TimedWorker::start),
+    )
+    .unwrap();
+    with_pool(pool, |_| {
+        let receipt = with_pool(observer, |db| {
+            db.transaction(|tx| super::super::store::enqueue(
+                tx, &namespace,
+                r#"{"worker":"test","args":{"wait_ms":1100},"timeout_ms":3000,"max_attempts":1}"#,
+            ))
+        })?;
+        let receipt: serde_json::Value = serde_json::from_str(&receipt).unwrap();
+        let get = json!({"action":"get", "id": receipt["id"]}).to_string();
+        let deadline = Instant::now() + TEST_WAIT;
+        loop {
+            let job = with_pool(observer, |db| {
+                super::super::store::control(db, &namespace, &get)
+            })?;
+            let job: serde_json::Value = serde_json::from_str(&job).unwrap();
+            if job["state"] == "completed" {
+                assert_eq!(job["attempt"], 1);
+                break;
+            }
+            assert!(
+                Instant::now() < deadline && job["state"] != "discarded",
+                "{job}"
+            );
+            std::thread::sleep(TICK);
+        }
+        Ok(())
+    })
+    .unwrap();
+    stop(runner, 2000).unwrap();
+    let report: serde_json::Value = serde_json::from_str(&join(runner).unwrap()).unwrap();
+    assert_eq!(report["outcomes"]["completed"], 1);
+    assert_eq!(report["stale_acks"], 0);
+    mesh_pool_close(observer);
+    mesh_pool_close(pool);
+}
+
+#[test]
+#[ignore = "requires MESH_TEST_DATABASE_URL"]
+fn committed_claim_without_confirmation_is_not_refunded_during_queue_stop() {
+    use crate::db::pool::{mesh_pool_close, mesh_pool_open, unbox_u64_payload};
+    use crate::io::MeshResult;
+    use crate::string::mesh_str;
+
+    crate::gc::mesh_rt_init();
+    actor::mesh_rt_init_actor(2);
+    let url = std::env::var("MESH_TEST_DATABASE_URL").expect("test PostgreSQL URL");
+    let pool = unsafe { &*mesh_pool_open(mesh_str(&url), 0, 3, 500).cast::<MeshResult>() };
+    assert_eq!(pool.tag, 0);
+    let pool = unsafe { unbox_u64_payload(pool.value) };
+    with_pool(pool, |db| super::super::store::migrate(db)).unwrap();
+    let namespace = format!("queue-stop-uncertain-{}", rand::random::<u64>());
+    let config = Config::parse(
+        &json!({"namespace":namespace,"queues":{"default":1,"sibling":1},
+                "workers":[{"worker":"test","version":1}],"lease_ms":60000})
+        .to_string(),
+    )
+    .unwrap();
+    let workers = serde_json::to_string(&config.workers).unwrap();
+    let runner = Runner {
+        state: Mutex::new(State::new(&config)),
+        config,
+        id: 0,
+        check_worker: || Ok(()),
+        dispatcher: OnceLock::new(),
+        reply_wake: crossbeam_channel::bounded(1).0,
+        events: None,
+        wakeups: None,
+    };
+    let enqueue = |queue| {
+        let spec = json!({"worker":"test","queue":queue,"args":{"wait_ms":0},
+                          "max_attempts":2,"backoff_base_ms":0,"backoff_max_ms":0});
+        let receipt = with_pool(pool, |db| {
+            db.transaction(|tx| super::super::store::enqueue(tx, &namespace, &spec.to_string()))
+        })
+        .unwrap();
+        serde_json::from_str::<serde_json::Value>(&receipt).unwrap()
+    };
+    let pending = enqueue("default");
+    let sibling = enqueue("sibling");
+    let id = pending["id"].as_str().unwrap();
+    let lost = dispatch_single_claim(
+        &runner,
+        "default",
+        &|_, _, _, _| panic!("a claim without a confirmation cannot start a worker"),
+        || {
+            let mut state = runner.state.lock();
+            assert_eq!(state.pending_for("default"), 1);
+            update_queue(
+                &mut state,
+                &runner.config,
+                "default".into(),
+                LocalAction::Stop { grace_ms: Some(0) },
+            )?;
+            assert!(matches!(
+                state.queues["default"].phase,
+                QueuePhase::Stopping(_)
+            ));
+            drop(state);
+            // Commit through the real store, then simulate failure at the caller boundary.
+            let committed = with_pool(pool, |db| {
+                claim(db, &namespace, "default", &workers, 60_000)
+            })?
+            .expect("the transaction must have claimed the original job");
+            assert_eq!(committed.id, id);
+            Err("claim confirmation unavailable".into())
+        },
+    );
+    assert!(matches!(lost, Err(error) if error == "claim confirmation unavailable"));
+    {
+        let mut state = runner.state.lock();
+        state.refresh_stopping_queues();
+        assert!(state.pending.is_none());
+        assert!(state.jobs.is_empty());
+        assert!(matches!(state.queues["default"].phase, QueuePhase::Stopped));
+        assert!(matches!(state.queues["sibling"].phase, QueuePhase::Running));
+        assert_eq!(state.counts.claimed, 0);
+    }
+    let first_token = with_pool(pool, |db| {
+        db.query("SELECT lease_token::text FROM mesh_jobs.jobs WHERE namespace = $1 AND id = $2::uuid
+                  AND state = 'executing' AND attempt = 1 AND lease_expires_at_ms > mesh_jobs.now_ms()",
+                 &[&namespace, id])
+    }).unwrap()[0][0].1.clone();
+    assert!(!first_token.is_empty());
+
+    let (sibling_attempt, _) =
+        claim_one(&runner, pool, &workers, "sibling", &TimedWorker::start).unwrap();
+    let mut sibling_attempt = sibling_attempt.expect("sibling queue should still claim");
+    assert_eq!(sibling_attempt.id, sibling["id"].as_str().unwrap());
+    runner.supervise(true);
+    assert!(!sibling_attempt.poll(
+        &runner,
+        &mut LifecycleIo {
+            pool,
+            session: None
+        }
+    ));
+    let sibling_state = with_pool(pool, |db| {
+        super::super::store::control(
+            db,
+            &namespace,
+            &json!({"action":"get","id":sibling["id"]}).to_string(),
+        )
+    })
+    .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&sibling_state).unwrap()["state"],
+        "completed"
+    );
+
+    with_pool(pool, |db| {
+        db.query(
+            "UPDATE mesh_jobs.jobs SET lease_expires_at_ms = mesh_jobs.now_ms() - 1
+                  WHERE namespace = $1 AND id = $2::uuid AND lease_token = $3::uuid",
+            &[&namespace, id, &first_token],
+        )?;
+        assert_eq!(recover(db, &namespace, 1, Some(r#"{"default":1}"#))?, 1);
+        let replacement = claim(db, &namespace, "default", &workers, 60_000)?.unwrap();
+        assert_eq!(replacement.id, id);
+        assert_ne!(replacement.token, first_token);
+        assert_eq!(
+            finish(db, &namespace, id, &first_token, Outcome::Complete).unwrap(),
+            Settlement::Stale
+        );
+        let context: serde_json::Value = serde_json::from_str(&replacement.context).unwrap();
+        assert_eq!(context["attempt"], 2);
+        assert_eq!(context["effect_key"], pending["effect_key"]);
+        assert_eq!(
+            finish(db, &namespace, id, &replacement.token, Outcome::Complete).unwrap(),
+            Settlement::Completed
+        );
+        Ok(())
+    })
+    .unwrap();
+    mesh_pool_close(pool);
+}
+
+#[test]
+#[ignore = "requires MESH_TEST_DATABASE_URL"]
 fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelled_attempts() {
     use crate::db::pool::{mesh_pool_close, mesh_pool_open, unbox_u64_payload};
     use crate::io::MeshResult;
@@ -398,6 +978,7 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
         "workers": [{"worker": "test", "version": 1}],
         "lease_ms": 300,
         "poll_ms": 10,
+        "event_buffer": 64,
     });
     let id = start_runner(
         pool,
@@ -478,6 +1059,19 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     assert_eq!(report["scheduled"], 1);
     assert_eq!(join(id).unwrap(), report.to_string());
     assert_eq!(status(id).unwrap(), report.to_string());
+    let batch: serde_json::Value = serde_json::from_str(&read_events(id, 64).unwrap()).unwrap();
+    let events = batch["events"].as_array().unwrap();
+    assert_eq!(batch["closed"], true);
+    assert_eq!(events.first().unwrap()["event"], "runner_started");
+    assert_eq!(events.last().unwrap()["event"], "runner_stopped");
+    assert!(events.iter().any(|event| event["event"] == "maintenance"
+        && event["operation"] == "cron"
+        && event["count"] == 1));
+    assert!(events
+        .iter()
+        .any(|event| event["event"] == "settlement_committed"
+            && event["attempt"]["job_id"] == short
+            && event["failure_kind"] == "timeout"));
 
     let abandoned = enqueue(10, 2000);
     with_pool(pool, |db| {
@@ -545,6 +1139,11 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     assert_eq!(report["finished"], 1);
     assert_eq!(report["scheduled"], 0);
     assert_eq!(report["recovered"], 1);
+    let batch: serde_json::Value =
+        serde_json::from_str(&read_events(one_shot, 64).unwrap()).unwrap();
+    assert!(batch["events"].as_array().unwrap().iter().any(|event| {
+        event["event"] == "maintenance" && event["operation"] == "recover" && event["count"] == 1
+    }));
     assert_eq!(
         report["outcomes"],
         json!({
@@ -565,8 +1164,10 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     );
 
     let abandon = |queue: &str, max_attempts: u32| -> String {
-        let id = submit(json!({"worker":"test", "queue":queue, "args":{"wait_ms":1},
-            "max_attempts":max_attempts, "backoff_base_ms":0}));
+        let id = submit(
+            json!({"worker":"test", "queue":queue, "args":{"wait_ms":675},
+            "max_attempts":max_attempts, "backoff_base_ms":0}),
+        );
         with_pool(pool, |db| {
             let claimed = claim(
                 db,
@@ -613,6 +1214,7 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     lock_acquired.recv_timeout(TEST_WAIT).unwrap();
     let mut two_queues = drain_config.clone();
     two_queues["queues"]["blocked"] = json!(1);
+    two_queues["event_buffer"] = json!(1);
     let one_shot = start_runner(
         pool,
         &two_queues.to_string(),
@@ -641,6 +1243,14 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     assert_eq!(report["finished"], 1);
     assert_eq!(report["outcomes"]["completed"], 1);
     assert_eq!(report["outcomes"]["discarded"], 0);
+    assert!(report["events_dropped"].as_u64().unwrap() >= 3);
+    let reader = &report["event_buffer_bytes"]["reader"];
+    assert!(reader["upper_bound_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(reader["sampled_peak_bytes"], reader["upper_bound_bytes"]);
+    assert_eq!(
+        report["event_buffer_bytes"]["logger"],
+        serde_json::Value::Null
+    );
     assert_eq!(
         control(json!({"action":"get","id":locked_job}))["state"],
         "discarded"
@@ -669,6 +1279,12 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
         std::thread::sleep(TICK);
     }
     stop(pruner, 2000).unwrap();
+    let batch: serde_json::Value = serde_json::from_str(&read_events(pruner, 64).unwrap()).unwrap();
+    assert!(batch["events"].as_array().unwrap().iter().any(|event| {
+        event["event"] == "maintenance"
+            && event["operation"] == "prune"
+            && event["count"].as_u64().unwrap() >= 6
+    }));
     assert_eq!(
         control(json!({"action":"get","id":ready})),
         serde_json::Value::Null

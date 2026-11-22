@@ -1458,18 +1458,26 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Check if it's a runtime intrinsic (don't add reduction check for runtime calls)
             if let Some(fn_val) = self.module.get_function(name) {
-                if name == "mesh_jobs_start" {
+                if matches!(name.as_str(), "mesh_jobs_start" | "mesh_jobs_drain") {
                     let handler = args
                         .get(2)
                         .and_then(MirExpr::var_name)
                         .and_then(|name| self.fn_item(name))
                         .ok_or_else(|| {
+                            let operation = if name == "mesh_jobs_start" {
+                                "Jobs.start"
+                            } else {
+                                "Jobs.drain"
+                            };
                             self.diagnostic_at(
                                 at,
                                 Code::InvalidJobsStart,
-                                "`Jobs.start` needs a named handler",
+                                format!("`{operation}` needs a named handler"),
                                 "the handler is not a named function",
                             )
+                            .with_repair(format!(
+                                "Define a named top-level function with type `fn(String) -> String` and pass it directly to `{operation}`."
+                            ))
                         })?;
                     let symbol = handler.get_name().to_string_lossy().into_owned();
                     self.jobs_handlers.insert(symbol, handler);

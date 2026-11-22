@@ -1371,12 +1371,12 @@ expression: rendered
    │
  2 │   let value = compute(1, 2)
    │               ──────┬──────
-   │                     ╰──────── invalid job start
+   │                     ╰──────── invalid durable Jobs call
    │
    │ Help: pass a named function with type fn(String) -> String as the handler
 ───╯
   = E0094: meshc explain E0094 · skill diagnostics.md#e0094 · https://meshlang.dev/docs/errors/#e0094
-{"code":"E0094","severity":"error","message":"pass a named function with type fn(String) -> String as the handler","file":"main.mpl","spans":[{"start":27,"end":40,"label":"invalid job start","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"pass a named function with type fn(String) -> String as the handler","line":2,"col":15,"name":"invalid-jobs-start","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0094","skill":"references/diagnostics.md#e0094","topic":"database"},"docs_url":"https://meshlang.dev/docs/errors/#e0094","edits":[]}
+{"code":"E0094","severity":"error","message":"pass a named function with type fn(String) -> String as the handler","file":"main.mpl","spans":[{"start":27,"end":40,"label":"invalid durable Jobs call","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"pass a named function with type fn(String) -> String as the handler","line":2,"col":15,"name":"invalid-jobs-start","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0094","skill":"references/diagnostics.md#e0094","topic":"database"},"docs_url":"https://meshlang.dev/docs/errors/#e0094","edits":[]}
 
 [E0095] Error: reason
    ╭─[ main.mpl:2:7 ]

@@ -118,6 +118,8 @@ pub(super) enum WorkerPoll {
     Running,
     AwaitingReply,
     Exited(Reply),
+    TimedOut,
+    LeaseExpired,
 }
 
 pub(super) struct WorkerProcess {
@@ -134,6 +136,7 @@ impl WorkerProcess {
         context: String,
         deadline: Instant,
         lease_deadline: u64,
+        reply_wake: Sender<()>,
     ) -> Result<Self, String> {
         let request = Request {
             handler: handler.to_owned(),
@@ -165,14 +168,10 @@ impl WorkerProcess {
             result,
             reply_deadline: None,
         };
-        let mut output = worker.child.stdout.take().unwrap();
+        let output = worker.child.stdout.take().unwrap();
         std::thread::Builder::new()
             .name("mesh-job-output".into())
-            .spawn(move || {
-                let result = read_frame(&mut output, MAX_REPLY_FRAME)
-                    .map_err(|error| format!("invalid job handler reply: {error}"));
-                let _ = reply.send(result.unwrap_or_else(Err));
-            })
+            .spawn(move || forward_reply(output, reply, reply_wake))
             .map_err(|error| error.to_string())?;
 
         let mut input = worker.child.stdin.take().unwrap();
@@ -186,6 +185,9 @@ impl WorkerProcess {
                 {
                     return;
                 }
+                // Renewal writes only need the deadline. Release the bootstrap
+                // context while the child is still running.
+                drop(context);
                 while renewal_requests.recv().is_ok() {
                     let lease = latest.load(Ordering::Acquire);
                     if input.write_all(&lease.to_le_bytes()).is_err() {
@@ -208,13 +210,17 @@ impl WorkerProcess {
         self.child.kill().map_err(|error| error.to_string())
     }
 
+    pub(super) fn reply_pending(&self) -> bool {
+        !self.result.is_empty()
+    }
+
     pub(super) fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String> {
         let Some(status) = self.child.try_wait().map_err(|error| error.to_string())? else {
             return Ok(WorkerPoll::Running);
         };
         let reason = match status.code() {
-            Some(TIMEOUT) => "job handler timed out".into(),
-            Some(LEASE_LOST) => "job lease lost".into(),
+            Some(TIMEOUT) => return Ok(WorkerPoll::TimedOut),
+            Some(LEASE_LOST) => return Ok(WorkerPoll::LeaseExpired),
             Some(PARENT_GONE) => "job runner disconnected".into(),
             Some(BOOTSTRAP_ERROR) => "job handler could not enter its worker runtime".into(),
             Some(0) => return Ok(self.poll_reply(now)),
@@ -239,6 +245,14 @@ impl WorkerProcess {
     }
 }
 
+fn forward_reply(mut output: impl Read, reply: Sender<Reply>, reply_wake: Sender<()>) {
+    let result = read_frame(&mut output, MAX_REPLY_FRAME)
+        .unwrap_or_else(|error| Err(format!("invalid job handler reply: {error}")));
+    if reply.send(result).is_ok() {
+        let _ = reply_wake.try_send(());
+    }
+}
+
 impl Drop for WorkerProcess {
     fn drop(&mut self) {
         // A live child retains authority until its owner stops or reaps it.
@@ -249,8 +263,7 @@ impl Drop for WorkerProcess {
 
 #[cfg(all(test, unix))]
 impl WorkerProcess {
-    fn reaped_fixture(mut child: Child) -> (Self, Sender<Reply>, std::process::ChildStdout) {
-        assert!(child.wait().unwrap().success());
+    fn fixture(mut child: Child) -> (Self, Sender<Reply>, std::process::ChildStdout) {
         let output = child.stdout.take().unwrap();
         let (publish, result) = crossbeam_channel::bounded(1);
         let worker = Self {
@@ -264,15 +277,48 @@ impl WorkerProcess {
     }
 
     pub(super) fn reaped_with_held_reply() -> (Self, Sender<Reply>, Reply) {
-        let child = Command::new("/bin/sh")
+        let mut child = Command::new("/bin/sh")
             .args(["-c", r#"printf '\015\000\000\000{"Ok":"done"}'"#])
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
-        let (worker, publish, mut output) = Self::reaped_fixture(child);
+        assert!(child.wait().unwrap().success());
+        let (worker, publish, mut output) = Self::fixture(child);
         let reply = read_frame(&mut output, MAX_REPLY_FRAME).unwrap();
         (worker, publish, reply)
     }
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn worker_reply_wake_does_not_bypass_reap() {
+    let mut child = Command::new("/bin/sh")
+        .args([
+            "-c",
+            r#"printf '\015\000\000\000{"Ok":"done"}'; read -r line"#,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let (mut worker, publish, output) = WorkerProcess::fixture(child);
+    let (reply_wake, reply_wakes) = crossbeam_channel::bounded(1);
+
+    assert!(!worker.reply_pending());
+    forward_reply(output, publish, reply_wake);
+    assert_eq!(reply_wakes.try_recv(), Ok(()));
+    assert!(matches!(
+        worker.poll(Instant::now()),
+        Ok(WorkerPoll::Running)
+    ));
+    assert!(worker.reply_pending());
+    input.write_all(b"exit\n").unwrap();
+    assert!(worker.child.wait().unwrap().success());
+    assert!(matches!(
+        worker.poll(Instant::now()),
+        Ok(WorkerPoll::Exited(Ok(output))) if output == "done"
+    ));
 }
 
 #[cfg(all(test, unix))]
@@ -285,7 +331,8 @@ fn reaped_worker_bounds_wait_for_an_inherited_pipe() {
         .spawn()
         .unwrap();
     let input = child.stdin.take().unwrap();
-    let (mut worker, publish, mut output) = WorkerProcess::reaped_fixture(child);
+    assert!(child.wait().unwrap().success());
+    let (mut worker, publish, mut output) = WorkerProcess::fixture(child);
     let reader = std::thread::spawn(move || {
         let reply = read_frame::<Reply>(&mut output, MAX_REPLY_FRAME)
             .unwrap_or_else(|error| Err(error.to_string()));
@@ -339,9 +386,16 @@ fn run_worker() -> Result<(), String> {
         .ok_or("job handler is missing from this executable")?;
 
     let (renew, updates) = crossbeam_channel::bounded(1);
+    let (claim_stdin, stdin_claimed) = crossbeam_channel::bounded(0);
     std::thread::Builder::new()
         .name("mesh-job-parent".into())
         .spawn(move || {
+            // The private parent stream uses stdin. Keep it locked across
+            // renewal frames so handler reads cannot consume control bytes.
+            let mut control = control.lock();
+            if claim_stdin.send(()).is_err() {
+                return;
+            }
             let mut frame = [0; 8];
             while control.read_exact(&mut frame).is_ok() {
                 if renew.send(u64::from_le_bytes(frame)).is_err() {
@@ -352,15 +406,32 @@ fn run_worker() -> Result<(), String> {
         })
         .map_err(|error| error.to_string())?;
     let deadline = request.deadline;
-    let lease = request.lease_deadline;
+    let lease = Arc::new(Mutex::new(request.lease_deadline));
+    let watchdog_lease = Arc::clone(&lease);
     std::thread::Builder::new()
         .name("mesh-job-deadline".into())
-        .spawn(move || enforce_deadlines(deadline, lease, updates))
+        .spawn(move || enforce_deadlines(deadline, &watchdog_lease, updates))
         .map_err(|error| error.to_string())?;
-    remaining(deadline, lease);
+    stdin_claimed.recv().map_err(|error| error.to_string())?;
+    remaining(deadline, u64::MAX);
 
-    let outcome = std::panic::catch_unwind(|| {
+    let reply = invoke(context, |input| {
+        // Input preparation and the lease lock can both take time.
+        remaining(deadline, *lease.lock());
+        unsafe { handler(input) }
+    });
+    remaining(deadline, u64::MAX);
+    write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub(super) fn invoke(
+    context: String,
+    handler: impl FnOnce(*const MeshString) -> *const MeshString,
+) -> Reply {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let input = mesh_str(&context);
+        drop(context);
         let output = unsafe { handler(input).as_ref() }.ok_or("job handler returned no outcome")?;
         let bytes = unsafe { output.as_bytes() };
         if bytes.len() > MAX_OUTCOME {
@@ -369,28 +440,26 @@ fn run_worker() -> Result<(), String> {
         std::str::from_utf8(bytes)
             .map(str::to_owned)
             .map_err(|_| "job handler returned invalid UTF-8")
-    });
-    let reply: Reply = match outcome {
+    }));
+    match outcome {
         Ok(value) => value.map_err(str::to_owned),
         Err(panic) => Err(crate::panic::MeshPanic::of(panic.as_ref())
             .map_or("job handler panicked", crate::panic::MeshPanic::reason)
             .chars()
             .take(1024)
             .collect()),
-    };
-    remaining(deadline, u64::MAX);
-    write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
-    Ok(())
+    }
 }
 
-fn enforce_deadlines(deadline: u64, mut lease: u64, updates: Receiver<u64>) {
+fn enforce_deadlines(deadline: u64, lease: &Mutex<u64>, updates: Receiver<u64>) {
     loop {
-        let wait = remaining(deadline, lease).min(Duration::from_millis(20));
+        let wait = remaining(deadline, *lease.lock()).min(Duration::from_millis(20));
         match updates.recv_timeout(wait) {
             Ok(next) => {
                 // A delayed renewal may not revive a worker whose lease already ended.
-                remaining(deadline, lease);
-                lease = lease.max(next);
+                let mut accepted = lease.lock();
+                remaining(deadline, *accepted);
+                *accepted = (*accepted).max(next);
             }
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => exit_worker(PARENT_GONE),

@@ -2069,20 +2069,23 @@ pub extern "C" fn mesh_crypto_hmac_sha512(
 /// Uses rand 0.9 API: rand::rng().fill_bytes() (NOT rand::thread_rng() — removed in 0.9).
 #[no_mangle]
 pub extern "C" fn mesh_crypto_uuid4() -> *mut MeshString {
+    mesh_str(&uuid4())
+}
+
+pub(crate) fn uuid4() -> String {
     let mut bytes = [0u8; 16];
     rand::rng().fill_bytes(&mut bytes);
     // RFC 4122 version 4 (0b0100) + variant 10xx (0b10xx)
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    let uuid = format!(
+    format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
         bytes[0], bytes[1], bytes[2], bytes[3],
         bytes[4], bytes[5],
         bytes[6], bytes[7],
         bytes[8], bytes[9],
         bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
-    );
-    mesh_str(&uuid)
+    )
 }
 
 // ── Standard library: Base64 functions (Phase 135) ─────────────────────────

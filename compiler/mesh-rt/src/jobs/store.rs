@@ -3,8 +3,15 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+use crate::db::pg::JobsAckError;
+
 pub(super) trait Database {
     fn query(&mut self, sql: &str, params: &[&str]) -> Result<Vec<Vec<(String, String)>>, String>;
+    fn acknowledge(
+        &mut self,
+        sql: &str,
+        params: &[&str],
+    ) -> Result<Vec<Vec<(String, String)>>, JobsAckError>;
     fn simple(&mut self, sql: &str) -> Result<(), String>;
     fn in_transaction(&self) -> bool;
 }
@@ -15,6 +22,24 @@ pub(super) struct Claim {
     pub(super) token: String,
     pub(super) context: String,
     pub(super) timeout_ms: u64,
+    pub(super) observed_at_ms: Option<u64>,
+}
+
+pub(super) const MAX_CLAIM_BATCH: usize = 16;
+// claim_batch_v1 stops scanning after the fourth oversized context.
+const MAX_OVERSIZED_PER_BATCH: usize = 4;
+
+#[derive(Debug, Deserialize)]
+pub(super) struct OversizedClaim {
+    pub(super) id: String,
+    pub(super) context_bytes: usize,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct ClaimBatch {
+    pub(super) claims: Vec<Claim>,
+    pub(super) oversized: Vec<OversizedClaim>,
+    pub(super) contention_hint: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,7 +73,8 @@ pub(super) enum Outcome {
     ReleaseUnstarted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(super) enum Settlement {
     Completed,
     Cancelled,
@@ -60,7 +86,7 @@ pub(super) enum Settlement {
 }
 
 impl Settlement {
-    fn from_sql(state: &str) -> Result<Self, String> {
+    fn from_sql(state: &str) -> Result<Self, JobsAckError> {
         match state {
             "completed" => Ok(Self::Completed),
             "cancelled" => Ok(Self::Cancelled),
@@ -69,7 +95,9 @@ impl Settlement {
             "scheduled" => Ok(Self::Scheduled),
             "released_unstarted" => Ok(Self::ReleasedUnstarted),
             "stale" => Ok(Self::Stale),
-            _ => Err("mesh jobs invalid settlement state from PostgreSQL".into()),
+            _ => Err(JobsAckError::Unconfirmed(
+                "mesh jobs invalid settlement state from PostgreSQL".into(),
+            )),
         }
     }
 }
@@ -77,18 +105,18 @@ impl Settlement {
 const MAX_INPUT: usize = 1024 * 1024;
 const MAX_BATCH: usize = 128;
 const MAX_DURATION_MS: u64 = 365 * 24 * 60 * 60 * 1000;
-const MAX_TIMESTAMP_MS: u64 = 253_402_300_799_999;
+pub(super) const MAX_TIMESTAMP_MS: u64 = 253_402_300_799_999;
 const MAX_CONCURRENCY: u32 = 1024;
 const MAX_PAGE: u32 = 1000;
 
-fn decode<T: DeserializeOwned>(input: &str) -> Result<T, String> {
+pub(super) fn decode<T: DeserializeOwned>(input: &str) -> Result<T, String> {
     if input.len() > MAX_INPUT {
         return Err("mesh jobs JSON exceeds 1 MiB".into());
     }
     serde_json::from_str(input).map_err(|error| error.to_string())
 }
 
-fn name(value: &str, field: &str) -> Result<(), String> {
+pub(super) fn name(value: &str, field: &str) -> Result<(), String> {
     if value.trim().is_empty() || value.len() > 255 || value.contains('\0') {
         return Err(format!(
             "mesh jobs {field} must be nonblank text of at most 255 bytes"
@@ -120,7 +148,11 @@ fn scheduling(scheduled_at_ms: Option<u64>, delay_ms: Option<u64>) -> Result<(),
     duration(delay_ms.unwrap_or_default(), "delay_ms")
 }
 
-fn response(db: &mut impl Database, sql: &str, params: &[&str]) -> Result<String, String> {
+pub(super) fn response(
+    db: &mut impl Database,
+    sql: &str,
+    params: &[&str],
+) -> Result<String, String> {
     let mut rows = db.query(sql, params)?;
     if rows.len() != 1 || rows[0].len() != 1 {
         return Err("mesh jobs expected one result cell from PostgreSQL".into());
@@ -148,13 +180,14 @@ pub(super) fn migrate(db: &mut impl Database) -> Result<(), String> {
     let result = db
         .simple("SELECT pg_catalog.pg_advisory_xact_lock(1782495102, 1)")
         .and_then(|()| db.simple(include_str!("schema.sql")))
+        .and_then(|()| db.simple(include_str!("drain_schema.sql")))
         .and_then(|()| db.simple("COMMIT"));
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
-enum State {
+pub(super) enum State {
     Available,
     Scheduled,
     Retryable,
@@ -412,7 +445,7 @@ impl Default for JobSpec {
 }
 
 impl JobSpec {
-    fn prepare(mut self) -> Result<Admission, String> {
+    fn prepare(&mut self) -> Result<Admission, String> {
         name(&self.worker, "worker")?;
         name(&self.queue, "queue")?;
         if self.version == 0 || !(1..=100).contains(&self.max_attempts) || self.priority > 9 {
@@ -480,6 +513,30 @@ enum Enqueue {
     Single(Box<JobSpec>),
 }
 
+pub(super) fn test_context(spec: &str, now_ms: u64) -> Result<String, String> {
+    let mut spec = decode::<JobSpec>(spec)?;
+    spec.prepare()?;
+    let scheduled_at_ms = spec
+        .scheduled_at_ms
+        .unwrap_or_else(|| now_ms + spec.delay_ms.unwrap_or_default());
+    scheduling(Some(scheduled_at_ms), None)?;
+    let id = crate::crypto::uuid4();
+    Ok(json!({
+        "id": id,
+        "effect_key": format!("{id}/1"),
+        "worker": spec.worker,
+        "version": spec.version,
+        "args": spec.args,
+        "attempt": 1,
+        "max_attempts": spec.max_attempts,
+        "queue": spec.queue,
+        "metadata": spec.metadata,
+        "tags": spec.tags,
+        "scheduled_at_ms": scheduled_at_ms
+    })
+    .to_string())
+}
+
 pub(super) fn validate_enqueue_spec(spec: &str) -> Result<(), String> {
     decode::<JobSpec>(spec)?.prepare().map(drop)
 }
@@ -502,7 +559,7 @@ pub(super) fn enqueue(
     }
     let admissions = specs
         .into_iter()
-        .map(JobSpec::prepare)
+        .map(|mut spec| spec.prepare())
         .collect::<Result<Vec<_>, _>>()?;
 
     db.simple("SAVEPOINT mesh_jobs_enqueue")?;
@@ -550,12 +607,24 @@ struct Worker {
     version: u32,
 }
 
+#[cfg(test)]
 pub(super) fn claim(
     db: &mut impl Database,
     namespace: &str,
     queue: &str,
     workers_json: &str,
     lease_ms: u64,
+) -> Result<Option<Claim>, String> {
+    claim_with_timing(db, namespace, queue, workers_json, lease_ms, false)
+}
+
+pub(super) fn claim_with_timing(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers_json: &str,
+    lease_ms: u64,
+    observe: bool,
 ) -> Result<Option<Claim>, String> {
     standalone(db)?;
     name(namespace, "namespace")?;
@@ -571,27 +640,51 @@ pub(super) fn claim(
     if workers.is_empty() {
         return Ok(None);
     }
+    let sql = if observe {
+        "SELECT id, token, context, timeout_ms,
+                floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text
+         FROM mesh_jobs.claim_drain_v1($1, $2, $3::jsonb, $4::bigint, NULL, NULL)"
+    } else {
+        "SELECT id, token, context, timeout_ms
+         FROM mesh_jobs.claim_drain_v1($1, $2, $3::jsonb, $4::bigint, NULL, NULL)"
+    };
+    claim_one_transaction(
+        db,
+        sql,
+        &[namespace, queue, workers_json, &lease_ms.to_string()],
+        observe,
+    )
+}
+
+pub(super) fn claim_one_transaction(
+    db: &mut impl Database,
+    sql: &str,
+    params: &[&str],
+    observe: bool,
+) -> Result<Option<Claim>, String> {
+    standalone(db)?;
     // The capacity query must see the preceding winner after the queue lock,
     // including on databases configured to default to repeatable read.
     db.simple("BEGIN ISOLATION LEVEL READ COMMITTED")?;
     let result = (|| {
-        let rows = db.query(
-            "SELECT id, token, context, timeout_ms FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)",
-            &[namespace, queue, workers_json, &lease_ms.to_string()],
-        )?;
+        let rows = db.query(sql, params)?;
         let claim = match rows.as_slice() {
             [] => None,
             [row] => {
                 let mut fields = row.iter().map(|(_, value)| value);
-                let (Some(id), Some(token), Some(context), Some(timeout_ms), None) = (
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                ) else {
+                let (Some(id), Some(token), Some(context), Some(timeout_ms)) =
+                    (fields.next(), fields.next(), fields.next(), fields.next())
+                else {
                     return Err("mesh jobs invalid claim result from PostgreSQL".into());
                 };
+                let observed_at_ms = if observe {
+                    fields.next().and_then(|value| value.parse().ok())
+                } else {
+                    None
+                };
+                if fields.next().is_some() {
+                    return Err("mesh jobs invalid claim result from PostgreSQL".into());
+                }
                 Some(Claim {
                     id: id.clone(),
                     token: token.clone(),
@@ -599,6 +692,7 @@ pub(super) fn claim(
                     timeout_ms: timeout_ms
                         .parse::<u64>()
                         .map_err(|error| error.to_string())?,
+                    observed_at_ms,
                 })
             }
             _ => return Err("mesh jobs PostgreSQL returned multiple claims".into()),
@@ -609,30 +703,295 @@ pub(super) fn claim(
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }
 
-pub(super) fn drain_has_work(
+#[cfg(test)]
+pub(super) fn claim_batch(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers_json: &str,
+    lease_ms: u64,
+    slots: usize,
+    cutoff_ms: Option<u64>,
+) -> Result<ClaimBatch, String> {
+    claim_batch_with_timing(
+        db,
+        namespace,
+        queue,
+        workers_json,
+        lease_ms,
+        slots,
+        cutoff_ms,
+        false,
+    )
+}
+
+pub(super) fn claim_batch_with_timing(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers_json: &str,
+    lease_ms: u64,
+    slots: usize,
+    cutoff_ms: Option<u64>,
+    observe: bool,
+) -> Result<ClaimBatch, String> {
+    standalone(db)?;
+    name(namespace, "namespace")?;
+    name(queue, "queue")?;
+    lease_duration(lease_ms)?;
+    scheduling(cutoff_ms, None)?;
+    let workers: Vec<Worker> = decode(workers_json)?;
+    for worker in &workers {
+        name(&worker.worker, "worker")?;
+        if worker.version == 0 {
+            return Err("mesh jobs worker version must be positive".into());
+        }
+    }
+    if workers.is_empty() || slots == 0 {
+        return Ok(ClaimBatch::default());
+    }
+
+    let slots = slots.min(MAX_CLAIM_BATCH);
+    let cutoff = cutoff_ms.map_or_else(String::new, |ms| ms.to_string());
+    // Force a fresh capacity snapshot even when the session defaults to repeatable read.
+    db.simple("BEGIN ISOLATION LEVEL READ COMMITTED")?;
+    let result = (|| {
+        // The left join supplies one empty row when the claim returns nothing.
+        // CASE probes only that row. The optimistic snapshot is advisory, and the
+        // function still chooses the live cutoff after it acquires admission.
+        // The two wrapper fields fit the function's 1 KiB framing reserve:
+        // 20 rows * (two 4-byte lengths + 2 ordinal digits) + 16 * 20 bigint bytes = 520.
+        let rows = db.query(
+            "SELECT coalesce(status, 'contention_hint'), id, token, context, timeout_ms, context_bytes,
+                    CASE WHEN $7::boolean AND status = 'claimed'
+                    THEN floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text END,
+                    ordinality::text
+             FROM (VALUES (1)) AS probe_anchor(dummy)
+             LEFT JOIN LATERAL (
+                 SELECT * FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,
+                     nullif($6, '')::bigint) WITH ORDINALITY
+             ) AS result ON true
+             WHERE CASE WHEN ordinality IS NOT NULL THEN true ELSE EXISTS (
+                 SELECT FROM mesh_jobs.queues q
+                 WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active'
+                     AND q.concurrency > 0
+                     AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                         WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
+                     AND q.concurrency > (SELECT count(*) FROM mesh_jobs.jobs running
+                         WHERE running.namespace = q.namespace AND running.queue = q.name
+                             AND running.state = 'executing')
+                     AND EXISTS (SELECT FROM mesh_jobs.jobs j
+                         WHERE j.namespace = q.namespace AND j.queue = q.name
+                             AND j.state IN ('available', 'scheduled', 'retryable')
+                             AND j.scheduled_at_ms <= coalesce(nullif($6, '')::bigint,
+                                 floor(extract(epoch FROM pg_catalog.statement_timestamp()) * 1000)::bigint)
+                             AND j.attempt < j.max_attempts
+                             AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                                 WHERE w.worker = j.worker AND w.version = j.version)
+                             AND NOT EXISTS (SELECT FROM mesh_jobs.batch_context_blocks b
+                                 WHERE b.namespace = j.namespace AND b.id = j.id
+                                     AND b.row_version = j.xmin AND b.row_location = j.ctid
+                                     AND b.encoding = current_setting('client_encoding')::name))
+             ) END",
+            &[
+                namespace,
+                queue,
+                workers_json,
+                &lease_ms.to_string(),
+                &slots.to_string(),
+                &cutoff,
+                if observe { "true" } else { "false" },
+            ],
+        )?;
+        let batch = decode_claim_batch(rows, slots, observe)?;
+        if !db.in_transaction() {
+            return Err("mesh jobs batch claim did not leave a committable transaction".into());
+        }
+        // The driver waits for COMMIT's ReadyForQuery before any claim can escape.
+        db.simple("COMMIT")?;
+        Ok(batch)
+    })();
+    result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
+}
+
+fn decode_claim_batch(
+    rows: Vec<Vec<(String, String)>>,
+    slots: usize,
+    observe: bool,
+) -> Result<ClaimBatch, String> {
+    let mut batch = ClaimBatch::default();
+    let invalid = || "mesh jobs invalid batch claim result from PostgreSQL".to_string();
+    let slots = slots.min(MAX_CLAIM_BATCH);
+    let row_count = rows.len();
+    if row_count == 0 {
+        return Ok(batch);
+    }
+    if row_count > slots + MAX_OVERSIZED_PER_BATCH {
+        return Err(invalid());
+    }
+
+    // Reorder row handles so PostgreSQL needn't sort the context payloads.
+    let mut ordered: [Option<Vec<_>>; MAX_CLAIM_BATCH + MAX_OVERSIZED_PER_BATCH] =
+        Default::default();
+    let ordered = &mut ordered[..row_count];
+    for mut row in rows {
+        let (_, ordinal) = row.pop().ok_or_else(invalid)?;
+        if ordinal.is_empty() {
+            // The text query decodes SQL NULL as an empty string.
+            if row_count != 1
+                || row.len() != 7
+                || row[0].1 != "contention_hint"
+                || row[1..].iter().any(|(_, value)| !value.is_empty())
+            {
+                return Err(invalid());
+            }
+            batch.contention_hint = true;
+            return Ok(batch);
+        }
+        if ordinal.len() > 2 || !matches!(ordinal.as_bytes()[0], b'1'..=b'9') {
+            return Err(invalid());
+        }
+        let position = ordinal.parse::<usize>().map_err(|_| invalid())?;
+        let slot = ordered.get_mut(position - 1).ok_or_else(invalid)?;
+        if slot.replace(row).is_some() {
+            return Err(invalid());
+        }
+    }
+    for slot in ordered {
+        let fields: [_; 7] = slot
+            .take()
+            .ok_or_else(invalid)?
+            .try_into()
+            .map_err(|_| invalid())?;
+        let [status, id, token, context, timeout_ms, context_bytes, observed_at_ms] =
+            fields.map(|(_, value)| value);
+        let context_bytes = context_bytes.parse::<usize>().map_err(|_| invalid())?;
+        match status.as_str() {
+            "claimed"
+                if context_bytes == context.len()
+                    && context_bytes <= crate::db::pg::MAX_DB_VALUE_BYTES
+                    && batch.claims.len() < slots =>
+            {
+                batch.claims.push(Claim {
+                    id,
+                    token,
+                    context,
+                    timeout_ms: timeout_ms.parse().map_err(|_| invalid())?,
+                    observed_at_ms: if observe {
+                        observed_at_ms.parse().ok()
+                    } else {
+                        None
+                    },
+                });
+            }
+            "oversized"
+                if context_bytes > crate::db::pg::MAX_DB_VALUE_BYTES
+                    && token.is_empty()
+                    && context.is_empty()
+                    && timeout_ms.is_empty()
+                    && batch.oversized.len() < MAX_OVERSIZED_PER_BATCH =>
+            {
+                batch.oversized.push(OversizedClaim { id, context_bytes });
+            }
+            _ => return Err(invalid()),
+        }
+    }
+    Ok(batch)
+}
+
+pub(super) fn next_due_ms(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers: &str,
+) -> Result<Option<u64>, String> {
+    let delay = response(
+        db,
+        "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
+         SELECT coalesce((
+             SELECT (j.scheduled_at_ms - now_ms)::text
+             FROM mesh_jobs.queues q JOIN mesh_jobs.jobs j
+                 ON j.namespace = q.namespace AND j.queue = q.name
+             CROSS JOIN clock
+             WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active' AND q.concurrency > 0
+                 AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                     WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
+                 AND j.state IN ('available', 'scheduled', 'retryable')
+                 AND j.scheduled_at_ms > now_ms AND j.attempt < j.max_attempts
+                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                             WHERE w.worker = j.worker AND w.version = j.version)
+             ORDER BY j.scheduled_at_ms LIMIT 1
+         ), '')",
+        &[namespace, queue, workers],
+    )?;
+    if delay.is_empty() {
+        Ok(None)
+    } else {
+        delay
+            .parse::<u64>()
+            .map(Some)
+            .map_err(|error| error.to_string())
+    }
+}
+
+#[derive(Deserialize)]
+pub(super) struct DrainWork {
+    pub(super) pending: bool,
+    pub(super) oversized: Option<OversizedClaim>,
+}
+
+pub(super) fn drain_work(
     db: &mut impl Database,
     namespace: &str,
     queues: &str,
     workers: &str,
-) -> Result<bool, String> {
+    batch: bool,
+) -> Result<DrainWork, String> {
+    let (blocked_filter, diagnostic) = if batch {
+        (
+            "AND NOT EXISTS (SELECT FROM mesh_jobs.batch_context_blocks b
+                WHERE b.namespace = j.namespace AND b.id = j.id
+                    AND b.row_version = j.xmin AND b.row_location = j.ctid
+                    AND b.encoding = current_setting('client_encoding'))",
+            "(SELECT json_build_object('id', b.id::text, 'context_bytes', b.context_bytes)
+              FROM mesh_jobs.batch_context_blocks b JOIN mesh_jobs.jobs j
+                ON j.namespace = b.namespace AND j.id = b.id
+                    AND j.xmin = b.row_version AND j.ctid = b.row_location
+              JOIN mesh_jobs.queues q ON q.namespace = j.namespace AND q.name = j.queue
+              CROSS JOIN clock
+              WHERE b.namespace = $1 AND $2::jsonb ? j.queue
+                  AND b.encoding = current_setting('client_encoding')
+                  AND q.state = 'active' AND q.concurrency > 0
+                  AND j.state IN ('available', 'scheduled', 'retryable')
+                  AND j.scheduled_at_ms <= now_ms AND j.attempt < j.max_attempts
+                  AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                              WHERE w.worker = j.worker AND w.version = j.version)
+              LIMIT 1)",
+        )
+    } else {
+        ("", "NULL")
+    };
     // A skipped lock, or a queue at capacity, can also produce an empty claim.
     response(
         db,
-        "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
-         SELECT EXISTS (
+        &format!("WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
+         SELECT json_build_object('pending', EXISTS (
              SELECT FROM mesh_jobs.jobs j JOIN mesh_jobs.queues q
              ON q.namespace = j.namespace AND q.name = j.queue CROSS JOIN clock
              WHERE j.namespace = $1 AND $2::jsonb ? j.queue
                  AND ((j.state = 'executing' AND j.lease_expires_at_ms <= now_ms)
                      OR (q.state = 'active' AND q.concurrency > 0
+                         AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                             WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
                          AND j.state IN ('available', 'scheduled', 'retryable')
                          AND j.scheduled_at_ms <= now_ms AND j.attempt < j.max_attempts
+                         {blocked_filter}
                          AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
                                      WHERE w.worker = j.worker AND w.version = j.version)))
-         )::text",
+         ), 'oversized', {diagnostic})::text"),
         &[namespace, queues, workers],
     )
-    .map(|due| due == "true")
+    .and_then(|outcome| decode(&outcome))
 }
 
 pub(super) fn renew(
@@ -665,11 +1024,11 @@ pub(super) fn finish(
     id: &str,
     token: &str,
     mut outcome: Outcome,
-) -> Result<Settlement, String> {
-    standalone(db)?;
-    name(namespace, "namespace")?;
+) -> Result<Settlement, JobsAckError> {
+    standalone(db).map_err(JobsAckError::Rejected)?;
+    name(namespace, "namespace").map_err(JobsAckError::Rejected)?;
     if matches!(outcome, Outcome::ReleaseUnstarted) {
-        let state = response(
+        return acknowledge(
             db,
             "WITH held AS MATERIALIZED (
                  SELECT lease_expires_at_ms, cancel_requested_at_ms FROM mesh_jobs.jobs
@@ -689,12 +1048,11 @@ pub(super) fn finish(
                            FROM released)
                  END, 'stale')",
             &[namespace, id, token],
-        )?;
-        return Settlement::from_sql(&state);
+        );
     }
     match &mut outcome {
         Outcome::RetryAfter { delay_ms, .. } | Outcome::Snooze { delay_ms } => {
-            duration(*delay_ms, "outcome delay_ms")?;
+            duration(*delay_ms, "outcome delay_ms").map_err(JobsAckError::Rejected)?;
         }
         _ => {}
     }
@@ -711,13 +1069,29 @@ pub(super) fn finish(
         }
         _ => {}
     }
-    let outcome = serde_json::to_string(&outcome).map_err(|error| error.to_string())?;
-    let state = response(
+    let outcome = serde_json::to_string(&outcome)
+        .map_err(|error| JobsAckError::Rejected(error.to_string()))?;
+    acknowledge(
         db,
         "SELECT coalesce(mesh_jobs.settle_state($1, $2::uuid, $3::uuid, $4::jsonb, false), 'stale')",
         &[namespace, id, token, &outcome],
-    )?;
-    Settlement::from_sql(&state)
+    )
+}
+
+fn acknowledge(
+    db: &mut impl Database,
+    sql: &str,
+    params: &[&str],
+) -> Result<Settlement, JobsAckError> {
+    let rows = db.acknowledge(sql, params)?;
+    if let [row] = rows.as_slice() {
+        if let [(_, state)] = row.as_slice() {
+            return Settlement::from_sql(state);
+        }
+    }
+    Err(JobsAckError::Unconfirmed(
+        "mesh jobs expected one settlement cell from PostgreSQL".into(),
+    ))
 }
 
 pub(super) fn recover(
@@ -749,6 +1123,70 @@ struct Selection {
     limit: Option<u32>,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct JobPatch {
+    #[serde(
+        default,
+        deserialize_with = "patch_field",
+        skip_serializing_if = "Option::is_none"
+    )]
+    args: Option<Value>,
+    #[serde(
+        default,
+        deserialize_with = "patch_field",
+        skip_serializing_if = "Option::is_none"
+    )]
+    metadata: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tags: Option<Vec<String>>,
+    priority: Option<u8>,
+    timeout_ms: Option<u64>,
+    scheduled_at_ms: Option<u64>,
+    delay_ms: Option<u64>,
+}
+
+fn patch_field<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(input).map(Some)
+}
+
+impl JobPatch {
+    fn validate(&self) -> Result<(), String> {
+        if self
+            .args
+            .iter()
+            .chain(&self.metadata)
+            .any(|value| !value.is_object())
+        {
+            return Err("mesh jobs args and metadata must be JSON objects".into());
+        }
+        if let Some(tags) = &self.tags {
+            if tags.len() > 128 {
+                return Err("mesh jobs accepts at most 128 tags".into());
+            }
+            for tag in tags {
+                name(tag, "tag")?;
+            }
+        }
+        if self.priority.is_some_and(|priority| priority > 9) || self.timeout_ms == Some(0) {
+            return Err("mesh jobs requires priority 0..=9 and timeout_ms > 0".into());
+        }
+        duration(self.timeout_ms.unwrap_or_default(), "timeout_ms")?;
+        scheduling(self.scheduled_at_ms, self.delay_ms)?;
+        if self.args.is_none()
+            && self.metadata.is_none()
+            && self.tags.is_none()
+            && self.priority.is_none()
+            && self.timeout_ms.is_none()
+            && self.scheduled_at_ms.is_none()
+            && self.delay_ms.is_none()
+        {
+            return Err("mesh jobs requires at least one field to update".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum Control {
@@ -775,6 +1213,17 @@ enum Control {
         after: Option<String>,
         limit: Option<u32>,
     },
+    Search {
+        #[serde(default)]
+        filter: Selection,
+        after_id: Option<String>,
+    },
+    InspectQueue {
+        queue: String,
+    },
+    NamespaceStatus,
+    PauseNamespace,
+    ResumeNamespace,
     QueueStats {
         queue: String,
     },
@@ -826,6 +1275,16 @@ enum Control {
     Delete {
         id: String,
     },
+    DeleteAll {
+        filter: Selection,
+    },
+    RunNow {
+        id: String,
+    },
+    Update {
+        id: String,
+        patch: JobPatch,
+    },
     Prune {
         queue: Option<String>,
         #[serde(alias = "older_than_ms")]
@@ -871,6 +1330,149 @@ fn job_control(
 
 fn optional_number<T: ToString>(number: Option<T>) -> String {
     number.map(|value| value.to_string()).unwrap_or_default()
+}
+
+fn set_namespace_pause(
+    db: &mut impl Database,
+    namespace: &str,
+    paused: bool,
+) -> Result<String, String> {
+    response(
+        db,
+        "SELECT mesh_jobs.set_namespace_paused($1, $2::boolean)::text",
+        &[namespace, if paused { "true" } else { "false" }],
+    )
+}
+
+fn search(
+    db: &mut impl Database,
+    namespace: &str,
+    filter: Selection,
+    after_id: Option<&str>,
+) -> Result<String, String> {
+    let state = serde_json::to_value(filter.state).map_err(|error| error.to_string())?;
+    if let Some(queue) = &filter.queue {
+        name(queue, "queue")?;
+    }
+    if let Some(worker) = &filter.worker {
+        name(worker, "worker")?;
+    }
+    response(
+        db,
+        "SELECT coalesce(jsonb_agg(to_jsonb(j) - 'namespace' ORDER BY j.id), '[]')::text
+         FROM (SELECT * FROM mesh_jobs.job_summaries
+               WHERE namespace = $1 AND ($2 = '' OR queue = $2)
+                   AND ($3 = '' OR state = $3) AND ($4 = '' OR worker = $4)
+                   AND ($5 = '' OR id > nullif($5, '')::uuid)
+               ORDER BY id LIMIT $6::integer) j",
+        &[
+            namespace,
+            filter.queue.as_deref().unwrap_or_default(),
+            state.as_str().unwrap_or_default(),
+            filter.worker.as_deref().unwrap_or_default(),
+            after_id.unwrap_or_default(),
+            &page(filter.limit)?,
+        ],
+    )
+}
+
+fn update_job(
+    db: &mut impl Database,
+    namespace: &str,
+    id: &str,
+    patch: Option<JobPatch>,
+) -> Result<String, String> {
+    let patch = match patch {
+        Some(patch) => {
+            patch.validate()?;
+            serde_json::to_string(&patch).map_err(|error| error.to_string())?
+        }
+        None => String::new(),
+    };
+    let result = response(
+        db,
+        "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms),
+         input AS MATERIALIZED (
+             SELECT nullif($3, '')::jsonb AS patch, now_ms FROM clock
+         ), eligible AS MATERIALIZED (
+             SELECT j.id, patch, now_ms,
+                 CASE WHEN patch IS NULL THEN now_ms ELSE coalesce(
+                     (patch ->> 'scheduled_at_ms')::bigint,
+                     now_ms + (patch ->> 'delay_ms')::bigint) END AS run_at
+             FROM mesh_jobs.jobs j CROSS JOIN input
+             WHERE j.namespace = $1 AND j.id = $2::uuid
+               AND j.state IN ('available', 'scheduled', 'retryable', 'suspended')
+               AND (patch IS NOT NULL OR (
+                   j.state IN ('scheduled', 'retryable') AND j.attempt < j.max_attempts))
+             FOR NO KEY UPDATE OF j SKIP LOCKED
+         ), changed AS (
+             UPDATE mesh_jobs.jobs j SET
+                 args = coalesce(e.patch -> 'args', j.args),
+                 metadata = coalesce(e.patch -> 'metadata', j.metadata),
+                 tags = coalesce(e.patch -> 'tags', j.tags),
+                 priority = coalesce((e.patch ->> 'priority')::integer, j.priority),
+                 timeout_ms = coalesce((e.patch ->> 'timeout_ms')::bigint, j.timeout_ms),
+                 scheduled_at_ms = coalesce(e.run_at, j.scheduled_at_ms),
+                 state = CASE WHEN e.run_at IS NULL OR j.state = 'suspended' THEN j.state
+                     WHEN e.run_at > e.now_ms THEN 'scheduled' ELSE 'available' END
+             FROM eligible e WHERE j.namespace = $1 AND j.id = e.id
+             RETURNING j.id, j.state, j.scheduled_at_ms, j.attempt, j.max_attempts,
+                 mesh_jobs.effect_key(j) AS effect_key
+         ) SELECT coalesce((SELECT to_jsonb(changed) FROM changed), 'null')::text",
+        &[namespace, id, &patch],
+    )?;
+    if result == "null" {
+        return Err("mesh jobs update target is missing, locked, or ineligible".into());
+    }
+    Ok(result)
+}
+
+fn delete_all(
+    db: &mut impl Database,
+    namespace: &str,
+    filter: Selection,
+) -> Result<String, String> {
+    if let Some(queue) = &filter.queue {
+        name(queue, "queue")?;
+    }
+    if let Some(worker) = &filter.worker {
+        name(worker, "worker")?;
+    }
+    if filter.queue.is_none() && filter.worker.is_none() && filter.state.is_none() {
+        return Err(
+            "mesh jobs delete_all requires a queue, worker, or terminal state filter".into(),
+        );
+    }
+    if filter.state.is_some_and(|state| {
+        !matches!(
+            state,
+            State::Completed | State::Cancelled | State::Discarded
+        )
+    }) {
+        return Err("mesh jobs delete_all accepts only terminal states".into());
+    }
+    let state = serde_json::to_value(filter.state).map_err(|error| error.to_string())?;
+    response(
+        db,
+        "WITH eligible AS MATERIALIZED (
+             SELECT id FROM mesh_jobs.jobs
+             WHERE namespace = $1 AND finished_at_ms IS NOT NULL
+                 AND ($2 = '' OR queue = $2) AND ($3 = '' OR worker = $3)
+                 AND ($4 = '' OR state = $4)
+             ORDER BY id LIMIT $5::integer FOR UPDATE SKIP LOCKED
+         ), removed AS (
+             DELETE FROM mesh_jobs.jobs j USING eligible e
+             WHERE j.namespace = $1 AND j.id = e.id RETURNING j.id
+         ) SELECT jsonb_build_object('deleted', count(*),
+             'ids', coalesce(jsonb_agg(id ORDER BY id), '[]'::jsonb))::text FROM removed",
+        &[
+            namespace,
+            filter.queue.as_deref().unwrap_or_default(),
+            filter.worker.as_deref().unwrap_or_default(),
+            state.as_str().unwrap_or_default(),
+            &page(filter.limit)?,
+        ],
+    )
 }
 
 fn bulk_control(
@@ -996,7 +1598,7 @@ pub(super) fn control(
         } => response(
             db,
             "SELECT coalesce((SELECT mesh_jobs.queue_json(q) FROM mesh_jobs.queues q
-             WHERE namespace = $1 AND name = $2), 'null')::text",
+             WHERE namespace = $1 AND name = $2 AND name <> ''), 'null')::text",
             &[namespace, &queue],
         ),
         Control::List {
@@ -1037,6 +1639,24 @@ pub(super) fn control(
             queues: true,
         } => list_queues(db, namespace, after_id.as_deref(), limit),
         Control::ListQueues { after, limit } => list_queues(db, namespace, after.as_deref(), limit),
+        Control::Search { filter, after_id } => search(db, namespace, filter, after_id.as_deref()),
+        Control::InspectQueue { queue } => {
+            name(&queue, "queue")?;
+            response(
+                db,
+                "SELECT coalesce((SELECT to_jsonb(q) - 'namespace' FROM mesh_jobs.queue_summaries q
+                  WHERE namespace = $1 AND queue = $2), 'null')::text",
+                &[namespace, &queue],
+            )
+        }
+        Control::NamespaceStatus => response(
+            db,
+            "SELECT jsonb_build_object('paused', EXISTS (SELECT FROM mesh_jobs.queues
+                 WHERE namespace = $1 AND name = '' AND state = 'paused'))::text",
+            &[namespace],
+        ),
+        Control::PauseNamespace => set_namespace_pause(db, namespace, true),
+        Control::ResumeNamespace => set_namespace_pause(db, namespace, false),
         Control::QueueStats { queue } => response(
             db,
             "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms), counts AS (
@@ -1079,6 +1699,9 @@ pub(super) fn control(
         } => job_control(db, namespace, &id, "reschedule", scheduled_at_ms, delay_ms),
         Control::Suspend { id } => job_control(db, namespace, &id, "suspend", None, None),
         Control::Delete { id } => job_control(db, namespace, &id, "delete", None, None),
+        Control::DeleteAll { filter } => delete_all(db, namespace, filter),
+        Control::RunNow { id } => update_job(db, namespace, &id, None),
+        Control::Update { id, patch } => update_job(db, namespace, &id, Some(patch)),
         Control::Prune {
             queue,
             before_ms,

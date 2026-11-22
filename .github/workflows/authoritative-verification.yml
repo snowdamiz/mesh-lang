@@ -98,8 +98,7 @@ jobs:
           # The pull request merge commit has the trusted base as a parent.
           fetch-depth: 2
 
-      - &cache-llvm
-        name: Cache LLVM
+      - name: Cache LLVM
         uses: actions/cache@v4
         id: cache-llvm
         with:
@@ -108,19 +107,18 @@ jobs:
 
       - &install-llvm
         name: Install LLVM 21 (Linux x86_64)
-        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        if: runner.os == 'Linux' && steps.cache-llvm.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
           LLVM_VERSION="21.1.8"
           LLVM_ARCHIVE="LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
           LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/${LLVM_ARCHIVE}"
-          curl -sSfL "$LLVM_URL" -o llvm.tar.xz
+          curl -sSfL --retry 3 --retry-all-errors "$LLVM_URL" -o llvm.tar.xz
           mkdir -p "$HOME/llvm"
           tar xf llvm.tar.xz --strip-components=1 -C "$HOME/llvm"
           rm llvm.tar.xz
 
-      - &configure-llvm
-        name: Configure LLVM toolchain (Linux x86_64)
+      - name: Configure LLVM toolchain (Linux x86_64)
         shell: bash
         run: |
           "$HOME/llvm/bin/llvm-config" --version
@@ -129,8 +127,7 @@ jobs:
           echo "LLVM_SYS_211_PREFIX=$HOME/llvm" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=$GITHUB_WORKSPACE/scripts/ci-x86_64-linux-gnu-clang" >> "$GITHUB_ENV"
 
-      - &install-rust
-        name: Install Rust
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         timeout-minutes: 10
         with:
@@ -263,15 +260,19 @@ jobs:
         run: bash scripts/verify-postgres-jobs.sh
 
   postgres-compatibility:
-    name: PostgreSQL ${{ matrix.version }} compatibility
+    name: PostgreSQL ${{ matrix.version }} compatibility (${{ matrix.os }})
     needs: changes
     if: needs.changes.outputs.compiler == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-24.04, macos-15]
+        version: ['17.11', '18.7', '19.0']
         include:
+          - version: '17.11'
+            sha256: dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979
           - version: '18.7'
             sha256: 441dfae4280cae3e0425e5f876f80559fb0731c140f1aae22b3e5a54d0411bfd
           - version: '19.0'
@@ -279,11 +280,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - *cache-llvm
+      - uses: actions/cache@v4
+        if: runner.os == 'Linux'
+        id: cache-llvm
+        with:
+          path: ~/llvm
+          key: llvm-21.1.8-v4-x86_64-unknown-linux-gnu
+
       - *install-llvm
-      - *configure-llvm
-      - *install-rust
+
+      - name: Configure compiler and PostgreSQL dependencies
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            sudo apt-get update
+            sudo apt-get install -y bison flex libssl-dev libzstd-dev libffi-dev libxml2-dev
+            echo "LLVM_SYS_211_PREFIX=$HOME/llvm" >> "$GITHUB_ENV"
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=$GITHUB_WORKSPACE/scripts/ci-x86_64-linux-gnu-clang" >> "$GITHUB_ENV"
+          else
+            brew install llvm@21 bison flex openssl@3
+            echo "LLVM_SYS_211_PREFIX=$(brew --prefix llvm@21)" >> "$GITHUB_ENV"
+            for dependency in bison flex openssl@3; do
+              echo "$(brew --prefix "$dependency")/bin" >> "$GITHUB_PATH"
+            done
+            echo "POSTGRES_OPENSSL_PREFIX=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -291,31 +318,100 @@ jobs:
           key: authoritative-verification-postgres-compatibility
 
       - name: Build the pinned PostgreSQL release with TLS
-        timeout-minutes: 15
+        timeout-minutes: 20
+        shell: bash
         env:
           POSTGRES_VERSION: ${{ matrix.version }}
           POSTGRES_SHA256: ${{ matrix.sha256 }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y bison flex libssl-dev
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            export CPPFLAGS="-I$POSTGRES_OPENSSL_PREFIX/include"
+            export LDFLAGS="-L$POSTGRES_OPENSSL_PREFIX/lib"
+            jobs=$(sysctl -n hw.logicalcpu)
+          else
+            jobs=$(nproc)
+          fi
           cd "$RUNNER_TEMP"
           archive="postgresql-$POSTGRES_VERSION.tar.bz2"
           curl -fsSLO "https://ftp.postgresql.org/pub/source/v$POSTGRES_VERSION/$archive"
-          printf '%s  %s\n' "$POSTGRES_SHA256" "$archive" | sha256sum --check
+          printf '%s  %s\n' "$POSTGRES_SHA256" "$archive" | shasum -a 256 -c
           tar xjf "$archive"
           cd "postgresql-$POSTGRES_VERSION"
           ./configure --prefix="$RUNNER_TEMP/postgres" --with-ssl=openssl --without-icu --without-readline --without-zlib
-          make -s -j "$(nproc)"
+          make -s -j "$jobs"
           make -s install
           for extension in pgcrypto pg_trgm; do
-            make -s -C "contrib/$extension" -j "$(nproc)" install
+            make -s -C "contrib/$extension" -j "$jobs" install
           done
           echo "PG_BIN_DIR=$RUNNER_TEMP/postgres/bin" >> "$GITHUB_ENV"
 
       - name: Prove the driver, database APIs, and durable Jobs
+        shell: bash
         env:
           POSTGRES_VERSION: ${{ matrix.version }}
-        run: bash scripts/verify-postgres-jobs.sh --compatibility "$POSTGRES_VERSION"
+        run: |
+          mkdir -p target/jobs-postgres-proof
+          bash scripts/verify-postgres-jobs.sh --compatibility "$POSTGRES_VERSION" --parity-driver-check --j6-roles \
+            2>&1 | tee "target/jobs-postgres-proof/postgres-$POSTGRES_VERSION.log"
+
+      - name: Prove the scoped Jobs effect fence
+        shell: bash
+        env:
+          POSTGRES_VERSION: ${{ matrix.version }}
+        run: |
+          bash scripts/verify-postgres-jobs.sh --effect-fence \
+            2>&1 | tee "target/jobs-postgres-proof/effect-fence-$POSTGRES_VERSION.log"
+
+      - name: Save PostgreSQL proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobs-postgres-${{ matrix.version }}-${{ matrix.os }}
+          path: target/jobs-postgres-proof/*.log
+
+      - name: Read Jobs baseline BEAM versions
+        if: runner.os == 'Linux' && matrix.version == '17.11'
+        id: jobs-beam-versions
+        run: cat tools/performance/versions.env >> "$GITHUB_OUTPUT"
+
+      - name: Install BEAM for the Jobs baseline
+        if: runner.os == 'Linux' && matrix.version == '17.11'
+        uses: erlef/setup-beam@v1.24.1
+        with:
+          otp-version: ${{ steps.jobs-beam-versions.outputs.PERF_OTP_VERSION }}
+          elixir-version: ${{ steps.jobs-beam-versions.outputs.PERF_ELIXIR_VERSION }}
+          version-type: strict
+          install-hex: false
+          install-rebar: false
+
+      - name: Prove paired Mesh and Oban recovery on Linux
+        if: runner.os == 'Linux' && matrix.version == '17.11'
+        timeout-minutes: 25
+        shell: bash
+        env:
+          POSTGRES_VERSION: ${{ matrix.version }}
+          MIX_HOME: ${{ github.workspace }}/target/jobs-parity/build/oban/mix
+          HEX_HOME: ${{ github.workspace }}/target/jobs-parity/build/oban/hex
+        run: |
+          extension="$RUNNER_TEMP/postgresql-$POSTGRES_VERSION/contrib/pg_stat_statements"
+          make -s -C "$extension"
+          make -s -C "$extension" install
+          mix local.rebar --force
+          python3 -B scripts/jobs-parity.py --faults --release \
+            --mesh-ref 7c1620563614a04a573aef806a6d019a2af4dfe9 \
+            --postgres-version "$POSTGRES_VERSION"
+
+      - name: Save paired Jobs baseline receipts
+        if: always() && runner.os == 'Linux' && matrix.version == '17.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobs-parity-baseline-linux-17.11
+          path: |
+            target/jobs-parity/*/j1-fault-*/manifest.json
+            target/jobs-parity/*/j1-fault-*/harness.json
+            target/jobs-parity/*/j1-fault-*/mesh-toolchain.json
+            target/jobs-parity/*/j1-fault-*/result.json
+            target/jobs-parity/*/j1-fault-*/*/fault.json
 
   # The ```mesh examples on the docs site must parse, lint and format cleanly.
   # rust-core runs these tests with the rest of the mesh-lint and mesh-fmt

@@ -23,9 +23,7 @@ fn rollback_job(conn :: borrow PgConn) -> String!String do
   Err("intentional rollback after enqueue")
 end
 
-fn seed(pool :: PoolHandle) -> String!String do
-  let _ = Jobs.migrate(pool)?
-  let _ = Jobs.migrate(pool)?
+fn seed_transaction(pool :: PoolHandle) -> String!String do
   let receipt = Repo.transaction(pool, commit_job)?
   case Repo.transaction(pool, rollback_job) do
     Err(error) ->
@@ -36,6 +34,43 @@ fn seed(pool :: PoolHandle) -> String!String do
       end
     Ok(_) -> Err("Repo.transaction committed the forced rollback")
   end
+end
+
+fn enable_wakeups(conn :: borrow PgConn) -> Int!String do
+  Pg.execute(conn, "SET mesh_jobs.publish_wakeups = on", [])
+end
+
+fn staged_wake_job(conn :: borrow PgConn) -> String!String do
+  let _ = Pg.execute(conn, "SET LOCAL mesh_jobs.publish_wakeups = on", [])?
+  let spec = Env.get("MESH_JOBS_PROOF_PAYLOAD", "")
+  let receipt = Jobs.enqueue_in(conn, namespace(), spec)?
+  let markers = Env.get("MESH_JOBS_PROOF_MARKERS", "")
+  let _ = File.write(markers <> "/staged", receipt)?
+  while !File.exists(markers <> "/commit") do
+    Timer.sleep(10)
+  end
+  if Env.get("MESH_JOBS_PROOF_COMMAND", "") == "stage_rollback" do
+    Err("intentional wake rollback")
+  else
+    Ok(receipt)
+  end
+end
+
+fn stage_wake_rollback(pool :: PoolHandle) -> String!String do
+  case Repo.transaction(pool, staged_wake_job) do
+    Err(error) ->
+      if error == "intentional wake rollback" do
+        Ok("null")
+      else
+        Err(error)
+      end
+    Ok(_) -> Err("staged wake transaction should have rolled back")
+  end
+end
+
+fn migrate(pool :: PoolHandle) -> String!String do
+  let _ = Jobs.migrate(pool)?
+  Ok("{}")
 end
 
 fn record_effect(context :: String) -> String!String do
@@ -68,14 +103,14 @@ fn record_effect(context :: String) -> String!String do
     ()
   end
   let gate = Env.get("MESH_JOBS_PROOF_GATE", "")
-  if gate != "" do
+  if gate != "" && label == Env.get("MESH_JOBS_PROOF_GATE_LABEL", label) do
     while !File.exists(gate) do
       Timer.sleep(10)
     end
   end
-  if label == "poison" do
+  if label == "poison" || label == "j6-held-retry" do
     Ok("""{"action":"fail","reason":"proof worker rejected poison"}""")
-  else if label == "retry" && attempt == 1 do
+  else if (label == "retry" || label == "event-exhaustion" || label == "wake-retry") && attempt == 1 do
     Ok("""{"action":"retry_after","delay_ms":400,"reason":"proof worker requested a retry"}""")
   else
     Ok("""{"action":"complete"}""")
@@ -91,34 +126,141 @@ fn handle(context :: String) -> String do
   end
 end
 
-fn serve(pool :: PoolHandle, config :: String) -> String!String do
+fn chain_job(context :: String) -> String!String do
+  let args = Json.object_get(Json.parse(context)?, "args")?
+  let depth = Json.as_int(Json.object_get(args, "depth")?)?
+  if depth > 0 do
+    let pool = Pool.open(database_url(), 1, 1, 5000)?
+    let result = Jobs.enqueue(pool,
+      namespace(),
+      json { worker: "proof", queue: "chain", args: json { label: "chain", depth: depth - 1 } })
+    Pool.close(pool)
+    let _ = result?
+    ()
+  end
+  Ok("""{"action":"complete"}""")
+end
+
+fn bounded_outcome(context :: String) -> String!String do
+  let queue = Json.as_string(Json.object_get(Json.parse(context)?, "queue")?)?
+  if queue == "chain" do
+    chain_job(context)
+  else
+    Ok(handle(context))
+  end
+end
+
+fn bounded_handler(context :: String) -> String do
+  case bounded_outcome(context) do
+    Ok(outcome) -> outcome
+    Err(error) -> Json.encode(json { action: "discard", reason: error })
+  end
+end
+
+fn bounded_drain(pool :: PoolHandle, payload :: String) -> String!String do
+  let payload = Json.parse(payload)?
+  let config = Json.encode(Json.object_get(payload, "config")?)
+  let options = Json.encode(Json.object_get(payload, "options")?)
+  Jobs.drain(pool, config, bounded_handler, options)
+end
+
+fn hold_checkout(conn :: borrow PgConn) -> Int!String do
+  let _ = Pg.query(conn, "SELECT set_config('application_name', $1, true)", [namespace()])?
+  let markers = Env.get("MESH_JOBS_PROOF_MARKERS", "")
+  let _ = File.write(markers <> "/pool-held", "held")?
+  while !File.exists(markers <> "/pool-release") do
+    Timer.sleep(10)
+  end
+  Ok(0)
+end
+
+actor exhaust_pool(pool :: PoolHandle) do
+  case Repo.transaction(pool, hold_checkout) do
+    Ok(_) -> ()
+    Err(error) -> println("pool checkout failed: " <> error)
+  end
+end
+
+fn serve(pool :: PoolHandle, config :: String, observe_after_join :: Bool) -> String!String do
   Process.install_shutdown_signals()
   let runner = Jobs.start(pool, config, handle)?
   let markers = Env.get("MESH_JOBS_PROOF_MARKERS", "")
+  let capture_events = Env.get("MESH_JOBS_PROOF_EVENTS", "") == "true"
   let status = Jobs.status(runner)?
   let _ = File.write(markers <> "/ready", status)?
   while !Process.shutdown_requested() do
+    if File.exists(markers <> "/pool-hold") do
+      let _ = File.rename(markers <> "/pool-hold", markers <> "/pool-hold-started")?
+      let _ = spawn(exhaust_pool, pool)
+      ()
+    end
+    let command = markers <> "/local-control"
+    if File.exists(command) do
+      let _ = File.rename(command, markers <> "/local-control-read")?
+      let action = File.read(markers <> "/local-control-read")?
+      let response = case Jobs.local_control(runner, action) do
+        Ok(report) -> report
+        Err(error) -> Json.encode(json { error: error })
+      end
+      let _ = File.write(markers <> "/local-control-result", response)?
+      ()
+    end
     let _ = File.write(markers <> "/status", Jobs.status(runner)?)?
+    if capture_events do
+      let batch = Jobs.read_events(runner, 128)?
+      File.append(markers <> "/events", batch <> "\n")?
+    end
     Timer.sleep(10)
   end
   let _ = File.write(markers <> "/signal", "received")?
   let grace = Json.as_int(Json.object_get(Json.parse(config)?, "shutdown_grace_ms")?)?
+  let stop_start = Monotonic.now_nanos()
   let stopping = Jobs.stop(runner, grace)?
+  let stop_ns = Monotonic.now_nanos() - stop_start
   let _ = File.write(markers <> "/stop", stopping)?
+  let _ = File.write(markers <> "/stop-ns", "${stop_ns}\n")?
   let joined = Jobs.join(runner)?
   let _ = File.write(markers <> "/joined", joined)?
-  Ok(joined)
+  if capture_events do
+    let batch = Jobs.read_events(runner, 128)?
+    File.append(markers <> "/events", batch <> "\n")?
+  end
+  if observe_after_join do
+    let finish = markers <> "/finish-post-join"
+    let deadline = Monotonic.now_nanos() + 60_000_000_000
+    while !File.exists(finish) && Monotonic.now_nanos() < deadline do
+      let _ = File.write(markers <> "/post-join-status", Jobs.status(runner)?)?
+      Timer.sleep(25)
+    end
+    if File.exists(finish) do
+      Jobs.status(runner)
+    else
+      Err("post-join status observation timed out")
+    end
+  else
+    Ok(joined)
+  end
 end
 
 fn run() -> String!String do
-  let pool = Pool.open(database_url(), 1, 8, 5000)?
+  let pool_size = if Env.get("MESH_JOBS_PROOF_ONE_SLOT", "") == "true" do 1 else 8 end
+  let pool = Pool.open(database_url(), 1, pool_size, 5000)?
+  if Env.get("MESH_JOBS_PROOF_PUBLISH", "") == "on" do
+    let _ = Repo.transaction(pool, enable_wakeups)?
+    ()
+  end
   let payload = Env.get("MESH_JOBS_PROOF_PAYLOAD", "")
   let result = case Env.get("MESH_JOBS_PROOF_COMMAND", "") do
-    "seed" -> seed(pool)
+    "seed_transaction" -> seed_transaction(pool)
+    "migrate" -> migrate(pool)
     "enqueue" -> Jobs.enqueue(pool, namespace(), payload)
     "enqueue_file" -> Jobs.enqueue(pool, namespace(), File.read(payload)?)
     "control" -> Jobs.control(pool, namespace(), payload)
-    "serve" -> serve(pool, payload)
+    "stage_commit" -> Repo.transaction(pool, staged_wake_job)
+    "stage_rollback" -> stage_wake_rollback(pool)
+    "serve" -> serve(pool, payload, false)
+    "serve_with_post_join_status" -> serve(pool, payload, true)
+    "drain" -> bounded_drain(pool, payload)
     _ -> Err("unknown proof command")
   end
   Pool.close(pool)

@@ -1,0 +1,5361 @@
+# Run the PostgreSQL Jobs comparison
+
+The [parity plan](durable-jobs-oban-parity.md) defines which evidence is required
+for each phase. The comparison driver uses the Mesh executable built from a
+Git commit and the pinned Oban 2.24.2 Basic fixture. Commit changes to the
+driver and fixtures before running comparisons. The driver archives them
+from the current Git head, independently of the selected Mesh runtime.
+
+## Run correctness checks
+
+Install Rust, LLVM 21, Python 3.11 or later, Elixir 1.18 or later, Erlang,
+and the PostgreSQL server tools. Include the PostgreSQL `pg_stat_statements`
+extension. Set `PG_BIN_DIR` if those tools are outside your shell's `PATH`.
+
+```sh
+bash scripts/verify-postgres-jobs.sh --parity-driver-check
+python3 scripts/jobs-parity.py --smoke --mesh-ref 59f6a7b3
+python3 scripts/jobs-parity.py --faults --mesh-ref 59f6a7b3
+```
+
+The correctness script runs the runtime tests and compiled process proof.
+The compiled proof uses both poll-only and `listen: true` runners. A loopback
+relay pauses a listener reconnect while leaving the claim and handler sessions
+available. Run with `--compatibility` to cover the same paths over verified TLS
+and SCRAM. To compare sparse pickup behavior with a pinned reference, build
+the `mesh-rt` static library from `7c162056` and set
+`MESH_JOBS_REFERENCE_RT_LIB_PATH` to its absolute path before running the
+verifier. It builds the reference fixture from the same pinned revision and
+checks the same committed job with polling on the reference and notifications
+on the candidate. Set `MESH_JOBS_REFERENCE_MESHC_PATH` to the absolute path
+of the pinned `meshc` to use its compiler as well. These reference runs
+also compare manual enqueue inspection and persisted pause and resume for
+two queues. The pinned runtime uses its per-queue controls. The candidate
+uses the namespace-wide controls.
+
+The smoke test runs one small matched pair. The fault test observes a claim
+and a committed effect before terminating the runner, then checks recovery
+from a separate database connection. Mesh recovers by lease expiry. Oban
+uses its Core Lifeline recovery policy.
+
+To capture J2 lane 10, run the verifier on a disposable database and save
+`j2-lane-10.log`.
+
+```bash
+set -o pipefail
+env -u MESH_TEST_DATABASE_URL bash scripts/verify-postgres-jobs.sh 2>&1 | tee j2-lane-10.log
+```
+
+Look for `J2 lane 10 passed` and a successful verifier exit. The proof holds
+the first 16 busy claims in a PostgreSQL transaction until the sparse job
+becomes due. The busy queue has one free slot after that transaction commits.
+PostgreSQL must record the sparse admission before the next busy admission,
+with three due busy jobs unclaimed throughout. The compiled runner must
+start and settle every admitted job on attempt one. This lane covers one
+poll-only batch runner with fixed queue limits. It passed on macOS arm64
+with PostgreSQL 17.11, 18.7, and 19.0. [Compiled receipts](../proof/jobs-parity/qualification-v1.json)
+
+The compiled process proof also includes J7 lane 8. On a schedulable host,
+run the verifier with its disposable loopback database and capture the
+`J7 lane 8 passed` line in `j7-lane-8.log`. The lane holds the runner's sole
+application checkout open, interrupts the listener, and observes recovery and
+cron checkout failures. It times `Jobs.stop` from API entry and bounds
+`Jobs.join` from the release of the checkout. A replacement runner polls
+while the listener is still unavailable, then recovers an expired lease and
+catches up a persisted calendar occurrence. Independent PostgreSQL sessions
+observe the lease, the job attempts, and the cron cursor.
+On macOS arm64, the proof passed with PostgreSQL 17.11, 18.7, and 19.0.
+The longest stop took 42.5 ms with a 40 ms grace period. The longest join
+took 32.3 ms from checkout release. In each run, the expired job completed
+on attempt two and the cron cursor advanced.
+[J7 lane 8 receipt](../proof/jobs-parity/j7-lane-8.log)
+
+The default fault run also cuts the settlement connection before the write
+reaches PostgreSQL and after PostgreSQL confirms the commit. This probe runs
+on the driver's disposable loopback database. With verified TLS enabled,
+the driver runs the rollback and runner-death cases only.
+
+For an exact PostgreSQL version and verified TLS, point `PG_BIN_DIR` to that
+version's binaries and pass the version to both commands.
+
+```sh
+bash scripts/verify-postgres-jobs.sh --compatibility 18.7 --parity-driver-check
+python3 scripts/jobs-parity.py --smoke --postgres-version 18.7 --mesh-ref 59f6a7b3
+```
+
+## Replay the fresh-application guides
+
+Set `release` to a release directory containing `meshc`,
+`libmesh_rt.a`, and `jobs-parity-toolchain.json`. With PostgreSQL server
+tools, Python 3, and `jq` installed, run from the checkout root.
+
+```sh
+PG_BIN_DIR="$(pg_config --bindir)" bash scripts/verify-jobs-guide.sh "$release"
+```
+
+The proof checks both artifact hashes and compares the pinned production
+compiler and runtime sources with the current checkout. It runs the
+operations walkthrough from Markdown on a disposable cluster, then compiles
+and runs the concurrency guide's transactional enqueue and worker examples.
+The receipt covers Mesh
+0.1.8 on macOS arm64 and PostgreSQL 17.11 over loopback SCRAM. Lease recovery
+uses drain process loss on the same primary. The walkthrough and reference
+snippets also passed with the exact `aa40fa5d` release compiler and runtime
+after integrating main. [Integrated guide receipt](../proof/jobs-parity/j7-lane-9-main-integration.log)
+
+The `39b472f2` replay passed with release artifacts from `5d45b53b` after
+verifying the artifact hashes and confirming that the production sources
+and Cargo inputs matched the checkout. [Bootstrap release guide receipt](../proof/jobs-parity/j7-lane-9-bootstrap-release.log)
+
+The same fresh-application walkthrough passed with release runtime
+`1b12243b`. [Latest guide receipt](../proof/jobs-parity/qualification-v1.json)
+
+## Record a baseline
+
+Run on an otherwise idle machine. Keep the database and both engines on the
+same host, and use the same `PG_BIN_DIR` throughout a comparison. Use
+`--load` without profile flags to run the manifest in full. The following
+command runs the dense short-job profile with four runners and 16 total slots.
+
+```sh
+python3 scripts/jobs-parity.py --load --mesh-ref 59f6a7b3 --workload short --runners 4 --slots 16
+```
+
+Use `db606548` for the pre-reliability reference and `59f6a7b3` for the
+post-reliability reference. Use the Git SHA of the candidate when measuring a
+change. The driver alternates the engines and records five pairs after warm-up.
+Commit the workload settings before using the baseline to evaluate changes.
+Both fixtures receive the same seeded inputs and write an attempt and an
+idempotent effect for each completed job.
+
+### Run the comparison on dedicated Linux CPUs
+
+Use one dedicated-CPU Ubuntu x86-64 instance for both engines and the
+disposable PostgreSQL server. Keep builds and other workloads outside the
+measurement window. Record the CPU model, logical CPU count, and starting
+load. Record host CPU steal and I/O wait during the run so the receipt can
+be interpreted alongside the per-trial load samples.
+
+Install the pinned Rust, LLVM, Erlang, and Elixir versions in
+[versions.env](../tools/performance/versions.env). Use the Ubuntu setup
+and PostgreSQL 17.11 source pin in the
+[authoritative workflow](../.github/workflows/authoritative-verification.yml).
+Include `pg_stat_statements` and point `PG_BIN_DIR` to the pinned server
+tools. Set `LLVM_SYS_211_PREFIX` to the LLVM installation and run from the
+clean checkout as a non-root user.
+
+```bash
+export CARGO_BUILD_JOBS=2
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$PWD/scripts/ci-x86_64-linux-gnu-clang"
+export MIX_HOME="$PWD/target/jobs-parity/build/oban/mix"
+export HEX_HOME="$PWD/target/jobs-parity/build/oban/hex"
+mix local.rebar --force
+mesh_ref="$(git rev-parse HEAD)"
+python3 -B scripts/jobs-parity.py --smoke --release --mesh-batch \
+  --postgres-version 17.11 --mesh-ref "$mesh_ref"
+
+python3 -B scripts/jobs-parity.py --load --mesh-batch \
+  --postgres-version 17.11 --mesh-ref "$mesh_ref" \
+  --toolchains "$PWD/target/jobs-parity/build"
+```
+
+The smoke builds the pinned release artifacts and verifies fixture access
+to the database. The load command verifies those artifact hashes before
+linking and runs all 35 profiles. Preserve the manifest, per-trial raw
+files, summaries, and `result.json` from the printed evidence directory.
+Check that collection passed and `budget_breaches` is empty before
+reporting that the comparison met the throughput and resource limits.
+
+### Inspect the workload and measurements
+
+Sparse trials start one producer process before starting the runners. Each
+enqueue opens and closes its database connections for that transaction.
+The driver submits one job at a time after the previous job settles and the
+configured gap elapses. The raw commit timestamps show the resulting spacing.
+Sparse throughput measures this serial submit-and-settle flow.
+
+The driver resets `pg_stat_statements` on its disposable cluster before each
+trial and checks for counter eviction during measurement. PostgreSQL can
+retain entries for dropped trial databases until a reset. The raw trial
+records the deallocation counter alongside the SQL call counts.
+
+The Oban fixture uses a private Erlang hosts entry for the disposable
+cluster's `127.0.0.1` address. The driver applies it after fetching
+dependencies. This avoids launching native DNS helpers for the numeric
+loopback address and keeps the TLS hostname and certificate checks.
+
+The grouped Oban comparison, two historical replays, and the dense and
+sparse main reruns used the reset and eviction check. The full 35-profile
+main comparison used harness `eb472832` before those checks existed.
+Its SQL counts are positive. The saved evidence cannot establish whether
+any statement entries were evicted in that comparison. [Main comparison](../proof/jobs-parity/j7-lane-1.log)
+
+The archived comparison `j1-load-xqlrv50b` reconciled 42,360 jobs per
+engine across 32 profiles. It stopped when one Oban large-context trial
+reported zero enqueue SQL calls despite completing all 64 jobs. A local
+pressure probe reproduced this counter loss after retaining entries for a
+dropped database. The corrected large-context rerun reconciled five pairs
+with zero counter evictions. [Archived and corrected receipts](../proof/jobs-parity/qualification-v1.json)
+
+For repeated comparisons, `--toolchains target/jobs-parity/build` reuses
+the compiler and runtime pairs recorded by a prior archive build. It
+checks the source SHA, build profile, Rust toolchain, and file hashes
+before linking each fixture.
+
+For a Mesh revision that includes batch claims, pass `--mesh-batch` to measure
+the opt-in runner. Omit the flag for the single-claim profile. Both modes
+record claim, runner, and producer SQL calls per completed job. Use
+`--against-ref` to run five pairs against another Mesh commit with the same
+inputs and connection budget. To measure batch dispatch on the same Mesh
+commit, pass that commit to both `--mesh-ref` and `--against-ref`, then add
+`--mesh-batch`. To exercise batch commit-response loss, use
+`--faults --mesh-batch`.
+
+Use `--faults --against-ref 7c162056` to compare transactional rollback and
+runner-death recovery against main. Each runtime gets a fresh database.
+The driver checks each enqueue ID and effect key against the final durable
+rows, then writes the matching results and both receipts to `j1-lane-1.log`.
+
+Measure committed wakeups with `--mesh-listen`. It enables the listener on
+the candidate and transactional publishing on its producer. The Mesh
+reference remains polling-only. `--poll-ms` and `--baseline-poll-ms` set
+the runner intervals without changing the workload's enqueue cadence.
+
+```sh
+python3 scripts/jobs-parity.py --load --workload sparse --runners 1 --slots 16 \
+  --mesh-listen --poll-ms 1000 --against-ref 7c162056 --baseline-poll-ms 250
+```
+
+Repeat with `--baseline-poll-ms 1000` to compare with polling at the same
+cadence. The receipt records claim timing and notification-triggered scans.
+Use the compiled compatibility proof to exercise listener interruption and
+the reconnect catch-up scan.
+
+At `53fb9189`, the five-pair sparse comparison with a 1-second listener
+fallback and main's 250 ms polling cadence recorded a worst trial
+commit-to-claim p99 of 30.9 ms. Median idle queries per minute were 709
+with listening and 1,781 on main. With both poll intervals set to one
+second, the listener's worst trial commit-to-claim p99 was 4.2 ms. The
+one-second polling control exceeded the configured 750 ms pickup budget.
+
+The `1b12243b` release runtime repeated both five-pair comparisons on
+macOS arm64 and PostgreSQL 17.11 over verified TLS. The listener used
+670 idle queries per minute against 1,778 on main at 250 ms polling.
+The worst healthy trial commit-to-claim p99 was 5.5 ms in that comparison
+and 21.8 ms at a matched 1-second interval. The polling reference again
+exceeded the 750 ms pickup budget at 1 second. [Polling comparison receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure fallback with the listener disconnected
+
+Point `PG_BIN_DIR` to the PostgreSQL version you pass below. Use the driver
+from the commit that adds `--listener-outage` and compile the runtime from the
+pinned comparison revision.
+
+```sh
+python3 scripts/jobs-parity.py --listener-outage \
+    --mesh-ref 9f4ae4f19e9b081d6b70752f4688a16fab3c27c7 --postgres-version 17.11
+```
+
+The driver alternates five pairs of healthy and disconnected trials after an
+unmeasured warmup. Both arms use the frozen sparse workload and seed, one
+runner with 16 slots, batch claims, and a 1000 ms runner poll interval. They
+publish wakeups and use the same commit, claim, and handler entry timestamps
+as the sparse comparison.
+
+The driver checks the disposable database's ownership nonce and waits for
+PostgreSQL and the runner to confirm the TLS listener and its initial scan.
+It then holds new coordinator connections at the loopback relay and
+terminates the exact idle listener in the disconnected arm. It waits for a
+reconnect to reach the gate before enqueuing. The original pool, claim, and
+lease settlement sessions keep their verified TLS connections. Handlers and
+producers connect directly to the same SCRAM-authenticated cluster.
+
+Check `raw.json` for the PostgreSQL session identities and live wake counters
+before and after the workload. The disconnected arm must retain the original
+runner sessions, complete every job on its first attempt, and report fallback
+scans without notifications or a new subscription. Check `summary.json` for
+both arms' claim p99 and idle SQL calls per minute. The healthy claim p99
+uses the existing 100 ms limit. The disconnected arm's maximum
+commit-to-handler-entry time must be at most 2000 ms across all measured jobs.
+
+Runtime `1b12243b` passed five pairs on macOS arm64 with PostgreSQL 17.11
+over verified TLS. The worst healthy trial commit-to-claim p99 was
+13.3 ms. The slowest disconnected pickup was 871.9 ms. Each trial
+reconciled 24 jobs, and each disconnected runner kept its original
+database sessions apart from the interrupted listener. [Listener outage receipt](../proof/jobs-parity/qualification-v1.json)
+
+The rerun with transaction-scoped producer connections also passed all
+five pairs. The worst healthy trial claim p99 was 4.4 ms. The slowest
+disconnected pickup was 971.2 ms. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
+Check `result.json` for budget breaches.
+
+## Measure runner telemetry
+
+On an idle host, pair the committed candidate with pinned main. Run all three
+modes with the same PostgreSQL binaries and profile.
+
+```sh
+jobs_candidate=$(git rev-parse HEAD)
+for mode in disabled logged backpressured; do
+    python3 scripts/jobs-parity.py --load --mesh-ref "$jobs_candidate" \
+        --against-ref 7c162056 --mesh-events "$mode" --workload short --runners 1 --slots 16
+done
+```
+
+The logged mode writes JSON lines asynchronously. The backpressured mode
+leaves the 128-event reader unread. In each measured backpressured trial,
+check that the reader's drop count is positive and its sampled peak reaches
+its bound. Check the throughput and pickup p99 verdicts in `summary.json`
+against the existing profile limits.
+
+On PostgreSQL 17.11, 18.7, and 19.0, the compiled stderr proof kept a
+saturated socket unread through durable settlement and `Jobs.join`. At
+join the drop counter was zero. After the observer closed the socket,
+`Jobs.status` reported four dropped events. [Logger proof](../proof/jobs-parity/qualification-v1.json)
+
+`raw.json` records `runner_event_buffer_bytes` in runner order.
+`metrics.json` and `trials.json` record the largest per-runner value for
+each sink in `event_buffer_bytes`. `summary.json` takes the maximum for
+each sink across measured trials. A missing report from an older or
+disabled runtime becomes `null` in the receipt. A disabled sink in a
+report also appears as `null`.
+
+The byte unit charges each occupied channel slot for an event and a full
+attempt identity, including the identity's two strings. Each queued copy
+pays the full charge even when the identity is absent or shared.
+`upper_bound_bytes` multiplies that charge by the sink's slot capacity.
+`sampled_peak_bytes` applies the same charge to the largest slot count
+observed after a successful enqueue or when an enqueue found a full
+channel. A consumer can drain slots between samples, so the sampled peak
+can miss a transient maximum. Both fields cover queued records and
+exclude unused slots, channel and allocation overhead, serialized output,
+and records already removed by the reader or logger.
+
+The five-pair dense comparison on runtime `1b12243b` met the configured
+limits in all three modes against main `7c162056` on PostgreSQL 17.11.
+The unread reader reached its 29,184-byte bound and dropped 130 events
+in each trial. The logger's sampled peak was 228 bytes with the same
+29,184-byte bound. Each trial reconciled 128 jobs. The run IDs are
+`j1-load-krk1cjmw` for disabled, `j1-load-fmcd4oma` for logged, and
+`j1-load-mm7ws85q` for backpressured.
+
+Use `--faults --mesh-events logged` on a current runtime to verify that
+an acknowledgement lost after commit produces uncertainty without a
+commit confirmation from the runner.
+
+The five-pair short-job tests compared the combined `53fb9189` runtime
+with main `7c162056`. The disabled run missed both 5% limits, at 273.9
+versus 338.3 jobs per second and pickup p99 of 440.1 versus 354.2 ms.
+The logged and backpressured runs both met their throughput limit, and
+the unread buffer dropped 130 events in every measured trial. Host load
+varied across the runs. These comparisons include the combined changes
+to dispatch and maintenance.
+
+A second disabled run with the same binaries recorded 326.5 jobs per second
+against 311.7 on main, with pickup p99 of 365.9 ms against 385.9 ms. Both
+metrics met their limits on the rerun. Its startup one-minute load was 17.5
+on 15 logical CPUs. Raw receipts are in run `j1-load-7tn1vav3`.
+
+The settlement-wakeup runtime `83a76b7d` also met both limits with
+telemetry disabled. In five pairs, it recorded 391.8 jobs per second and
+310.1 ms pickup p99. Main recorded 328.7 jobs per second and 363.0 ms pickup
+p99. Raw receipts are in run `j1-load-f8ghhalg`.
+
+Each run prints its evidence directory under `target/jobs-parity/<sha>/`.
+`manifest.json` records the compiled SHA, fixture hashes, tool versions,
+database parameters, and host. `settings.json` records the frozen workload
+and budgets. Each profile stores its raw attempt and occupancy samples,
+trial metrics, and median and range. Exit code 1 indicates a queue
+reconciliation mismatch. Exit code 2 indicates a fixture or environment
+failure. The run records budget breaches separately in `result.json`.
+`summary.json` includes the Mesh-to-Oban throughput and pickup comparisons.
+Batch trials also record the largest confirmed context payload held before
+launch on any runner. A historical runtime can omit that metric. The
+summary then marks the batch context-size budget unverified.
+
+Reconciliation runs after runner shutdown for load and fault cases. It
+compares the final job, business-write, attempt, and effect identities
+across the disposable database against the producer's enqueue receipts.
+A direct occupancy observation above the configured slots
+fails the trial. The timestamp reconstruction stays available separately.
+
+Pickup uses the interval between the enqueue transaction's commit timestamp
+and the first handler entry. Claim and settlement are tracked separately.
+The raw attempt records include the commits of the handler's first attempt
+record and its effect. These timestamps split the interval between handler
+entry and settlement without adding work to the handler.
+The connection and operating system resource samples describe observed
+peaks at the configured sampling interval. Each sample also records the
+host's one-minute load average. Read the trial peak alongside the CPU
+count and startup load in the manifest. Runner CPU includes the process
+startup, idle window, and shutdown. The timed settlement window comes from
+PostgreSQL's commit timestamps. The load generator and the observer are
+excluded from runner process measurements.
+
+`--smoke` and `--faults` produce correctness evidence. Use the five-pair load
+receipts and the plan's separate live gates to assess performance and
+functional parity.
+
+## Run the J6 role and operations proof
+
+Use a local checkout with the pinned main revision `7c162056` available.
+The proof starts a disposable cluster and creates separate databases for a
+fresh install and an upgrade.
+
+```sh
+env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
+  bash scripts/verify-postgres-jobs.sh --j6-roles
+```
+
+The role proof revokes default `PUBLIC EXECUTE` before migration. It
+checks a held legacy attempt across the upgrade, then runs the compiled
+producer, worker, operator, inspector, and migrator with scoped logins
+in both databases. The PostgreSQL proof also covers local queue control
+with single and batch claims, cron owner loss across commit, retained
+receipts after delete and prune, and a concurrent index swap while a
+compiled worker continues settling.
+
+Use this receipt as functional evidence for the host and PostgreSQL
+version printed by the script. Keep the separately measured maintenance
+latency, the paired comparison against main, and the remaining platform
+lanes in the parity plan.
+
+## Compare maintenance under load
+
+Run `scripts/jobs-j6-maintenance.py` with pinned main and candidate
+compiler/runtime pairs. It compares main with native reindex, the
+candidate with native reindex, and the candidate with the scoped reindex
+script. It uses equal page limits for pruning, recovery, and due staging.
+Use release artifacts with `--build-profile release --qualify` to apply
+the dispatch and claim-gap budgets to five or more paired rounds.
+
+The initial PostgreSQL 17.11 debug smoke reconciled 72 jobs and effects per
+arm and kept request receipts after pruning. The script arm's dispatch p99
+was 1.659 times main and its maximum observed claim gap was 164 ms against
+a 500 ms budget. One busy-host round provided functional evidence for the
+pages and receipt replay. The compiled operations proof separately exercised
+settlement while a concurrent reindex held its administrative lock.
+
+The five PostgreSQL 17.11 release rounds with main `7c162056` and candidate
+`302cdce8` recorded script-arm dispatch p99 between 0.958 and 1.026 times
+main. Every round met the measured latency and claim-gap budgets. The
+probe classified the run as diagnostic because the peak one-minute load
+was 1.76 per logical CPU.
+
+The `53fb9189` release rerun met those measured budgets in all five
+rounds too, with script-arm dispatch p99 from 0.972 to 1.021 times main.
+Host load reached 5.92 per logical CPU during the rerun, so its receipt
+also records a diagnostic verdict.
+
+The `1b12243b` release rerun completed five rounds. Script-arm dispatch
+p99 ranged from 0.920 to 0.953 times main. The largest observed claim gap
+was 120 ms against a 500 ms budget. All rounds met the measured limits.
+The host peaked at 0.812 one-minute load per logical CPU against the 0.75
+quiet-host limit, so the receipt records a diagnostic verdict. [Maintenance receipt](../proof/jobs-parity/qualification-v1.json)
+
+The five-round quiet rerun peaked at 0.391 one-minute load per logical CPU
+and passed. Dispatch p99 ranged from 0.927 to 0.938 times main. The largest
+claim gap around a scripted reindex was 115 ms. Claims bracketed the
+reindex statements. The compiled scoped-role proof separately observed
+settlement during a rebuild. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
+
+## Exercise primary promotion
+
+Build the compiler and runtime from the revision under test. Set `PG_BIN_DIR`
+to a PostgreSQL installation with `pg_basebackup` and `pg_stat_statements`.
+Choose a new evidence directory under the checkout for each run.
+
+```sh
+cargo build --locked -p meshc -p mesh-rt
+python3 scripts/jobs-promotion.py --postgres-version 17.11 \
+  --listen --evidence-dir target/jobs-parity/promotion-17.11
+```
+
+The proof starts a primary and a physical streaming standby. It loses a
+settlement reply after commit, waits for the standby to replay through the
+primary's flush LSN, stops and fences the old primary, then promotes the
+standby. It checks receipts, job IDs, effect keys, and stale-token rejection
+while the replacement attempt holds its lease. Replication and direct
+database connections use verified TLS and SCRAM. The one-shot fault proxy
+uses plaintext loopback with SCRAM so it can identify the settlement reply.
+`--listen` also verifies that the replacement runner subscribes and scans
+for committed work on the promoted primary.
+
+The replay barrier in this proof preserves the observed commits before
+promotion. For a deployment with asynchronous replication, the failover
+operator must account for commits newer than the standby's replay position.
+
+## Exercise rolling upgrade and worker rollback
+
+Use `scripts/verify-jobs-upgrade.py --postgres-version 17.11` to compile the
+pinned main and candidate fixtures and run both under scoped database roles.
+Repeat with PostgreSQL 18.7 and 19.0. The proof keeps a legacy lease active
+through migration, checks the pending deadlines and attempt budget, and
+returns to a legacy worker on the upgraded schema. Keep schema migration on
+the newer binary during rollout and worker rollback. The owner replay probe
+compares legacy function definitions and OIDs, then checks that replaying
+the old migration preserves the installed catalog and legacy grants. It
+checks the namespace pause on existing and newly created queues while an
+old lease renews and settles. The same legacy runner observes a rejected
+claim and completes both queued jobs after resume. Its `last_error` retains
+the rejection after successful work.
+
+The v2 runs used release runtimes `7c162056` and `a431fbbf` with harness
+`6191a712`. They preserved all 14 legacy function definitions on macOS arm64
+with PostgreSQL 17.11, 18.7, and 19.0 over verified TLS. After resume, the
+current single-claim worker also completed a job on attempt one under the
+claim-and-settle grants. The paired PostgreSQL 17.11 fault run used the same
+release runtimes and loopback SCRAM. [V2 receipt](../proof/jobs-parity/rolling-upgrade-v2.json)
+
+The historical v1 receipts compare `7c162056` and `23a95b87` on macOS arm64
+with verified TLS. On those revisions, owner replay could replace the old
+claim body and bypass the namespace pause. [PostgreSQL 17.11](../proof/jobs-parity/rolling-upgrade-v1.pg17.11.json) ·
+[PostgreSQL 18.7](../proof/jobs-parity/rolling-upgrade-v1.pg18.7.json) ·
+[PostgreSQL 19.0](../proof/jobs-parity/rolling-upgrade-v1.pg19.0.json)
+
+## Recorded baseline
+
+For the five-pair run `j1-load-19blcy6t`, the benchmark used harness `6141ab94`,
+Mesh `59f6a7b3` in its default single-claim mode, Oban Basic 2.24.2, and
+PostgreSQL 17.11 over loopback SCRAM. It ran on macOS arm64 with one runner
+and 16 total slots. Each short-job trial reconciled 128 jobs and each sparse
+trial reconciled 24. These are medians across the five measured trials.
+
+| Profile | Metric | Mesh | Oban Basic |
+| --- | --- | ---: | ---: |
+| Short, 1 KiB | Completed jobs per second | 201.2 | 565.7 |
+| Short, 1 KiB | Pickup p99, ms | 608.3 | 223.4 |
+| Short, 1 KiB | CPU per completed job, ms | 7.02 | 5.39 |
+| Sparse, 1 KiB | Pickup p99, ms | 241.3 | 252.7 |
+
+The host's one-minute load average was 42.2 on 15 logical CPUs at startup.
+The short profile missed the proposed throughput, pickup, and CPU thresholds.
+That harness undercounted macOS threads. This run records two diagnostic
+post-reliability profiles.
+Release qualification still requires the matched candidate matrix on a
+host with capacity for the workload and its observers.
+
+## Release comparisons for batch dispatch
+
+Harness and runtime `53fb9189` completed five pairs per profile on
+PostgreSQL 17.11 with verified TLS, one runner, and 16 slots. Against main
+`7c162056`, the short profile used 0.102 claim calls per completed job with
+batching and 1.008 on main. Sparse pickup p99 was 252.5 ms with batching and
+269.7 ms on main. The largest queued context was 21,696 bytes in these
+profiles, below the 32 MiB limit. Raw receipts are in run `j1-load-l5_ot88g`.
+
+The dense short-job comparison against Oban Basic 2.24.2 reconciled 128
+jobs per trial. Mesh completed 235.9 jobs per second against Oban's 405.1,
+with pickup p99 of 493.0 ms against 311.0 ms. The startup one-minute load
+was 25.1 on 15 logical CPUs. This profile missed both proposed Core parity
+thresholds. Raw receipts are in run `j1-load-pqsep8or`.
+The same run's sparse profile reconciled 24 jobs per trial and met its
+measured limits, with pickup p99 of 258.8 ms on Mesh and 252.1 ms on Oban.
+
+With four runners and 16 slots, another PostgreSQL 17.11 run reconciled all
+five pairs for each of the following profiles. Each missed both Core
+throughput and pickup limits. Startup one-minute load was 18.9 on 15
+logical CPUs. Raw receipts are in run `j1-load-5hx0vvd4`.
+
+| Profile | Jobs per trial | Mesh jobs/s | Oban jobs/s | Mesh pickup p99, ms | Oban pickup p99, ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 100 ms, 16 KiB | 128 | 91.2 | 124.1 | 1,277.0 | 926.4 |
+| No-op, 1 KiB | 256 | 266.3 | 959.7 | 913.9 | 266.1 |
+| Large-context stress, 512 KiB | 16 | 56.5 | 132.5 | 261.7 | 117.3 |
+
+The short-profile timing run `j1-load-6h3ntgfp` used the same release
+runtime and one runner with 16 slots. Median time from handler entry to
+the first attempt record's commit was 9.8 ms on Mesh and 0.3 ms on Oban.
+That interval includes connection setup for Mesh and a pool checkout
+for Oban. Median time from effect commit to settlement was 15.8 ms on
+Mesh and 0.5 ms on Oban. Each value is the median across five trial medians.
+
+Runtime `83a76b7d` wakes the dispatcher when the supervisor reaps an attempt
+and has a reply ready to settle. In five single-claim pairs against
+`53fb9189`, the median effect-to-settlement interval fell from 13.8 ms to
+9.7 ms. All five pairs improved. Median throughput rose from 326.3 to
+388.2 jobs per second, with trial ranges of 254.2–345.3 and 354.9–395.3
+respectively. Each trial reconciled 128 jobs. Raw receipts are in run
+`j1-load-p3kxhctg`.
+
+In five separate batch pairs against Oban, `83a76b7d` recorded 363.5 jobs
+per second and 333.4 ms pickup p99. Oban recorded 438.7 jobs per second
+and 287.4 ms pickup p99. The batch profile met the pickup limit and missed
+the throughput and CPU limits. Raw receipts are in run `j1-load-if2jom40`.
+
+Runtime `e8fa00c0` uses ring for the SCRAM password derivation. In five
+single-claim pairs against `83a76b7d`, median CPU per completed job fell
+from 6.41 to 5.74 ms. Median handler entry to the first committed write
+fell from 5.96 to 5.19 ms. The throughput ranges overlap. Startup
+one-minute load was 14.6 on 15 logical CPUs. Raw receipts are in run
+`j1-load-6dnh2p3i`.
+
+In the separate batch comparison, Mesh used 1.15 times Oban's CPU per
+job, within the 1.25 limit. Median throughput was 316.5 jobs per second
+on Mesh and 442.2 on Oban. Pickup p99 was 387.7 ms on Mesh and 286.5 ms
+on Oban. Both Core performance limits still failed in this run. Startup
+one-minute load was 8.5 on 15 logical CPUs. Raw receipts are in run
+`j1-load-fycjmfc1`.
+
+The worker-reply wakeup candidate `125772f8` shortened median time from
+effect commit to settlement from 9.78 ms to 2.35 ms in five single-claim
+pairs against `e8fa00c0`. All five pairs improved on that interval. Median
+throughput was 411.5 jobs per second, with a trial range of 311.6–521.5.
+The baseline median was 378.5, with a range of 304.7–507.4. Raw receipts
+are in run `j1-load-3q6w3p22`.
+
+In the batch comparison against Oban Basic 2.24.2, Mesh met the two
+dense timing limits at 411.5 jobs per second and 293.8 ms pickup p99.
+Oban recorded 425.5 jobs per second and 298.2 ms pickup p99. Mesh used
+1.30 times Oban's CPU per job, above the 1.25 limit. Raw receipts are in
+run `j1-load-3vl21x7c`. The candidate's worker test confirmed that the
+supervisor cannot consume a reply until it reaps the child.
+
+Runtime `1b12243b` restricts early scans to pending replies and keeps the
+full watchdog deadline independent. The single-claim comparison against
+`125772f8` had wide and overlapping trial ranges for throughput and CPU.
+The separate batched comparison passed the CPU limit and missed both
+dense timing limits. It started at a one-minute host load of 32.4 on 15
+logical CPUs. Raw receipts are in runs `j1-load-0ghrr0su` and
+`j1-load-dnc2kr57`.
+
+## Matched Oban release comparison
+
+On macOS arm64 and PostgreSQL 17.11 over verified TLS, release Mesh
+`1b12243b` used batch claims and 250 ms polling against Oban Basic 2.24.2.
+The five workload groups each ran seven configurations with per-engine
+warmups and five alternating measured pairs. The audit matched the final
+job IDs, business rows, attempt numbers, and effect keys to the input and
+enqueue receipts after shutdown. It reconciled 43,080 measured jobs per
+engine across 350 trials. [Comparison receipt](../proof/jobs-parity/j7-lane-10.log)
+
+| Workload | Throughput within limit | Pickup p99 within limit | Within every limit |
+| --- | ---: | ---: | ---: |
+| Short, 1 ms and 1 KiB | 0 of 7 | 0 of 7 | 0 of 7 |
+| Slow, 100 ms and 16 KiB | 0 of 7 | 3 of 7 | 0 of 7 |
+| Sparse | 7 of 7 | 6 of 7 | 5 of 7 |
+| No-op stress | 0 of 7 | 0 of 7 | 0 of 7 |
+| Large-context stress, 512 KiB | 1 of 7 | 4 of 7 | 1 of 7 |
+
+In the one-runner, 16-slot short profile, median throughput was 256.4
+jobs per second on Mesh and 748.2 on Oban. Median trial pickup p99 was
+478.2 ms on Mesh and 166.0 ms on Oban. In the corresponding sparse
+profile, serial throughput was 1.99 and 2.03 jobs per second. Pickup p99
+was 204.2 and 240.6 ms, respectively. Oban reached four processes
+against the two-process cap in the one-slot profiles. The eight-runner,
+64-slot sparse profile exceeded the relative pickup limit. [Sparse receipt](../proof/jobs-parity/j1-lane-6.log)
+
+Starting one-minute host load ranged from 6.25 to 23.62 on 15 logical CPUs.
+The highest sampled one-minute load was 34.73. The recorded timings apply
+to these configurations and host conditions. Each group links its raw
+trials, SQL counters, and resource samples. [Comparison receipt](../proof/jobs-parity/j7-lane-10.log)
+
+The raw archive includes the original summaries, trial metrics, and
+measured rows and resource samples from both 35-profile comparisons.
+Its `files.json` lists each recorded source path and SHA-256. The
+qualification index records the archive's SHA-256. [Raw archive](../proof/jobs-parity/matched-workload-samples-v1.tar.xz) · [Qualification index](../proof/jobs-parity/qualification-v1.json)
+
+```sh
+tar -xOf proof/jobs-parity/matched-workload-samples-v1.tar.xz \
+  oban/short/short-1r-16s/trials.json
+```
+
+To replay a group, check out its `harness_sha` from the receipt and run
+the same runtime with its workload name. The four dense and stress groups
+used harness `3e0339f7`. The sparse group used `04cce85d`, which keeps both
+producer processes warm and closes their connections after each enqueue.
+
+```sh
+PG_BIN_DIR=/opt/homebrew/opt/postgresql@17/bin \
+  python3 scripts/jobs-parity.py --load --mesh-ref 1b12243b --mesh-batch \
+  --workload sparse --postgres-version 17.11
+```
+
+### Follow-up on short jobs and the one-slot process cap
+
+The one-slot rerun used harness `40811314` and a fixture-local Erlang
+hosts entry. The original numeric address lookup started two
+`inet_gethost` helpers. With the hosts entry, Oban peaked at two processes
+in all five one-slot profiles. The paired trials reconciled 2,760 jobs per
+engine over verified TLS. The short and 100 ms profiles met the throughput
+and pickup limits with the experimental Mesh runtime `4f50a567` and still
+exceeded the CPU-per-job limit. [Rerun receipts](../proof/jobs-parity/qualification-v1.json)
+
+The instrumented `1b12243b` short-job fixture separated the handler's
+`Pg.connect` call from its first write. Across five trials with 16 slots,
+the median of trial medians was 4.95 ms from database claim to native
+constructor, 0.52 ms from constructor to handler entry, 5.31 ms in
+verified-TLS connection setup, and 0.52 ms from connect to attempt commit.
+The sequential plaintext SCRAM run recorded 3.32 ms in connection setup.
+These diagnostic runs had separate host-load samples. [Trace receipts](../proof/jobs-parity/qualification-v1.json)
+
+The macOS `4f50a567` experiment signaled the supervisor when the kernel
+reported child exit. At one slot, median short-job throughput was 97.6
+jobs per second against 72.9 on `1b12243b`, and the median effect-to-settlement
+interval was 0.62 ms against 2.33 ms. Both used batch claims. At 16 slots,
+the experiment still missed the Oban throughput, pickup, and CPU limits.
+The candidate stays experimental because its per-child watcher descriptor
+can prevent a later launch under descriptor pressure. [Experiment receipts](../proof/jobs-parity/qualification-v1.json)
+
+The shared watcher experiment `8c86c592` uses one kqueue per opt-in runner.
+It passed five native macOS tests and the PostgreSQL 17.11 proof with 52
+Jobs runtime tests and both compiled suites. Five release pairs per
+profile used the same binary with the feature toggled. With one slot and
+direct effect writes, median throughput rose from 45.3 to 75.0 jobs/s.
+The effect-commit-to-settlement median fell from 11.79 to 0.87 ms. At 16
+slots with the same warm effect relay in both arms, throughput was 399.2
+and 402.5 jobs/s. Three of five pairs improved. The shared watcher remains
+experimental. [Shared watcher receipt](../proof/jobs-parity/qualification-v1.json)
+
+The macOS dispatch trace at `edf82c7a` reconciled 3,840 short jobs with
+one runner, 16 slots, and PostgreSQL 17.11 over verified TLS. Five
+rotating trials per arm compared an untagged executable, a tagged
+executable with tracing off, and the same tagged executable with
+tracing on. Each route used the same job inputs. The second route used
+16 warm effect sessions in a fixture relay.
+
+| Median traced interval | Direct effect writes | Warm effect sessions |
+| --- | ---: | ---: |
+| Claim confirmation to launch | 0.72 ms | 0.99 ms |
+| `posix_spawnp` call | 0.22 ms | 0.16 ms |
+| Spawn start to native constructor | 3.72 ms | 3.18 ms |
+| Native constructor to handler entry | 0.55 ms | 0.47 ms |
+
+In full 16-job batches, the median wait from confirmation to the last
+launch was 5.54 ms for direct writes and 4.19 ms for warm sessions.
+Across all batches, the largest median interval was from spawn to
+constructor. This interval includes loading and scheduling the new
+process. Tracing changed median first-claim-to-last-settlement time from
+164.0 to 165.7 ms with direct writes and from 99.0 to 107.3 ms with warm
+sessions. These diagnostic trials leave the Oban comparison open.
+[Dispatch trace receipt](../proof/jobs-parity/qualification-v1.json)
+
+An independent executable link added macOS `-dead_strip` to the same
+tagged fixture. It reduced the executable from 26.1 to 7.4 MiB. Across
+five pairs at 16 slots, the median traced time from spawn to constructor
+fell from 5.33 to 4.25 ms, and every pair used less application CPU per
+job. The median pair used 12.6% less CPU per job and processed 10.2%
+more jobs per second. At one slot, the median paired throughput gain
+was 2.2%. Host load reached 19.6 on 15 logical CPUs, and the probe leaves
+linker compatibility and the Oban budgets open.
+[Link experiment receipt](../proof/jobs-parity/qualification-v1.json)
+
+The separate `4f7d702f` experiment schedules one supervisor recheck after
+an early reply and uses the existing watchdog for later reaps. Across five
+batch pairs, one-slot throughput was 73.4 jobs per second against 42.2 on
+`1b12243b`. The effect-to-settlement median was 1.73 ms against 11.36 ms.
+The 16-slot throughput medians were 429.8 and 404.1 jobs per second.
+Eleven runner unit cases and the release smoke passed. Full compatibility
+and Oban qualification for this experiment remain open. [Experiment receipts](../proof/jobs-parity/qualification-v1.json)
+
+The integrated retest compared `b62ec83a` with two arms running the same
+`c64eee8a` binary. All 3,840 measured short jobs reconciled on
+PostgreSQL 17.11 over verified TLS. At 16 slots, the identical baseline
+arms measured 448 and 346 jobs/s, and the candidate measured 525 jobs/s.
+The candidate beat the first baseline in three of five throughput pairs.
+At one slot, all arm medians fell between 38 and 41 jobs/s. End-to-end
+gain remains inconclusive under the measured host load. The candidate
+stays experimental. [Paired retest receipt](../proof/jobs-parity/qualification-v1.json)
+
+The follow-up compared `4f7d702f` with Oban Basic 2.24.2 on four frozen
+dense profiles with one runner and 16 slots. The release runs used
+PostgreSQL 17.11 with verified TLS and SCRAM on macOS arm64. Five
+alternating pairs per profile reconciled 2,640 jobs per engine. The host's
+one-minute load started at 14.0 and reached 21.2 on 15 logical CPUs.
+
+| Profile | Mesh/Oban throughput | Mesh/Oban pickup p99 | Limits exceeded |
+| --- | ---: | ---: | --- |
+| Short | 0.470× | 2.119× | Throughput, pickup |
+| 100 ms | 0.925× | 1.078× | CPU per job, peak RSS |
+| No-op | 0.808× | 1.204× | Throughput, CPU per job |
+| 512 KiB | 0.911× | 1.064× | None |
+
+The short profiles took medians of 245.5 ms on Mesh and 135.1 ms on Oban
+from first claim to final settlement. The largest per-job median difference
+after claim was from handler entry to its first committed write. That
+interval was 9.53 ms on Mesh and 0.69 ms on Oban and includes connection
+setup and the write. The effect-to-settlement medians were 3.54 ms and
+1.20 ms. [Frozen-profile receipts](../proof/jobs-parity/qualification-v1.json)
+
+A separate five-pair short-job diagnostic held the Mesh release binary,
+batch settings, and polling interval fixed. Transactional publishing and
+listening reduced median time to first claim from 150.6 ms to 2.1 ms. The
+first-claim-to-final-settlement ranges overlapped at 158–459 ms with
+polling and 171–386 ms with notifications. [Notification diagnostic](../proof/jobs-parity/qualification-v1.json)
+
+### PostgreSQL socket experiment
+
+Release candidate `7e4666da` enabled `TCP_NODELAY` before TLS and SCRAM
+authentication. On PostgreSQL 17.11, five paired short-job trials with
+batch claims on both Mesh arms shortened the median interval from handler
+entry to its first committed write from 6.37 ms to 5.92 ms. All five
+paired differences favored the candidate. Throughput ranges overlapped
+at 386–614 jobs/s on `1b12243b` and 437–611 jobs/s on the candidate. The
+no-op profile's throughput medians were 621 and 618 jobs/s respectively.
+
+In separate frozen comparisons against Oban Basic 2.24.2, the socket
+candidate missed the short profile's throughput, pickup, and CPU limits.
+The no-op profile exceeded the CPU limit. Each comparison reconciled
+1,920 jobs per engine. These macOS arm64 runs used verified TLS and SCRAM
+on a busy host. The socket change remains experimental.
+[Socket experiment receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Unix worker watchdog experiment
+
+Candidate `cc00553e` combined the Unix attempt's deadline timer and
+parent-control reader in one thread. On macOS arm64, the debug worker
+exited at its own handler deadline and when its parent socket closed. A
+fragmented renewal extended the lease after the complete frame arrived.
+A separate compiled PostgreSQL 17.11 run confirmed that a handler blocked
+on stdin timed out and wrote its entry marker once.
+
+Five single-claim pairs per profile compared the candidate with
+`1b12243b`. Across the short and no-op profiles at one and 16 slots,
+throughput ranged from 0.907× to 1.022× the reference and CPU per job
+ranged from 0.971× to 1.021×. One-minute host load reached 31.5 on 15
+logical CPUs during the one-slot comparison.
+
+The batched comparison used the same inputs and Oban Basic 2.24.2.
+PostgreSQL 17.11 used SCRAM and verified TLS. Each comparison reconciled
+3,840 jobs per arm across the four profiles.
+
+| Profile | Mesh/Oban throughput | Mesh/Oban pickup p99 | Mesh/Oban CPU per job |
+| --- | ---: | ---: | ---: |
+| Short, 1 slot | 0.499× | 2.004× | 1.101× |
+| No-op, 1 slot | 0.449× | 2.221× | 1.761× |
+| Short, 16 slots | 0.803× | 1.190× | 1.324× |
+| No-op, 16 slots | 0.729× | 1.309× | 2.716× |
+
+All four profiles missed the throughput limit, and three exceeded the
+CPU limit. At 16 slots, the median of trial medians from short-job
+handler entry to its first committed write was 7.27 ms on Mesh and
+0.37 ms on Oban. That interval includes connection setup on the Mesh
+fixture. The watchdog change remains experimental.
+[Watchdog receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure the effect-write session cost
+
+The compiled fixture used the same two durable SQL writes with a new
+session for every pair of writes and with one session reused for the
+trial. Five alternating pairs each wrote and reconciled 128 attempt and
+effect rows per arm on macOS arm64. PostgreSQL 17.11 used SCRAM and
+verified TLS, and the persisted rows recorded 128 server backends in
+each fresh-session trial and one in each reuse trial.
+
+With release runtime `1b12243b`, the median of trial medians to the first
+committed write was 4.82 ms with fresh sessions and 0.11 ms with reuse.
+Opening a fresh session took 4.10 ms. This serial diagnostic runs the
+fixture SQL directly. The full Jobs comparison also pays for child
+startup, dispatch, and acknowledged settlement.
+[Session-cost receipt](../proof/jobs-parity/qualification-v1.json)
+
+The follow-up ran the full short-job workload with one batch runner and
+16 slots. Both arms used the same compiled Mesh worker and the same
+fixture-only Unix socket relay to libpq. One arm opened a verified
+PostgreSQL session per attempt and the other reused 16 sessions. Two
+direct Mesh trials bracketed the five alternating pairs. All 1,536
+measured jobs completed with one attempt and one effect each.
+
+| Effect route | Entry to first commit | Jobs/s from first claim to final settlement | CPU per job |
+| --- | ---: | ---: | ---: |
+| Direct Mesh | 7.49 ms | 698 | 6.50 ms |
+| Relay, fresh session | 15.00 ms | 496 | 13.50 ms |
+| Relay, reused session | 0.37 ms | 1,026 | 6.98 ms |
+
+The reused arm improved first-claim-to-settlement throughput in every
+pair. CPU includes the helper and the runner's attempt processes.
+The fresh relay incurred more overhead than the direct Mesh path.
+These results establish the effect of reuse within the experimental
+relay. The direct trials provide a separate reference.
+[Relayed session receipt](../proof/jobs-parity/qualification-v1.json)
+
+The native relay repeated the five pairs with Mesh's pinned PostgreSQL
+driver in both arms. Reuse increased throughput from first claim to
+final settlement from 462 to 772 jobs/s. CPU per job fell from
+6.29 to 5.56 ms, including the relay and session setup. The two direct
+trials measured 488 jobs/s after first claim and 6.36 ms CPU per job.
+The native relay cut the gap from handler entry to the first committed
+write from 9.61 to 0.44 ms.
+
+In five additional pairs against Oban Basic 2.24.2, the experimental
+reuse path delivered 419 jobs/s against 486, or 86.1% of Oban against
+the 90% throughput floor. Pickup p99 was 298 ms against 260 ms, and CPU
+per job was 5.41 ms against 5.39 ms. Both met their limits. The sampled
+resource limits passed, with the reuse path reaching 20 connections
+against a cap of 20. Host load reached 28.7 on 15 logical CPUs.
+
+The medians of trial medians from claim to handler entry were 7.60 ms
+for Mesh and 2.09 ms for Oban. The interval from effect commit to
+settlement was 3.47 ms against 0.58 ms. These timings apply to the
+experimental short-job profile on macOS arm64 and PostgreSQL 17.11.
+[Native session receipt](../proof/jobs-parity/native-effect-sessions-v1.json)
+
+### Historical references
+
+On the same macOS arm64 host and PostgreSQL 17.11 configuration, the driver
+replayed pre-reliability `db606548` and post-reliability `59f6a7b3` with
+release builds and single-row claims. Each revision ran five pairs against
+Oban for the one-runner, 16-slot short and sparse profiles and reconciled
+760 measured jobs per engine. Both short profiles missed the CPU,
+throughput, and pickup limits. Both sparse profiles met their limits.
+The receipts preserve the exact inputs, toolchains, and host-load samples
+for each run. [Historical receipts](../proof/jobs-parity/qualification-v1.json)
+
+## Compare bounded drain
+
+`scripts/jobs-drain-perf.py` accepts the pinned main and candidate compiler
+and runtime artifacts. It interleaves legacy due-only drain and the new
+bounded drain with one slot. Each trial checks the same completed jobs,
+their effects, and the untouched future rows. Pass `--direct` to measure the
+same compiled handler on both toolchains. Main calls it with a prebuilt
+context. The candidate uses `Test.perform_job` to build and validate the
+context and decode the outcome on every call. Pass `--build-profile release`
+when comparing two release toolchains.
+
+The local PostgreSQL 17.11 debug run with main `7c162056` and candidate
+`03990801` reconciled 24 completions and four future rows in each of seven
+pairs. The median paired duration was 1.294 times main, above the 1.10
+budget. Host load was about 30–34 on 15 logical CPUs. The candidate's inline
+helper took 69.1 µs per call in that debug run.
+
+With release artifacts `7c162056` and `302cdce8`, all seven PostgreSQL 17.11
+pairs met the 1.10 budget. The median paired ratio was 1.002, with median
+drain durations of 29.0 ms per job on main and 28.4 ms on the candidate.
+The host's one-minute load was about 20–22 on 15 logical CPUs during this
+run.
+
+The `1b12243b` release rerun reconciled 24 effects and four untouched
+future rows in every trial. All seven pairs met the 1.10 duration budget.
+The median paired ratio was 0.760, with median durations of 30.8 ms per
+job on main and 23.9 ms on the candidate. The separate probes measured
+22 ns per direct call with a prebuilt context and 5.91 µs per call through
+`Test.perform_job`, including context construction and outcome decoding.
+The matched default short-job workload recorded 1.055 enqueue SQL calls
+per job in every trial and a median of 1.016 claim calls per job on both
+runtimes. [Drain and production SQL receipts](../proof/jobs-parity/qualification-v1.json)
+
+## Compiled lane receipts
+
+The macOS arm64 verifier passed the batch admission and lease isolation
+cases, the listener lanes, the selected telemetry and operations lanes,
+and the executable replacement and unstarted-claim proof. It ran with
+PostgreSQL 17.11, 18.7, and 19.0 over verified TLS and SCRAM. The listener
+framing case uses a scripted TCP peer that sends partial, coalesced, and
+malformed frames.
+
+A clean target build at `dbc55bb1` reran the macOS ARM64 compatibility
+script with PostgreSQL 17.11, 18.7, and 19.0. The fresh and upgrade
+grants, runtime Jobs tests, and three compiled Jobs tests passed on
+each version. The manifest records the exact-head replay.
+[Exact-head proof](../proof/jobs-parity/qualification-v1.json)
+
+The `macos_compiled_lanes` entry records the exact checkouts, full logs,
+and named excerpts under `target/jobs-parity/<checkout>/lane-evidence/`.
+Each excerpt identifies the assertion source and the lines from the full
+log. The `macos_paired_workload_lanes` entry records the seed, input digest,
+and reconciliation for the selected pairing lanes. [Qualification receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Batch comparison against pinned main
+
+J2 lane 1 uses all seven short-job profiles from the PostgreSQL 17.11
+main/head comparison. The audit matched 20,480 final job IDs to the
+enqueue receipts and verified one attempt and one effect per job. The
+one-runner, 16-slot reference profile used 55.0% fewer claim calls per job.
+Five profiles met the 30% reduction threshold in the driver. The
+one-slot profile had no reduction, and eight runners with 16 slots used
+18.4% fewer calls. The lane receipt links all seven raw summaries.
+
+J7 lane 1 covers all 35 frozen profiles, including 100 ms jobs, sparse
+pickup, no-op stress, and 512 KiB payloads. There were five alternating
+pairs after warm-up per profile. PostgreSQL 17.11 ran with verified TLS
+and SCRAM on macOS arm64. Each runtime reconciled 43,080 jobs. The two
+short-profile claim-call misses persisted in the full matrix. Sparse pickup
+p99 with four runners and 64 slots was 241.2 ms on the candidate and
+205.5 ms on main, above the 1.10 ratio limit. The run started at a one-minute
+host load of 13.2 and reached 32.6 on 15 logical CPUs. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
+
+The targeted rerun of sparse four-runner, 64-slot pickup used the revised
+producer fixture for both runtimes. It reconciled all 120 jobs per runtime
+and measured 178.0 ms p99 on the candidate and 184.1 ms on main. Both results
+are recorded because the producer and host conditions differed. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
+
+The full rerun compared release runtime `1b12243b` with `7c162056` on
+macOS arm64 and PostgreSQL 17.11 over verified TLS. The dense reference
+used 0.227 claim calls per job with batching and 1.016 on main, a 77.7%
+reduction. All seven sparse profiles met the 1.10× pickup limit, with a
+largest ratio of 1.031×. The sparse rerun reconciled 840 jobs per arm and
+used a warm producer in each arm with a fresh database connection per
+enqueue transaction. Both reruns used five pairs per profile and verified
+zero `pg_stat_statements` evictions. The earlier matrix miss remains part
+of the record. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
+
+The owner replay follow-up used release runtime `a431fbbf` with one runner
+and 16 slots on PostgreSQL 17.11 over verified TLS. In five short pairs,
+claim calls fell by 65.1%, from 1.008 to 0.352 per job. Five sparse pairs
+measured pickup p99 of 252.4 ms versus 172.1 ms on pinned main, above the
+1.10× limit. In a separate pre-fence control with the same harness file
+hashes, `1b12243b` measured 241.5 ms against 245.9 ms on main. Most of the
+tail wait in the follow-up preceded the claim. The two runs had different
+main pickup medians, and the cause of the miss remains open.
+[Follow-up receipts](../proof/jobs-parity/qualification-v1.json)
+
+The sparse-only retest used the integrated release `aa40fa5d` and the same
+pinned main. On PostgreSQL 17.11 over verified TLS, five alternating
+one-runner, 16-slot pairs reconciled 120 jobs per arm. Pickup p99 was
+261.5 ms versus 258.5 ms, within the 1.10× limit for this profile.
+The integrated `c64eee8a` rerun covered all seven sparse profiles and
+reconciled 840 jobs per arm. Six profiles met the limit. The one-runner,
+one-slot profile measured 237.6 ms versus 195.2 ms, or 1.217× pinned main.
+The jobs defining those medians differed by 42.4 ms in pickup time,
+including 39.8 ms between enqueue commit and the recorded claim.
+The 16-slot profile met the limit in both integrated runs. Host load
+varied, and peak one-minute load reached 41.0 on 15 logical CPUs.
+The earlier miss and all seven new results remain in the receipt.
+[Sparse rerun receipts](../proof/jobs-parity/qualification-v1.json)
+
+The `9bd80627` release rerun on macOS arm64 used PostgreSQL 17.11 with
+verified TLS, pinned main `7c162056`, and the frozen 250 ms polling
+interval. All seven sparse profiles met the pickup limit. Five pairs per
+profile reconciled 840 jobs per arm with no statement-counter eviction.
+The largest ratio was 1.089×, and the one-slot profile that previously
+missed measured 267.6 ms against 262.0 ms. The dense short reference at
+one runner and 16 slots used 0.266 claim calls per job against 1.016 on
+main, a 73.8% reduction across five pairs. These comparisons cover the
+J2 reference workload and all sparse profiles at that runtime. The
+earlier broader dense comparison results remain above.
+[Qualification receipt](../proof/jobs-parity/qualification-v1.json) · [Raw trials](../proof/jobs-parity/j2-batch-qualification-9bd80627.tar.xz)
+
+An identical-binary control used `7c162056` for both arms of the
+one-runner, one-slot sparse profile. Five alternating pairs gave median
+pickup p99s of 263.4 ms and 259.5 ms, with trial ranges of 261.6–269.1 ms
+and 208.1–265.3 ms. These results show how individual trials can vary even
+when both arms use the same executable and settings. The sparse
+candidate retest remains open. [Control receipt](../proof/jobs-parity/qualification-v1.json)
+
+The batch retry at `3f651c2c`, measured at `b81c2819`, uses a bounded retry when an empty
+claim can still see eligible work and open capacity. It keeps the
+PostgreSQL admission lock, lease checks, and confirmed commit boundary.
+The scoped SQL probe passed on PostgreSQL 17.11, 18.7, and 19.0. The
+compiled PostgreSQL 17.11 run passed 51 runtime tests and all three suites.
+The pinned release also passed the 12 lifecycle faults and the macOS
+launch-denial and interrupted-startup proof.
+
+The release comparison used five groups per profile, with a candidate and
+two arms running the same `c64eee8a` baseline binary. It reconciled 11,520
+jobs on macOS arm64 with PostgreSQL 17.11 over verified TLS. Peak
+one-minute host load was 20.0 on 15 logical CPUs.
+
+| Profile | Baseline jobs/s | Repeat jobs/s | Candidate jobs/s |
+| --- | ---: | ---: | ---: |
+| Short, four runners, 16 slots | 291 | 309 | 534 |
+| 100 ms, eight runners, 64 slots | 256 | 238 | 425 |
+| Short, one runner, 16 slots | 518 | 529 | 501 |
+
+The candidate exceeded both controls in all five pairs on each
+multi-runner profile. The median estimated slot utilization rose from
+36–38% to 76% for the short profile and from 52–53% to 89% for the
+100 ms profile. Claim calls per job rose from 0.711 to 0.883 and from
+0.496 to 0.686, respectively, against the first control. The one-runner
+control recorded zero contention hints.
+
+Separate frozen comparisons against Oban Basic 2.24.2 reached 86.3% and
+88.1% of its throughput on the two multi-runner profiles. Both met pickup
+and resource limits, with throughput below the historical 90% floor.
+The current performance gate requires throughput above Oban in every
+frozen profile. The short
+one-runner dense reference used 0.227 claim calls per job versus 1.023
+on pinned main. [Batch retry receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Batch completion experiment
+
+Release `d4746af9` groups already-reaped completions on the lifecycle
+session. On macOS arm64 and PostgreSQL 17.11 over verified TLS, 60 measured
+trials reconciled 32,640 jobs. Each profile alternated the candidate and
+two arms using the same `b81c2819` binary. Peak one-minute load was 25.0
+on 15 logical CPUs.
+
+| Profile | Baseline jobs/s | Repeat jobs/s | Candidate jobs/s | Baseline → candidate runner SQL/job |
+| --- | ---: | ---: | ---: | ---: |
+| Short, one runner, 64 slots | 786 | 781 | 806 | 3.229 → 2.703 |
+| No-op, one runner, 64 slots | 731 | 680 | 669 | 3.217 → 2.611 |
+| 100 ms, one runner, 64 slots | 315 | 272 | 291 | 3.471 → 2.947 |
+| Short, one runner, 16 slots | 355 | 518 | 507 | 3.984 → 3.656 |
+
+The 64-slot short profile's median effect-to-settlement time fell from
+7.94 ms to 6.56 ms, with three improvements in five pairs. Throughput
+and settlement gains varied by pair and profile, so completion batching
+remains an experiment. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Warm effect sessions with multiple runners
+
+The fixture-only relay comparison used `b81c2819` and Oban Basic 2.24.2
+on PostgreSQL 17.11 over verified TLS. Five counterbalanced groups per
+profile reconciled 12,800 jobs. Each group ran direct writes, an
+identical direct repeat, warm relay sessions, and Oban. The warm path
+opened one session per slot. Relay CPU and connections count toward the
+Mesh totals. Peak one-minute host load reached 36.0 on 15 logical CPUs.
+
+| Profile | Direct jobs/s | Direct repeat jobs/s | Warm jobs/s | Oban jobs/s |
+| --- | ---: | ---: | ---: | ---: |
+| Short, four runners, 16 slots | 251 | 233 | 360 | 457 |
+| 100 ms, eight runners, 64 slots | 305 | 189 | 378 | 416 |
+
+Median handler entry to first commit fell from 13.39 ms to 0.75 ms on
+short jobs and from 27.22 ms to 0.85 ms on 100 ms jobs. Warm sessions
+beat both direct controls for throughput in four short groups and all
+five 100 ms groups. Both profiles met the measured pickup and resource
+limits, with throughput below Oban. The relay is a diagnostic fixture.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Deferred scheduler startup in attempts
+
+On PostgreSQL 17.11, the compiled proof for `6745d08d` observed four
+threads in an eager attempt and three with deferral enabled. An opted-in
+child created its scheduler on the first `Job.async` and completed
+`Job.await` in the same process. The runtime test also passed concurrent
+first spawns through one scheduler start.
+
+Five groups per 64-slot profile used the same release binary in all three
+arms, with deferral enabled only on the candidate. All 15,360 jobs
+reconciled. Median CPU fell from 6.50 to 6.28 ms per short job and from
+7.42 to 7.02 ms per 100 ms job. The candidate used less CPU than both
+controls in four of five groups on each profile. Throughput varied by group,
+and sampled peak RSS on the 100 ms profile was between the two controls.
+The deferral stays experimental. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+The `603265aa` retest fixed the reply-pipe exit wake on in all three arms
+and toggled scheduler deferral only for the candidate. Five groups on the
+one-runner, one-slot short profile reconciled 1,920 jobs over verified TLS
+on macOS arm64 and PostgreSQL 17.11. Median claim-to-handler-entry time
+was 4.71 ms with deferral and 4.98 and 5.09 ms in the two controls. Median
+CPU per job was 5.90 ms versus 6.26 and 6.37 ms. Deferral beat both controls
+in two groups on each of those metrics and in zero groups on throughput.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Smaller worker image screen
+
+Two macOS arm64 fixture images used the same compiled handler, native
+constructor, watchdog, and verified-TLS PostgreSQL writes. The smaller
+image omitted the fixture's coordinator entry and unused registrations.
+Each of five alternating pairs reconciled 64 worker starts, attempt
+writes, and effects per image. The component measures child CPU without
+a Jobs runner and samples all 64 children before releasing their effect
+writes. It uses a separate blocked-write run for RSS.
+
+| Link | Stock → smaller image | Stock → smaller child CPU/job | Stock → smaller RSS at 64 live children |
+| --- | ---: | ---: | ---: |
+| Standard | 26.05 → 26.03 MiB | 6.64 → 6.68 ms | 618 → 608 MiB |
+| macOS dead stripping | 7.44 → 4.31 MiB | 6.19 → 6.02 ms | 515 → 487 MiB |
+
+The smallest child group alone used substantially more resident memory
+than the historical 189 MiB ceiling for the one-runner, 64-slot slow
+profile. This local component result supports keeping the current worker
+image while investigating the remaining per-attempt costs.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+A local macOS arm64 check held each of the four linked images at its
+empty bootstrap pipe after worker entry. One child at a time used
+6.2–6.8 MiB of RSS before receiving a job context or opening PostgreSQL.
+Closing the empty pipe ended each child through the expected bootstrap
+error path.
+
+With the same dead-stripped objects and runtime, the linker's unused
+dylib stripping removed Security and retained CoreFoundation. Startup
+RSS changed by at most 48 KiB in the three-pair medians. Omitting both
+explicit framework arguments left only libSystem as a direct dylib
+dependency and lowered the stock image's median from 6,592 to 3,008 KiB
+and the smaller image's from 6,384 to 2,784 KiB. The undefined symbol sets
+matched. These are bootstrap component measurements on the exact linked
+fixtures. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Keep batch claim ordering outside PostgreSQL's context sort
+
+The query in `9bd80627` returns each row's batch position. Mesh validates
+the positions and restores the claim and diagnostic order before it
+commits the transaction. PostgreSQL no longer sorts the context payloads.
+The claim function, role grants, and commit confirmation remain the same.
+
+On PostgreSQL 17.11, 18.7, and 19.0, the repository's worker grants allowed both
+queries to return 16 contexts with 512 KiB payloads. With 4 MiB `work_mem`,
+the original plan spilled an 8,224 KiB sort. The new plan removed that
+sort. The claim function still buffers its result. Temporary block reads
+and writes changed from 2,053 and 2,054 to 1,025 and 1,025 on each version.
+
+The macOS release comparison used five groups per profile with two
+identical `b81c2819` controls and reconciled 3,120 jobs. On both large-job
+profiles, the candidate had lower median claim-to-handler-entry time than
+both controls in all five groups. End-to-end throughput beat both controls
+in three of five groups on each large-job profile. The short-job control
+varied across groups. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+The exact candidate passed 53 Jobs runtime tests and three compiled
+suites on each of PostgreSQL 17.11, 18.7, and 19.0 with verified TLS,
+including large contexts and scoped workers on fresh and upgraded
+schemas. The PostgreSQL 17.11 release build passed all 12 recovery and
+commit-loss cases with loopback SCRAM.
+[Correctness receipts](../proof/jobs-parity/qualification-v1.json)
+
+The separate five-pair comparison with Oban Basic 2.24.2 on PostgreSQL
+17.11 still missed the strict throughput target. Mesh reached 97.5 jobs/s
+versus 137.2 at 16 slots, and 152.0 versus 179.0 at 64 slots, with one
+runner in both profiles. Pickup p99 also missed its limit at 16 slots.
+These are local macOS comparisons. [Receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Release bootstrap buffers after copying the context
+
+In `5d45b53b`, the runner drops its Rust context buffer after flushing
+the worker bootstrap. The child drops its Rust copy after copying the
+context onto the Mesh heap, before calling the handler.
+
+On PostgreSQL 17.11, the exact checkout passed 53 Jobs runtime tests and
+all three compiled Jobs suites, including large contexts and scoped workers.
+The release build preserved the job ID and effect key after runner death,
+completed on attempt two, and rejected settlement with the old token.
+It passed all 12 recovery and commit-loss cases with loopback SCRAM.
+
+On macOS arm64 and PostgreSQL 17.11 with verified TLS, five groups compared
+the release candidate with two identical `9bd80627` controls. Each measured
+trial held 64 workers with 512 KiB payloads at the same effect write. The
+observer verified 64 TLS sessions blocked on the table lock, 64 recorded
+attempts, and zero committed effects before releasing the lock. All 960
+jobs then reconciled with one attempt and one effect each.
+
+Runner RSS fell from a median 49.0 MiB in both controls to 29.8 MiB. It was
+lower than both controls in all five groups. Summed runner and child RSS
+fell from 760.9 and 760.8 MiB to 737.6 MiB, lower than both controls in four
+groups. The barrier measures residency at equal concurrency. In the separate
+unblocked large-job run, median first-claim-to-final-settlement time fell
+from 314 and 324 ms to 260 ms, while measured throughput fell from 160 and
+168 to 133 jobs/s. Local measurements leave the throughput gate open.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Reply-pipe exit wake experiment
+
+The opt-in `ccf62ff1` experiment sends a second supervisor wake when the
+worker's reply pipe reaches EOF. The child leaves the pipe open through
+process exit. Reaping still gates acknowledgement, and the 10 ms timed scan
+covers missed or early hints.
+
+Five groups per profile used one release binary, two flag-off controls,
+and PostgreSQL 17.11 over verified TLS on macOS arm64. All 3,840 measured
+jobs reconciled. With one runner and one slot, median effect-commit-to-
+settlement fell from 9.21 and 8.39 ms to 1.17 ms. Throughput increased from
+38.1 and 39.8 to 56.1 jobs/s. Both metrics improved against both controls
+in all five groups. At 16 slots, throughput beat both controls in two
+groups and median settlement latency rose to 16.57 ms from 10.17 and
+11.53 ms. The host's one-minute load peaked at 47.95 on 15 logical CPUs.
+
+The combined opt-in `da0a51bc` candidate also drops the bootstrap buffers.
+In five one-slot short-job pairs against Oban Basic 2.24.2, Mesh reached
+59.2 versus 91.3 jobs/s. Pickup p99 was 2,125 versus 1,389 ms, and CPU per
+job was 6.22 versus 3.99 ms. All three limits were missed. Mesh took a
+median 4.72 ms from claim to handler entry and 4.44 ms from entry to the
+first durable write, versus 0.69 and 0.21 ms for Oban. The combined release
+passed the 12 recovery and commit-loss cases. Linux and dense refill
+resource behavior remain unverified. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+A time-budget calculation from the five saved pairs subtracts each job's
+entry-to-first-write interval while holding all other recorded time fixed.
+The resulting median would be 87.9 jobs/s against Oban's measured 91.3.
+Substituting the corresponding Oban intervals for both claim-to-entry and
+entry-to-first-write would yield about 141 jobs/s under the same assumption.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Combine the exit wake with effect-session reuse
+
+Five counterbalanced groups ran the frozen one-runner, one-slot short
+profile on macOS arm64 and PostgreSQL 17.11 with verified TLS. All Mesh
+arms used the same `da0a51bc` release fixture with the reply-pipe wake
+enabled. The relay used the PostgreSQL driver from that same release.
+Across 2,560 jobs, the trial reconciled every attempt and effect after
+shutdown. Both writes confirmed 128 distinct backends per fresh-session
+trial and one per reused-session trial.
+
+| Arm | Jobs/s | Entry to first write | Pickup p99 | CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh direct | 60.6 | 5.53 ms | 2,085 ms | 7.13 ms |
+| Mesh relay, fresh sessions | 60.0 | 5.01 ms | 2,110 ms | 6.54 ms |
+| Mesh relay, reused session | 95.1 | 0.28 ms | 1,334 ms | 5.64 ms |
+| Oban Basic 2.24.2 | 83.6 | 0.35 ms | 1,520 ms | 5.34 ms |
+
+The reused arm beat Oban on throughput in all five groups. Its CPU total
+includes the helper and prewarming. Both relay arms require the runner,
+the relay, and one isolated attempt process to overlap. This exceeds the
+two-process limit even when the sampler sees only two. The comparison
+supports testing reuse inside the runner process with the same isolated
+attempt and durable writes. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+The same four arms ran five groups on the frozen one-runner, 64-slot
+100 ms profile. All 10,240 jobs reconciled. The warm relay opened 64
+verified sessions and used each one. The median first-write interval
+fell from 10.55 ms with fresh relay sessions to 0.31 ms with reuse.
+
+| Arm | Jobs/s | CPU/job | Sampled peak RSS |
+| --- | ---: | ---: | ---: |
+| Mesh direct | 414.9 | 7.43 ms | 444.0 MiB |
+| Mesh relay, fresh sessions | 364.9 | 7.11 ms | 341.3 MiB |
+| Mesh relay, reused sessions | 410.5 | 6.14 ms | 399.6 MiB |
+| Oban Basic 2.24.2 | 490.7 | 1.95 ms | 118.1 MiB |
+
+The warm relay missed throughput in all five groups and exceeded the
+relative CPU and RSS limits. Two warm trials sampled 64 live isolated
+workers and the two coordinator processes, with tree RSS of 503.9 and
+504.1 MiB. The trial peaks span different active worker counts, so their
+medians describe each workload's observed peak. The 64-worker samples
+show that the RSS limit still requires a smaller worker footprint on this
+host. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute memory with all 64 workers at the same write
+
+The same fixture sources and toolchain were linked three ways and ran two
+counterbalanced cohorts per effect route. Every capture independently
+observed 64 attempt children, 64 committed attempt identities, and 64
+verified-TLS effect writes waiting on the observer's table lock. The
+producer committed before runner startup
+to leave room for the observer under the existing database connection cap.
+The harness released the gate and reconciled all 768 jobs.
+
+| Fixture link | Direct tree RSS | Reused tree RSS | Reused RSS per worker |
+| --- | ---: | ---: | ---: |
+| Standard | 625.0 MiB | 503.1 MiB | 7.43 MiB |
+| Dead strip, both frameworks | 527.1 MiB | 464.0 MiB | 6.85 MiB |
+| Dead strip, omit both frameworks | 297.5 MiB | 235.8 MiB | 3.34 MiB |
+
+All values are medians of the first held snapshot in each cohort. The
+reuse totals include the relay and the runner. The linker trace and
+Mach-O dependency list confirm the omitted-framework build uses only
+libSystem as a direct dylib dependency. The 235.8 MiB held total remains
+above the earlier 177.1 MiB comparison limit. The `vmmap` files preserve
+separate per-process physical-footprint, stack, and heap estimates for
+the two sampled jobs in each cohort.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+Five unheld groups then ran the frozen 64-slot slow profile using the
+framework-omitting fixture. All 10,240 jobs reconciled. The reused arm
+measured 425.4 jobs/s, 3.90 ms CPU per job, and 178.4 MiB sampled peak RSS.
+Oban measured 498.2 jobs/s, 1.67 ms CPU per job, and 118.3 MiB sampled
+peak RSS. The reused arm met the pickup limit and missed throughput,
+CPU, and RSS. Its RSS was about 1 MiB above that run's 1.5× limit.
+The held measurement and the unheld benchmark have separate receipts.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute CPU on the frozen 64-slot slow profile
+
+The same framework-omitting fixture recorded its own CPU and reaped
+child CPU after joining the runner and closing the pool. The sum agreed
+with the runner's external `wait4` CPU within 0.48 ms per trial. The
+separate helper's CPU includes session prewarming. Five counterbalanced
+groups reconciled 10,240 measured jobs on macOS arm64 with PostgreSQL
+17.11. The host's one-minute load reached 15.20 on 15 logical CPUs.
+
+| Arm | Jobs/s | Runner CPU/job | Child CPU/job | Helper CPU/job | Total CPU/job |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mesh direct | 431.7 | 0.71 ms | 4.33 ms | | 5.04 ms |
+| Mesh with fresh relay sessions | 410.4 | 0.74 ms | 3.30 ms | 0.87 ms | 4.87 ms |
+| Mesh with reused relay sessions | 409.4 | 0.65 ms | 3.01 ms | 0.22 ms | 3.89 ms |
+| Oban Basic 2.24.2 | 440.2 | | | | 1.65 ms |
+
+Each column is the median across the five trials. CPU totals exclude the
+producer and PostgreSQL. In the reuse arm, the children accounted for a
+median 77.6% of total CPU, including 1.85 ms/job of system CPU. The CPU
+limit for the full Mesh tree was 2.06 ms/job. Reuse met the pickup and
+sampled RSS limits in this run and missed throughput and CPU. The CPU
+breakdown measures process ownership. It leaves the system CPU split
+among executable loading, thread startup, and I/O unmeasured.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure the worker launch prefix
+
+Two local diagnostics compared a small libSystem executable with four
+cutoffs in one framework-omitting Mesh fixture linked against
+`da0a51bc`. Both used five counterbalanced groups, 512 children per arm,
+and waves of 64. Every child returned its expected exit status. The last
+cutoff exercised the real empty-bootstrap pipe error.
+
+| Child CPU/job | Fork and exec | `posix_spawn` |
+| --- | ---: | ---: |
+| Small executable, exit at main | 1.60 ms | 1.29 ms |
+| Mesh executable, exit at main | 2.25 ms | 1.75 ms |
+| Mesh worker, exit on bootstrap EOF | 2.07 ms | 1.94 ms |
+| Paired Mesh-minus-small difference at main | 0.44 ms | 0.44 ms |
+
+The paired `posix_spawn` difference ranged from 0.36 to 0.48 ms/job.
+Every group fell below the 0.9 ms/job screening threshold for a
+linker-ordering experiment. The paired system CPU difference was
+0.05 ms/job. The 1.94 ms/job prefix is close to the 2.06 ms/job budget
+observed for the entire runner tree in the separate 64-slot workload.
+The cutoff occurs before a handler runs or either child watchdog starts.
+It measures child CPU on this macOS host. The paired stages use an
+inherited diagnostic descriptor and do not exercise PostgreSQL or
+measure completed jobs/s.
+[Launch screen receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Fork a fresh child before worker initialization
+
+A single-threaded native launcher ran five alternating pairs of 512
+children on macOS arm64. Both arms used the same framework-free fixture
+image and 64-wide waves. The launcher invoked the fixture's native
+startup code inside each child before entering the original generated
+Mesh main. The linker audit found two pre-main AWS-LC initializers for
+CPU capabilities and cleanup registration. The launcher checked one
+thread before creating children. Every reaped PID matched its native
+startup marker and the expected bootstrap EOF exit.
+
+| CPU/job | Fresh exec | Forked child |
+| --- | ---: | ---: |
+| Children | 2.06 ms | 0.49 ms |
+| Launcher and reap | 0.19 ms | 0.34 ms |
+| Combined | 2.25 ms | 0.83 ms |
+
+The median paired saving was 1.42 ms/job, with a range of 1.34 to 1.48.
+The forked arm fell below the 1.19 ms/job screening ceiling in all five
+pairs. That ceiling came from the CPU budget left after runner and relay
+costs in the earlier 64-slot slow comparison. This prototype exits before
+reading a valid handler context. Handler and watchdog work, PostgreSQL
+effects, and the extra process and IPC for a template in a real runner
+remain unmeasured. The exact fixture run leaves arbitrary application
+initializers and cross-platform fork safety open.
+[Fork screen receipt](../proof/jobs-parity/qualification-v1.json)
+
+The macOS handoff probe passed eight repetitions of five cases using an
+anonymous Unix socket and a runner-owned control pipe. A live template
+published the exact child's status after reaping it. Closing the control
+pipe before the grant suppressed the application-start marker. Closing
+it after the grant stopped the test child. After template death, the
+runner observed child exit through kqueue and received `ECHILD` from
+`waitpid`. A runner with that topology cannot derive a reap receipt
+from a child exit notification. The probe used a synthetic child marker.
+Removing the pre-launch grant check or letting the child keep the
+template's management socket caused the corresponding case to fail.
+[Handoff probe receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Reap Linux attempts after template loss
+
+A local ARM64 Linux 6.12.115 guest on the Mac ran the ownership fixture
+with `clone3` required. Six boots produced identical results. A dedicated
+runner thread reaped waiting, stopped, and already exited children after
+the template died before sending their pidfds. It also reaped a granted
+child through its exact pidfd after template death. Closing the gate before
+grant prevented the test child from entering its work.
+
+A separate probe put an unrelated child owned by another thread in the
+template's process group. The runner's group-scoped `waitid` with
+`__WNOTHREAD` left that child's exit status for its owning thread. Removing
+the thread filter exposed the unrelated child to the cleanup scan.
+Removing `CLONE_PARENT` broke the pre-transfer reap case.
+[Linux ownership receipt](../proof/jobs-parity/qualification-v1.json)
+
+The follow-up ran a compiled Jobs worker in the same Linux guest. Six
+boots each passed three cases. Template death before pidfd transfer
+left no constructor, handler, or reply output. After transfer and grant,
+`execve` preserved the attempt PID through the native constructor and
+the compiled handler returned its exact framed reply. Closing the
+control pipe during a separate running handler produced native exit
+173 with no reply. Both granted cases consumed the exit status through
+the runner's exact pidfd. Three further boots added short handler and
+lease deadlines with the control writer held open. The same worker
+entered the handler, then exited 171 and 172 respectively without a
+reply. The runner consumed both statuses through the exact pidfds.
+The proof used the normal worker startup ABI and a cached Linux debug
+runtime. Database claims, settlement, and throughput remain open for
+this launcher.
+[Compiled Linux ownership receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Run the stock release dispatcher in the Linux guest
+
+The normal Jobs dispatcher at `a39447f7` ran in the same ARM64 guest
+with a cross-built Rust 1.99.0 release runtime and PostgreSQL 17.11.
+The guest used the Ubuntu Base 26.04.1 loader and libraries for the
+cached PostgreSQL build. The fixture used batch claims and an isolated
+database with verified loopback TLS and SCRAM.
+
+Three fresh boots each committed two enqueue receipts and one business
+row. Both jobs completed on attempt one. An independent SQL connection
+matched both job IDs, the effect keys, the two distinct worker PIDs, and
+the final lease fields. The native startup markers matched those PIDs.
+The runner reported two completions and shut down drained. This smoke
+exercised the stock launch and settlement path and recorded no throughput
+comparison. [Release Linux smoke receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure the Linux supervisor wait after a worker reply
+
+The one-slot comparator ran a single compiled release worker as a direct
+child. Both arms used the same `posix_spawn`, opened a pidfd, and
+required the exact successful child reap and reply. Arm A checked exit
+on reply and on a 10 ms sweep. Arm B also checked exit when the pidfd
+became readable. Each attempt verified the native constructor PID and
+process group, the handler context, and the reply frame. An unrelated
+child remained waitable by its owner.
+
+Two guest runs each measured five alternating pairs of 128 attempts per
+arm after warm-up, reversing the initial order. The median paired
+reduction in mean slot-ready time was 8.91 ms and 6.77 ms. Arm B was
+faster in all ten pairs. Timed sweeps supplied 79–80% of exact reaps in
+Arm A and 0.6–4.2% in Arm B. A separate five-pair comparison with the
+same policy in both arms had paired differences of −1.12 to +0.41 ms.
+The Mac's one-minute load ranged from 21.99 to 29.70 on 15 logical CPUs.
+
+Child `wait4` and active comparator CPU averaged 2.93 → 2.12 ms per
+attempt in the first run and 1.13 → 0.65 ms in the second. Both arms
+opened the pidfd, and the comparator omitted the runner's channels,
+dispatcher and PostgreSQL. The result isolates the modeled wait after
+reply. A real-runner comparison must measure acquisition and descriptor
+pressure as well as enqueue-to-settlement throughput.
+[Linux exit-wake receipt](../proof/jobs-parity/qualification-v1.json)
+
+The real-runner follow-up used one release binary at `03a7a024` with
+`MESH_DIAGNOSTIC_JOB_PIDFD_WAKE` set to 0 or 1. The enabled output
+reader sends the ordinary reply wake and can send a second wake when
+the exact child's pidfd becomes readable. A separate held-worker smoke
+observed two pidfds for two live children. Both jobs later settled.
+
+On `short-1r-1s`, five alternating pairs and two identical-policy
+pairs reconciled 1,792 measured jobs over PostgreSQL 17.11 verified
+TLS and SCRAM. The median of trial medians from effect commit to
+settlement fell from 4.63 to 1.74 ms. The enabled arm improved this
+interval in all five pairs, with paired savings of 1.28–4.80 ms.
+Enqueue-to-settlement throughput medians were 16.0 and 17.1 jobs/s.
+The median paired difference was +0.36 jobs/s, within the −1.64 to
++2.26 jobs/s range in the identical-policy control. CPU and throughput
+remain inconclusive under this load. The handler still took 46.6–46.7 ms
+from entry to its first committed write.
+
+The two-vCPU guest ran on a Mac whose one-minute load ranged from 18.21
+to 24.45 on 15 logical CPUs. The optimized worker disables process
+dumpability, so the unprivileged timing observer left FD peaks unreported.
+The smoke used a separate guest-root observer for the pidfd witness.
+Descriptor pressure, failure qualification and comparison to Oban
+remain open. [Full-runner Linux receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Remove Linux PostgreSQL startup buffering
+
+The Linux `short-1r-1s` diagnostic used one release binary at `6f4ee72c`
+with the pidfd wake disabled in both arms. It changed only whether
+`TCP_NODELAY` was set on Mesh's PostgreSQL sockets before TLS startup.
+The parity driver ran five alternating pairs and two identical-policy
+pairs, with warmups excluded. All 1,792 measured jobs reconciled over
+PostgreSQL 17.11 with verified TLS and SCRAM.
+
+Median throughput rose from 15.4 to 72.0 jobs/s. The change improved all
+five pairs by 27.5–59.4 jobs/s. The disabled-policy control differed by
+−0.64 to +0.45 jobs/s. Median handler entry to the first committed write
+fell from 50.0 to 4.9 ms, with paired savings of 41.3–47.6 ms. The host's
+one-minute load ranged from 14.90 to 23.92 on 15 logical CPUs. The trial
+measures the socket option's effect on the real Jobs path. It covers
+one profile on a two-vCPU ARM64 guest and compares two Mesh configurations.
+[Linux socket receipt](../proof/jobs-parity/qualification-v1.json)
+
+The stock Linux connector now sets `TCP_NODELAY` before registering the
+socket and starting TLS. The release runtime at `b67206f4` passed two
+fresh PostgreSQL 17.11 guest smokes with the normal Jobs worker launch.
+Each run independently reconciled the two enqueue receipts and worker
+effects and observed a drained runner. The focused Linux driver suite
+passed 37 tests, including the socket-option assertion and the existing
+SCRAM handshake tests. [Stock Linux receipt](../proof/jobs-parity/qualification-v1.json)
+
+The same Linux guest setup compiled Oban Basic 2.24.2 offline with
+Erlang/OTP 29.1.1, Elixir 1.20.4, and the fixture's eight locked Hex
+packages. With 1 GiB of guest memory and two vCPUs, the repository
+driver reconciled four jobs over PostgreSQL 17.11 verified TLS and
+SCRAM. The runner peaked at two processes, 12 threads, and three
+connections, within the one-slot limits. This smoke establishes that
+both release subjects can run in the same local guest.
+[Offline Oban smoke receipt](../proof/jobs-parity/qualification-v1.json)
+
+In the paired `short-1r-1s` run in that guest, the stock release Mesh
+dispatcher and Oban Basic each completed 640 measured jobs. The driver
+excluded a warm-up for each engine, alternated five pairs, and reconciled
+the input, transaction, attempt, effect, and terminal rows. Both engines
+used PostgreSQL 17.11 with verified TLS and SCRAM.
+
+Mesh won four of five throughput pairs. Median throughput was 76.55
+jobs/s for Mesh and 75.94 for Oban. The trial ranges were 59.68–97.48
+and 45.94–84.53 jobs/s. Median pickup p99 was 1,649 versus 1,671 ms.
+Runner-tree CPU per job was 3.68 versus 6.75 ms and median peak RSS was
+34.0 versus 115.4 MiB. The summary recorded zero budget breaches for
+this profile. The median throughput margin was 0.8%, and the Mac's
+one-minute load was 9.91 before and 14.04 after the run. This local
+result covers one profile on a two-vCPU guest.
+[Paired Linux receipt](../proof/jobs-parity/qualification-v1.json)
+
+The `short-1r-16s` comparison reconciled another 640 measured jobs per
+engine. Mesh and Oban recorded median throughput of 234.44 and 728.95
+jobs/s, with Oban ahead in all five pairs. Median pickup p99 was 525.49
+and 169.46 ms. Throughput and pickup missed the relative limits.
+CPU per job, peak RSS and the absolute resource budgets passed.
+
+Median time from enqueue commit to the first recorded claim was 170
+versus 79 ms. The first claim to final settlement took 378 versus
+91 ms. The per-attempt medians for claim to handler entry, handler
+entry to first committed write, and effect commit to settlement were
+11.15, 11.14, and 10.54 ms for Mesh, versus 1.50, 0.68, and 0.82 ms
+for Oban. These intervals locate the remaining delay across dispatch,
+the handler's database write path, and settlement.
+[16-slot Linux receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Separate first pickup from backlog drain on Linux
+
+The two-vCPU Linux guest ran the frozen `short-1r-16s` workload with
+PostgreSQL 17.11 over verified TLS and SCRAM. Each of three runs used
+five alternating pairs after warmup and reconciled 640 jobs per arm.
+The Linux socket setting was enabled in every arm.
+
+The pidfd follow-up at `6f4ee72c` measured 226.95 jobs/s with the wake
+disabled and 225.85 enabled. The enabled arm won two pairs. The
+identical-policy control varied from −37.72 to +38.63 jobs/s, and the
+pidfd median paired change was −7.60 jobs/s. Effect commit to settlement
+fell from 11.40 to 10.01 ms on the arm medians. This result leaves the
+throughput effect inconclusive.
+
+On the stock `b67206f4` binary, enabling `LISTEN` and transactional
+enqueue notifications reduced median time to the first claim from
+177.79 to 4.21 ms. The paired reduction ranged from 100.45 to 235.10 ms.
+Throughput medians were 123.24 and 184.74 jobs/s, with the enabled arm
+faster in each pair. First-claim-to-final-settlement time improved in
+two pairs. [Linux wake diagnostics](../proof/jobs-parity/qualification-v1.json)
+
+In a separate matched run with notifications enabled, Mesh reached
+228.11 jobs/s against Oban's 546.54 and missed the relative pickup limit.
+Mesh took a median 2.87 ms to make its first claim and 558.26 ms to drain
+the backlog. Oban took 125.13 and 138.19 ms respectively. The Mac's
+one-minute load was 32.59 before and 22.10 after the run. These receipts
+support the opt-in wake path for first pickup and leave backlog drain
+as the dominant gap on this profile.
+[Notification comparison](../proof/jobs-parity/qualification-v1.json)
+
+### Overlap confirmed batch launches with settlement on Linux
+
+Release prototype `70752964` used the existing batch claim thread to
+start confirmed attempts while the dispatcher settled other attempts.
+The two-vCPU guest ran the frozen `short-1r-16s` workload with verified
+TLS and SCRAM, 250 ms polling, and the listener disabled in both arms.
+Five alternating off/on pairs and five flag-off control pairs each
+reconciled 640 jobs per arm after warmup.
+
+The median paired throughput gain was 4.9%, with gains in all five
+pairs. The arm medians were 124.37 and 125.09 jobs/s. The flag-off
+controls varied by −51.45 to +88.06 jobs/s across pairs, compared with
++0.72 to +18.01 jobs/s for off/on. First claim to final settlement
+improved in four pairs, with a median paired reduction of 13.9%.
+Claim calls per job fell in all five pairs, from a median of 0.180 to
+0.117. The throughput signal was within the control variation. The
+prototype remains outside the product branch.
+[Launch overlap receipt](../proof/jobs-parity/qualification-v1.json)
+
+The 64-slot short-job follow-up reconciled 2,560 jobs per arm in each
+comparison. Overlap reduced claim-to-entry and effect-to-settlement
+time in all five pairs. Median paired savings were 20.52 ms and 18.14 ms
+respectively. Throughput rose 21.8% within the median pair. The
+flag-off control rose 37.5% within its median pair during the same noisy
+window. The stage timings support overlap, and the control limits the
+end-to-end conclusion. The exact candidate passed 14 runner unit tests
+on ARM64 Linux, including queue restart fencing and adoption after a
+claim-thread panic. Four database-backed runner tests were ignored.
+[64-slot and runner test receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Reuse effect-write sessions on Linux
+
+The frozen `short-1r-16s` workload ran on the same two-vCPU guest with
+verified PostgreSQL 17.11 TLS and SCRAM. Five counterbalanced groups used
+one worker image built against stock `b67206f4`. Each arm reconciled
+640 measured jobs and both durable writes per job after warmup.
+
+| Effect route | Median jobs/s | Entry to first write commit | CPU/job |
+| --- | ---: | ---: | ---: |
+| Direct from the isolated child | 79.1 | 27.71 ms | 8.21 ms |
+| Same-driver relay with fresh sessions | 178.7 | 14.87 ms | 3.57 ms |
+| Same-driver relay with 16 prewarmed sessions | 337.7 | 0.78 ms | 2.20 ms |
+
+The warm relay shortened first-write time in all five fresh-versus-warm
+pairs and improved throughput in four. Its median throughput gain
+within pairs was 218.2 jobs/s. The session receipts confirm 128 distinct
+backends per fresh trial and 16 prewarmed backends per warm trial. The
+warm route reached the sampled 20-client budget. CPU includes the relay
+and its prewarm. Host one-minute load moved from 16.16 to 39.99 on 15
+logical CPUs. This experiment measures a private fixture route and its
+session reuse. Product lease fencing remains open.
+[Linux session receipt](../proof/jobs-parity/qualification-v1.json)
+
+The same-window comparison with Oban Basic 2.24.2 reconciled 1,920
+measured jobs across five groups. The two identical warm Mesh arms
+reached median throughput of 440.9 and 464.6 jobs/s against Oban's
+534.7. Both missed the strict throughput condition and met the other
+recorded profile limits. Median CPU was 1.37 and 1.34 ms/job for the
+warm arms and 3.82 for Oban. Both warm arms reached the 20-client cap.
+
+Median time from enqueue commit to first claim was 171.1 and 167.8 ms
+for Mesh and 142.7 ms for Oban. From first claim to final settlement,
+the medians were 119.2, 106.7, and 105.0 ms. The listener and producer
+publication were disabled in both Mesh arms. The two warm arms differed
+by −103.3 to +52.1 jobs/s across paired groups.
+[Warm Mesh and Oban receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Combine warm effect sessions and notification pickup on Linux
+
+An ARM64 Linux guest ran five counterbalanced groups of the frozen
+`short-1r-16s` workload with PostgreSQL 17.11 over verified TLS and
+SCRAM. Both Mesh arms used the same compiled worker and 15 prewarmed
+effect sessions for 16 slots. The enabled arm added one listener and
+published hints from the enqueue transaction. Each arm reconciled 640
+measured jobs and both durable writes per job after warmup.
+
+| Arm | Median jobs/s | Range | Pickup p99 | CPU/job | Peak client count |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mesh with listener off | 321.0 | 291.5–359.3 | 388.1 ms | 2.20 ms | 19 |
+| Mesh with listener on | 543.7 | 518.4–633.4 | 227.6 ms | 2.47 ms | 20 |
+| Oban Basic 2.24.2 | 430.2 | 258.3–740.9 | 291.5 ms | 8.14 ms | 20 |
+
+The enabled arm beat the disabled arm in all five groups and Oban in
+four. It exceeded Oban's median throughput by 26.4% and met every
+measured profile limit. Median time from durable enqueue to first claim
+fell from 222.9 to 2.7 ms with the listener. Each enabled trial verified
+the registered listener, a notification-triggered scan, and both writes
+for each job on a prewarmed backend. Host one-minute load ranged from
+19.0 to 34.9 on 15 logical CPUs. The pinned Oban fixture used its
+in-VM notifier and a 250 ms staging poll, so the separate enqueue
+process could not wake its runner across VMs. From first claim to final
+settlement, medians were 232.7 ms for listener-on Mesh and 150.7 ms for
+Oban. The effect relay is private fixture code. The receipt covers one
+frozen profile with that route.
+[Warm sessions and notification receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Match PostgreSQL notifications in the 16-slot control
+
+A separate five-group Linux diagnostic compared the same warm Mesh
+image with both pinned Oban Isolated and Oban's PostgreSQL notifier.
+The latter used 17 pooled runner connections and a dedicated listener.
+The producer's notification was observed inside its enqueue transaction.
+Each arm reconciled 640 measured jobs under the 20-client budget.
+
+Warm Mesh reached a median 1,109.0 jobs/s (537.4–1,226.0). Oban Isolated
+reached 445.1 (432.3–847.5), and Oban with PostgreSQL notifications
+reached 1,120.6 (911.2–1,386.9). Mesh won two of five pairs against
+the PostgreSQL notifier and met the other measured limits. Its
+throughput median was 1.0% lower. The observed ranges overlap.
+
+Median commit-to-first-claim time was 1.6 ms for Mesh, 165.8 ms for Oban
+Isolated, and 7.2 ms for Oban with the PostgreSQL notifier. The alternate
+notifier changes the comparison configuration. The frozen comparator
+and release qualification rule remain in force.
+[Matched notification control receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Test launch overlap with warm sessions and notifications
+
+Five counterbalanced groups compared serial and overlapping launches
+from the same `70752964` release fixture. Both Mesh arms used 15 warm
+effect sessions and PostgreSQL notifications. Oban Basic 2.24.2 used
+its PostgreSQL notifier. All three arms reconciled 640 measured jobs
+each under the 20-client workload budget on the two-vCPU Linux guest.
+
+Serial Mesh reached a median 694.6 jobs/s (270.8–727.1), and overlap
+reached 633.1 (344.9–790.0). Overlap improved throughput in one of five
+pairs. Oban reached 862.1 (849.6–966.1). Both Mesh arms missed the
+throughput and pickup conditions in this comparison. The time from
+enqueue commit to first claim was 1.6 ms for serial launches and 2.8 ms
+with overlap. Median time from first claim to final settlement was
+182.7, 200.4, and 134.9 ms for serial Mesh, overlap Mesh, and Oban. The
+overlap prototype stays outside the product branch.
+[Warm launch overlap receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Trace the warm 16-slot Linux worker lifecycle
+
+Five alternating pairs used the same `1abc0b2c` release fixture and
+serial dispatcher with tracing off and on. Each arm completed and
+reconciled 640 measured jobs using 15 warm effect sessions, PostgreSQL
+notifications, and a 250 ms fallback. The local ARM64 guest had two
+vCPUs and 1 GiB of RAM. Host one-minute load ranged from 6.11 to 9.23.
+
+| Stage | Median of five traced trial medians |
+| --- | ---: |
+| Confirmed claim to launch | 1.93 ms |
+| Spawn call | 0.29 ms |
+| Spawn return to handler entry | 0.35 ms |
+| Reply frame written to observed reap | 0.73 ms |
+| Observed reap to settlement submission | 1.14 ms |
+| PostgreSQL settlement call through confirmation | 0.14 ms |
+
+The first batch member launched within 0.03 ms in each trial's median.
+The 13 jobs at ordinal 16 gave trial medians from 5.73 to 10.60 ms.
+The interval from one spawn returning to the next launch had trial
+medians of 12–25 µs. That interval includes parent pipe-thread creation
+and registration. The result makes that setup a low-priority target for
+reducing serialized launch time.
+This run places more of the observed wait in dispatch and lifecycle
+scheduling than in the PostgreSQL acknowledgement call. The trace
+itself slowed four of five pairs. Median throughput was 1,283 jobs/s
+with tracing off and 1,163 with it on, with overlapping ranges of
+1,009–1,408 and 750–1,371 jobs/s. The reap timestamp records the
+supervisor observing the child's wait status. Both arms used Mesh.
+[Warm lifecycle trace receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure stock Linux Jobs with 64 slow-job slots
+
+The frozen `slow-1r-64s` workload ran five alternating pairs against
+Oban Basic 2.24.2. Stock Mesh `b67206f4` used batch claims, direct effect
+connections, and a 250 ms poll. PostgreSQL 17.11 used verified TLS and
+SCRAM in the two-vCPU ARM64 guest. Each engine reconciled 2,560 measured
+jobs with one attempt and one durable effect per job.
+
+The first boot with 1 GiB of RAM ended before the benchmark emitted a
+receipt. The identical guest archive completed with 2 GiB of RAM for both
+engines and the same application limits. Mesh reached a median 245.6
+jobs/s, ranging from 201.8 to 271.7. Oban reached 389.1 jobs/s, ranging
+from 228.0 to 448.2. Mesh won one pair. It missed throughput and pickup
+but met the relative CPU limit at 2.30 versus 1.99 ms/job.
+
+The median sampled peak RSS was 557.4 MiB for Mesh and 153.8 MiB for
+Oban, above the 230.7 MiB relative limit. The median of each Mesh trial's
+peak-RSS samples included 49 processes and 518.5 MiB of descendant RSS.
+These figures identify the attempt processes as the main source of
+measured memory. They leave the contribution of per-attempt PostgreSQL
+sessions open. [64-slot slow-job receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Isolate connection reuse on the 64-slot Linux slow profile
+
+Five counterbalanced groups ran the same slow-job inputs on the two-vCPU,
+2 GiB ARM64 guest. The direct and warm Mesh arms used one release image
+and the same wrapper. The warm arm reused 64 verified PostgreSQL
+sessions. All three arms reconciled 2,560 measured jobs each. The host's
+one-minute load ranged from 26.5 to 42.4 on 15 logical CPUs.
+
+| Arm | Median jobs/s | Range | First write commit after entry | Peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh direct | 137.5 | 94.1–189.0 | 21.44 ms | 404.5 MiB |
+| Mesh warm | 280.6 | 219.6–420.9 | 1.11 ms | 601.4 MiB |
+| Oban Basic 2.24.2 | 345.3 | 268.3–471.3 | 3.12 ms | 147.8 MiB |
+
+The warm arm improved throughput in all five Mesh pairs and beat Oban
+in one. It missed throughput, pickup, and RSS against Oban. The warm
+arm's median sampled process peak was 56 versus 36 with direct writes.
+This comparison shows that reuse removes first-write delay and leaves
+a substantial memory budget to close as more attempt children stay
+active. The RSS metric sums process residency, including pages mapped
+by several processes. [Warm 64-slot receipt](../proof/jobs-parity/qualification-v1.json)
+
+A separate one-group boot read `/proc/PID/status` for live attempt PIDs
+that matched durable writes. Across nonempty samples, median anonymous
+RSS per covered child was 6.53 MiB for direct writes and 6.49 MiB for
+warm sessions. Shared-memory RSS was 4.23 and 3.69 MiB. The census
+covered 420 of 512 direct children and 252 of 512 warm children at least
+once. This diagnostic used a separate boot because the added reads can
+affect timing. The samples identify anonymous memory as a sizable part
+of the remaining worker footprint.
+[Linux residency receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure transparent huge pages in Linux attempt children
+
+A separate diagnostic captured five `/proc/self/smaps` snapshots for
+each of 64 direct and 64 warm effect workers using the pinned release
+runtime. Every PID matched its durable attempt and effect. Median warm
+anonymous RSS grew from 0.11 MiB at the native constructor to 2.40 MiB
+at handler entry and 6.41 MiB after the 100 ms hold.
+
+A follow-up used the same fixture image and 64 prewarmed sessions in
+both arms. Each worker verified its process-local huge-page setting in
+the constructor. After the hold, median anonymous RSS was 6.41 MiB
+with the guest's default, including 6.00 MiB of anonymous huge pages.
+Disabling huge pages reduced anonymous RSS to 0.42 MiB and total RSS
+from 10.17 to 4.18 MiB per worker. The two arms reconciled all 128
+jobs. The snapshots were taken in separate diagnostic runs. They
+establish the source of most anonymous residency on this guest.
+[Phase and huge-page receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure worker-local huge-page policy under the slow workload
+
+Five counterbalanced groups compared the same Mesh fixture with its
+worker-local huge-page setting toggled, alongside frozen Oban Basic
+2.24.2. All 7,680 measured jobs reconciled. Both Mesh arms used 64 warm
+effect sessions, 250 ms polling, and no listener. The ARM64 guest had
+two vCPUs and 2 GiB of RAM. PostgreSQL 17.11 used verified TLS and SCRAM.
+The timed runs omitted the per-worker memory probes.
+
+| Median metric | Mesh, guest default | Mesh, worker THP disabled | Oban |
+| --- | ---: | ---: | ---: |
+| Sampled peak tree RSS | 628.9 MiB | 324.3 MiB | 147.5 MiB |
+| Durable jobs/s | 369.4 | 394.6 | 423.6 |
+| Pickup p99 | 1,268 ms | 1,191 ms | 1,101 ms |
+| Runner-tree CPU/job | 1.79 ms | 1.60 ms | 1.82 ms |
+
+Worker-local THP disablement lowered peak RSS in all five groups and
+still exceeded the 221.3 MiB limit. The sampler sums RSS by process and
+counts shared mapped pages in each process that reports them. Throughput
+ranges overlapped at 222–505, 283–496, and 371–498 jobs/s, respectively.
+The disabled arm won three of five groups against default Mesh and two
+against Oban. Pickup, CPU, and absolute resource limits passed. The
+throughput and RSS gates for this profile remain open.
+[Timed huge-page receipts](../proof/jobs-parity/qualification-v1.json)
+
+The separate `242702e1` runtime prototype passed eight startup cases in
+the local ARM64 guest using a release fixture linked against that
+runtime. Only the exact internal worker invocation with the opt-in set
+to `1` reported `THP_enabled = 0` after scheduler startup. Unset and
+nonmatching values, ordinary application launches, and worker-like
+argument lists reported `THP_enabled = 1`. A second run launched two
+compiled jobs through the runner on PostgreSQL 17.11 with verified TLS
+and SCRAM. The runner reported `THP_enabled = 1`, and both children
+reported `0` while their handlers were active. The observed PIDs matched
+the native start markers and both durable attempts. Both jobs completed
+at attempt one with one effect and one receipt each. The timed result
+above used a fixture constructor to apply the policy.
+[Runtime opt-in receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure neighboring file pages in held Linux workers
+
+Two local boots used the same release worker and relay with worker THP
+disabled. The 4 KiB-page guest's file fault-around window was 64 KiB in
+the first boot and 4 KiB in the second. Linux uses the larger window to
+map nearby cached pages when a file page faults. The single-page window
+skips that step. [Linux 6.12.115 source](https://github.com/gregkh/linux/blob/v6.12.115/mm/memory.c)
+
+Both arms reconciled all 64 jobs. Each memory sample matched the native
+start and durable attempt PID and fell inside its worker's 100 ms hold.
+Median held-worker RSS fell from 4.12 to 1.65 MiB. The worker executable
+mapping fell from 2.44 to 0.63 MiB and libc from 1.08 to 0.49 MiB. The
+remaining mappings outside the executable and libraries retained a
+median of 0.35 MiB. These are independent per-worker observations.
+[Held-worker receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare slow jobs with the same single-page window in both engines
+
+The timed comparison reused the frozen slow-64 workloads, executables,
+and five counterbalanced groups from the earlier THP run. Every arm,
+including Oban, ran with the same 4 KiB file fault-around window in one
+guest. The guest verified the setting around the full block and restored
+its default afterward. All 7,680 measured jobs reconciled. One-minute
+host load ranged from 14.75 to 23.59.
+
+| Median metric | Mesh, guest THP default | Mesh, worker THP disabled | Oban |
+| --- | ---: | ---: | ---: |
+| Sampled peak tree RSS | 548.6 MiB | 165.1 MiB | 137.4 MiB |
+| Durable jobs/s | 397.9 | 311.0 | 390.2 |
+| Pickup p99 | 1,162 ms | 1,525 ms | 1,197 ms |
+| Runner-tree CPU/job | 2.12 ms | 2.26 ms | 1.65 ms |
+
+The disabled arm cleared the 206 MiB RSS limit with 66 sampled processes
+at its median peak count, including the runner and relay. It missed the
+throughput, pickup, and CPU limits. The default arm exceeded Oban's
+median throughput by 2% and missed RSS and CPU. Throughput ranges were
+288–496, 288–419, and 334–469 jobs/s, respectively. The disabled arm beat
+Oban in one of five pairs. This is a diagnostic guest configuration for
+one profile. The profile still needs one configuration that passes
+throughput and all resource limits together.
+[Matched single-page window receipt](../proof/jobs-parity/qualification-v1.json)
+
+A second five-group run used two identical Mesh arms with worker THP
+disabled. Both used the same executable, warm effect route, polling,
+and slot allocation. Oban and both Mesh arms shared the 4 KiB file
+window. The run reconciled all 7,680 measured jobs. One-minute host
+load ranged from 7.28 to 13.68.
+
+| Metric | Mesh A | Mesh B | Oban |
+| --- | ---: | ---: | ---: |
+| Median jobs/s | 400.1 | 380.3 | 409.2 |
+| Jobs/s range | 289–520 | 182–522 | 351–457 |
+| Median pickup p99 | 1,174 ms | 1,236 ms | 1,147 ms |
+| Median runner-tree CPU/job | 1.76 ms | 2.13 ms | 1.53 ms |
+| Median sampled peak tree RSS | 162.5 MiB | 162.7 MiB | 140.2 MiB |
+
+The median absolute throughput difference within identical Mesh pairs
+was 82.3 jobs/s. Both Mesh arms beat Oban in two groups and stayed below
+the 210.4 MiB median RSS cap. Mesh A met the CPU and pickup limits.
+Mesh B met pickup and missed CPU. Both median throughput results fell
+below Oban. The spread between equivalent Mesh runs exceeds their
+median throughput gaps to Oban. The previous run's ordering across THP
+settings leaves the CPU and throughput effect uncertain on this host.
+[Identical-arm results](../proof/jobs-parity/qualification-v1.json)
+
+### Run the compiled handler through the fork template
+
+Five alternating pairs ran the 100 ms handler with 512 attempts and 64
+slots per arm on macOS arm64 and PostgreSQL 17.11. Both arms used the
+same compiled worker image, watchdogs, and native relay with 64 warmed
+sessions over verified TLS and SCRAM. All 5,120 attempts matched the
+native startup PID, exact reap, framed completion, effect key, and the
+two committed writes. The two writes for each attempt used the same
+backend. One-minute host load ranged from 14.25 to 17.24.
+
+| CPU/job | Fresh exec | Forked child |
+| --- | ---: | ---: |
+| Children | 3.37 ms | 1.60 ms |
+| Launcher and reap | 0.49 ms | 0.76 ms |
+| Warm effect relay, including prewarm | 0.26 ms | 0.26 ms |
+| Total | 4.12 ms | 2.63 ms |
+
+The median paired saving was 1.47 ms/job, with a range of 1.33 to 1.88.
+Fork used less CPU in all five pairs. Its median stayed at 2.52 ms/job
+after excluding relay prewarming. The run already exceeds the 2.06 ms/job
+budget from the earlier 64-slot Jobs runner comparison. It uses a
+standalone launcher and relay, with no Jobs dispatcher or durable
+settlement. The paired results use one pinned harness revision.
+[Real handler receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Defer scheduler threads in the forked handler
+
+The experimental `cfd85706` compiler passes the worker entry's C
+arguments to the runtime. The compiled thread witness observed four
+threads with eager startup and three with deferral, at the first handler
+effect. The witness reconciled 32 attempts across fresh exec and fork.
+The compiled Jobs proof on PostgreSQL 17.11 also awaited a captured
+string after the first actor spawn under GC stress. The deferred attempt
+went from three to four threads in the original PID. The exact-argument
+and concurrent-first-spawn unit tests passed.
+
+Five alternating pairs held the fork launcher, compiled image,
+100 ms workload, and warmed effect relay fixed. All 5,120 attempts
+reconciled with normal watchdogs and both durable writes. The thread
+witness was disabled during timing. One-minute host load ranged from
+10.49 to 11.61.
+
+| CPU/job | Eager | Deferred |
+| --- | ---: | ---: |
+| Children | 1.26 ms | 0.82 ms |
+| Launcher and reap | 0.54 ms | 0.56 ms |
+| Warm relay including prewarm | 0.21 ms | 0.21 ms |
+| Total | 2.02 ms | 1.60 ms |
+
+Deferral reduced CPU in all five pairs. The median paired saving was
+0.45 ms/job, with a range of 0.12 to 0.61. The deferred total leaves
+0.46 ms/job against the earlier full-runner budget for the dispatcher
+and settlement omitted by this fixture. The experimental compiler
+also needs compatibility fixes for runtime-only reference builds and
+the REPL's symbol table. [Scheduler diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+The follow-up at `52406a01` keeps the original startup ABI in normal
+builds and selects the new entry only at fixture build time. Its release
+compiler linked the original `7c162056` runtime-only fixture. The earlier
+compiler failed that link on the missing experimental symbol. The
+PostgreSQL 17.11 verifier passed with the old archive pinned, with 54
+Jobs runtime cases and three compiled suites. The reference directly
+exercised sparse polling, persisted pause, and manual enqueue.
+
+The opt-in REPL test evaluated an expression with a stored Jobs main.
+The codegen test exercised both startup entries and checked that the
+handler fingerprint stays stable. The corrected compiler's fork and
+exec witnesses again observed four eager threads and three deferred
+threads across 32 reconciled attempts.
+The compiled first-actor test passed under GC stress on the corrected
+compiler as well. It built the fixture with the experimental entry and
+checked the resulting thread count and `Job.await` in the original PID.
+[Compatibility receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure scheduler deferral through the Jobs dispatcher
+
+The `52406a01` experiment ran the frozen `slow-1r-64s` profile through
+real enqueue, batch claims, fresh worker exec, exact reaps, and durable
+settlement. Both Mesh arms used the same compiled image and warmed effect
+relay. Five counterbalanced groups included Oban Basic 2.24.2. All
+7,680 measured jobs reconciled on macOS arm64 and PostgreSQL 17.11.
+Sampled one-minute host load reached 9.73.
+
+| Arm | Jobs/s | CPU/job | Pickup p99 | Sampled peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh eager | 472.0 | 3.53 ms | 975 ms | 236.2 MiB |
+| Mesh deferred | 408.6 | 3.43 ms | 1,135 ms | 161.8 MiB |
+| Oban | 494.5 | 1.45 ms | 931 ms | 118.5 MiB |
+
+Deferral reduced CPU in four of five pairs, with a median paired saving
+of 0.10 ms/job. Its throughput was lower in every pair. Both Mesh arms
+missed the throughput and CPU limits. Deferral met the sampled RSS and
+pickup limits. The median RSS peak contained 47 processes with deferral
+and 66 with eager startup, leaving memory at equal live counts
+unmeasured. The forked-handler CPU result has a separate receipt and
+leaves dispatch and settlement costs open.
+[Stock-exec comparison receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Reuse effect sessions inside the runner
+
+The local `02afc9e2` diagnostic moved the helper into a thread in the Jobs
+runner. It used the `da0a51bc` compiler and a private PostgreSQL overlay
+in a disposable runtime build. The same fixture binary ran direct,
+fresh-session, and reused-session Mesh arms with the reply-pipe wake
+enabled. Five counterbalanced one-slot groups over verified TLS on macOS
+arm64 and PostgreSQL 17.11 reconciled all 2,560 jobs.
+
+| Arm | Jobs/s | Entry to first write | Pickup p99 | CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh direct | 53.0 | 5.64 ms | 2,390 ms | 7.11 ms |
+| Mesh in-runner, fresh sessions | 47.2 | 5.95 ms | 2,671 ms | 7.57 ms |
+| Mesh in-runner, reused session | 90.1 | 0.31 ms | 1,410 ms | 5.84 ms |
+| Oban Basic 2.24.2 | 81.3 | 0.40 ms | 1,559 ms | 6.84 ms |
+
+The reused arm beat Oban in three of five pairs and its median met every
+measured limit for this profile. The fixture independently recorded one
+distinct attempt child per job and one verified effect backend per reused
+trial. The runner and attempt fit the two-process budget. The CPU includes
+the helper thread and prewarming. The diagnostic covers steady-state
+writes through the private one-slot route. A general application path
+still needs proof for interruption, lease loss, and session reuse across
+attempts. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+The `4818f8a0` transport experiment passed four focused tests on macOS
+arm64 using owned TCP peers with plain and rustls streams. Revocation
+before the first write produced zero observed bytes, including when
+rustls already held the request. Stop after partial or full submission
+yielded an unknown result and no fallback write. The tests also rejected
+stale and expired permits. The experiment starts on an established
+connection. Runner wakeup, PostgreSQL result reconciliation, and child
+reply handling remain integration work.
+[Transport test receipt](../proof/jobs-parity/qualification-v1.json)
+
+The disposable effect transaction fixture passed over verified TLS on
+PostgreSQL 17.11, 18.7, and 19.0. It locks the job row and validates
+the attempt identity, expiry, and cancellation before a fixed application
+write. An independent session verified one committed effect and its
+receipt across rollback, replay, replacement, expiry, cancellation, and
+lock contention cases. Removing `NOWAIT` caused the contention case to
+reach its statement timeout on PostgreSQL 17.11. The proof covers
+admission under a real job-row lock. Integrating the transport and
+transaction checks into a reusable runner session remains open.
+
+A follow-up on the same three PostgreSQL versions expired the writer's
+lease after its effect committed and recovered the original job. The
+stale token could no longer resolve the operation. The replacement lease
+retrieved the original receipt with the same operation ID. An independent
+session verified that the effect, receipt, and insertion counter stayed
+unchanged.
+[Transaction proof receipt](../proof/jobs-parity/qualification-v1.json)
+
+The isolated `463b314e` proof ran both boundaries together. The
+disposable PostgreSQL 17.11 cluster used verified TLS and SCRAM on macOS
+arm64. All three native tests passed. The real-server test checks the
+first-write fence, interrupts a submitted operation, holds a committed
+receipt across revocation, and recovers it under a replacement claim.
+It also verifies session reset before reuse.
+[Integrated effect proof receipt](../proof/jobs-parity/qualification-v1.json)
+
+The isolated exact-child test passed at `254df3ce` with PostgreSQL
+17.11 over verified TLS and SCRAM. After running the normal Jobs migration,
+the fixture took a confirmed claim and registered a real child through
+the runner's launch path. The child sent a fixed operation ID over a
+private channel. The parent retained the lease credentials and used a
+login with permission to execute the fixture function. The test checked
+revocation before send, a stale generation, a grant presented by a
+different child, confirmed renewal, EOF, and a committed result held
+across revocation. It verified receipt recovery, exact reap, and durable
+settlement by the successor. The test owned the lifecycle calls and used
+a native fixture child.
+[Exact-child effect receipt](../proof/jobs-parity/qualification-v1.json)
+
+The separate feature-gated `c88c238c` fixture ran a compiled Mesh
+handler through `Jobs.start` and the normal dispatcher. Two cases
+passed on macOS arm64 with PostgreSQL 17.11 over verified TLS and
+SCRAM. In the second case the parent held a committed effect receipt
+and revoked its permit before returning it to the child. The first
+attempt reaped and settled as retryable. A fresh child completed the
+same job on attempt two and returned the original effect ID. The
+independent PostgreSQL check observed one effect and one receipt for
+the job. The three wire tests and the earlier exact-child test also
+passed at this revision. The compiled route used one fixed operation,
+one dispatcher slot, and fresh sessions. Prewarmed reuse, renewal and
+watchdog coverage through the compiled route, and performance
+qualification remain open.
+[Compiled effect receipt](../proof/jobs-parity/qualification-v1.json)
+
+The `0b4b7d32` follow-up checks the PostgreSQL driver's parsed TLS mode
+before connecting and attaches the socket to the attempt's authority
+before TLS negotiation. It also starts the relay before the worker can
+spawn. A loopback test held the TLS negotiation open and observed the
+connection close promptly on revocation. A parser test confirmed that
+fixture credentials require the driver's verified TLS mode. Five wire
+tests, the exact-child test, and both compiled cases passed on the same
+PostgreSQL 17.11 setup.
+[Startup fence receipt](../proof/jobs-parity/qualification-v1.json)
+
+The next two compiled runs passed on that setup. `a7771033` starts
+serving the child's effect request after the runner registers the exact
+child. `23cbc458` held a compiled child alive after it sent its complete
+reply. The dispatcher observed that reply while the child was running.
+An independent PostgreSQL connection verified the job was still
+executing with a live lease and confirmed the scoped effect login and
+backend PID. The driver then released that exact child and observed its
+reap and the committed settlement. The same-ID revocation and replay
+case also passed. The fixture still used fresh effect sessions.
+[Registration and held-reply receipts](../proof/jobs-parity/qualification-v1.json)
+
+The integrated `43f11812` fixture passed seven compiled cases on macOS
+arm64 and PostgreSQL 17.11. Distinct fresh children used the same
+prewarmed backend after reset. The verifier terminated the idle backend,
+then observed a discarded attempt and a later exhausted-pool attempt
+without an extra write or replacement session. The revoked receipt case
+replayed the same effect under a replacement attempt. `Jobs.join` closed
+the sessions while the coordinator process was still alive. The compiled
+fixture also rejected a second runner in the same process before it
+could open another pool.
+
+The focused socket test revoked a waiter while the only lane was busy.
+Its successor acquired that untouched lane. The integrated head also
+passed the wire and exact-child proof commands. These runs used one fixed
+effect operation and at most two lanes. The frozen workload's two
+writes and its multi-slot performance remain separate work.
+[Integrated session pool receipts](../proof/jobs-parity/qualification-v1.json)
+
+The Linux-only fixture at `64352a8a` maps a private control socket
+through stdin and sends the effect endpoint before the normal bootstrap
+frames. This removes the fixture's pre-exec hook, which disqualifies
+Rust's `posix_spawn` path. The ARM64 guest passed four descriptor
+transport tests, six effect-admission tests, and the stock
+reply-before-reap test.
+[Linux transport receipt](../proof/jobs-parity/qualification-v1.json) · [Pinned Rust launcher](https://github.com/rust-lang/rust/blob/b940084d7/library/std/src/sys/process/unix/unix.rs#L427-L445)
+
+The release fixture from the same revision passed the durable transaction
+proof and all seven compiled cases in the Linux ARM64 guest on PostgreSQL
+17.11 with verified TLS and SCRAM. Distinct child PIDs shared a prewarmed
+backend. An idle backend terminated by the verifier stayed retired. A
+revoked receipt replayed the same effect under a replacement attempt.
+The held reply left the original job executing until the runner reaped
+the exact child.
+
+A second untimed run matched nine successful `posix_spawnp` calls to the
+nine handler PIDs and their `/proc/self/exe` executions. The trace joined
+the dispatcher thread to its runner and recorded zero lost events. Both
+runs used one fixed operation and at most two effect sessions.
+[Compiled Linux proof and trace receipt](../proof/jobs-parity/qualification-v1.json) · [Linux uprobe documentation](https://github.com/gregkh/linux/blob/v6.12.115/Documentation/trace/uprobetracer.rst)
+
+### Run two fenced commits on the frozen short workload
+
+The opt-in release fixture at `206d443a` used one PostgreSQL checkout
+through the attempt write, the original handler delay, and the effect
+write. The traced macOS ARM64 run matched two ordered transaction
+commits, one durable effect, and one exact child reap for each of 128 jobs
+in each mode. Fresh mode used 128 backends. Prewarmed mode reused the
+original 15. Four revocation cases recovered with one durable effect each,
+including a replacement claim that confirmed the effect after its first
+receipt was withheld. The seven one-write regression cases passed on
+PostgreSQL 17.11 with verified TLS and SCRAM.
+[Correctness receipts](../proof/jobs-parity/qualification-v1.json)
+
+Five alternating trace-off pairs reconciled 640 measured jobs in each
+mode. Median entry-to-first-commit time fell from 8.12 ms to 0.53 ms,
+with a reduction in every pair. End-to-end throughput was 333.1 jobs/s
+fresh and 425.7 jobs/s prewarmed. Fresh trials ranged from 128.0 to
+463.1 jobs/s. Prewarmed trials ranged from 381.5 to 591.8 jobs/s and
+were faster in four of five pairs. Peak one-minute host load went up to
+14.61 on 15 logical CPUs. The trial used a single shared binary. The
+paired throughput still needs an identical-mode control and a matched
+Oban arm. Sampled process peaks missed the short-lived children.
+[Timing receipts](../proof/jobs-parity/qualification-v1.json)
+
+A separate admission test held 15 effect backends, four runner backends,
+and one observer. PostgreSQL rejected the producer at a database cap of
+20 and admitted it when the cap rose to 21. The effect role still rejected
+a 16th session. The next run needs explicit observer headroom, handling
+for fresh backend teardown racing admission, and verification that all
+warm sessions finish reset before the final SQL counter sample.
+[Admission receipt](../proof/jobs-parity/qualification-v1.json) · [PostgreSQL database admission](https://github.com/postgres/postgres/blob/REL_17_11/src/backend/utils/init/postinit.c#L344-L363)
+
+### Compare the fenced short workload with stock Oban on Linux
+
+The Linux ARM64 pilot on `206d443a` reconciled 128 jobs in each effect
+mode and four revocation cases. An independent PostgreSQL connection
+matched the attempt and effect transaction IDs and backend IDs. The
+prewarmed arm opened 15 sessions and used seven of them. All recorded
+child PIDs were reaped, and the runner and PostgreSQL sessions closed.
+[Linux pilot receipt](../proof/jobs-parity/qualification-v1.json)
+
+In a separate trace-off run, two identical prewarmed Mesh arms and stock
+Oban Basic 2.24.2 completed 640 measured jobs per arm over five
+counterbalanced groups. The guest used PostgreSQL 17.11 with verified
+TLS and SCRAM, 20 workload clients, and one slot for the observer.
+
+| Arm | Median jobs/s | Range, jobs/s | Median pickup p99 | Median CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 937.3 | 325.6–1,164.8 | 131.0 ms | 1.06 ms |
+| Identical Mesh repeat | 777.7 | 717.1–930.8 | 155.2 ms | 1.25 ms |
+| Oban Basic | 561.8 | 440.8–772.6 | 222.1 ms | 4.63 ms |
+
+Both Mesh arms passed the scored limits for this profile and beat
+Oban in four and five groups, respectively. The median absolute gap
+between identical Mesh arms was 234.0 jobs/s, and host one-minute load
+ranged from 7.61 to 14.09 on 15 logical CPUs. Median enqueue-to-first-claim
+time was 2.0 and 1.7 ms for Mesh and 126.9 ms for Oban. From first claim
+to final settlement the medians were 134.6, 162.9, and 83.9 ms. Mesh
+used PostgreSQL notifications and stock Oban used its Isolated notifier
+with a separate enqueue process. This narrow result predates the final
+warm reset accounting and the same-host 35-profile qualification.
+[Linux benchmark receipt](../proof/jobs-parity/qualification-v1.json)
+
+The admission and reset follow-up at `c3edbaa2` passed the two traced
+workload modes and four revocation cases on macOS and Linux. The warm
+run confirmed all 15 original TLS sessions had returned idle after 128
+verified resets. In a separate macOS PostgreSQL 17.11 run, the driver
+occupied the effect role's 15 sessions until the server rejected new
+checkouts. The exact runner recorded two startup capacity rejections and
+then completed all 128 jobs on attempt one, with one effect per job.
+The seven existing one-write cases and the focused startup retry test
+also passed on macOS. A separate untimed Linux trace matched all 264
+children from the two workload modes and four revocation cases to
+successful `posix_spawnp` calls from their own runner and exact reaps.
+The trace reported zero lost events.
+[Admission and reset receipts](../proof/jobs-parity/qualification-v1.json)
+
+The follow-up at `33a20cfc` uses one deadline across effect socket
+startup and a common settlement cutoff for SQL counters. The traced
+Linux pilot reconciled both modes and all four revocations. In the
+trace-off replay, identical warm Mesh arms reached 1,007.5 and 866.7
+jobs/s versus 607.3 for stock Oban. Both passed the scored limits.
+The Mesh arms won five and four of five groups, respectively, and the
+median absolute difference between identical arms was 203.1 jobs/s.
+Each warmed trial verified 128 resets and return of the original 15
+backends. Median enqueue-to-first-claim was 1.57 and 1.86 ms for Mesh
+and 106.10 ms for Oban. From first claim to final settlement, the medians
+were 125.41, 145.15 and 104.09 ms. The replay still covers one local
+profile. [Deadline and accounting replay](../proof/jobs-parity/qualification-v1.json)
+
+The topology driver at `c271319e` passed both traced modes on macOS
+for short one-slot, short four-runner at 16 slots, slow one-runner at
+64 slots, and sparse four-runner at 16 slots. It reconciled 128, 128,
+512, and 24 jobs per mode, respectively. Prewarmed lane allocations
+were 1, 4/4/4/3, 63, and 4/4/4/3. The one-slot case used polling and
+kept five workload clients. The other cases used LISTEN, with workload
+caps of 32, 68, and 32. Each runner's prewarmed backends returned to its
+own idle pool. These runs exercised the actual compiled fixture and
+PostgreSQL recovery paths without scoring throughput.
+[Topology pilot receipts](../proof/jobs-parity/qualification-v1.json)
+
+The same build then reconciled 64 large-context jobs per mode across
+eight runners, with 63 prewarmed effect sessions and 96 workload clients.
+[Large workload pilot](../proof/jobs-parity/qualification-v1.json)
+
+### Measure the one-slot fenced route on macOS
+
+Five matched groups at `c271319e` reconciled 640 measured jobs per arm.
+The two identical warm Mesh arms reached 57.0 and 53.3 jobs/s versus
+89.2 for stock Oban. The medians missed throughput, pickup, and
+CPU/job. The medians of trial-mean entry-to-first-write times were
+0.47 and 0.50 ms in Mesh. Claim-to-entry was 6.73 and 7.09 ms
+versus 0.77 ms for Oban. Effect-to-settlement was 5.58 and 5.40 ms
+versus 0.29 ms. Mesh refilled its sole slot faster after settlement,
+with 0.34 and 0.39 ms versus 6.95 ms. This leaves worker startup and
+post-effect settlement as the main measured gaps in this local
+profile.
+[One-slot comparison](../proof/jobs-parity/qualification-v1.json)
+
+### Compare four-runner short and one-runner slow on macOS
+
+Five matched groups at `c271319e` reconciled 640 measured jobs per arm
+for short four-runner at 16 slots and 2,560 for slow one-runner at 64
+slots. The identical Mesh arms used prewarmed fenced sessions.
+
+| Profile | Mesh jobs/s | Identical Mesh repeat | Stock Oban jobs/s | Result |
+| --- | ---: | ---: | ---: | --- |
+| Short, 4 runners and 16 slots | 692.2 | 699.4 | 602.3 | Both Mesh arms beat Oban in four groups |
+| Slow, 1 runner and 64 slots | 324.3 | 321.4 | 456.8 | Missed throughput, pickup, CPU and RSS |
+
+The four-runner case passed the scored limits. Its median absolute gap
+between identical arms was 70.9 jobs/s. In slow-64, median CPU was 8.40
+and 8.39 ms/job for Mesh versus 2.03 for Oban. Median peak RSS was 191.8
+and 191.6 MiB versus 117.9. The durable claim-to-settlement intervals
+occupied 76% of available slot-time for both Mesh arms versus 93% for
+Oban. Mesh trial-mean handler entry took 26–27 ms from claim and
+settlement took 17–18 ms after effect commit, versus about 8 and 2 ms
+for Oban. Linux has a separate run because these costs include
+platform-specific process startup and supervision.
+[Four-runner and slow-64 receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare the fenced topologies on local Linux
+
+The `c271319e` release fixture ran on a two-vCPU ARM64 guest with
+PostgreSQL 17.11 over verified TLS and SCRAM. Each profile ran a traced
+fresh and prewarmed pilot, then three warmups and five counterbalanced
+groups with two identical prewarmed Mesh arms and stock Oban Basic
+2.24.2 using Isolated. Each scored arm reconciled one durable attempt
+and one effect per job. Mesh verified exact-child reaps, one reset per
+job, and return of the original backends to their runners.
+
+| Profile | Mesh jobs/s | Identical Mesh repeat | Stock Oban jobs/s | Scored result |
+| --- | ---: | ---: | ---: | --- |
+| Short, 1 runner and 1 slot | 104.7 | 106.4 | 68.7 | Both passed all limits |
+| Short, 1 runner and 16 slots | 620.0 | 596.1 | 401.6 | Both passed all limits |
+| Short, 4 runners and 16 slots | 656.8 | 693.0 | 459.6 | Both passed all limits |
+| Slow, 1 runner and 64 slots | 389.6 | 390.8 | 404.1 | Both missed throughput and RSS |
+
+At one slot both Mesh arms won all five groups within five workload
+connections and two processes. At 16 slots both Mesh arms won four of
+five groups on each topology. On four runners, the median first claim
+arrived 2.3 and 2.6 ms after enqueue versus 59.7 ms for Oban. From first
+claim through final settlement the medians were 192.6 and 183.1 ms
+versus 179.4 ms. This separates the pickup advantage from the time
+needed to run and settle the jobs.
+
+Slow-64 met pickup, CPU/job, and the absolute resource limits. Median
+summed peak RSS was 589 and 638 MiB versus 147 MiB for Oban, with a
+221 MiB limit. Durable claim-to-settlement intervals occupied about
+80% of available slot-time for Mesh and 90% for Oban. The 31 jobs/s
+median absolute gap between identical Mesh arms exceeded either
+median throughput deficit. Host one-minute load ranged from 10.4
+to 16.1 on 15 logical CPUs in this case and 18.2 to 25.3 during the
+one-slot comparison. The receipts record each arm and host trace.
+
+These are four local profiles using an opt-in fixture. The strict
+35-profile release gate remains open.
+[Local Linux receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare slow-64 with small pages on local Linux
+
+The slow-64 diagnostic relinked the `c271319e` fixture with the
+same runtime archive. Its native constructor disabled transparent huge
+pages before Mesh initialization in the exact fenced worker. The
+disposable guest verified a 4 KiB file fault-around window for every arm
+and restored 64 KiB after each block. Both benchmark blocks used the
+same verified boot image. The traced pilot and all 15,360 scored jobs
+reconciled through both durable writes and final settlement.
+
+| Block | Mesh jobs/s | Identical Mesh repeat | Stock Oban jobs/s | Median peak RSS MiB by arm |
+| --- | ---: | ---: | ---: | --- |
+| First | 288.4 | 245.8 | 359.7 | 118.8 / 98.4 / 139.5 |
+| Exact repeat | 391.9 | 410.2 | 405.0 | 122.3 / 127.4 / 137.3 |
+
+Both Mesh arms passed RSS and CPU in both blocks. In the repeat, the
+largest sampled waves at peak RSS included 63 live children and their
+runner. Both arms passed pickup there. The 410.2 jobs/s arm passed all
+scored limits and won three of five groups. Its 5.3 jobs/s advantage
+was smaller than the 12.3 jobs/s median absolute delta between the
+identical Mesh arms. In the first block both arms missed pickup and
+throughput. One-minute host load on 15 logical CPUs ranged from
+21.3 to 44.8 in the first block and 14.1 to 23.8 in the repeat.
+
+The repeat measured about 80% durable slot utilization in Mesh versus
+89% for Oban. From first claim through final settlement the medians were
+1,304 and 1,246 ms versus 1,110 ms. The small-page configuration cleared
+the memory limit in both blocks. Throughput remains open for slow-64.
+[Small-page receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Trace post-effect time under slow-64
+
+Release `47415a6a` ran the same small-page slow-64 workload with two
+untraced Mesh arms and one timing arm. All 7,680 scored jobs
+reconciled. The trace joined all 2,560 timed attempts to their durable
+job and exact child PID. The first pending-reply poll observed an
+exited child in 2,067 attempts and a running child in 492. One attempt
+had no pending-reply observation.
+
+The median of trial means was 3.52 ms from the last effect database
+reply to both a complete worker frame and observed reap. The dispatcher
+then spent 3.86 ms before settlement submission, and the submitted
+request took 0.68 ms through confirmation. The trace records when the
+runner collects exit status. It brackets time before submission without
+assigning that time to a particular competing operation.
+
+The timing arm ran below both controls in three of five groups.
+Its slowest group reached 194 jobs/s against 421 and 409 in the
+untraced arms. Use these timings to select a dispatcher experiment.
+The untraced comparisons supply the throughput evidence.
+[Post-effect timing receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Test completion batching on the fenced slow-64 fixture
+
+The opt-in `e98650d4` port passed two PostgreSQL 17.11 store tests
+and two acknowledgement replay tests on macOS. The store tests
+covered cancellation, stale tokens, locked rows, and result ordering
+at the full batch limit. The Linux comparison used a single release
+binary with two unbatched controls and one batched arm. All 7,680
+scored jobs reconciled. PostgreSQL recorded 55–83 batch SQL calls
+in each measured batch trial and zero in the controls.
+
+The batch arm used 4.11 runner SQL calls per job versus 4.67 and
+4.61 in the controls. Median throughput was 393, 392, and 369 jobs/s,
+respectively. The median paired throughput improvement over the
+first control was 1.2 jobs/s, within the 42.2 jobs/s median absolute
+delta between identical controls. The improvement in SQL call
+counts is repeatable. Completion batching remains experimental.
+[Completion batch receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare sparse workloads with eight runners in staged Linux guests
+
+The `c271319e` fixture ran the frozen sparse workload with eight
+runners and 64 available slots on the two-vCPU ARM64 guest. The
+traced fresh and warm pilot reconciled 24 jobs per arm. Each of the
+five scored groups booted a fresh PostgreSQL 17.11 cluster and ran
+three same-boot warmups. The group then ran two identical prewarmed
+Mesh arms and stock Oban Basic 2.24.2 with Isolated. TLS and SCRAM
+were verified and the workload connection cap was 96.
+
+Both Mesh arms exceeded Oban in all five groups and passed every
+scored budget. Median throughput was 2.635 and 2.625 jobs/s versus
+2.527. Median pickup p99 was 20.5 and 18.0 ms versus 98.6. All
+360 scored jobs completed on their first attempt with one effect.
+The scored guest boots took 102–106 seconds each. The initial
+pilot and five groups used less than 186 KiB of gzip evidence per boot.
+[Staged sparse receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare 512 KiB payloads with eight runners
+
+The first 2 GiB guest ran both Mesh pilots. During the first scored
+group the guest kernel killed the PostgreSQL backend serving Oban's
+large enqueue, and PostgreSQL entered recovery. The receipt preserves
+that failed group. A separate 4 GiB guest series kept the same two
+vCPUs, binaries, pending-context cap, and scored resource limits for
+both engines.
+
+All five groups and both traced pilot arms completed in the 4 GiB series
+at `c271319e`. The two identical Mesh arms reached 320.5 and 334.8
+jobs/s versus 258.8 for Oban, with four and three group wins. Pickup
+p99 was 192.6 and 184.2 ms versus 237.2. Both Mesh arms passed all
+scored limits, with at most 4,196,960 queued context bytes per runner
+against 32 MiB. All 960 scored jobs reconciled one attempt and one
+effect each. The staged comparison used a new PostgreSQL 17.11
+cluster and the full warmup in each boot.
+[Large-payload and guest failure receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare 512 KiB payloads with one runner and 16 slots
+
+The 2 GiB guest completed five groups at `c271319e`. Each arm
+handled a 16-job burst, for 240 reconciled measured jobs. Both
+Mesh arms cleared the scored gates and won all five groups. They
+reached 286 and 288 jobs/s versus Oban's 57. Mesh queued at most
+8,393,920 context bytes against 32 MiB.
+
+Median first claim arrived in 3.2–3.3 ms for Mesh and 217 ms for
+Oban. After the first claim, the median drain took 52–53 ms for
+Mesh and 65 ms for Oban. Earlier pickup accounts for most of the
+end-to-end throughput difference on this short burst.
+[One-runner large-payload receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare 512 KiB payloads with four runners and 16 slots
+
+Five matched Linux groups at `c271319e` reconciled all 240
+scored jobs. Both Mesh controls passed every gate and won
+all five throughput comparisons. They reached 285.4 and
+276.0 jobs/s, versus 96.9 for Oban. Pickup p99 was 52.5
+and 49.6 ms versus 162.6 ms.
+
+Mesh first claimed work at 3.6–3.8 ms, versus 86.9 ms for
+Oban. After the first claim, Mesh drained the backlog in
+52.5–54.2 ms versus 67.0 ms. The peak queued-context metric
+was 2,098,480 bytes.
+[Four-runner large-payload receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure one-runner no-op drain at 64 slots
+
+The `c271319e` release fixture reconciled 15,360 scored jobs across
+five staged groups on the two-vCPU Linux guest. The two identical
+Mesh arms reached median throughput of 1,365 and 1,439 jobs/s versus
+2,506 for stock Oban Basic. Both missed throughput and pickup p99
+in the scored summary. Oban won every group. CPU, RSS, and the
+absolute resource budgets passed for Mesh.
+
+The durable intervals from claim to settlement averaged about 16
+occupied slots for each Mesh arm versus 39 for Oban, measured from
+each trial's first claim to final settlement. The medians of that
+drain interval were 748 and 710 ms versus 302 ms. Mesh reached its
+first claim in roughly 2 ms versus 110 ms for Oban. The larger
+backlog drain cost dominated the faster initial pickup.
+
+The Mesh arms made a median of 67 claim calls per 1,024 jobs, close
+to the 16-job batch limit. The dispatcher admits one request at a
+time and launches the whole confirmed batch serially. The durable
+rows establish the refill gap. Measuring the claim, dispatch, and
+launch boundaries will identify which part of the batch cycle can
+be shortened.
+[No-op comparison receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare the one-slot no-op profile
+
+The `c271319e` release fixture reconciled all 3,840 measured
+jobs in five matched groups. The Mesh controls reached 135
+and 117 jobs/s versus 83 for Oban. Both won every group and
+passed all scored gates, including the two-process and
+five-connection workload limits.
+[One-slot no-op receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare the 16-slot no-op profile
+
+Both identical Mesh arms passed the scored gates at `c271319e`.
+Across five local Linux groups and 3,840 reconciled measured jobs,
+they reached 1,178 and 1,168 jobs/s versus 784 for stock Oban
+and each won four groups. Median pickup p99 was 214 and 215 ms
+versus 324 ms.
+
+Mesh picked up the first job in about 1.6 ms versus 160 ms for
+Oban. Median time from first claim to final settlement was 215
+and 218 ms for Mesh and 175 ms for Oban. The throughput win on
+this 256-job burst came from earlier pickup.
+[16-slot no-op receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare eight runners on the 64-slot no-op profile
+
+All 15,360 measured jobs reconciled at `c271319e`. Both Mesh
+controls passed the resource gates. They reached 1,035 and 1,103
+jobs/s versus 2,444 for Oban and missed the throughput and pickup
+gates in this profile. Median pickup p99 was 975 and 914 ms
+versus 411 ms.
+
+Mesh made 374 to 459 claim calls per 1,024-job trial. Between
+185 and 264 of those calls returned contention hints. The smallest
+possible call count at eight slots per runner is 128. Mesh recorded
+the first claim in about 3 ms versus 37 ms for Oban and took
+926 to 987 ms from first claim to final settlement on the two
+arm medians, versus 382 ms for Oban.
+[Eight-runner no-op receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Screen a bounded queue wait under eight-runner contention
+
+The disposable `c271319e` comparison changed only queue-row
+admission in the candidate database. It allowed up to 4 ms for
+that row lock while keeping the namespace guard, live capacity
+check, and job-row skip. The native proof passed lock handoff,
+timeout and setting restoration, live cap, pause, namespace
+fence, cutoff, and isolation cases.
+
+The wait arm reached 1,025 and 993 jobs/s versus 822 and 856
+for its same-guest Mesh controls. Claim calls per job fell from
+0.402 and 0.378 to 0.300 and 0.304. It fell short of the
+contemporaneous Oban rate in both groups. All 6,144 measured
+jobs reconciled. The two-group result supports a wider local
+comparison with an identical Mesh repeat.
+[Queue wait screen and lock proof](../proof/jobs-parity/qualification-v1.json)
+
+### Retest the queue wait against identical Mesh controls
+
+Five counterbalanced groups used the same `c271319e` release for
+both Mesh controls and the 4 ms queue wait. Each group ran a warmup
+of all four arms in a fresh two-vCPU guest. All 20,480 scored jobs
+reconciled against the frozen eight-runner, 64-slot no-op input.
+
+| Arm | Jobs/s | Pickup p99 | Claim calls/job | Runner claim-share fairness |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control A | 983 | 1,033 ms | 0.395 | 0.887 |
+| Mesh control B | 819 | 1,238 ms | 0.397 | 0.857 |
+| Mesh with queue wait | 933 | 1,075 ms | 0.303 | 0.991 |
+| Oban Basic 2.24.2 | 2,542 | 398 ms | 0.143 | 0.897 |
+
+The wait cut median claim traffic by about 23% and made claims more
+even across runner processes. The table uses Jain's fairness index,
+where 1 means each runner claimed the same number of jobs. The
+wait arm beat both Mesh controls in one of five groups. Its median
+paired rate was 86% of their geometric mean. It missed throughput
+and pickup p99 against Oban, and passed the resource limits.
+The queue wait remains experimental.
+[Five-group queue wait receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute CPU during the no-op drain
+
+One group per 64-slot no-op topology attributed CPU with Linux
+cgroups on the same two-vCPU guest. Each group ran two identical
+`c271319e` Mesh arms and stock Oban. The 6,144 scored jobs
+reconciled. The measurements include reaped workers, PostgreSQL
+backends, and the benchmark observer. The overlay keeps the
+original throughput and runner-tree CPU scoring.
+
+| Runners | Mesh arm | Runner CPU/job | PostgreSQL CPU/job | Driver CPU/job |
+| --- | --- | ---: | ---: | ---: |
+| 1 | Control A | 1.31 ms | 1.64 ms | 0.28 ms |
+| 1 | Control B | 1.46 ms | 1.83 ms | 0.32 ms |
+| 8 | Control A | 0.87 ms | 1.50 ms | 0.13 ms |
+| 8 | Control B | 1.15 ms | 1.88 ms | 0.16 ms |
+
+The readings start just before producer submit and end at the
+first terminal poll. PostgreSQL includes producer and observer SQL.
+The driver includes their client processes. The total attributed CPU
+agreed with guest-wide busy CPU within 20 ms in each scored arm.
+
+To bound CPU inside the durable interval, the reducer subtracts the
+most work two vCPUs could perform outside that interval, with margins
+for the clocks and counters. The runner and PostgreSQL combined
+still used at least 2.07–2.42 ms/job at one runner and 1.92–2.50 ms/job
+at eight. Matching the Oban rate on those boots would allow about
+1.44 and 0.78 ms/job across both CPUs. At eight runners, the observed
+PostgreSQL path alone had a lower bound of 1.06–1.35 ms/job.
+
+These two groups measure database work with the existing observer
+traffic and runner behavior. They leave CPU attribution to individual
+SQL statements and the repeatability of the split open.
+[Active CPU receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute PostgreSQL statement time on the eight-runner no-op profile
+
+One group on the same two-vCPU guest reconciled all 3,072 scored
+jobs. The diagnostic read `pg_stat_statements` just outside each
+CPU boundary. Settlement and reset-drain reads shared existing
+round trips. The statement timings sum elapsed execution across
+backends and include waiting. PostgreSQL CPU comes from a separate
+cgroup counter.
+
+| Executor time per job | Mesh control A | Mesh control B | Oban |
+| --- | ---: | ---: | ---: |
+| Attempt and effect writes | 1.293 ms | 0.899 ms | 0.046 ms |
+| Claim and lifecycle | 1.594 ms | 1.035 ms | 0.097 ms |
+| Effect session reset | 0.015 ms | 0.005 ms | |
+| Terminal polls | 0.029 ms | 0.022 ms | 0.018 ms |
+
+Each Mesh trial recorded 2,048 calls to the fenced effect function
+and 1,024 resets. PostgreSQL used 1.50 and 1.16 ms of CPU per Mesh
+job in the observed window, versus 0.32 ms for Oban. The effect
+function and claim and lifecycle statements account for the main
+recorded SQL time. The measurement leaves the effect function's
+internal planning and lock costs unresolved.
+[Statement fingerprint receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Screen the effect write without a subtransaction on lock acquisition
+
+The disposable effect function kept the same row lock and replaced
+`NOWAIT` inside an exception block with `SKIP LOCKED`. An empty
+lock result checks for a visible row and denies the write. The
+native proof covered the held row, missing or stale authority,
+expiry, cancellation, and two distinct commits. Both compiled
+revocation cases reconciled with the original effect key.
+
+Two reverse-order groups used the same release for both Mesh
+controls and the treatment. All 8,192 scored jobs reconciled.
+The treatment's effect statements took 0.678 and 0.865 elapsed
+executor ms/job. The controls took 0.825–0.918 and 1.057–1.281.
+The comparison changes the lock policy and the exception block
+together.
+
+End-to-end throughput was about 12% above the geometric mean
+of the controls in both groups. The control ratios differed
+by 16% and 36%. The treatment beat both controls in one group
+and reached 1,162 and 1,022 jobs/s versus Oban's 2,819 and 2,690.
+The treatment passed the resource limits and missed throughput
+and pickup. The smaller effect interval leaves a repeatable
+end-to-end gain open.
+[Effect lock experiment](../proof/jobs-parity/qualification-v1.json)
+
+### Retest the effect lock change in five groups
+
+The same SQL and executable passed the untimed native pilot and
+reconciled all 20,480 scored jobs in five new matched groups.
+The treatment beat both Mesh controls in two groups for throughput
+and in two for effect executor time. Its median paired throughput
+was 88% of the control geometric mean. The identical controls
+differed by a median of 3.4%.
+
+The treatment reached 970 jobs/s, the controls reached 1,011 and
+985, and Oban reached 2,699. The treatment also missed pickup p99.
+The wider comparison did not reproduce the two-group improvement.
+The SQL change remains experimental.
+[Five-group effect lock receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Retain PostgreSQL plans across fixed effect calls
+
+The direct component used the fenced effect SQL at `c271319e` on
+macOS arm64 with PostgreSQL 17.11 over TLS and SCRAM. Two disposable
+clusters reconciled 288 measured and 96 warmup jobs. Each cohort used
+one persistent effect backend and verified two separate commits per
+job. Both reset modes cleared the tested settings, prepared statements,
+cursor, temporary table, advisory lock, notification subscription, and
+sequence state.
+
+The treatment sends the documented reset sequence in one message
+without `DISCARD PLANS`. It removed four nested plans per job.
+The outer typed calls still planned twice per job. Median component
+time was 0.369 ms/job versus 0.472 and 0.484 for the two controls.
+The treatment beat both controls in all four groups. Its reset
+round trip took 0.077 ms/job versus 0.059 and 0.058 for the controls.
+
+The component isolates effect SQL and reset on one backend. The
+compiled runner, contention, and end-to-end throughput require
+separate measurements.
+[Plan retention component receipts](../proof/jobs-parity/qualification-v1.json)
+
+The compiled `952a2c5c` fixture passed its reset-frame and traced
+two-write proofs. On macOS it reconciled 15,360 scored no-op jobs
+at eight runners and 64 slots. Plan retention reached 1,310 jobs/s
+versus 1,239 and 1,253 for the two controls and beat both in four
+groups. The median paired gain of 44 jobs/s fell within the 52
+jobs/s median absolute control spread.
+
+The Linux pilot and two scored groups also verified one full reset
+per job and return of all original warm backends. Treatment ran at
+1,057 and 1,253 jobs/s, versus roughly 1,100–1,220 for the Mesh
+controls and 2,741 and 2,286 for Oban. It lost to both controls in
+one group and beat both in the other. Both platform runs predate
+the review correction for a deadline across the full reset exchange.
+[Initial compiled reset receipts](../proof/jobs-parity/qualification-v1.json)
+
+The `0ee8756a` follow-up uses one deadline for the reset write,
+flush, and reads beneath TLS. It restores socket timeouts on
+success and retires a failed checkout. Three focused reset tests,
+the compiled PostgreSQL proof, and the traced two-write proof
+passed. Both revocation placements confirmed that the authorized
+retry completed its reset, with the revoked backend retired.
+
+Five new Linux groups used the same executable in all Mesh arms
+and reconciled 20,480 scored jobs. The plan-retaining arm beat
+both Mesh controls in four groups. Its median paired gain was
+93 jobs/s against the control mean, versus 78 jobs/s absolute
+drift between controls. Every job completed one full reset, and
+all original warm backends returned to idle before scoring.
+
+| Arm | Jobs/s | Pickup p99 | Runner CPU/job |
+| --- | ---: | ---: | ---: |
+| Mesh control | 1,119 | 902 ms | 1.05 ms |
+| Mesh repeat | 1,104 | 914 ms | 1.05 ms |
+| Mesh with retained plans | 1,191 | 845 ms | 1.03 ms |
+| Oban Basic 2.24.2 | 2,738 | 369 ms | 3.26 ms |
+
+The treatment passed resource limits and missed the throughput and
+pickup gates. It remains an opt-in fixture experiment.
+[Bounded compiled reset receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Group PostgreSQL claim updates
+
+A disposable SQL overlay combined the per-row updates in
+`claim_batch_v1` into one update of the selected rows. It kept the
+ordered cursor, queue and candidate row locks, context limits,
+per-row trigger, and confirmed COMMIT before launch. PostgreSQL
+materializes the function result, and an unexpected update count
+aborts the transaction before the caller receives the claims.
+[PostgreSQL 17 set-returning functions](https://www.postgresql.org/docs/17/plpgsql-control-structures.html#PLPGSQL-STATEMENTS-RETURNING)
+
+The direct component used the pinned claim statement and frozen
+no-op arguments on macOS arm64 with PostgreSQL 17.11, verified TLS,
+and SCRAM. It reconciled 15,360 claimed jobs across 960 scored
+batches in five groups. Native checks covered the ordered prefix across
+oversized rows, the aggregate byte limit, rollback, live tokens,
+queue capacity, lock skips, and queue pause. The median trial mean
+from `BEGIN` through confirmed `COMMIT` was 1.20 ms per 16-job batch,
+versus 1.84 and 1.78 ms in the controls. The grouped update beat both
+controls in all five groups, saving a paired median of 0.59 ms against
+0.14 ms of control spread. This interval includes client round trips
+and row decoding.
+
+The separate Linux pilot reconciled 2,048 attempts, including exact
+worker reaps. Five trace-off `noop-8r-64s` groups reconciled 20,480
+scored jobs. All Mesh arms used the same `0ee8756a` release binary,
+fresh children, and the plan-retaining reset. The runtime and the two
+effect writes were identical across the Mesh arms.
+
+| Arm | Median jobs/s | Range | Pickup p99 | Runner CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control | 1,148 | 1,116–1,294 | 882 ms | 1.04 ms |
+| Mesh repeat | 1,222 | 840–1,273 | 824 ms | 1.03 ms |
+| Mesh with grouped claim updates | 1,263 | 1,221–1,318 | 795 ms | 1.02 ms |
+| Oban Basic 2.24.2, Isolated notifier | 2,606 | 1,888–3,056 | 388 ms | 3.40 ms |
+
+The grouped update beat both Mesh arms in four of five groups. Its
+median gain of 52 jobs/s against the control mean fell within the
+83 jobs/s median absolute control spread. The median claim rate
+was 0.356 calls/job versus 0.377 and 0.388. The treatment passed
+the resource gates and missed throughput and pickup. The measured
+component savings leave the sustained drain gap open. The overlay
+remains a local diagnostic.
+[Grouped claim update receipt](../proof/jobs-parity/qualification-v1.json)
+
+Three additional groups measured active CPU on the exact same
+Linux release image and SQL overlay. Each boot separated the runner
+tree, PostgreSQL, and the driver into cgroups. Counter reads wholly
+inside the durable interval tightened the previous bounds from the
+outer enqueue and terminal-poll reads. Each bound uses the stronger
+of those two methods. All 12,288 scored jobs reconciled.
+
+| Group | Runner floor | PostgreSQL floor | Joint floor | CPU available at same-boot Oban throughput |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 0.633 | 0.811 | 1.445 | 0.972 |
+| 1 | 0.495 | 0.598 | 1.214 | 0.932 |
+| 2 | 0.472 | 0.606 | 1.238 | 0.749 |
+
+All values are CPU-ms/job for the two-vCPU guest. The joint bound uses
+one allowance for CPU outside the durable interval. PostgreSQL includes
+server work for the existing producer and observer. Meeting same-boot
+Oban throughput would require removing at least 0.28–0.49 CPU-ms/job
+from the measured runner and PostgreSQL work on this guest. The runner
+floor leaves at most 0.28–0.44 CPU-ms/job for all other work if runner
+CPU stays fixed. The runner cgroup includes child startup, handler
+execution, supervision, and effect routing. A separate process-start
+measurement would be needed to assign a share to fresh exec.
+[Grouped claim CPU receipt](../proof/jobs-parity/qualification-v1.json)
+
+The exact-child probe provides an upper bound on startup savings. It
+used the same worker image and captured terminal `wait4` resource usage
+from the Mesh runner. Each record matched the durable worker PID and
+its exact runner. The traced pilot matched 2,048 reaps, and the three
+instrumented groups matched all 9,216 measured Mesh reaps.
+
+| Group | Full child CPU | Joint floor | Floor with all child CPU removed | Same-boot Oban budget |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 0.529 | 1.528 | 0.999 | 0.756 |
+| 1 | 0.479 | 1.343 | 0.863 | 1.976 |
+| 2 | 1.512 | 6.805 | 5.293 | 1.547 |
+
+Values are CPU-ms/job for the grouped-claim arm. Group 1's Oban run
+reached 1,012 jobs/s. Group 2 ran under elevated host load and recorded
+a guest timer warning. Both groups remain in the receipt. In each
+group, the floor after subtracting all measured child CPU exceeds the
+0.768 CPU-ms/job budget implied by Oban's earlier trace-off median.
+This arithmetic holds the remaining work fixed and subtracts the full
+worker lifetime, including handler execution. It bounds how much a
+worker-only CPU saving can explain in these runs.
+
+The next performance screen groups independent writes on the PostgreSQL
+side. The candidate retains two ordered commits and current-claim
+validation for every job, plus one fresh worker per attempt.
+[Exact-child CPU receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Group PostgreSQL effect transactions
+
+The direct PostgreSQL 17.11 component used the `0ee8756a` effect SQL
+and the frozen `noop-8r-64s` input. It pre-committed the claims and
+called the original effect function under the scoped TLS/SCRAM login.
+The grouped arms sent eight independent jobs per statement. They
+committed the attempt records before submitting the effect stage. Each
+job kept a distinct transaction for each write and its stable effect key.
+
+The native macOS and Linux proofs denied a stale claim token and a
+held row lock in separate cases. In each case the rejected job left
+zero writes, and its seven peers committed both writes under different
+attempt and effect transaction IDs. An observer saw the committed
+attempts before the effect statement was submitted. The session reset
+witness and the scored SQL and row counts also passed.
+
+| Arm | PostgreSQL CPU-ms/job, first series | Reverse series |
+| --- | ---: | ---: |
+| Scalar control | 0.261 | 0.158 |
+| Scalar repeat | 0.287 | 0.177 |
+| Eight jobs, one reset per job | 0.122 | 0.116 |
+| Eight jobs, one reset per group | 0.122 | 0.059 |
+
+The two Linux series ran five counterbalanced groups each and
+reconciled 38,400 scored jobs. The equal-count grouped arm performs
+its resets together at the batch boundary. Its conservative paired
+median savings against the faster control were 0.095 and 0.072
+CPU-ms/job. The first series exceeded the control spread limit. On
+the reverse run, even the optimistic gain plus control spread stayed
+below the 0.28 CPU-ms/job lower cutoff in all five groups. The extra
+paired median saving from one reset per group was 0.0002 and 0.045
+CPU-ms/job in the two series.
+
+The component isolates PostgreSQL calls over one persistent backend.
+It leaves group formation, compiled execution, transport ambiguity,
+and end-to-end scoring open. The saving was too small to close the
+measured dense gap on its own. The next candidate targets concurrent
+admission at the queue capacity boundary.
+[Grouped effect transactions receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare independently lockable queue slots
+
+Two Linux runs measured the persistent PostgreSQL backends of the exact
+grouped-claim release fixture. Both retained the original 32 runner and
+63 effect sessions. The observer read each admitted PID's `schedstat`
+before producer submit and after the first terminal observation, then
+verified its start time and membership. In the grouped-claim arm, the
+runner-role sessions used 0.639 and 1.486 CPU-ms/job. These sessions
+also handle lifecycle and maintenance SQL. The effect sessions used
+0.345 and 0.840 CPU-ms/job. Subtracting all measured runner-role server
+CPU from the joint floor leaves 1.008 and 2.348 CPU-ms/job, above the
+respective same-boot Oban budgets of 0.795 and 1.841. Run rates and host
+load varied substantially. This bounds direct savings within the sampled
+backend role while holding the remaining work fixed.
+
+A separate PostgreSQL 17.11 component replaced the exclusive queue-row
+claim lock with a shared configuration fence and independently lockable
+durable slot rows. Claim and slot ownership commit in the same
+transaction. Settlement and recovery release the slot held by the
+matching token. The disposable schema denies the legacy claim entry
+points.
+
+Native arm64 macOS and Linux proofs covered simultaneous claims, cap
+shrink and expansion, current and stale tokens, oversized contexts,
+disconnect and rollback, unread COMMIT, and lease expiry. The first
+Linux warmup encountered a settlement `NOWAIT` rejection. The paired
+runner then retained the same token and retried lock rejections at the
+pinned 100 ms interval. Both scored series used that retry policy.
+
+| Paired median change per 1,024-job comparison | First series | Reverse series |
+| --- | ---: | ---: |
+| Claim calls | -195 | -142 |
+| PostgreSQL CPU-ms/job | -0.136 | +0.024 |
+| PostgreSQL and client CPU-ms/job | -0.200 | +0.015 |
+| WAL bytes/job | +1,063 | +1,042 |
+| Settlement lock retries | +72 | +36 |
+
+All 20,480 scored jobs reconciled. Eight closed-loop lanes used the
+stock claim reply shape and real settlements, with a zero-work executor.
+The slot variant reduced claim traffic in all ten pairs. The CPU gain
+reversed, and stock had zero settlement lock retries in both series.
+This variant remains a component. A follow-up puts the slot assignment
+on the job row and rechecks eligibility before taking a physical row
+lock. Both changes need native overlap and WAL evidence before compiled
+dispatch or mixed-version integration.
+[Durable slot admission receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Store the claim slot on the job row
+
+The follow-up stores the slot number on the executing job row. A
+partial unique index protects slot ownership. Settlement releases the
+slot as part of the existing state change. Claimers take a shared
+queue lock and bounded transaction advisory permits. A fresh eligibility
+read under the job permit precedes the physical row lock.
+
+PostgreSQL 17.11 proofs on macOS and Linux staged the stale-cursor
+race. The stock cursor prevented the current claim from settling and
+made its effect report `busy` while the peer transaction stayed open.
+The inline candidate let that current claim apply its effect and settle
+before releasing the peer. The proof also checked the queue cap,
+permit containment, cancellation, lease recovery, and unread COMMIT.
+
+Two Linux series, each with five counterbalanced closed-loop pairs,
+reconciled 20,480 scored jobs. These component lanes claim and settle
+real jobs with a zero-work executor.
+
+| Paired median change per 1,024-job comparison | First series | Reverse series |
+| --- | ---: | ---: |
+| Claim calls | -158 | -146 |
+| PostgreSQL CPU-ms/job | -0.044 | -0.024 |
+| PostgreSQL and client CPU-ms/job | -0.057 | -0.037 |
+| Wall ms/job | -0.107 | -0.108 |
+| WAL bytes/job | +845 | +926 |
+| Settlement lock retries | 0 | 0 |
+
+The variant cut claim calls and wall time in all ten pairs. Both
+arms had zero settlement lock retries. Extra WAL remained despite
+removing the separate slot-table updates. The disposable schema
+fences legacy entry points. Mixed-version migration remains open.
+[Inline admission receipt](../proof/jobs-parity/qualification-v1.json)
+
+The compiled Linux pilot used the `0ee8756a` release binary and installed
+the inline claim function in a disposable PostgreSQL 17.11 database.
+The first run completed the stock control. The inline runner stopped
+before enqueue when PostgreSQL denied its cron activation upsert.
+After adding the scoped cron grants, each arm reconciled 1,024 jobs,
+2,048 effect commits, 1,024 exact child reaps, and 1,024 resets. All 63
+effect backends returned idle and all inline slots were released.
+
+Five counterbalanced groups reconciled 20,480 scored jobs on the
+two-vCPU ARM64 guest. Each group used two identical stock Mesh arms,
+inline admission on the same executable, and Oban Basic 2.24.2 with
+the Isolated notifier.
+
+| Arm | Median jobs/s | Jobs/s range | Pickup p99 | Claim calls per 1,024 jobs |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 828 | 379–1,107 | 1,218 ms | 406 |
+| Mesh repeat | 1,017 | 534–1,069 | 977 ms | 403 |
+| Mesh with inline admission | 1,026 | 424–1,139 | 980 ms | 277 |
+| Oban | 2,378 | 2,285–2,738 | 424 ms | 145 |
+
+Inline admission reduced claim calls in all five groups. It beat both
+Mesh controls in three groups. The median paired gain was 78 jobs/s
+against the control mean. The median absolute difference between the
+two controls was 115 jobs/s, with one difference of 638 jobs/s. The
+treatment passed the resource gates and missed throughput and pickup.
+The inline schema remains a disposable experiment.
+[Compiled inline admission receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute fresh Linux worker startup
+
+The Linux fixture relink used the same `0ee8756a` compiler, runtime
+archive, and handler sources. Native wrappers recorded process CPU at
+constructor, runtime initialization, actor initialization, worker entry,
+and handler entry. A parent `wait4` supplied the terminal count. Host and
+guest joined the phase marks and exact parent and child PIDs to the
+durable outcomes. The traced pilot matched 2,048 workers. One separate
+instrumented group matched 3,072 scored Mesh workers.
+
+| Mean CPU-ms/job by phase | Mesh | Mesh repeat | Grouped claim update |
+| --- | ---: | ---: | ---: |
+| Through constructor mark | 0.149 | 0.312 | 0.142 |
+| Runtime initialization | 0.042 | 0.088 | 0.041 |
+| Actor initialization | 0.081 | 0.179 | 0.080 |
+| Worker entry through bootstrap and watchdog setup | 0.091 | 0.202 | 0.091 |
+| Through handler entry, including intervening work | 0.372 | 0.799 | 0.361 |
+| Full child lifetime | 0.527 | 1.100 | 0.510 |
+
+Actor initialization and worker bootstrap are direct targets for the
+fresh-exec candidate. The phase times include any concurrent worker-thread
+CPU during each interval. The witness writes its log after sampling
+handler entry. The relink and the spread between identical controls limit
+these figures to attribution.
+[Worker startup phase receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Verify the Linux worker bootstrap changes
+
+The `f82c66b4` release build adds independent worker-only switches for
+starting the scheduler on first actor spawn and combining the two
+watchdogs. The native proof exercises all four flag combinations with
+ordinary and fenced worker arguments. It checks first actor execution
+under GC stress, the private effect descriptor, exact executable
+identity, and timeout, lease expiry, and parent EOF while a handler
+blocks on a FIFO.
+
+The initial proof script failed while entering a socket context before
+it started a worker. The corrected script at `6a7fcb38` used the same
+ELF. The DB-free observer ran as root inside the guest so it could
+inspect the optimized worker's executable and open descriptors. The
+PostgreSQL pilot used the standard unprivileged guest setup.
+The concurrent first-spawn unit test passed on macOS after the
+test-only effect child was updated to use the new bootstrap reader
+at `7310bc6d`.
+
+The compiled PostgreSQL pilot reconciled 2,048 jobs across the control
+and combined treatment. Each job produced two fenced commits, one
+reset, and an exact child reap. With both switches enabled, separate
+fresh and prewarmed cases revoked the owner between the two commits and
+after the second commit before receipt delivery. All four cases verified
+the authorized retry, a single durable effect, and checkout cleanup.
+[Worker bootstrap proof](../proof/jobs-parity/qualification-v1.json)
+
+The scored comparison enabled both switches in the treatment and
+disabled both in the two Mesh controls. All Mesh arms used the same
+ELF, stock claim SQL, and plan-retaining reset. Five fresh Linux boots
+ran one counterbalanced group each after warmup. All 20,480 scored jobs
+reconciled.
+
+| Arm | Median jobs/s | Jobs/s range | Pickup p99 | Runner CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 906 | 449–953 | 1,111 ms | 1.28 ms |
+| Mesh repeat | 765 | 504–1,133 | 1,318 ms | 1.48 ms |
+| Mesh with both switches | 817 | 376–1,153 | 1,235 ms | 1.33 ms |
+| Oban | 1,444 | 1,014–2,498 | 696 ms | 4.82 ms |
+
+The treatment beat both Mesh controls in one group. Its paired median
+gain of 67 jobs/s fell within the 422 jobs/s median absolute control
+spread. The treatment passed the resource gates and missed throughput
+and pickup. This result leaves each switch's individual effect open.
+[Matched bootstrap receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Isolate the two worker bootstrap switches
+
+Six instrumented two-vCPU Linux ARM64 groups used one pinned
+`f82c66b4` ELF on `noop-8r-64s`. Three groups enabled scheduler
+thread deferral and three enabled one watchdog. Each compared a
+single switch against two identical flag-off Mesh controls and stock
+Oban. The traced pilots and all 24,576 scored jobs reconciled.
+The scored Mesh arms accounted for 18,432 exact child reaps.
+
+| Switch | Median child CPU gain against lower-CPU control | Median child A/A spread | Median runner CPU gain | Median runner A/A spread |
+| --- | ---: | ---: | ---: | ---: |
+| Scheduler thread deferral | 218 µs/job | 182 µs/job | 315 µs/job | 566 µs/job |
+| Single watchdog | 66 µs/job | 193 µs/job | 70 µs/job | 641 µs/job |
+
+Each switch used less child CPU than both controls in two groups.
+The host's maximum one-minute load per group ranged from 18.9 to
+30.4 across 15 logical CPUs. Neither runner CPU gain exceeded its
+control spread. Both treatments trailed Oban in every group, so
+the series leaves the individual runtime gains inconclusive.
+
+The first watchdog group-one boot stopped in Oban warmup when a
+PostgreSQL backend exited during the observer's membership read.
+The retry classifies the vanished PID as exited and retains the
+membership checks on live processes. The failed receipt and all
+completed groups are retained.
+[Separate bootstrap receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Bound the CPU available for combined settlement and refill
+
+Three instrumented groups used the same `f82c66b4` ELF, stock claims,
+and plan-retaining reset. The probe joined each `wait4` record to the
+durable attempt. It also sampled the 63 admitted effect backends at
+the existing observer polls without adding SQL. The backend floor
+uses the stronger of the samples wholly inside the durable interval
+and the outer reads after a two-vCPU edge allowance. Both calculations
+include an accounting margin.
+
+| Group | Mesh control floor | Mesh repeat floor | Combined switches floor | Same-boot Oban budget |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 0.598 | 0.550 | 1.122 | 0.896 |
+| 1 | 0.537 | 1.326 | 0.564 | 0.897 |
+| 2 | 0.620 | 0.586 | 1.056 | 0.837 |
+
+All values are CPU-ms/job. Each floor includes only exact child CPU
+and effect-backend CPU. The available budget assumes both vCPUs
+are fully available at Oban's durable throughput in that boot.
+The sum exceeded the budget in two of three combined-switch trials
+and one of six control trials. The other five controls left at most
+0.217–0.360 CPU-ms/job for all remaining work. In those same five
+controls, the full runner and PostgreSQL floor exceeded the budget
+by 0.459–0.610 CPU-ms/job.
+
+The probe reconciled 12,288 scored jobs and stayed separate from the
+trace-off comparison. The spread between identical Mesh controls
+leaves settlement and refill open as a component experiment. A
+standalone change to that path would have to remove a large share
+of the remaining CPU to close the gap.
+[Settlement and refill CPU receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare four runners at 64 slots on no-op jobs
+
+Five matched Linux groups at `c271319e` reconciled 15,360
+scored jobs. The identical Mesh controls reached 1,162 and
+952 jobs/s, versus 2,559 for Oban. Pickup p99 was 865 and
+1,051 ms versus 389 ms. Both controls passed the resource
+limits and missed throughput and pickup in every group.
+
+Mesh first claimed work in about 2 ms, versus 54 ms for Oban.
+Mesh then needed 879–1,074 ms to drain the backlog, compared
+with 391 ms for Oban. About 43–44 Mesh slots were occupied
+during that drain, versus 26 for Oban. Mesh made 0.145–0.146
+claim calls per job, close to its batch floor of one call per
+eight jobs. The throughput gap persists in this topology
+with more occupied slots and fewer claim calls per job than
+in the eight-runner comparison.
+[Four-runner no-op receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare four runners at 16 slots on no-op jobs
+
+Five matched Linux groups at `c271319e` reconciled all 3,840
+scored jobs. Both Mesh arms passed the median gates at 1,058
+and 1,032 jobs/s versus 986 for Oban. Each Mesh arm won three
+of the five throughput comparisons. Pickup p99 was 234 and
+242 ms versus 259 ms.
+
+Mesh recorded its first claim in 1–2 ms versus 29 ms for Oban.
+The subsequent drain took 241–246 ms versus 224 ms. The local
+throughput margin includes the difference in initial pickup.
+[Four-runner no-op-16 receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare the 16-slot slow profile
+
+Five matched Linux groups at `c271319e` reconciled all 1,920
+measured jobs. Both Mesh controls won every group. Their median
+throughput was 133.5 and 135.1 jobs/s versus 118.1 for Oban.
+Pickup p99 and CPU passed. The two arms missed the RSS gate
+at 203.5 and 203.8 MiB, against a 190.2 MiB ceiling from
+Oban's median 126.8 MiB.
+[16-slot slow receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Disable transparent huge pages in slow-16 workers
+
+The stock guest compared two stock Mesh controls, the worker-local
+THP variant, and stock Oban over five matched groups. A traced
+pilot read the policy in live child processes during the handler
+hold. It matched 110 stock workers with THP enabled and 112
+variant workers with THP disabled. The guest used its ordinary
+kernel settings.
+
+The variant's median peak RSS was 102.6 MiB versus 204.8 MiB for
+both Mesh controls and 125.9 MiB for Oban. It reached 132.9 jobs/s
+versus Oban's 116.5 and won all five throughput comparisons.
+The variant passed every scored limit, and all 2,560 measured
+jobs reconciled.
+
+The local treatment added a worker constructor to the relink.
+The executable layout can contribute to the reported RSS change.
+A runtime flag permits a separate comparison with the same
+executable in every Mesh arm.
+[Worker-local THP trial receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Confirm worker THP disablement with one executable
+
+Five matched groups at `239c8445` ran the same Linux arm64
+executable in both Mesh controls and the THP treatment. With
+`MESH_DIAGNOSTIC_JOB_DISABLE_THP=1`, the exact job worker disables
+transparent huge pages before handling the attempt. The runner itself
+keeps the guest's default policy. PostgreSQL 17.11 uses verified TLS
+and SCRAM, and all 2,560 scored jobs reconciled.
+
+| Arm | Jobs/s | Peak RSS | Pickup p99 | CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control | 134.2 | 205.7 MiB | 848 ms | 1.61 ms |
+| Mesh repeat | 133.7 | 202.3 MiB | 846 ms | 1.80 ms |
+| Mesh, worker THP disabled | 135.1 | 103.6 MiB | 843 ms | 1.58 ms |
+| Oban Basic 2.24.2 | 125.4 | 122.2 MiB | 913 ms | 3.72 ms |
+
+The treatment met every slow-16 gate and beat Oban's throughput in
+all five groups. Both controls missed RSS. The median paired drops in
+peak RSS were 102.1 and 100.0 MiB. Throughput stayed within about
+1.5 jobs/s of the controls on the median paired comparisons.
+
+The pilot observed 115 control children and 114 treatment children
+during the handler hold. Separate bootstrap checks observed both
+worker selectors after scheduler startup. The unset flag and values
+`0` and `01` inherited the guest policy. Only `1` disabled THP.
+Closing input during bootstrap returned status 174 in all eight cases.
+The memory result covers the local 16-slot profile with the fenced
+effect fixture. Worker THP disablement remains opt-in.
+[Same-executable trial receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Check the ordinary Linux worker selector
+
+The stock release lineage after the main diagnostics merge
+uses the ordinary Jobs worker entry. The forward port at
+`25cc1299` has no private effect fixture. A Linux GNU ARM64
+boot linked a small compiled application against its release
+runtime and verified eleven live processes through the real
+worker and application selectors.
+
+Only the exact two-argument worker with the flag set to `1`
+changed the stock THP policy. Unset, `0`, and `01` preserved
+the inherited policy. Workers returned status 174 when the
+driver closed input during bootstrap. Nonmatching selectors
+ran the compiled application and kept its policy. The first
+boot stopped because the guest lacked a Python extension's
+`libffi` dependency. A pinned native launcher supplied the
+inherited-policy cases in the successful boot. This proof
+covers selection and bootstrap. The live PostgreSQL workload
+has a separate held-child check.
+[Stock bootstrap receipt](../proof/jobs-parity/qualification-v1.json)
+
+A stock slow-16 PostgreSQL pilot used one release ELF with the
+policy flag off and on. It reconciled 128 jobs per arm and matched
+85 control and 128 treatment PIDs to their durable attempts during
+the handler hold. Controls reported `THP_enabled=1`. Treatment
+workers reported `THP_enabled=0`. The runner kept its inherited policy.
+
+The first scored boot stopped in the Mesh warmup. PostgreSQL
+logged two fresh login rejections at the 20-session database
+limit, and a job ran more than once. The physical limit included
+the observer sessions. The failure alone does not distinguish
+an observer admission race from backend teardown. The pilot and
+failed warmup are retained, and the series has no timing verdict.
+[Ordinary held-worker and admission receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare worker THP on the ordinary Linux slow-16 path
+
+The replay used the same `25cc1299` release ELF in all Mesh arms,
+with two vCPUs, 1 GiB RAM, PostgreSQL 17.11, and stock Oban Basic
+2.24.2 with the Isolated notifier. One read-only observer stayed
+connected throughout each arm. It occupied one of 21 physical
+database slots, leaving 20 for the workload. A separate PostgreSQL
+check held all 21 TLS sessions and verified that the next workload
+login was rejected. The adapter invalidates an arm if the observer
+disconnects and restores the 20-slot limit before closing it.
+
+The pilot matched 120 control and 118 treatment workers to their
+durable attempts while they held between writes. Both runners kept
+THP enabled. The five counterbalanced groups reconciled 2,560 scored
+jobs with one attempt and one effect each. The workload reached
+20 connections, and each of the 42 pilot, warmup, and scored arms
+drained its observer and workload sessions.
+
+| Arm | Median jobs/s | Median peak RSS | Median pickup p99 | Median CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control | 135.9 | 218.8 MiB | 835 ms | 2.21 ms |
+| Mesh repeat | 135.4 | 216.8 MiB | 840 ms | 2.27 ms |
+| Mesh, worker THP disabled | 132.9 | 114.9 MiB | 850 ms | 2.37 ms |
+| Oban Basic | 120.8 | 124.5 MiB | 955 ms | 4.17 ms |
+
+Only the treatment met the 186.8 MiB RSS cap among the Mesh arms.
+It met every frozen gate for this profile and beat Oban in four of
+five groups. Its median paired RSS savings were 103.9 and 101.8 MiB
+against the two controls. Both controls had higher median throughput.
+The peak one-minute host load ranged from 7.83 to 13.38 across the
+groups. Worker THP disablement remains opt-in at the tested revision.
+[Ordinary matched run](../proof/jobs-parity/qualification-v1.json)
+
+### Measure ordinary Linux worker memory at 64 slots
+
+A held-worker pilot used the same `25cc1299` release ELF and the
+frozen 512-job `slow-1r-64s` input with PostgreSQL 17.11. It
+matched 435 control and 417 treatment workers to their durable
+attempts. Median held-worker RSS fell from 11.01 to 5.03 MiB
+with THP disabled. Treatment peak runner-tree RSS reached
+295.0 MiB in the pilot.
+
+One separate untraced group ran control, treatment, then stock
+Oban with zero warmups. All 1,536 jobs had one attempt and one
+effect. The maximum observed workload connection count was 68,
+with one separately reserved observer.
+
+| Arm | Jobs/s | Peak RSS | Peak processes | Pickup p99 |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh control | 88.9 | 381.0 MiB | 33 | 5,616 ms |
+| Mesh, worker THP disabled | 133.5 | 210.2 MiB | 38 | 3,689 ms |
+| Oban Basic | 445.2 | 143.8 MiB | 2 | 1,044 ms |
+
+The group's RSS reference was 215.7 MiB. Treatment was under
+that value while the runner tree peaked at 38 processes and
+throughput and pickup both trailed Oban. The higher pilot
+peak leaves RSS at full occupancy unproven. Fixed arm order,
+no warmups, and a peak one-minute host load of 18.15 limit
+this run to resource diagnosis.
+
+The first pilot reached PostgreSQL shutdown but failed an
+overstrict procfs check. Guest init had yet to collect the
+detached postmaster. The replay verified that the original
+postmaster had exited, its PID file was gone, and `pg_ctl
+status` returned 3. It records the exited PID and start
+time when a zombie entry remains at proof collection.
+[Ordinary slow-64 canary and held samples](../proof/jobs-parity/qualification-v1.json)
+
+### Drop cold executable pages before the slow-64 handler
+
+Two Linux boots used the same relinked `f1e2709c` fixture with
+worker THP disabled and the stock 64 KiB fault-around window.
+Both arms verified the main executable's immutable file-backed
+pages before handler work. The treatment applied
+`MADV_DONTNEED` to the eligible read-only and executable ranges.
+The observer matched 64 held child processes per arm to both
+durable writes and verified their reaps before the runner stopped.
+
+Median held RSS was 4.29 MiB in the control and 3.66 MiB with
+the trim. The median paired saving was 0.63 MiB, almost entirely
+file-backed executable pages. The trim missed the 1.6 MiB
+per-child screen. These boots measured held memory and excluded
+timed throughput and separate watchdog fault cases.
+[Held executable RSS receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Trace the no-op claim and launch cycle
+
+One warmed and one measured matched group at `1d9d7e41` recorded
+the claim thread, confirmed COMMIT, result consumption, and every
+launch. The `de3da046` follow-up also measured `Command::spawn`.
+Both builds ran the frozen 1,024-job input with two identical
+trace-off controls and one trace-on arm. Every measured job
+reconciled and each trace matched all 1,024 job IDs and child PIDs.
+
+In the `de3da046` measured arm, the median full 16-job cycle took
+10.10 ms from request through the next request. The claim lane took
+2.94 ms, including the due probe and confirmed claim transaction.
+The serial launch group took 6.31 ms, with 4.49 ms total inside
+`Command::spawn`. The median reply-to-consume interval was 0.018 ms
+and last-launch-to-next-request was 0.005 ms. The warmup showed a
+similar breakdown. Across measured full cycles, spawn accounted for
+45% of elapsed time.
+
+The two identical controls reached 1,508 and 536 jobs/s in this
+group. The trace identified native spawn and the next claim as the
+largest measured parts of the refill cycle.
+[Claim and launch timing receipt](../proof/jobs-parity/qualification-v1.json)
+
+The `2456283b` trace separated preparation and registration from
+native spawn in two additional matched groups. Both measured
+traces matched 1,024 job IDs and exact child PIDs. Across the
+64 full batches in each trace, median native spawn was 4.64
+and 4.62 ms per batch. Preparation took 0.22 ms in each.
+Post-spawn setup took 0.16 and 0.17 ms, and registration took
+about 0.01 ms. The median preparation and registration stages
+offer little room for a 1 ms saving per batch. The slower
+warmup trace also spent most of its time inside native spawn.
+[Launch segment receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Test overlapping the next claim with serial launch
+
+The fixture-only `fabe3099` candidate prepared the next claim on the
+existing claim thread while the dispatcher launched the confirmed
+batch. PostgreSQL waited for a bounded grant before committing the
+second batch. Four native tests on PostgreSQL 17.11 passed, including
+a denied claim that rolled back and preserved the final attempt
+credit for both rows during an ordinary refetch.
+
+Five matched no-op groups at one runner and 64 slots reconciled all
+15,360 measured jobs. The flag exercised 62 to 64 overlapping
+requests per group and doubled the peak queued context to 43,392
+bytes. The candidate reached 1,309 jobs/s, versus 1,288 and 1,425
+for the identical controls. It beat both controls in two groups.
+The median paired change against the mean of the controls was
+−56 jobs/s, and the median absolute difference between controls
+was 77 jobs/s.
+
+Keep the change fixture-only. Synchronous lifecycle work can still
+consume the second batch's lease after a grant. Local stop or scale
+can also intervene between the grant and COMMIT. The native rollback
+test covers explicit denial before COMMIT.
+[Claim-ahead comparison and proof](../proof/jobs-parity/qualification-v1.json)
+
+### Compare one and two native launchers
+
+A DB-free screen ran the same compiled Linux worker through
+`posix_spawnp` in 108 measured 16-child waves on two vCPUs.
+Both controls used one launch thread. The candidate used two
+threads in the same parent and overlapped spawn calls in all
+36 of its waves. All 1,728 measured children returned the
+expected reply and were reaped by exact PID.
+
+Two launchers shortened the spawn wave by a paired median of
+0.30 and 0.42 ms against the two controls. The time through
+verified child completion fell by 0.27 and 0.44 ms, with wins
+against both in five of six groups. Total CPU stayed within
+the variation between the identical controls. That launch
+saving accounts for a small part of the observed 10.10 ms
+no-op refill cycle. The screen used release worker `a39447f7`
+and exercised neither PostgreSQL nor the Jobs dispatcher.
+[Parallel launch screen](../proof/jobs-parity/qualification-v1.json)
+
+### Group no-op completions after exact reap
+
+The `e98650d4` release fixture ran the frozen no-op workload with
+one runner and 64 slots in five matched Linux groups. Each group
+included two identical controls and one arm with bounded completion
+batching. All 15,360 measured jobs reconciled. PostgreSQL recorded
+77 to 88 batched settlement statements per candidate trial.
+
+Completion batching reduced median runner SQL from 4.27 and
+4.28 calls per job to 3.62. The candidate reached 1,215 jobs/s
+versus 1,453 and 1,503 for the controls and beat both in two
+groups. Its paired median was 157 jobs/s below the mean of
+the controls, which differed by 293 jobs/s at the median.
+The lower statement count did not produce a repeatable
+throughput gain.
+[No-op completion-batch receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Defer the scheduled-work probe until the claim is empty
+
+The `15a6368e` diagnostic moved the due-time query after a
+confirmed empty claim. It used the claim's PostgreSQL statement
+timestamp so a scheduled or retryable job that became due during
+the claim could prompt an immediate retry.
+
+Five matched no-op groups reconciled all 15,360 measured jobs.
+The opt-in arm issued two or three due-time probes per trial,
+versus 66 to 68 in the controls. Median runner SQL fell from
+4.27 and 4.28 calls per job to 4.21. The candidate reached
+1,492 jobs/s versus 1,515 and 1,494. It beat both controls in one
+group. The paired median change against the control mean was
++27 jobs/s, within the 79 jobs/s median absolute control spread.
+The change remains a diagnostic.
+
+At `d43a4d6e`, 26 focused Jobs tests and five PostgreSQL 17.11
+store tests passed. The tests cover scheduled and retryable
+deadline crossings, contention and the ordered context bound.
+That revision changes the benchmark driver's legacy probe counter
+relative to the timed revision. The timing used one binary for all
+three arms.
+
+A separate compiled Linux proof started a scheduled first attempt and
+a retryable second attempt using a due scan before the 60-second
+fallback. Both preserved the job and effect identity, committed the
+two writes and settled once after exact reap. The proof uses the same
+`15a6368e` executable as the timing. A live cut of the claim's
+final ReadyForQuery remains open for this diagnostic.
+[Deferred probe timing and tests](../proof/jobs-parity/qualification-v1.json)
+
+### Give the pre-claim due query an index range
+
+The `fba10162` diagnostic kept the pre-claim probe and its single
+materialized PostgreSQL clock. The range arm used the clock as a
+scalar bound on `scheduled_at_ms`. Both arms kept the same query
+filters, schema, claim transaction, and worker lifecycle.
+
+On macOS arm64 with PostgreSQL 17.11, the stock plan scanned all
+1,024 queue-index rows and applied the time condition as a join
+filter. The range plan put the time condition in the index scan.
+It visited zero rows with a ready-only backlog and one row with a
+future job. Both queries returned the expected delay in each case.
+
+The first Linux pilot stopped in the after-run statement check, which
+queried the workload database for an extension installed in the
+control database. The rerun read the cluster-wide counters from the
+control database. Each pilot arm reconciled 1,024 jobs, two writes per
+job, and exact child reaps. The control executed 540 stock probes.
+The range arm executed 528 range probes.
+
+Five matched Linux groups used one release executable across the
+three Mesh arms and reconciled 20,480 scored jobs.
+
+| Arm | Median jobs/s | Jobs/s range | Pickup p99 |
+| --- | ---: | ---: | ---: |
+| Mesh | 509 | 479–693 | 1,947 ms |
+| Mesh repeat | 698 | 480–925 | 1,450 ms |
+| Mesh with range probe | 519 | 362–1,063 | 1,930 ms |
+| Oban Basic 2.24.2 | 2,140 | 1,146–2,304 | 467 ms |
+
+The range arm beat both controls twice. Its median paired change
+against the control mean was −105 jobs/s, with 29 jobs/s median
+absolute control spread and a maximum control difference of
+447 jobs/s. The median resource gates passed. Throughput and pickup
+missed. The plan witness establishes the smaller index scan, and the
+compiled groups leave its end-to-end benefit unproven.
+[Index-range diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure claim and settlement SQL without worker processes
+
+The full SQL component kept the eight claim sessions, eight lifecycle
+sessions, and 63 prewarmed effect sessions. Idle connections represented
+maintenance and LISTEN admission. Each job used the stock claim and
+settlement functions and two separate fenced effect commits on one
+effect backend. The component checked the transaction IDs, stable
+effect key, terminal row, and complete reset. Synthetic attempt
+identifiers represented the workers.
+
+Two Linux boots reversed the order of the scalar-range experiment.
+The range probe used 0.087 and 0.093 fewer PostgreSQL CPU-ms/job
+than the faster control. The controls differed by 0.208 and 0.262
+PostgreSQL CPU-ms/job. All six arms completed 1,024 jobs. These
+measurements include libpq and Python client work separately from
+PostgreSQL.
+
+A second component used the scalar range in every arm and prepared
+the due, claim, and settlement statements on their existing sessions
+in the treatment. The two writes and reset used the same statements as
+the controls. The prepared claim retained its explicit transaction,
+client reply validation, and confirmed COMMIT boundary.
+
+| Order | PostgreSQL CPU-ms/job in the controls | PostgreSQL CPU-ms/job with named statements |
+| --- | ---: | ---: |
+| Control, repeat, treatment | 0.854 and 0.837 | 0.668 |
+| Treatment, repeat, control | 0.855 and 1.000 | 0.759 |
+
+The named statements beat both controls on database CPU in both
+orders. Savings against the faster controls were 0.169 and
+0.096 CPU-ms/job. The second difference fell within that boot's
+control spread. On the admitted claim sessions, the prepared arm
+used 0.212 and 0.237 CPU-ms/job versus 0.374 and 0.379 on the faster
+controls. Lifecycle CPU fell by 0.015 in the first comparison and
+was within 0.001 in the second. All six prepared-comparison arms
+reconciled 1,024 jobs each. The component isolates the database and client path.
+It leaves compiled runner performance and the 35-profile qualification
+open.
+[Full SQL and prepared statement receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare named Jobs statements in the compiled runner
+
+The `fc4983db` release fixture used the same executable in three Mesh
+arms. All three used the scalar due range and plan-retaining effect
+reset. The treatment prepared the due query and claim and settlement
+statements on their dedicated sessions. The Linux pilot recorded 565
+named due probes, 565 named claims, and 1,024 named settlements. Its
+control executed all three without names. Both arms reconciled two
+fenced commits and an exact child reap per job. The macOS compiled
+proof passed revocation between writes and after final commit in both
+modes. The named protocol tests covered commit confirmation and
+uncertain acknowledgement handling with loopback connections.
+
+Five trace-off groups on the local Linux ARM64 guest reconciled 20,480
+scored jobs on `noop-8r-64s` with PostgreSQL 17.11.
+
+| Arm | Median jobs/s | Jobs/s range | Pickup p99 | Runner CPU-ms/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 873 | 560–1,092 | 1,161 ms | 1.22 |
+| Mesh repeat | 1,025 | 327–1,133 | 983 ms | 1.28 |
+| Mesh with named statements | 758 | 353–1,085 | 1,337 ms | 1.59 |
+| Oban Basic 2.24.2 Isolated | 1,518 | 729–2,202 | 667 ms | 4.42 |
+
+The treatment beat both Mesh controls in one group and Oban in zero.
+Its median paired change against the control mean was −306 jobs/s.
+Median absolute control spread was 81 jobs/s and the maximum was
+573 jobs/s. All three Mesh arms missed the throughput and relative
+pickup gates. The other median gates passed. The host load and the
+control spread limit estimates of the regression. The compiled runs
+give no evidence to enable the treatment on the release path. The
+35-profile release gate remains open.
+[Named statements receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare grouped effects across the full SQL path
+
+Two reverse-order Linux ARM64 boots on PostgreSQL 17.11 compared
+scalar effects with groups of eight on the prepared full SQL path.
+All six arms used the frozen 1,024-job `noop-8r-64s` input. The
+treatment dispatched each confirmed claim without a fill wait. It
+committed the attempt stage before submitting the effect stage and
+ran one reset per job on the group socket before settlement.
+The audit reconciled 6,144 jobs and verified two ordered write
+transactions per job. Jobs in a group shared the transaction for
+each write stage. Settlements still committed separately by job.
+
+| Boot | Scalar control PostgreSQL CPU-ms/job | Scalar repeat | Grouped effects | Grouped PostgreSQL plus client |
+| --- | ---: | ---: | ---: | ---: |
+| Scalar first | 0.794 | 0.674 | 0.538 | 0.689 |
+| Grouped first | 0.698 | 0.617 | 0.547 | 0.697 |
+
+The grouped arm saved 0.136 and 0.070 PostgreSQL CPU-ms/job against
+the faster control. Absolute control spread was 0.120 and 0.080.
+Effect backend CPU fell to 0.199–0.212 CPU-ms/job even though the
+reset count stayed at 1,024. Each grouped arm issued 256 effect
+statements for 2,048 writes and made 275–284 claims, versus 372–404
+claims in the scalar controls. The change in claim traffic is part of
+the measured full-path result.
+
+The tight historical Oban throughput of 2,738 jobs/s allows about
+0.73 CPU-ms/job across two vCPUs. The grouped PostgreSQL work alone
+would leave about 0.18–0.19 CPU-ms/job at that rate. These runs used
+synthetic worker witnesses and omitted the compiled runner, native
+child, and production observer. The historic rate came from a different
+boot. The component gives no evidence that effect grouping alone can
+close the dense gap. The next SQL screen targets the remaining claim
+and settlement work together.
+[Grouped full SQL receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Reset each grouped effect checkout once
+
+Five Linux ARM64 boots on PostgreSQL 17.11 compared two identical
+prepared, grouped controls with a treatment that reset the session
+once before returning it to the pool. Both controls reset once per
+job on the same group socket. All arms committed the attempt and
+effect stages separately and waited for reset before settlement.
+The 15 arms reconciled 15,360 jobs. The statement counters showed
+1,024 reset exchanges in each control and 128 in each treatment.
+
+| CPU scope | Median saving against faster control | Median absolute control spread |
+| --- | ---: | ---: |
+| PostgreSQL | 0.004 ms/job | 0.083 ms/job |
+| Effect backends | 0.012 ms/job | 0.044 ms/job |
+| PostgreSQL and diagnostic client | 0.041 ms/job | 0.116 ms/job |
+
+The fewer reset exchanges did not produce a repeatable reduction
+large enough to change the dense-profile CPU budget. These runs use
+synthetic workers. The component leaves release throughput open.
+[Grouped reset receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Settle and refill in one transaction
+
+Two reverse-order PostgreSQL 17.11 Linux ARM64 boots compared
+set-based completion and refill with identical grouped-effect
+controls. Both boots reconciled every job and kept the separate
+effect commits and one reset per job. The treatment used 128
+settlement statements for 1,024 jobs in each boot. It shared the
+settlement transaction with 128 and 127 stock claim calls,
+respectively. Those calls claimed 448 and 536 replacements.
+
+| Boot | Treatment PostgreSQL CPU | Claim and lifecycle CPU saving against faster control | PostgreSQL and diagnostic client CPU change against faster control |
+| --- | ---: | ---: | ---: |
+| Controls first | 0.450 ms/job | 0.043 ms/job | +0.008 ms/job |
+| Treatment first | 0.375 ms/job | 0.064 ms/job | −0.054 ms/job |
+
+The combined claim and lifecycle CPU savings exceeded the within-boot
+control spreads of 0.036 and 0.004 ms/job. The effect backends used
+more CPU in both treatment arms. Total component CPU improved in
+one boot and left at most 0.244 CPU-ms/job for omitted work against
+the earlier two-vCPU budget. These runs did not exercise native
+worker startup, termination or reap.
+
+A separate native macOS proof on PostgreSQL 17.11 held a job row
+locked while submitting live, cancelled, expired and stale-token
+cases. The batch finished the live and cancelled attempts, preserved
+the other rows, and wrote the canonical cancellation history. An
+independent observer saw neither the settlement nor replacement
+claim before commit, saw both rows unchanged after rollback, and
+verified that the successful retry used one transaction ID. The
+native proof did not cut the commit reply.
+
+A second native SQL proof closed the owned client socket at both
+boundaries. With the transaction still open, both rows rolled back
+and a confirmed retry claimed the replacement on attempt one.
+When COMMIT was submitted and independently observed before the
+client consumed the reply, both rows committed together. The
+original token was stale and the replacement recovered after
+lease expiry with its stable effect key on attempt two. Neither
+unconfirmed branch returned a replacement for dispatch. This
+proof did not exercise process creation or reap in the compiled
+runner.
+[Settlement and refill receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Exercise shared completion and refill in compiled Jobs
+
+The fixture-only candidate at `faca9451` groups two to eight
+already-reaped COMPLETE attempts and claims replacements for the
+same queue. Each transaction returns ordered token verdicts.
+The dispatcher launches replacements only after observing the
+COMMIT command tag and idle ReadyForQuery. An unconfirmed shared
+COMMIT leaves zero replacements eligible for dispatch and sends
+each predecessor through one immediate standalone acknowledgement.
+
+Linked tests on macOS and PostgreSQL 17.11 covered the COMMIT
+reply parser, result validation, a locked predecessor, rollback,
+operator cancellation, and one transaction ID for both settlements
+and both replacement claims. The stock compiled effect proof also
+passed seven cases with the refill opt-in off.
+
+A traced Linux ARM64 pilot ran the same release executable with
+refill off and on. Each arm reconciled 1,024 first attempts and
+exact reaps, two fenced writes per job, and all 63 effect backends
+idle after 1,024 resets. The treatment committed 30 shared turns
+with 111 predecessors and 111 replacements. It recorded 45 scalar
+fallbacks and zero uncertain turns. The pilot establishes compiled
+coverage. It did not cut an in-flight shared COMMIT or measure
+performance.
+[Compiled refill pilot](../proof/jobs-parity/qualification-v1.json)
+
+A separate compiled fault fixture at `b4cf4a4a` ran both cuts on
+macOS and PostgreSQL 17.11. A loopback relay carried the runner's
+SCRAM session in plaintext so it could withhold protocol replies.
+The effect, producer, and observer connections used verified TLS.
+Each cut verified both exact predecessor reaps and zero replacement
+starts before the relay closed. Before COMMIT the original rows
+remained executing, the standalone retries committed, and both
+replacements ran on attempt one. After COMMIT an independent
+observer saw all four rows share one transaction ID. The relay
+forwarded the COMMIT tag and withheld idle ReadyForQuery for just
+over three seconds, past the local predecessor leases. The original
+tokens returned stale through standalone replay and both replacements
+ran on attempt two after lease recovery. All jobs reconciled one
+durable effect.
+[Compiled COMMIT cut receipts](../proof/jobs-parity/qualification-v1.json)
+
+Five trace-off Linux groups then compared the opt-in against two
+identical Mesh controls and Oban Basic 2.24.2 Isolated. All 20,480
+scored jobs reconciled on the same frozen two-vCPU profile.
+
+| Arm | Median jobs/s | Range | Median pickup p99 | Runner SQL calls/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 626 | 452–847 | 1,614 ms | 12.84 |
+| Mesh repeat | 706 | 300–964 | 1,435 ms | 12.82 |
+| Mesh with shared refill | 558 | 522–801 | 1,818 ms | 12.91 |
+| Oban | 1,107 | 370–1,932 | 854 ms | 3.88 |
+
+The treatment committed 25–29 shared turns per group, covering
+82–104 of the 1,024 predecessors. There were no uncertain shared
+commits. It beat both Mesh controls in two groups. The median
+paired throughput delta versus the faster Mesh control was
+−252 jobs/s, with 185 jobs/s of median absolute control spread.
+Peak one-minute host load was 14.3–17.3 on 15 logical CPUs.
+The treatment missed throughput and pickup against Oban. Its
+limited use and SQL call counts leave no measured gain to
+carry into release qualification.
+[Matched compiled refill receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Reuse recently active effect sessions
+
+Five Linux ARM64 boots compared FIFO and LIFO checkout from the
+same pre-admitted pool of 63 effect connections. Each boot ran
+two identical FIFO controls and one LIFO treatment. Every arm
+reconciled 1,024 jobs with two separately committed effect stages
+and 1,024 resets. The treatment used 7–8 effect backends and the
+controls used 54–62. All groups contained eight jobs.
+
+| CPU scope | Median saving against faster control | Median absolute control spread |
+| --- | ---: | ---: |
+| PostgreSQL | 0.062 ms/job | 0.036 ms/job |
+| Effect backends | 0.073 ms/job | 0.012 ms/job |
+| PostgreSQL and diagnostic client | 0.060 ms/job | 0.053 ms/job |
+
+PostgreSQL and the effect backends used less CPU than both controls
+in all five boots. The joint component used less CPU in four.
+Two boots had wide control spreads. The active-backend census
+confirms that checkout order changed where work ran without
+changing the number of admitted sessions. The test used synthetic
+workers, and the gain with compiled handlers and smaller groups
+remains open.
+
+The compiled fixture at `0ee8756a` already selects the first idle
+slot and returns a session to its original slot. The compiled named
+statement pilot at `fc4983db` used 50 and 51 effect backends with
+individual attempts. The grouped component therefore measures
+the cost of spreading work across backends. Replacing the compiled
+pool's selection order alone has not been tested.
+[Effect session affinity receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare a typed set-based effect statement
+
+Four PostgreSQL 17.11 Linux ARM64 boots compared a set-based effect
+function with the original grouped writes. Two boots used a SQL
+function and two used a PL/pgSQL wrapper around the same set query.
+Each boot compared two identical controls and one candidate. The
+12 arms reconciled 12,288 jobs. Each arm returned 2,048 write-stage
+receipts with two confirmed commits per group and 1,024 resets.
+
+The native prescreen checked current, cancelled, expired, held,
+and stale-token, stale-run and stale-attempt cases. It verified the
+narrow function grant, observed attempt rows before the effect
+stage, and confirmed that replay preserved the original effect rows.
+
+| Candidate | Effect backend CPU change against faster control | Total PostgreSQL CPU change |
+| --- | ---: | ---: |
+| SQL function, controls first | +0.300 ms/job | +0.476 ms/job |
+| SQL function, treatment first | +0.246 ms/job | +0.341 ms/job |
+| PL/pgSQL wrapper, controls first | −0.004 ms/job | −0.045 ms/job |
+| PL/pgSQL wrapper, treatment first | +0.083 ms/job | +0.125 ms/job |
+
+The SQL function regressed in both orders. The PL/pgSQL wrapper
+reduced the observed penalty, but its result still depended on the
+order. The runs measure the whole exchange, including any planning
+inside the driver or server. They do not isolate planning time.
+[Set effect write receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Isolate payload storage during claim and settlement
+
+Two native macOS PostgreSQL 17.11 series used one runner and 4,096
+jobs per arm, derived from the 1 KiB no-op inputs. Each series ran
+five alternating blocks with two stock controls, external storage
+tuning and 70 percent fillfactor. The audit checked every payload,
+lease, attempt and terminal state. Statement counters cover claim and
+settlement, with a checkpoint after each seed. There were no HOT
+updates in any arm.
+
+Setting external storage alone left the payload inline. The second
+series added identical ballast to each arm to induce out-of-line
+storage and verified the heap and TOAST relation sizes. External
+payloads reduced median statement WAL from 4,676–4,680 to 1,668
+bytes/job. Server execution time rose from 0.111–0.139 to 1.246
+ms/job and was higher than both controls in every block. The
+fillfactor arms also reduced WAL without consistently improving the
+elapsed time. These are SQL statement measurements with a synthetic
+executor. The external storage arm used an extra fixture column.
+[Payload storage receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Combine hot effect checkout with settlement and refill
+
+Five Linux ARM64 PostgreSQL 17.11 boots compared the combined
+path with two identical grouped-effect controls. The treatment
+preferred recently used effect backends and settled each completed
+group with a replacement claim when the lane could refill.
+All 15 arms reconciled 1,024 jobs, including the two ordered write
+commits and 1,024 resets. The effect connection budget stayed at
+63, with 7–8 backends active in the treatment and 50–63 in the
+controls.
+
+| CPU scope | Treatment median | Median gain against faster control | Median absolute control spread |
+| --- | ---: | ---: | ---: |
+| PostgreSQL | 0.315 ms/job | 0.190 ms/job | 0.030 ms/job |
+| PostgreSQL and diagnostic client | 0.430 ms/job | 0.215 ms/job | 0.033 ms/job |
+
+The treatment used less CPU than both controls in every boot
+for both scopes. This includes the interactions between ready
+groups, active connections and claim contention on the same runs.
+The test used the pinned SQL workload with synthetic workers.
+Its measured cost excludes fresh process startup, handler
+execution and the production dispatcher.
+[Combined SQL component receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Share parent-side I/O across fresh Linux workers
+
+Five two-vCPU Linux ARM64 boots ran eight matched blocks each
+against the same pinned DB-free release worker. Two controls
+started separate parent control and output threads per child.
+The treatment used one reusable epoll thread. All arms used the
+same fresh exec, request and reply frames and eight-slot limit.
+They reconciled 15,360 measured children through the exact
+wait, matching constructor and handler witnesses, and output
+and control descriptor checks. There were no timeouts.
+
+| CPU scope | Control medians | Treatment median | Median gain against faster control | Median absolute control spread |
+| --- | ---: | ---: | ---: | ---: |
+| Parent, including the event loop lifecycle | 109.6 and 112.5 µs/child | 71.9 µs/child | 35.7 µs/child | 4.9 µs/child |
+| Parent and exact child | 490.7 and 497.3 µs/child | 452.9 µs/child | 31.7 µs/child | 17.5 µs/child |
+
+The treatment used less parent CPU than both controls in 39
+of 40 blocks, and less combined CPU in 35. The component used
+one parent and the release worker from `a39447f7`. It did not
+exercise the production dispatcher, effect relay, database or
+lease renewals.
+[Parent I/O receipts](../proof/jobs-parity/qualification-v1.json)
+
+A compiled Linux ARM64 pilot then enabled the shared I/O owner
+at `276a7a3d`. The same release ELF ran with the flag off and
+on. Admission observed exactly one owner thread in each of the
+eight enabled runners and none in the controls. Both arms
+reconciled 1,024 exact child reaps, two fenced writes per job,
+and every prewarmed backend idle after reset. The first boot
+stopped in the observer because its count shadowed the workload's
+expected-job map. The corrected pilot used the same ELF. This
+run establishes coverage with the real relay and PostgreSQL.
+The injected rearm-failure tests remain separate.
+[Compiled parent I/O pilot](../proof/jobs-parity/qualification-v1.json)
+
+Five trace-off groups kept the same executable, scheduler
+settings, observer, and workload. All 20,480 scored jobs
+reconciled. The stock Oban comparator used Basic 2.24.2 and
+the Isolated notifier.
+
+| Arm | Median jobs/s | Range | Median runner CPU/job | Median sampled peak threads |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 863 | 369–1,104 | 1.329 ms | 114 |
+| Mesh repeat | 1,004 | 843–1,102 | 1.123 ms | 129 |
+| Mesh with shared I/O | 1,011 | 319–1,097 | 1.099 ms | 108 |
+| Oban | 1,991 | 877–2,103 | 4.072 ms | 96 |
+
+The treatment used fewer sampled threads than both Mesh controls
+in four groups. Its paired median gain of 9 µs/job against the
+lower-CPU Mesh control sat within the 147 µs/job control spread.
+The paired median throughput delta against the faster Mesh control
+was −93 jobs/s, with 172 jobs/s of control spread. Peak one-minute
+host load ranged from 6.7 to 15.2 on 15 logical CPUs. The treatment
+missed Oban's throughput and pickup gates. The series establishes
+no end-to-end throughput or runner CPU gain.
+[Matched compiled parent I/O receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Re-score the archived stock worker comparison
+
+Under the current strict rule, 31 of the 35 saved macOS profiles
+at `1b12243b` missed throughput and 22 missed relative pickup.
+Three met the recorded throughput, latency, and resource gates.
+This re-score uses the archived trials and their original inputs.
+
+On `noop-8r-64s`, the medians of the five trial means were
+8.18 ms for Mesh claim to entry and 12.21 ms for entry to first
+durable write. Oban recorded 4.02 ms and 1.07 ms. The Mesh
+handler opens a PostgreSQL connection after entry. The second
+interval includes connection setup, server execution, and
+durable acknowledgement. It leaves their individual costs open.
+[Historical stock re-score](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute first-write latency on the ordinary worker path
+
+Five matched macOS ARM64 groups used the stock release at
+`25cc1299`, PostgreSQL 17.11 over verified TLS and SCRAM,
+and Oban Basic 2.24.2 with the Isolated notifier. All 10,240
+scored jobs reconciled. On `noop-8r-64s`, Mesh reached a median
+736 jobs/s and 1,334 ms pickup p99. Oban reached 3,241 jobs/s
+and 314 ms. Mesh missed throughput and pickup.
+
+A separate 1,024-job run timed the call to `Pg.connect` and the
+first write acknowledgement in the same compiled ordinary worker
+with an instrumented fixture. Each observation matched its PID
+to the durable attempt. Median connection time was 69.51 ms
+and median first-write acknowledgement time was 1.06 ms. The
+means were 68.84 ms and 1.24 ms, with 69.72 ms from handler
+entry to the first durable commit. These are elapsed intervals
+and include scheduling. The trace still leaves TCP, TLS, SCRAM,
+and backend startup to be separated within connection time.
+[Ordinary worker trials and attribution](../proof/jobs-parity/qualification-v1.json)
+
+A second traced diagnostic used one Darwin runtime with a
+default-off `TCP_NODELAY` switch before PostgreSQL startup.
+Five counterbalanced groups compared the flag with two identical
+controls. Each group reconciled 1,024 jobs per arm. Connection
+medians were 50.21 and 46.01 ms for the controls and 56.86 ms
+with the flag. Treatment was slower than the faster control
+in every group. The first-write acknowledgement moved by
+0.01 ms against the faster control, within 0.03 ms of absolute
+control spread. Host load varied across the run. This screen
+does not support advancing Darwin socket tuning for the dense
+first-write gap.
+[Darwin socket attribution receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure fresh PostgreSQL connection CPU on Linux
+
+One local ARM64 guest with two vCPUs and 1 GiB RAM ran PostgreSQL
+17.11 over verified TLS and SCRAM. The comparison linked both arms
+against the stock `25cc1299` release runtime and used the stock two
+parameterized inserts in separate autocommit transactions. At one
+and 16 lanes, five alternating pairs each processed 256 jobs per
+arm. The probe either kept an exclusive connection per lane or
+opened and closed a connection for every job. All 5,120 measured
+jobs reconciled. The pilot joined backend identities to the writes
+and rejected a wrong CA, a wrong SCRAM password, and a plaintext
+connection.
+
+| Lanes | Median fresh minus reused CPU/job | PostgreSQL CPU/job | Client CPU/job | Combined edge envelope |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 3.57 ms | 2.96 ms | 0.61 ms | 3.44–4.03 ms |
+| 16 | 3.46 ms | 2.89 ms | 0.56 ms | 3.19–3.81 ms |
+
+The paired difference includes startup, close, and the difference
+between warm and cold backends for the two writes. Separate cgroups
+include the CPU of PostgreSQL backends that exit before observation.
+Observer SQL runs outside the measured intervals. The reused arm
+measures direct SQL on a retained session. It leaves the cost of
+production authorization, reset, dispatch, and lifecycle for the
+compiled comparison.
+
+The separate unmodified Jobs anchor stopped in the one-slot arm.
+PostgreSQL logged ten workload database connection-limit rejections,
+and durable attempt reconciliation failed. That capture supplies no
+runner CPU result. The probe comparison completed on its own boot.
+
+With one persistent observer reserved, the stock anchor reconciled
+256 jobs at each slot count. The collector matched Linux's
+`/proc/self/exe` worker invocation and joined 28 and 137 live child
+identities to durable worker PIDs at one and 16 slots. The first
+reserved-observer capture retained its reconciled rows but missed
+that identity check because it expected the absolute executable
+path in the child's arguments.
+
+The successful anchor measured 2.76 and 3.54 runner CPU-ms/job
+and 6.99 and 9.29 PostgreSQL CPU-ms/job at one and 16 slots.
+These windows run from runner start through terminal observation,
+including claim, dispatch, settlement, and observer SQL.
+[Linux connection and failed anchor receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure the scoped SQL fence with a reset after each write
+
+Six counterbalanced blocks ran on one local two-vCPU ARM64
+Linux guest with PostgreSQL 17.11 and verified TLS and SCRAM.
+At 16 lanes, each arm processed 256 measured jobs. Two warm
+controls ran the stock INSERTs. The fenced arm used an
+execute-only login and two named routines with the reviewed
+attempt fence. It acknowledged each durable commit and each
+full `DISCARD ALL` before reuse. Setup, including the real
+committed claims, and observation SQL ran outside the CPU window.
+
+The comparison reconciled 4,608 jobs, 9,216 separate write
+commits, and 3,072 resets. A separate pilot joined the retained
+backends to their sessions, checked caller denials, and verified
+that resets cleared seeded state. Two early pilot captures
+failed on privilege-inspection SQL. The corrected probe checked
+role settings in `pg_db_role_setting` and preserved the same
+admission and privilege assertions.
+
+The fenced arm used a median 0.808 client-plus-PostgreSQL
+CPU-ms/job. The warm controls measured 0.118 and 0.193. The
+median paired increase was 0.675 CPU-ms/job, with 0.610
+in PostgreSQL. The six paired increases ranged from 0.241
+to 1.482 ms/job. Subtracting the paired median from the earlier
+3.46 ms/job fresh-connection gap gives a cross-run estimate of
+2.79 CPU-ms/job retained. This measures independent session lanes
+and app operations. The compiled runner and frozen profile
+comparisons will add claim, dispatch, worker, and settlement costs.
+[Component receipts](../proof/jobs-parity/qualification-v1.json)
+
+Four follow-up blocks added a warm direct-write arm that ran
+the same two full resets. It added a median 0.041 CPU-ms/job
+over direct writes, with an edge envelope of −0.006 to 0.084.
+The fenced routines added 0.210 CPU-ms/job over direct writes
+with the same resets, with an envelope of 0.138 to 0.266.
+That difference includes routine, bind, fence, and reset
+interaction costs. The follow-up reconciled 3,072 jobs. The
+reset control occupied the middle position in every block,
+which leaves it sensitive to changes in host load across arms.
+[Reset attribution receipts](../proof/jobs-parity/qualification-v1.json)
+
+Six instrumented follow-up blocks compared two full reset controls
+with a plan-retaining reset on the same 16 warm lanes. All 4,608
+measured jobs reconciled two separate commits. The treatment ran the
+eight reset commands as separate acknowledged exchanges. It reduced
+nested fence and insert planning in every block, while adding a median
+0.285 and 0.319 joint CPU-ms/job against the two controls. Host one-minute
+load reached 19.21 on a 15-core host. The separate exchanges and planning
+instrumentation limit what the timing says about plan retention itself.
+The treatment missed the CPU and control-drift gates. The compiled draft
+continues to use one `DISCARD ALL` exchange after each operation.
+[Plan fingerprint receipts](../proof/jobs-parity/qualification-v1.json)
+
+A separate compiled-driver witness used `DISCARD ALL` through
+`Pg.execute` on PostgreSQL 17.11, 18.7, and 19.0. The same
+verified TLS backend cleared a temporary table, prepared statement,
+LISTEN registration, advisory lock, and application setting.
+[Reset witness](../proof/jobs-parity/qualification-v1.json)
+
+### Verify the named-operation database fence
+
+The opt-in fence installs in its own schema after the ordinary
+Jobs migration. The application routine owner receives access
+to the fence. Its caller receives
+access only to the declared routines. The fence matches the
+current attempt under a job-row lock and checks the database clock
+after acquiring it. The lock orders an admitted write with
+committed cancellation and recovery.
+
+Disposable macOS ARM64 PostgreSQL 17.11, 18.7, and 19.0 runs
+at integrated revision `8dd17882` verified scoped grants,
+two separate durable writes, and denial for stale and locked
+attempts. Cancellation waited for the first write's lock, then
+denied the next call. The proof covers expiry while waiting on
+a relation lock, recovery after a rolled-back admitted write,
+and a permitted call after each owner replay. The existing
+standalone effect-transaction proof also passed on 17.11.
+The compatibility workflow runs the fence proof on both Linux
+and macOS for each pinned PostgreSQL version. The stock parity
+handler still connects once per job while the compiled warm-session
+path is being built. [Scoped fence receipts](../proof/jobs-parity/qualification-v1.json)
+
+The first compiled draft at `91722a23` produced a Linux ARM64
+runtime archive and linked the ordinary parity executable. A
+separate macOS object check found that ordinary Jobs source
+referenced its original start symbol. Source using named
+effects referenced the two new versioned symbols. Linking the
+full ordinary fixture against the older `7c162056` archive
+failed on panic diagnostics symbols with both the draft
+compiler and the earlier stock compiler. The object check
+covers the new Jobs symbols, and the legacy link result
+remains a separate compatibility limitation.
+[Compiled draft and legacy-link logs](../proof/jobs-parity/qualification-v1.json)
+
+The Linux ARM64 smoke linked a fixture against the same
+`91722a23` runtime with an in-child check for the database
+environment variables. That check replaced a procfs read
+blocked by the release build's core-dump protection. At one
+slot, the verified-TLS PostgreSQL 17.11 proof observed two
+separate commits on one warm backend, eight full resets across
+three runner lifetimes, and each tracked child reaped by
+settlement. The staged pre-commit disconnect left the first
+effect intact, and attempt two reconciled it before committing
+the second effect. The database stayed within five connections.
+The review fixes and a fault after commit but before receipt
+delivery remain separate gates.
+[Linux compiled smoke and failed preflights](../proof/jobs-parity/qualification-v1.json)
+
+The follow-up at `65f56e17` rebuilt the release compiler and GNU
+runtime and repeated the PostgreSQL 17.11 proof on Linux ARM64.
+Each runner rejected a second local queue and scale-up to two
+slots before admitting jobs. Across all three runs the proof
+counted five connections and eight full resets. After the
+pre-commit disconnect, the handler recorded that it ignored the
+uncertain result. The runtime still reaped the child and settled
+the attempt as retryable. The replacement kept the first effect's
+original transaction ID and committed the second effect.
+
+The same revision passed all 16 selected Linux ARM64 runtime
+tests covering descriptor handoff, session protocol, and the
+named-operation worker. That included a test of the stop cutoff
+at the socket boundary. Native stop timing and loss of a response
+after server commit remain open. The independent review also
+found relay closure and buffered-request lifetime gaps, and the
+timed cutoff still needs explicit send-admission semantics.
+[Linux one-slot follow-up receipts](../proof/jobs-parity/qualification-v1.json)
+
+The relay follow-up at `30a0432c` passed 19 focused Linux ARM64
+runtime tests. It denies a buffered request from a closed worker
+endpoint before checkout and closes the channel when the relay
+exits. A send admitted before a positive-grace cutoff can still
+reach the kernel afterward. Zero grace serializes with admitted
+sends and closes admission before returning.
+
+The release PostgreSQL 17.11 smoke passed four reruns after an
+initial disconnect case timed out waiting for retryability. The
+timeout's cause was unresolved, and both the failure and reruns
+are retained. A separate 12-case compiled fault run passed under
+the same five-connection budget. A fixture-only transport witness
+joined the returned spawn PID to child identity and consuming wait.
+It verified that the durable job still said `executing` at the
+exact wait return, before the supervisor settled it.
+
+Loss of the committed operation response, reset response, or
+child receipt each produced an uncertain outcome. The handler
+asked to complete, but the exact child was reaped and the first
+attempt became retryable. Each replacement used a fresh warm
+backend and reported the committed effect using its original XID.
+Runner and queue zero-grace cases blocked an unsubmitted write
+and blocked receipt publication for a previously committed write.
+The native result applies to the one-slot Linux GNU ARM64 draft.
+[Relay and fault proof receipts](../proof/jobs-parity/qualification-v1.json)
+
+The same `30a0432c` executable and libc observer passed all 12
+native fault cases on Linux ARM64 with PostgreSQL 19.0. The 18.7
+run reached the reset-loss case and timed out waiting for the
+retryable row after the consuming wait. The shutdown report
+recorded one retryable outcome and the session retirement error.
+At this revision, that error is set by running-phase admission
+after the prior attempt leaves the single slot. Maintenance can
+promote an immediately due retryable row to available between
+observer polls. The capture lacks the last observed row, so that
+explanation remains a hypothesis. A second PostgreSQL 18.7 run passed
+all 12 cases with the same executable, libc observer, and assertions.
+The replay recorded the states returned by the existing polling query.
+At reset loss it observed `executing:1` and then `retryable:1` before the
+replacement completed attempt 2. The original timeout remains unexplained.
+[Versioned native fault receipts](../proof/jobs-parity/qualification-v1.json)
+
+The corrected bounded-pool draft at `ee686882` passed 35 focused
+Linux ARM64 runtime tests. The three-worker PostgreSQL 17.11 gate
+proved that two operations held exclusive connections, a third
+worker acquired the released session, and the surviving session
+stayed usable after the other retired. The replacement attempt
+kept the committed write and its XID and committed the second write
+separately. The trace reconciled four spawns and consuming waits.
+
+One LISTEN-off feasibility group ran the same release ELF and frozen
+`short-1r-16s` input with 16 Jobs slots and four, eight, or 16 app
+sessions. Each of the four measured arms reconciled 128 jobs, 256
+separate writes, 256 full resets, and 128 exact reaps. Four and eight
+sessions reached 958 and 940 jobs/s within peak connection counts of
+8 and 12. The identical 16-session arms reached 482 and 935 jobs/s,
+each at 20 connections. The large repeat spread leaves the throughput
+ordering unresolved. Process samples missed peak occupancy in the
+shortest arm, so this run cannot qualify the full-slot RSS budget.
+[Bounded-pool native and timing receipts](../proof/jobs-parity/qualification-v1.json)
+
+Five fresh-boot groups repeated the LISTEN-off comparison with
+rotated order and one warmup per arm per boot. The measured arms
+reconciled 2,560 jobs, 5,120 separately committed writes, 5,120 full
+resets, and 2,560 consuming waits matched to their worker PIDs.
+
+| Warm sessions | Median jobs/s | Median pickup p99 (ms) | Peak database connections |
+| --- | ---: | ---: | ---: |
+| 4 | 939 | 133 | 8 |
+| 8 | 343 | 362 | 12 |
+| 16 | 968 | 127 | 20 |
+| 16, identical repeat | 463 | 272 | 20 |
+
+Four sessions beat both 16-session runs in three groups. The median
+paired gain over the faster control was 20 jobs/s, within the median
+146 jobs/s spread between the identical controls. Several slow arms
+spent 229–254 ms before first claim. Others spent longer draining
+after claim. These timings leave throughput ordering unresolved.
+Four sessions use the fewest connections of the tested configurations.
+The series omits Oban and full-occupancy RSS measurement.
+
+The six delayed first claims grouped one poll interval after the
+other fourteen when measured from producer submit. This supports
+a missed idle poll as a contributor. The post-claim drain varied
+independently, so the next comparison holds the app pool at eight
+sessions and varies LISTEN with separate claim and lifecycle backends.
+[Matched bounded-pool receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Prove one-slot LISTEN under five connections
+
+The separate `21c4ad7a` draft used the same Linux GNU ARM64
+executable for polling, LISTEN, and a listener outage on
+PostgreSQL 17.11. LISTEN used one backend for claim, renewal,
+and settlement. Maintenance, LISTEN, the application session,
+and the producer/observer occupied the other four connections.
+All seven jobs had two separately committed operations on the
+warm application session, a full reset after each operation,
+and an exact consuming wait before settlement.
+
+The first LISTEN claim followed a real notification and its
+matching scan counter. With the listener disconnected, the
+runner claimed through fallback, found work committed during
+the outage on resubscription, then used a notification again.
+The other four backend identities stayed stable. The producer
+and application sessions used verified TLS with SCRAM. The Jobs
+sessions used plaintext SCRAM on loopback to expose the frames
+to the observer. The proof used a 2,500 ms poll interval and did
+not run the frozen sparse performance workload or native claim
+confirmation-loss cases.
+
+The port onto the bounded pool at `ed00aaa4` repeated the
+same three-arm gate with its own GNU ARM64 release ELF. All
+seven jobs and fourteen independent commits reconciled.
+The first idle LISTEN claim followed the producer commit
+by about 2 ms in this fixture. The polling arm waited about
+2.4 seconds with the fixture's 2.5-second poll interval.
+The replay also observed fallback, catch-up, and a subsequent
+notification on the replacement listener.
+[One-slot LISTEN receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Screen LISTEN at 16 slots with eight warm sessions
+
+The `ef338423` draft keeps separate claim, lifecycle, and
+LISTEN backends at 16 slots. In the untimed PostgreSQL 17.11
+gate, a real notification triggered the claim, renewal used
+the separate lifecycle session, and each worker was reaped
+before settlement. The polling topology used 12 connections
+and LISTEN used 13, including the producer/observer in each.
+
+Two reverse-order groups then used the same release ELF and
+frozen `short-1r-16s` input at the 250 ms fallback interval.
+The six measured arms reconciled 768 jobs, 1,536 separately
+committed writes, and 1,536 full app resets.
+
+| Group | Poll / repeat / LISTEN first claim (ms) | Poll / repeat / LISTEN jobs/s |
+| --- | ---: | ---: |
+| 0 | 28.5 / 255.2 / 0.7 | 724 / 324 / 1,034 |
+| 1 | 21.2 / 254.2 / 1.6 | 595 / 247 / 701 |
+
+LISTEN also had the shortest drain after first claim in both
+groups. The large polling repeat spread and two-group sample
+limit the throughput inference. The timed arms used verified
+TLS and ran without native reap tracing. The untimed gate
+exposes Jobs frames over plaintext SCRAM on loopback. This
+screen establishes pickup behavior under the connection cap.
+Oban comparison and release qualification remain open.
+[16-slot LISTEN receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Check worker-local THP selection for named effects
+
+The separate `62ece84c` draft built for Linux GNU ARM64.
+Two Linux unit tests checked exact worker arguments and verified
+that the named-effects launcher forwards only the literal opt-in.
+The compiled witness used one release ELF for two mirrored pairs
+at one slot and two at 16 slots on PostgreSQL 17.11. Untreated
+workers and all runners reported `THP_enabled: 1`. Opt-in workers
+reported `THP_enabled: 0`. All 68 jobs, 136 separately committed
+writes, and 68 consuming waits reconciled.
+
+At 16 fully occupied slots, paired peak process-tree RSS was
+211.0 → 113.3 MiB and 212.9 → 115.3 MiB. The median held worker
+lost 6 MiB of anonymous huge pages in each pair. The stock kernel
+and launcher policy applied across all arms. The one-slot and
+16-slot holds isolate worker memory under LISTEN-off named
+operations. The 64-slot case and frozen performance gates remain open.
+[THP selection receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Verify LISTEN and worker-local THP on the same release ELF
+
+Revision `b38e23e8` combined the LISTEN and worker THP changes.
+A Linux ARM64 gate on PostgreSQL 17.11 used one queue, 16 slots,
+and eight warm app sessions. A PostgreSQL notification triggered
+the first claim before fallback. Every held worker reported
+`THP_enabled: 0` while the launcher and runner retained their
+default policy.
+
+The 16 jobs renewed and completed on their first attempts. The
+gate reconciled 32 separately committed effects and 16 consuming
+waits before settlement. The four distinct Jobs backends, eight
+app sessions, and shared producer and observer peaked at 13
+connections under a hard cap of 20. The producer and app used
+verified TLS. The Jobs sessions used loopback plaintext SCRAM
+to expose the notification frame to the observer.
+
+All 68 Jobs runtime tests also passed on the same source against
+PostgreSQL 17.11 over verified TLS on macOS ARM64. The Linux
+gate used instrumented holds and a 2.5-second fallback interval.
+It establishes that the settings work together on the same ELF.
+The frozen scored comparison with Oban remains open.
+[Combined gate receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Hold 64 compiled named-effect workers
+
+Revision `2465f793` raised the configured attempt limit to 64
+while keeping the warm session limit at 16. The Linux ARM64
+gate used eight app sessions, LISTEN, worker-local THP disablement,
+and the stock boot with PostgreSQL 17.11. Both holds matched all
+64 direct children to 64 executing first attempts. The run
+verified renewals, 128 separate fenced commits and resets, and
+64 exact consuming waits before settlement. It used 13 sessions
+under the profile's 68-connection cap.
+
+The first run reached full occupancy but collected nine samples
+in its first hold. A bounded extension let the same release
+runtime collect 11 and 12 full-cohort samples on the replay.
+Peak summed tree RSS was 351.6 MiB, above the 221.3 MiB limit
+from the earlier slow-64 Oban comparison. The hold verifies
+occupancy, durability, and memory use. It has no same-run Oban
+arm or throughput score.
+[Full-occupancy receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute the full-occupancy memory gap
+
+Two fresh guests ran the same diagnostic ELF linked to the
+`2465f793` runtime. Both held 64 live workers, verified 128 durable
+fenced commits and resets, and recorded 64 consuming waits. Using
+the stock 64 KiB fault-around window, peak summed tree RSS reached
+367.0 MiB. With a 4 KiB window it reached 184.0 MiB. The probe
+restored the original window before the guest shut down.
+
+At the second hold, the 4 KiB arm mapped 2.82 MiB fewer file-backed
+pages per worker. The main executable accounted for 2.08 MiB. Even
+reclaiming that entire executable delta would leave the 64 KiB arm
+above the earlier 221.3 MiB budget. The comparison includes system
+libraries and a guest-wide setting. A worker-local reduction and
+its CPU cost still need measurement.
+
+An earlier pair completed the workload but failed to open pagemap
+from protected release workers. The replay opened each exact
+worker's own read-only descriptor in its diagnostic constructor.
+The release protections remained active, and the witness recorded
+only the present and file bits for the worker's file mappings.
+[File residency receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Trim worker file pages under the stock kernel setting
+
+One same-ELF pair used the stock 64 KiB fault-around window in both
+arms. The worker-local treatment split and dropped 105 verified
+immutable file ranges after startup. Both arms held 64 live workers,
+reconciled 128 fenced commits and resets, and recorded 64 consuming
+waits. Peak summed tree RSS was 368.2 MiB without trimming and
+209.1 MiB with trimming. The treatment passed the earlier 221.3 MiB
+reference and missed the tighter 206 MiB reference.
+
+The two advice loops consumed 0.38 CPU-ms per worker in the
+treatment. The full runner-tree charge, including the detailed
+page and mapping witness, rose from 26.87 to 51.37 CPU-ms per
+completed job.
+[Stock-window trim receipts](../proof/jobs-parity/qualification-v1.json)
+
+The lean follow-up recalibrated all ranges on its own release-derived
+ELF. Both stock-window arms held 64 workers and reconciled 128 fenced
+commits and 64 exact consuming waits. Trimming reduced peak summed
+tree RSS from 369.6 to 208.3 MiB. This passed the historical 221.3 MiB
+reference and missed the 206 MiB reference again.
+
+The treatment spent 0.21 CPU-ms/worker in the two advice loops and
+0.76 CPU-ms/worker in the bootstrap validation bracket. The control
+spent 0.22 CPU-ms/worker in that bracket. End-to-end runner cgroup
+CPU was 10.00 versus 10.63 CPU-ms/job with the forced holds. This
+held-only diagnostic measures both arms with compact receipts. The
+frozen slow workload uses separate timing and resource gates.
+[Lean stock-window trim receipts](../proof/jobs-parity/qualification-v1.json)
+
+Five alternating pairs on the frozen `slow-1r-64s` input used the
+same trimmed ELF against stock Oban Basic. All 5,120 jobs reconciled
+two separate durable writes. The local adapter rejected all five
+Mesh estimates of 65. Its extra check compares a floored claim
+timestamp and a precise settlement commit timestamp. The frozen
+driver uses live database samples for the occupancy cap, and all
+five sampled Mesh peaks were 64. A replay of the unchanged driver
+on the verified archives found one budget miss, runner CPU.
+
+Mesh and Oban medians were 510 and 421 jobs/s, 878 and 1,110 ms
+pickup p99, and 183.1 and 145.8 MiB sampled peak tree RSS.
+Median runner CPU was 1.747 and
+1.324 CPU-ms/job. The ratio of 1.32 exceeds the 1.25 limit. The
+archives cover one noncanonical profile.
+
+A PostgreSQL 17.11 replay with a single writer and a retained
+snapshot recovered all 512 executing tuple versions and proved a
+committed peak of 64. One run's timestamp estimate was 65. Without
+the snapshot, the probe recovered 103 executing versions and
+could not establish the peak. The compiled timing archives do
+not contain that transaction history.
+[Slow-64 measurement receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Batch worker residency validation reads
+
+Two trace-off screens compared per-range and batched pagemap reads
+on the same ELF, each in A/B then B/A order. All 4,096 slow-64
+jobs reconciled two durable writes. Both modes ran the same 210
+advice calls and verified the same 1,980 selected entries per
+worker. Batching reduced reads from 315 to 39 and saved
+0.086–0.155 thread CPU-ms/job in the pagemap passes.
+
+The first screen ran at host loads of 18.0–25.0. The repeat ran
+at 7.4–7.7. The repeat's pair with 64 observed executing jobs in
+both arms used 2.359 and 2.364 runner CPU-ms/job. Neither screen
+met the predeclared whole-run CPU and RSS cutoffs. The first
+linked fixture's clock bracket was too narrow for its CPU counter.
+The replay started the wall clock before the CPU counter and
+recalibrated residency on the relinked ELF.
+[Batched pagemap receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Verify residency flags after moving the detailed mapping read
+
+The pre-split `smaps` candidate checked 15 original file mappings
+and verified the final 225 mapping shapes through `maps`. An
+untimed held audit also compared each predicted flag set with the
+kernel's post-split `smaps` output. All 64 workers passed at
+stock 64 KiB fault-around. Both held arms reconciled 128 fenced
+commits and 64 consuming waits. Their peak summed tree RSS was
+205.5 and 205.6 MiB.
+
+Two mirrored trace-off pairs each ran 512 slow-64 jobs per arm.
+Moving the detailed read saved 0.293–0.406 thread CPU-ms/job in
+layout validation. Whole-run runner CPU saved 0.356 CPU-ms/job
+in one pair and increased 0.073 in the other. The controls
+sampled peaks of 55 and 63 executing jobs. Both treatments
+reached 64. The separate-boot screen missed the local cutoff.
+
+The same-boot repeat used the same ELF and range plan. Both orders
+sampled all 64 slots in both arms and reconciled 2,048 jobs. The
+validation savings held at 0.268 and 0.298 thread CPU-ms/job.
+Total runner CPU increased by 0.227 CPU-ms/job in A/B order and
+fell by 0.408 in B/A order. The repeat missed the required saving
+of 0.15 CPU-ms/job in each pair. The first two captures failed
+guest setup or drain verification and are retained separately.
+[Pre-split validation receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure deferred scheduler startup and one worker watchdog
+
+The local GNU ARM64 draft `e905b1d0` uses two independent opt-ins for
+fresh named-effect workers. Scheduler deferral initializes the handler's
+main process and GC stack before entry and starts the scheduler on the
+first actor spawn. The watchdog waits on the renewal socket and an absolute
+`CLOCK_BOOTTIME` timer. It acquires the runtime's stdin lock before the
+handler can run and holds that lock for the worker's lifetime.
+
+The first draft allowed `IO.read_line()` to race the watchdog for renewal
+bytes. With a delayed watchdog read, the compiled handler consumed an
+on-time renewal and the worker exited at its original lease cutoff with
+status 172. The fixed draft passed the same test and reached the handler
+timeout with status 171. The existing two-thread control also lost a
+renewal in a separate stdin trial. Its reader releases the lock between
+reads. That control path was left as implemented.
+
+The fixed ELF passed the four switch combinations, first actor spawn
+under GC stress, partial-frame and late renewals, and parent EOF. Injected
+timer creation and arming errors returned 174 before the handler entered.
+Both timerfd imports use `GLIBC_2.17`, and the fixture required the same
+set of glibc and libgcc symbol versions as its baseline.
+
+One guest ran an A/B/B/A comparison with both switches disabled in A and
+enabled in B. Each arm measured 128 exact child execs and consuming waits
+with 100 ms of main-thread sleep and GC stress disabled. Child CPU fell
+from 0.759 to 0.404 and from 1.095 to 0.508 CPU-ms/job in the two pairs.
+This diagnostic did not run PostgreSQL, the RSS trim, or the frozen
+Oban comparison. The whole-run CPU, RSS, and throughput gates for
+`slow-1r-64s` remain open.
+[Worker bootstrap receipts](../proof/jobs-parity/qualification-v1.json#L39361)
+
+### Compare the worker bootstrap draft on the frozen slow-64 input
+
+The `e905b1d0` release runtime ran with both bootstrap switches, worker
+THP disabled, and the lean immutable-file trim. Fresh 64 KiB and 4 KiB
+calibration on the linked ELF selected 105 ranges. At stock 64 KiB fault
+around, both held arms reached 64 exact children and reconciled 128 fenced
+commits and 64 consuming waits. Trim reduced peak summed tree RSS from
+347.8 to 200.1 MiB.
+
+The trace pilot and all five trace-off pairs on PostgreSQL 17.11
+reconciled the frozen 512-job input against Oban Basic 2.24.2. The five
+scored pairs covered 5,120 jobs. Each job committed both writes. Mesh
+and Oban both sampled 64 executing jobs in each pair. Mesh's timestamp
+estimate was 65 in groups 0 and 2, and the local adapter rejected the
+five-pair receipt under its extra estimate check.
+
+The unchanged frozen driver's replay passed the RSS and pickup limits.
+Mesh and Oban medians were 174.7 and 142.6 MiB peak RSS, and 1,151 and
+1,068 ms pickup p99. Throughput was 401 and 433 jobs/s. Runner CPU was
+2.546 and 1.496 CPU-ms/job, a ratio of 1.70. Throughput and CPU therefore
+missed their original gates. The initial single-pair CPU screen passed.
+The frozen replay includes all five pairs.
+
+Across the five Mesh arms, PostgreSQL CPU ranged from 1.532 to 3.354
+CPU-ms/job. Driver CPU rose from 0.127 to 0.368 CPU-ms/job between the
+fastest and slowest Mesh arms. The matched comparison measures the whole
+candidate against Oban. It cannot isolate the switches' effect on runner
+CPU. A separate immediate-return child-only comparison measured
+0.103–0.115 CPU-ms/job of savings with both switches enabled.
+[Frozen slow-64 and immediate-return receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Hold the ordinary worker's stdin lock across renewals
+
+The ordinary worker receives its bootstrap and parent renewals on stdin.
+On GNU ARM64, a startup barrier held the parent-reader thread before it
+could read. The `c3efe519` executable entered a compiled `IO.read_line()`
+handler, consumed an on-time renewal, and exited with status 172 at its
+old lease cutoff. The test observed the handler blocked in `read(0)`
+before sending the renewal.
+
+Revision `91b50e9b` waits for the parent reader to own stdin before calling
+the handler. The reader holds the lock across renewal frames, and the
+deadline thread starts before the handler waits for that ownership. With
+the same startup barrier, the compiled handler entered after the reader
+was released and the renewal extended the lease past the handler deadline.
+The worker exited with status 171 at that deadline. On macOS ARM64,
+PostgreSQL 17.11, 18.7, and 19.0 each passed 53 Jobs runtime and three
+compiled Jobs tests over verified TLS and SCRAM, including the scoped-login
+proof on fresh and upgraded schemas. The workspace build, 1,560 runtime
+tests, and three library tests passed.
+[Ordinary worker stdin receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Use the watchdog's accepted lease at handler entry
+
+A compiled GNU ARM64 test parked the handler thread after the parent
+reader acquired stdin. Without a renewal, the watchdog exited with
+status 172 before handler entry. With a valid renewal, the watchdog ran
+past the original cutoff while the handler thread remained parked.
+Revision `b104bc92` exited 172 when the entry check resumed. Revision
+`f21a66a2` entered and returned a complete framed reply.
+
+The final entry check reads the accepted lease and samples the boot
+clock under the same lock, after copying the Mesh input. The watchdog
+holds that lock while checking the old lease and publishing a renewal.
+The worker still checks its hard deadline before input preparation and
+before returning a reply. The macOS ARM64 workspace build, 1,560 runtime
+tests and three library tests passed at `f21a66a2`. On PostgreSQL 17.11,
+the verified TLS and SCRAM run passed 53 Jobs runtime and three compiled
+Jobs tests.
+[Renewed-entry receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Check one trim plan with both bootstrap switches off
+
+The slow-64 attribution boot packed one new ELF and one trim plan for
+both worker settings. The first timed arm ran with both switches off.
+It discarded 63 jobs when the worker-local trim returned `EBUSY`
+before handler writes. Both switches were enabled during calibration.
+The adapter rejected the arm before timing its peer.
+[Failed attribution capture](../proof/jobs-parity/qualification-v1.json)
+
+### Measure the shared trim with both worker settings
+
+Four calibration boots captured both flag settings with stock 64 KiB
+and diagnostic 4 KiB fault around. The first shared plan reached only
+2.240 MiB per worker with both switches enabled. Replaying the page
+captures found gaps that were absent in every observation and could be
+joined within the same immutable load. A fresh calibration admitted the
+shared 105-range plan with 2.392 MiB per worker at the holds with both
+switches off and 2.282 MiB with them on. The held proofs used stock 64 KiB
+fault around. Each held arm reached 64 workers and reconciled 128 fenced
+commits and 64 consuming waits.
+
+The `e905b1d0` ELF used the same plan in both timed settings. Two
+opposite-order, trace-off pairs reconciled 2,048 jobs and sampled 64
+executing jobs in every arm. Enabling both switches saved 0.345 and
+1.108 runner CPU-ms/job and lowered the sampled peak RSS in each pair.
+
+Five separate pairs used that exact ELF and plan with both switches
+enabled against stock Oban Basic 2.24.2 on PostgreSQL 17.11. All 5,120
+jobs reconciled two durable writes and both engines sampled 64 executing
+jobs in every pair. The runner CPU medians were 2.598 and 1.771 CPU-ms/job.
+Throughput was 398 and 450 jobs/s. The frozen replay missed those two
+gates and passed RSS and pickup. The strict adapter separately rejected
+the timestamp estimate of 65 for one Mesh arm. The trace pilot's saved
+version log included a locale warning after the JSON. A host-only reader
+verified the original capture by parsing the version record separately.
+[Shared trim and Oban comparison receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Recheck the PR branch on the PostgreSQL version matrix
+
+The PR branch at `bdc83c72` passed the workspace build, formatting,
+and runtime and library suites from a fresh Cargo target on macOS
+ARM64. PostgreSQL 17.11, 18.7, and 19.0 each passed the versioned
+TLS/SCRAM verifier, fresh-install and upgrade role proofs, 53 Jobs
+runtime tests, and three compiled Jobs tests. Both standalone effect
+SQL proofs also passed on each version. The first attempt using the
+shared Cargo target reused an older compiler dependency and failed
+to build. The fresh target passed with the same source.
+[Current-branch verification receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Verify the integrated Jobs candidate
+
+Revision `8526a5bd` passed the compatibility verifier on macOS ARM64
+with PostgreSQL 17.11, 18.7, and 19.0. Each version passed 68 Jobs
+runtime tests and three compiled Jobs tests. The 64-slot LISTEN test
+holds synthetic workers to verify admission and separate database
+sessions. Compiled named-effect children require the Linux ARM64 proof.
+
+The new topology test initially failed for a supplied database owner
+without `CREATEDB`. Revision `99a5f1ff` uses the supplied database and
+tags the runtime test connections. The focused test passed five times
+on PostgreSQL 17.11 with neither `CREATEDB` nor `CREATEROLE` and an
+unrelated session under the same login.
+[Integrated compatibility receipts](../proof/jobs-parity/qualification-v1.json)
+
+Both one-slot Linux ARM64 fixtures passed on PostgreSQL 17.11,
+18.7, and 19.0 using one release ELF linked against the `8526a5bd`
+runtime. Each mode verified five TLS connections, separate durable
+effects on a reused backend, full resets, and retry after an
+interrupted effect. In each LISTEN run, both enqueues advanced the
+notification counter with zero fallback scans. These runs check
+child absence after settlement. A separate trace is needed to
+establish the consuming wait before submission.
+[Integrated Linux receipts](../proof/jobs-parity/qualification-v1.json)
+
+The Noble ARM64 smoke attached the planned kernel and ELF probes.
+It observed a consuming wait with the expected terminal status before
+the acknowledgement entry, and rejected a reversed order and an
+absent tracepoint. The original interval reproduced its map lookup
+error. The smoke uses a small native fixture.
+[Wait-order smoke receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Prove consuming wait before compiled settlement submission
+
+The Linux ARM64 PostgreSQL 17.11 proof at `0c36b429` passed in
+polling and LISTEN modes. The proof uses the same opt0 ELF in both
+arms and the runtime archive built at `233fccbc`. Runtime and
+compiled fixture sources are identical at those revisions.
+
+For each mode, the consuming `wait4` returned for the exact worker
+before the runner entered `pg_jobs_ack`. The observer matched the
+worker PID and start time to the durable job, run, and attempt.
+The six traced dispositions covered normal completion, retryable
+settlement after the staged disconnect, and completion of the
+replacement. Each mode verified five TLS connections with SCRAM
+authentication and eight full resets, including startup resets.
+Both LISTEN enqueues received notification-driven scans with zero
+fallback scans. The hosted ARM64 workflow remains unrun.
+
+The `0c36b429` runtime also passed 25 focused tests as an
+unprivileged user in a Linux GNU ARM64 guest. The tests cover
+the effect relay, PostgreSQL session receipts and resets, Linux
+descriptor handoff, and worker-only THP selection. This fixture
+uses local sockets and does not start PostgreSQL.
+
+On macOS ARM64, `0c36b429` passed the compatibility verifier and both
+standalone effect proofs on PostgreSQL 17.11, 18.7, and 19.0. All three
+versions passed 68 database-backed Jobs runtime tests and three
+compiled Jobs tests. The Linux ordering proof covers the one-slot
+debug fixture on PostgreSQL 17.11.
+
+The same macOS candidate passed 719 compiled end-to-end tests
+across the compiler verification suite, with two tests ignored.
+The laws and pinned solver commands passed 158 tests with the
+published ARM64 builds of Z3 4.15.7 and Lean 4.36.0. The Cargo
+check of the fuzz binaries passed. These receipts cover local
+execution of those commands.
+[Exact ordering and platform receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare short jobs under a physical cap of 20 connections
+
+Five counterbalanced Linux ARM64 groups ran 2,560 jobs on the frozen
+`short-1r-16s` input with PostgreSQL 17.11 and Oban Basic 2.24.2
+using Isolated notification. One connection per arm served both the
+producer and observer. The named-effects arms used eight warm app
+sessions and worker-local THP disablement on the same `b38e23e8` ELF.
+All arms reconciled two separate commits per job.
+
+| Arm | Median jobs/s | Range, jobs/s | Peak connections |
+| --- | ---: | ---: | ---: |
+| Named effects with LISTEN | 1,003 | 684–1,073 | 13 |
+| Named effects with polling | 921 | 263–1,091 | 12 |
+| Ordinary Mesh with polling | 280 | 172–395 | 12 |
+| Oban Basic | 614 | 504–763 | 19 |
+
+Named LISTEN won all five pairs and passed all gates applied by the
+local scorer. Its median pickup p99 was 116.7 ms versus 203.6 for
+Oban. Median runner CPU was 1.20 versus 4.58 CPU-ms/job, and median
+sampled peak tree RSS was 52.3 versus 121.8 MiB. Polling passed the
+median gates and missed an initial poll in two of five groups.
+
+The throughput gain came from pickup. The median first claim followed
+enqueue commit by 1.0 ms with named LISTEN and 63.0 ms for Oban.
+From the first claim to final settlement, the medians were 126.1 and
+109.2 ms. The scorer marks this comparison as local evidence for one
+profile. Dense drain and full-occupancy memory remain open.
+[Hard-cap short profile receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare large contexts on the 4 GiB Linux guest
+
+The `8526a5bd` release ELF and stock Oban Basic 2.24.2 Isolated ran
+the frozen `large-8r-64s` job set on two vCPUs and 4 GiB of memory.
+Each arm submitted 64 jobs with 512 KiB payloads in one enqueue
+transaction. The PostgreSQL 17.11 pilot verified the stored payloads,
+64 exact Mesh worker execs and consuming waits, and 128 full resets.
+Verified TLS and SCRAM were used under the fixed 96-connection cap.
+Mesh peaked at 65 connections and Oban at 81.
+
+All five valid counterbalanced groups favored Mesh. Median throughput
+was 210.65 versus 206.10 jobs/s. Median pickup p99 was 295.3 versus
+304.2 ms. The local score passed every frozen threshold and reconciled
+640 scored jobs with 1,280 independent writes. The first group-five
+capture stopped during Oban warmup when four client ports were reused
+after disconnect. The same inputs and ledger checks passed on retry.
+This local comparison covers one profile and uses full-batch warmups.
+[Large-context receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure dense drain with bounded warm sessions
+
+Five counterbalanced groups ran the frozen `noop-8r-64s` input on
+the two-vCPU Linux ARM64 guest with PostgreSQL 17.11. Both arms used
+eight runners and 64 slots. The `8526a5bd` Mesh fixture used four
+warm application sessions per runner, LISTEN, and worker-local THP
+disablement. Oban used Basic 2.24.2 with Isolated notification.
+All 10,240 scored jobs produced two separate durable writes.
+
+| Metric | Mesh | Oban |
+| --- | ---: | ---: |
+| Median jobs/s | 851 | 1,796 |
+| Range, jobs/s | 711–1,058 | 1,587–2,536 |
+| Median pickup p99, ms | 1,189 | 549 |
+| Median first claim to final settlement, ms | 1,199 | 556 |
+| Median active PostgreSQL CPU, ms/job | 1.51 | 0.49 |
+| Median active runner CPU, ms/job | 0.90 | 0.57 |
+| Peak admitted connections | 65 | 81 |
+
+Mesh missed throughput and pickup in the local comparison. It
+passed the runner CPU, RSS, connection, process, thread, and
+queued-context gates. The first claim took 4.5 ms median on Mesh
+and 13.9 ms on Oban. PostgreSQL and the runner tree accounted for
+most of the CPU charged during the active Mesh interval. The active
+interval starts before enqueue and ends at the first terminal
+sample. J7 runner CPU uses the separate `wait4` interval.
+
+The unscored pilot accounted for 1,024 exact Mesh consuming waits
+before durable settlement and 2,048 effect resets. The reducer
+binds Postgrex teardown TCP receipts to the eight Oban pools and
+the producer after the terminal sample. Both arms stayed within
+the cap of 96 admitted sessions. The comparison uses stock Oban
+writes and the Mesh fenced named operations.
+[Dense timing and admission receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute active PostgreSQL CPU in the dense run
+
+A separate unscored pair sampled the exact admitted backend PIDs
+and start times. Mesh's active CPU bounds were 0.67–0.68 ms/job
+for Jobs SQL, 0.40–0.42 for application SQL, and 0.14–0.15 for
+producer and observer SQL. The application figure includes the
+fenced writes and resets. The probe added no database connections.
+
+The two-vCPU budget at the same boot's Oban rate of 2,544 jobs/s
+was 0.786 CPU-ms/job. The measured PostgreSQL and runner cgroups
+charged at least 1.37 CPU-ms/job within the durable interval after
+deducting the maximum work outside its clock bounds. That floor
+applies to the captured configuration. It leaves the CPU savings
+from any proposed change to be measured.
+[Admitted-backend CPU receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure exact-child and application CPU on one dense cohort
+
+Three unscored Linux ARM64 pairs used the same release ELF and
+frozen `noop-8r-64s` input at `8526a5bd`. Each Mesh arm joined
+1,024 consuming `wait4` results to the durable attempts and
+attributed application CPU to the stable TLS backends that
+executed the fenced operations and full resets. Both arms
+reconciled 6,144 jobs and 12,288 durable writes across the pairs.
+All three boots ran Mesh before Oban.
+
+| Pair | Oban jobs/s | Two-vCPU budget, CPU-ms/job | Mesh child and application, CPU-ms/job |
+| --- | ---: | ---: | ---: |
+| 02 | 1,363 | 1.468 | 1.167–1.169 |
+| 03 | 2,200 | 0.909 | 0.799–0.801 |
+| 04 | 2,145 | 0.932 | 0.986–0.989 |
+
+In pair 04, the two measured components alone exceeded the
+same-boot CPU budget. Pair 03 left at most 0.110 CPU-ms/job for
+the parent runners, Jobs SQL, driver, and other work. The observed
+PostgreSQL and runner CPU floor exceeded the budget by at least
+0.498 CPU-ms/job in every pair. This screens out a dispatcher-only
+change for pair 04 with unchanged child and application costs.
+The other boots leave different amounts of headroom.
+
+The first capture stopped at protected runner procfs access before
+enqueue. The repaired observer records connection identity from each
+runner's own socket and keeps the release process protections active.
+The reducer applies clock and scheduling-counter allowances at the
+durable window edges and reports the added observer CPU separately.
+[Same-cohort dense CPU receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Bound dense claim-lane CPU
+
+A separate unscored pair identified all eight claim threads and
+matched their owned sockets to the stable TLS PostgreSQL
+backends. Per-task `schedstat` was readable with the release
+process protections in place. The active-window upper bound was
+1.495 CPU-ms/job across the claim backends and 0.095 on the
+claim threads. It covers the entire measured claim lane,
+including productive claims. Main-dispatch reservation and
+reply handling fall outside these threads.
+
+On this loaded boot, Oban reached 692 jobs/s and the Mesh
+PostgreSQL-plus-runner durable floor was 4.907 CPU-ms/job.
+Meeting the same-boot rate required at least a 2.017 CPU-ms/job
+cut. With a hypothetical 0.300 CPU-ms/job saving in child and
+application work, removing the measured claim lane wholesale
+would still leave at least 0.126 CPU-ms/job to recover. The
+pilot bounds this configuration under its observed load.
+
+A lower-load repeat on the same guest image bounded the whole
+claim lane at 0.633 CPU-ms/job. Oban reached 2,404 jobs/s with a
+0.832 CPU-ms/job budget. Mesh's fresh children and application
+SQL alone used 0.995–1.001 CPU-ms/job. Even after the hypothetical
+0.300 cut to those two components, the remaining cut with a
+0.100 reserve was 0.589 CPU-ms/job, or 93% of the measured
+claim-lane ceiling. The ceiling includes productive turns.
+The next attribution needs to distinguish empty and productive
+turns before estimating the savings from coalescing them.
+[Claim-lane CPU receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute dense claim turns by outcome
+
+The `2611ccef` release diagnostic recorded claim turns from eight
+claim owners and matched each owner to its authenticated PostgreSQL
+backend. The probe-off and probe-on boots used the same instrumented
+ELF and the frozen `noop-8r-64s` input. Each arm reconciled 1,024 jobs
+and 2,048 writes. In the instrumented window, 162 productive turns
+claimed all 1,024 jobs. There were also 25 empty turns and 266
+zero-row turns with contention hints.
+
+The PostgreSQL `schedstat` deltas can carry accounting lag and CPU
+from the prior due probe. The reducer assigns zero guaranteed CPU
+to productive turns, leaving the full 1.445 CPU-ms/job lane ceiling
+on this boot. Oban throughput varied from 905 to 555 jobs/s across
+the boots, so the pair cannot resolve observer overhead. The capture
+establishes the outcome counts and session identities. Removable CPU
+and the case for a dispatcher redesign remain unresolved.
+[Claim-turn receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure claim execution inside PostgreSQL
+
+A diagnostic PostgreSQL 17.11 build sampled backend thread CPU around
+the exact claim `PortalRun`. Both Linux ARM64 probe runs joined all
+eight claim backends to the client receipts and accounted for all
+1,024 Mesh jobs per run. Productive claims used 0.110 and 0.124 raw
+CPU-ms per workload job inside that bracket. Empty and contention
+turns used 0.011 and 0.013 CPU-ms per job. The bracket covers claim
+execution and excludes the separate due probe and transaction and
+protocol work outside `PortalRun`.
+
+A third capture using the same server binary with the meter off
+produced zero probe receipts. Two earlier controls failed CPU edge
+validation. Across the three validated boots, Oban ranged from 1,158
+to 2,651 jobs/s. The raw execution split is repeatable across the two
+probe runs. Host drift and the unverified debit for meter instructions
+still leave the stock claim-lane savings unresolved.
+[Portal execution receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Check guest CPU headroom on the no-op workload
+
+Two local groups at each CPU count ran the same `c271319e`
+release fixture, 1,024-job input, 2 GiB guest, and PostgreSQL
+and Oban builds. The group order was two, four, four, then
+two vCPUs. All 12,288 measured jobs reconciled.
+
+| Group | Two vCPUs, Mesh controls / Oban (jobs/s) | Four vCPUs, Mesh controls / Oban (jobs/s) |
+| --- | ---: | ---: |
+| 1 | 1,502 and 1,453 / 3,224 | 1,498 and 1,481 / 2,479 |
+| 2 | 1,546 and 1,464 / 2,273 | 2,234 and 2,072 / 2,429 |
+
+The additional CPUs coincided with a substantial improvement
+for both Mesh controls in group 2 and little difference in
+group 1. Oban led every group. This small local screen leaves
+the size of the CPU effect unresolved. The first four-vCPU
+pilot stopped at the guest harness's two-CPU assertion. The
+rerun bound the assertion to the new count and preserved the
+workload and resource limits.
+[Guest CPU comparison](../proof/jobs-parity/qualification-v1.json)
+
+### Compare two more short-job topologies on Linux
+
+The staged `c271319e` fixture reconciled all 7,680 measured jobs for
+one runner at 64 slots and 1,920 for eight runners at 16 slots. Both
+ran the same warm fenced sessions and stock Oban comparator as the
+earlier staged runs.
+
+| Profile | Mesh jobs/s | Identical Mesh repeat | Stock Oban jobs/s | Scored result |
+| --- | ---: | ---: | ---: | --- |
+| Short, 1 runner and 64 slots | 1,272.7 | 1,329.0 | 1,254.7 | Both arms passed the median gates |
+| Short, 8 runners and 16 slots | 631.4 | 617.9 | 620.9 | Repeat arm missed throughput |
+
+Each Mesh arm won one of five matched 64-slot groups, despite the
+higher individual medians. At eight runners, each Mesh arm won three
+groups and the median absolute difference between identical controls
+was 103 jobs/s. Both topologies passed pickup and resource limits.
+The timing spread leaves throughput open for repeatable confirmation.
+[Short topology receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare four runners at 64 slots on short jobs
+
+Five matched Linux groups at `c271319e` reconciled all 7,680
+measured jobs. Mesh reached 756 and 927 jobs/s, versus Oban's
+1,512. Both controls missed throughput and pickup p99. CPU,
+RSS, and the remaining resource budgets passed.
+
+Mesh recorded a first claim within 2–3 ms, versus 72 ms for
+Oban. Its median drain after the first claim took 550–672 ms
+versus 277 ms. Mesh averaged about 44 claimed slots during
+that drain, compared with 33 for Oban.
+[Four-runner short-64 receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare eight runners at 64 slots on short jobs
+
+Five matched Linux groups at `c271319e` reconciled all 7,680
+scored jobs. Mesh reached 1,037 and 1,006 jobs/s, with pickup
+p99 of 478 and 497 ms. Oban reached 1,700 jobs/s and 288 ms
+p99. Neither Mesh arm won a throughput pair. Both passed the
+resource limits and missed throughput and pickup p99.
+
+Mesh first claimed work in 1.5–3.5 ms versus Oban's 20.7 ms.
+After the first claim, Mesh took 492–507 ms to settle the
+backlog versus 250 ms for Oban. Mesh made 0.436 and 0.443
+claim calls per job, compared with Oban's 0.162. Mesh averaged
+about 24 claimed slots through this drain, compared with 27
+for Oban.
+[Eight-runner short-64 receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare one-slot sparse polling on Linux
+
+The `c271319e` staged run used one prewarmed effect session and no
+listener at one slot. All 360 jobs reconciled across five groups
+within the five-connection and two-process workload limits. The
+Mesh arms reached 1.973 and 1.973 jobs/s versus 2.007 for stock
+Oban. They missed the throughput gate, with zero and one group
+wins. Median pickup p99 was 257.9 and 247.3 ms versus 218.3, within
+the 1.25× limit. CPU and RSS also passed.
+
+The fixed 250 ms sparse gap and poll interval contribute much of
+the elapsed time here.
+[One-slot sparse receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Fit one-slot sparse notifications within the connection budget
+
+The `399354ca` fixture reused the ordinary single-claim dispatcher
+with a dedicated listener and one prewarmed effect lane. The runner
+shared one app connection for claims, settlement, and maintenance.
+The four workload sessions fit the five-connection cap with room
+for the separately accounted observer. Both polling controls used
+the same binary with batch claims enabled.
+
+All 480 scored jobs in five local Linux groups reconciled. The
+listener arm reached a median of 2.693 jobs/s (1.805–2.738), versus
+2.023 (1.888–2.024) for stock Oban Basic with the Isolated notifier.
+The identical Mesh polling arms reached 1.974 and 1.978 jobs/s.
+The listener won four of five groups against all three controls
+and recorded 24 notification-triggered scans in every trial.
+Median pickup p99 was 8.9 ms versus Oban's 200.0 ms. CPU, RSS,
+and the hard resource budgets passed.
+
+The listener missed the worst-trial 100 ms claim p99 gate. Claim
+p99 was 147.5 ms in the third group and at most 5.1 ms in the
+other four. The one-minute host load rose from 18.9 to 33.0
+during that listener trial on a 15-logical-CPU host. The result
+includes all five groups.
+
+In a separate traced proof, the verifier terminated the listener's
+PostgreSQL backend and held its reconnect closed using the disposable
+database role limit. The first committed job settled while the
+listener was offline. Restoring the limit produced a new listener
+backend and 23 notification-triggered scans for the remaining jobs.
+All 24 jobs produced two ordered writes, one effect, and an exact
+child reap. The first proof attempt exposed an extra observer
+connection in the verifier. The successful rerun used live runner
+status during the outage and retained durable reconciliation.
+[Listener comparison and outage proof](../proof/jobs-parity/qualification-v1.json)
+
+### Compare compiled sparse named effects under a physical cap of five
+
+Five alternating Linux ARM64 pairs at `8526a5bd` reconciled 240
+measured jobs and 480 durable writes on the frozen `sparse-1r-1s`
+input with PostgreSQL 17.11 and stock Oban Basic 2.24.2 Isolated.
+Mesh shared one Jobs connection for claim and lifecycle. Both
+arms used one connection for enqueue and observation. Admitted
+peaks were five for Mesh and four for Oban.
+
+Mesh won all five pairs, with median throughput of 2.908 jobs/s
+versus Oban's 2.026. Pickup p99 medians were 6.0 and 248.8 ms.
+Mesh recorded 24 notification scans per pair. Its worst claim p99
+was 4.1 ms against the 100 ms gate. Both arms met the remaining
+local gates. The scorer applies the frozen thresholds to this one
+profile and marks the comparison noncanonical.
+
+The first pilot completed the guest workload, but the archive
+reader rejected the combined version and diagnostic log. The
+corrected pilot retained that log and emitted a separate version
+receipt. It verified the cap, exact waits before settlement,
+and 48 per-operation resets.
+[Sparse hard-cap comparison receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Follow-up correctness proofs
+
+The follow-up verifier used the same runtime sources and passed 45 Jobs
+runtime tests and both compiled suites on PostgreSQL 17.11, 18.7, and 19.0.
+Both suites complete shared schema setup before running namespace traffic.
+The verifier covered batch pause and scaling, oversized contexts, queue
+rotation, stale acknowledgement
+events, and lease renewal while the reader buffer was full. The batch
+context test reached 25,166,688 queued bytes and completed the four
+admissible jobs. The oversized row retained attempt zero.
+
+The release fault harness recovered the same job ID and deduplicated the
+effect after runner death. The two Mesh revisions produced matching
+results in the pinned-main recovery comparison over verified TLS. The
+settlement and batch-claim cuts used SCRAM on plaintext loopback. Losing
+the reply before batch commit produced one native worker start at attempt
+one. Losing it after commit, including after `CommandComplete` and before
+`ReadyForQuery`, produced one start at attempt two. An uncertain settlement
+emitted `ack_uncertain`. Both engines left one durable effect in each
+settlement case. The `macos_follow_up_lanes` entry links the named receipts.
+[Qualification receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Verified PostgreSQL workflows
+
+The following cases passed on macOS arm64 with PostgreSQL 17.11, 18.7, and
+19.0 using runtime `1b12243b`. The proof includes both compiled Jobs
+suites and the PostgreSQL-backed runtime tests.
+
+| Workflow | Tested behavior |
+| --- | --- |
+| Transactional enqueue | A business write and its job commit together. Rollback leaves neither, and receipt replay returns the same job identity. |
+| Uniqueness and replacement | A permitted duplicate updates the stored args while the active attempt keeps its claim token and initial context. The retry receives the new args. |
+| Scheduled and recurring work | Scheduled and retryable jobs reach their due timers. A replacement cron owner preserves a committed occurrence and recovers an interrupted transaction. |
+| Retry, snooze, and exhaustion | Compiled retries preserve job and effect identities, honor the due time, and discard at exhaustion. The runtime store proof preserves the attempt count after a snooze. |
+| Cancellation and recovery | A committed cancellation wins over an acknowledgement. After runner death, the replacement holds a new token and PostgreSQL rejects the stale token. |
+| Queue controls and admission | Four compiled runners respect the global cap. Local pause leaves work for a peer, scale respects the lower limit, and stopping one queue leaves another able to work. |
+| Tests and bounded drain | Compilation rejects test helpers in a production build. The test runner verifies borrowed-transaction visibility and namespace isolation. Compiled drain cases cover cutoff, recursion, error policy, and restart. |
+| Telemetry and maintenance | The runner reports database-confirmed dispositions and redacts job data. Scoped role proofs cover fresh and upgraded databases. A concurrent index rebuild allows another job to settle and refuses a second rebuild owner. |
+
+## Local correctness evidence
+
+After integrating compiler proof support from `27cc2c7b`, the
+`b7550dce` checkout passed four proof-value tests and the callable-theorem
+rejection cases. The macOS arm64 runs on PostgreSQL 17.11, 18.7, and 19.0
+over verified TLS each passed 53 Jobs runtime tests and all three compiled
+Jobs suites, including fresh and upgraded scoped worker roles. An
+independent source review checked the resolved Jobs direct-call and
+theorem-application guards.
+[Integration receipt](../proof/jobs-parity/qualification-v1.json)
+
+The Jobs compatibility script exercises the compiled producer and worker,
+the PostgreSQL driver, leases, cancellation, timeout, recovery, and
+shutdown. The full-role variant adds scoped migrator, producer, worker,
+operator, and inspector logins, plus cron takeover and reindex.
+
+An isolated Cargo target at `f6997587` passed the compiled and scoped-role
+compatibility checks on macOS ARM64 with PostgreSQL 17.11, 18.7, and 19.0.
+Each version passed 53 Jobs runtime cases and all three compiled Jobs suites.
+The standalone effect fence also passed on each server version. The shared
+target's earlier compile failure is retained alongside the clean-target logs.
+[Current checkout verification receipts](../proof/jobs-parity/qualification-v1.json)
+
+The paired recovery baseline passed on hosted Linux x86_64 and local
+macOS arm64 with release Mesh `7c162056` and Oban Basic 2.24.2.
+PostgreSQL 17.11 used verified TLS and SCRAM. Both engines preserved the
+committed enqueue, rolled back the other enqueue, and recovered the
+original job after runner death. The replacement settled on attempt
+two with one durable effect and shut down cleanly. Mesh also rejected
+the stale lease token. The Linux run used the pinned pre-optimization
+runtime after optimization work had begun.
+[Paired recovery receipts](../proof/jobs-parity/j1-paired-linux-recovery-v1.json)
+
+The hosted job also passed 45 Jobs runtime tests and two compiled Jobs
+tests, including native timeout and parent-death recovery. Both
+downloaded artifacts matched their published SHA-256 digests. The
+tested merge checkout `1c5269a5` and PR head `e08d3f34` had identical
+harness and runtime sources.
+[Hosted PostgreSQL 17.11 job](https://github.com/snowdamiz/mesh-lang/actions/runs/44791300418/job/136501104028)
+
+### PostgreSQL and platform matrix
+
+| Local proof | PostgreSQL | Scope |
+| --- | --- | --- |
+| Linux arm64 container, pinned main `7c162056` | 17.11, 18.7, 19.0 | Baseline transaction, timeout, and process recovery over verified TLS |
+| Linux arm64 container, candidate `0c40c3ad` | 17.11, 18.7, 19.0 | 43 Jobs runtime cases, two compiled suites, scoped roles, and concurrent reindex over verified TLS |
+| Linux arm64 container, candidate `ebe14b91` | 17.11 | Repeat of the full-role proof with the batch dispatcher wakeup change |
+| Linux arm64 container, runtime `1b12243b` | 17.11, 18.7, 19.0 | 36 PostgreSQL driver cases, 45 Jobs runtime cases, both compiled suites, and fresh and upgraded scoped roles over verified TLS with SCRAM. [Receipt](../proof/jobs-parity/j1-postgres-matrix.log) |
+| macOS arm64, candidate `53fb9189` | 17.11, 18.7, 19.0 | 43 Jobs runtime cases, two compiled suites, scoped roles, reindex, and pinned polling reference over verified TLS |
+| macOS arm64, release candidate `53fb9189` against main `7c162056` | 17.11, 18.7, 19.0 | Compiled rolling upgrade and rollback with scoped roles and default function execution revoked |
+| macOS arm64, promotion harness `ebe14b91` and release runtime `302cdce8` | 17.11, 18.7, 19.0 | Lost settlement reply, replay barrier, old-primary fencing, listener subscription catch-up, and one effect per job |
+| macOS arm64, candidate `83a76b7d` | 17.11, 18.7, 19.0 | Repeat of the full-role proof with the settlement wakeup. All 43 Jobs runtime cases and both compiled suites passed on each version. |
+| macOS arm64, candidate `e8fa00c0` | 17.11, 18.7, 19.0 | Verified TLS and SCRAM after the derivation change, including all 36 PostgreSQL driver cases, 43 Jobs runtime cases, both compiled suites, and fresh and upgraded scoped roles |
+| macOS arm64, runtime `1b12243b` | 17.11, 18.7, 19.0 | 45 Jobs runtime cases, both compiled suites, fresh and upgraded scoped roles, and combined pool, listener, and maintenance interruption over verified TLS |
+| macOS arm64, release runtime `1b12243b` with main `7c162056` for the upgrade | 17.11, 18.7, 19.0 | Rolling upgrade, legacy settlement and rollback under scoped grants, and primary promotion with an uncertain acknowledgement. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log) |
+| macOS arm64, integrated `bdb1bd42` | 17.11, 18.7, 19.0 | 51 Jobs runtime cases and all three compiled suites on each version, including scoped roles and contention retry over verified TLS. [Receipt](../proof/jobs-parity/qualification-v1.json) |
+| macOS arm64, `0f30fde7` | 17.11, 18.7, 19.0 | 53 Jobs runtime cases, all three compiled Jobs suites, database API tests, and fresh and upgraded scoped roles on each version over verified TLS and SCRAM. The workspace crates were rebuilt in an isolated Cargo target. [Receipt](../proof/jobs-parity/qualification-v1.json) |
+
+The Linux process proof captured the worker PID and kernel start time for
+each held attempt before injecting parent death or waiting for the hard
+timeout. It checked that both original processes exited and reconciled a
+replacement attempt for each job. [Linux process receipt](../proof/jobs-parity/j7-lane-2.log)
+
+The listener promotion runs resumed eligible work within 1.31 seconds of writability
+against a 2-second budget. Replication and direct sessions used verified
+TLS and SCRAM. The loopback response-loss relay used SCRAM without TLS.
+The paired smoke and faults used release runtime and harness `53fb9189`.
+Both engines reconciled producer IDs, business writes, attempts, and effects
+after shutdown. The Mesh batch ran exactly one handler after each of the
+three COMMIT cuts, including loss of `ReadyForQuery` after `CommandComplete`.
+The one-runner, one-slot smoke observed four Oban processes against a cap
+of two. That configuration exceeds the frozen process budget.
+
+The `83a76b7d` release rerun also passed the nine SCRAM fault cases,
+including settlement response loss and the three batch claim response
+cuts. All nine passed again on `e8fa00c0`. Raw receipts are in runs
+`j1-fault-1akgie45` and `j1-fault-k1yd8gnc`.
+
+The local workspace gate passed at `e5a5f3c8`, including formatter and
+linter checks, compiler and runtime tests, the workspace and fuzz builds,
+the REPL, and the compiled `meshc` suites.
+
+The follow-up gate on source `64666eb7` passed 1,432 compiler tests,
+1,550 runtime and library tests, and 690 compiled CLI and REPL tests. The
+workspace built, and the locked fuzz targets passed `cargo check`.
+Formatter and linter checks passed for examples and packages. [Workspace receipts](../proof/jobs-parity/qualification-v1.json)
+
+The hosted workflow passed PostgreSQL 17.11, 18.7, and 19.0 on Linux x64
+and macOS arm64 for the `5868b649` tree. GitHub tested merge checkout
+`23a49319`, whose tree matched the PR head. Each of the six matrix jobs
+passed 36 PostgreSQL driver tests, 45 Jobs runtime tests, and both compiled
+Jobs proofs, including scoped logins and the combined outage.
+[Hosted PostgreSQL jobs and logs](https://github.com/snowdamiz/mesh-lang/actions/runs/44771848216)
+
+The scoped-drain follow-up at `308bb6cf` passed the same three PostgreSQL
+versions on macOS arm64. On both fresh and upgraded databases, the worker
+login reported idle with work remaining while the row was locked and
+returned an error when claim permission was withdrawn. With the grant
+restored, it completed the original job on attempt one with one effect.
+Bulk deletion and pruning each skipped a locked terminal row, honored the
+page limit, and preserved its receipt after a later pass removed it.
+[Scoped drain and cleanup proof](../proof/jobs-parity/qualification-v1.json)
+
+The matched comparison recorded workload-specific performance and resource
+misses. Broad Core parity remains open.
+[Qualification receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Producer commit and final claim faults
+
+The producer case cuts a connection after the fixture writes one business row
+and enqueues two jobs in the same transaction. When PostgreSQL never receives
+`COMMIT`, a separate connection sees zero rows and replay creates the batch.
+When PostgreSQL commits and the reply is lost, replay returns both original
+receipts with their job IDs, effect keys, states, and insertion fields intact.
+The observer verifies the business row and stored job arguments against the
+input. Each recovered job completes on attempt one with one effect.
+
+The final batch claim case gives one job a one-attempt budget. The proxy
+verifies PostgreSQL's `COMMIT` tag and withholds the response. A separate
+connection observes the original job executing on attempt one with a live
+fence. Recovery discards it after the 10-second lease expires. The runner
+records zero native worker starts, handler entries, and effects. Both cases
+passed on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0, using release
+runtime `1b12243b` and harness `bc76c175`. The driver owns the disposable
+PostgreSQL instance and uses SCRAM on loopback.
+[Commit-loss receipt](../proof/jobs-parity/commit-loss-v1.json)
+
+Run the paired fault suite with already built toolchains. Set `PG_BIN_DIR` to the
+desired PostgreSQL installation.
+
+```bash
+python3 scripts/jobs-parity.py --faults --release --mesh-batch --poll-ms 100 \
+  --mesh-ref 1b12243b --against-ref 7c162056 --toolchains target/jobs-parity/build
+```
+
+### Reproduce producer NOTIFY failures
+
+Set `PG_BIN_DIR` to the PostgreSQL 17.11 bin directory and run the proof from
+the committed harness. The driver builds the compiled producer in release mode
+and starts its own loopback PostgreSQL cluster with SCRAM and verified TLS.
+
+```bash
+python3 scripts/jobs-parity.py --notify-producer-failures --postgres-version 17.11 \
+  --mesh-ref a431fbbf
+```
+
+To reuse the pinned release pair, add `--toolchains target/jobs-parity/build`.
+The manifest records the runtime revision independently of the harness
+revision and fixture hashes.
+
+The producer writes a business row and calls `Jobs.enqueue_in` on the same
+connection. With publishing on, PostgreSQL rejects `PREPARE TRANSACTION`.
+With publishing off, a separate session sees the prepared transaction and
+empty business, job, receipt, attempt, and effect tables. The business row,
+job, and receipt become visible together after `COMMIT PREPARED`.
+
+For the full-queue case, the driver verifies the subscribed session in
+`pg_stat_activity` and holds its transaction through both producer calls.
+It commits 60 distinct 7,900-byte notifications. It then attempts to commit
+2,500 distinct 32-byte notifications in one transaction and checks for the
+queue-full error. With the queue still full, publishing on fails at
+`COMMIT` and leaves all five tables empty. Publishing off commits the
+business row, job, and receipt under the same pressure.
+
+The compiled cases passed on macOS arm64 with PostgreSQL 17.11, 18.7,
+and 19.0. [Producer failure receipt](../proof/jobs-parity/notification-producer-failures-v1.json)
+
+Read `manifest.json`, `mesh-toolchain.json`, and `result.json` in the printed
+evidence directory. This producer proof runs without workers or performance
+measurements.
+
+### Compiled drain and queue-local failures
+
+The bounded drain proof holds a claim in PostgreSQL while removing execute
+permission from the fixture. The caller receives a launch error. The original
+job returns to attempt zero without effects, then completes after execute
+permission is restored. A separate case disconnects the settlement backend.
+The caller reports an unconfirmed settlement error, and a later drain
+recovers the same job on attempt two with the original effect key.
+
+The queue-local proof runs with single and batch claims. The runner terminates
+a held handler and discards its job after the explicit grace has elapsed. The
+runner continues serving another queue. A claim that returns during local stop
+is refunded without a handler start. Process replacement resets local settings
+from `Jobs.start`, preserves the database pause and concurrency limit, and
+observes the limit after resume.
+Both proofs passed on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0
+using verified TLS and SCRAM.
+[Compiled failure receipts](../proof/jobs-parity/qualification-v1.json)
+
+The PostgreSQL 17.11 follow-up commits a real single claim and injects an
+error at the caller boundary during queue-local stop. The runner clears its
+local reservation, the original lease and attempt remain durable, and a
+sibling queue settles. After expiry, a replacement claims attempt two with
+the original effect key, and settlement with the obsolete token returns
+`stale`. The compiled drain suite also verifies that an occupied global
+slot leaves a queued job untouched, and a one-job drain recovers one
+eligible expired lease while leaving excess and wrong-version rows intact.
+The compiled inspection checks cover the 20-row default and insertion order.
+[Follow-up receipt](../proof/jobs-parity/qualification-v1.json)
+
+The compiled waiting assertions each completed one read with no visible
+match before a separate transaction committed. `Test.assert_enqueued`
+then succeeded and `Test.refute_enqueued` reported the matching job on
+PostgreSQL 17.11 with verified TLS. [Waiting assertion receipt](../proof/jobs-parity/qualification-v1.json)
+
+The compiled public API proof accepts inspection limits of 1 and 100,
+an assertion wait of 60,000 ms with a committed match, and a drain budget of
+1,000. It rejects inspection limits of 0 and 101, waits of −1 and 60,001 ms
+through both assertion helpers, and drain budgets of 0 and 1,001. Each
+rejected drain leaves the original job and its effect ledger untouched.
+The verifier passed 47 Jobs runtime tests and all three compiled suites on
+macOS arm64 with PostgreSQL 17.11 over verified TLS.
+[Input bounds receipt](../proof/jobs-parity/qualification-v1.json)
+
+After integrating main, the exact `aa40fa5d` checkout passed 47 Jobs
+runtime tests and all three compiled suites on each of PostgreSQL 17.11,
+18.7, and 19.0 on macOS arm64. The runs use verified TLS and cover
+scoped roles on fresh and upgraded databases.
+[Integrated matrix receipt](../proof/jobs-parity/qualification-v1.json)
+
+The maintenance-join test pauses local admission and waits for any pending
+claim to clear before stopping with the cron lock held. This lets the test
+check that a drained runner still waits for maintenance. The corrected
+PostgreSQL 19.0 run passed all 45 Jobs runtime tests and both compiled
+proofs on macOS arm64. [Maintenance-join receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Recheck PostgreSQL 17.11 on the Jobs branch
+
+The macOS arm64 verification at `6ef9e640` passed 53 Jobs runtime
+tests, all three compiled Jobs suites, and the scoped-role proof on
+both a fresh and upgraded database. It used PostgreSQL 17.11 over
+TLS 1.3 with SCRAM. The parity harness passed 18 self-checks and all
+12 fault-driver tests.
+
+The first build reused older Cargo artifacts and failed to resolve
+compiler interfaces. The rerun set `CARGO_INCREMENTAL=0` and rebuilt
+the path dependencies before running the proof.
+[Exact-revision PostgreSQL receipt](../proof/jobs-parity/qualification-v1.json)
+
+The native workspace checks at `2ff8a798` passed on macOS arm64.
+The compiler and runtime suites passed 3,045 tests with 48 ignored.
+The seven compiled suites passed 690 tests. Workspace formatting,
+the locked workspace build, fuzz-target compilation, and the example
+and package lint and format checks also passed.
+[Native workspace receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Reconcile the Jobs branch with the main diagnostics catalog
+
+Merge `ee7e099b` integrates main `4f9fdd8d` with the Jobs parity
+branch. Jobs.start and Jobs.drain retain named handler registration
+and use the typed diagnostic introduced by main. The guide build
+keeps relative include paths and reruns when individual guide files
+change. A native relocation test embedded all 18 guide files from
+the consumer checkout and verified 19 relative Cargo watch entries.
+
+On macOS arm64, `02c799f0` passed the verified-TLS PostgreSQL 17.11
+proof after the first review fixes. The run passed 36 PostgreSQL
+driver tests, 53 Jobs runtime tests, all three compiled Jobs suites,
+and the fresh and upgraded scoped-role proofs. The parity driver
+passed 18 self-checks and all 12 fault-driver tests.
+
+The follow-up at `3df8657a` describes both Jobs calls in E0094 and
+updates the generated reference files. It passed eight Jobs type
+checker tests, nine diagnostic rendering tests, and the catalog
+artifact check. These receipts cover the reviewed merge on macOS
+and leave release qualification open.
+[Main diagnostics integration receipts](../proof/jobs-parity/qualification-v1.json)
+
+The pushed `59d2596e` revision passed the macOS ARM64 verifier on
+PostgreSQL 17.11, 18.7, and 19.0. Each run verified TLS 1.3 and wrong
+password rejection, then passed 36 PostgreSQL driver tests, 53 Jobs
+runtime tests, all three compiled Jobs suites, and the compiled scoped
+login proof on fresh and upgraded schemas. All 18 parity self-checks
+and 12 fault-driver tests passed for each server version.
+[Integrated PostgreSQL matrix receipt](../proof/jobs-parity/qualification-v1.json)

@@ -2,22 +2,68 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+unset MESH_JOBS_DISPOSABLE_ROLE_PROOF MESH_JOBS_TEST_ROLE_PASSWORD
 postgres_version=
-if [[ "${1:-}" == --compatibility && $# == 2 && "$2" =~ ^[0-9]+\.[0-9]+$ ]]; then
-  postgres_version="$2"
-elif (( $# != 0 )); then
-  printf 'Usage: %s [--compatibility VERSION]\n' "$0" >&2
+parity_driver_check=false
+j6_roles=false
+sql_proof=
+while (( $# > 0 )); do
+  case "$1" in
+    --compatibility)
+      if [[ $# -lt 2 || -n "$postgres_version" || ! "$2" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        printf 'Expected one --compatibility VERSION with a major and patch number.\n' >&2
+        exit 2
+      fi
+      postgres_version="$2"
+      shift 2
+      ;;
+    --parity-driver-check)
+      parity_driver_check=true
+      shift
+      ;;
+    --j6-roles)
+      j6_roles=true
+      shift
+      ;;
+    --effect-transaction|--effect-fence)
+      if [[ -n "$sql_proof" && "$sql_proof" != "${1#--}" ]]; then
+        echo "Select one standalone Jobs SQL proof." >&2
+        exit 2
+      fi
+      sql_proof="${1#--}"
+      shift
+      ;;
+    *)
+      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check] [--j6-roles] | --effect-transaction | --effect-fence\n' "$0" >&2
+      exit 2
+      ;;
+  esac
+done
+if [[ -n "$sql_proof" ]] && { [[ -n "$postgres_version" ]] || "$parity_driver_check" || "$j6_roles"; }; then
+  echo "--$sql_proof runs on its own." >&2
   exit 2
+fi
+
+if revision=$(git rev-parse --verify HEAD 2>/dev/null); then
+  printf 'Jobs proof checkout: %s\n' "$revision"
+fi
+printf 'Jobs proof host: %s\n' "$(uname -sm)"
+
+if "$parity_driver_check"; then
+  python3 scripts/jobs-parity.py --self-check
+  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p test_jobs_parity_fault.py
 fi
 
 verify() {
   export MESH_JOBS_TEST_PG_URL="$MESH_TEST_DATABASE_URL"
+  cargo build --locked -p meshc
   if [[ -n "$postgres_version" ]]; then
     MESH_TEST_POSTGRES_VERSION="$postgres_version" \
       cargo test --locked -p mesh-rt --test postgres_compatibility -- --ignored --nocapture
     cargo test --locked -p meshc --test e2e_pg_conn_ownership --test e2e_db_values \
       --test e2e_migrate -- --ignored --test-threads=1
   fi
+  cargo test --locked -p mesh-rt --lib db::pg::tests
   cargo test --locked -p mesh-rt --lib jobs:: -- --include-ignored --test-threads=1
   cargo test --locked -p meshc --test e2e_durable_jobs -- --nocapture
 }
@@ -32,6 +78,14 @@ elif ! command -v initdb >/dev/null && command -v pg_config >/dev/null; then
 fi
 
 if [[ -n "${MESH_TEST_DATABASE_URL:-}" ]]; then
+  if [[ -n "$sql_proof" ]]; then
+    echo "--$sql_proof requires a new disposable cluster. Unset MESH_TEST_DATABASE_URL." >&2
+    exit 2
+  fi
+  if "$j6_roles"; then
+    echo "--j6-roles requires a new disposable cluster. Unset MESH_TEST_DATABASE_URL." >&2
+    exit 2
+  fi
   verify
   exit
 fi
@@ -73,7 +127,7 @@ unset PGHOSTADDR PGSERVICE PGOPTIONS
 credentials=mesh_jobs_proof
 connection_options=sslmode=disable
 auth=(--auth=trust)
-if [[ -n "$postgres_version" ]]; then
+if [[ -n "$postgres_version" || -n "$sql_proof" ]]; then
   password="$(openssl rand -hex 16)"
   printf '%s\n' "$password" >"$scratch/password"
   credentials="mesh_jobs_proof:$password"
@@ -89,7 +143,7 @@ listen_addresses = '127.0.0.1'
 unix_socket_directories = ''
 EOF
 
-if [[ -n "$postgres_version" ]]; then
+if [[ -n "$postgres_version" || -n "$sql_proof" ]]; then
   rm -- "$scratch/password"
   openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=mesh-probe-ca \
     -keyout "$scratch/ca.key" -out "$scratch/ca.crt" 2>"$scratch/openssl.log"
@@ -118,4 +172,17 @@ done
 server_url="postgres://$credentials@127.0.0.1:$port"
 createdb -w --maintenance-db="$server_url/postgres?$connection_options" mesh_jobs_proof
 export MESH_TEST_DATABASE_URL="$server_url/mesh_jobs_proof?$connection_options"
+server_version="$(psql -X -w -qAt -v ON_ERROR_STOP=1 "$MESH_TEST_DATABASE_URL" -c 'SHOW server_version')"
+printf 'Disposable Jobs proof server: PostgreSQL %s\n' "$server_version"
+if [[ -n "$sql_proof" ]]; then
+  python3 "scripts/fixtures/jobs-$sql_proof/prove.py" "$data"
+  exit
+fi
+if "$j6_roles"; then
+  export MESH_JOBS_DISPOSABLE_ROLE_PROOF=1
+  MESH_JOBS_TEST_ROLE_PASSWORD="$(psql -X -w -qAt -v ON_ERROR_STOP=1 "$MESH_TEST_DATABASE_URL" \
+    -c "SELECT replace(gen_random_uuid()::text, '-', '')")"
+  export MESH_JOBS_TEST_ROLE_PASSWORD
+  bash scripts/verify-jobs-roles.sh
+fi
 verify

@@ -37,6 +37,8 @@ extern "C" {
     fn mesh_jobs_stop(runner: i64, grace_ms: i64) -> *mut MeshResult;
     fn mesh_jobs_join(runner: i64) -> *mut MeshResult;
     fn mesh_jobs_status(runner: i64) -> *mut MeshResult;
+    fn mesh_jobs_read_events(runner: i64, limit: i64) -> *mut MeshResult;
+    fn mesh_jobs_local_control(runner: i64, action: *const MeshString) -> *mut MeshResult;
 }
 
 extern "C" fn repl_jobs_start(
@@ -47,6 +49,18 @@ extern "C" fn repl_jobs_start(
 ) -> *mut MeshResult {
     // A runner could call the handler after this evaluation's JIT engine is gone.
     let message = b"Jobs.start requires a compiled Mesh program";
+    let text = mesh_rt::mesh_string_new(message.as_ptr(), message.len() as u64);
+    mesh_rt::io::mesh_alloc_result(1, text.cast()).cast()
+}
+
+extern "C" fn repl_jobs_drain(
+    _pool: u64,
+    _config: *const MeshString,
+    _handler: *const u8,
+    _env: *const u8,
+    _options: *const MeshString,
+) -> *mut MeshResult {
+    let message = b"Jobs.drain requires a compiled Mesh program";
     let text = mesh_rt::mesh_string_new(message.as_ptr(), message.len() as u64);
     mesh_rt::io::mesh_alloc_result(1, text.cast()).cast()
 }
@@ -1139,6 +1153,7 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ("mesh_jobs_enqueue_in", mesh_jobs_enqueue_in as *const ()),
         ("mesh_jobs_control", mesh_jobs_control as *const ()),
         ("mesh_jobs_start", repl_jobs_start as *const ()),
+        ("mesh_jobs_drain", repl_jobs_drain as *const ()),
         (
             "mesh_jobs_register_handler",
             repl_jobs_register_handler as *const (),
@@ -1150,6 +1165,11 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ("mesh_jobs_stop", mesh_jobs_stop as *const ()),
         ("mesh_jobs_join", mesh_jobs_join as *const ()),
         ("mesh_jobs_status", mesh_jobs_status as *const ()),
+        ("mesh_jobs_read_events", mesh_jobs_read_events as *const ()),
+        (
+            "mesh_jobs_local_control",
+            mesh_jobs_local_control as *const (),
+        ),
         (
             "mesh_json_array_get",
             mesh_rt::json::mesh_json_array_get as *const (),
@@ -2908,6 +2928,14 @@ mod tests {
         let test_only = [
             "mesh_test_install_in_memory_secure_store",
             "mesh_test_set_push_token",
+            "mesh_test_jobs_inspect",
+            "mesh_test_jobs_inspect_in",
+            "mesh_test_assert_enqueued",
+            "mesh_test_refute_enqueued",
+            "mesh_test_assert_enqueued_in",
+            "mesh_test_refute_enqueued_in",
+            "mesh_test_build_job",
+            "mesh_test_perform_job",
         ];
         let missing: Vec<String> = module
             .get_functions()
@@ -2923,13 +2951,24 @@ mod tests {
     }
 
     #[test]
-    fn durable_runner_start_rejects_repl_callbacks() {
+    fn durable_runner_rejects_repl_callbacks() {
         init_runtime();
-        let result = repl_jobs_start(0, std::ptr::null(), std::ptr::null(), std::ptr::null());
-        let result = unsafe { &*result };
-        assert_eq!(result.tag, 1);
-        let text = unsafe { (*result.value.cast::<MeshString>()).as_str() };
-        assert_eq!(text, "Jobs.start requires a compiled Mesh program");
+        let null = std::ptr::null();
+        for (result, name) in [
+            (repl_jobs_start(0, null, null.cast(), null.cast()), "start"),
+            (
+                repl_jobs_drain(0, null, null.cast(), null.cast(), null),
+                "drain",
+            ),
+        ] {
+            let result = unsafe { &*result };
+            assert_eq!(result.tag, 1);
+            let text = unsafe { (*result.value.cast::<MeshString>()).as_str() };
+            assert_eq!(
+                text,
+                format!("Jobs.{name} requires a compiled Mesh program")
+            );
+        }
     }
 
     #[test]

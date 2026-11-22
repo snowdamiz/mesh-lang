@@ -1,0 +1,557 @@
+{
+  "cpu_scope": "Application runner, workers, and relay from startup through shutdown. PostgreSQL CPU excluded.",
+  "fresh_reused": {
+    "fixture_sha256": "7efc4ce96864071ad6d19b9dcfa8f85f17c072100e0bf861c4ac8910feaeb072",
+    "harness_sha": "c90a595c3046941b9409fa548e2bcafcc25a42f0",
+    "helper_cpu_medians_seconds": {
+      "direct": {
+        "helper_cpu_seconds": 0.0097255,
+        "helper_setup_cpu_seconds": 0.004929
+      },
+      "fresh": {
+        "helper_cpu_seconds": 0.11420899999999999,
+        "helper_setup_cpu_seconds": 0.004794
+      },
+      "reused": {
+        "helper_cpu_seconds": 0.036241999999999996,
+        "helper_setup_cpu_seconds": 0.017660000000000002
+      }
+    },
+    "local_receipt": "target/jobs-parity/effect-session-study/native-relayed-effects-short-16-5dpnbwdt/result.json",
+    "medians": {
+      "direct": {
+        "claim_to_final_settlement_jobs_per_second": 487.714504100671,
+        "cpu_seconds_per_job": 0.00635869140625,
+        "jobs_per_second": 316.6178115327866,
+        "median_entry_to_attempt_commit_ms": 10.39678955078125,
+        "pickup_p99_ms": 399.406982421875
+      },
+      "fresh": {
+        "claim_to_final_settlement_jobs_per_second": 461.51747037215375,
+        "cpu_seconds_per_job": 0.0062939609375,
+        "jobs_per_second": 295.2431151536448,
+        "median_entry_to_attempt_commit_ms": 9.614501953125,
+        "pickup_p99_ms": 414.069091796875
+      },
+      "reused": {
+        "claim_to_final_settlement_jobs_per_second": 772.275798476035,
+        "cpu_seconds_per_job": 0.0055578125,
+        "jobs_per_second": 421.82841014599796,
+        "median_entry_to_attempt_commit_ms": 0.4410400390625,
+        "pickup_p99_ms": 298.713134765625
+      }
+    },
+    "medians_by_arm": {
+      "direct": {
+        "enqueue_to_first_claim_ms": 155.1339111328125,
+        "first_claim_to_final_settlement_ms": 263.030517578125,
+        "observed_peak_connections": 4,
+        "peak_sampled_one_minute_load": 21.07080078125,
+        "stage_medians_ms": {
+          "claim_to_entry_ms": 8.4949951171875,
+          "effect_commit_to_settlement_ms": 3.73504638671875,
+          "entry_to_attempt_commit_ms": 10.39678955078125
+        }
+      },
+      "fresh": {
+        "enqueue_to_first_claim_ms": 156.195068359375,
+        "first_claim_to_final_settlement_ms": 277.345947265625,
+        "observed_peak_connections": 7,
+        "peak_sampled_one_minute_load": 18.53173828125,
+        "stage_medians_ms": {
+          "claim_to_entry_ms": 8.030517578125,
+          "effect_commit_to_settlement_ms": 4.27294921875,
+          "entry_to_attempt_commit_ms": 9.614501953125
+        }
+      },
+      "reused": {
+        "enqueue_to_first_claim_ms": 123.531005859375,
+        "first_claim_to_final_settlement_ms": 165.743896484375,
+        "observed_peak_connections": 20,
+        "peak_sampled_one_minute_load": 18.16845703125,
+        "stage_medians_ms": {
+          "claim_to_entry_ms": 8.4935302734375,
+          "effect_commit_to_settlement_ms": 3.596923828125,
+          "entry_to_attempt_commit_ms": 0.4410400390625
+        }
+      }
+    },
+    "native_relay_sha256": "9a2981515d3e501eac70c848d5104554a9a4d62d861e55726292ac7635dc356a",
+    "native_relay_source_sha256": "5a966cd88a8c1aa5b6ff15b72080e51549f6d41e747e9f22d022aaf14f98c074",
+    "native_runtime_rlib_sha256": "7b9d0974f449df9d4e140162508d89c6df642776368000582e500b3e954d3e7a",
+    "overlay_sha256": {
+      "effect_client.c": "5a1fda5d2fd8b7a0c7b6f02e025ce4546f9fd2d1b839d6d2c0e82f1390be9243",
+      "effect_client.mpl": "48470c60ce532a3219d331d9e6c2f8a3ec445b492234a038a64aafd503dbf577",
+      "effect_client_bindings.mpl": "10a815976be92cb31073fdc4e485b8be4b50b1ebe814c91394c84bcda9dad429",
+      "effect_relay.py": "9a38df0d6ee779b055884eda1aa7889cf12ae7277c4cb495725a0c5ac868d15f"
+    },
+    "pairs": [
+      {
+        "arm_order": [
+          "fresh",
+          "reused"
+        ],
+        "by_arm": {
+          "fresh": {
+            "claim_to_final_settlement_jobs_per_second": 551.5099811600804,
+            "cpu_seconds_per_job": 0.0062939609375,
+            "jobs_per_second": 293.50254574361185,
+            "peak_connections": 4,
+            "peak_host_load_average_1m": 18.53173828125,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22544384,
+            "peak_threads": 46,
+            "pickup_p99_ms": 415.8359375
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 844.2042753814544,
+            "cpu_seconds_per_job": 0.005129390625,
+            "jobs_per_second": 374.0874141641313,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 18.16845703125,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22593536,
+            "peak_threads": 49,
+            "pickup_p99_ms": 330.496826171875
+          }
+        },
+        "pair": 0
+      },
+      {
+        "arm_order": [
+          "reused",
+          "fresh"
+        ],
+        "by_arm": {
+          "fresh": {
+            "claim_to_final_settlement_jobs_per_second": 455.6585342112399,
+            "cpu_seconds_per_job": 0.006219671875000001,
+            "jobs_per_second": 304.61104410250687,
+            "peak_connections": 6,
+            "peak_host_load_average_1m": 17.91455078125,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22839296,
+            "peak_threads": 38,
+            "pickup_p99_ms": 392.0048828125
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 776.4733411629151,
+            "cpu_seconds_per_job": 0.005562664062499999,
+            "jobs_per_second": 421.82841014599796,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 18.16845703125,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22675456,
+            "peak_threads": 46,
+            "pickup_p99_ms": 298.713134765625
+          }
+        },
+        "pair": 1
+      },
+      {
+        "arm_order": [
+          "fresh",
+          "reused"
+        ],
+        "by_arm": {
+          "fresh": {
+            "claim_to_final_settlement_jobs_per_second": 590.2508989626748,
+            "cpu_seconds_per_job": 0.0058751953124999996,
+            "jobs_per_second": 526.662193166796,
+            "peak_connections": 7,
+            "peak_host_load_average_1m": 17.68115234375,
+            "peak_processes": 2,
+            "peak_rss_bytes": 23134208,
+            "peak_threads": 25,
+            "pickup_p99_ms": 229.13720703125
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 772.275798476035,
+            "cpu_seconds_per_job": 0.0052612109375,
+            "jobs_per_second": 442.4856735338054,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 17.66259765625,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22953984,
+            "peak_threads": 32,
+            "pickup_p99_ms": 267.73193359375
+          }
+        },
+        "pair": 2
+      },
+      {
+        "arm_order": [
+          "reused",
+          "fresh"
+        ],
+        "by_arm": {
+          "fresh": {
+            "claim_to_final_settlement_jobs_per_second": 461.51747037215375,
+            "cpu_seconds_per_job": 0.0065998203125,
+            "jobs_per_second": 295.2431151536448,
+            "peak_connections": 6,
+            "peak_host_load_average_1m": 17.2890625,
+            "peak_processes": 2,
+            "peak_rss_bytes": 21954560,
+            "peak_threads": 42,
+            "pickup_p99_ms": 414.069091796875
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 597.6753623981432,
+            "cpu_seconds_per_job": 0.0055578125,
+            "jobs_per_second": 389.0848911680235,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 17.66259765625,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22577152,
+            "peak_threads": 37,
+            "pickup_p99_ms": 319.323974609375
+          }
+        },
+        "pair": 3
+      },
+      {
+        "arm_order": [
+          "fresh",
+          "reused"
+        ],
+        "by_arm": {
+          "fresh": {
+            "claim_to_final_settlement_jobs_per_second": 405.06955024893455,
+            "cpu_seconds_per_job": 0.0067016015625,
+            "jobs_per_second": 243.90287019260066,
+            "peak_connections": 4,
+            "peak_host_load_average_1m": 16.625,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22659072,
+            "peak_threads": 39,
+            "pickup_p99_ms": 512.680908203125
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 723.9037295081401,
+            "cpu_seconds_per_job": 0.0057595468749999995,
+            "jobs_per_second": 553.142688337105,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 16.33447265625,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22577152,
+            "peak_threads": 25,
+            "pickup_p99_ms": 221.27783203125
+          }
+        },
+        "pair": 4
+      }
+    ],
+    "probe_sha256": "6d94b74d438791cc124e5c14ba2045f55d3174021b9669b59e5e6d77ea055b98",
+    "raw_sha256": {
+      "0-fresh": "30b27974197bfa08969870c86c924401a82e7cc35c5cc3cf9d405e53e2142584",
+      "0-reused": "c27e65b3700a779118bbd93f95ba2e5b1681b97c17af94914efe284925087fa2",
+      "1-fresh": "7dbd7ac70f2e93c1b3efd43679a324dcd36601f05bfd9855d695c207a9821a27",
+      "1-reused": "249fda672f88a6f62194bf8e50c803f48b071d7940c5d898b4627b20bae69e2d",
+      "2-fresh": "78173629693041b5e4d5852ceb07f3ad7f0a8babb806e7c1de64c8781d531995",
+      "2-reused": "c076bb65e44a4865e1972f14dbb11d0db34e71ffe7d143773008d67e13323590",
+      "3-fresh": "144f1ccef4d59aa11ea77d5b421e4c373be703b70c81b3d4498503f9d88983c7",
+      "3-reused": "e40e7813f227629533eab8aee757997df59ae38ce8e4b9444681db60b7e3dcd2",
+      "4-fresh": "b854db5e7c50e693ccaad3f4d93b5bd6924654c7dcffd0922382c8156a534293",
+      "4-reused": "a149e2eee3ce93e0e4c910c712e014db3b6976c0686736beb9e70c020666213a",
+      "direct-after": "b82638aa8d556f0dd2619768c997278ee16be2146c4e8dab1fa09b9e744127c9",
+      "direct-before": "b42e045e1ccb5e68add4b399f0eb3f2482e492c149305a81bc19de1ac8ad6cf3"
+    },
+    "receipt_sha256": "2d6664538d11e420d80aaafffa0f8aca3e2346790daae5b4fdd64f0710981a38",
+    "toolchain": {
+      "files_sha256": {
+        "libmesh_rt.a": "a00c15da7f1160b3c88d3dbb369909d7ea99e60bf3400afc6369154e913466b1",
+        "meshc": "1a66e12342e4cfd7cb895e319b8933449a2dfe3c2c5d23d95dce74ecee252a2b"
+      },
+      "mesh_sha": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "profile": "release",
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1"
+    }
+  },
+  "host": "macOS arm64",
+  "jobs_per_trial": 128,
+  "logical_cpus": 15,
+  "mesh_sha": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+  "pairs_per_comparison": 5,
+  "poll_ms": 250,
+  "postgresql_version": "17.11",
+  "prototype_against_oban": {
+    "budgets": {
+      "cpu_seconds_per_job": {
+        "mesh_median": 0.00541184375,
+        "oban_median": 0.005394703125,
+        "relative_limit": 1.25,
+        "within_limit": true
+      },
+      "peak_connections": 20,
+      "peak_processes": 32,
+      "peak_rss_bytes": {
+        "mesh_median": 22659072,
+        "oban_median": 112656384,
+        "relative_limit": 1.5,
+        "within_limit": true
+      },
+      "peak_threads": 204
+    },
+    "comparison": {
+      "jobs_per_second": {
+        "mesh_median": 418.81390593047036,
+        "ratio_limit": 0.9,
+        "reference": "oban",
+        "reference_median": 486.3795758576544,
+        "within_limit": false
+      },
+      "pickup_p99_ms": {
+        "mesh_median": 298.14892578125,
+        "ratio_limit": 1.25,
+        "reference": "oban",
+        "reference_median": 260.037841796875,
+        "within_limit": true
+      }
+    },
+    "fixture_sha256": "7efc4ce96864071ad6d19b9dcfa8f85f17c072100e0bf861c4ac8910feaeb072",
+    "harness_sha": "4b67040008cdd72f4fd4c705ec8f77172b76fb58",
+    "local_receipt": "target/jobs-parity/effect-session-study/native-relayed-effects-oban-short-16-b72uhz5j/result.json",
+    "medians": {
+      "oban": {
+        "claim_to_final_settlement_jobs_per_second": 1198.3670931790027,
+        "cpu_seconds_per_job": 0.005394703125,
+        "jobs_per_second": 486.3795758576544,
+        "median_entry_to_attempt_commit_ms": 0.357177734375,
+        "pickup_p99_ms": 260.037841796875
+      },
+      "reused": {
+        "claim_to_final_settlement_jobs_per_second": 862.6847006943759,
+        "cpu_seconds_per_job": 0.00541184375,
+        "jobs_per_second": 418.81390593047036,
+        "median_entry_to_attempt_commit_ms": 0.3060302734375,
+        "pickup_p99_ms": 298.14892578125
+      }
+    },
+    "medians_by_arm": {
+      "oban": {
+        "enqueue_to_first_claim_ms": 157.510986328125,
+        "first_claim_to_final_settlement_ms": 106.81201171875,
+        "observed_peak_connections": 20,
+        "peak_sampled_one_minute_load": 27.31884765625,
+        "stage_medians_ms": {
+          "claim_to_entry_ms": 2.0855712890625,
+          "effect_commit_to_settlement_ms": 0.5850830078125,
+          "entry_to_attempt_commit_ms": 0.357177734375
+        }
+      },
+      "reused": {
+        "enqueue_to_first_claim_ms": 67.916015625,
+        "first_claim_to_final_settlement_ms": 148.3740234375,
+        "observed_peak_connections": 20,
+        "peak_sampled_one_minute_load": 28.734375,
+        "stage_medians_ms": {
+          "claim_to_entry_ms": 7.594970703125,
+          "effect_commit_to_settlement_ms": 3.4705810546875,
+          "entry_to_attempt_commit_ms": 0.3060302734375
+        }
+      }
+    },
+    "native_relay_sha256": "9a2981515d3e501eac70c848d5104554a9a4d62d861e55726292ac7635dc356a",
+    "native_relay_source_sha256": "5a966cd88a8c1aa5b6ff15b72080e51549f6d41e747e9f22d022aaf14f98c074",
+    "native_runtime_rlib_sha256": "7b9d0974f449df9d4e140162508d89c6df642776368000582e500b3e954d3e7a",
+    "oban_versions": {
+      "elixir": "1.20.4",
+      "erlang": "29.1.1",
+      "oban": "2.24.2",
+      "oban_resolver": "fixture loopback hosts file"
+    },
+    "overlay_sha256": {
+      "effect_client.c": "5a1fda5d2fd8b7a0c7b6f02e025ce4546f9fd2d1b839d6d2c0e82f1390be9243",
+      "effect_client.mpl": "48470c60ce532a3219d331d9e6c2f8a3ec445b492234a038a64aafd503dbf577",
+      "effect_client_bindings.mpl": "10a815976be92cb31073fdc4e485b8be4b50b1ebe814c91394c84bcda9dad429",
+      "effect_relay.py": "9a38df0d6ee779b055884eda1aa7889cf12ae7277c4cb495725a0c5ac868d15f"
+    },
+    "pairs": [
+      {
+        "arm_order": [
+          "reused",
+          "oban"
+        ],
+        "by_arm": {
+          "oban": {
+            "claim_to_final_settlement_jobs_per_second": 1198.3670931790027,
+            "cpu_seconds_per_job": 0.0061511015625000005,
+            "jobs_per_second": 425.0709210945563,
+            "peak_connections": 18,
+            "peak_host_load_average_1m": 26.70751953125,
+            "peak_processes": 2,
+            "peak_rss_bytes": 113442816,
+            "peak_threads": 12,
+            "pickup_p99_ms": 297.380126953125
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 496.327865996929,
+            "cpu_seconds_per_job": 0.005781796875,
+            "jobs_per_second": 418.81390593047036,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 22.36279296875,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22708224,
+            "peak_threads": 34,
+            "pickup_p99_ms": 298.14892578125
+          }
+        },
+        "pair": 0
+      },
+      {
+        "arm_order": [
+          "oban",
+          "reused"
+        ],
+        "by_arm": {
+          "oban": {
+            "claim_to_final_settlement_jobs_per_second": 708.1489645633769,
+            "cpu_seconds_per_job": 0.006694523437499999,
+            "jobs_per_second": 290.01919491970773,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 27.31884765625,
+            "peak_processes": 2,
+            "peak_rss_bytes": 112984064,
+            "peak_threads": 12,
+            "pickup_p99_ms": 434.078125
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 383.8876266444466,
+            "cpu_seconds_per_job": 0.0057642734375,
+            "jobs_per_second": 318.92607716812955,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 28.734375,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22659072,
+            "peak_threads": 29,
+            "pickup_p99_ms": 362.87109375
+          }
+        },
+        "pair": 1
+      },
+      {
+        "arm_order": [
+          "reused",
+          "oban"
+        ],
+        "by_arm": {
+          "oban": {
+            "claim_to_final_settlement_jobs_per_second": 1109.9542501233193,
+            "cpu_seconds_per_job": 0.005394703125,
+            "jobs_per_second": 486.3795758576544,
+            "peak_connections": 18,
+            "peak_host_load_average_1m": 26.529296875,
+            "peak_processes": 2,
+            "peak_rss_bytes": 112050176,
+            "peak_threads": 12,
+            "pickup_p99_ms": 260.037841796875
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 862.6847006943759,
+            "cpu_seconds_per_job": 0.00541184375,
+            "jobs_per_second": 862.237790989302,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 28.734375,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22577152,
+            "peak_threads": 51,
+            "pickup_p99_ms": 137.677978515625
+          }
+        },
+        "pair": 2
+      },
+      {
+        "arm_order": [
+          "oban",
+          "reused"
+        ],
+        "by_arm": {
+          "oban": {
+            "claim_to_final_settlement_jobs_per_second": 1323.0408176140306,
+            "cpu_seconds_per_job": 0.0044744296875,
+            "jobs_per_second": 542.853592876372,
+            "peak_connections": 18,
+            "peak_host_load_average_1m": 24.96533203125,
+            "peak_processes": 2,
+            "peak_rss_bytes": 112656384,
+            "peak_threads": 12,
+            "pickup_p99_ms": 232.905029296875
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 995.6511665888055,
+            "cpu_seconds_per_job": 0.005030890624999999,
+            "jobs_per_second": 372.0940795730366,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 23.3662109375,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22626304,
+            "peak_threads": 25,
+            "pickup_p99_ms": 332.890869140625
+          }
+        },
+        "pair": 3
+      },
+      {
+        "arm_order": [
+          "reused",
+          "oban"
+        ],
+        "by_arm": {
+          "oban": {
+            "claim_to_final_settlement_jobs_per_second": 1344.6798906380643,
+            "cpu_seconds_per_job": 0.004291421875,
+            "jobs_per_second": 506.527621990159,
+            "peak_connections": 18,
+            "peak_host_load_average_1m": 20.6220703125,
+            "peak_processes": 2,
+            "peak_rss_bytes": 111689728,
+            "peak_threads": 12,
+            "pickup_p99_ms": 250.096923828125
+          },
+          "reused": {
+            "claim_to_final_settlement_jobs_per_second": 1143.8894440347517,
+            "cpu_seconds_per_job": 0.00465075,
+            "jobs_per_second": 441.7906624399402,
+            "peak_connections": 20,
+            "peak_host_load_average_1m": 21.89501953125,
+            "peak_processes": 2,
+            "peak_rss_bytes": 22708224,
+            "peak_threads": 47,
+            "pickup_p99_ms": 280.56494140625
+          }
+        },
+        "pair": 4
+      }
+    ],
+    "probe_sha256": "9223db095cfac745732e50140ddf7549101a620e5edbcf355ea4805a7a5827c2",
+    "raw_sha256": {
+      "0-oban": "256ea87f386a75315fe834e4b531fd8958d71b842d7e225b24b7bfbffce17fa9",
+      "0-reused": "de4c01468541a920ff2416c7b6ea85d416ea19706be199088aa2f42061acc342",
+      "1-oban": "a643456ba13963ab764178e9aad9e303310cb0ee8af1b1b1394634fc0fa5b325",
+      "1-reused": "af7a6c76d8cfa21097903c3102360755db9bb371ad0f80867306d84fb296240b",
+      "2-oban": "a1c3af071ab16b29029cfc99912d0c81373b5aae7f052359884709d3c7382ffe",
+      "2-reused": "54ab972b1424dae4b7a606d0f1538415e8eefc9df381d607ab59f50d53c391c2",
+      "3-oban": "d0c09a4ecff3ffec891a7591f45522a21b2b1d59f950893ce583ab7e03d7d43c",
+      "3-reused": "9fcf4b9dec18e0412762a7d8800430670ed5dd62a4a8d4bae3e559ded39412b9",
+      "4-oban": "6e94891e7ca9dfb7ab416bade66410c1bed77e710406d894f10f54e50b33bcb1",
+      "4-reused": "8432d378aa3e4befd75e6429c71151a9e24895b0cdfe6ed2d807efdf232d016a"
+    },
+    "receipt_sha256": "e17c9eabbe1330337c15ceaf8c3a3a3a093706084182799b032aa2d8e1d93720",
+    "toolchain": {
+      "files_sha256": {
+        "libmesh_rt.a": "a00c15da7f1160b3c88d3dbb369909d7ea99e60bf3400afc6369154e913466b1",
+        "meshc": "1a66e12342e4cfd7cb895e319b8933449a2dfe3c2c5d23d95dce74ecee252a2b"
+      },
+      "mesh_sha": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "profile": "release",
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1"
+    }
+  },
+  "runner_count": 1,
+  "scope": "Experimental Unix effect relay",
+  "slots": 16,
+  "transport": "SCRAM with verified TLS",
+  "version": 1,
+  "workload": "short"
+}

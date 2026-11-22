@@ -105,6 +105,18 @@ fn end_of_input_ends_the_session() {
 }
 
 #[test]
+fn jit_resolves_jobs_event_reader() {
+    let scratch = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.tmp");
+    std::fs::create_dir_all(&scratch).unwrap();
+    let home = tempfile::tempdir_in(scratch).unwrap();
+    let (stdout, stderr) = repl(
+        "case Jobs.read_events(0, 1) do\n  Ok(_) -> \"unexpected success\"\n  Err(reason) -> reason\nend\n:quit\n",
+        home.path(),
+    );
+    assert!(stdout.contains("invalid Jobs runner"), "{stdout}\n{stderr}");
+}
+
+#[test]
 fn jit_resolves_memcpy_for_a_wide_actor_receive() {
     let home = tempfile::tempdir().unwrap();
     let session = r#"actor copy() do

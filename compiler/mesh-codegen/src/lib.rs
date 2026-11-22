@@ -757,6 +757,7 @@ fn exercise(pool :: PoolHandle, runner :: Int) do
   let _ = pool |> start("{}", handle)
   let _ = Jobs.stop(runner, 100)
   let _ = Jobs.join(runner)
+  let _ = Jobs.read_events(runner, 32)
   Jobs.status(runner)
 end
 
@@ -777,6 +778,7 @@ end
             ("stop", "i64, i64"),
             ("join", "i64"),
             ("status", "i64"),
+            ("read_events", "i64, i64"),
         ] {
             assert!(llvm.contains(&format!("declare ptr @mesh_jobs_{symbol}({arguments})")));
             assert!(llvm.contains(&format!("call ptr @mesh_jobs_{symbol}(")));

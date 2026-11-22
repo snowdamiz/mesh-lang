@@ -494,11 +494,13 @@ A job panic returns `Err` to its caller. If the caller fails, Mesh stops its lin
 
 ## Durable jobs
 
-`Jobs` stores work in PostgreSQL, including PostgreSQL 18 and 19. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Processes with write access to the same job tables share authority. Use separate databases for applications that do not trust each other.
+`Jobs` stores work in PostgreSQL. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Processes with write access to the same job tables share authority. Use separate databases for applications that do not trust each other.
+
+The PostgreSQL proof command requires PostgreSQL 14 or later. The compatibility workflow targets 17.11, 18.7, and 19.0 with verified TLS and SCRAM on Linux x64 and macOS arm64. Windows is outside the compiled Jobs proof matrix. The [comparison guide](https://github.com/snowdamiz/mesh-lang/blob/main/docs/durable-jobs-parity-evidence.md) describes the workload and recorded results.
 
 Run `Jobs.migrate(pool)` before starting workers on a fresh database or after upgrading Mesh. It creates the job tables and updates the queue's SQL functions. A job stores a worker name, payload version, arguments, queue, and scheduling and retry options. Keep the worker versions needed by outstanding jobs available during a rolling deploy. Workers claim jobs that match their registered names and versions.
 
-If your database revokes default function access, grant the worker role `EXECUTE` on `mesh_jobs.try_renew(text, uuid, uuid, bigint)` and `mesh_jobs.settle_state(text, uuid, uuid, jsonb, boolean)` before starting upgraded workers. Existing workers retain their legacy function grants during the upgrade.
+If your database revokes default function access, grant the worker role `EXECUTE` on `mesh_jobs.try_renew(text, uuid, uuid, bigint)` and `mesh_jobs.settle_state(text, uuid, uuid, jsonb, boolean)` before starting upgraded workers. Current single-claim workers also need `EXECUTE` on `mesh_jobs.claim_drain_v1(text, text, jsonb, bigint, bigint, jsonb)`. Existing workers retain their legacy function grants during the upgrade.
 
 | Function | Result |
 | --- | --- |
@@ -506,7 +508,10 @@ If your database revokes default function access, grant the worker role `EXECUTE
 | `Jobs.enqueue(pool, namespace, spec)` | Commit one job or a JSON array of jobs and return the receipts as JSON |
 | `Jobs.enqueue_in(conn, namespace, spec)` | Enqueue on a borrowed `PgConn` in its active transaction |
 | `Jobs.start(pool, config, handler)` | Start a runner and return its handle |
+| `Jobs.drain(pool, config, handler, options)` | Run a bounded drain and return its JSON report |
 | `Jobs.status(runner)` | Read the local runner state as JSON |
+| `Jobs.read_events(runner, limit)` | Read and remove up to `limit` events from an enabled runner buffer |
+| `Jobs.local_control(runner, request)` | Change one queue on the local runner and return its status |
 | `Jobs.stop(runner, grace_ms)` | Request shutdown and report the runner status when the runner stops or the grace period ends |
 | `Jobs.join(runner)` | Wait for the runner to stop and return its final status |
 | `Jobs.control(pool, namespace, request)` | Inspect jobs and control queues with a JSON operation |
@@ -546,11 +551,12 @@ end
 
 fn start_receipts(pool :: PoolHandle) -> Int!String do
   Jobs.control(pool, "shop", json { action: "configure", queue: "default", concurrency: 4 })?
+  let workers = Json.parse("""[{"worker":"send-receipt","version":1}]""")?
   Jobs.start(pool,
     json {
       namespace: "shop",
       queues: json { default: 4 },
-      workers: [json { worker: "send-receipt", version: 1 }],
+      workers: workers,
       lease_ms: 30000,
       poll_ms: 250,
       shutdown_grace_ms: 15000
@@ -570,23 +576,77 @@ end
 
 A claim has a lease. A runner renews the lease while its handler runs and records an outcome only for the current unexpired claim. A runner recovers expired attempts until the job spends its attempt budget, then keeps it as `discarded`. Exceptions and timeouts count as failed attempts. Automatic retries keep the same `effect_key`. An operator retry of a terminal job starts a new run with a new effect key.
 
+Set `claim_batch: true` in the runner config to enable opt-in batch dispatch. A batch claims at most 16 jobs before the runner rotates to its next queue. It honors the runner's available slots and the database-wide queue limit. Within a queue, continuous higher-priority arrivals can delay lower-priority jobs.
+
+When an empty batch still sees eligible work and available capacity, the runner retries with a short delay that grows up to `poll_ms`. `Jobs.status` reports these hints in `batch_contention_hints`. PostgreSQL checks admission on every retry.
+
+Batch dispatch uses two dedicated PostgreSQL sessions per runner, one for claims and one for renewal and settlement. Include both in the runner's connection budget. The database limits each job context to 16 MiB and each batch reply to 32 MiB. The runner reports an oversized job in `last_error` and continues claiming later jobs. A batch drain reports oversized jobs and can finish after processing its remaining eligible work. For restricted worker roles, grant `EXECUTE` on `mesh_jobs.claim_batch_v1(text, text, jsonb, bigint, integer, bigint)` and `SELECT`, `INSERT`, and `UPDATE` on `mesh_jobs.batch_context_blocks`. Existing runners can continue with single claims during rollout.
+
+#### Wake runners after commits
+
+Set `listen: true` in a long-running runner's config to subscribe to PostgreSQL wake hints. Run `Jobs.migrate` before enabling publishing. Enable publishing on the sessions that enqueue jobs or resume queues, for example with `ALTER ROLE app_writer IN DATABASE app_db SET mesh_jobs.publish_wakeups = 'on'` for new sessions or `SET LOCAL mesh_jobs.publish_wakeups = 'on'` inside a transaction using `Jobs.enqueue_in`. Publishing and listening each default to off. A runner can listen with publishing disabled.
+
+The listener holds one additional PostgreSQL session per runner, outside the application's pool and in addition to the batch claim session when batching is enabled. Use a direct connection or a session pooler. Set `listen: false` for transaction poolers and to run in poll-only mode. Drain runners never subscribe.
+
+Every successful subscription triggers a scan after `LISTEN` commits, including after reconnect. Wake hints contain fixed-size namespace and queue hashes. PostgreSQL notifications are visible to database users. The runner reads PostgreSQL rows to decide what to claim. It uses the database's clock for known scheduled and retry deadlines and continues fallback polling during listener outages or when hints are missed. With `listen: true`, fallback delays are `poll_ms` plus up to 20% jitter. The default poll-only runner keeps its existing polling cadence. The `wakeups` status reports subscription state and counts claim scans prompted by subscriptions, notifications, due timers, and fallback polls.
+
+Publishing uses PostgreSQL's transactional notification queue. A rollback discards its hints. PostgreSQL can reject the whole transaction at commit if the notification queue is full. Monitor it with `pg_notification_queue_usage()`. A transaction that publishes a hint cannot be prepared for two-phase commit. [PostgreSQL NOTIFY documentation](https://www.postgresql.org/docs/current/sql-notify.html)
+
 If a transaction locks a job row, the runner retries that job's renewal or acknowledgement while it continues processing other active jobs. A claim can expire while its row is locked. Recovery can act once the transaction releases the lock.
 
-Delivery is at least once within the attempt budget. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
+Jobs retry unacknowledged claims while attempts remain. A claim can use an attempt before the handler starts, for example if PostgreSQL commits the claim and the runner loses the reply. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
 
-The runtime terminates the attempt process at its handler timeout or when it loses its lease or runner. Termination stops the handler and all its local actors, including code blocked in a native call. A running service may still finish a request it accepted before termination. Use the same `effect_key` to deduplicate those requests across retries.
+The runtime terminates the attempt process at its handler timeout or when it loses its lease or runner. This includes a handler blocked in a native call while the host can still run its watchdog. A suspended host can miss lease renewals and allow another runner to claim the job before the original host resumes. A service may finish a request it accepted before the attempt was terminated. Use the same `effect_key` to deduplicate these requests across retries.
 
 Deploy compiled executables at versioned paths so old runners can keep starting handlers while they drain. Stop runners from before process isolation to apply hard timeouts to every new attempt. Existing scheduled and retryable jobs keep their stored arguments and deadlines.
 
-On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. It terminates attempts that are still running when the grace period ends. `Jobs.stop` can return `stopping` if cleanup is still in progress. The `drained` field reports whether any claims or attempts remain. An unfinished claim remains recoverable through its lease.
+On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. It terminates attempts that are still running when the grace period ends. `Jobs.stop` can return `stopping` if cleanup is still in progress. The `drained` field reports whether the runner still tracks local claims or attempts. A claim with an unknown commit outcome can remain in PostgreSQL until its lease expires.
 
 `Jobs.join` can wait past the grace period. It returns `stopped` after the runner reaps its local attempt processes and finishes its PostgreSQL work, including background maintenance. Before closing the PostgreSQL pool, wait for `Jobs.join` to return for every runner that uses it.
 
 `Jobs.status`, `Jobs.join`, and `Jobs.stop` report cumulative settlement counts for that runner in `outcomes`. The fields are `completed`, `cancelled`, `discarded`, `retryable`, `scheduled`, and `released_unstarted`. Each count reflects writes PostgreSQL confirmed to the runner. Their sum is `finished`. The top-level `scheduled` counts cron jobs enqueued. `stale_acks` counts acknowledgements that applied no write, and `recovered` counts expired attempts handled by this runner's recovery loop.
 
+`peak_queued_context_bytes` records the largest total size of confirmed handler contexts awaiting launch in a single claim response for this runner. It measures the job context strings in memory. PostgreSQL response framing and other process memory have separate limits.
+
 Use a writable PostgreSQL primary with durable commits (`synchronous_commit = on` or stronger) and enough pool connections for handlers, application transactions, and runner I/O. Durability during primary failure depends on the database's storage, replication, and failover configuration. Schedules and lease expiration use the primary's clock.
 
+### Read runner events
+
+Set `event_buffer` in the runner config to a capacity between 1 and 1024 to enable the reader. Set `event_log: true` to stream the same events as JSON lines on standard error. Both options default to disabled and work independently.
+
+`Jobs.read_events(runner, limit)` returns `Result<String, String>`. The JSON result has an `events` array, a cumulative `dropped` count, and a `closed` flag. Use a limit between 1 and 128. Each call removes the events it returns from the runner's shared buffer. An empty batch with `closed: false` means you can poll again later. After the runner stops and you drain the buffer, the reader returns `closed: true`. Calls return an error for an unknown runner or a disabled reader.
+
+Each event has `version: 1`, `runner_id`, an `event` name, and `observed_at_ms` from the runner's clock. Attempt events include an `attempt` object with the job ID, an opaque attempt ID, the attempt number, and timing. The same attempt ID identifies every event for one claim. It changes on a new claim, even when a snooze preserves the attempt number. `queue_wait_ms` is the time from the scheduled time to the claim observation, measured on PostgreSQL's clock. `handler_duration_ms` measures elapsed time from local launch to observation of the worker result or termination. Unavailable timings are JSON `null`.
+
+| Event | Meaning |
+| --- | --- |
+| `runner_started`, `runner_stopped` | The local dispatcher started or finished its work. |
+| `attempt_started` | PostgreSQL confirmed the claim and the runner launched a worker. |
+| `settlement_committed` | PostgreSQL confirmed the new disposition. A retry at exhaustion reports `discarded`, and a committed operator cancellation takes precedence over a handler outcome. |
+| `lease_lost` | The local lease deadline elapsed or the database reported that the runner no longer owned the lease. |
+| `ack_stale` | PostgreSQL confirmed that this acknowledgement applied no write. |
+| `ack_uncertain` | The runner could not confirm the result of this acknowledgement. A subsequent retry uses the same lease token. A stale reply to that retry leaves the earlier result unknown to the runner. |
+| `storage_failure` | A storage operation failed. The event includes an operation name with a fixed set of possible values. |
+| `maintenance` | PostgreSQL confirmed a positive count from `recover`, `cron`, or `prune`. The count uses the same definition as the corresponding runner status field. |
+
+Acknowledgement events include a `submission` number, `handler_duration_ms`, and a nullable `failure_kind` that describes the local outcome. The failure kinds are `handler_failure`, `invalid_outcome`, `worker_failure`, `timeout`, `shutdown`, and `lease_lost`. Events omit arguments, metadata, credentials, lease tokens, and raw error text. Keep job IDs and attempt IDs out of metric labels.
+
+Each sink drops new events when its buffer is full. The JSON logger buffers up to 128 events per runner plus the write in progress, and each process supports up to 16 active logger threads. Runner status includes `events_dropped` and `event_logs_dropped` when either option is enabled. The logger counts events lost to a write failure and events skipped after that failure. Its counter can advance after `Jobs.join` returns. The runner never waits for either sink. An overflowing sink can miss the final event, and process exit can interrupt pending log writes.
+
+With either sink enabled, runner status includes `event_buffer_bytes` with a `reader` and a `logger` entry. A disabled sink has a `null` entry. Each occupied slot is charged for the in-memory event and a full attempt identity, including the job and attempt ID strings. The charge applies even when the identity is absent or shared. `upper_bound_bytes` is the charge for a full channel. `sampled_peak_bytes` is the largest observed occupancy in those units and can miss a peak that drains between samples. The counters cover queued records and exclude unused slots, channel and allocation overhead, and records already taken for reading or logging.
+
 ### Inspect and operate queues
+
+Use `Jobs.local_control` and `Jobs.status` from the process that owns the runner handle. Local queue actions take `queue` and one of the following actions.
+
+| Local action | Behavior |
+| --- | --- |
+| `start` | Add a queue or start it again. An optional `limit` defaults to the prior limit or one for a new queue |
+| `pause`, `resume` | Change admission on this runner while existing attempts continue |
+| `scale` | Set the local `limit`. Existing attempts may finish before the new limit takes effect |
+| `stop` | Begin draining this queue with optional `grace_ms`. Check its status for `stopped` before starting it again |
+
+Each queue in the status response has a `state`, `limit`, `in_flight`, `pending_claims`, and `drained`. Local settings come from the runner config on every process start. A runner in drain mode uses the queues selected at startup.
 
 Pass a JSON object to `Jobs.control` with an `action` and the fields required for that action. For example, use `json { action: "pause", queue: "default" }` to stop new claims without stopping active attempts. A new queue allows one concurrent attempt across all runners. Change that limit with `configure` or `scale`. The per-runner limits in `Jobs.start` still apply.
 
@@ -597,19 +657,53 @@ Pass a JSON object to `Jobs.control` with an `action` and the fields required fo
 | `start`, `resume` | `queue` |
 | `get` | `id` for a job or `queue` for a queue |
 | `list` | Optional `queue`, `worker`, `state`, `after_id`, `limit` |
+| `search` | Optional `filter` with `queue`, `worker`, `state`, and `limit`, plus an optional top-level `after_id` |
 | `list_queues` | Optional `after`, `limit` |
 | `queue_stats` | `queue`. Returns counts by state and the age of the oldest due job |
+| `inspect_queue` | `queue`. Returns the queue limit, state, number of executing rows, and namespace pause flag |
+| `namespace_status`, `pause_namespace`, `resume_namespace` | Apply to the namespace passed to `Jobs.control` |
 | `cancel`, `retry`, `discard`, `suspend`, `resume`, `delete` | `id` |
 | `cancel_all`, `retry_all` | Optional `filter` object with `queue`, `worker`, `state`, `limit` |
+| `delete_all` | `filter` with a queue, worker, or terminal state, and optional `limit`. Deletes terminal jobs only |
+| `update` | `id` and a `patch` with any of `args`, `metadata`, `tags`, `priority`, `timeout_ms`, `scheduled_at_ms`, or `delay_ms` |
+| `run_now` | `id` of a scheduled or retryable job. Makes that job due on the primary's clock |
 | `reschedule` | `id` and either `delay_ms` or a UTC `scheduled_at_ms` |
 | `prune` | `before_ms` or `max_age_ms`, with optional `queue` and `limit` |
 | `schedule` | `name`, `expression`, `job`, and optional `timezone`, `misfire`, `lookback_minutes` |
 | `unschedule` | `name` |
 | `list_schedules` | Optional `after`, `limit` |
 
-`get` returns the persisted job and its error history. `list` returns a page of summaries ordered by ID. A cancellation of an executing job records intent. The current runner observes the intent and stops the attempt, or the lease expires and recovery settles the cancellation.
+`get` returns the persisted job and its error history. `list` and `search` return summaries ordered by ID. Pass the last ID as `after_id` for the next page. A cancellation of an executing job records intent. The current runner observes the intent and stops the attempt, or the lease expires and recovery settles the cancellation.
 
-Set `prune_max_age_ms` in the runner config to remove old terminal jobs in bounded batches. Without it, jobs remain available for inspection until an operator prunes or deletes them. For tests or one-off scripts, enqueue and inspect jobs without starting a runner. Then use `drain: true` with `Jobs.start` and `Jobs.join` to recover expired claims and process eligible, due work. A drain runner starts no cron or pruning tasks and leaves future jobs scheduled.
+`pause_namespace` covers every queue, including queues created while the namespace is paused. It leaves any existing attempt and queue setting in place. `resume_namespace` restores admission for active queues. `update` and `run_now` return an error for locked, missing, or ineligible jobs. Both keep the current effect key and attempt budget. An update that supplies a new schedule leaves suspended jobs suspended.
+
+Set `prune_max_age_ms` in the runner config to remove old terminal jobs in bounded batches. Without it, jobs remain available for inspection until an operator prunes or deletes them. Use `drain: true` with `Jobs.start` and `Jobs.join` to recover expired claims and process eligible, due work. This drain mode starts without cron or pruning tasks and leaves future jobs scheduled.
+
+### Run a bounded drain
+
+`Jobs.drain` takes the same named handler and runner config as `Jobs.start`. Give the config an explicit `namespace` and pass the drain options separately.
+
+```mesh
+fn drain_receipts(pool :: PoolHandle, config :: String) -> String!String do
+  Jobs.drain(pool, config, handle_receipt,
+    json { max_jobs: 25, recursive: false, on_error: "stop" })
+end
+```
+
+The drain recovers up to `max_jobs` expired attempts in the selected queues and worker versions before claiming new work. It runs each claimed attempt in a separate process and waits for settlement before claiming another job. Queue state and database-wide concurrency limits apply.
+
+| Option | Meaning |
+|--------|---------|
+| `max_jobs` | Required. Limits the call to 1–1000 claims, including retries. Recovery counts separately. |
+| `cutoff_ms` | Optional inclusive UTC epoch timestamp in milliseconds. The drain may claim jobs scheduled through this time, including future jobs. When omitted, each claim uses PostgreSQL's current time. |
+| `recursive` | Required. With `false`, the drain takes up to `max_jobs` eligible IDs in priority, schedule, and insertion order at the start and attempts each at most once. With `true`, it can also claim newly eligible jobs until it reaches the budget. |
+| `on_error` | Required. `"stop"` stops after a committed retryable or discarded result. `"continue"` allows the drain to claim more jobs. Both return settlement counts. A claim, launch, or unconfirmed settlement error returns `Err`. |
+
+The report includes `claimed`, `finished`, `outcomes`, and `recovered`. The `finished` count sums the committed outcomes of attempts claimed by this call. `budget_hit` reports whether the call used all its claims. `remaining` reports eligible or executing work in the selected active queues and cutoff at the time of the final PostgreSQL query. It can be true when another runner holds capacity, a transaction holds a row lock, or the call drained only its initial IDs. The `stop_reason` is `budget`, `job_error`, `idle`, or `shutdown`. An idle drain returns after a pass with no claim and leaves locked or otherwise unavailable work for another call.
+
+Use a dedicated namespace for each test. See [Testing durable jobs](/docs/testing/#testing-durable-jobs) for enqueue assertions and direct handler tests.
+
+For maintenance settings, role grants, recovery, and concurrent reindex, use the [Jobs operations runbook](jobs-operations.md).
 
 ### Recurring jobs
 

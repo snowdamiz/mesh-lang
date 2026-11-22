@@ -1,0 +1,31 @@
+{
+  "budget_breaches": [
+    {
+      "metric": "peak_processes",
+      "profile": "sparse-1r-1s",
+      "scope": "oban"
+    },
+    {
+      "metric": "pickup_p99_ms",
+      "profile": "sparse-8r-64s",
+      "scope": "comparison"
+    }
+  ],
+  "group_audit": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-mo5agnf_/group-audit.json",
+  "group_audit_sha256": "c092b66c349530e65953f0048abf1656666b30ca1586678b0190c576622a1606",
+  "harness_revision": "04cce85d8449de29dd5fb88cf2e8d2976514f492",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "measured_trials": 70,
+  "postgresql": "17.11 (Homebrew)",
+  "producer": "one warm process with database connections scoped to each batch",
+  "profile_count": 7,
+  "reconciled_jobs": {
+    "mesh": 840,
+    "oban": 840
+  },
+  "result": "passed",
+  "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+  "scope": "all committed jobs reconciled after runner shutdown",
+  "seed": 5938,
+  "transport": "SCRAM with verified TLS"
+}
