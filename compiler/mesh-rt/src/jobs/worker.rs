@@ -414,11 +414,12 @@ fn run_worker() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     stdin_claimed.recv().map_err(|error| error.to_string())?;
     remaining(deadline, u64::MAX);
-    // Waiting for a renewal may cross a deadline. Read the clock while
-    // holding the lease so the entry check uses a consistent pair.
-    remaining(deadline, *lease.lock());
 
-    let reply = invoke(context, |input| unsafe { handler(input) });
+    let reply = invoke(context, |input| {
+        // Input preparation and the lease lock can both take time.
+        remaining(deadline, *lease.lock());
+        unsafe { handler(input) }
+    });
     remaining(deadline, u64::MAX);
     write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
     Ok(())
