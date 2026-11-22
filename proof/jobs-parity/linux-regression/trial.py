@@ -4,7 +4,6 @@ from contextlib import contextmanager
 import importlib.util
 import json
 import os
-import shlex
 from pathlib import Path
 import subprocess
 import sys
@@ -12,6 +11,7 @@ import tempfile
 import threading
 import traceback
 
+import oban_runtime
 import proof_transport
 
 PROOF = Path("/proof")
@@ -21,6 +21,9 @@ source = Path(spec.origin).read_text()
 anchor = "if sparse else lambda path, log: subject.enqueue_receipt(env, path, log))"
 assert source.count(anchor) == 1
 source = source.replace(anchor, "if subject.shared_broker else lambda path, log: subject.enqueue_receipt(env, path, log))")
+ready = '            wait_for(lambda: runner_ready(processes, logs), deadline, "runner readiness")\n'
+assert source.count(ready) == 1
+source = source.replace(ready, ready + "            subject.capture_runners(processes, logs)\n")
 exec(compile(source, spec.origin, "exec"), h.__dict__)
 h.CONFIG = PROOF / "jobs-parity-profiles.json"
 
@@ -130,6 +133,18 @@ class Cluster(h.Cluster):
 class Subject(h.Subject):
     shared_broker = True
 
+    def capture_oban(self, role, pid, log):
+        table = process_table()
+        report = oban_runtime.report_from(log.read_text())
+        return oban_runtime.live_report(report, self.cluster.proof_config, role, pid, table,
+                                        h.process_tree(table, {pid}))
+
+    def capture_runners(self, processes, logs):
+        if self.engine == "oban":
+            reports = [self.capture_oban("run", process.pid, log)
+                       for process, log in zip(processes, logs, strict=True)]
+            h.write_json(self.cluster.evidence / "oban-emulator.json", reports)
+
     @contextmanager
     def warm_producer(self, env, evidence, deadline):
         cluster = self.cluster
@@ -169,6 +184,9 @@ class Subject(h.Subject):
 
             try:
                 assert reply() == "SESSION_READY"
+                if self.engine == "oban":
+                    h.write_json(evidence / "oban-broker-emulator.json",
+                                 self.capture_oban("session", broker.pid, errors))
                 cluster.broker = request
                 identity = json.loads(cluster.sql(self.engine, """
                     SELECT json_build_object(
@@ -207,34 +225,9 @@ class Subject(h.Subject):
         return result
 
 
-def oban_environment(env, flags):
-    # Prevent alternate launcher environment hooks from adding emulator flags.
-    env = {key: value for key, value in env.items()
-           if key not in {"ERL_AFLAGS", "ERL_ZFLAGS", "ELIXIR_ERL_OPTIONS"}}
-    return dict(env, ERL_FLAGS=flags)
-
-
-def verify_oban_runners(evidence, flags, runners):
-    tokens = shlex.split(flags)
-    options = dict(zip(tokens[::2], tokens[1::2], strict=True))
-    schedulers, schedulers_online = map(int, options["+S"].split(":"))
-    dirty_cpu, dirty_cpu_online = map(int, options["+SDcpu"].split(":"))
-    expected = dict(schedulers=schedulers, schedulers_online=schedulers_online,
-                    dirty_cpu_schedulers=dirty_cpu, dirty_cpu_schedulers_online=dirty_cpu_online,
-                    dirty_io_schedulers=int(options["+SDio"]), async_threads=int(options["+A"]))
-    results = []
-    for path in sorted(evidence.glob("runner-*.log")):
-        config, = [json.loads(line.removeprefix("BEAM_CONFIG "))
-                   for line in path.read_text().splitlines() if line.startswith("BEAM_CONFIG ")]
-        assert config["erl_flags"] == flags, config
-        assert all(config[key] == value for key, value in expected.items()), config
-        argv = config["argv"]
-        for name, value in options.items():
-            received = [arg for index, arg in enumerate(argv[1:], 1) if argv[index - 1] in {name, "-" + name[1:]}]
-            assert received == [value], config
-        results.append(config)
-    assert len(results) == runners, results
-    h.write_json(evidence / "oban-emulator.json", results)
+def oban_environment(env, config):
+    return dict(env, ERL_FLAGS=config["oban_erl_flags"],
+                JOBS_PARITY_OBAN_UNSET_INETRC="0" if config["oban_erl_inetrc"] else "1")
 
 
 def measure(profile, arm, warmup, root, evidence, cluster, settings, workload, batches):
@@ -251,7 +244,7 @@ def measure(profile, arm, warmup, root, evidence, cluster, settings, workload, b
                    MESH_EFFECT_LANES=str(cluster.lanes), MESH_EFFECT_APP_URL=cluster.url("mesh", "compiled_caller"),
                    MESH_DIAGNOSTIC_JOB_DISABLE_THP="1")
     if arm == "oban":
-        env = oban_environment(env, settings["oban_erl_flags"])
+        env = oban_environment(env, cluster.proof_config)
     command = PROOF / ("oban" if arm == "oban" else "mesh-current")
     subject = Subject(arm, [str(command)], PROOF, cluster, env)
     result = h.run_trial(subject, h.allocate_slots(cluster.runners, cluster.slots), workload,
@@ -264,7 +257,6 @@ def measure(profile, arm, warmup, root, evidence, cluster, settings, workload, b
         assert result["application_sql_calls_per_job"] > 0, result
     else:
         assert result["application_sql_calls_per_job"] == 0, result
-        verify_oban_runners(out, settings["oban_erl_flags"], cluster.runners)
     if profile == "sparse":
         assert result["peak_connections"] == (5 if arm == "mesh" else 4), result
     h.write_json(out / "metrics.json", result)
@@ -281,14 +273,19 @@ def run(config, root, evidence):
     assert config["oban_erl_flags"] == settings["oban_erl_flags"], config
     workload = settings["workloads"][profile]
     batches = h.inputs(workload, slots, settings["seed"])
-    versions = h.checked([str(PROOF / "oban"), "versions"], log=evidence / "oban-versions.log",
-                         env=oban_environment(os.environ, settings["oban_erl_flags"]))
+    env = oban_environment(os.environ, config)
+    preflight = h.checked([str(PROOF / "oban"), "preflight"], log=evidence / "oban-preflight.log", env=env)
+    report = oban_runtime.report_from(preflight)
+    oban_runtime.verify_report(report, config, "preflight")
+    h.write_json(evidence / "oban-preflight.json", report)
+    versions = h.checked([str(PROOF / "oban"), "versions"], log=evidence / "oban-versions.log", env=env)
     assert json.loads(versions.splitlines()[-1]) == {"oban": "2.24.2", "erlang": "29.1.1", "elixir": "1.20.4"}
 
     scratch, out = root / "cluster", evidence / "cluster"
     scratch.mkdir()
     out.mkdir()
     cluster = Cluster(scratch, out, cap, "17.11")
+    cluster.proof_config = config
     cluster.runners, cluster.slots, cluster.lanes, cluster.hold_ms = runners, slots, lanes, workload["hold_ms"]
     try:
         cluster.start()

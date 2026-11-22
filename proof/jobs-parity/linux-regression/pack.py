@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 import stat
 import subprocess
-import sys
 import zlib
 
 SOURCE = Path(__file__).resolve().parent
@@ -13,7 +12,12 @@ ROOT = SOURCE.parents[2]
 SIBLING = ROOT.parent / "t3-45996d9a/target/jobs-parity"
 GUEST = SIBLING / "linux-arm-ownership-guest"
 BASE = GUEST / "named-effect-thp-witness/run-02/guest.cpio"
+INIT = GUEST / "stock-jobs-smoke/init"
+BASE_SHA256 = "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b"
+INIT_SHA256 = "f23fe760afc6eee500e490fea9749eeb6263e911719c5a25b760a1168dcafb0a"
+KERNEL_SHA256 = "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b"
 OBAN_REVISION = "8526a5bd70a1cb37f8fc27611021c90a44a89590"
+INETRC_SHA256 = "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c"
 
 
 def digest(data):
@@ -41,11 +45,22 @@ def members(data):
             yield name, mode, data[start:start+size]
 
 
-def pack(output, profile, arms, mesh, mesh_sha, assets):
-    sys.path.insert(0, str(GUEST))
-    from pack_gnu import add
+def add(archive, name, mode, data=b""):
+    encoded = name.encode() + b"\0"
+    fields = (len(archive) + 1, mode, 0, 0, 1, 0, len(data), 0, 0, 0, 0, len(encoded), 0)
+    archive.extend(("070701" + "".join(f"{field:08x}" for field in fields)).encode())
+    archive.extend(encoded)
+    archive.extend(b"\0" * (-len(archive) % 4))
+    archive.extend(data)
+    archive.extend(b"\0" * (-len(archive) % 4))
 
-    base = BASE.read_bytes()
+
+def pack(output, profile, arms, mesh, mesh_sha, assets, *, base_path=BASE, init_path=INIT,
+         diagnostic_unset_inetrc=False):
+    base = base_path.read_bytes()
+    init = init_path.read_bytes()
+    assert digest(base) == BASE_SHA256 and digest(init) == INIT_SHA256, "Guest base or init hash changed"
+    assert digest((assets / "kernel.Image").read_bytes()) == KERNEL_SHA256, "Guest kernel hash changed"
     overlay = bytearray()
     directories = {name for name, mode, _ in members(base) if stat.S_ISDIR(mode)}
     hashes = {}
@@ -65,15 +80,22 @@ def pack(output, profile, arms, mesh, mesh_sha, assets):
     mesh_data = mesh.read_bytes()
     assert digest(mesh_data) == mesh_sha, "Mesh release ELF differs from the specified digest"
     add_file("proof/mesh-current", mesh_data, 0o755)
-    copy("init", GUEST / "stock-jobs-smoke/init", 0o755)
+    add_file("init", init, 0o755)
     copy("proof/jobs-parity.py", ROOT / "scripts/jobs-parity.py")
     copy("proof/jobs-parity-profiles.json", ROOT / "scripts/jobs-parity-profiles.json")
-    for file in ("trial.py", "fence.sql", "application.sql", "fixture.exs", "proof_transport.py", "run.sh"):
+    for file in ("trial.py", "fence.sql", "application.sql", "fixture.exs", "oban_runtime.py",
+                 "proof_transport.py", "run.sh"):
         copy(f"proof/{file}", SOURCE / file)
     copy("proof/oban", SOURCE / "oban.sh", 0o755)
 
-    original = subprocess.check_output(["git", "-C", str(ROOT), "show",
-        f"{OBAN_REVISION}:scripts/fixtures/jobs-parity-oban/lib/jobs_parity_oban.ex"]).decode()
+    def oban_fixture(path):
+        return subprocess.check_output(["git", "-C", str(ROOT), "show",
+            f"{OBAN_REVISION}:scripts/fixtures/jobs-parity-oban/{path}"])
+
+    inetrc = oban_fixture("inetrc")
+    assert digest(inetrc) == INETRC_SHA256, "Pinned Oban inetrc hash changed"
+    add_file("proof/oban.inetrc", inetrc)
+    original = oban_fixture("lib/jobs_parity_oban.ex").decode()
     tag = '  def run([action]) when action in ["migrate", "enqueue", "run"] do'
     assert original.count(tag) == 1
     broker = (SOURCE / "oban-session.ex.in").read_text()
@@ -99,10 +121,13 @@ def pack(output, profile, arms, mesh, mesh_sha, assets):
         copy(f"lib/aarch64-linux-gnu/{library}", assets / "beam/usr/lib/aarch64-linux-gnu" / library)
 
     settings = json.loads((ROOT / "scripts/jobs-parity-profiles.json").read_text())
-    config = {"profile": profile, "arms": arms, "hashes": hashes, "base_cpio_sha256": digest(base),
-              "kernel_sha256": digest((assets / "kernel.Image").read_bytes()),
+    config = {"profile": profile, "arms": arms, "hashes": hashes, "base_cpio_sha256": BASE_SHA256,
+              "kernel_sha256": KERNEL_SHA256,
               "full_input_warmup": profile in ("noop", "slow", "large"), "oban_revision": OBAN_REVISION,
-              "oban_erl_flags": settings["oban_erl_flags"], "series": "canonical-oban-flags"}
+              "oban_erl_flags": settings["oban_erl_flags"],
+              "oban_erl_inetrc": None if diagnostic_unset_inetrc else "/proof/oban.inetrc",
+              "series": "diagnostic-oban-unset-inetrc" if diagnostic_unset_inetrc
+                        else "canonical-oban-flags-inetrc"}
     add_file("proof/config.json", json.dumps(config).encode())
     add(overlay, "TRAILER!!!", 0)
     with output.open("xb") as stream:

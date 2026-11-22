@@ -1,8 +1,8 @@
 # Linux durable Jobs performance checkpoint · 2026-11-22
 
-The canonical comparison resumed from this checkpoint and completed all
-25 pairs. The table below preserves the measurements at the pause.
-[Final canonical comparison](../../docs/durable-jobs-parity-evidence.md#complete-the-canonical-linux-comparison)
+The 25-pair follow-up at `c7212bed` used the pinned emulator flags with
+`ERL_INETRC` unset. The table below preserves the measurements at the pause.
+[Resolver-unset comparison](../../docs/durable-jobs-parity-evidence.md#complete-the-canonical-linux-comparison)
 
 At the pause, the opt-in named-effects runtime was verified and the
 canonical comparison was partial. Ordinary `Jobs.start` keeps its existing path.

@@ -1,12 +1,12 @@
 # Reproduce the Linux Jobs regression screens
 
-Run from the repository root on macOS ARM64. The launcher uses the
-recovered Linux kernel and the isolated GNU ARM64 PostgreSQL 17.11
-guest base from the adjacent `t3-45996d9a` checkout. It uses the
-native OTP tree, kernel and Oban BEAM build in
-`target/linux-queue-perf`. The replay uses Elixir 1.20.4 from
-Homebrew. Packaging and timing take `target/queue-performance.lock`
-for one pair at a time.
+Run from the repository root on macOS ARM64. The launcher uses a
+GNU ARM64 PostgreSQL 17.11 guest and an init from the adjacent
+`t3-45996d9a` checkout by default. Pass `--guest-base` and
+`--guest-init` to use the hash-verified recovered copies. The native
+OTP tree, kernel, and Oban BEAM build are in `target/linux-queue-perf`.
+The replay uses Elixir 1.20.4 from Homebrew. Each boot takes
+`target/queue-performance.lock` for packaging and timing.
 
 Use a release ELF linked with the frozen named-effects fixture. The
 [frozen replay archive](../linux-warm-replay-20261122.tar.gz) contains
@@ -16,8 +16,13 @@ and the historical compiler at `8526a5bd`. The archived benchmark
 scripts use the two-role observer recorded in the paired receipt.
 This driver uses the corrected observer at `7b61e9bb`. It reads
 `oban_erl_flags` from the frozen profile and records each Oban
-runner's effective emulator settings. The older two-scheduler
-diagnostic driver is available at `229ce02d`.
+runner's effective emulator settings. The packer copies the `8526a5bd`
+`inetrc` bytes to `/proof/oban.inetrc`. The wrapper uses that path for
+every Oban invocation. The guest preflight verifies the resolver,
+loopback address, and scheduling flags before running either arm.
+Each Oban runner and broker records the same settings and its live
+process tree at readiness. The older two-scheduler diagnostic driver
+is available at `229ce02d`.
 
 The retained ELF has SHA-256
 `fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8`.
@@ -30,9 +35,13 @@ the runtime after `35fa53ff`.
 work=target/jobs-perf-work
 mesh="$work/mesh-frozen-final"
 digest=fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8
+guest="$work/canonical-recovery/guest-inputs"
+out="$work/canonical-inetrc/replay"
+mkdir -p "$out"
 for profile in noop slow sparse short large; do
   python3 -B proof/jobs-parity/linux-regression/run.py "$profile" \
-    "$work/canonical/${profile}-replay-01" --mesh "$mesh" --mesh-sha256 "$digest"
+    "$out/$profile-01" --mesh "$mesh" --mesh-sha256 "$digest" \
+    --guest-base "$guest/base.cpio" --guest-init "$guest/stock-jobs-smoke/init"
 done
 ```
 
@@ -70,12 +79,14 @@ one release ELF and identical common component hashes. It uses
 the existing parity limits for throughput, pickup, CPU, RSS,
 connections, processes, threads and the sparse listener.
 
-## Reproduce the canonical score
+## Reproduce the resolver-unset score
 
 Extract the archived receipts to a fresh directory, then run the verifier
 and scorer from the checkout root. The archive includes the original
 guest manifests, job ledgers, resource samples, and measured-arm host
-load for all 25 boots.
+load for all 25 boots at `c7212bed`. The recorded label
+`canonical-oban-flags` identifies the resolver-unset series.
+The corrected series is `canonical-oban-flags-inetrc`.
 
 ```sh
 p=proof/jobs-parity/linux-regression
@@ -88,11 +99,14 @@ cmp "$c/receipt.json" proof/jobs-parity/linux-canonical-receipt-20261122.json
 cmp "$c/score.json" proof/jobs-parity/linux-canonical-score-20261122.json
 ```
 
-To run fresh pairs, use the run command above for each of pairs 01
-through 05. Pass `--oban-first` for pairs 02 and 04. Each boot releases
-the same `fcntl` lock before the next boot.
+The run command above uses the corrected resolver. To score a fresh
+corrected series, run each profile in groups 01 through 05 and pass
+`--oban-first` for pairs 02 and 04. Use the same summarizer and scorer
+with the new groups and save the outputs separately.
+`--diagnostic-unset-inetrc` reproduces the old resolver on sparse with
+live process evidence. The scorer rejects that diagnostic label.
 
-The final 13 groups used `recovery/run.py` from the raw archive as their
+The final 13 resolver-unset groups used `recovery/run.py` from that raw archive as their
 entry point after the adjacent checkout lost `pack_gnu.py` and its base
 image. The entry point uses the frozen driver in
 `target/jobs-perf-work/canonical-source`, the checkpoint manifest in

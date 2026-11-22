@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from pack import ROOT, SOURCE, pack
+from pack import BASE, INIT, ROOT, SOURCE, pack
 from proof_transport import read_serial, unpack
 
 
@@ -34,7 +34,9 @@ def run(args):
             subprocess.run(["swiftc", "-O", SOURCE / "boot.swift", "-o", launcher], check=True)
             subprocess.run(["codesign", "--force", "--sign", "-", "--entitlements",
                             SOURCE / "virtualization.entitlements", launcher], check=True)
-        pack(image, args.profile, args.arms, args.mesh, args.mesh_sha256, args.assets)
+        pack(image, args.profile, args.arms, args.mesh, args.mesh_sha256, args.assets,
+             base_path=args.guest_base, init_path=args.guest_init,
+             diagnostic_unset_inetrc=args.diagnostic_unset_inetrc)
         with (serial.open("xb") as output, serial.open("rb") as observer,
               (args.output / "vm.log").open("xb") as vm_log,
               (args.output / "host-load.jsonl").open("x") as load):
@@ -70,8 +72,13 @@ def main():
     parser.add_argument("--mesh", type=Path, required=True, help="release ELF built with the frozen worker fixture")
     parser.add_argument("--mesh-sha256", required=True)
     parser.add_argument("--assets", type=Path, default=ROOT / "target/linux-queue-perf")
+    parser.add_argument("--guest-base", type=Path, default=BASE)
+    parser.add_argument("--guest-init", type=Path, default=INIT)
+    parser.add_argument("--diagnostic-unset-inetrc", action="store_true", help="reproduce the old sparse resolver")
     parser.add_argument("--oban-first", action="store_true")
     args = parser.parse_args()
+    if args.diagnostic_unset_inetrc and args.profile != "sparse":
+        parser.error("--diagnostic-unset-inetrc applies only to the sparse resolver diagnostic")
     args.arms = ["oban", "mesh"] if args.oban_first else ["mesh", "oban"]
     return run(args)
 

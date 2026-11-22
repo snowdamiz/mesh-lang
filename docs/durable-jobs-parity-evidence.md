@@ -5638,10 +5638,17 @@ series used a repeat in the same arm order.
 
 ### Complete the canonical Linux comparison
 
-Short and large passed every configured gate. Dense missed throughput
-and pickup, slow exceeded the RSS ratio, and sparse exceeded the Oban
-process limit. The comparison used the retained named-effects ELF and
-the pinned guest, kernel, and input hashes. The guest verified
+The 25 pairs recorded at `c7212bed` form the resolver-unset series.
+Their manifests pin the emulator flags and omit the `8526a5bd` Erlang
+hosts fixture. Keep its receipts under the original `canonical-oban-flags`
+label. The corrected package uses `canonical-oban-flags-inetrc`.
+[Resolver-corrected replay](../proof/jobs-parity/linux-regression/README.md)
+
+In the resolver-unset series, short and large passed every configured
+gate. Dense missed throughput and pickup, slow exceeded the RSS ratio,
+and sparse exceeded the Oban process limit. The comparison used the
+retained named-effects ELF and the pinned guest, kernel, and input
+hashes. The guest verified
 `+S 2:2 +SDcpu 1:1 +SDio 1 +A 2` for all 95 measured Oban runners.
 [Environment pins](../proof/jobs-parity/linux-performance-checkpoint-20261122.md)
 
@@ -5687,7 +5694,26 @@ the highest load reached 198 versus 123 jobs/s at 57.00 and 54.60. The
 score includes both pairs and all other observations.
 
 [Configured limits](../scripts/jobs-parity-profiles.json)
-[Canonical score](../proof/jobs-parity/linux-canonical-score-20261122.json)
+[Resolver-unset score](../proof/jobs-parity/linux-canonical-score-20261122.json)
 [Paired receipt](../proof/jobs-parity/linux-canonical-receipt-20261122.json)
 [Raw receipts](../proof/jobs-parity/linux-canonical-raw-20261122.tar.gz)
-[Reproduction](../proof/jobs-parity/linux-regression/README.md#reproduce-the-canonical-score)
+[Reproduction](../proof/jobs-parity/linux-regression/README.md#reproduce-the-resolver-unset-score)
+
+### Restore the pinned Oban resolver
+
+The pinned `8526a5bd` driver exports a fixture-local `ERL_INETRC` after
+dependency setup. The repaired Linux packer uses the same 57 bytes,
+SHA-256 `ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c`.
+The wrapper exports `/proof/oban.inetrc` to preflight, migration, the
+broker, and every runner. The preflight confirms Erlang's `[file]`
+resolver, `127.0.0.1`, and the four configured emulator flags.
+
+The sparse resolver-unset diagnostic reproduced a four-process peak.
+The runner and broker both used `[native]`. Each live tree contained
+`beam.smp`, its `erl_child_setup` child, and two nested `inet_gethost`
+processes. With `ERL_INETRC` applied, both roles used `[file]`, resolved
+the same address, and had only `beam.smp` and `erl_child_setup`. The
+first corrected sparse pair sampled two Oban runner processes against
+the limit of two and reconciled all 48 jobs and 96 ordered writes.
+The Mesh ELF, database, workload, and resource limits remained pinned.
+[Resolver pilot resume and receipt](../target/jobs-perf-work/canonical-inetrc/RESUME.md)

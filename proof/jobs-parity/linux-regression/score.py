@@ -5,7 +5,7 @@ import importlib.util
 import json
 from pathlib import Path
 
-from pack import ROOT
+from pack import INETRC_SHA256, ROOT
 
 spec = importlib.util.spec_from_file_location("jobs_parity", ROOT / "scripts/jobs-parity.py")
 harness = importlib.util.module_from_spec(spec)
@@ -23,10 +23,23 @@ def score(receipt):
     assert all(group["shared_component_sha256"] == receipt["groups"][0]["shared_component_sha256"]
                for group in receipt["groups"])
     profiles = {group["profile"] for group in receipt["groups"]}
-    assert len({group["series"] for group in receipt["groups"]}) == 1
-    if {group["series"] for group in receipt["groups"]} == {"canonical-oban-flags"}:
+    series_names = {group["series"] for group in receipt["groups"]}
+    assert len(series_names) == 1, "Mixed Oban benchmark series"
+    series = next(iter(series_names))
+    assert series != "diagnostic-oban-unset-inetrc", "Resolver diagnostics are unscored"
+    if series in {"canonical-oban-flags", "canonical-oban-flags-inetrc"}:
         assert all(group["oban_erl_flags"] == settings["oban_erl_flags"] for group in receipt["groups"])
         assert profiles == set(TOPOLOGY)
+    if series == "canonical-oban-flags-inetrc":
+        expected_names = {f"{profile}-{pair:02d}" for profile in TOPOLOGY
+                          for pair in range(1, settings["trial_pairs"] + 1)}
+        assert {group["name"] for group in receipt["groups"]} == expected_names
+        for group in receipt["groups"]:
+            assert group["oban_erl_inetrc"] == "/proof/oban.inetrc"
+            assert group["shared_component_sha256"]["proof/oban.inetrc"] == INETRC_SHA256
+            pair = int(group["name"].rsplit("-", 1)[1])
+            order = [arm["metrics"]["engine"] for arm in group["arms"] if arm["phase"] == "measured"]
+            assert order == (["mesh", "oban"] if pair % 2 else ["oban", "mesh"])
     result = {}
     for profile, (runners, slots, cap) in TOPOLOGY.items():
         if profile not in profiles:

@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from statistics import median
 
+from oban_runtime import verify_report
+
 
 def load(path):
     return json.loads(path.read_text())
@@ -14,6 +16,22 @@ def load(path):
 def digest(path):
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def check_live(report, config, role):
+    verify_report(report, config, role)
+    expected_env = {"ERL_FLAGS": config["oban_erl_flags"]}
+    if inetrc := config["oban_erl_inetrc"]:
+        expected_env["ERL_INETRC"] = inetrc
+    assert report["live_environment"] == expected_env
+    tree = {row["pid"]: row for row in report["processes"]}
+    assert len(tree) == len(report["processes"])
+    root = tree[report["pid"]]
+    assert root["comm"] == "beam.smp" and root["exe"] == "/opt/otp/erts-17.1/bin/beam.smp"
+    reachable = {root["pid"]}
+    while children := {pid for pid, row in tree.items() if row["ppid"] in reachable} - reachable:
+        reachable.update(children)
+    assert reachable == tree.keys()
 
 
 def summarize(group):
@@ -42,6 +60,14 @@ def summarize(group):
         "host_load": phases,
         "arms": [],
     }
+    resolver_evidence = "oban_erl_inetrc" in config
+    if resolver_evidence:
+        preflight = load(evidence / "oban-preflight.json")
+        verify_report(preflight, config, "preflight")
+        result.update(oban_erl_inetrc=config["oban_erl_inetrc"], oban_preflight=preflight)
+        for executable in ("erl_child_setup", "inet_gethost"):
+            path = f"opt/otp/erts-17.1/bin/{executable}"
+            result["shared_component_sha256"][path] = config["hashes"][path]
     phases = (("warmup-", "warmup"), ("", "measured")) if config["full_input_warmup"] else (("", "measured"),)
     digests = set()
     for prefix, phase in phases:
@@ -58,6 +84,19 @@ def summarize(group):
             assert raw["raw_sql_calls"] == (
                 raw["raw_runner_sql_calls"] + raw["raw_application_sql_calls"] + raw["raw_enqueue_sql_calls"]
             )
+            emulator = {}
+            if engine == "oban" and config.get("oban_erl_flags"):
+                reports = load(arm / "oban-emulator.json")
+                emulator["oban_emulator"] = reports
+                if resolver_evidence:
+                    broker = load(arm / "oban-broker-emulator.json")
+                    logs = list(arm.glob("runner-*.log"))
+                    assert len(reports) == len(logs) == (8 if profile in {"noop", "large"} else 1)
+                    for report in reports:
+                        check_live(report, config, "run")
+                    check_live(broker, config, "session")
+                    assert len({report["pid"] for report in [*reports, broker]}) == len(reports) + 1
+                    emulator["oban_broker_emulator"] = broker
             claimed = [row["claimed_ms"] for row in raw["attempts"]]
             result["arms"].append({
                 "phase": phase,
@@ -68,8 +107,7 @@ def summarize(group):
                                                      for row in raw["attempts"]),
                 "durable_enqueue_transactions": len(raw["transactions"]),
                 "database_and_broker": load(arm / "database.json"),
-                **({"oban_emulator": load(arm / "oban-emulator.json")}
-                   if engine == "oban" and config.get("oban_erl_flags") else {}),
+                **emulator,
                 "raw_ledger_and_samples_sha256": digest(arm / "raw.json"),
                 "runner_shutdown_sha256": [digest(path) for path in sorted(arm.glob("runner-*.log"))],
             })
