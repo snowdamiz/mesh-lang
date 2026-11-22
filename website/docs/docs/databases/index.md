@@ -18,6 +18,12 @@ Both drivers accept parameterized SQL and return errors through `Result`. The hi
 
 `Sqlite.open(":memory:")` creates an in-memory database; a filesystem path creates or opens a local database file.
 
+Each connection has one transaction and one worker thread. The thread runs
+writes, transaction commands, and statements inside a transaction. An idle
+connection can run read-only statements on the caller in WAL or memory mode.
+Actors that need independent transactions must open separate connections.
+Requests fail if the connection's queue is full or the handle is closed.
+
 ```mesh
 fn run() -> Int!String do
   let db = Sqlite.open(":memory:")?

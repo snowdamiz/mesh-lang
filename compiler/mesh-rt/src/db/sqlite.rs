@@ -1,7 +1,6 @@
 //! SQLite C FFI wrapper functions for the Mesh runtime.
 //!
-//! Provides six extern "C" functions that Mesh programs call to interact
-//! with SQLite databases:
+//! Mesh programs call these functions to interact with SQLite databases:
 //! - `mesh_sqlite_open`: Open a database connection
 //! - `mesh_sqlite_close`: Close a connection
 //! - `mesh_sqlite_execute`: Execute a write query (INSERT/UPDATE/DELETE/CREATE)
@@ -9,16 +8,23 @@
 //! - `mesh_sqlite_execute_values`: Execute with typed `DbValue` parameters
 //! - `mesh_sqlite_query_values`: Query typed `DbValue` rows
 //!
-//! Connection handles are opaque u64 values (Box::into_raw as u64) for GC
-//! safety. The GC never traces integer values, so the connection won't be
-//! corrupted by garbage collection.
+//! Opaque handles identify entries in a generation-checked registry.
 
 use libsqlite3_sys::*;
+use parking_lot::Mutex;
+use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int};
+use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::{self, SyncSender, TrySendError};
+use std::sync::{Arc, LazyLock};
 
+use crate::actor::{
+    cooperative_recv, cooperative_reply, CooperativeReply, CooperativeReplyReceiver,
+};
 use crate::bytes::mesh_bytes_new;
 use crate::collections::list::mesh_list_from_array;
 use crate::collections::map::mesh_map_from_string_entries;
@@ -35,16 +41,404 @@ const MAX_SQLITE_RESULT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_SQLITE_VALUES: usize = 32_766;
 const MAX_SQLITE_ROWS: usize = 100_000;
 
-/// Wrapper around a raw SQLite database pointer.
-struct SqliteConn {
+// ponytail: admission is bounded per connection rather than across all databases.
+const WRITE_QUEUE_CAPACITY: usize = 128;
+const CLOSED: &str = "SQLite connection is closed";
+
+struct Database {
     db: *mut sqlite3,
+    effects: Box<Cell<StatementEffects>>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct StatementEffects {
+    worker_only: bool,
+}
+
+// The database and its authorizer state are accessed under the connection mutex.
+unsafe impl Send for Database {}
+
+impl Drop for Database {
+    fn drop(&mut self) {
+        unsafe { sqlite3_close(self.db) };
+    }
+}
+
+struct SqliteConn {
+    state: Arc<ConnectionState>,
+    requests: Mutex<Option<SyncSender<Request>>>,
+}
+
+struct ConnectionState {
+    database: Mutex<Option<Database>>,
+    pending: AtomicUsize,
+    exit: Mutex<WorkerExit>,
+}
+
+enum WorkerExit {
+    Running,
+    Closing(CooperativeReply<()>),
+    Stopped,
+}
+
+struct Request {
+    command: Command,
+    operation: Operation,
+    reply: CooperativeReply<Result<Reply, String>>,
+}
+
+enum Command {
+    Prepared(StmtGuard),
+    Deferred {
+        sql: String,
+        params: Vec<OwnedValue>,
+    },
+}
+
+#[derive(Clone, Copy)]
+enum Operation {
+    Execute,
+    Query(Values),
+    Transaction,
+}
+
+enum Reply {
+    Changes(i64),
+    Rows {
+        columns: Vec<String>,
+        rows: Vec<Vec<ResultValue<'static>>>,
+    },
+    Unit,
+}
+
+enum Dispatch {
+    Inline(*mut u8),
+    Queued(CooperativeReplyReceiver<Result<Reply, String>>),
+}
+
+enum OwnedValue {
+    Text(Vec<u8>),
+    Binary(Vec<u8>),
+    Null,
+}
+
+impl OwnedValue {
+    fn copy(value: BindValue<'_>) -> Self {
+        match value {
+            BindValue::Text(bytes) => Self::Text(bytes.to_vec()),
+            BindValue::Binary(bytes) => Self::Binary(bytes.to_vec()),
+            BindValue::Null => Self::Null,
+        }
+    }
+
+    fn bind(&self) -> BindValue<'_> {
+        match self {
+            Self::Text(bytes) => BindValue::Text(bytes),
+            Self::Binary(bytes) => BindValue::Binary(bytes),
+            Self::Null => BindValue::Null,
+        }
+    }
+}
+
+#[derive(Default)]
+struct Registry {
+    slots: Vec<Slot>,
+    free: Vec<u32>,
+}
+
+struct Slot {
+    generation: u32,
+    conn: Option<Arc<SqliteConn>>,
+}
+
+impl Registry {
+    fn insert(&mut self, conn: Arc<SqliteConn>) -> Result<u64, String> {
+        let index = match self.free.pop() {
+            Some(index) => index,
+            None => {
+                let index = u32::try_from(self.slots.len())
+                    .map_err(|_| "SQLite connection registry is full".to_string())?;
+                self.slots.push(Slot {
+                    generation: 1,
+                    conn: None,
+                });
+                index
+            }
+        };
+        let slot = &mut self.slots[index as usize];
+        slot.conn = Some(conn);
+        Ok(u64::from(slot.generation) << 32 | u64::from(index))
+    }
+
+    fn get(&self, handle: u64) -> Option<Arc<SqliteConn>> {
+        let slot = self.slots.get(handle as u32 as usize)?;
+        (slot.generation == (handle >> 32) as u32)
+            .then(|| slot.conn.clone())
+            .flatten()
+    }
+
+    fn remove(&mut self, handle: u64) -> Option<Arc<SqliteConn>> {
+        let index = handle as u32;
+        let slot = self.slots.get_mut(index as usize)?;
+        if slot.generation != (handle >> 32) as u32 {
+            return None;
+        }
+        let conn = slot.conn.take()?;
+        if let Some(next) = slot.generation.checked_add(1) {
+            slot.generation = next;
+            self.free.push(index);
+        }
+        Some(conn)
+    }
+}
+
+static CONNECTIONS: LazyLock<Mutex<Registry>> = LazyLock::new(|| Mutex::new(Registry::default()));
+
+unsafe extern "C" fn authorize_statement(
+    context: *mut c_void,
+    action: c_int,
+    _: *const c_char,
+    _: *const c_char,
+    _: *const c_char,
+    _: *const c_char,
+) -> c_int {
+    let effects = &*context.cast::<Cell<StatementEffects>>();
+    let mut current = effects.get();
+    if matches!(
+        action,
+        SQLITE_TRANSACTION | SQLITE_SAVEPOINT | SQLITE_ATTACH | SQLITE_DETACH
+    ) {
+        // SQLite classifies transaction control and ATTACH as read-only.
+        current.worker_only = true;
+    }
+    effects.set(current);
+    SQLITE_OK
+}
+
+impl Database {
+    fn open(path: &CStr) -> Result<Self, String> {
+        unsafe {
+            let mut db = std::ptr::null_mut();
+            let rc = sqlite3_open_v2(
+                path.as_ptr(),
+                &mut db,
+                SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
+                std::ptr::null(),
+            );
+            if rc != SQLITE_OK {
+                let error = sqlite_err_string(db);
+                if !db.is_null() {
+                    sqlite3_close(db);
+                }
+                return Err(error);
+            }
+            let database = Self {
+                db,
+                effects: Box::new(Cell::new(StatementEffects::default())),
+            };
+            let context = std::ptr::from_ref(database.effects.as_ref())
+                .cast_mut()
+                .cast();
+            let rc = sqlite3_set_authorizer(db, Some(authorize_statement), context);
+            if rc != SQLITE_OK {
+                return Err(sqlite_err_string(db));
+            }
+            Ok(database)
+        }
+    }
+
+    fn prepare(&self, sql: &str, params: &[BindValue<'_>]) -> Result<StmtGuard, String> {
+        self.effects.set(StatementEffects::default());
+        unsafe {
+            let mut statement = prepare_statement(self.db, sql)?;
+            statement.effects = self.effects.get();
+            bind_values(self.db, statement.stmt, params)?;
+            Ok(statement)
+        }
+    }
+
+    fn inline_read(&self, statement: &StmtGuard) -> bool {
+        unsafe {
+            !statement.effects.worker_only
+                && sqlite3_get_autocommit(self.db) != 0
+                && sqlite3_stmt_readonly(statement.stmt) != 0
+        }
+    }
+
+    fn step(&self, statement: StmtGuard, operation: Operation) -> Result<Reply, String> {
+        unsafe {
+            match operation {
+                Operation::Query(values) => {
+                    let rows = read_rows(self.db, statement.stmt, |columns, bytes| {
+                        (0..columns.len() as c_int)
+                            .map(|i| {
+                                read_cell(statement.stmt, i, values, bytes)
+                                    .map(ResultValue::into_owned)
+                            })
+                            .collect::<Result<Vec<_>, _>>()
+                    });
+                    rows.map(|(columns, rows)| Reply::Rows { columns, rows })
+                }
+                Operation::Execute | Operation::Transaction => match sqlite3_step(statement.stmt) {
+                    SQLITE_DONE | SQLITE_ROW => match operation {
+                        Operation::Execute => Ok(Reply::Changes(sqlite3_changes(self.db) as i64)),
+                        _ => Ok(Reply::Unit),
+                    },
+                    _ => Err(sqlite_err_string(self.db)),
+                },
+            }
+        }
+    }
+}
+
+impl SqliteConn {
+    fn open(path: &CStr) -> Result<Self, String> {
+        let state = Arc::new(ConnectionState {
+            database: Mutex::new(Some(Database::open(path)?)),
+            pending: AtomicUsize::new(0),
+            exit: Mutex::new(WorkerExit::Running),
+        });
+        let (sender, receiver) = mpsc::sync_channel::<Request>(WRITE_QUEUE_CAPACITY);
+        let worker_state = state.clone();
+        std::thread::Builder::new()
+            .name("mesh-sqlite".into())
+            .spawn(move || {
+                let exit = OnWorkerExit(&worker_state);
+                for request in receiver {
+                    let Request {
+                        command,
+                        operation,
+                        reply,
+                    } = request;
+                    let result = {
+                        let locked = worker_state.database.lock();
+                        let db = locked.as_ref().expect("open SQLite worker has a database");
+                        match command {
+                            Command::Prepared(stmt) => db.step(stmt, operation),
+                            Command::Deferred { sql, params } => db
+                                .prepare(
+                                    &sql,
+                                    &params.iter().map(OwnedValue::bind).collect::<Vec<_>>(),
+                                )
+                                .and_then(|stmt| db.step(stmt, operation)),
+                        }
+                    };
+                    worker_state.pending.fetch_sub(1, Ordering::Release);
+                    reply.send(result);
+                }
+                drop(exit);
+            })
+            .map_err(|error| format!("could not start SQLite worker: {error}"))?;
+        Ok(Self {
+            state,
+            requests: Mutex::new(Some(sender)),
+        })
+    }
+
+    fn close(&self) {
+        let (reply, receiver) = cooperative_reply();
+        {
+            let mut exit = self.state.exit.lock();
+            if matches!(*exit, WorkerExit::Stopped) {
+                return;
+            }
+            *exit = WorkerExit::Closing(reply);
+        }
+        self.requests.lock().take();
+        let _ = cooperative_recv(&receiver);
+    }
+
+    fn enqueue(
+        &self,
+        sender: &Option<SyncSender<Request>>,
+        command: Command,
+        operation: Operation,
+    ) -> Result<CooperativeReplyReceiver<Result<Reply, String>>, String> {
+        let sender = sender.as_ref().ok_or_else(|| CLOSED.to_string())?;
+        let (reply, receiver) = cooperative_reply();
+        self.state.pending.fetch_add(1, Ordering::AcqRel);
+        match sender.try_send(Request {
+            command,
+            operation,
+            reply,
+        }) {
+            Ok(()) => Ok(receiver),
+            Err(error) => {
+                self.state.pending.fetch_sub(1, Ordering::Release);
+                Err(match error {
+                    TrySendError::Full(_) => "SQLite write queue is full",
+                    TrySendError::Disconnected(_) => "SQLite worker stopped",
+                }
+                .to_string())
+            }
+        }
+    }
+
+    fn dispatch(
+        &self,
+        sql: &str,
+        params: Vec<BindValue<'_>>,
+        operation: Operation,
+    ) -> Result<Dispatch, String> {
+        if let Some(locked) = self.state.database.try_lock() {
+            let db = locked.as_ref().ok_or_else(|| CLOSED.to_string())?;
+            if self.requests.lock().is_none() {
+                return Err(CLOSED.to_string());
+            }
+            if self.state.pending.load(Ordering::Acquire) == 0 {
+                let stmt = db.prepare(sql, &params)?;
+                if !matches!(operation, Operation::Transaction) && db.inline_read(&stmt) {
+                    return match operation {
+                        Operation::Query(values) => unsafe {
+                            read_mesh_rows(db.db, stmt.stmt, values)
+                        },
+                        _ => db
+                            .step(stmt, operation)
+                            .map(|reply| encode_reply(reply, operation)),
+                    }
+                    .map(Dispatch::Inline);
+                }
+                let requests = self.requests.lock();
+                if self.state.pending.load(Ordering::Acquire) == 0 {
+                    return self
+                        .enqueue(&requests, Command::Prepared(stmt), operation)
+                        .map(Dispatch::Queued);
+                }
+                // A concurrent caller queued work during preparation. Reprepare
+                // behind that work since it can change the schema.
+            }
+        }
+        let command = Command::Deferred {
+            sql: sql.to_owned(),
+            params: params.into_iter().map(OwnedValue::copy).collect(),
+        };
+        self.enqueue(&self.requests.lock(), command, operation)
+            .map(Dispatch::Queued)
+    }
+}
+
+struct OnWorkerExit<'a>(&'a ConnectionState);
+
+impl Drop for OnWorkerExit<'_> {
+    fn drop(&mut self) {
+        self.0.database.lock().take();
+        let exit = std::mem::replace(&mut *self.0.exit.lock(), WorkerExit::Stopped);
+        if let WorkerExit::Closing(reply) = exit {
+            reply.send(());
+        }
+    }
 }
 
 /// RAII guard ensuring sqlite3_finalize is always called on a prepared
 /// statement, even when an error causes an early return.
 struct StmtGuard {
     stmt: *mut sqlite3_stmt,
+    effects: StatementEffects,
 }
+
+// SQLite is opened in serialized mode. A moved statement keeps its
+// connection alive through the request queue and is stepped once by its owner.
+unsafe impl Send for StmtGuard {}
 
 impl Drop for StmtGuard {
     fn drop(&mut self) {
@@ -76,11 +470,6 @@ unsafe fn unbox_i64_payload(ptr: *mut u8) -> i64 {
     *(ptr as *const i64)
 }
 
-/// Create an error MeshResult from a sqlite3 error message.
-unsafe fn sqlite_err_result(db: *mut sqlite3) -> *mut u8 {
-    err_result(&sqlite_err_string(db))
-}
-
 /// The connection's last error. `sqlite3_errmsg` always returns text, "out
 /// of memory" when it cannot say more.
 unsafe fn sqlite_err_string(db: *mut sqlite3) -> String {
@@ -98,7 +487,10 @@ unsafe fn prepare_statement(db: *mut sqlite3, sql: &str) -> Result<StmtGuard, St
     } else if stmt.is_null() {
         Err("SQLite statement is empty".to_string())
     } else {
-        Ok(StmtGuard { stmt })
+        Ok(StmtGuard {
+            stmt,
+            effects: StatementEffects::default(),
+        })
     }
 }
 
@@ -106,7 +498,7 @@ unsafe fn prepare_statement(db: *mut sqlite3, sql: &str) -> Result<StmtGuard, St
 unsafe fn bind_values(
     db: *mut sqlite3,
     stmt: *mut sqlite3_stmt,
-    values: Vec<BindValue<'_>>,
+    values: &[BindValue<'_>],
 ) -> Result<(), String> {
     let expected = sqlite3_bind_parameter_count(stmt) as usize;
     if values.len() != expected {
@@ -115,7 +507,7 @@ unsafe fn bind_values(
             values.len()
         ));
     }
-    for (index, value) in values.into_iter().enumerate() {
+    for (index, value) in values.iter().copied().enumerate() {
         let sqlite_index = (index + 1) as c_int;
         let rc = match value {
             BindValue::Text(bytes) => sqlite3_bind_text(
@@ -150,65 +542,150 @@ enum Values {
     Typed,
 }
 
-/// `sql` prepared on the connection, with `params` bound.
-unsafe fn prepared(
+fn run_sql(
+    conn_handle: u64,
+    sql: &str,
+    params: Vec<BindValue<'_>>,
+    operation: Operation,
+) -> *mut u8 {
+    let conn = CONNECTIONS.lock().get(conn_handle);
+    match conn
+        .ok_or_else(|| CLOSED.to_string())
+        .and_then(|conn| conn.dispatch(sql, params, operation))
+        .and_then(|dispatch| match dispatch {
+            Dispatch::Inline(value) => Ok(value),
+            Dispatch::Queued(receiver) => receive_reply(&receiver, operation),
+        }) {
+        Ok(result) => result,
+        Err(error) => err_result(&error),
+    }
+}
+
+fn receive_reply(
+    receiver: &CooperativeReplyReceiver<Result<Reply, String>>,
+    operation: Operation,
+) -> Result<*mut u8, String> {
+    cooperative_recv(receiver)
+        .map_err(|_| "SQLite worker stopped".to_string())?
+        .map(|reply| encode_reply(reply, operation))
+}
+
+fn encode_reply(reply: Reply, operation: Operation) -> *mut u8 {
+    match reply {
+        Reply::Changes(changes) => alloc_result(0, box_scalar(changes)) as *mut u8,
+        Reply::Unit => alloc_result(0, std::ptr::null_mut()) as *mut u8,
+        Reply::Rows { columns, rows } => {
+            let typed = matches!(operation, Operation::Query(Values::Typed));
+            let rows: Vec<_> = rows
+                .into_iter()
+                .map(|row| {
+                    encode_row(&columns, row.into_iter().map(|cell| Ok(cell.encode(typed))))
+                        .unwrap()
+                })
+                .collect();
+            encode_rows(&rows)
+        }
+    }
+}
+
+unsafe fn statement(
     conn_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
     values: Values,
-) -> Result<(*mut sqlite3, StmtGuard), String> {
-    let db = (*(conn_handle as *const SqliteConn)).db;
-    let guard = prepare_statement(db, text_of(sql))?;
+    operation: Operation,
+) -> *mut u8 {
     let params = match values {
-        Values::Text => text_values(params, MAX_SQLITE_VALUES, "SQLite")?,
-        Values::Typed => db_values(params, MAX_SQLITE_VALUES, "SQLite")?,
+        Values::Text => text_values(params, MAX_SQLITE_VALUES, "SQLite"),
+        Values::Typed => db_values(params, MAX_SQLITE_VALUES, "SQLite"),
     };
-    bind_values(db, guard.stmt, params)?;
-    Ok((db, guard))
-}
-
-/// Run a statement for its effect: `Ok(rows changed)`.
-unsafe fn execute(
-    conn_handle: u64,
-    sql: *const MeshString,
-    params: *mut u8,
-    values: Values,
-) -> *mut u8 {
-    let changes = prepared(conn_handle, sql, params, values).and_then(|(db, guard)| {
-        match sqlite3_step(guard.stmt) {
-            SQLITE_DONE | SQLITE_ROW => Ok(sqlite3_changes(db) as i64),
-            _ => Err(sqlite_err_string(db)),
-        }
-    });
-    match changes {
-        Ok(changes) => alloc_result(0, box_scalar(changes)) as *mut u8,
+    match params {
+        Ok(params) => run_sql(conn_handle, text_of(sql), params, operation),
         Err(error) => err_result(&error),
     }
 }
 
-/// Run a query: `Ok(rows)`, each a map from column name to value, within
-/// the row and byte limits. A later column of the same name wins.
-unsafe fn query(
-    conn_handle: u64,
-    sql: *const MeshString,
-    params: *mut u8,
-    values: Values,
-) -> *mut u8 {
-    let rows = prepared(conn_handle, sql, params, values)
-        .and_then(|(db, guard)| read_rows(db, guard.stmt, values));
-    match rows {
-        Ok(rows) => {
-            alloc_result(0, mesh_list_from_array(rows.as_ptr(), rows.len() as i64)) as *mut u8
+enum ResultValue<'a> {
+    Text(Cow<'a, str>),
+    Binary(Cow<'a, [u8]>),
+    Null,
+}
+
+impl ResultValue<'_> {
+    fn into_owned(self) -> ResultValue<'static> {
+        match self {
+            Self::Text(text) => ResultValue::Text(Cow::Owned(text.into_owned())),
+            Self::Binary(bytes) => ResultValue::Binary(Cow::Owned(bytes.into_owned())),
+            Self::Null => ResultValue::Null,
         }
-        Err(error) => err_result(&error),
+    }
+
+    fn encode(&self, typed: bool) -> u64 {
+        // The tag matches the allocated Mesh payload, and NULL has no payload.
+        unsafe {
+            match self {
+                Self::Text(text) => {
+                    let text = mesh_str(text);
+                    if typed {
+                        alloc_db_value(DB_VALUE_TEXT, text.cast()) as u64
+                    } else {
+                        text as u64
+                    }
+                }
+                Self::Binary(bytes) => {
+                    let blob = mesh_bytes_new(bytes.as_ptr(), bytes.len() as u64);
+                    alloc_db_value(DB_VALUE_BINARY, blob.cast()) as u64
+                }
+                Self::Null if typed => alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut()) as u64,
+                Self::Null => mesh_str("") as u64,
+            }
+        }
     }
 }
 
-unsafe fn read_rows(
+fn encode_row(
+    columns: &[String],
+    values: impl IntoIterator<Item = Result<u64, String>>,
+) -> Result<u64, String> {
+    let mut entries = Vec::<[u64; 2]>::with_capacity(columns.len());
+    let mut indexes = HashMap::<&str, usize>::with_capacity(columns.len());
+    for (name, value) in columns.iter().zip(values) {
+        let value = value?;
+        if let Some(index) = indexes.get(name.as_str()).copied() {
+            entries[index][1] = value;
+        } else {
+            indexes.insert(name.as_str(), entries.len());
+            entries.push([mesh_str(name) as u64, value]);
+        }
+    }
+    Ok(mesh_map_from_string_entries(&entries) as u64)
+}
+
+fn encode_rows(rows: &[u64]) -> *mut u8 {
+    alloc_result(0, mesh_list_from_array(rows.as_ptr(), rows.len() as i64)) as *mut u8
+}
+
+unsafe fn read_mesh_rows(
     db: *mut sqlite3,
     stmt: *mut sqlite3_stmt,
     values: Values,
-) -> Result<Vec<u64>, String> {
+) -> Result<*mut u8, String> {
+    let (_, rows) = read_rows(db, stmt, |columns, bytes| {
+        encode_row(
+            columns,
+            (0..columns.len() as c_int).map(|i| {
+                read_cell(stmt, i, values, bytes).map(|cell| cell.encode(values == Values::Typed))
+            }),
+        )
+    })?;
+    Ok(encode_rows(&rows))
+}
+
+unsafe fn read_rows<T>(
+    db: *mut sqlite3,
+    stmt: *mut sqlite3_stmt,
+    mut row: impl FnMut(&[String], &mut usize) -> Result<T, String>,
+) -> Result<(Vec<String>, Vec<T>), String> {
     let column_count = sqlite3_column_count(stmt) as usize;
     let column_names = (0..column_count)
         .map(|column| {
@@ -229,7 +706,7 @@ unsafe fn read_rows(
     let mut result_bytes = 64_usize;
     loop {
         match sqlite3_step(stmt) {
-            SQLITE_DONE => return Ok(rows),
+            SQLITE_DONE => return Ok((column_names, rows)),
             SQLITE_ROW => {}
             _ => return Err(sqlite_err_string(db)),
         }
@@ -238,25 +715,33 @@ unsafe fn read_rows(
         }
         result_bytes = add_result_bytes(result_bytes, row_base_bytes)?;
 
-        let mut entries = Vec::<[u64; 2]>::with_capacity(column_count);
-        let mut indexes = HashMap::<&str, usize>::with_capacity(column_count);
-        for (column, name) in column_names.iter().enumerate() {
-            let column = column as c_int;
-            let value = match values {
-                Values::Typed => typed_column_value(stmt, column, &mut result_bytes)? as u64,
-                Values::Text if sqlite3_column_type(stmt, column) == SQLITE_NULL => {
-                    mesh_str("") as u64
-                }
-                Values::Text => column_text(stmt, column, &mut result_bytes)? as u64,
-            };
-            if let Some(index) = indexes.get(name.as_str()).copied() {
-                entries[index][1] = value;
+        rows.push(row(&column_names, &mut result_bytes)?);
+    }
+}
+
+/// The returned bytes borrow the current SQLite row, until the next step.
+unsafe fn read_cell<'a>(
+    stmt: *mut sqlite3_stmt,
+    column: c_int,
+    values: Values,
+    result_bytes: &mut usize,
+) -> Result<ResultValue<'a>, String> {
+    match (values, sqlite3_column_type(stmt, column)) {
+        (_, SQLITE_NULL) => Ok(ResultValue::Null),
+        (Values::Typed, SQLITE_BLOB) => {
+            let bytes = sqlite3_column_blob(stmt, column).cast::<u8>();
+            let len = column_len(stmt, column, result_bytes)?;
+            if len == 0 {
+                Ok(ResultValue::Binary(Cow::Borrowed(&[])))
+            } else if bytes.is_null() {
+                Err(format!("failed to read SQLite BLOB column {column}"))
             } else {
-                indexes.insert(name.as_str(), entries.len());
-                entries.push([mesh_str(name) as u64, value]);
+                Ok(ResultValue::Binary(Cow::Borrowed(
+                    std::slice::from_raw_parts(bytes, len),
+                )))
             }
         }
-        rows.push(mesh_map_from_string_entries(&entries) as u64);
+        _ => column_text(stmt, column, result_bytes).map(ResultValue::Text),
     }
 }
 
@@ -265,29 +750,6 @@ fn add_result_bytes(total: usize, bytes: usize) -> Result<usize, String> {
         .checked_add(bytes)
         .filter(|total| *total <= MAX_SQLITE_RESULT_BYTES)
         .ok_or_else(|| format!("SQLite result exceeds {MAX_SQLITE_RESULT_BYTES} byte limit"))
-}
-
-unsafe fn typed_column_value(
-    stmt: *mut sqlite3_stmt,
-    column: c_int,
-    result_bytes: &mut usize,
-) -> Result<*mut MeshDbValue, String> {
-    match sqlite3_column_type(stmt, column) {
-        SQLITE_NULL => Ok(alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut())),
-        SQLITE_BLOB => {
-            let len = column_len(stmt, column, result_bytes)?;
-            // The blob is null when empty, or when SQLite runs out of memory:
-            // `mesh_bytes_new` refuses (null) a null pointer with a length.
-            let bytes = sqlite3_column_blob(stmt, column) as *const u8;
-            let payload = NonNull::new(mesh_bytes_new(bytes, len as u64))
-                .ok_or_else(|| format!("failed to read SQLite BLOB column {column}"))?;
-            Ok(alloc_db_value(DB_VALUE_BINARY, payload.as_ptr().cast()))
-        }
-        _ => Ok(alloc_db_value(
-            DB_VALUE_TEXT,
-            column_text(stmt, column, result_bytes)? as *mut u8,
-        )),
-    }
 }
 
 /// A column's length in bytes, counted against the result's limit.
@@ -308,11 +770,11 @@ unsafe fn column_len(
 
 /// A column as text, all its bytes (a NUL inside it too); invalid UTF-8
 /// becomes U+FFFD.
-unsafe fn column_text(
+unsafe fn column_text<'a>(
     stmt: *mut sqlite3_stmt,
     column: c_int,
     result_bytes: &mut usize,
-) -> Result<*mut MeshString, String> {
+) -> Result<Cow<'a, str>, String> {
     // Null only when SQLite runs out of memory: a NULL column is read before.
     let bytes = NonNull::new(sqlite3_column_text(stmt, column) as *mut u8)
         .ok_or_else(|| format!("failed to read SQLite text column {column}"))?;
@@ -326,7 +788,7 @@ unsafe fn column_text(
     if text.len() > len {
         *result_bytes = add_result_bytes(*result_bytes, text.len() - len)?;
     }
-    Ok(mesh_str(&text))
+    Ok(text)
 }
 
 /// Open a SQLite database.
@@ -338,50 +800,24 @@ unsafe fn column_text(
 /// Returns MeshResult with tag 0 (Ok) containing the connection handle as
 /// a u64, or tag 1 (Err) containing an error message string.
 #[no_mangle]
-pub extern "C" fn mesh_sqlite_open(path: *const MeshString) -> *mut u8 {
-    unsafe {
-        let path_str = text_of(path);
-        let c_path = match CString::new(path_str) {
-            Ok(c) => c,
-            Err(_) => return err_result("path contains null byte"),
-        };
-
-        let mut db: *mut sqlite3 = std::ptr::null_mut();
-        let rc = sqlite3_open_v2(
-            c_path.as_ptr(),
-            &mut db,
-            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-            std::ptr::null(),
-        );
-
-        if rc != SQLITE_OK {
-            let result = sqlite_err_result(db);
-            if !db.is_null() {
-                sqlite3_close(db);
-            }
-            return result;
-        }
-
-        let conn = Box::new(SqliteConn { db });
-        let handle = Box::into_raw(conn) as u64;
-        alloc_result(0, box_scalar(handle)) as *mut u8
+pub extern "C-unwind" fn mesh_sqlite_open(path: *const MeshString) -> *mut u8 {
+    let path = match CString::new(unsafe { text_of(path) }) {
+        Ok(path) => path,
+        Err(_) => return err_result("path contains null byte"),
+    };
+    let result = SqliteConn::open(&path).and_then(|conn| CONNECTIONS.lock().insert(Arc::new(conn)));
+    match result {
+        Ok(handle) => alloc_result(0, box_scalar(handle)) as *mut u8,
+        Err(error) => err_result(&error),
     }
 }
 
-/// Close a SQLite database connection.
-///
-/// # Signature
-///
-/// `mesh_sqlite_close(conn_handle: u64)`
-///
-/// Recovers the Box<SqliteConn> from the handle, calls sqlite3_close,
-/// and lets Box::drop free the Rust memory.
+/// Close a SQLite database connection and drain requests that were accepted.
 #[no_mangle]
-pub extern "C" fn mesh_sqlite_close(conn_handle: u64) {
-    unsafe {
-        let conn = Box::from_raw(conn_handle as *mut SqliteConn);
-        sqlite3_close(conn.db);
-        // Box drops, freeing Rust memory
+pub extern "C-unwind" fn mesh_sqlite_close(conn_handle: u64) {
+    let conn = CONNECTIONS.lock().remove(conn_handle);
+    if let Some(conn) = conn {
+        conn.close();
     }
 }
 
@@ -395,12 +831,12 @@ pub extern "C" fn mesh_sqlite_close(conn_handle: u64) {
 /// Parameters are bound as text via sqlite3_bind_text. Returns the number
 /// of rows affected (via sqlite3_changes) on success.
 #[no_mangle]
-pub extern "C" fn mesh_sqlite_execute(
+pub extern "C-unwind" fn mesh_sqlite_execute(
     conn_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe { execute(conn_handle, sql, params, Values::Text) }
+    unsafe { statement(conn_handle, sql, params, Values::Text, Operation::Execute) }
 }
 
 /// Execute a read SQL statement (SELECT) and return rows.
@@ -414,72 +850,68 @@ pub extern "C" fn mesh_sqlite_execute(
 /// are the text representation of column values. NULL columns become empty
 /// strings.
 #[no_mangle]
-pub extern "C" fn mesh_sqlite_query(
+pub extern "C-unwind" fn mesh_sqlite_query(
     conn_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe { query(conn_handle, sql, params, Values::Text) }
+    unsafe {
+        statement(
+            conn_handle,
+            sql,
+            params,
+            Values::Text,
+            Operation::Query(Values::Text),
+        )
+    }
 }
 
 /// Execute a statement with `DbValue` parameters.
 #[no_mangle]
-pub extern "C" fn mesh_sqlite_execute_values(
+pub extern "C-unwind" fn mesh_sqlite_execute_values(
     conn_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe { execute(conn_handle, sql, params, Values::Typed) }
+    unsafe { statement(conn_handle, sql, params, Values::Typed, Operation::Execute) }
 }
 
 /// Query rows as `Map<String, DbValue>`, preserving BLOB and NULL values.
 #[no_mangle]
-pub extern "C" fn mesh_sqlite_query_values(
+pub extern "C-unwind" fn mesh_sqlite_query_values(
     conn_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe { query(conn_handle, sql, params, Values::Typed) }
+    unsafe {
+        statement(
+            conn_handle,
+            sql,
+            params,
+            Values::Typed,
+            Operation::Query(Values::Typed),
+        )
+    }
 }
 
 // ── Transaction Management ──────────────────────────────────────────────
 
-/// Execute a bare SQL command (BEGIN/COMMIT/ROLLBACK) on a SQLite connection.
-/// Returns a MeshResult: Ok(null) on success, Err(message) on failure.
-fn sqlite_simple_exec(conn_handle: u64, sql: &CStr) -> *mut u8 {
-    unsafe {
-        let db = (*(conn_handle as *const SqliteConn)).db;
-        let rc = sqlite3_exec(
-            db,
-            sql.as_ptr(),
-            None,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        );
-        if rc != SQLITE_OK {
-            sqlite_err_result(db)
-        } else {
-            alloc_result(0, std::ptr::null_mut()) as *mut u8
-        }
-    }
-}
-
 /// Begin a SQLite transaction: `Result<Unit, String>`.
 #[no_mangle]
-pub extern "C" fn mesh_sqlite_begin(conn_handle: u64) -> *mut u8 {
-    sqlite_simple_exec(conn_handle, c"BEGIN")
+pub extern "C-unwind" fn mesh_sqlite_begin(conn_handle: u64) -> *mut u8 {
+    run_sql(conn_handle, "BEGIN", Vec::new(), Operation::Transaction)
 }
 
 /// Commit a SQLite transaction: `Result<Unit, String>`.
 #[no_mangle]
-pub extern "C" fn mesh_sqlite_commit(conn_handle: u64) -> *mut u8 {
-    sqlite_simple_exec(conn_handle, c"COMMIT")
+pub extern "C-unwind" fn mesh_sqlite_commit(conn_handle: u64) -> *mut u8 {
+    run_sql(conn_handle, "COMMIT", Vec::new(), Operation::Transaction)
 }
 
 /// Roll back a SQLite transaction: `Result<Unit, String>`.
 #[no_mangle]
-pub extern "C" fn mesh_sqlite_rollback(conn_handle: u64) -> *mut u8 {
-    sqlite_simple_exec(conn_handle, c"ROLLBACK")
+pub extern "C-unwind" fn mesh_sqlite_rollback(conn_handle: u64) -> *mut u8 {
+    run_sql(conn_handle, "ROLLBACK", Vec::new(), Operation::Transaction)
 }
 
 #[cfg(test)]
@@ -596,6 +1028,149 @@ mod tests {
         let result = result(pointer);
         assert_eq!(result.tag, 1, "expected an error");
         unsafe { (*(result.value as *const MeshString)).as_str().to_string() }
+    }
+
+    fn open_handle(path: &str) -> u64 {
+        let reply = result(mesh_sqlite_open(mesh_str(path)));
+        assert_eq!(reply.tag, 0, "could not open {path}");
+        unsafe { unbox_u64_payload(reply.value) }
+    }
+
+    fn query_cell(handle: u64, sql: &str, column: &str) -> String {
+        let rows = result(mesh_sqlite_query(handle, mesh_str(sql), mesh_list_new()));
+        assert_eq!(rows.tag, 0, "query failed: {sql}");
+        let row = crate::collections::list::mesh_list_get(rows.value, 0) as *mut u8;
+        let value = crate::collections::map::mesh_map_get(row, mesh_str(column) as u64);
+        unsafe { text_of(value as *const MeshString).to_string() }
+    }
+
+    #[test]
+    fn closed_handle_cannot_access_a_reused_slot() {
+        mesh_rt_init();
+        let closed = open_handle(":memory:");
+        mesh_sqlite_close(closed);
+        let replacement = open_handle(":memory:");
+        assert_ne!(closed, replacement);
+        mesh_sqlite_close(closed);
+        assert_eq!(
+            error_text(mesh_sqlite_query(
+                closed,
+                mesh_str("SELECT 1"),
+                mesh_list_new()
+            )),
+            CLOSED
+        );
+        assert_eq!(query_cell(replacement, "SELECT 2 AS n", "n"), "2");
+        mesh_sqlite_close(replacement);
+    }
+
+    #[test]
+    fn sqlite_worker_keeps_requests_in_order_and_rejects_overflow() {
+        crate::actor::in_actor(|| {
+            let handle = open_handle(":memory:");
+            let conn = CONNECTIONS.lock().get(handle).unwrap();
+            assert_eq!(
+                result(mesh_sqlite_execute(
+                    handle,
+                    mesh_str("CREATE TABLE t(n INTEGER)"),
+                    mesh_list_new()
+                ))
+                .tag,
+                0
+            );
+            let database = conn.state.database.lock();
+            let mut replies = Vec::new();
+            for n in 0..=WRITE_QUEUE_CAPACITY + 1 {
+                let command = Command::Deferred {
+                    sql: format!("INSERT INTO t VALUES ({n})"),
+                    params: Vec::new(),
+                };
+                match conn.enqueue(&conn.requests.lock(), command, Operation::Execute) {
+                    Ok(reply) => replies.push(reply),
+                    Err(error) => {
+                        assert_eq!(error, "SQLite write queue is full");
+                        break;
+                    }
+                }
+            }
+            assert!((WRITE_QUEUE_CAPACITY..=WRITE_QUEUE_CAPACITY + 1).contains(&replies.len()));
+            drop(database);
+            let count = replies.len();
+            for reply in replies {
+                assert!(matches!(
+                    cooperative_recv(&reply),
+                    Ok(Ok(Reply::Changes(1)))
+                ));
+            }
+            let order = query_cell(
+                handle,
+                "SELECT group_concat(n) AS n FROM (SELECT n FROM t ORDER BY rowid)",
+                "n",
+            );
+            assert_eq!(
+                order,
+                (0..count)
+                    .map(|n| n.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+            mesh_sqlite_close(handle);
+        });
+    }
+
+    #[test]
+    fn killing_an_actor_parked_on_a_write_leaves_the_connection_usable() {
+        use crate::actor::{
+            mesh_actor_exit, mesh_actor_spawn, mesh_rt_init_actor, process, ProcessId, ProcessState,
+        };
+        use std::time::{Duration, Instant};
+
+        struct Write {
+            handle: u64,
+            finished: mpsc::Sender<()>,
+        }
+
+        extern "C-unwind" fn write(args: *const u8) {
+            let write = unsafe { Box::from_raw(args.cast_mut().cast::<Write>()) };
+            let _ = mesh_sqlite_execute(
+                write.handle,
+                mesh_str("INSERT INTO t VALUES (1)"),
+                mesh_list_new(),
+            );
+            let _ = write.finished.send(());
+        }
+
+        mesh_rt_init();
+        mesh_rt_init_actor(1);
+        let handle = open_handle(":memory:");
+        let conn = CONNECTIONS.lock().get(handle).unwrap();
+        assert_eq!(
+            result(mesh_sqlite_execute(
+                handle,
+                mesh_str("CREATE TABLE t(n INTEGER)"),
+                mesh_list_new()
+            ))
+            .tag,
+            0
+        );
+        let database = conn.state.database.lock();
+        let (finished, receiver) = mpsc::channel();
+        let args = Box::into_raw(Box::new(Write { handle, finished }));
+        let pid = mesh_actor_spawn(write as *const u8, args.cast(), 0, 1);
+        let actor = process(ProcessId(pid)).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while actor.lock().state != ProcessState::Waiting {
+            assert!(Instant::now() < deadline, "SQLite actor did not park");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        mesh_actor_exit(pid, 2);
+        drop(database);
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(5)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        );
+        assert_eq!(query_cell(handle, "SELECT n FROM t", "n"), "1");
+        mesh_sqlite_close(handle);
     }
 
     fn texts(values: &[&str]) -> *mut u8 {
@@ -793,14 +1368,19 @@ mod tests {
             "UNIQUE constraint failed: t.id"
         );
 
-        let db = unsafe { (*(handle as *const SqliteConn)).db };
+        let conn = CONNECTIONS.lock().get(handle).unwrap();
+        let set_length_limit = |limit| {
+            let guard = conn.state.database.lock();
+            let db = guard.as_ref().unwrap().db;
+            unsafe { sqlite3_limit(db, SQLITE_LIMIT_LENGTH, limit) }
+        };
         // SQLite lowers the length limit no further than 30 bytes.
-        let limit = unsafe { sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 30) };
+        let limit = set_length_limit(30);
         assert_eq!(
             error_text(run("SELECT ?", texts(&[&"x".repeat(31)]))),
             "string or blob too big"
         );
-        unsafe { sqlite3_limit(db, SQLITE_LIMIT_LENGTH, limit) };
+        set_length_limit(limit);
 
         let many = format!(
             "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < {}) SELECT i FROM n",
