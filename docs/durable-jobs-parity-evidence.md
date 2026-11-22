@@ -4474,6 +4474,14 @@ layout validation. Whole-run runner CPU saved 0.356 CPU-ms/job
 in one pair and increased 0.073 in the other. The controls
 sampled peaks of 55 and 63 executing jobs. Both treatments
 reached 64. The separate-boot screen missed the local cutoff.
+
+The same-boot repeat used the same ELF and range plan. Both orders
+sampled all 64 slots in both arms and reconciled 2,048 jobs. The
+validation savings held at 0.268 and 0.298 thread CPU-ms/job.
+Total runner CPU increased by 0.227 CPU-ms/job in A/B order and
+fell by 0.408 in B/A order. The repeat missed the required saving
+of 0.15 CPU-ms/job in each pair. The first two captures failed
+guest setup or drain verification and are retained separately.
 [Pre-split validation receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Verify the integrated Jobs candidate

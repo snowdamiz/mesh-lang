@@ -39288,7 +39288,76 @@
       "each_pair_observed_64_workers_in_both_arms": false,
       "B_median_at_or_below_1_655_wait4_cpu_ms_per_job": false
     },
-    "local_screen": "stop"
+    "local_screen": "stop",
+    "same_boot_followup": {
+      "scope": "Two reverse-order paired Linux ARM64 boots with one fresh PostgreSQL cluster per arm.",
+      "discarded_controller_captures": [
+        {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-same-boot/boot-AB-01/extracted/evidence/result.json",
+          "sha256": "d11799b120c909fabfeca25e5377d22b0a3d02f728c267e62594f2c1a5870540"
+        },
+        {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-same-boot-r1/boot-AB-01/extracted/evidence/result.json",
+          "sha256": "ca9a60992d60273ca8268e7c6f587c6467fca460450b183dca1a8ea85ab7ba7f"
+        }
+      ],
+      "offline_checks": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-same-boot-r2/offline-check.json",
+        "sha256": "ee206a41b4f0e768259554a4143a9531eebb79d7e99e5bcb5e4880c681616863"
+      },
+      "pair_summaries": [
+        {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-same-boot-r2/boot-AB-01/pair-summary.json",
+          "sha256": "531e8f1682ed877a35bd714cc0942464320c77e0db56970e62fca69614d74e96"
+        },
+        {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-same-boot-r2/boot-BA-01/pair-summary.json",
+          "sha256": "bedb3ba4e5dec1f3c980598aecba8939a86b7c9017983b5f3ce35624213a6588"
+        }
+      ],
+      "score": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-same-boot-r2/screen-01.json",
+        "sha256": "367808c23917b5978973bb40667eae720632336acc1eb0507fdc311be7f6b09d"
+      },
+      "reconciled_jobs": 2048,
+      "pairs": [
+        {
+          "order": "AB",
+          "boot_id": "20ba2bbb-be22-4cef-a42f-e06176df2184",
+          "A_minus_B_wait4_cpu_ms_per_job": -0.22734375000000018,
+          "A_minus_B_layout_validation_cpu_ms_per_job": 0.26796212304687506,
+          "A_minus_B_worker_hook_cpu_ms_per_job": 0.19152808007812505,
+          "timed_peak_executing": [
+            64,
+            64
+          ],
+          "timed_peak_rss_bytes": [
+            198184960,
+            174714880
+          ]
+        },
+        {
+          "order": "BA",
+          "boot_id": "2904ac1e-37e4-4c21-a392-56db608e4c7d",
+          "A_minus_B_wait4_cpu_ms_per_job": 0.4083378906249999,
+          "A_minus_B_layout_validation_cpu_ms_per_job": 0.298088705078125,
+          "A_minus_B_worker_hook_cpu_ms_per_job": 0.32292045117187507,
+          "timed_peak_executing": [
+            64,
+            64
+          ],
+          "timed_peak_rss_bytes": [
+            191356928,
+            186937344
+          ]
+        }
+      ],
+      "checks": {
+        "each_pair_net_saves_at_least_0_15_wait4_cpu_ms_per_job": false,
+        "each_pair_actually_sampled_64_executing_in_both_arms": true
+      },
+      "local_screen": "stop"
+    }
   },
   "linux_compiled_jobs_effect_64slot_gate": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
