@@ -39945,6 +39945,321 @@
     },
     "trim_error": "EBUSY"
   },
+  "ordinary_jobs_worker_accepted_lease_at_entry": {
+    "scope": "Exact GNU ARM64 compiled ordinary-worker entry proof. Sync at handler entry is after input preparation.",
+    "qualification": false,
+    "before": {
+      "build": {
+        "revision": "b104bc9230c43ea7c015b6fc83e5571d45134af7",
+        "runtime_sha256": "40f7f49698bca9936acb48efa92427cd872297a396a6ef2002b751f610ea1d2d",
+        "compiler_sha256": "5e21d971108fa18377eb5b4f03c76580e53fac048d9bc1fb2016421aeb07dedd",
+        "native_sha256": "51b1721940bfd029bddfb8dba5a53e92b1115c5cbcc8048372e27ab602ac91d3",
+        "main_sha256": "3db817b9a5a9f4ac7dd4f45c90c1327e00ca933f4f1aaa26e0c05a5709511e6a",
+        "elf_sha256": "0529e18e087a3912e33d57a07477a239a05473128846adc32eb7cf8a779f3ddf"
+      },
+      "link_receipt": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/before-link-01/build.json",
+        "sha256": "ff9af7542097a1677a723c7f19208c3766e7fed84387027c0e60e4c9b7b10524"
+      },
+      "bundle": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/before-native-01/proof/evidence/bundle.json",
+        "sha256": "647c417495fa449fd17b8622fd0232b9d5c801ebc4ffacf2c096f34366321a33"
+      },
+      "extraction": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/before-native-01/proof/extraction.json",
+        "sha256": "5f994a3ec8529b86b45a375784f1ef1e2943895800580ba51cdbf07e811a16c7"
+      },
+      "result": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/before-native-01/proof/evidence/result.json",
+        "sha256": "f2b39ec9e114ce6146e2e0fe44cc0a297707f448d1bf9fc570e5c379bd30fbe0"
+      },
+      "log": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/before-native-01/proof/evidence/worker-proof.log",
+        "sha256": "11115bd8f671fc323a477ad7522d831b46ff0cabc3cf68ce1af5ed89760335fc"
+      }
+    },
+    "after": {
+      "build": {
+        "revision": "f21a66a2994e1618959dd1b7caf5aa731b95bda9",
+        "runtime_sha256": "f4a6667ec834320ac98ab56279a01543e41c597ffc3d8116fa29b4f549c04515",
+        "compiler_sha256": "5e21d971108fa18377eb5b4f03c76580e53fac048d9bc1fb2016421aeb07dedd",
+        "native_sha256": "51b1721940bfd029bddfb8dba5a53e92b1115c5cbcc8048372e27ab602ac91d3",
+        "main_sha256": "3db817b9a5a9f4ac7dd4f45c90c1327e00ca933f4f1aaa26e0c05a5709511e6a",
+        "elf_sha256": "abbcea61548fa744fb899323f0617638ab93b51d3b46e582ad08a9247260c564"
+      },
+      "link_receipt": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/invoke-link-01/build.json",
+        "sha256": "035ccfecbf5941f05368648c77e93950aa35f1676293787ba733581de343f070"
+      },
+      "bundle": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/invoke-native-01/proof/evidence/bundle.json",
+        "sha256": "0f0b348626606e4dc7ce76c25d140fe8c4e33d08baee0c4b52f9194acf525649"
+      },
+      "extraction": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/invoke-native-01/proof/extraction.json",
+        "sha256": "cf9c34c32c1b5bf190d10274b92e8098b3e5ecadf072e07da11dc968bf30b730"
+      },
+      "result": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/invoke-native-01/proof/evidence/result.json",
+        "sha256": "0a79014c7dbd8d249d5069337631c27f1d8509e7a9ae0d733ade203d188817bc"
+      },
+      "log": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/invoke-native-01/proof/evidence/worker-proof.log",
+        "sha256": "fad65d6582847a2e44fe70465bc88f7bb3c14d31f1a63ad2c8ac6842b327f94e"
+      }
+    },
+    "proof_scope": {
+      "accepted_renewal_past_original_cutoff": "reproduced before and after",
+      "without_renewal": "exited 172 before handler entry",
+      "expiry_during_input_preparation": "source review"
+    },
+    "review": {
+      "revision": "f21a66a2994e1618959dd1b7caf5aa731b95bda9",
+      "scope": "ordinary worker entry and deadline ordering",
+      "verdict": "pass"
+    },
+    "macos_arm64_verification": {
+      "workspace_build": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/macos-invoke-01/workspace-build.log",
+        "sha256": "1bef17b934353d0ce11bf4ffb62c73b83e28a25c3e65ad844a38c7b0f3a2e8c8"
+      },
+      "workspace_runtime": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/macos-invoke-01/workspace-runtime.log",
+        "sha256": "f75f303dacd9adab990ed0909cd91b9bf73fa5edeb2383087fa8b28789d45c51"
+      },
+      "postgres_17_11": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-renewed-entry/macos-invoke-01/verification.log",
+        "sha256": "01e7aef62565e3278f8a237ecdb0b023a8a9fc33248dcb9a404880df83b6c887"
+      },
+      "runtime_tests": 1560,
+      "library_tests": 3,
+      "jobs_runtime_tests": 53,
+      "compiled_jobs_tests": 3
+    }
+  },
+  "linux_compiled_jobs_effect_64slot_shared_trim": {
+    "scope": "Local controlled slow-64 bootstrap comparison plus five frozen pairs against stock Oban.",
+    "qualification": false,
+    "initial_shared_plan": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab-r2/plan-01/plan.json",
+      "sha256": "476d8eb5c84d37459331427320c906cb9bc792b4e007e59bfe7cb9dd81e6d965"
+    },
+    "coverage_ceiling": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab-r2/coverage-ceiling-01.json",
+      "sha256": "b3835f18545d0f763ed42c2ba36bd69e9b79c7f3b93fd1cfa1896350e3f8d411"
+    },
+    "plan": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab-r3/plan-01/plan.json",
+      "sha256": "56e7ac608fd187aa4ab1cf115804e811089df8731e276b20b3d938c43b596121"
+    },
+    "link": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab-r3/link-e905-01/link.json",
+      "sha256": "21d1a2173c7d6f3c96a9449a9c3bbcb04b42c1bf53eb29d7c8e80d86fab8c532"
+    },
+    "held_comparisons": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab-r3/held-01.json",
+      "sha256": "1f16df4a45f0afe56bacbfe65a61c40f7fa74e8435c290ec84747d85edb63a1f"
+    },
+    "same_elf_screen": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab-r3/screen-01.json",
+      "sha256": "9daddf6e23e1e5c63061bb5351f9d77a5ae2da3f49400d8139b4d991c7b0d47c"
+    },
+    "paired_differences": [
+      {
+        "order": "AB",
+        "A_minus_B_wait4_cpu_ms_per_job": 0.345119140625,
+        "peak_rss_bytes_A_B": [
+          193093632,
+          184893440
+        ],
+        "B_minus_A_peak_rss_bytes": -8200192,
+        "timed_peak_executing_A_B": [
+          64,
+          64
+        ],
+        "estimated_peak_executing_A_B": [
+          64,
+          64
+        ]
+      },
+      {
+        "order": "BA",
+        "A_minus_B_wait4_cpu_ms_per_job": 1.1080859375,
+        "peak_rss_bytes_A_B": [
+          188456960,
+          185528320
+        ],
+        "B_minus_A_peak_rss_bytes": -2928640,
+        "timed_peak_executing_A_B": [
+          64,
+          64
+        ],
+        "estimated_peak_executing_A_B": [
+          64,
+          64
+        ]
+      }
+    ],
+    "matched_pilot": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pilot-01/extracted/extraction.json",
+      "sha256": "4849929feabf1a2583dead1ef681afc013625673458c5f6406e8ffd89f0f659e"
+    },
+    "host_capture_decoder": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/read-capture.py",
+      "sha256": "6ac2adfdd874b8d6dcd6349ef7be4bfff185a2c4ee97709d9c21a38589b3c63a"
+    },
+    "strict_scorer_stderr": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/strict-score-01.stderr",
+      "sha256": "533268b9a25103e1fd2f5b574a009d02735e84825526c1ee9ab0fa0f73cb937a"
+    },
+    "frozen_driver_replay": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/frozen-driver-replay-01.json",
+      "sha256": "f39566e7dca417ed74c854e072244abe141305561c45350c37f4aa918652d534"
+    },
+    "budget_breaches": [
+      {
+        "metric": "cpu_seconds_per_job",
+        "scope": "budgets"
+      },
+      {
+        "metric": "jobs_per_second",
+        "scope": "comparison"
+      }
+    ],
+    "medians": {
+      "mesh": {
+        "jobs_per_second": 397.91256196891914,
+        "cpu_seconds_per_job": 0.0025983222656249996,
+        "peak_rss_bytes": 183828480,
+        "pickup_p99_ms": 1170.410888671875
+      },
+      "oban": {
+        "jobs_per_second": 450.37552196393307,
+        "cpu_seconds_per_job": 0.00177088671875,
+        "peak_rss_bytes": 151326720,
+        "pickup_p99_ms": 1030.287109375
+      }
+    },
+    "occupancy": [
+      {
+        "arm": "listen",
+        "group": 0,
+        "observed": 64,
+        "timestamp_estimate": 64
+      },
+      {
+        "arm": "oban",
+        "group": 0,
+        "observed": 64,
+        "timestamp_estimate": 64
+      },
+      {
+        "arm": "oban",
+        "group": 1,
+        "observed": 64,
+        "timestamp_estimate": 64
+      },
+      {
+        "arm": "listen",
+        "group": 1,
+        "observed": 64,
+        "timestamp_estimate": 64
+      },
+      {
+        "arm": "listen",
+        "group": 2,
+        "observed": 64,
+        "timestamp_estimate": 64
+      },
+      {
+        "arm": "oban",
+        "group": 2,
+        "observed": 64,
+        "timestamp_estimate": 64
+      },
+      {
+        "arm": "oban",
+        "group": 3,
+        "observed": 64,
+        "timestamp_estimate": 64
+      },
+      {
+        "arm": "listen",
+        "group": 3,
+        "observed": 64,
+        "timestamp_estimate": 64
+      },
+      {
+        "arm": "listen",
+        "group": 4,
+        "observed": 64,
+        "timestamp_estimate": 65
+      },
+      {
+        "arm": "oban",
+        "group": 4,
+        "observed": 64,
+        "timestamp_estimate": 64
+      }
+    ],
+    "pairs": [
+      {
+        "group": 0,
+        "summary": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-0-01/slow-summary.json",
+          "sha256": "b0826ce729355ea5745624cd1bb60a996aa8ab9ced8900766e6a038238f9efc1"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-0-01/extracted/extraction.json",
+          "sha256": "70ce4ab356c658d24d494b1853d90116ae4bc08103c49de0e2200c94168847b6"
+        }
+      },
+      {
+        "group": 1,
+        "summary": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-1-01/slow-summary.json",
+          "sha256": "6fa63c1dd7f047c0d1c13067b4453019f8448378edf9c39ad3ceaae8be7e8550"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-1-01/extracted/extraction.json",
+          "sha256": "4c9d80ab0d78498e149fb439a7bf3d2966f86f5a1434b6e3f316a7a04e44b3dc"
+        }
+      },
+      {
+        "group": 2,
+        "summary": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-2-01/slow-summary.json",
+          "sha256": "f3d07b68bc5c290a76118f4ab420ba3143c82d1bea28dd796b40a06eb1ec274e"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-2-01/extracted/extraction.json",
+          "sha256": "e204d75203b0125b8b453204f78900213abb485a6b279d200d5ca3f0e8cb365b"
+        }
+      },
+      {
+        "group": 3,
+        "summary": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-3-01/slow-summary.json",
+          "sha256": "ccbf12c20230ebe16874a83fc7f382bc577c18607430baf11cbd90341a45bc54"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-3-01/extracted/extraction.json",
+          "sha256": "a4146ca75f4098d0415dbd394d0c76caf34ce54426c841d8aa52bdfb4e31f90f"
+        }
+      },
+      {
+        "group": 4,
+        "summary": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-4-01/slow-summary.json",
+          "sha256": "9b9c7c3175e51ddb8d1b2cd37c975dcfc149558357f0235632011a59aea2799b"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-r3-oban/pair-4-01/extracted/extraction.json",
+          "sha256": "d21802f333316a571c89ad49d042facfd4b23c7dcc4564c5e1be30aac2ccb4ad"
+        }
+      }
+    ]
+  },
   "linux_compiled_jobs_effect_64slot_pre_split_smaps": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
     "qualification": false,

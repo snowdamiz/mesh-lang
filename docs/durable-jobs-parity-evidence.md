@@ -4568,6 +4568,25 @@ proof on fresh and upgraded schemas. The workspace build, 1,560 runtime
 tests, and three library tests passed.
 [Ordinary worker stdin receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Use the watchdog's accepted lease at handler entry
+
+A compiled GNU ARM64 test parked the handler thread after the parent
+reader acquired stdin. Without a renewal, the watchdog exited with
+status 172 before handler entry. With a valid renewal, the watchdog ran
+past the original cutoff while the handler thread remained parked.
+Revision `b104bc92` exited 172 when the entry check resumed. Revision
+`f21a66a2` entered and returned a complete framed reply.
+
+The final entry check reads the accepted lease and samples the boot
+clock under the same lock, after copying the Mesh input. The watchdog
+holds that lock while checking the old lease and publishing a renewal.
+The worker still checks its hard deadline before input preparation and
+before returning a reply. The macOS ARM64 workspace build, 1,560 runtime
+tests and three library tests passed at `f21a66a2`. On PostgreSQL 17.11,
+the verified TLS and SCRAM run passed 53 Jobs runtime and three compiled
+Jobs tests.
+[Renewed-entry receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check one trim plan with both bootstrap switches off
 
 The slow-64 attribution boot packed one new ELF and one trim plan for
@@ -4576,6 +4595,34 @@ It discarded 63 jobs when the worker-local trim returned `EBUSY`
 before handler writes. Both switches were enabled during calibration.
 The adapter rejected the arm before timing its peer.
 [Failed attribution capture](../proof/jobs-parity/qualification-v1.json)
+
+### Measure the shared trim with both worker settings
+
+Four calibration boots captured both flag settings with stock 64 KiB
+and diagnostic 4 KiB fault around. The first shared plan reached only
+2.240 MiB per worker with both switches enabled. Replaying the page
+captures found gaps that were absent in every observation and could be
+joined within the same immutable load. A fresh calibration admitted the
+shared 105-range plan with 2.392 MiB per worker at the holds with both
+switches off and 2.282 MiB with them on. The held proofs used stock 64 KiB
+fault around. Each held arm reached 64 workers and reconciled 128 fenced
+commits and 64 consuming waits.
+
+The `e905b1d0` ELF used the same plan in both timed settings. Two
+opposite-order, trace-off pairs reconciled 2,048 jobs and sampled 64
+executing jobs in every arm. Enabling both switches saved 0.345 and
+1.108 runner CPU-ms/job and lowered the sampled peak RSS in each pair.
+
+Five separate pairs used that exact ELF and plan with both switches
+enabled against stock Oban Basic 2.24.2 on PostgreSQL 17.11. All 5,120
+jobs reconciled two durable writes and both engines sampled 64 executing
+jobs in every pair. The runner CPU medians were 2.598 and 1.771 CPU-ms/job.
+Throughput was 398 and 450 jobs/s. The frozen replay missed those two
+gates and passed RSS and pickup. The strict adapter separately rejected
+the timestamp estimate of 65 for one Mesh arm. The trace pilot's saved
+version log included a locale warning after the JSON. A host-only reader
+verified the original capture by parsing the version record separately.
+[Shared trim and Oban comparison receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Recheck the PR branch on the PostgreSQL version matrix
 
