@@ -81,6 +81,12 @@ fn record_effect(context :: String) -> String!String do
   if label == "panic" do
     panic("proof worker panicked")
   end
+  if label == "committed" do
+    let reply = Job.await(Job.async(fn () -> "child-" <> label end))?
+    if reply != "child-committed" do
+      return Err("proof worker's first actor returned the wrong value")
+    end
+  end
   let worker = Env.get("MESH_JOBS_PROOF_WORKER", "")
   let conn = Pg.connect(database_url())?
   let result = Pg.execute(conn,

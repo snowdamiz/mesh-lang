@@ -5,6 +5,7 @@ mod runner;
 mod store;
 pub mod testing;
 mod worker;
+pub(crate) use worker::is_worker_process;
 
 use crate::db::jobs_connection::{self, PgJobDb};
 use crate::db::pg::JobsAckError;

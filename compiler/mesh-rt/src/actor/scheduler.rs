@@ -543,6 +543,7 @@ pub struct Scheduler {
     high_priority_rx: Receiver<SpawnRequest>,
 
     started: AtomicBool,
+    start_on_spawn: Option<std::sync::Once>,
 
     /// Shared process table for PID lookup.
     process_table: Arc<ProcessTable>,
@@ -597,6 +598,7 @@ impl Scheduler {
             high_priority_tx: high_tx,
             high_priority_rx: high_rx,
             started: AtomicBool::new(false),
+            start_on_spawn: None,
             process_table: Arc::new(ProcessTable::new()),
             shutdown: Arc::new(AtomicBool::new(false)),
             active_count: Arc::new(AtomicU64::new(0)),
@@ -628,6 +630,10 @@ impl Scheduler {
 
     pub fn active_workers(&self) -> usize {
         self.active_threads.load(Ordering::Acquire)
+    }
+
+    pub(super) fn defer_start_until_spawn(&mut self) {
+        self.start_on_spawn = Some(std::sync::Once::new());
     }
 
     /// Spawn a new actor process.
@@ -781,6 +787,10 @@ impl Scheduler {
         shape: *const u32,
         mode: SpawnMode,
     ) -> ProcessId {
+        if let Some(start) = &self.start_on_spawn {
+            // Concurrent first spawns share one startup before publishing work.
+            start.call_once(|| self.start());
+        }
         let linked_parent = match mode {
             SpawnMode::Linked { parent, .. } => self.get_process(parent),
             _ => None,
