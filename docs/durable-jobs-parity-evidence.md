@@ -5457,3 +5457,79 @@ env -u MESH_TEST_DATABASE_URL \
 Set `MESH_EFFECT_LISTEN=1` and repeat for the LISTEN proof. The
 [compiled fixture](../scripts/fixtures/jobs-effect-compiled/README.md)
 describes the application routines and session reset.
+
+### Compare the warm-session Linux runtime with Oban
+
+The reconstructed Linux GNU ARM64 guest used two vCPUs, PostgreSQL
+17.11, and the frozen 8-runner no-op and 1-runner slow inputs at 64
+slots. Each engine ran a full-input warmup. Five groups per comparison
+rotated the three arms on the same postmaster with tracing disabled.
+Mesh used batch claims, LISTEN, and four warm application sessions
+per runner for no-op or eight for slow. Oban used its Basic 2.24.2
+engine and Isolated notifier with OTP 29.1.1 and Elixir 1.20.4. The
+reconstruction reused the frozen jobs and workload settings. It used
+a replacement native build of OTP and the reconstructed producer
+and observer. The slow cap was 68 sessions and the dense cap was 96.
+Oban's enqueue-only pool used one connection. Its migration and runner
+pools retained their existing settings.
+
+The comparison counted `wait4` runner-tree CPU, including startup
+and idle. Pickup p99 measures enqueue commit to handler entry.
+Sampled peak RSS sums the runner process tree. Each arm reconciled one
+attempt and one effect, in distinct ordered transactions, for every
+completed input.
+
+The original comparison scripts sampled connections and SQL for
+`parity_subject` and `parity_producer`. The Mesh named operations
+used `compiled_caller`, a separate authenticated role. The historical
+sampled connections are therefore role-scoped counts. The receipt names
+the configured application lanes and hard PostgreSQL cap without
+adding inferred connections to the samples. The committed driver now
+counts all three workload roles for both engines and reports application
+SQL separately from `parity_subject` SQL. The observer retains the same
+connection and sampling cadence.
+
+| Five paired groups per cell | Arm | Median jobs/s | Median CPU-ms/job | Median pickup p99, ms | Median sampled RSS, MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Dense, retained runtime | Current warm sessions | 967 | 1.050 | 1,045 | 325.0 |
+| Dense, retained runtime | Historical warm control | 1,174 | 0.867 | 860 | 311.2 |
+| Dense, retained runtime | Oban | 1,992 | 3.140 | 508 | 1,042.4 |
+| Slow, retained runtime | Current warm sessions | 485 | 1.336 | 948 | 305.8 |
+| Slow, retained runtime | Historical warm control | 533 | 0.805 | 857 | 296.7 |
+| Slow, retained runtime | Oban | 421 | 1.336 | 1,099 | 158.3 |
+| Dense, watchdog trial | Current warm sessions | 997 | 0.977 | 1,015 | 317.7 |
+| Dense, watchdog trial | Single watchdog and deferred scheduler | 915 | 0.981 | 1,100 | 323.4 |
+| Dense, watchdog trial | Oban | 2,289 | 3.266 | 441 | 1,040.6 |
+| Slow, watchdog trial | Current warm sessions | 518 | 1.063 | 881 | 312.8 |
+| Slow, watchdog trial | Single watchdog and deferred scheduler | 485 | 1.112 | 951 | 315.7 |
+| Slow, watchdog trial | Oban | 431 | 1.203 | 1,079 | 161.9 |
+
+The historical warm control is the `e905b1d0` runtime linked with
+the frozen named path from `8526a5bd`. The previously recorded
+851 versus 1,796 jobs/s dense comparison used `8526a5bd` itself.
+The retained arm uses the runtime from `d8741576`. The ordinary
+`Jobs.start` path keeps its existing dispatcher and startup.
+
+In the retained series, Oban won all five dense throughput pairs.
+Warm Mesh won four slow throughput pairs and saved a median 0.226
+CPU-ms/job within the five slow pairs. Its median sampled slow RSS
+was 1.93 times Oban, exceeding the 1.50 limit. Mesh sampled a slow
+occupancy peak of 64 in three pairs and 62 in two. Oban sampled 64
+in all five. Dense peak connection samples in the retained series
+had medians of 33 and 80 for Mesh and Oban within the two measured
+roles. Slow had medians of five and 67. The Mesh configuration
+allowed 32 and eight additional application sessions respectively.
+
+The single watchdog trial reduced median peak Mesh threads from
+144 to 117 in dense and from 434 to 303 in slow. It won three of
+five direct dense throughput pairs by a median paired 21 jobs/s.
+It won two of five direct slow throughput pairs and its slow
+median pickup p99 increased from 881 to 951 ms. The retained runtime
+keeps the existing watchdog and scheduler. The fixture keeps the
+public actor and deadline cases for either runtime. All 46,080
+measured jobs in the two series reconciled two committed writes each.
+The receipt retains every pair and its host load, including the
+dense pair in which all arms slowed.
+
+[Warm-session Linux paired receipts](../proof/jobs-parity/linux-warm-jobs-20261122.json)
+[Warm-session Linux replay sources](../proof/jobs-parity/linux-warm-replay-20261122.tar.gz)

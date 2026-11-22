@@ -1,0 +1,1512 @@
+{
+  "comparison_arms": {
+    "control": {
+      "fixture_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "runtime_revision": "e905b1d003f13afbdf1e195daa49078865c9a2b2"
+    },
+    "current": {
+      "release_archive_sha256": "f99dbbdf5cb0fd53bf85aa9609dfce335d5fada770ae3217e24b02ec818ae4e6",
+      "runtime_revision": "d8741576fcceae76b4ef93cfedd0805e414a8bfa"
+    },
+    "oban": {
+      "elixir": "1.20.4",
+      "engine": "Basic",
+      "notifier": "Isolated",
+      "otp": "29.1.1",
+      "version": "2.24.2"
+    },
+    "tuned": {
+      "release_archive_sha256": "46fe75a9ef1cc105f35b1a3d49136f79f478aede3a26e4d0c92c3cc58b71b8f7",
+      "runtime_revision": "27ea77a82776d1437d4a6428308799d1676396e5"
+    }
+  },
+  "frozen_components_sha256": {
+    "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+    "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+    "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+    "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+    "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+    "proof/fixture.exs": "21140bd87257d2320fb44397ba5661a09be5b9b7242fbdc03007c24eb5f3c7e8",
+    "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+    "proof/jobs-parity.py": "75317cf7ebc0828a27ba47f48b292846c4421d4720745438358e4d89eabbca7d",
+    "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6"
+  },
+  "groups": [
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "current",
+          1024,
+          946.5891,
+          1.0831,
+          1067.668,
+          324.9609,
+          30,
+          45,
+          33,
+          16,
+          117,
+          10848,
+          1024,
+          0.139,
+          8.6675,
+          0.0
+        ],
+        [
+          "control",
+          1024,
+          794.714,
+          1.221,
+          1273.0181,
+          311.1992,
+          32,
+          40,
+          33,
+          13,
+          141,
+          10848,
+          1024,
+          0.173,
+          8.2935,
+          0.0
+        ],
+        [
+          "oban",
+          1024,
+          2793.921,
+          3.0301,
+          359.4868,
+          1050.1641,
+          18,
+          57,
+          80,
+          32,
+          184,
+          null,
+          1024,
+          0.083,
+          7.8691,
+          0.1602
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        10.2822265625,
+        19.56298828125,
+        29.0908203125
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "final-noop-0",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "oban",
+          1024,
+          363.6395,
+          8.8487,
+          2789.062,
+          1035.3789,
+          36,
+          61,
+          81,
+          32,
+          184,
+          null,
+          1024,
+          0.107,
+          30.7808,
+          9.8477
+        ],
+        [
+          "control",
+          1024,
+          247.8289,
+          3.9102,
+          4092.302,
+          362.4492,
+          33,
+          48,
+          33,
+          19,
+          137,
+          10848,
+          1024,
+          0.183,
+          35.4478,
+          9.4229
+        ],
+        [
+          "current",
+          1024,
+          269.5173,
+          3.8667,
+          3742.26,
+          325.6875,
+          34,
+          52,
+          33,
+          19,
+          160,
+          10848,
+          1024,
+          0.254,
+          39.2861,
+          14.1274
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        7.13525390625,
+        15.146484375,
+        26.11669921875
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "final-noop-1",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "control",
+          1024,
+          1173.5326,
+          0.8672,
+          860.022,
+          314.5781,
+          21,
+          41,
+          33,
+          13,
+          128,
+          10848,
+          1024,
+          0.135,
+          8.8916,
+          0.1411
+        ],
+        [
+          "oban",
+          1024,
+          2277.8084,
+          3.1404,
+          444.313,
+          1044.9297,
+          43,
+          61,
+          80,
+          32,
+          184,
+          null,
+          1024,
+          0.088,
+          8.4194,
+          2.1211
+        ],
+        [
+          "current",
+          1024,
+          1083.3835,
+          0.9602,
+          932.5959,
+          286.9844,
+          28,
+          44,
+          33,
+          11,
+          124,
+          10848,
+          1024,
+          0.135,
+          7.8252,
+          2.1211
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        8.88720703125,
+        20.49072265625,
+        26.82763671875
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "final-noop-2",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "current",
+          1024,
+          967.3117,
+          1.0497,
+          1045.4409,
+          332.8906,
+          27,
+          41,
+          33,
+          17,
+          147,
+          10848,
+          1024,
+          0.146,
+          93.4731,
+          0.4321
+        ],
+        [
+          "oban",
+          1024,
+          1279.9969,
+          3.8704,
+          784.248,
+          1039.8711,
+          28,
+          61,
+          81,
+          32,
+          184,
+          null,
+          1024,
+          0.074,
+          87.0288,
+          0.478
+        ],
+        [
+          "control",
+          1024,
+          1179.9518,
+          0.8446,
+          859.4211,
+          293.9336,
+          22,
+          40,
+          33,
+          11,
+          109,
+          10848,
+          1024,
+          0.132,
+          75.0386,
+          0.478
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        119.7451171875,
+        56.0576171875,
+        38.16796875
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "final-noop-3",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "oban",
+          1024,
+          1991.9464,
+          2.9672,
+          507.8362,
+          1042.4375,
+          29,
+          64,
+          80,
+          32,
+          184,
+          null,
+          1024,
+          0.079,
+          6.7202,
+          0.5156
+        ],
+        [
+          "current",
+          1024,
+          1158.2335,
+          0.8775,
+          869.564,
+          313.5312,
+          25,
+          40,
+          33,
+          12,
+          107,
+          10848,
+          1024,
+          0.123,
+          6.2617,
+          0.917
+        ],
+        [
+          "control",
+          1024,
+          1232.4208,
+          0.8029,
+          822.614,
+          296.2227,
+          26,
+          46,
+          33,
+          17,
+          115,
+          10848,
+          1024,
+          0.126,
+          6.0806,
+          0.9238
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        7.87841796875,
+        21.53076171875,
+        27.46142578125
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "final-noop-4",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "current",
+          512,
+          452.4303,
+          1.481,
+          1025.8931,
+          331.9805,
+          64,
+          64,
+          5,
+          65,
+          456,
+          267488,
+          512,
+          100.223,
+          7.4482,
+          0.3013
+        ],
+        [
+          "control",
+          512,
+          534.2839,
+          0.7664,
+          853.3931,
+          318.9414,
+          64,
+          65,
+          5,
+          65,
+          328,
+          267488,
+          512,
+          100.199,
+          7.7056,
+          0.2769
+        ],
+        [
+          "oban",
+          512,
+          402.1843,
+          1.2127,
+          1157.825,
+          158.9805,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.59,
+          7.4087,
+          0.2544
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        5.4658203125,
+        15.98876953125,
+        26.92578125
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "final-slow-0",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    },
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "oban",
+          512,
+          424.1873,
+          1.5076,
+          1092.45,
+          157.7148,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.722,
+          62.2002,
+          0.1475
+        ],
+        [
+          "control",
+          512,
+          532.6591,
+          0.805,
+          853.092,
+          300.2656,
+          64,
+          65,
+          5,
+          61,
+          307,
+          267488,
+          512,
+          100.185,
+          57.5396,
+          0.1475
+        ],
+        [
+          "current",
+          512,
+          484.7769,
+          1.3667,
+          948.0959,
+          331.0469,
+          64,
+          64,
+          5,
+          65,
+          456,
+          267488,
+          512,
+          100.228,
+          53.1719,
+          0.1353
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        81.0478515625,
+        36.80078125,
+        33.13818359375
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "final-slow-1",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    },
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "control",
+          512,
+          532.8366,
+          0.7385,
+          856.9319,
+          286.875,
+          63,
+          64,
+          5,
+          58,
+          296,
+          267488,
+          512,
+          100.206,
+          9.5625,
+          0.0
+        ],
+        [
+          "oban",
+          512,
+          420.8482,
+          1.3358,
+          1099.491,
+          158.2695,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.792,
+          9.0366,
+          1.9219
+        ],
+        [
+          "current",
+          512,
+          522.6613,
+          1.015,
+          875.6599,
+          298.4609,
+          64,
+          65,
+          5,
+          58,
+          411,
+          267488,
+          512,
+          100.179,
+          9.1133,
+          1.9282
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        11.0166015625,
+        17.45751953125,
+        24.8798828125
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "final-slow-2",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    },
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "current",
+          512,
+          520.0355,
+          1.0125,
+          874.1111,
+          305.8281,
+          62,
+          65,
+          5,
+          60,
+          421,
+          267488,
+          512,
+          100.184,
+          6.9048,
+          0.0
+        ],
+        [
+          "oban",
+          512,
+          394.5889,
+          1.2384,
+          1180.0559,
+          162.1836,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.536,
+          6.5918,
+          0.0
+        ],
+        [
+          "control",
+          512,
+          516.8746,
+          1.0669,
+          885.7629,
+          296.7148,
+          64,
+          64,
+          5,
+          60,
+          305,
+          267488,
+          512,
+          100.233,
+          6.3657,
+          0.0
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        8.1123046875,
+        29.859375,
+        31.0087890625
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "final-slow-3",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    },
+    {
+      "arm_hashes": {
+        "control": "785bdf065caddc5fda1a2a79eeb1b932bd8a1f32a39f92c29cf1d65d6d308711",
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+      },
+      "arms": [
+        [
+          "oban",
+          512,
+          504.6388,
+          2.1987,
+          909.4502,
+          156.3047,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.485,
+          6.9595,
+          0.1421
+        ],
+        [
+          "current",
+          512,
+          451.1065,
+          1.3362,
+          1019.408,
+          301.5898,
+          62,
+          65,
+          5,
+          59,
+          414,
+          267488,
+          512,
+          100.215,
+          7.0425,
+          0.1304
+        ],
+        [
+          "control",
+          512,
+          328.0407,
+          1.7463,
+          1444.2839,
+          285.7031,
+          64,
+          64,
+          5,
+          58,
+          296,
+          267488,
+          512,
+          100.333,
+          7.0391,
+          0.1196
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        6.1943359375,
+        14.64990234375,
+        23.4580078125
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "final-slow-4",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "current",
+          1024,
+          1230.262,
+          0.8674,
+          818.688,
+          317.6641,
+          26,
+          34,
+          33,
+          17,
+          144,
+          10848,
+          1024,
+          0.131,
+          4.3926,
+          0.9756
+        ],
+        [
+          "tuned",
+          1024,
+          1261.2142,
+          0.8413,
+          802.3901,
+          345.3672,
+          26,
+          39,
+          33,
+          12,
+          113,
+          10848,
+          1024,
+          0.141,
+          4.7612,
+          0.978
+        ],
+        [
+          "oban",
+          1024,
+          2288.6777,
+          3.1351,
+          441.0378,
+          1036.3281,
+          42,
+          63,
+          80,
+          32,
+          184,
+          null,
+          1024,
+          0.12,
+          4.46,
+          1.0601
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        5.08203125,
+        25.02978515625,
+        29.12060546875
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "tuned-noop-0",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "oban",
+          1024,
+          2542.1734,
+          3.2658,
+          395.2729,
+          1034.7617,
+          23,
+          60,
+          80,
+          32,
+          184,
+          null,
+          1024,
+          0.086,
+          11.3091,
+          8.6885
+        ],
+        [
+          "tuned",
+          1024,
+          693.9803,
+          1.293,
+          1440.1812,
+          318.4766,
+          32,
+          41,
+          33,
+          16,
+          117,
+          10848,
+          1024,
+          0.178,
+          10.7236,
+          10.3154
+        ],
+        [
+          "current",
+          1024,
+          902.2799,
+          1.1772,
+          1124.0959,
+          294.1992,
+          29,
+          37,
+          33,
+          15,
+          141,
+          10848,
+          1024,
+          0.141,
+          10.3452,
+          13.1733
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        13.05078125,
+        13.75537109375,
+        21.486328125
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "tuned-noop-1",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "tuned",
+          1024,
+          308.9495,
+          3.1075,
+          3281.05,
+          363.0977,
+          38,
+          51,
+          33,
+          19,
+          129,
+          10848,
+          1024,
+          0.206,
+          29.9165,
+          11.5347
+        ],
+        [
+          "oban",
+          1024,
+          965.5814,
+          6.8236,
+          1017.4551,
+          1043.5977,
+          47,
+          64,
+          81,
+          32,
+          184,
+          null,
+          1024,
+          0.168,
+          37.3599,
+          11.6768
+        ],
+        [
+          "current",
+          1024,
+          287.8272,
+          4.3532,
+          3518.0801,
+          364.7109,
+          30,
+          49,
+          33,
+          24,
+          191,
+          10848,
+          1024,
+          0.201,
+          71.0142,
+          18.0254
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        20.80224609375,
+        30.70751953125,
+        27.31396484375
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "tuned-noop-2",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "current",
+          1024,
+          1013.5243,
+          0.9106,
+          998.9189,
+          327.9219,
+          30,
+          45,
+          33,
+          15,
+          136,
+          10848,
+          1024,
+          0.138,
+          8.1602,
+          0.1421
+        ],
+        [
+          "oban",
+          1024,
+          2763.1772,
+          3.0243,
+          364.2869,
+          1040.6055,
+          32,
+          56,
+          81,
+          32,
+          184,
+          null,
+          1024,
+          0.077,
+          7.9067,
+          0.6113
+        ],
+        [
+          "tuned",
+          1024,
+          1167.2244,
+          0.8818,
+          867.5979,
+          323.4258,
+          26,
+          43,
+          33,
+          13,
+          107,
+          10848,
+          1024,
+          0.13,
+          7.3535,
+          0.6426
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        9.9130859375,
+        29.31103515625,
+        29.2978515625
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "tuned-noop-3",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "oban",
+          1024,
+          1809.3535,
+          3.6392,
+          553.3799,
+          1042.7148,
+          35,
+          63,
+          81,
+          32,
+          184,
+          null,
+          1024,
+          0.081,
+          5.5015,
+          1.8418
+        ],
+        [
+          "current",
+          1024,
+          996.5975,
+          0.9769,
+          1015.2649,
+          310.9492,
+          24,
+          39,
+          33,
+          15,
+          154,
+          10848,
+          1024,
+          0.142,
+          5.9414,
+          1.7739
+        ],
+        [
+          "tuned",
+          1024,
+          915.2941,
+          0.9805,
+          1100.325,
+          316.2305,
+          27,
+          41,
+          33,
+          13,
+          139,
+          10848,
+          1024,
+          0.127,
+          6.4263,
+          1.7119
+        ]
+      ],
+      "configured_mesh_app_connections": 32,
+      "host_load_at_boot": [
+        5.72119140625,
+        18.970703125,
+        24.98486328125
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "name": "tuned-noop-4",
+      "postgres_physical_max_connections": 96,
+      "profile": "noop"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "current",
+          512,
+          517.9188,
+          1.0627,
+          881.106,
+          320.7227,
+          64,
+          64,
+          5,
+          63,
+          440,
+          267488,
+          512,
+          100.167,
+          6.4287,
+          0.0
+        ],
+        [
+          "tuned",
+          512,
+          480.7069,
+          1.2443,
+          956.167,
+          314.668,
+          64,
+          64,
+          5,
+          60,
+          298,
+          267488,
+          512,
+          100.281,
+          6.2339,
+          0.0
+        ],
+        [
+          "oban",
+          512,
+          431.1492,
+          1.193,
+          1079.0471,
+          161.875,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.522,
+          6.7754,
+          0.1602
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        7.205078125,
+        16.0166015625,
+        24.3427734375
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "tuned-slow-0",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "oban",
+          512,
+          424.0405,
+          2.2866,
+          1100.158,
+          156.5273,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.916,
+          72.2632,
+          4.9678
+        ],
+        [
+          "tuned",
+          512,
+          421.9697,
+          1.5514,
+          1098.2532,
+          315.7305,
+          64,
+          64,
+          5,
+          60,
+          303,
+          267488,
+          512,
+          100.349,
+          70.9604,
+          5.1177
+        ],
+        [
+          "current",
+          512,
+          422.2712,
+          1.7532,
+          1099.228,
+          312.7812,
+          64,
+          64,
+          5,
+          61,
+          434,
+          267488,
+          512,
+          100.309,
+          62.5327,
+          5.1885
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        67.78173828125,
+        34.939453125,
+        27.58056640625
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "tuned-slow-1",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "tuned",
+          512,
+          502.5595,
+          1.1118,
+          911.6099,
+          301.9727,
+          64,
+          64,
+          5,
+          58,
+          295,
+          267488,
+          512,
+          100.247,
+          17.4165,
+          1.0103
+        ],
+        [
+          "oban",
+          512,
+          444.5394,
+          1.0684,
+          1046.8069,
+          158.4102,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.434,
+          15.6416,
+          1.0103
+        ],
+        [
+          "current",
+          512,
+          524.1927,
+          0.9388,
+          863.8489,
+          312.6055,
+          63,
+          65,
+          5,
+          61,
+          428,
+          267488,
+          512,
+          100.176,
+          14.6289,
+          0.9292
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        19.2314453125,
+        36.07763671875,
+        31.45751953125
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "tuned-slow-2",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "current",
+          512,
+          273.8548,
+          2.6309,
+          1728.7319,
+          289.293,
+          63,
+          64,
+          5,
+          56,
+          386,
+          267488,
+          512,
+          100.307,
+          4.7505,
+          0.0
+        ],
+        [
+          "oban",
+          512,
+          405.9297,
+          1.8954,
+          1154.3469,
+          162.4062,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.429,
+          5.7554,
+          0.0801
+        ],
+        [
+          "tuned",
+          512,
+          484.9068,
+          1.0108,
+          950.7642,
+          318.4609,
+          64,
+          64,
+          5,
+          61,
+          308,
+          267488,
+          512,
+          100.216,
+          5.9351,
+          0.1475
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        5.5341796875,
+        23.04638671875,
+        26.8896484375
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "tuned-slow-3",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    },
+    {
+      "arm_hashes": {
+        "current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "tuned": "4029faeff0365f73d92f3afd63d42f5fc8256a19f6e236437ea284e875ef80d3"
+      },
+      "arms": [
+        [
+          "oban",
+          512,
+          451.0306,
+          1.2032,
+          1023.8198,
+          162.082,
+          64,
+          64,
+          67,
+          4,
+          23,
+          null,
+          512,
+          100.834,
+          5.7139,
+          0.0
+        ],
+        [
+          "current",
+          512,
+          527.3751,
+          0.9716,
+          862.7021,
+          322.6758,
+          64,
+          65,
+          5,
+          63,
+          442,
+          267488,
+          512,
+          100.154,
+          5.1484,
+          0.0
+        ],
+        [
+          "tuned",
+          512,
+          535.9797,
+          0.7511,
+          849.803,
+          330.0586,
+          64,
+          65,
+          5,
+          64,
+          323,
+          267488,
+          512,
+          100.207,
+          4.9761,
+          0.0
+        ]
+      ],
+      "configured_mesh_app_connections": 8,
+      "host_load_at_boot": [
+        5.3564453125,
+        14.7890625,
+        22.609375
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "name": "tuned-slow-4",
+      "postgres_physical_max_connections": 68,
+      "profile": "slow"
+    }
+  ],
+  "guest": {
+    "authentication": "SCRAM",
+    "configured_memory_gib": 2,
+    "postgres": "17.11",
+    "tls": "verify-full",
+    "vcpus": 2
+  },
+  "scope": {
+    "connections_and_sql_roles": [
+      "parity_subject",
+      "parity_producer"
+    ],
+    "cpu": "wait4 runner tree including startup and idle",
+    "full_input_warmup": true,
+    "score": "local diagnostic with five matched groups per workload and comparison"
+  },
+  "scored_jobs": 46080,
+  "source_archive_sha256": "76d93c2c7147d4cd12f69d7ad8e2698b721cb999535c4a9c9bfc5e79581d37ad",
+  "trial_columns": [
+    "arm",
+    "completed",
+    "jobs_per_second",
+    "runner_cpu_ms_per_job",
+    "pickup_p99_ms",
+    "peak_rss_mib",
+    "peak_executing",
+    "estimated_peak_executing",
+    "peak_sampled_jobs_and_producer_connections",
+    "peak_processes",
+    "peak_threads",
+    "peak_queued_context_bytes",
+    "ordered_write_pairs",
+    "minimum_hold_ms",
+    "host_start_load_1m",
+    "peak_guest_load_1m"
+  ]
+}
