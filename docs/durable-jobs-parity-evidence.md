@@ -4484,6 +4484,38 @@ of 0.15 CPU-ms/job in each pair. The first two captures failed
 guest setup or drain verification and are retained separately.
 [Pre-split validation receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Measure deferred scheduler startup and one worker watchdog
+
+The local GNU ARM64 draft `e905b1d0` uses two independent opt-ins for
+fresh named-effect workers. Scheduler deferral initializes the handler's
+main process and GC stack before entry and starts the scheduler on the
+first actor spawn. The watchdog waits on the renewal socket and an absolute
+`CLOCK_BOOTTIME` timer. It acquires the runtime's stdin lock before the
+handler can run and holds that lock for the worker's lifetime.
+
+The first draft allowed `IO.read_line()` to race the watchdog for renewal
+bytes. With a delayed watchdog read, the compiled handler consumed an
+on-time renewal and the worker exited at its original lease cutoff with
+status 172. The fixed draft passed the same test and reached the handler
+timeout with status 171. The existing two-thread control also lost a
+renewal in a separate stdin trial. Its reader releases the lock between
+reads. That control path was left as implemented.
+
+The fixed ELF passed the four switch combinations, first actor spawn
+under GC stress, partial-frame and late renewals, and parent EOF. Injected
+timer creation and arming errors returned 174 before the handler entered.
+Both timerfd imports use `GLIBC_2.17`, and the fixture required the same
+set of glibc and libgcc symbol versions as its baseline.
+
+One guest ran an A/B/B/A comparison with both switches disabled in A and
+enabled in B. Each arm measured 128 exact child execs and consuming waits
+with 100 ms of main-thread sleep and GC stress disabled. Child CPU fell
+from 0.759 to 0.404 and from 1.095 to 0.508 CPU-ms/job in the two pairs.
+This diagnostic did not run PostgreSQL, the RSS trim, or the frozen
+Oban comparison. The whole-run CPU, RSS, and throughput gates for
+`slow-1r-64s` remain open.
+[Worker bootstrap receipts](../proof/jobs-parity/qualification-v1.json#L39361)
+
 ### Recheck the PR branch on the PostgreSQL version matrix
 
 The PR branch at `bdc83c72` passed the workspace build, formatting,
