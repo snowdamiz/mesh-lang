@@ -1,0 +1,2052 @@
+{
+  "candidate_sha256": "ba80441a7cef12ba78bf0900fe9294c56c7ae6d3bd32fd9bb555e097f8afea95",
+  "frozen_source": {
+    "jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+    "profiles": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+    "revision": "03b20f42c253701641d591a710a0a13211f623d4"
+  },
+  "groups": [
+    {
+      "archive_path": "target/worker-hot-section-layout/qualification/slow-01",
+      "arms": {
+        "mesh-candidate": {
+          "archive_sha256": {
+            "ordered-writes.json": "bea4e38c4ab2c3f1ee53067a0af12a071a38bb9e506ee5783f5b65f5a7f1854b",
+            "raw.json": "81457749e4448aa218fa7064418da176358c74144990b10c7314fdd206acba58",
+            "shutdown.json": "f0df9192fbc28f52f66a9a3d046ca4554d9ed77a0f665cf6ed916774788b5ee4"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.310546875,
+            "claim_p99_ms": 881.39501953125,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0012478378906249999,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.091796875,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.9712750726562,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 510.4023757666737,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 1.119140625,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 212070400,
+            "peak_threads": 456,
+            "pickup_p99_ms": 896.7099609375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.275390625,
+            "settlement_p99_ms": 999.81396484375,
+            "sql_calls_per_job": 7.3671875
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.206,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38486016,
+                "rss_bytes": 38486016,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38486016,
+                "rss_bytes": 38486016,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 89496,
+              "pid": 11582,
+              "system_s": 0.27692,
+              "user_s": 0.361973
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "mesh-stock": {
+          "archive_sha256": {
+            "ordered-writes.json": "20ac3009a0583f8439bb855a5b5dd8ac59893cd2e68c3299025ce4707e1f8547",
+            "raw.json": "f93ac1da60f579cc5739918facefecbf29079cd2ca28a393a821116fefe2d1ea",
+            "shutdown.json": "5e3539d44af6a1e51179aee26b4bfe86971d382f805b901265152353d693c183"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.38671875,
+            "claim_p99_ms": 852.178955078125,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.000974298828125,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.091796875,
+            "estimated_peak_executing": 65,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.2820681478167,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 525.9935340341056,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 1.1328125,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 347353088,
+            "peak_threads": 456,
+            "pickup_p99_ms": 854.81689453125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.580078125,
+            "settlement_p99_ms": 956.718017578125,
+            "sql_calls_per_job": 7.671875
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.197,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 40411136,
+                "rss_bytes": 40411136,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 40411136,
+                "rss_bytes": 40411136,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 103704,
+              "pid": 7941,
+              "system_s": 0.19996799999999998,
+              "user_s": 0.298873
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "oban": {
+          "archive_sha256": {
+            "ordered-writes.json": "279d1dbb01c0951ea5a6b0bad057aa07c27fce1c30baf28d4e8f1d002719a173",
+            "raw.json": "16d06792267104e4b0f3dd3b612d3f33ae38870ec3b804b9415aac60df92d081",
+            "shutdown.json": "e31870027c17173af762b741e452427fb45ea6c16d6e8f03e20ce27a1ad4b561"
+          },
+          "drained_mesh_status": [],
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.060546875,
+            "claim_p99_ms": 962.799072265625,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.001778970703125,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.04296875,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 874.5726447150456,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 474.48004986543793,
+            "pair": 0,
+            "peak_connections": 67,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 1.2548828125,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 149520384,
+            "peak_threads": 12,
+            "pickup_p99_ms": 971.182861328125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.228515625,
+            "settlement_p99_ms": 1077.998046875,
+            "sql_calls_per_job": 3.271484375
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.891,
+            "ordered": 512,
+            "worker_pids": 1
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 148103168,
+                "rss_bytes": 149340160,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 148234240,
+                "rss_bytes": 149471232,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 148381696,
+                "rss_bytes": 149618688,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 147951616,
+                "rss_bytes": 149188608,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 12025,
+              "pid": 15238,
+              "system_s": 0.164768,
+              "user_s": 0.746065
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        }
+      },
+      "manifest_sha256": "8490490f88ceb29fc138a992813d39bec79de42de876a925a648f8d757479645",
+      "name": "slow-01",
+      "order": [
+        "mesh-stock",
+        "mesh-candidate",
+        "oban"
+      ],
+      "receipt_sha256": "437cc201fdf84554e9403fcba69e9c6aecd2058e5dc6392da02b547c1d53759d"
+    },
+    {
+      "archive_path": "target/worker-hot-section-layout/qualification/slow-02",
+      "arms": {
+        "mesh-candidate": {
+          "archive_sha256": {
+            "ordered-writes.json": "711626c00aec2c99c4de05f71356852e905c5dace200a80a882793f63d433baf",
+            "raw.json": "ca32c2ead34656a5fd38ec66e51e87d6377754d68a375e22a9ae69aa6e0fd351",
+            "shutdown.json": "587f8fc178ac807f76d74ff2d3702001cde94da2916acd059fcb62b5ddd91fa0"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.275390625,
+            "claim_p99_ms": 933.0419921875,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0015062597656249998,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.091796875,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1696.5702413108131,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 487.1717259240899,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 5.01708984375,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 212914176,
+            "peak_threads": 456,
+            "pickup_p99_ms": 940.097900390625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.138671875,
+            "settlement_p99_ms": 1043.10595703125,
+            "sql_calls_per_job": 7.23046875
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.279,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38486016,
+                "rss_bytes": 38486016,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38486016,
+                "rss_bytes": 38486016,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 89761,
+              "pid": 8141,
+              "system_s": 0.347813,
+              "user_s": 0.423392
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "mesh-stock": {
+          "archive_sha256": {
+            "ordered-writes.json": "e5ccac36aa51968eeb63e752a5177695d565f6ce70931873ae57bfe6947f6da1",
+            "raw.json": "e566eb5c1c995d480c10de8283e5f38135a773842977f4570d6d053e2b58f676",
+            "shutdown.json": "83ff5d33735bf10bcccac90d63857deb468fe3e4363d3005a667ec045d8b743e"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.255859375,
+            "claim_p99_ms": 972.0,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0016706015625,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.09375,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.7208384181115,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 466.76483523527514,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 4.32568359375,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 344641536,
+            "peak_threads": 456,
+            "pickup_p99_ms": 979.837890625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.060546875,
+            "settlement_p99_ms": 1085.680908203125,
+            "sql_calls_per_job": 7.154296875
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.288,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38633472,
+                "rss_bytes": 38633472,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38633472,
+                "rss_bytes": 38633472,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 104089,
+              "pid": 11782,
+              "system_s": 0.381853,
+              "user_s": 0.473495
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "oban": {
+          "archive_sha256": {
+            "ordered-writes.json": "b8d45ee139cd38154403772d9b4ff00b6b0a3fa4747832ae6561e3372cb473b9",
+            "raw.json": "85895033a6f69ee6784a167a2f5b210b04d9abc3751d41bd1e6ec8dff4423263",
+            "shutdown.json": "8190b3e92f67f4e0458cd199f5f4aa04d06fb6c3954f3617e1be4cf375eed52b"
+          },
+          "drained_mesh_status": [],
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.052734375,
+            "claim_p99_ms": 1017.783935546875,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0018066249999999999,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.044921875,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 875.7806950037881,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 452.4831151021099,
+            "pair": 0,
+            "peak_connections": 67,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 5.4541015625,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 150310912,
+            "peak_threads": 12,
+            "pickup_p99_ms": 1023.48291015625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.205078125,
+            "settlement_p99_ms": 1131.27001953125,
+            "sql_calls_per_job": 3.25
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.773,
+            "ordered": 512,
+            "worker_pids": 1
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 1232896,
+                "processes": 2,
+                "root_rss_bytes": 145711104,
+                "rss_bytes": 146944000,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1232896,
+                "processes": 2,
+                "root_rss_bytes": 145711104,
+                "rss_bytes": 146944000,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1232896,
+                "processes": 2,
+                "root_rss_bytes": 145874944,
+                "rss_bytes": 147107840,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 12758,
+              "pid": 7955,
+              "system_s": 0.17701699999999998,
+              "user_s": 0.747975
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        }
+      },
+      "manifest_sha256": "07f62027cc535adb7273ee2ff36aac2c8656e6502299ed1f6af4123fb021d6fc",
+      "name": "slow-02",
+      "order": [
+        "oban",
+        "mesh-candidate",
+        "mesh-stock"
+      ],
+      "receipt_sha256": "e6c5320ac59f4401a38fc4364d8814da584715204238a6cd2e2540c410aa3cd9"
+    },
+    {
+      "archive_path": "target/worker-hot-section-layout/qualification/slow-03",
+      "arms": {
+        "mesh-candidate": {
+          "archive_sha256": {
+            "ordered-writes.json": "adfc451064e6add144b9a077214a87ec7ca9c82138f77323ece3f2c587c3e154",
+            "raw.json": "acec0105cfe27a64391f3e4269a9cb3edc032cacb030c0313639d178a2dd37ef",
+            "shutdown.json": "e43abfceec875a3e524146b4ad787a96dd430671bd41d924080e034800eb24c6"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.14453125,
+            "claim_p99_ms": 1225.43896484375,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.00204015625,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.09765625,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1654.0188368745648,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 372.78361364143376,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.93994140625,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 231383040,
+            "peak_threads": 456,
+            "pickup_p99_ms": 1251.759033203125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 1.63671875,
+            "settlement_p99_ms": 1361.988037109375,
+            "sql_calls_per_job": 6.734375
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.262,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38522880,
+                "rss_bytes": 38522880,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38522880,
+                "rss_bytes": 38522880,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 90557,
+              "pid": 11583,
+              "system_s": 0.572271,
+              "user_s": 0.47228899999999996
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "mesh-stock": {
+          "archive_sha256": {
+            "ordered-writes.json": "2c570c538ecbb8e5de4270fde5e7776f085b1a787a53c2bfc4ad19e034dc7f05",
+            "raw.json": "30e54e270a9f15240b36ad48e131bf035d73d72764ea283c516c01ecefa5ccc5",
+            "shutdown.json": "117394723b6b99c1ba28477af1003423c868e15c3b8967cc7c4ca9dfc19a6166"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.109375,
+            "claim_p99_ms": 2007.133056640625,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0031557597656249998,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.109375,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1654.35847547151,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 227.71556923028814,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.841796875,
+            "peak_processes": 57,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 305405952,
+            "peak_threads": 405,
+            "pickup_p99_ms": 2051.636962890625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 1.533203125,
+            "settlement_p99_ms": 2243.4521484375,
+            "sql_calls_per_job": 6.642578125
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.429,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38608896,
+                "rss_bytes": 38608896,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38608896,
+                "rss_bytes": 38608896,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 105330,
+              "pid": 7942,
+              "system_s": 0.9619719999999999,
+              "user_s": 0.6537769999999999
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "oban": {
+          "archive_sha256": {
+            "ordered-writes.json": "5a22528eb62a01a4a4c8b7d9b95e3281134eb866925d65f2ff03eb0f097a0057",
+            "raw.json": "9943425f9b7a2d87d0367a2b96acee0176d841c1891dd999dc7d039d5abef3e8",
+            "shutdown.json": "75c89f4565082ca591f170a5077ce0675056c56d27d187356d108ff5b5ec24bc"
+          },
+          "drained_mesh_status": [],
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.068359375,
+            "claim_p99_ms": 1200.175048828125,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.001767150390625,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.046875,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 895.9151120776395,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 390.2358420435339,
+            "pair": 0,
+            "peak_connections": 67,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.93994140625,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 148754432,
+            "peak_threads": 12,
+            "pickup_p99_ms": 1204.85302734375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.2578125,
+            "settlement_p99_ms": 1311.55810546875,
+            "sql_calls_per_job": 3.3046875
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.532,
+            "ordered": 512,
+            "worker_pids": 1
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 146173952,
+                "rss_bytes": 147410944,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 146321408,
+                "rss_bytes": 147558400,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 146321408,
+                "rss_bytes": 147558400,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 146321408,
+                "rss_bytes": 147558400,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 11821,
+              "pid": 15239,
+              "system_s": 0.160525,
+              "user_s": 0.7442559999999999
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        }
+      },
+      "manifest_sha256": "8490490f88ceb29fc138a992813d39bec79de42de876a925a648f8d757479645",
+      "name": "slow-03",
+      "order": [
+        "mesh-stock",
+        "mesh-candidate",
+        "oban"
+      ],
+      "receipt_sha256": "cfc0c3de6b8685033adb1cd1b0970513d24565ee7042852772230ae31ff390cd"
+    },
+    {
+      "archive_path": "target/worker-hot-section-layout/qualification/slow-04",
+      "arms": {
+        "mesh-candidate": {
+          "archive_sha256": {
+            "ordered-writes.json": "c86eb7542fac5fda097d2fef3ec90aa39ad91906938895f9b4c18ce6a6cc9d1a",
+            "raw.json": "aad67588e9db0c6db6c0f567839734932f646271c550174d911f95260d8513bc",
+            "shutdown.json": "d94a875b3ea23130c880f918b22dea1bc6aaa4d886d4f01ce564e283810c8a09"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.115234375,
+            "claim_p99_ms": 1832.347900390625,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0031611699218749996,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.107421875,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1681.4645614885046,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 257.545145116232,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 1.7060546875,
+            "peak_processes": 61,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 200261632,
+            "peak_threads": 438,
+            "pickup_p99_ms": 1863.44384765625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 1.552734375,
+            "settlement_p99_ms": 1971.997802734375,
+            "sql_calls_per_job": 6.66015625
+          },
+          "observed_committed_hold_peak": 61,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.415,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38432768,
+                "rss_bytes": 38432768,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38432768,
+                "rss_bytes": 38432768,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 90320,
+              "pid": 8140,
+              "system_s": 0.9706499999999999,
+              "user_s": 0.6478689999999999
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "mesh-stock": {
+          "archive_sha256": {
+            "ordered-writes.json": "66f8b510b040c4921b8919ecbb21191d28c67086dfbddab5f163434ce6ae4a4e",
+            "raw.json": "828b8477a54a7fa4fefe12b3264478a24dbfa002b3953956da07a01492ca9298",
+            "shutdown.json": "1660fd0149e494dadabef79acad0dfeef81b880594f8dc489588b218a67975ea"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.123046875,
+            "claim_p99_ms": 1212.492919921875,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0022674765624999997,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.095703125,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1731.9057692380027,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 381.9744443558032,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 1.5234375,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 344657920,
+            "peak_threads": 456,
+            "pickup_p99_ms": 1225.409912109375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 1.55078125,
+            "settlement_p99_ms": 1336.766845703125,
+            "sql_calls_per_job": 6.646484375
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.392,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38744064,
+                "rss_bytes": 38744064,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38744064,
+                "rss_bytes": 38744064,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 104432,
+              "pid": 11782,
+              "system_s": 0.6360239999999999,
+              "user_s": 0.524924
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "oban": {
+          "archive_sha256": {
+            "ordered-writes.json": "5dbdc881f02732373ef044a6cd1c882e02fcad1fda9aaf07c21d2942cc2bce03",
+            "raw.json": "9d58af79df9c296a8d0fafe9461740fdf147b2c6ffac8fe6399cc780355eb060",
+            "shutdown.json": "9a0e407e4009a7e23f0d1457e8d0ad11cdfa785b81385f5265c7407327c83c6a"
+          },
+          "drained_mesh_status": [],
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.052734375,
+            "claim_p99_ms": 1992.259033203125,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.007079373046875,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.0546875,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 787.4770044041255,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 235.26708788052844,
+            "pair": 0,
+            "peak_connections": 67,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 1.85498046875,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 158621696,
+            "peak_threads": 12,
+            "pickup_p99_ms": 2035.27099609375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.251953125,
+            "settlement_p99_ms": 2169.2001953125,
+            "sql_calls_per_job": 3.306640625
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 101.725,
+            "ordered": 512,
+            "worker_pids": 1
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 157384704,
+                "rss_bytes": 158621696,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 157384704,
+                "rss_bytes": 158621696,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 157540352,
+                "rss_bytes": 158777344,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 157540352,
+                "rss_bytes": 158777344,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 157540352,
+                "rss_bytes": 158777344,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 157540352,
+                "rss_bytes": 158777344,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 154996736,
+                "rss_bytes": 156233728,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 154460160,
+                "rss_bytes": 155697152,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 154460160,
+                "rss_bytes": 155697152,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 154460160,
+                "rss_bytes": 155697152,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 154460160,
+                "rss_bytes": 155697152,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 154460160,
+                "rss_bytes": 155697152,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 154460160,
+                "rss_bytes": 155697152,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 154005504,
+                "rss_bytes": 155242496,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 154005504,
+                "rss_bytes": 155242496,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 12484,
+              "pid": 7954,
+              "system_s": 1.077897,
+              "user_s": 2.546742
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        }
+      },
+      "manifest_sha256": "07f62027cc535adb7273ee2ff36aac2c8656e6502299ed1f6af4123fb021d6fc",
+      "name": "slow-04",
+      "order": [
+        "oban",
+        "mesh-candidate",
+        "mesh-stock"
+      ],
+      "receipt_sha256": "13a8682185678a57582c12356393a8f5766ff505add8ae406f3714edc04b1019"
+    },
+    {
+      "archive_path": "target/worker-hot-section-layout/qualification/slow-05",
+      "arms": {
+        "mesh-candidate": {
+          "archive_sha256": {
+            "ordered-writes.json": "1cccf513286289188d880bccd2e3e083be7c84a745aea0b2674914a7eaf772c7",
+            "raw.json": "0ca525cce674130a8977c77b64baa26bb66cf5f00bb3371c71024a8d24ec5a40",
+            "shutdown.json": "92768216b66ff29d5a10039eceee9d944859b3875b88897107598b0234f05442"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.361328125,
+            "claim_p99_ms": 831.485107421875,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0009318281249999999,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.08984375,
+            "estimated_peak_executing": 65,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1696.977775914873,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 545.3886789469482,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.27685546875,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 212914176,
+            "peak_threads": 456,
+            "pickup_p99_ms": 834.537109375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.474609375,
+            "settlement_p99_ms": 935.89111328125,
+            "sql_calls_per_job": 7.564453125
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.18,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38309888,
+                "rss_bytes": 38309888,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38309888,
+                "rss_bytes": 38309888,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 89618,
+              "pid": 11583,
+              "system_s": 0.175476,
+              "user_s": 0.30162
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "mesh-stock": {
+          "archive_sha256": {
+            "ordered-writes.json": "350b9596f18b86fbd83fc64d68c4efb0d5b17548973f22fdf49e06dfbba817a3",
+            "raw.json": "d99692b9ee77f18748565134d89fe28ef2b09165df113b58f6a18c311486b82c",
+            "shutdown.json": "e5d563522430351c3070026fd2084e59e5f6d975666662da845594876dd77aee"
+          },
+          "drained_mesh_status": [
+            {
+              "claimed": 512,
+              "drained": true,
+              "finished": 512,
+              "last_error": null,
+              "pending_claims": 0,
+              "stale_acks": 0,
+              "undrained": 0
+            }
+          ],
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.396484375,
+            "claim_p99_ms": 838.81591796875,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.00105770703125,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.08984375,
+            "estimated_peak_executing": 65,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.9637849057099,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 539.6682760327967,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.30126953125,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 347017216,
+            "peak_threads": 456,
+            "pickup_p99_ms": 841.64697265625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.615234375,
+            "settlement_p99_ms": 946.62890625,
+            "sql_calls_per_job": 7.705078125
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.194,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38637568,
+                "rss_bytes": 38637568,
+                "threads": 8
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 1,
+                "root_rss_bytes": 38637568,
+                "rss_bytes": 38637568,
+                "threads": 6
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 103535,
+              "pid": 7942,
+              "system_s": 0.21134599999999998,
+              "user_s": 0.3302
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        },
+        "oban": {
+          "archive_sha256": {
+            "ordered-writes.json": "d34bb5a8c593f579c682f76592d97444e079f4183ec11297903afb7f27bd70d4",
+            "raw.json": "1f4d2eb9d462f0f95904dcec03316fe9c0f58169ac6cafb38369f8cf2435f070",
+            "shutdown.json": "48461d31379134910677390384360fec4c01f2bcac42efeca17c8bca24103d5d"
+          },
+          "drained_mesh_status": [],
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.076171875,
+            "claim_p99_ms": 1310.298095703125,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0026377871093750003,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.048828125,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 875.4767637949572,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 349.21796332261556,
+            "pair": 0,
+            "peak_connections": 67,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.25439453125,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 154169344,
+            "peak_threads": 12,
+            "pickup_p99_ms": 1340.426025390625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.275390625,
+            "settlement_p99_ms": 1453.498046875,
+            "sql_calls_per_job": 3.32421875
+          },
+          "observed_committed_hold_peak": 64,
+          "ordered_writes": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.987,
+            "ordered": 512,
+            "worker_pids": 1
+          },
+          "shutdown": [
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 152932352,
+                "rss_bytes": 154169344,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 152932352,
+                "rss_bytes": 154169344,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 153063424,
+                "rss_bytes": 154300416,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 153063424,
+                "rss_bytes": 154300416,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 153063424,
+                "rss_bytes": 154300416,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 1236992,
+                "processes": 2,
+                "root_rss_bytes": 148512768,
+                "rss_bytes": 149749760,
+                "threads": 12
+              }
+            },
+            {
+              "sample": {
+                "descendant_rss_bytes": 0,
+                "processes": 0,
+                "root_rss_bytes": 0,
+                "rss_bytes": 0,
+                "threads": 0
+              }
+            },
+            {
+              "exit_code": 0,
+              "major_faults": 0,
+              "minor_faults": 12537,
+              "pid": 15239,
+              "system_s": 0.293014,
+              "user_s": 1.057533
+            },
+            {
+              "drain_verified": true
+            }
+          ],
+          "warmup_completed": 512,
+          "warmup_ordered_pairs": 512
+        }
+      },
+      "manifest_sha256": "8490490f88ceb29fc138a992813d39bec79de42de876a925a648f8d757479645",
+      "name": "slow-05",
+      "order": [
+        "mesh-stock",
+        "mesh-candidate",
+        "oban"
+      ],
+      "receipt_sha256": "644c158296785f65cc0cfd7206621d124902f8ebf653e5fd506003aeeed0b7cd"
+    }
+  ],
+  "held_exact_reap": {
+    "archive_path": "target/worker-hot-section-layout/canonical-held-01/evidence/candidate-trace",
+    "archived_lifecycle_sha256": "24f4e782bd17dfcf5c6282d4b07f413598dfdf2d78c50928867c7402436927a1",
+    "candidate_sha256": "ba80441a7cef12ba78bf0900fe9294c56c7ae6d3bd32fd9bb555e097f8afea95",
+    "committed_pids": [
+      2181,
+      2185,
+      2189,
+      2196,
+      2203,
+      2208,
+      2215,
+      2220,
+      2228,
+      2236,
+      2242,
+      2256,
+      2262,
+      2266,
+      2270,
+      2276,
+      2288,
+      2297,
+      2301,
+      2306,
+      2315,
+      2321,
+      2326,
+      2336,
+      2343,
+      2352,
+      2362,
+      2369,
+      2376,
+      2381,
+      2388,
+      2394,
+      2407,
+      2411,
+      2416,
+      2425,
+      2432,
+      2436,
+      2441,
+      2450,
+      2456,
+      2463,
+      2471,
+      2477,
+      2482,
+      2491,
+      2504,
+      2511,
+      2519,
+      2525,
+      2530,
+      2536,
+      2546,
+      2553,
+      2557,
+      2568,
+      2574,
+      2579,
+      2586,
+      2598,
+      2604,
+      2608,
+      2619,
+      2625
+    ],
+    "exact_successful_consuming_waits": [
+      2519,
+      2388,
+      2598,
+      2456,
+      2530,
+      2262,
+      2381,
+      2297,
+      2301,
+      2436,
+      2343,
+      2220,
+      2369,
+      2574,
+      2579,
+      2586,
+      2362,
+      2189,
+      2425,
+      2208,
+      2608,
+      2326,
+      2477,
+      2463,
+      2536,
+      2270,
+      2525,
+      2450,
+      2306,
+      2625,
+      2619,
+      2511,
+      2288,
+      2181,
+      2411,
+      2553,
+      2604,
+      2315,
+      2568,
+      2376,
+      2394,
+      2441,
+      2185,
+      2228,
+      2546,
+      2276,
+      2236,
+      2352,
+      2416,
+      2215,
+      2242,
+      2491,
+      2203,
+      2336,
+      2407,
+      2471,
+      2432,
+      2557,
+      2196,
+      2504,
+      2482,
+      2266,
+      2321,
+      2256
+    ],
+    "exited_zero": [
+      2326,
+      2553,
+      2546,
+      2530,
+      2519,
+      2536,
+      2579,
+      2568,
+      2343,
+      2598,
+      2266,
+      2262,
+      2215,
+      2477,
+      2416,
+      2270,
+      2189,
+      2208,
+      2463,
+      2604,
+      2407,
+      2306,
+      2301,
+      2297,
+      2352,
+      2288,
+      2276,
+      2376,
+      2362,
+      2196,
+      2425,
+      2411,
+      2394,
+      2336,
+      2321,
+      2436,
+      2432,
+      2369,
+      2315,
+      2256,
+      2456,
+      2228,
+      2203,
+      2450,
+      2557,
+      2482,
+      2471,
+      2236,
+      2511,
+      2185,
+      2608,
+      2381,
+      2242,
+      2181,
+      2574,
+      2504,
+      2441,
+      2525,
+      2619,
+      2586,
+      2388,
+      2220,
+      2491,
+      2625
+    ],
+    "held_pids": [
+      2181,
+      2185,
+      2189,
+      2196,
+      2203,
+      2208,
+      2215,
+      2220,
+      2228,
+      2236,
+      2242,
+      2256,
+      2262,
+      2266,
+      2270,
+      2276,
+      2288,
+      2297,
+      2301,
+      2306,
+      2315,
+      2321,
+      2326,
+      2336,
+      2343,
+      2352,
+      2362,
+      2369,
+      2376,
+      2381,
+      2388,
+      2394,
+      2407,
+      2411,
+      2416,
+      2425,
+      2432,
+      2436,
+      2441,
+      2450,
+      2456,
+      2463,
+      2471,
+      2477,
+      2482,
+      2491,
+      2504,
+      2511,
+      2519,
+      2525,
+      2530,
+      2536,
+      2546,
+      2553,
+      2557,
+      2568,
+      2574,
+      2579,
+      2586,
+      2598,
+      2604,
+      2608,
+      2619,
+      2625
+    ],
+    "successfully_execed": [
+      2181,
+      2185,
+      2189,
+      2196,
+      2203,
+      2215,
+      2208,
+      2220,
+      2228,
+      2236,
+      2242,
+      2256,
+      2262,
+      2266,
+      2270,
+      2276,
+      2288,
+      2297,
+      2301,
+      2306,
+      2315,
+      2321,
+      2326,
+      2336,
+      2343,
+      2352,
+      2362,
+      2369,
+      2376,
+      2381,
+      2388,
+      2394,
+      2407,
+      2411,
+      2416,
+      2425,
+      2432,
+      2436,
+      2441,
+      2450,
+      2456,
+      2463,
+      2471,
+      2477,
+      2482,
+      2491,
+      2504,
+      2511,
+      2519,
+      2525,
+      2530,
+      2536,
+      2546,
+      2553,
+      2557,
+      2568,
+      2574,
+      2579,
+      2586,
+      2598,
+      2604,
+      2608,
+      2619,
+      2625
+    ]
+  },
+  "hold_intervals_sha256": "3388ac1ae2970cff605d8eea514238ae169f1038d1d0a9378055336711944cca",
+  "jobs_per_arm": 512,
+  "profile": "slow",
+  "recorded_result": {
+    "frozen": true,
+    "matched_full_occupancy": false,
+    "shutdown_inclusive": true,
+    "throughput_pair_wins": 4
+  },
+  "runners": 1,
+  "runtime": {
+    "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+    "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+    "launcher_sha256": "3a964c035cc67966c060b8e232e2b6a1aadac13138fe04cb40ee7b4b36048f74",
+    "load_geometry": {
+      "fault_window": 65536,
+      "machine": "aarch64",
+      "page": 4096,
+      "release": "6.12.115-0-virt",
+      "selection": "coverage",
+      "sysname": "Linux"
+    },
+    "oban_erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+    "oban_erl_inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+    "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "postgresql": "17.11",
+    "worker_thp_enabled": 0
+  },
+  "schema": 1,
+  "shared_component_sha256": {
+    "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+    "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+    "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+    "opt/otp/erts-17.1/bin/erl_child_setup": "79510b432c238f7f333ba27d29dd84244bbd1f80862340510c7a148a7ea4794f",
+    "opt/otp/erts-17.1/bin/inet_gethost": "cad1f6b2917e8ade3948c02239958085748f4575d4cb97fb7fb479c5ffcbdc7a",
+    "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+    "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+    "proof/fixture.exs": "058552add25e4fe9a386d5782ccb8ba253384ca8e48da95996405ad689502e9d",
+    "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+    "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+    "proof/mesh-current": "ba80441a7cef12ba78bf0900fe9294c56c7ae6d3bd32fd9bb555e097f8afea95",
+    "proof/mesh-stock-original": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+    "proof/oban": "e0b1c3610fee233fd0e3c6f814b6464ca9997b92506d67a31a19d33486eea7f9",
+    "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+    "proof/oban.inetrc": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+    "proof/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+    "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+    "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+    "proof/segment-canonical-init": "f23fe760afc6eee500e490fea9749eeb6263e911719c5a25b760a1168dcafb0a",
+    "proof/shutdown_adapter.py": "639e799b30644ce82500e9ee11ce655407e24c7d36af61614743a8bc86ff08cd",
+    "proof/trial.py": "3896785f6c98b2cddc47bd349b11bb507df67ee0ea1d23d3547b68025de37a79"
+  },
+  "slots": 64,
+  "stock_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8"
+}
