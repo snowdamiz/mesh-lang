@@ -4512,6 +4512,13 @@ standalone effect proofs on PostgreSQL 17.11, 18.7, and 19.0. All three
 versions passed 68 database-backed Jobs runtime tests and three
 compiled Jobs tests. The Linux ordering proof covers the one-slot
 debug fixture on PostgreSQL 17.11.
+
+The same macOS candidate passed 719 compiled end-to-end tests
+across the compiler verification suite, with two tests ignored.
+The laws and pinned solver commands passed 158 tests with the
+published ARM64 builds of Z3 4.15.7 and Lean 4.36.0. The Cargo
+check of the fuzz binaries passed. These receipts cover local
+execution of those commands.
 [Exact ordering and platform receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Compare short jobs under a physical cap of 20 connections

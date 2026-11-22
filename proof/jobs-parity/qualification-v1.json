@@ -38436,6 +38436,52 @@
         "database_backed_jobs_runtime_tests": 68,
         "compiled_jobs_tests": 3
       }
+    },
+    "macos_additional_local_gates": {
+      "compiled_e2e": {
+        "log": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/remaining-compiled-e2e.log",
+          "sha256": "b386c005ceb0b1a0b45239c37f435a9bed83493e09ffd7ccbf51df30e5705d68"
+        },
+        "test_suites": 11,
+        "passed": 718,
+        "ignored": 2
+      },
+      "compiled_performance_e2e": {
+        "log": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/compiled-performance.log",
+          "sha256": "9770454fd951d0cda7d2adffc123db8943e4992c26fcb381a89f51c4959234b9"
+        },
+        "test_suites": 1,
+        "passed": 1,
+        "ignored": 0
+      },
+      "laws_and_binary_tests": {
+        "log": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/laws.log",
+          "sha256": "a41f07c0b0aae914d3b3c507338cf8d366bffc338fe9702a23927921dc9b5289"
+        },
+        "test_suites": 2,
+        "passed": 155,
+        "ignored": 3
+      },
+      "pinned_z3_ignored_tests": {
+        "log": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pinned-z3.log",
+          "sha256": "4f40addee7b3eb6cfd566de1c1db809839054aa79d06fe176a9fe169be0c7790"
+        },
+        "test_suites": 1,
+        "passed": 3,
+        "ignored": 0
+      },
+      "fuzz_binary_typecheck": {
+        "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/fuzz-check.log",
+        "sha256": "b613b2c710f19a319319109a1e7d9119b1348cc12c66079f5a83d98d22cd02fe"
+      },
+      "darwin_tool_archive_pins": {
+        "path": "target/jobs-parity/native-arm64-authoritative/tools/macos-law-pins-0c36b429/SHA256SUMS",
+        "sha256": "c2e0bb7e90bb4a266f362fefd760b8248e2751cd01676fcbf0506ea3f7bd767d"
+      }
     }
   },
   "linux_compiled_jobs_effect_sparse_hard_cap": {
