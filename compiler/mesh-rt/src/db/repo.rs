@@ -248,12 +248,15 @@ fn select_sql(
 
     // LIMIT clause
     if query.limit >= 0 {
-        sql.push_str(&format!(" LIMIT {}", query.limit));
+        sql.push_str(&format!(" LIMIT ${param_idx}"));
+        params.push(query.limit.to_string());
+        param_idx += 1;
     }
 
     // OFFSET clause
     if query.offset >= 0 {
-        sql.push_str(&format!(" OFFSET {}", query.offset));
+        sql.push_str(&format!(" OFFSET ${param_idx}"));
+        params.push(query.offset.to_string());
     }
 
     (sql, params)
@@ -1907,7 +1910,7 @@ mod tests {
 
     #[test]
     fn test_select_with_order_limit_offset() {
-        let (sql, _) = build_select_sql_from_parts(
+        let (sql, params) = build_select_sql_from_parts(
             "users",
             &[],
             &[],
@@ -1924,8 +1927,9 @@ mod tests {
         );
         assert_eq!(
             sql,
-            "SELECT * FROM \"users\" ORDER BY \"name\" ASC, \"age\" DESC LIMIT 10 OFFSET 20"
+            "SELECT * FROM \"users\" ORDER BY \"name\" ASC, \"age\" DESC LIMIT $1 OFFSET $2"
         );
+        assert_eq!(params, ["10", "20"]);
     }
 
     #[test]
@@ -1947,9 +1951,9 @@ mod tests {
         );
         assert_eq!(
             sql,
-            "SELECT \"id\", \"name\" FROM \"users\" INNER JOIN \"posts\" ON posts.user_id = users.id WHERE \"active\" = $1 ORDER BY \"name\" ASC LIMIT 10 OFFSET 0"
+            "SELECT \"id\", \"name\" FROM \"users\" INNER JOIN \"posts\" ON posts.user_id = users.id WHERE \"active\" = $1 ORDER BY \"name\" ASC LIMIT $2 OFFSET $3"
         );
-        assert_eq!(params, vec!["true"]);
+        assert_eq!(params, ["true", "10", "0"]);
     }
 
     #[test]
@@ -2863,11 +2867,11 @@ mod tests {
              FROM \"articles\" INNER JOIN \"writers\" ON writers.handle = articles.author_id \
              WHERE \"status\" IN ($2, $3) AND \"kind\" NOT IN ($4) AND \"year\" BETWEEN $5 AND $6 \
              AND (\"a\" = $7 OR \"b\" = $8) AND (\"views\" > $9) AND \"author_id\" IN (SELECT \
-             \"handle\" FROM \"bans\" WHERE \"active\" = $10) LIMIT 5) AND \"score\" > $11"
+             \"handle\" FROM \"bans\" WHERE \"active\" = $10) LIMIT $11) AND \"score\" > $12"
         );
         assert_eq!(
             params,
-            ["Ada", "live", "pinned", "draft", "2020", "2026", "1", "2", "10", "t", "3"]
+            ["Ada", "live", "pinned", "draft", "2020", "2026", "1", "2", "10", "t", "5", "3"]
         );
     }
 

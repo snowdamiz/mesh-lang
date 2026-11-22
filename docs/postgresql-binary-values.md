@@ -18,12 +18,16 @@ end
 from `Pg.connect`. Existing `Pg/Pool.execute` and `query` keep their `List<String>`
 and `Map<String, String>` behavior.
 
-The typed APIs use PostgreSQL's extended query protocol and unnamed prepared
-statements. `Binary` parameters use wire format 1; they are never converted to
-UTF-8, hex, or base64. Queries describe the prepared statement first, request
-binary results only for PostgreSQL `BYTEA` (OID 17), and keep all other columns
-in text format. SQL NULL becomes `Null`, so it is distinct from empty text and
-empty bytes.
+The typed APIs use PostgreSQL's extended query protocol. Each connection caches
+up to 256 prepared statements and their result formats. A typed query describes
+its statement when the formats are unknown. `Binary` parameters use wire format
+1. Only PostgreSQL `BYTEA` (OID 17) columns use binary result format. SQL NULL
+becomes `Null`, so it is distinct from empty text and empty bytes.
+
+Use `statement_cache=off` in the connection URL for transaction-mode poolers.
+This uses unnamed statements and describes each typed query. Mesh retries a
+cached statement rejected before binding with SQLSTATE `0A000` or `26000` once
+in autocommit mode. In a transaction, it returns the server's error.
 
 The pool skips its health check for connections checked in less than 500 ms
 ago. A statement on a connection the server has closed returns an error.

@@ -75,6 +75,9 @@ end
 
 `Pool.open(url, min_size, max_size, checkout_timeout_ms)` eagerly creates the minimum connections and bounds concurrent checkouts at the maximum.
 
+Each PostgreSQL connection caches up to 256 prepared statements. Set
+`statement_cache=off` in the connection URL when using a transaction-mode pooler.
+
 The pool reuses connections checked in less than 500 ms ago without a health
 check. It checks connections that have been idle longer before lending them.
 If PostgreSQL closed a recently used connection, the statement returns an
