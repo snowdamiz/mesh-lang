@@ -413,10 +413,13 @@ fn run_worker() -> Result<(), String> {
         .spawn(move || enforce_deadlines(deadline, &watchdog_lease, updates))
         .map_err(|error| error.to_string())?;
     stdin_claimed.recv().map_err(|error| error.to_string())?;
-    remaining(deadline, || *lease.lock());
+    remaining(deadline, u64::MAX);
+    // Waiting for a renewal may cross a deadline. Read the clock while
+    // holding the lease so the entry check uses a consistent pair.
+    remaining(deadline, *lease.lock());
 
     let reply = invoke(context, |input| unsafe { handler(input) });
-    remaining(deadline, || u64::MAX);
+    remaining(deadline, u64::MAX);
     write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -449,12 +452,12 @@ pub(super) fn invoke(
 
 fn enforce_deadlines(deadline: u64, lease: &Mutex<u64>, updates: Receiver<u64>) {
     loop {
-        let wait = remaining(deadline, || *lease.lock()).min(Duration::from_millis(20));
+        let wait = remaining(deadline, *lease.lock()).min(Duration::from_millis(20));
         match updates.recv_timeout(wait) {
             Ok(next) => {
                 // A delayed renewal may not revive a worker whose lease already ended.
                 let mut accepted = lease.lock();
-                remaining(deadline, || *accepted);
+                remaining(deadline, *accepted);
                 *accepted = (*accepted).max(next);
             }
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
@@ -463,11 +466,8 @@ fn enforce_deadlines(deadline: u64, lease: &Mutex<u64>, updates: Receiver<u64>) 
     }
 }
 
-fn remaining(deadline: u64, lease: impl FnOnce() -> u64) -> Duration {
+fn remaining(deadline: u64, lease: u64) -> Duration {
     let now = boot_millis().unwrap_or_else(|_| exit_worker(BOOTSTRAP_ERROR));
-    // Sample the lease after the clock so a startup pause cannot leave the
-    // handler checking a lease the watchdog has already extended.
-    let lease = lease();
     if now >= deadline.min(lease) {
         exit_worker(if deadline <= lease {
             TIMEOUT
