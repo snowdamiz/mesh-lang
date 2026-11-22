@@ -561,6 +561,26 @@ Unmeasured, with the PR that measures each:
 - The cost of a thread hop for one PostgreSQL query. D8, under its 1.25 times rule.
 - The share of `pg_rows` time that row building takes. D1, before D7 starts.
 
+### D8 PostgreSQL socket waits
+
+D8 stopped after the connection-worker implementation and one shared-readiness
+prototype missed the fourfold throughput target at 64 actors on one scheduler
+worker. Every measured trial returned the expected results.
+
+- With the counting proxy, the connection-worker implementation moved
+  one-actor point-query p50 from 156 µs to 219 µs. At 64 actors, throughput rose
+  from 7,054 to 11,139 calls/s, a 1.58× gain.
+- The shared-readiness prototype measured an 18% one-actor p50 increase through
+  the proxy. At 64 actors it delivered 20,811 calls/s against the D7 baseline of
+  21,811 calls/s.
+- A direct-socket probe removed the counting proxy. At 64 actors the prototype
+  reached 106,014 calls/s against 41,464 calls/s on D7, a 2.56× gain. One-actor
+  p50 was 28.1 µs against 22.1 µs.
+
+The local same-binary calibration exceeded the 5% tolerance, so the timings are
+local observations. The D8 implementation stays on the verification branch.
+D1 through D7 form the landing stack.
+
 ## Appendix B. Alternatives rejected
 
 - A `mio` reactor for PostgreSQL sockets. The only reactor, `ws/reactor.rs`, owns the WebSocket protocol and drives `rustls` by hand. A move of `PgStream` to non-blocking `rustls` rewrites the I/O in `pg.rs`. D8 uses one thread per connection, which the HTTP client and `DurableWriter` already do. If D8 fails its 1-actor rule, prototype a shared readiness thread that wakes the actor to do its own read.
