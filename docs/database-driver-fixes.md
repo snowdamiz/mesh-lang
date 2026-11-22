@@ -599,6 +599,20 @@ passes, qualification uses one worker for the entire matrix. The full
 qualification takes 20 balanced blocks for SQLite rows and 10 for every other
 mode. All comparisons retain the 5% limit.
 
+The one-worker SQLite row control passed. Fresh one-worker trials also passed
+all SQLite row comparisons in the full matrix. The audit found four call p99
+differences over 5% among 600 valid trials. Both labels used the same release
+binary. [One-worker Linux run](https://github.com/snowdamiz/mesh-lang/actions/runs/45068585954)
+
+- `pg_typed` at 16 actors measured 917 µs and 1,004 µs, a 9.52% difference.
+- `pg_write` at 64 actors measured 1,138 µs and 1,069 µs, a 6.04% difference.
+- `sqlite_write` at 16 actors measured 1,982 µs and 2,229 µs, a 12.43% difference.
+- `sqlite_write` at 64 actors measured 2,083 µs and 1,836 µs, a 11.88% difference.
+
+The full matrix failed, so CI skipped the separate ticker check. The next
+analysis examines the recorded tails in those four cases before choosing
+another configuration.
+
 ### D8 PostgreSQL socket waits
 
 D8 stopped after the connection-worker implementation and one shared-readiness
