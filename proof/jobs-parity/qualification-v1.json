@@ -38117,7 +38117,7 @@
   "linux_compiled_jobs_effect_64slot_lean_slow_timing_rejected": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
     "qualification": false,
-    "scope": "Five unscored local pairs using the frozen workload and stock kernel with the lean trim fixture. The scorer rejected the comparison. Each Mesh arm estimated a peak of 65, and each live sample series peaked at 64. The one-millisecond sensitivity does not resolve exact committed occupancy.",
+    "scope": "Five local pairs using the frozen workload and stock kernel with the lean trim fixture. The diagnostic adapter added a cap on the timestamp estimate and rejected the comparison. The frozen driver caps observed occupancy. Replaying it on the same archived evidence found only the runner CPU miss.",
     "profile": "slow-1r-64s",
     "pilot": {
       "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pilot-01/slow-summary.json",
@@ -38204,7 +38204,70 @@
       }
     },
     "descriptive_runner_cpu_ratio": 1.3193832501648375,
-    "scorer_rejected": "arm lacks frozen workload, correctness or resource evidence"
+    "scorer_rejected": "arm lacks frozen workload, correctness or resource evidence",
+    "frozen_driver_replay": {
+      "result": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/frozen-driver-replay-01.json",
+        "sha256": "2400895157f83b1025c6129bc3e99c374b26edeb62be5861a5b450de04104cc1"
+      },
+      "reducer": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/replay-frozen-driver.py",
+        "sha256": "62f923b7ec973e3e0ca1e5b07d88954602a03453702bb7608998666402dc750b"
+      },
+      "budget_breaches": [
+        {
+          "metric": "cpu_seconds_per_job",
+          "scope": "budgets"
+        }
+      ]
+    },
+    "synthetic_pg17_occupancy_feasibility": {
+      "plain": {
+        "result": {
+          "unproven": "incomplete physical history: {'executing': 103, 'completed': 512}"
+        },
+        "evidence": {
+          "path": "target/jobs-parity/slow64-commit-occupancy/plain.json",
+          "sha256": "d5660892e9e788b3a7373e025e40a565480810aef3fb0874885af74b08d05440"
+        }
+      },
+      "retained-a": {
+        "result": {
+          "committed_peak": 64,
+          "jobs": 512,
+          "claim_transactions": 32,
+          "terminal_transactions": 32,
+          "effect_transactions": 32,
+          "versions": 1536,
+          "estimated_floor_peak": 65,
+          "estimated_plus_1ms_peak": 64,
+          "wall_timestamp_ties": 0,
+          "min_payload_pg_column_bytes": 16403
+        },
+        "evidence": {
+          "path": "target/jobs-parity/slow64-commit-occupancy/retained-a.json",
+          "sha256": "00aeb794a9bfb964fe1df2cad3612ef9e39524f6d742dd89f6b41037a120eaa1"
+        }
+      },
+      "retained-b": {
+        "result": {
+          "committed_peak": 64,
+          "jobs": 512,
+          "claim_transactions": 32,
+          "terminal_transactions": 32,
+          "effect_transactions": 32,
+          "versions": 1536,
+          "estimated_floor_peak": 64,
+          "estimated_plus_1ms_peak": 64,
+          "wall_timestamp_ties": 0,
+          "min_payload_pg_column_bytes": 16403
+        },
+        "evidence": {
+          "path": "target/jobs-parity/slow64-commit-occupancy/retained-b.json",
+          "sha256": "06fdecb5369acba3f0695c4bb2a728213a6093619eb16ee87d6af14e55435e40"
+        }
+      }
+    }
   },
   "linux_compiled_jobs_wait_order_noble_smoke": {
     "revision": "233fccbc37bad250008a1850e3caaad8f5b60309",
@@ -38709,6 +38772,164 @@
         }
       }
     ]
+  },
+  "linux_compiled_jobs_effect_64slot_batched_pagemap": {
+    "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
+    "qualification": false,
+    "scope": "Two Mesh-only trace-off screens with same-ELF A/B then B/A slow-64 runs. Both failed the local whole-run cutoff.",
+    "failed_clock_capture": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-batched-pagemap/slow-A-01/extracted/extraction.json",
+      "sha256": "3e21e1f6fe1b0a333a3d558583c1bb87d2bf07a69a95c4a5349c6c71fe583a6d"
+    },
+    "corrected_elf": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-batched-pagemap-clock/link-01/link.json",
+      "sha256": "a8a60d34bd80606a7bfaa1b22d8b53b38cb0889281bc779e9df00420ba4ec8fc"
+    },
+    "fresh_residency_plan": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-batched-pagemap-clock/plan-01/plan.json",
+      "sha256": "66e32536e782a0ab9fafc6f549bdba04af587f61e0d53f8de9f3ad07d40b057b"
+    },
+    "per_worker_preads_A_B": [
+      315,
+      39
+    ],
+    "advice_calls_per_worker": 210,
+    "reconciled_jobs": 4096,
+    "screens": [
+      {
+        "result": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-batched-pagemap-clock/screen-01.json",
+          "sha256": "24f2adc2a5e83ce9988a6b32fdf55fbd1e336550b86c9062a8552e96d73bb334"
+        },
+        "checks": {
+          "B_median_under_historical_cpu_ceiling": false,
+          "each_pair_preserves_peak_rss_and_samples_64_live": false,
+          "each_pair_saves_at_least_0_15_wait4_cpu_ms_per_job": false,
+          "each_pair_saves_pagemap_and_complete_bootstrap_cpu": true
+        },
+        "pairs": [
+          {
+            "A": "slow-A-01",
+            "A_minus_B_bootstrap_ms_per_job": 0.3846135703125,
+            "A_minus_B_pagemap_ms_per_job": 0.15493404296875,
+            "A_minus_B_wait4_ms_per_job": 1.8359707031249988,
+            "B": "slow-B-01",
+            "B_minus_A_sampled_peak_rss_bytes": 2289664,
+            "live_peak_executing_A_B": [
+              63,
+              56
+            ]
+          },
+          {
+            "A": "slow-A-repeat-01",
+            "A_minus_B_bootstrap_ms_per_job": 0.1159435371093751,
+            "A_minus_B_pagemap_ms_per_job": 0.10244388867187498,
+            "A_minus_B_wait4_ms_per_job": 0.08645898437499966,
+            "B": "slow-B-repeat-01",
+            "B_minus_A_sampled_peak_rss_bytes": 11976704,
+            "live_peak_executing_A_B": [
+              61,
+              64
+            ]
+          }
+        ],
+        "maximum_host_load_by_arm": [
+          25.02392578125,
+          23.24853515625,
+          21.46044921875,
+          18.01123046875
+        ]
+      },
+      {
+        "result": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-batched-pagemap-clock/screen-02.json",
+          "sha256": "abfd9f057c830fe501df0c9160bd9defee30827162852edc8fa545734916966c"
+        },
+        "checks": {
+          "B_median_under_historical_cpu_ceiling": false,
+          "each_pair_preserves_peak_rss_and_samples_64_live": false,
+          "each_pair_saves_at_least_0_15_wait4_cpu_ms_per_job": false,
+          "each_pair_saves_pagemap_and_complete_bootstrap_cpu": true
+        },
+        "pairs": [
+          {
+            "A": "quiet-A-01",
+            "A_minus_B_bootstrap_ms_per_job": 0.04769354687499994,
+            "A_minus_B_pagemap_ms_per_job": 0.086263994140625,
+            "A_minus_B_wait4_ms_per_job": -0.004660156249999936,
+            "B": "quiet-B-01",
+            "B_minus_A_sampled_peak_rss_bytes": -18759680,
+            "live_peak_executing_A_B": [
+              64,
+              64
+            ]
+          },
+          {
+            "A": "quiet-A-repeat-01",
+            "A_minus_B_bootstrap_ms_per_job": 0.30783360937500004,
+            "A_minus_B_pagemap_ms_per_job": 0.11885875976562499,
+            "A_minus_B_wait4_ms_per_job": 0.8455566406249999,
+            "B": "quiet-B-repeat-01",
+            "B_minus_A_sampled_peak_rss_bytes": 35749888,
+            "live_peak_executing_A_B": [
+              58,
+              64
+            ]
+          }
+        ],
+        "maximum_host_load_by_arm": [
+          7.51708984375,
+          7.66455078125,
+          7.69140625,
+          7.3505859375
+        ]
+      }
+    ]
+  },
+  "linux_compiled_jobs_effect_dense_claim_lane_ceiling": {
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "qualification": false,
+    "scope": "One loaded, unscored two-vCPU Linux ARM64 boot. The measured ceiling includes the eight claim threads and their eight PostgreSQL backends.",
+    "report": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-lane-ceiling/pilot-01/report.json",
+      "sha256": "f7e2502e935f18c4b511c755f409f4556ada0aa525ec863929b0cbbfb6038088"
+    },
+    "pack": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-lane-ceiling/pilot-01/pack.json",
+      "sha256": "aadab108b65cb2127f943a8ded937bcfb68606e71d0b501c6e99fc538e2b800a"
+    },
+    "extraction": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-lane-ceiling/pilot-01/extracted/extraction.json",
+      "sha256": "6280f4270f5a3042bee44c93eb0abc564cf31858739029c0086e373c60b0314e"
+    },
+    "maximum_host_load": 13.81640625,
+    "oban_jobs_per_second": 692.0344751404551,
+    "wholesale_erasure_upper_cpu_ms_per_job": 1.5907720068359374,
+    "same_boot": {
+      "claim_statement_turns": 446,
+      "conditional_separate_child_app_cut_cpu_ms_per_job": 0.3,
+      "cpu_ms_per_excess_turn_for_reserve_screen": 5.8504316895636785,
+      "durable_floor_cpu_ms_per_job": 4.906862708984375,
+      "erasure_ceiling_can_cover_required_cut": {
+        "after_separate_cut": false,
+        "after_separate_cut_and_reserve": false,
+        "cut_required": false
+      },
+      "excess_turns": 318,
+      "ideal_full_batch_turns": 128,
+      "illustrative_reserve_cpu_ms_per_job": 0.1,
+      "required_cpu_ms_per_job": {
+        "after_separate_cut": 1.7168332785949703,
+        "after_separate_cut_and_reserve": 1.8168332785949703,
+        "cut_required": 2.0168332785949703
+      },
+      "same_boot_oban_budget_cpu_ms_per_job": 2.8900294303894043,
+      "shortfall_even_if_measured_lane_erased_cpu_ms_per_job": {
+        "after_separate_cut": 0.1260612717590328,
+        "after_separate_cut_and_reserve": 0.2260612717590329,
+        "cut_required": 0.42606127175903286
+      }
+    }
   },
   "linux_compiled_jobs_effect_64slot_gate": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",

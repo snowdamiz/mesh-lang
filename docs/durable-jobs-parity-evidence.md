@@ -4419,18 +4419,44 @@ frozen slow workload uses separate timing and resource gates.
 
 Five alternating pairs on the frozen `slow-1r-64s` input used the
 same trimmed ELF against stock Oban Basic. All 5,120 jobs reconciled
-two separate durable writes. The scorer rejected the comparison.
-All five Mesh arms estimated a peak of 65 against a 64-slot limit. Live
-database samples peaked at 64, and shifting the floored claim
-timestamps by 1 ms lowered the estimate to 64 in every arm. That
-precision check does not establish the exact committed peak.
+two separate durable writes. The local adapter rejected all five
+Mesh estimates of 65. Its extra check compares a floored claim
+timestamp and a precise settlement commit timestamp. The frozen
+driver uses live database samples for the occupancy cap, and all
+five sampled Mesh peaks were 64. A replay of the unchanged driver
+on the verified archives found one budget miss, runner CPU.
 
-The preserved measurements are descriptive. Mesh and Oban medians
-were 510 and 421 jobs/s, 878 and 1,110 ms pickup p99, and 183.1 and
-145.8 MiB sampled peak tree RSS. Median runner CPU was 1.747 and
-1.324 CPU-ms/job. The ratio of 1.32 exceeds the 1.25 limit even
-before resolving the peak-estimate rejection.
+Mesh and Oban medians were 510 and 421 jobs/s, 878 and 1,110 ms
+pickup p99, and 183.1 and 145.8 MiB sampled peak tree RSS.
+Median runner CPU was 1.747 and
+1.324 CPU-ms/job. The ratio of 1.32 exceeds the 1.25 limit. The
+archives cover one noncanonical profile.
+
+A PostgreSQL 17.11 replay with a single writer and a retained
+snapshot recovered all 512 executing tuple versions and proved a
+committed peak of 64. One run's timestamp estimate was 65. Without
+the snapshot, the probe recovered 103 executing versions and
+could not establish the peak. The compiled timing archives do
+not contain that transaction history.
 [Slow-64 measurement receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Batch worker residency validation reads
+
+Two trace-off screens compared per-range and batched pagemap reads
+on the same ELF, each in A/B then B/A order. All 4,096 slow-64
+jobs reconciled two durable writes. Both modes ran the same 210
+advice calls and verified the same 1,980 selected entries per
+worker. Batching reduced reads from 315 to 39 and saved
+0.086–0.155 thread CPU-ms/job in the pagemap passes.
+
+The first screen ran at host loads of 18.0–25.0. The repeat ran
+at 7.4–7.7. The repeat's pair with 64 observed executing jobs in
+both arms used 2.359 and 2.364 runner CPU-ms/job. Neither screen
+met the predeclared whole-run CPU and RSS cutoffs. The first
+linked fixture's clock bracket was too narrow for its CPU counter.
+The replay started the wall clock before the CPU counter and
+recalibrated residency on the relinked ELF.
+[Batched pagemap receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Verify the integrated Jobs candidate
 
@@ -4598,6 +4624,26 @@ runner's own socket and keeps the release process protections active.
 The reducer applies clock and scheduling-counter allowances at the
 durable window edges and reports the added observer CPU separately.
 [Same-cohort dense CPU receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Bound dense claim-lane CPU
+
+A separate unscored pair identified all eight claim threads and
+matched their owned sockets to the stable TLS PostgreSQL
+backends. Per-task `schedstat` was readable with the release
+process protections in place. The active-window upper bound was
+1.495 CPU-ms/job across the claim backends and 0.095 on the
+claim threads. It covers the entire measured claim lane,
+including productive claims. Main-dispatch reservation and
+reply handling fall outside these threads.
+
+On this loaded boot, Oban reached 692 jobs/s and the Mesh
+PostgreSQL-plus-runner durable floor was 4.907 CPU-ms/job.
+Meeting the same-boot rate required at least a 2.017 CPU-ms/job
+cut. With a hypothetical 0.300 CPU-ms/job saving in child and
+application work, removing the measured claim lane wholesale
+would still leave at least 0.126 CPU-ms/job to recover. The
+pilot bounds this configuration under its observed load.
+[Claim-lane CPU receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 
