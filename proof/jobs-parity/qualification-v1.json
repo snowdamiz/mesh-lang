@@ -38557,6 +38557,159 @@
       ]
     }
   },
+  "linux_compiled_jobs_effect_dense_child_app_cpu": {
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "qualification": false,
+    "scope": "Three fixed-order, unscored two-vCPU Linux ARM64 pairs. Exact Mesh consuming wait4 and separate PostgreSQL app sessions are bound to the same durable cohort.",
+    "fixture_sha256": "cc7e70d697b3c5d20fddfc3ba8d498a754e7b312a3c54bb42414f2a22d548844",
+    "reconciled_jobs": 6144,
+    "reconciled_committed_writes": 12288,
+    "exact_mesh_children": 3072,
+    "first_prework_procfs_denial": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-01/extracted/evidence/result.json",
+      "sha256": "b1aac3ce8c7db3ae5e92f6a3c70d5eeae302659112ca1143c91842f9591ec9f8"
+    },
+    "pairs": [
+      {
+        "pair": "02",
+        "report": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-02/report.json",
+          "sha256": "ebe8d4b690626e0239301cb16761f2eb46bc535ff5f87887c8fc02517627b8af"
+        },
+        "pack": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-02/pack.json",
+          "sha256": "f54877ae3ffdd801a3e1ad720e86736c0389fd4c03865c6b21d339292fa79e0f"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-02/extracted/extraction.json",
+          "sha256": "01f574b638e17885ba16fe57bdf24a1a4fd2e555211a1fd9c74ad853d7e1113b"
+        },
+        "mesh_jobs_per_second": 768.9205552179321,
+        "mesh_postgres_and_runners_durable_cpu_ms_per_job_floor": 2.113008708984375,
+        "exact_child_durable_cpu_ms_per_job": [
+          0.5952734375,
+          0.5972714375
+        ],
+        "application_postgres_durable_cpu_ms_per_job": [
+          0.5717339228515625,
+          0.5717339228515625
+        ],
+        "combined_durable_cpu_ms_per_job": [
+          1.1670073603515625,
+          1.1690053603515624
+        ],
+        "same_boot_oban_projection": {
+          "budget_cpu_ms_per_job": 1.4677400588989258,
+          "design_reserve_cpu_ms_per_job": 0.1,
+          "headroom_cpu_ms_per_job": [
+            0.29873469854736334,
+            0.3007326985473633
+          ],
+          "oban_jobs_per_second": 1362.6391048428336,
+          "required_vcpus": [
+            1.5902098648544514,
+            1.5929324177859272
+          ],
+          "screen_headroom_after_reserve_cpu_ms_per_job": [
+            0.19873469854736325,
+            0.2007326985473632
+          ]
+        }
+      },
+      {
+        "pair": "03",
+        "report": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-03/report.json",
+          "sha256": "ee20048dc1881ddbced9c117fff036e4488020416be50f739d57dec64777f583"
+        },
+        "pack": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-03/pack.json",
+          "sha256": "f54877ae3ffdd801a3e1ad720e86736c0389fd4c03865c6b21d339292fa79e0f"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-03/extracted/extraction.json",
+          "sha256": "2894be1d19622302e9c0f2f82ae28e8e7c9aac8f5e8dbb6925fb8ab09cfe4a8b"
+        },
+        "mesh_jobs_per_second": 1147.009800288728,
+        "mesh_postgres_and_runners_durable_cpu_ms_per_job_floor": 1.407422201171875,
+        "exact_child_durable_cpu_ms_per_job": [
+          0.4182822265625,
+          0.4202802265625
+        ],
+        "application_postgres_durable_cpu_ms_per_job": [
+          0.3804759697265625,
+          0.3810031103515625
+        ],
+        "combined_durable_cpu_ms_per_job": [
+          0.7987581962890625,
+          0.8012833369140625
+        ],
+        "same_boot_oban_projection": {
+          "budget_cpu_ms_per_job": 0.9089450836181641,
+          "design_reserve_cpu_ms_per_job": 0.1,
+          "headroom_cpu_ms_per_job": [
+            0.10766174670410156,
+            0.11018688732910153
+          ],
+          "oban_jobs_per_second": 2200.352954260737,
+          "required_vcpus": [
+            1.7575499569446165,
+            1.763106157578759
+          ],
+          "screen_headroom_after_reserve_cpu_ms_per_job": [
+            0.00766174670410158,
+            0.010186887329101557
+          ]
+        }
+      },
+      {
+        "pair": "04",
+        "report": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-04/report.json",
+          "sha256": "fd88ae518717d2f74b6cf277153e5f68979abc8a7662e17de0acdacd145e259e"
+        },
+        "pack": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-04/pack.json",
+          "sha256": "f54877ae3ffdd801a3e1ad720e86736c0389fd4c03865c6b21d339292fa79e0f"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-child-app-cpu/pair-04/extracted/extraction.json",
+          "sha256": "b67d5f04cb6e01960442fe7b61ea4405497f5a3714997dbe2dabfa317a73b4db"
+        },
+        "mesh_jobs_per_second": 918.444171116039,
+        "mesh_postgres_and_runners_durable_cpu_ms_per_job_floor": 1.691005615234375,
+        "exact_child_durable_cpu_ms_per_job": [
+          0.510541015625,
+          0.512539015625
+        ],
+        "application_postgres_durable_cpu_ms_per_job": [
+          0.475314181640625,
+          0.4767916806640625
+        ],
+        "combined_durable_cpu_ms_per_job": [
+          0.985855197265625,
+          0.9893306962890625
+        ],
+        "same_boot_oban_projection": {
+          "budget_cpu_ms_per_job": 0.9323945045471191,
+          "design_reserve_cpu_ms_per_job": 0.1,
+          "headroom_cpu_ms_per_job": [
+            -0.05693619174194331,
+            -0.05346069271850584
+          ],
+          "oban_jobs_per_second": 2145.0147874599884,
+          "required_vcpus": [
+            2.1146739764290494,
+            2.1221289732281257
+          ],
+          "screen_headroom_after_reserve_cpu_ms_per_job": [
+            -0.1569361917419433,
+            -0.15346069271850582
+          ]
+        }
+      }
+    ]
+  },
   "linux_compiled_jobs_effect_64slot_gate": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
     "qualification": false,

@@ -4568,6 +4568,37 @@ applies to the captured configuration. It leaves the CPU savings
 from any proposed change to be measured.
 [Admitted-backend CPU receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Measure exact-child and application CPU on one dense cohort
+
+Three unscored Linux ARM64 pairs used the same release ELF and
+frozen `noop-8r-64s` input at `8526a5bd`. Each Mesh arm joined
+1,024 consuming `wait4` results to the durable attempts and
+attributed application CPU to the stable TLS backends that
+executed the fenced operations and full resets. Both arms
+reconciled 6,144 jobs and 12,288 durable writes across the pairs.
+All three boots ran Mesh before Oban.
+
+| Pair | Oban jobs/s | Two-vCPU budget, CPU-ms/job | Mesh child and application, CPU-ms/job |
+| --- | ---: | ---: | ---: |
+| 02 | 1,363 | 1.468 | 1.167–1.169 |
+| 03 | 2,200 | 0.909 | 0.799–0.801 |
+| 04 | 2,145 | 0.932 | 0.986–0.989 |
+
+In pair 04, the two measured components alone exceeded the
+same-boot CPU budget. Pair 03 left at most 0.110 CPU-ms/job for
+the parent runners, Jobs SQL, driver, and other work. The observed
+PostgreSQL and runner CPU floor exceeded the budget by at least
+0.498 CPU-ms/job in every pair. This screens out a dispatcher-only
+change for pair 04 with unchanged child and application costs.
+The other boots leave different amounts of headroom.
+
+The first capture stopped at protected runner procfs access before
+enqueue. The repaired observer records connection identity from each
+runner's own socket and keeps the release process protections active.
+The reducer applies clock and scheduling-counter allowances at the
+durable window edges and reports the added observer CPU separately.
+[Same-cohort dense CPU receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
