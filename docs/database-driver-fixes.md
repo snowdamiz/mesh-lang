@@ -49,7 +49,9 @@ A second plan, `docs/durable-jobs-oban-parity.md`, runs at the same time. Its ph
 - [ ] Hold the review gate. No PR changes a graphical interaction. No PR is review-gated.
 - [ ] Apply the stop rules.
   - [ ] Skip a PR when D1 shows that its target cost is inside the noise floor. Record the numbers in Appendix A.
-  - [ ] When a PR fails its perf rule after one redesign, stop that PR, record the numbers in Appendix A, and continue with the PRs that do not depend on it.
+  - [ ] For D1, the operator approved one additional calibration redesign after the first redesign failed. Use the recorded call samples to test the cause of the remaining failures before choosing the next design. Keep the 5% limit, the benchmark modes and actor counts, the original latency metrics, and the result checks.
+  - [ ] Record the next run's configuration before it starts. If D1 fails again, record the results in Appendix A and stop the dependent phases.
+- [ ] For D2 through D8, stop a PR when it fails its performance rule after one redesign. Record the numbers in Appendix A and continue with the PRs that do not depend on it.
 
 ### PR mechanics, for every PR
 
@@ -563,9 +565,9 @@ Unmeasured, with the PR that measures each:
 
 ### D1 benchmark calibration
 
-D1 stopped after the redesigned benchmark missed the 5% same-binary latency
-limit. Every later phase depends on D1. The driver branches are preserved for
-a future qualification run.
+D1 stopped under the original rule after the redesigned benchmark missed the
+5% same-binary latency limit. The operator then approved one further D1
+redesign at the same limit. Every later phase depends on D1 passing.
 
 The first Linux run used four scheduler workers. All 432 trials returned the
 expected results, and 20 latency comparisons exceeded 5%.
