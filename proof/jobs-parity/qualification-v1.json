@@ -37389,7 +37389,113 @@
         }
       }
     },
-    "elf_sha256": "f2f59aa8d3fa58698ea50e1180a9244f87a414d7fcaac1682455a0d90d15a29d"
+    "elf_sha256": "f2f59aa8d3fa58698ea50e1180a9244f87a414d7fcaac1682455a0d90d15a29d",
+    "versioned_replays": {
+      "18.7": {
+        "poll": {
+          "notification_enqueues": 0,
+          "files": {
+            "pack.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-poll-01/pack.json",
+              "sha256": "71922811a9220b1057c96caf2a04f576f68bfd01342d6f6620973b12978c7140"
+            },
+            "extracted/extraction.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-poll-01/extracted/extraction.json",
+              "sha256": "0ed580c881c749838056c1b9b6cbe4f082cbf83cdfc5b6157d275da671c10d28"
+            },
+            "extracted/evidence/postgres-identity.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-poll-01/extracted/evidence/postgres-identity.json",
+              "sha256": "3f9d0505c41f99da58efabebfb240cc28f21b5d28d1c56001d0c244fe9048c0c"
+            },
+            "extracted/evidence/postgres-auth.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-poll-01/extracted/evidence/postgres-auth.json",
+              "sha256": "8b98e5deff5bf32e98730ad5de440dcdb936511f4627568b031149a1cf01b8c0"
+            },
+            "extracted/evidence/receipts.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-poll-01/extracted/evidence/receipts.json",
+              "sha256": "c8100efe792bd1b7f3235b3eebc38ed85b567a8a2e5fd4a9e0cb1a4eba7a163d"
+            }
+          }
+        },
+        "listen": {
+          "notification_enqueues": 2,
+          "files": {
+            "pack.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-listen-01/pack.json",
+              "sha256": "cd01793b165550abf11aac43de6567d916ac61bcda881022e206e68833c39f9d"
+            },
+            "extracted/extraction.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-listen-01/extracted/extraction.json",
+              "sha256": "5b25486b1ddecd5b6cda2b6298e14285598916e2357db78c446175c9ddf8695c"
+            },
+            "extracted/evidence/postgres-identity.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-listen-01/extracted/evidence/postgres-identity.json",
+              "sha256": "ff8922a24f5d8426e03088ef7755f232961cae236984720c08af38a7a04ddce9"
+            },
+            "extracted/evidence/postgres-auth.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-listen-01/extracted/evidence/postgres-auth.json",
+              "sha256": "8b98e5deff5bf32e98730ad5de440dcdb936511f4627568b031149a1cf01b8c0"
+            },
+            "extracted/evidence/receipts.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg18.7-listen-01/extracted/evidence/receipts.json",
+              "sha256": "011838256e3f3bc802157a7643ab04bba91668ff904f2b39634d4d8486a28eaf"
+            }
+          }
+        }
+      },
+      "19.0": {
+        "poll": {
+          "notification_enqueues": 0,
+          "files": {
+            "pack.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-poll-01/pack.json",
+              "sha256": "2c1ec2a6328a423b3e01a306acaa1e4175519e85717b64e4d3a80719959659e0"
+            },
+            "extracted/extraction.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-poll-01/extracted/extraction.json",
+              "sha256": "12ef2b5caa38fa3bf169003ba9bc88523789d48370ce787d45a5ad1df3994c1f"
+            },
+            "extracted/evidence/postgres-identity.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-poll-01/extracted/evidence/postgres-identity.json",
+              "sha256": "f92a81f61459cb4c2425e9ea70a1c0f256ef009b3554453aaf93658584b9770d"
+            },
+            "extracted/evidence/postgres-auth.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-poll-01/extracted/evidence/postgres-auth.json",
+              "sha256": "8b98e5deff5bf32e98730ad5de440dcdb936511f4627568b031149a1cf01b8c0"
+            },
+            "extracted/evidence/receipts.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-poll-01/extracted/evidence/receipts.json",
+              "sha256": "b3748707e0bf637ef277f940efc3f4901e69e0d31623413e4b7d4eb427dc0a9a"
+            }
+          }
+        },
+        "listen": {
+          "notification_enqueues": 2,
+          "files": {
+            "pack.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-listen-01/pack.json",
+              "sha256": "3ced8238c774ecdef57a300b734b233b11bd3dcc3682c5bb6e866eaa2f279eed"
+            },
+            "extracted/extraction.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-listen-01/extracted/extraction.json",
+              "sha256": "325b027a3585b2223d7cb39efe12c03f6fc22e9262b615ca8a11db927e2b8b22"
+            },
+            "extracted/evidence/postgres-identity.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-listen-01/extracted/evidence/postgres-identity.json",
+              "sha256": "266edd0d7480004011b5dac566a2e5bf4ec63aab11a0e306de3a4cda18c88295"
+            },
+            "extracted/evidence/postgres-auth.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-listen-01/extracted/evidence/postgres-auth.json",
+              "sha256": "8b98e5deff5bf32e98730ad5de440dcdb936511f4627568b031149a1cf01b8c0"
+            },
+            "extracted/evidence/receipts.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-integrated-versioned/pg19.0-listen-01/extracted/evidence/receipts.json",
+              "sha256": "5d930ec6d1eaf098b1fa7ffc34920e4cc5d887636a8516c7b33aac38b7ecc000"
+            }
+          }
+        }
+      }
+    }
   },
   "linux_compiled_jobs_effect_short_hard_cap": {
     "scope": "local-linux-arm64-short-1r-16s-hard-cap",
@@ -37644,6 +37750,129 @@
         "host-load.jsonl": {
           "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-hard-cap-oban/pair-4/host-load.jsonl",
           "sha256": "4a0ab09fbbfb4710968fb6c7264f2991b4739be37cb3d6645763acf882a63c26"
+        }
+      }
+    ]
+  },
+  "linux_compiled_jobs_effect_dense_hard_cap": {
+    "scope": "local-linux-arm64-noop-8r-64s-named-effect-hard-cap",
+    "profile": "noop-8r-64s",
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "fixture_sha256": "cc7e70d697b3c5d20fddfc3ba8d498a754e7b312a3c54bb42414f2a22d548844",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "qualification": false,
+    "canonical": false,
+    "postgres": "17.11",
+    "guest_vcpus": 2,
+    "physical_session_cap": 96,
+    "completed_jobs": 10240,
+    "durable_writes": 20480,
+    "passed": false,
+    "failed_gates": [
+      "jobs_per_second",
+      "pickup_p99_ms"
+    ],
+    "score": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/score-01.json",
+      "sha256": "8915f9bf0173fb92ee34decc39afeb9748cf968c396a75e189fac0fb8ad50dcb"
+    },
+    "pilot": {
+      "pack.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pilot-03/pack.json",
+        "sha256": "50c76765b6bd168c687a770234dc5f9780ef47f9c43167a7b50f6c12c062a681"
+      },
+      "extracted/extraction.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pilot-03/extracted/extraction.json",
+        "sha256": "a64dbd596cc22d131ea90b3d8e6faeb4c4864e7de7bebcabb7f509dac9885a0d"
+      },
+      "extracted/evidence/listen/witness.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pilot-03/extracted/evidence/listen/witness.json",
+        "sha256": "e8118ca25f7703184fba2610ab92851697230882e1f50ad5a3fa9902c7bfe41f"
+      },
+      "extracted/evidence/oban/witness.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pilot-03/extracted/evidence/oban/witness.json",
+        "sha256": "e53613f1610f2a149f91604f55cf08b9356d3b24f636d5791a3acb200b170e34"
+      }
+    },
+    "earlier_pilot_failures": {
+      "native_library_shadowed_python_module": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pilot-01/guest.serial",
+        "sha256": "56ad82c1a9a69131d664720bbc9fb31e29afeaf044a62236e06c65fb83c07c0c"
+      },
+      "oban_teardown_tcp_accounting": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pilot-02/extracted/evidence/result.json",
+        "sha256": "cce8b99aa4ff7de47ab97a0aef28e2a5b154e9b7010caac2bf031c6bf4893322"
+      }
+    },
+    "groups": [
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-0/pack.json",
+          "sha256": "2c68fe5bbba8fd548a489a598028adcdd2c7c0d92212f436c9c6715196d2e5c4"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-0/extracted/extraction.json",
+          "sha256": "d50cb6c18be51e41e206a0e12528cb1a1ef5138e2ff9e95bd0e99c5304596ebf"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-0/host-load.jsonl",
+          "sha256": "6696d24d3ef0703324c36be057350665e1f78e1a96d2735d2b413bc19a4f85d5"
+        }
+      },
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-1/pack.json",
+          "sha256": "26c36b04d9902178c2183f38149b15f4fbc7494d7593f5a09834788179a02853"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-1/extracted/extraction.json",
+          "sha256": "057c6bbda88c184605620968e4128545f9dd1e60a51d718da8d192c7cd1bc0d7"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-1/host-load.jsonl",
+          "sha256": "76510ec4a89fc8032c642d0d414c4db85e788ba84158f7896a0c9117d9419898"
+        }
+      },
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-2/pack.json",
+          "sha256": "802353ea0c52ea3d4a3c57b4fa150e14bcdc7adabbcd4adbfdbc0e5fb6cbce59"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-2/extracted/extraction.json",
+          "sha256": "03775e2882d033a04f5ca08a5f844ea26da9f7d4d95108c80c0a76414553e314"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-2/host-load.jsonl",
+          "sha256": "40cd2e3ed15f2341cb9b915da4e52ec3578da1e94375790050a45e0c473e3f36"
+        }
+      },
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-3/pack.json",
+          "sha256": "e572ad3f02ad52e46dbdf6b5816a6fab538ac59b9a7448994a22568924882950"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-3/extracted/extraction.json",
+          "sha256": "25e8b252ea45e7fa2b3f444b57682113cd78c9e185455f73eed025159966c05e"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-3/host-load.jsonl",
+          "sha256": "1c54982f5d63f33462db37a8c1154a3a9dde23f01a5daa7f82808ff60c8ef891"
+        }
+      },
+      {
+        "pack.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-4/pack.json",
+          "sha256": "521a1f951b3a703d70521aca101a72bea26468abca0431b7a6c9d07343c516de"
+        },
+        "extracted/extraction.json": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-4/extracted/extraction.json",
+          "sha256": "a2012db910bbae4b738af039bf6038d184729fd0022501afe039049c1cb6d867"
+        },
+        "host-load.jsonl": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-hard-cap/pair-4/host-load.jsonl",
+          "sha256": "47303ea2001e0dca12fd3027521dd0d1ecc1b4362fdc18a90d894ba48d5db29c"
         }
       }
     ]

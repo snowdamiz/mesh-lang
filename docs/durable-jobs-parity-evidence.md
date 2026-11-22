@@ -4402,13 +4402,14 @@ on PostgreSQL 17.11 with neither `CREATEDB` nor `CREATEROLE` and an
 unrelated session under the same login.
 [Integrated compatibility receipts](../proof/jobs-parity/qualification-v1.json)
 
-Both one-slot Linux ARM64 fixtures passed on PostgreSQL 17.11 using
-one release ELF linked against the `8526a5bd` runtime. Each mode
-verified five TLS connections, separate durable effects on a reused
-backend, full resets, and retry after an interrupted effect. Both
-LISTEN enqueues advanced the notification counter with zero fallback
-scans. These runs check child absence after settlement. A separate
-trace is needed to establish the consuming wait before submission.
+Both one-slot Linux ARM64 fixtures passed on PostgreSQL 17.11,
+18.7, and 19.0 using one release ELF linked against the `8526a5bd`
+runtime. Each mode verified five TLS connections, separate durable
+effects on a reused backend, full resets, and retry after an
+interrupted effect. In each LISTEN run, both enqueues advanced the
+notification counter with zero fallback scans. These runs check
+child absence after settlement. A separate trace is needed to
+establish the consuming wait before submission.
 [Integrated Linux receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Compare short jobs under a physical cap of 20 connections
@@ -4439,6 +4440,41 @@ From the first claim to final settlement, the medians were 126.1 and
 109.2 ms. The scorer marks this comparison as local evidence for one
 profile. Dense drain and full-occupancy memory remain open.
 [Hard-cap short profile receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure dense drain with bounded warm sessions
+
+Five counterbalanced groups ran the frozen `noop-8r-64s` input on
+the two-vCPU Linux ARM64 guest with PostgreSQL 17.11. Both arms used
+eight runners and 64 slots. The `8526a5bd` Mesh fixture used four
+warm application sessions per runner, LISTEN, and worker-local THP
+disablement. Oban used Basic 2.24.2 with Isolated notification.
+All 10,240 scored jobs produced two separate durable writes.
+
+| Metric | Mesh | Oban |
+| --- | ---: | ---: |
+| Median jobs/s | 851 | 1,796 |
+| Range, jobs/s | 711–1,058 | 1,587–2,536 |
+| Median pickup p99, ms | 1,189 | 549 |
+| Median first claim to final settlement, ms | 1,199 | 556 |
+| Median active PostgreSQL CPU, ms/job | 1.51 | 0.49 |
+| Median active runner CPU, ms/job | 0.90 | 0.57 |
+| Peak admitted connections | 65 | 81 |
+
+Mesh missed throughput and pickup in the local comparison. It
+passed the runner CPU, RSS, connection, process, thread, and
+queued-context gates. The first claim took 4.5 ms median on Mesh
+and 13.9 ms on Oban. PostgreSQL and the runner tree accounted for
+most of the CPU charged during the active Mesh interval. The active
+interval starts before enqueue and ends at the first terminal
+sample. J7 runner CPU uses the separate `wait4` interval.
+
+The unscored pilot accounted for 1,024 exact Mesh consuming waits
+before durable settlement and 2,048 effect resets. The reducer
+binds Postgrex teardown TCP receipts to the eight Oban pools and
+the producer after the terminal sample. Both arms stayed within
+the cap of 96 admitted sessions. The comparison uses stock Oban
+writes and the Mesh fenced named operations.
+[Dense timing and admission receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 
