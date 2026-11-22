@@ -4650,6 +4650,16 @@ cut. With a hypothetical 0.300 CPU-ms/job saving in child and
 application work, removing the measured claim lane wholesale
 would still leave at least 0.126 CPU-ms/job to recover. The
 pilot bounds this configuration under its observed load.
+
+A lower-load repeat on the same guest image bounded the whole
+claim lane at 0.633 CPU-ms/job. Oban reached 2,404 jobs/s with a
+0.832 CPU-ms/job budget. Mesh's fresh children and application
+SQL alone used 0.995–1.001 CPU-ms/job. Even after the hypothetical
+0.300 cut to those two components, the remaining cut with a
+0.100 reserve was 0.589 CPU-ms/job, or 93% of the measured
+claim-lane ceiling. The ceiling includes productive turns.
+The next attribution needs to distinguish empty and productive
+turns before estimating the savings from coalescing them.
 [Claim-lane CPU receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload

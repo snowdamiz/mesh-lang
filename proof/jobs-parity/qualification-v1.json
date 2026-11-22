@@ -38935,7 +38935,7 @@
   "linux_compiled_jobs_effect_dense_claim_lane_ceiling": {
     "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
     "qualification": false,
-    "scope": "One loaded, unscored two-vCPU Linux ARM64 boot. The measured ceiling includes the eight claim threads and their eight PostgreSQL backends.",
+    "scope": "Two fixed-order, unscored two-vCPU Linux ARM64 boots. The measured ceiling includes the eight claim threads and their eight matching PostgreSQL backends. Primary fields retain the loaded pilot.",
     "report": {
       "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-lane-ceiling/pilot-01/report.json",
       "sha256": "f7e2502e935f18c4b511c755f409f4556ada0aa525ec863929b0cbbfb6038088"
@@ -38975,6 +38975,50 @@
         "after_separate_cut_and_reserve": 0.2260612717590329,
         "cut_required": 0.42606127175903286
       }
+    },
+    "lower_load_repeat": {
+      "report": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-lane-ceiling/pilot-02/report.json",
+        "sha256": "c6f86cf6ff56e2ebd020cef218117a581a95e0c070c6aa1c9c6d8bde3ffd24e8"
+      },
+      "extraction": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-lane-ceiling/pilot-02/extracted/extraction.json",
+        "sha256": "fe1ea23e024d36657e5ebd5d18ffa9cfc5f40591d8c079c4370a1fe52e794975"
+      },
+      "maximum_host_load": 7.87353515625,
+      "mesh_jobs_per_second": 892.5716564558961,
+      "oban_jobs_per_second": 2403.666328359201,
+      "wholesale_erasure_upper_cpu_ms_per_job": 0.6329434091796875,
+      "combined_child_and_app_cpu_ms_per_job": [
+        0.99481135546875,
+        1.000522990234375
+      ],
+      "same_boot": {
+        "claim_statement_turns": 432,
+        "conditional_separate_child_app_cut_cpu_ms_per_job": 0.3,
+        "cpu_ms_per_excess_turn_for_reserve_screen": 1.9855022293379938,
+        "durable_floor_cpu_ms_per_job": 1.62150821875,
+        "erasure_ceiling_can_cover_required_cut": {
+          "after_separate_cut": true,
+          "after_separate_cut_and_reserve": true,
+          "cut_required": false
+        },
+        "excess_turns": 304,
+        "ideal_full_batch_turns": 128,
+        "illustrative_reserve_cpu_ms_per_job": 0.1,
+        "required_cpu_ms_per_job": {
+          "after_separate_cut": 0.48944597433471687,
+          "after_separate_cut_and_reserve": 0.5894459743347169,
+          "cut_required": 0.7894459743347169
+        },
+        "same_boot_oban_budget_cpu_ms_per_job": 0.8320622444152832,
+        "shortfall_even_if_measured_lane_erased_cpu_ms_per_job": {
+          "after_separate_cut": 0,
+          "after_separate_cut_and_reserve": 0,
+          "cut_required": 0.15650256515502936
+        }
+      },
+      "fraction_of_whole_claim_ceiling_required_after_hypothetical_cut_and_reserve": 0.9312775293744752
     }
   },
   "linux_compiled_jobs_effect_64slot_gate": {
