@@ -76,7 +76,7 @@ fn fmt_rejects_invalid_source_without_rewriting() {
             "invalid syntax must fail formatting"
         );
         assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
-        assert!(String::from_utf8_lossy(&output.stderr).contains("parse"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("[P0001] Error:"));
     }
 }
 
