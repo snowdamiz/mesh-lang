@@ -1818,7 +1818,8 @@ def selection(args, settings):
     return [(name, r, s) for name in workloads for r in runners for s in slots if s >= r]
 
 
-def profile_summary(trials, name, workload, settings, runners, slots, variants, mesh_batch, mesh_listen, mesh_events):
+def profile_summary(trials, name, workload, settings, runners, slots, variants, mesh_batch, mesh_listen,
+                    mesh_events, *, matched_baseline=False):
     keys = ("jobs_per_second", "pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms",
             "sql_calls_per_job", "runner_sql_calls_per_job",
             "enqueue_sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
@@ -1835,6 +1836,15 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
             summary[engine]["event_buffer_bytes"] = max_event_buffer_bytes(
                 [trial.get("event_buffer_bytes") for trial in values])
     limits = {}
+    if matched_baseline:
+        pair_metrics = ("jobs_per_second", "pickup_p99_ms", "cpu_seconds_per_job", "peak_rss_bytes")
+        by_engine = {engine: {row["pair"]: row for row in trials if row["engine"] == engine}
+                     for engine in ("mesh", "baseline")}
+        summary["paired_candidate_minus_stock"] = {
+            metric: [row[metric] - by_engine["baseline"][pair][metric]
+                     for pair, row in sorted(by_engine["mesh"].items())]
+            for metric in pair_metrics
+        }
     if "oban" in summary:
         for metric, limit in (
                 ("cpu_seconds_per_job", settings["relative_cpu_seconds_per_job"]),
@@ -1876,6 +1886,8 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
             ("jobs_per_second", "oban", "core_throughput_ratio_min"),
             ("pickup_p99_ms", "oban", "core_pickup_p99_ratio_max"),
         ]
+    elif matched_baseline:
+        checks = []
     elif mesh_batch and name == "short":
         checks = [("claim_calls_per_job", "baseline", "batch_claim_calls_ratio_max")]
     elif mesh_batch and workload["mode"] == "sparse" and "baseline" in summary:
@@ -1904,7 +1916,7 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
         comparison["listener_claim_p99_ms"] = {"observed": observed, "limit": limit,
                                                "within_limit": observed <= limit}
         baseline_polls = {trial["poll_ms"] for trial in trials if trial["engine"] == "baseline"}
-        if baseline_polls == {settings["poll_ms"]}:
+        if not matched_baseline and baseline_polls == {settings["poll_ms"]}:
             metric = "idle_queries_per_minute"
             observed = summary["mesh"][metric]["median"]
             baseline = summary["baseline"][metric]["median"]
@@ -2284,6 +2296,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "mesh_events": mesh_events,
                     "poll_ms": poll_ms,
                     "baseline_poll_ms": baseline_poll_ms if baseline_ref else None,
+                    "baseline_matches_mesh": args.baseline_matches_mesh,
                     "sparse_producer": "one warm process with database connections scoped to each batch",
                     "mode": lane, "claim_timestamps": {"mesh": "database attempted_at_ms",
                                                        "oban": "Basic engine attempted_at"},
@@ -2299,8 +2312,9 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     subjects["disconnected"] = Subject("mesh", [str(executable)], ROOT, cluster, env,
                                                        variant="disconnected", poll_ms=poll_ms)
                 elif baseline_ref:
-                    baseline_env = dict(env, JOBS_PARITY_MESH_BATCH="0", JOBS_PARITY_MESH_LISTEN="0",
-                                        JOBS_PARITY_MESH_EVENTS="")
+                    baseline_env = env if args.baseline_matches_mesh else dict(
+                        env, JOBS_PARITY_MESH_BATCH="0", JOBS_PARITY_MESH_LISTEN="0",
+                        JOBS_PARITY_MESH_EVENTS="")
                     subjects["baseline"] = Subject("mesh", [str(baseline)], ROOT, cluster, baseline_env,
                                                    variant="baseline", poll_ms=baseline_poll_ms)
                 else:
@@ -2383,7 +2397,8 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     validate_pairs(trials, pair_count, slots, variants)
                     write_json(case_evidence / "trials.json", trials)
                     summary = profile_summary(trials, name, workload, settings, runners, slots, variants,
-                                              mesh_batch, mesh_listen, mesh_events)
+                                              mesh_batch, mesh_listen, mesh_events,
+                                              matched_baseline=args.baseline_matches_mesh)
                     write_json(case_evidence / "summary.json", summary)
                     for scope, values in summary.items():
                         for metric, verdict in values.items():
@@ -2776,6 +2791,8 @@ def main():
                         help="reuse verified compiler/runtime pairs from a previous Jobs comparison build")
     parser.add_argument("--release", action="store_true", help="use a release toolchain for smoke and fault probes")
     parser.add_argument("--against-ref", help="compare with a second Mesh commit using single claims")
+    parser.add_argument("--baseline-matches-mesh", action="store_true",
+                        help="interleave a stock Mesh commit with the same runner settings")
     parser.add_argument("--mesh-batch", action="store_true", help="enable batch claims for the Mesh runner")
     parser.add_argument("--mesh-listen", action="store_true", help="enable Mesh listener and transactional publishing")
     parser.add_argument("--mesh-events", choices=("disabled", "logged", "backpressured"),
@@ -2795,6 +2812,9 @@ def main():
         parser.error("poll intervals must be between 1 and 60000 ms")
     if args.baseline_poll_ms is not None and not args.against_ref:
         parser.error("--baseline-poll-ms requires --against-ref")
+    if args.baseline_matches_mesh and (not args.load or not args.against_ref
+                                      or args.baseline_poll_ms is not None):
+        parser.error("--baseline-matches-mesh requires --load and --against-ref at the same polling cadence")
     if args.postgres_version and not POSTGRES_VERSION.fullmatch(args.postgres_version):
         parser.error("--postgres-version requires MAJOR.PATCH")
     if args.notify_producer_failures and (not args.postgres_version or args.workload or args.against_ref
