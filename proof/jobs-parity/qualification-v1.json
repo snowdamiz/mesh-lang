@@ -38294,6 +38294,39 @@
     "revision": "0c36b42934e9d493c5074ad876f980040fc53489",
     "qualification": false,
     "scope": "Local Linux GNU ARM64 opt0 wait-order proof on PostgreSQL 17.11, and exact local macOS ARM64 PostgreSQL compatibility. The hosted workflow has not run on this revision.",
+    "linux_gnu_arm64_focused_runtime_tests": {
+      "scope": "Unprivileged Linux GNU ARM64 focused runtime tests using local sockets and no PostgreSQL server.",
+      "build": {
+        "path": "target/jobs-parity/native-arm64-authoritative/linux-lib-tests-0c36b429/cargo-test.log",
+        "sha256": "977335b948555e6f9de8f8ddd116cbf48bd6441218dd020c798c32c140b8ae4c"
+      },
+      "rustc_version": {
+        "path": "target/jobs-parity/native-arm64-authoritative/linux-lib-tests-0c36b429/rustc.txt",
+        "sha256": "352d6857968e80a6357a926ac685b9b07f77c479aaafde33e73a53945e802909"
+      },
+      "verified": {
+        "path": "target/jobs-parity/native-arm64-authoritative/linux-lib-tests-0c36b429/run-02/verified.json",
+        "sha256": "74e2e03d53e815e647baff62cd41de4a557d74306c41eaaa4c1e36e389d851e5"
+      },
+      "pack": {
+        "path": "target/jobs-parity/native-arm64-authoritative/linux-lib-tests-0c36b429/run-02/pack.json",
+        "sha256": "6ca216bcbad793520ed81c48f3339a62a2e819f6728493d70275dd20f3d0aeb9"
+      },
+      "serial": {
+        "path": "target/jobs-parity/native-arm64-authoritative/linux-lib-tests-0c36b429/run-02/guest.serial",
+        "sha256": "82f2e878b6d11c7e1df1255b27c3d782a7ae38b13b6d8bd4b0c4e276cf082b90"
+      },
+      "test_elf_sha256": "af02a1aae586fb0f202c63d94a7d03130030a2168467c43025357174a248054d",
+      "guest": "Linux GNU ARM64 6.12.115-0-virt",
+      "effective_uid": 65534,
+      "passed_by_suite": {
+        "jobs::effects::tests::": 11,
+        "db::pg::jobs_effect_session::tests::": 8,
+        "jobs::worker::effect_endpoint::tests::": 4,
+        "jobs::worker::thp_tests::": 2
+      },
+      "passed": 25
+    },
     "linux_gnu_arm64": {
       "postgres": "17.11",
       "fixture": {
@@ -38932,6 +38965,75 @@
       }
     ]
   },
+  "linux_compiled_jobs_effect_large64_hard_cap": {
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "qualification": false,
+    "scope": "One frozen large-context profile on a Linux GNU ARM64 two-vCPU 4 GiB guest. Named Mesh LISTEN versus stock Oban Basic Isolated, with full-batch warmups excluded from timing.",
+    "profile": "large-8r-64s",
+    "postgres": "17.11",
+    "oban": "2.24.2",
+    "fixture_sha256": "cc7e70d697b3c5d20fddfc3ba8d498a754e7b312a3c54bb42414f2a22d548844",
+    "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+    "physical_connection_cap": 96,
+    "pilot": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-large64-hard-cap/pilot-01/extracted/extraction.json",
+      "sha256": "0fcba0d3af6a4acdcb61428c8bc1bc9903b25b9abf6406a83ece2538271da448"
+    },
+    "discarded_warmup": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-large64-hard-cap/pair-4/extracted/evidence/result.json",
+      "sha256": "543679a43ff3d49693a778a050ccc55ed6f913038b89f15b49c7b1dd00c11a1f"
+    },
+    "group_extractions": [
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-large64-hard-cap/pair-0/extracted/extraction.json",
+        "sha256": "cac197d0746b620830e1302b61622fa1c4fd7687f2ac657f7906c7a2f77577c4"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-large64-hard-cap/pair-1/extracted/extraction.json",
+        "sha256": "60a07d375b7b2ac280b6adbe3a928d4eb6c65b5f206445bf6b9f3f549688faac"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-large64-hard-cap/pair-2/extracted/extraction.json",
+        "sha256": "47334a788c88eec5c034f80d6e5bf7e6841ea2d14a1ac28262548ba144725b20"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-large64-hard-cap/pair-3/extracted/extraction.json",
+        "sha256": "eb3103e9a13478ad8ce3d5d52c2941c84838ae4b0afdbc8cdeb6e160e0d0297c"
+      },
+      {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-large64-hard-cap/pair-4-retry-01/extracted/extraction.json",
+        "sha256": "7e33fdd8c88df3b8aaae344ae7a9bbe6a5cd31ac8837f1f796d0d6c8ad3d1afc"
+      }
+    ],
+    "score": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-large64-hard-cap/score-retry-01.json",
+      "sha256": "cd38b9699209c205a6f87acf3da69784d670b4069388687f671f2d57aa67c1b4"
+    },
+    "scored_jobs": 640,
+    "scored_writes": 1280,
+    "throughput_pair_wins": 5,
+    "medians": {
+      "listen": {
+        "jobs_per_second": 210.64964181107393,
+        "pickup_p99_ms": 295.2900390625,
+        "cpu_seconds_per_job": 0.008316046875,
+        "peak_rss_bytes": 239833088,
+        "peak_connections": 65,
+        "commit_to_first_claim_ms": 10.743896484375,
+        "first_claim_to_final_settlement_ms": 299.623046875
+      },
+      "oban": {
+        "jobs_per_second": 206.10198488262571,
+        "pickup_p99_ms": 304.2158203125,
+        "cpu_seconds_per_job": 0.0645241875,
+        "peak_rss_bytes": 1064247296,
+        "peak_connections": 81,
+        "commit_to_first_claim_ms": 70.33203125,
+        "first_claim_to_final_settlement_ms": 257.4560546875
+      }
+    },
+    "all_local_thresholds_pass": true
+  },
   "linux_compiled_jobs_effect_dense_claim_lane_ceiling": {
     "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
     "qualification": false,
@@ -39020,6 +39122,89 @@
       },
       "fraction_of_whole_claim_ceiling_required_after_hypothetical_cut_and_reserve": 0.9312775293744752
     }
+  },
+  "linux_compiled_jobs_effect_64slot_pre_split_smaps": {
+    "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
+    "qualification": false,
+    "scope": "Diagnostic Linux ARM64 same-ELF 64 KiB fault-around residency validation, with two held arms and two reverse-order trace-off slow-64 pairs across separate guest boots.",
+    "fixture_sha256": "c29bc1646cb01e16e24120945a63b8c131e6c5aad195406257c51d8ff12393f2",
+    "link": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-smaps/link-01/link.json",
+      "sha256": "81dcab7e6e4a99e23dce49a20e206683f28701e308bba3906844f36c9bfeafe2"
+    },
+    "plan": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-smaps/plan-01/plan.json",
+      "sha256": "45c4da989b586a935b005e5f12342ff8ba6245193429cb308269a9b9f36ee730"
+    },
+    "plan_binary": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-smaps/plan-01/plan.bin",
+      "sha256": "c6ba1ac69a27130492339b498cbd14659c8b60ad8e50944c5c676a2654073a8f"
+    },
+    "held_gate": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-smaps/held-gate-01.json",
+      "sha256": "870054b677bb3bded116f4a5aa2e03b519947aaa6f0b0f50b79824577063eb90"
+    },
+    "timed_screen": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-pre-split-smaps/screen-01.json",
+      "sha256": "4697c66e22e36441e78cf2a902ead1490dcb9aec7d7dbdf40e3d75eab2dad359"
+    },
+    "held": {
+      "A": {
+        "workers": 64,
+        "commits": 128,
+        "consuming_waits": 64,
+        "peak_tree_rss_bytes": 215449600,
+        "mapping_validation_thread_cpu_ms_per_job": 0.40432665624999997,
+        "audit_thread_cpu_ms_per_job": 0.0
+      },
+      "X": {
+        "workers": 64,
+        "commits": 128,
+        "consuming_waits": 64,
+        "peak_tree_rss_bytes": 215601152,
+        "mapping_validation_thread_cpu_ms_per_job": 0.1908061875,
+        "audit_thread_cpu_ms_per_job": 0.425076765625
+      }
+    },
+    "timed_reconciled_jobs": 2048,
+    "timed_pairs": [
+      {
+        "A": "timed-A-01",
+        "B": "timed-B-01",
+        "A_minus_B_wait4_cpu_ms_per_job": 0.3555234375000005,
+        "A_minus_B_worker_hook_cpu_ms_per_job": 0.40886436328125,
+        "A_minus_B_layout_validation_cpu_ms_per_job": 0.40594013867187506,
+        "observed_peak_workers": [
+          55,
+          64
+        ],
+        "timed_peak_rss_bytes": [
+          151924736,
+          175235072
+        ]
+      },
+      {
+        "A": "timed-A-02",
+        "B": "timed-B-02",
+        "A_minus_B_wait4_cpu_ms_per_job": -0.07267382812500012,
+        "A_minus_B_worker_hook_cpu_ms_per_job": 0.2344611972656251,
+        "A_minus_B_layout_validation_cpu_ms_per_job": 0.2934225859375,
+        "observed_peak_workers": [
+          63,
+          64
+        ],
+        "timed_peak_rss_bytes": [
+          196927488,
+          172355584
+        ]
+      }
+    ],
+    "timed_checks": {
+      "each_pair_saves_at_least_0_15_total_wait4_cpu_ms_per_job": false,
+      "each_pair_observed_64_workers_in_both_arms": false,
+      "B_median_at_or_below_1_655_wait4_cpu_ms_per_job": false
+    },
+    "local_screen": "stop"
   },
   "linux_compiled_jobs_effect_64slot_gate": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",

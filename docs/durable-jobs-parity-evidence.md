@@ -4458,6 +4458,24 @@ The replay started the wall clock before the CPU counter and
 recalibrated residency on the relinked ELF.
 [Batched pagemap receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Verify residency flags after moving the detailed mapping read
+
+The pre-split `smaps` candidate checked 15 original file mappings
+and verified the final 225 mapping shapes through `maps`. An
+untimed held audit also compared each predicted flag set with the
+kernel's post-split `smaps` output. All 64 workers passed at
+stock 64 KiB fault-around. Both held arms reconciled 128 fenced
+commits and 64 consuming waits. Their peak summed tree RSS was
+205.5 and 205.6 MiB.
+
+Two mirrored trace-off pairs each ran 512 slow-64 jobs per arm.
+Moving the detailed read saved 0.293–0.406 thread CPU-ms/job in
+layout validation. Whole-run runner CPU saved 0.356 CPU-ms/job
+in one pair and increased 0.073 in the other. The controls
+sampled peaks of 55 and 63 executing jobs. Both treatments
+reached 64. The separate-boot screen missed the local cutoff.
+[Pre-split validation receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Verify the integrated Jobs candidate
 
 Revision `8526a5bd` passed the compatibility verifier on macOS ARM64
@@ -4507,6 +4525,12 @@ authentication and eight full resets, including startup resets.
 Both LISTEN enqueues received notification-driven scans with zero
 fallback scans. The hosted ARM64 workflow remains unrun.
 
+The `0c36b429` runtime also passed 25 focused tests as an
+unprivileged user in a Linux GNU ARM64 guest. The tests cover
+the effect relay, PostgreSQL session receipts and resets, Linux
+descriptor handoff, and worker-only THP selection. This fixture
+uses local sockets and does not start PostgreSQL.
+
 On macOS ARM64, `0c36b429` passed the compatibility verifier and both
 standalone effect proofs on PostgreSQL 17.11, 18.7, and 19.0. All three
 versions passed 68 database-backed Jobs runtime tests and three
@@ -4549,6 +4573,25 @@ From the first claim to final settlement, the medians were 126.1 and
 109.2 ms. The scorer marks this comparison as local evidence for one
 profile. Dense drain and full-occupancy memory remain open.
 [Hard-cap short profile receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Compare large contexts on the 4 GiB Linux guest
+
+The `8526a5bd` release ELF and stock Oban Basic 2.24.2 Isolated ran
+the frozen `large-8r-64s` job set on two vCPUs and 4 GiB of memory.
+Each arm submitted 64 jobs with 512 KiB payloads in one enqueue
+transaction. The PostgreSQL 17.11 pilot verified the stored payloads,
+64 exact Mesh worker execs and consuming waits, and 128 full resets.
+Verified TLS and SCRAM were used under the fixed 96-connection cap.
+Mesh peaked at 65 connections and Oban at 81.
+
+All five valid counterbalanced groups favored Mesh. Median throughput
+was 210.65 versus 206.10 jobs/s. Median pickup p99 was 295.3 versus
+304.2 ms. The local score passed every frozen threshold and reconciled
+640 scored jobs with 1,280 independent writes. The first group-five
+capture stopped during Oban warmup when four client ports were reused
+after disconnect. The same inputs and ledger checks passed on retry.
+This local comparison covers one profile and uses full-batch warmups.
+[Large-context receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Measure dense drain with bounded warm sessions
 
