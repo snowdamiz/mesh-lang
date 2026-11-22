@@ -11,6 +11,10 @@ fn run_handler(context :: String) -> String!String do
   let args = Json.object_get(Json.parse(context)?, "args")?
   let path = Json.as_string(Json.object_get(args, "path")?)?
   let label = Json.as_string(Json.object_get(args, "label")?)?
+  let actor_reply = Job.await(Job.async(fn () -> "child-" <> label end))?
+  if actor_reply != "child-" <> label do
+    return Err("the first actor returned the wrong value")
+  end
   let values = Json.object_get(json { values: [label] }, "values")?
   let _ = Jobs.effect("first", values)?
   hold(path, 1)?

@@ -141,10 +141,10 @@ class Proof:
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
-    def enqueue(self, owner, marks, label, max_attempts=1):
+    def enqueue(self, owner, marks, label, max_attempts=1, timeout_ms=40_000):
         spec = json.dumps(dict(
             worker="proof", version=1, queue="default", args={"path": str(marks), "label": label},
-            metadata={}, tags=[], priority=0, max_attempts=max_attempts, timeout_ms=40_000,
+            metadata={}, tags=[], priority=0, max_attempts=max_attempts, timeout_ms=timeout_ms,
             backoff_base_ms=0, backoff_max_ms=0, suspended=False, unique=None,
         ))
         sql = f"SELECT mesh_jobs.enqueue('{NS}', {literal(spec)}::jsonb, '', '') ->> 'id'"
@@ -228,6 +228,7 @@ class Proof:
             self.producer_session = Producer(producer)
             try:
                 self.run_compiled(self.reconcile)
+                self.run_compiled(self.timeout)
                 self.run_compiled(self.stage_disconnect)
                 self.run_compiled(self.reconcile_retry)
             finally:
@@ -300,6 +301,21 @@ class Proof:
         wait_for(lambda: self.state(job) == "completed:1", "durable settlement", owner)
         equal(self.children(owner), set(), "worker reaped at settlement")
         print("Compiled Jobs effects: cap 5, same verified warm backend, two commits, one reaped child")
+
+    def timeout(self, owner):
+        wait_for((self.path / "ready").exists, "deadline runner admission", owner)
+        wait_for(self.warm_idle, "deadline session prewarm", owner)
+        marks = self.path / "timeout"
+        marks.mkdir()
+        job = self.enqueue(owner, marks, "held past deadline", timeout_ms=3000)
+        wait_for((marks / "committed-1").exists, "effect before the handler deadline", owner)
+        wait_for(lambda: self.state(job) == "discarded:1", "durable timeout settlement", owner)
+        equal(self.children(owner), set(), "timed-out child reaped at settlement")
+        equal([row["stage"] for row in self.effects(job)], [1], "no effect after the deadline")
+        equal(self.producer(
+            f"SELECT errors->0->>'reason' FROM mesh_jobs.jobs WHERE id = {literal(job)}::uuid"
+        ), "job handler timed out", "deadline outcome")
+        print("Compiled Jobs deadline: reaped the held child and preserved its first commit")
 
     def stage_disconnect(self, owner):
         wait_for((self.path / "ready").exists, "fault runner admission", owner)
