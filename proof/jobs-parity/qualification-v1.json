@@ -39802,6 +39802,149 @@
       ]
     }
   },
+  "ordinary_jobs_worker_control_stream_ownership": {
+    "scope": "Linux GNU ARM64 compiled worker startup barrier and macOS ARM64 Jobs compatibility.",
+    "qualification": false,
+    "before": {
+      "build": {
+        "revision": "c3efe5190644d8396ada49af15b7075a21802e3a",
+        "runtime_sha256": "89431ffd8bcecd7c1a7d806ed913455c4dd1ac211e9e1377b8b20517412aa57b",
+        "compiler_sha256": "5e21d971108fa18377eb5b4f03c76580e53fac048d9bc1fb2016421aeb07dedd",
+        "native_sha256": "51b1721940bfd029bddfb8dba5a53e92b1115c5cbcc8048372e27ab602ac91d3",
+        "main_sha256": "3db817b9a5a9f4ac7dd4f45c90c1327e00ca933f4f1aaa26e0c05a5709511e6a",
+        "elf_sha256": "311dde9e061ef442295d763ee80f80986d9e8508f6f0036569e817dc55be96fa"
+      },
+      "build_receipt": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/before-link-01/build.json",
+        "sha256": "7a013427bf014494d8fe9939d96243f13b5520be700e364b9af497970d8bb949"
+      },
+      "bundle": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/before-native-01/proof/evidence/bundle.json",
+        "sha256": "c70e8918c2e2caa175b0ec6b088809f963f05dc4d96b79737910a20fa9e60f95"
+      },
+      "result": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/before-native-01/proof/evidence/result.json",
+        "sha256": "29101dc517ec909f961b1ab44e967185e67b7975798093137ea2b1f4eb329ff7"
+      },
+      "log": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/before-native-01/proof/evidence/worker-proof.log",
+        "sha256": "5861261cbe0cbad4332084c933925470e01a89b14edce6b46bc2101ad5ab8c7c"
+      },
+      "expected_verifier_exit": 1,
+      "startup_gate": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/pause-reader.so",
+        "sha256": "6bb7ddf1ce6563290ceb2020daf91d63adef7b84bb5c69e9b840fc25f430b95c"
+      }
+    },
+    "after": {
+      "build": {
+        "revision": "91b50e9b7f41f8125d48a35fa73db2543994c2b3",
+        "runtime_sha256": "40f7f49698bca9936acb48efa92427cd872297a396a6ef2002b751f610ea1d2d",
+        "compiler_sha256": "5e21d971108fa18377eb5b4f03c76580e53fac048d9bc1fb2016421aeb07dedd",
+        "native_sha256": "51b1721940bfd029bddfb8dba5a53e92b1115c5cbcc8048372e27ab602ac91d3",
+        "main_sha256": "3db817b9a5a9f4ac7dd4f45c90c1327e00ca933f4f1aaa26e0c05a5709511e6a",
+        "elf_sha256": "cd10d62f42e1738505c39aed829c178ee70b2d24633e50a2f5619ed9a21ce6ba"
+      },
+      "build_receipt": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/after-link-01/build.json",
+        "sha256": "77de8e721748dcc4494eca7a2dce4b8cb4bf6a5e0f723d9d966cae5e44044176"
+      },
+      "bundle": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/after-native-01/proof/evidence/bundle.json",
+        "sha256": "98ad488f70ab5ac2163e5a2646d169cbaa6ab89db49fd5f3d57dea9bd784fed4"
+      },
+      "result": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/after-native-01/proof/evidence/result.json",
+        "sha256": "a865de46da29af7ae4a70b5b257c6bfcc7be73b6ce4710ccdad00baf95e80225"
+      },
+      "log": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/after-native-01/proof/evidence/worker-proof.log",
+        "sha256": "0a1e593eec16efeb1ba6eb55130319dcd36938b673f48a34c43569ac3ac52b25"
+      },
+      "expected_verifier_exit": 0,
+      "startup_gate": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/pause-reader.so",
+        "sha256": "6bb7ddf1ce6563290ceb2020daf91d63adef7b84bb5c69e9b840fc25f430b95c"
+      }
+    },
+    "gnu_symbol_version_needs": {
+      "before": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/before-link-01/dynamic-version-needs.txt",
+        "sha256": "b20931b587c985a32d43c429c182a565d8e5d410ca3b901e127a4243d0b19dde"
+      },
+      "after": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/after-link-01/dynamic-version-needs.txt",
+        "sha256": "b20931b587c985a32d43c429c182a565d8e5d410ca3b901e127a4243d0b19dde"
+      }
+    },
+    "workspace": {
+      "build": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/macos-pg17-01/workspace-build.log",
+        "sha256": "65f2864a482a527aac35485af3b2f346ebd706603eb42600add8ea15c5128d86"
+      },
+      "runtime": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/macos-pg17-01/workspace-runtime.log",
+        "sha256": "a1c27025b41310826e0a767f6012615ba8040078e2e04caa2f8bbd76fc1f4009"
+      },
+      "runtime_tests": 1560,
+      "library_tests": 3
+    },
+    "postgres": {
+      "17.11": {
+        "log": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/macos-pg17-01/verification.log",
+          "sha256": "21ed2077b12600086466f10533a08a496f84ca4f5fc3e2b41d3c1ac2c326abd2"
+        },
+        "jobs_runtime_tests": 53,
+        "compiled_jobs_tests": 3
+      },
+      "18.7": {
+        "log": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/macos-pg17-01/verification-18.7.log",
+          "sha256": "68377f693d62f08bd14032f166dbc6bde49828f132cfa665f62e8cb44aaeafcc"
+        },
+        "jobs_runtime_tests": 53,
+        "compiled_jobs_tests": 3
+      },
+      "19.0": {
+        "log": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/ordinary-job-stdin-ownership/macos-pg17-01/verification-19.0.log",
+          "sha256": "f4ea2d159445dbf7b24a2814c1bdddd1b2f5a2d9b4a3677defaf58f58dd92488"
+        },
+        "jobs_runtime_tests": 53,
+        "compiled_jobs_tests": 3
+      }
+    }
+  },
+  "linux_compiled_jobs_effect_64slot_bootstrap_ab_trim_failure": {
+    "scope": "Unscored controlled slow-64 first arm, flags off.",
+    "qualification": false,
+    "link_receipt": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab/link-e905-01/link.json",
+      "sha256": "677ec9d770e8bc2d9854cbbd21de43680e0aace8474686950aafc61b61bafcc3"
+    },
+    "calibration_plan": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab/plan-01/plan.json",
+      "sha256": "abcab7469bfc7c1638bd7280e9bc2167ece50b697be678d1c7bf7cb82907f607"
+    },
+    "held_comparison": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab/held-01.json",
+      "sha256": "24427fb22a5a4850683925e759d3b1fce1f2f899e0bde0d67e31d81d3e6d8e2e"
+    },
+    "failed_arm": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab/boot-AB-01/extracted/evidence/arm-A.serial",
+      "sha256": "d514581ed2c4462cbb1a43d51f0d9abfb480e1b25449956b57472baf62bad875"
+    },
+    "failed_boot_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-slow64-bootstrap-ab/boot-AB-01/extracted/evidence/result.json",
+      "sha256": "0be9f4e57e67ab28deda094709478db06dc3cbfa2b900c821633ce5702edb213"
+    },
+    "runner_report_counts": {
+      "completed": 449,
+      "discarded": 63
+    },
+    "trim_error": "EBUSY"
+  },
   "linux_compiled_jobs_effect_64slot_pre_split_smaps": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
     "qualification": false,

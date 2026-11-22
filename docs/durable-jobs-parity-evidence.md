@@ -4547,6 +4547,36 @@ CPU. A separate immediate-return child-only comparison measured
 0.103–0.115 CPU-ms/job of savings with both switches enabled.
 [Frozen slow-64 and immediate-return receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Hold the ordinary worker's stdin lock across renewals
+
+The ordinary worker receives its bootstrap and parent renewals on stdin.
+On GNU ARM64, a startup barrier held the parent-reader thread before it
+could read. The `c3efe519` executable entered a compiled `IO.read_line()`
+handler, consumed an on-time renewal, and exited with status 172 at its
+old lease cutoff. The test observed the handler blocked in `read(0)`
+before sending the renewal.
+
+Revision `91b50e9b` waits for the parent reader to own stdin before calling
+the handler. The reader holds the lock across renewal frames, and the
+deadline thread starts before the handler waits for that ownership. With
+the same startup barrier, the compiled handler entered after the reader
+was released and the renewal extended the lease past the handler deadline.
+The worker exited with status 171 at that deadline. On macOS ARM64,
+PostgreSQL 17.11, 18.7, and 19.0 each passed 53 Jobs runtime and three
+compiled Jobs tests over verified TLS and SCRAM, including the scoped-login
+proof on fresh and upgraded schemas. The workspace build, 1,560 runtime
+tests, and three library tests passed.
+[Ordinary worker stdin receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Check one trim plan with both bootstrap switches off
+
+The slow-64 attribution boot packed one new ELF and one trim plan for
+both worker settings. The first timed arm ran with both switches off.
+It discarded 63 jobs when the worker-local trim returned `EBUSY`
+before handler writes. Both switches were enabled during calibration.
+The adapter rejected the arm before timing its peer.
+[Failed attribution capture](../proof/jobs-parity/qualification-v1.json)
+
 ### Recheck the PR branch on the PostgreSQL version matrix
 
 The PR branch at `bdc83c72` passed the workspace build, formatting,
