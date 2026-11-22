@@ -2,10 +2,6 @@ use std::collections::BTreeMap;
 use std::ffi::{c_char, CStr};
 use std::fs::{File, Metadata};
 use std::io::{self, Read, Write};
-#[cfg(unix)]
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd};
-#[cfg(unix)]
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,6 +15,10 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use crate::db::pg::MAX_DB_VALUE_BYTES;
 use crate::string::{mesh_str, MeshString};
 
+#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+use std::os::fd::OwnedFd;
+#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+use std::os::unix::net::UnixStream;
 #[cfg(any(
     all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
     all(target_os = "linux", test),
@@ -214,19 +214,12 @@ impl WorkerProcess {
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
-
             command.process_group(0);
         }
-        #[cfg(unix)]
-        let (input, endpoint) = match control {
+        let effects = match control {
             WorkerInput::Pipe => {
-                let (parent, worker) = UnixStream::pair().map_err(|error| {
-                    format!("could not open job handler control socket: {error}")
-                })?;
-                command
-                    .arg(WORKER_ARG)
-                    .stdin(Stdio::from(OwnedFd::from(worker)));
-                (parent, None::<OwnedFd>)
+                command.arg(WORKER_ARG).stdin(Stdio::piped());
+                None
             }
             #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
             WorkerInput::Effects {
@@ -238,18 +231,16 @@ impl WorkerProcess {
                     &mut command,
                     std::env::var_os(DISABLE_THP_ENV).as_deref(),
                 );
+                // A positional stdin file action keeps the GNU posix_spawn
+                // path eligible. Both endpoint descriptors stay CLOEXEC.
                 command
                     .arg(effect_endpoint::WORKER_ARG)
                     .stdin(Stdio::from(input));
-                (peer, Some(endpoint))
+                Some((peer, endpoint))
             }
         };
-        #[cfg(not(unix))]
-        match control {
-            WorkerInput::Pipe => {
-                command.arg(WORKER_ARG).stdin(Stdio::piped());
-            }
-        }
+        #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+        let effects: Option<()> = effects;
         let child = command
             .env("MESH_SCHEDULER_MIN_WORKERS", "1")
             .env("MESH_SCHEDULER_MAX_WORKERS", "1")
@@ -275,26 +266,23 @@ impl WorkerProcess {
             .spawn(move || forward_reply(output, reply, reply_wake))
             .map_err(|error| error.to_string())?;
 
-        #[cfg(not(unix))]
-        let input = worker.child.stdin.take().unwrap();
+        let input = worker.child.stdin.take();
         let latest = Arc::clone(&worker.lease_deadline);
         std::thread::Builder::new()
             .name("mesh-job-control".into())
             .spawn(move || {
                 #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
-                if let Some(endpoint) = endpoint {
-                    let sent = effect_endpoint::send(&input, &endpoint);
+                if let Some((peer, endpoint)) = effects {
+                    let sent = effect_endpoint::send(&peer, &endpoint);
                     drop(endpoint);
-                    if sent.is_err() {
-                        return;
+                    if sent.is_ok() {
+                        write_control(peer, request, context, renewal_requests, latest);
                     }
+                    return;
                 }
-                #[cfg(all(
-                    unix,
-                    not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))
-                ))]
-                let _ = endpoint;
-                write_control(input, request, context, renewal_requests, latest);
+                #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+                let _ = effects;
+                write_control(input.unwrap(), request, context, renewal_requests, latest);
             })
             .map_err(|error| error.to_string())?;
         Ok(worker)
@@ -642,14 +630,6 @@ pub unsafe extern "C" fn mesh_jobs_enter_worker(argc: i32, argv: *const *const c
     }
 }
 
-pub(crate) fn is_worker_process() -> bool {
-    let mut args = std::env::args_os();
-    args.len() == 2
-        && args
-            .nth(1)
-            .is_some_and(|arg| worker_uses_effect_stdin(arg.as_encoded_bytes()).is_some())
-}
-
 fn enter_worker(effect_stdin: bool) -> ! {
     match run_worker(effect_stdin) {
         Ok(()) => exit_worker(0),
@@ -669,146 +649,19 @@ fn run_worker(_effect_stdin: bool) -> Result<(), String> {
         let socket = effect_endpoint::receive_stdin().map_err(|error| error.to_string())?;
         super::effects::enter_worker(socket);
     }
-    let (request, context, lease) = read_control_and_watch().map_err(|error| error.to_string())?;
+    let mut control = io::stdin();
+    let request: Request =
+        read_frame(&mut control, MAX_REQUEST_HEADER).map_err(|error| error.to_string())?;
+    let context = String::from_utf8(
+        read_bytes(&mut control, MAX_DB_VALUE_BYTES).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
     let handler = HANDLERS
         .lock()
         .get(&request.handler)
         .copied()
         .ok_or("job handler is missing from this executable")?;
 
-    let deadline = request.deadline;
-    remaining(deadline, u64::MAX);
-    let reply = invoke(context, |input| {
-        // Input preparation and the lease lock can both take time.
-        remaining(deadline, *lease.lock());
-        unsafe { handler(input) }
-    });
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
-    let reply = if _effect_stdin {
-        super::effects::finish_worker(reply)
-    } else {
-        reply
-    };
-    remaining(deadline, u64::MAX);
-    write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn read_request(control: &mut impl Read) -> io::Result<(Request, String)> {
-    let request = read_frame(control, MAX_REQUEST_HEADER)?;
-    let context = String::from_utf8(read_bytes(control, MAX_DB_VALUE_BYTES)?)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-    Ok((request, context))
-}
-
-#[cfg(unix)]
-struct ParentControl<'a>(BorrowedFd<'a>);
-
-#[cfg(unix)]
-impl ParentControl<'_> {
-    fn receive(&self, bytes: &mut [u8], flags: libc::c_int) -> io::Result<usize> {
-        let count = unsafe {
-            libc::recv(
-                self.0.as_raw_fd(),
-                bytes.as_mut_ptr().cast(),
-                bytes.len(),
-                flags,
-            )
-        };
-        if count < 0 {
-            return Err(io::Error::last_os_error());
-        }
-        Ok(count as usize)
-    }
-}
-
-#[cfg(unix)]
-impl Read for ParentControl<'_> {
-    fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
-        self.receive(bytes, 0)
-    }
-}
-
-type LoadedRequest = (Request, String, Arc<Mutex<u64>>);
-
-#[cfg(unix)]
-fn read_control_and_watch() -> io::Result<LoadedRequest> {
-    let (loaded, input) = crossbeam_channel::bounded(1);
-    std::thread::Builder::new()
-        .name("mesh-job-watchdog".into())
-        .spawn(move || {
-            let stdin = io::stdin();
-            // Reserve stdin for control. Read directly so buffered stdin cannot
-            // hide any renewal bytes from the descriptor readiness check.
-            let _stdin = stdin.lock();
-            let mut control = ParentControl(stdin.as_fd());
-            match read_request(&mut control) {
-                Ok((request, context)) => {
-                    let deadline = request.deadline;
-                    let lease = Arc::new(Mutex::new(request.lease_deadline));
-                    if loaded
-                        .send(Ok((request, context, Arc::clone(&lease))))
-                        .is_ok()
-                    {
-                        watch_parent(control, deadline, &lease);
-                    }
-                }
-                Err(error) => {
-                    let _ = loaded.send(Err(error));
-                }
-            }
-        })?;
-    input.recv().map_err(io::Error::other)?
-}
-
-#[cfg(unix)]
-fn watch_parent(control: ParentControl<'_>, deadline: u64, lease: &Mutex<u64>) {
-    let mut parent = libc::pollfd {
-        fd: control.0.as_raw_fd(),
-        events: libc::POLLIN,
-        revents: 0,
-    };
-    let mut frame = [0; 8];
-    let mut filled = 0;
-    loop {
-        // A timed poll may exclude time spent suspended. Recheck the host
-        // clock at the same cadence as the portable watchdog.
-        let wait = remaining(deadline, *lease.lock()).as_millis().min(20) as libc::c_int;
-        let ready = unsafe { libc::poll(&mut parent, 1, wait) };
-        if ready < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
-            exit_worker(BOOTSTRAP_ERROR);
-        }
-        if ready <= 0 {
-            continue;
-        }
-        // A native read can consume readiness. Keep blocking mode in the
-        // child and make only this receive nonblocking.
-        match control.receive(&mut frame[filled..], libc::MSG_DONTWAIT) {
-            Ok(0) => exit_worker(PARENT_GONE),
-            Ok(count) => filled += count,
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
-                ) =>
-            {
-                continue
-            }
-            Err(_) => exit_worker(PARENT_GONE),
-        }
-        if filled == frame.len() {
-            let mut accepted = lease.lock();
-            remaining(deadline, *accepted);
-            *accepted = (*accepted).max(u64::from_le_bytes(frame));
-            filled = 0;
-        }
-    }
-}
-
-#[cfg(not(unix))]
-fn read_control_and_watch() -> io::Result<LoadedRequest> {
-    let mut control = io::stdin();
-    let (request, context) = read_request(&mut control)?;
     let (renew, updates) = crossbeam_channel::bounded(1);
     let (claim_stdin, stdin_claimed) = crossbeam_channel::bounded(0);
     std::thread::Builder::new()
@@ -827,15 +680,32 @@ fn read_control_and_watch() -> io::Result<LoadedRequest> {
                 }
             }
             exit_worker(PARENT_GONE);
-        })?;
+        })
+        .map_err(|error| error.to_string())?;
     let deadline = request.deadline;
     let lease = Arc::new(Mutex::new(request.lease_deadline));
     let watchdog_lease = Arc::clone(&lease);
     std::thread::Builder::new()
         .name("mesh-job-deadline".into())
-        .spawn(move || enforce_deadlines(deadline, &watchdog_lease, updates))?;
-    stdin_claimed.recv().map_err(io::Error::other)?;
-    Ok((request, context, lease))
+        .spawn(move || enforce_deadlines(deadline, &watchdog_lease, updates))
+        .map_err(|error| error.to_string())?;
+    stdin_claimed.recv().map_err(|error| error.to_string())?;
+    remaining(deadline, u64::MAX);
+
+    let reply = invoke(context, |input| {
+        // Input preparation and the lease lock can both take time.
+        remaining(deadline, *lease.lock());
+        unsafe { handler(input) }
+    });
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    let reply = if _effect_stdin {
+        super::effects::finish_worker(reply)
+    } else {
+        reply
+    };
+    remaining(deadline, u64::MAX);
+    write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 pub(super) fn invoke(
@@ -864,7 +734,6 @@ pub(super) fn invoke(
     }
 }
 
-#[cfg(not(unix))]
 fn enforce_deadlines(deadline: u64, lease: &Mutex<u64>, updates: Receiver<u64>) {
     loop {
         let wait = remaining(deadline, *lease.lock()).min(Duration::from_millis(20));

@@ -199,8 +199,9 @@ pub(crate) fn cooperative_recv_timeout<T>(
 /// main thread a PID and mailbox. This allows `mesh_service_call` to work from
 /// the main thread (non-coroutine context) by using spin-wait instead of yield.
 ///
-/// Worker threads start immediately in the application. A one-scheduler
-/// durable attempt starts its worker when the handler first spawns an actor.
+/// Worker threads are started immediately so that actors spawned during
+/// `mesh_main()` begin executing right away. This is critical for service
+/// calls which need the service actor to be running to process the request.
 ///
 /// If `num_schedulers` is 0, defaults to the number of available CPU cores.
 ///
@@ -227,7 +228,7 @@ pub extern "C" fn mesh_rt_init_actor(num_schedulers: u32) {
             .and_then(|raw| raw.parse::<u32>().ok())
             .or_else(|| embedded.map(|config| u32::from(config.max_workers)))
             .unwrap_or(min_workers);
-        let mut sched = Scheduler::new_elastic(min_workers, max_workers)
+        let sched = Scheduler::new_elastic(min_workers, max_workers)
             .unwrap_or_else(|_| Scheduler::new(default_workers));
 
         // Create a process entry for the main thread so it has a PID and mailbox.
@@ -242,11 +243,9 @@ pub extern "C" fn mesh_rt_init_actor(num_schedulers: u32) {
             main.collects_at_safepoints = !main.stack_base.is_null();
         }
 
-        if sched.worker_bounds() == (1, 1) && crate::jobs::is_worker_process() {
-            sched.defer_start_until_spawn();
-        } else {
-            sched.start();
-        }
+        // Start worker threads in the background immediately so that actors
+        // spawned during mesh_main() can begin executing right away.
+        sched.start();
 
         sched
     });

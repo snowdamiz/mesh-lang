@@ -12,7 +12,6 @@ mod runner;
 mod store;
 pub mod testing;
 mod worker;
-pub(crate) use worker::is_worker_process;
 
 #[cfg(target_os = "linux")]
 pub(crate) use worker::apply_worker_startup_policy;

@@ -370,9 +370,6 @@ DECLARE
     due_at bigint;
     started_at bigint;
     remaining integer;
-    claim_ids uuid[] := '{}';
-    claim_tokens uuid[] := '{}';
-    updated_count integer;
     oversized_count integer := 0;
     value_bytes integer;
     row_bytes integer;
@@ -469,28 +466,17 @@ BEGIN
         -- Keep the ordered prefix of claimable jobs when the next one cannot fit.
         EXIT WHEN row_bytes > reply_bytes;
 
-        claim_ids := array_append(claim_ids, job.id);
-        claim_tokens := array_append(claim_tokens, token::uuid);
+        started_at := mesh_jobs.now_ms();
+        UPDATE mesh_jobs.jobs j SET state = 'executing', attempt = j.attempt + 1,
+            attempted_at_ms = started_at, lease_token = token::uuid,
+            lease_expires_at_ms = started_at + lease_ms
+        WHERE j.namespace = ns AND j.id = job.id;
+
         RETURN NEXT;
         reply_bytes := reply_bytes - row_bytes;
         remaining := remaining - 1;
     END LOOP;
     CLOSE candidates;
-
-    -- RETURN NEXT buffers the result. The locked prefix is fenced and updated
-    -- together before any rows leave the function or the transaction commits.
-    IF cardinality(claim_ids) > 0 THEN
-        started_at := mesh_jobs.now_ms();
-        UPDATE mesh_jobs.jobs j SET state = 'executing', attempt = j.attempt + 1,
-            attempted_at_ms = started_at, lease_token = claimed.token,
-            lease_expires_at_ms = started_at + lease_ms
-        FROM unnest(claim_ids, claim_tokens) AS claimed(job_id, token)
-        WHERE j.namespace = ns AND j.id = claimed.job_id;
-        GET DIAGNOSTICS updated_count = ROW_COUNT;
-        IF updated_count <> cardinality(claim_ids) THEN
-            RAISE EXCEPTION 'mesh jobs batch claim updated fewer rows than it locked';
-        END IF;
-    END IF;
 END
 $$;
 
