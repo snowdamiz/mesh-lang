@@ -4387,6 +4387,23 @@ The release protections remained active, and the witness recorded
 only the present and file bits for the worker's file mappings.
 [File residency receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Trim worker file pages under the stock kernel setting
+
+One same-ELF pair used the stock 64 KiB fault-around window in both
+arms. The worker-local treatment split and dropped 105 verified
+immutable file ranges after startup. Both arms held 64 live workers,
+reconciled 128 fenced commits and resets, and recorded 64 consuming
+waits. Peak summed tree RSS was 368.2 MiB without trimming and
+209.1 MiB with trimming. The treatment passed the earlier 221.3 MiB
+reference and missed the tighter 206 MiB reference.
+
+The two advice loops consumed 0.38 CPU-ms per worker in the
+treatment. The full runner-tree charge, including the detailed
+page and mapping witness, rose from 26.87 to 51.37 CPU-ms per
+completed job. A lean fixture and a matched slow-64 workload
+are needed to establish the runtime cost and the current Oban budget.
+[Stock-window trim receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Verify the integrated Jobs candidate
 
 Revision `8526a5bd` passed the compatibility verifier on macOS ARM64
@@ -4411,6 +4428,14 @@ notification counter with zero fallback scans. These runs check
 child absence after settlement. A separate trace is needed to
 establish the consuming wait before submission.
 [Integrated Linux receipts](../proof/jobs-parity/qualification-v1.json)
+
+The Noble ARM64 smoke attached the planned kernel and ELF probes.
+It observed a consuming wait with the expected terminal status before
+the acknowledgement entry, and rejected a reversed order and an
+absent tracepoint. The original interval reproduced its map lookup
+error. The smoke uses a small native fixture. The compiled PostgreSQL
+ordering proof and the hosted lane remain open.
+[Wait-order smoke receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Compare short jobs under a physical cap of 20 connections
 
@@ -4475,6 +4500,22 @@ the producer after the terminal sample. Both arms stayed within
 the cap of 96 admitted sessions. The comparison uses stock Oban
 writes and the Mesh fenced named operations.
 [Dense timing and admission receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Attribute active PostgreSQL CPU in the dense run
+
+A separate unscored pair sampled the exact admitted backend PIDs
+and start times. Mesh's active CPU bounds were 0.67–0.68 ms/job
+for Jobs SQL, 0.40–0.42 for application SQL, and 0.14–0.15 for
+producer and observer SQL. The application figure includes the
+fenced writes and resets. The probe added no database connections.
+
+The two-vCPU budget at the same boot's Oban rate of 2,544 jobs/s
+was 0.786 CPU-ms/job. The measured PostgreSQL and runner cgroups
+charged at least 1.37 CPU-ms/job within the durable interval after
+deducting the maximum work outside its clock bounds. That floor
+applies to the captured configuration. It leaves the CPU savings
+from any proposed change to be measured.
+[Admitted-backend CPU receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 

@@ -38006,6 +38006,110 @@
       }
     }
   },
+  "linux_compiled_jobs_effect_64slot_native_trim": {
+    "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
+    "qualification": false,
+    "scope": "One matched memory and instrumentation-cost diagnostic with 64 held workers and a stock 64 KiB fault-around window in both arms.",
+    "fixture_sha256": "bee24d8ac2e0c9e4e3568905b1992a37f511abe41c1206fe92091bcbd95fd9b8",
+    "calls_per_worker": 210,
+    "plan": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-native-trim/plan-01/plan.json",
+      "sha256": "864dd82992f0721416d71567b3bad3eab4fcecfd4a866d6c99ae313416e7ad73"
+    },
+    "comparison": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-native-trim/comparison-01.json",
+      "sha256": "10f9d9d81943b4a9f98cdda2b4db4253f9b326f5cc0ba51f83023ae0407e3daf"
+    },
+    "treatment_advice_cpu_ns": {
+      "drop": 9718585,
+      "split": 14636630
+    },
+    "arms": {
+      "control": {
+        "peak_tree_rss_bytes": 386043904,
+        "runner_cpu_total_usec": 1719831,
+        "files": [
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-native-trim/control-01/pack.json",
+            "sha256": "18126b2c6429dcd509095cce322d1df324082152d32d2ca4ed283e639521d9cb"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-native-trim/control-01/extracted/extraction.json",
+            "sha256": "78797cf98f3ed2967379f29929a7da3495bd59bac16036c256f47f6b3427e6f4"
+          }
+        ]
+      },
+      "treatment": {
+        "peak_tree_rss_bytes": 219246592,
+        "runner_cpu_total_usec": 3287533,
+        "files": [
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-native-trim/trim-01/pack.json",
+            "sha256": "1504bc4e42628bd88d8f337853c306125329f0dfa669442eeee6ffa9f65112ab"
+          },
+          {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-native-trim/trim-01/extracted/extraction.json",
+            "sha256": "86e88b78262ef6bf7aa18e36cf443b3f77b4c614f6b300aea2b79953b920b8f8"
+          }
+        ]
+      }
+    }
+  },
+  "linux_compiled_jobs_wait_order_noble_smoke": {
+    "revision": "233fccbc37bad250008a1850e3caaad8f5b60309",
+    "qualification": false,
+    "scope": "Noble ARM64 live bpftrace smoke with a native C fixture and a 2 GiB guest. The compiled database path requires its own proof.",
+    "proof": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/noble-wait-order-smoke-parser-fix/smoke.json",
+      "sha256": "a02df35b1937b0b16935eec1a43299861af820d2e8c1b4638a7c3d8659f15d10"
+    },
+    "pack": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/noble-wait-order-smoke-parser-fix/pack.json",
+      "sha256": "55e61819847707aeae0b03c324718976d95ec89db452f6bf95b1f95b7e0cbff1"
+    },
+    "previous_1_gib_unpack_failure": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/noble-wait-order-smoke/capture.64UVsyGs/guest.serial",
+      "sha256": "658de3bbe0c7bed643aa78c55927d195cdb2f8f902caa60ff011bfa90dc9ead0"
+    },
+    "previous_valid_zero_counter_rejected": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/noble-wait-order-smoke/capture-2g.Bx0MkVrY/guest.serial",
+      "sha256": "7ca15f29b74f005ffe33da9b019adc6ae20073f178a4ed7dc82e8dec3ada60e9"
+    }
+  },
+  "linux_compiled_jobs_effect_dense_backend_cpu": {
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "qualification": false,
+    "scope": "One non-scored pair measuring admitted PostgreSQL roles via schedstat and disjoint process group CPU under the same boot.",
+    "report": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-backend-cpu/matched-01/report.json",
+      "sha256": "58aa4c5e74d64a8ed903a3002ec2b5f071b129981b0b1ea437ec7c70c685bbf7"
+    },
+    "pack": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-backend-cpu/matched-01/pack.json",
+      "sha256": "01388aa0d736fd0074edb5b8ecceeb0ec45dc18103d8dc21ece6646259847021"
+    },
+    "extraction": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-backend-cpu/matched-01/extracted/extraction.json",
+      "sha256": "319009372009a32fbdb7156ec66973e690759d0bb9ce0fcf0f05717d86d52159"
+    },
+    "observed_oban_jobs_per_second": 2544.0561714062505,
+    "two_vcpu_budget_cpu_ms_per_job": 0.7861461639404297,
+    "mesh_postgres_and_runners_durable_cpu_ms_per_job_floor": 1.3695935078125,
+    "mesh_active_cpu_ms_per_job_by_admitted_role_bounds": {
+      "app_sql": [
+        0.4036701201171875,
+        0.4176285361328125
+      ],
+      "jobs_sql": [
+        0.66558548828125,
+        0.681406857421875
+      ],
+      "observer_sql": [
+        0.1411954833984375,
+        0.1467884609375
+      ]
+    }
+  },
   "linux_compiled_jobs_effect_64slot_gate": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
     "qualification": false,
