@@ -5712,8 +5712,19 @@ The sparse resolver-unset diagnostic reproduced a four-process peak.
 The runner and broker both used `[native]`. Each live tree contained
 `beam.smp`, its `erl_child_setup` child, and two nested `inet_gethost`
 processes. With `ERL_INETRC` applied, both roles used `[file]`, resolved
-the same address, and had only `beam.smp` and `erl_child_setup`. The
-first corrected sparse pair sampled two Oban runner processes against
-the limit of two and reconciled all 48 jobs and 96 ordered writes.
-The Mesh ELF, database, workload, and resource limits remained pinned.
-[Resolver pilot resume and receipt](../target/jobs-perf-work/canonical-inetrc/RESUME.md)
+the same address, and had only `beam.smp` and `erl_child_setup`. Both
+corrected sparse orders sampled two Oban runner processes against the
+limit of two. The Mesh ELF, database, workloads, and limits stayed pinned.
+
+| Pilot | First arm | Jobs/s, Mesh / Oban | Oban peak runner-tree processes | Measured host load, Mesh / Oban |
+| --- | --- | ---: | ---: | ---: |
+| Sparse, resolver unset | Mesh | 2.910 / 2.016 | 4 | 65.27 / 55.69 |
+| Sparse, fixture resolver | Mesh | 2.869 / 2.020 | 2 | 26.82 / 22.92 |
+| Sparse, fixture resolver | Oban | 2.897 / 2.021 | 2 | 70.69 / 76.67 |
+| Dense, fixture resolver | Oban | 840 / 1,915 | 16 | 32.60 / 35.00 |
+| Slow, fixture resolver | Mesh | 542 / 443 | 2 | 13.16 / 12.42 |
+
+The pilots reconciled 3,216 measured jobs and 6,432 ordered commits.
+They verified the package before starting a fresh five-pair series.
+[Resolver pilot receipts](../proof/jobs-parity/linux-oban-resolver-pilots-20261122.json)
+[Resume](../target/jobs-perf-work/canonical-inetrc/RESUME.md)
