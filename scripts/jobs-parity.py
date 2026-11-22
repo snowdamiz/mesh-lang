@@ -2549,6 +2549,24 @@ for number, line in enumerate(sys.stdin, 1):
                     self.assertEqual(comparison["ratio_limit"], 1.0)
                     self.assertEqual(comparison["within_limit"], exceeds)
 
+        def test_matched_revisions_compare_pairs_without_the_single_claim_budget(self):
+            settings = json.loads(CONFIG.read_text())
+            base = {"jobs_per_second": 100, "pickup_p99_ms": 50,
+                    "cpu_seconds_per_job": 1, "peak_rss_bytes": 100,
+                    "peak_connections": 1, "peak_processes": 1, "peak_threads": 1,
+                    "peak_queued_context_bytes": 1}
+            trials = [
+                dict(base, engine="baseline", pair=1, jobs_per_second=80),
+                dict(base, engine="mesh", pair=1),
+                dict(base, engine="mesh", pair=0),
+                dict(base, engine="baseline", pair=0, jobs_per_second=110),
+            ]
+            summary = profile_summary(trials, "short", settings["workloads"]["short"], settings,
+                                      1, 16, ("mesh", "baseline"), True, False, None,
+                                      matched_baseline=True)
+            self.assertNotIn("comparison", summary)
+            self.assertEqual(summary["paired_candidate_minus_stock"]["jobs_per_second"], [-10, 20])
+
         def test_event_buffer_summary_keeps_estimate_bound_and_legacy_distinct(self):
             settings = json.loads(CONFIG.read_text())
             workload = settings["workloads"]["short"]
