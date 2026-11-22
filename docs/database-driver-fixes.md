@@ -561,6 +561,30 @@ Unmeasured, with the PR that measures each:
 - The cost of a thread hop for one PostgreSQL query. D8, under its 1.25 times rule.
 - The share of `pg_rows` time that row building takes. D1, before D7 starts.
 
+### D1 benchmark calibration
+
+D1 stopped after the redesigned benchmark missed the 5% same-binary latency
+limit. Every later phase depends on D1. The driver branches are preserved for
+a future qualification run.
+
+The first Linux run used four scheduler workers. All 432 trials returned the
+expected results, and 20 latency comparisons exceeded 5%.
+[First Linux run](https://github.com/snowdamiz/mesh-lang/actions/runs/45054595892)
+
+The redesign used one scheduler worker, longer point and write trials, and
+balanced which side ran first. Both sides ran the same release binary built
+from main at `e7abb534`. All 300 trials returned the expected results. Two
+one-actor call p99 comparisons exceeded 5%, using the median of ten blocks per
+side. [Redesigned Linux run](https://github.com/snowdamiz/mesh-lang/actions/runs/45057487695)
+
+- PostgreSQL writes measured 780 µs and 890 µs, a 14.14% difference. The
+  per-block p99 ranges were 711–2,293 µs and 777–2,339 µs.
+- SQLite writes measured 1,635 µs and 1,385 µs, a 15.33% difference. The
+  per-block p99 ranges were 956–2,759 µs and 1,096–3,346 µs.
+
+The runner skipped the redesigned row and sleep tests after the write checks
+failed. The run did not establish a noise floor for comparing driver changes.
+
 ### D8 PostgreSQL socket waits
 
 D8 stopped after the connection-worker implementation and one shared-readiness
@@ -579,7 +603,7 @@ worker. Every measured trial returned the expected results.
 
 The local same-binary calibration exceeded the 5% tolerance, so the timings are
 local observations. The D8 implementation stays on the verification branch.
-D1 through D7 form the landing stack.
+The release branch preserves D1 through D7.
 
 ## Appendix B. Alternatives rejected
 
