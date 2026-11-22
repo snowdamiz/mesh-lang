@@ -75,6 +75,29 @@ impl<'de> serde::Deserialize<'de> for Parsed {
 
 struct ParsedVisitor;
 
+struct ObjectKey(*const MeshString);
+
+impl<'de> serde::Deserialize<'de> for ObjectKey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_str(ObjectKeyVisitor)
+    }
+}
+
+struct ObjectKeyVisitor;
+
+impl<'de> serde::de::Visitor<'de> for ObjectKeyVisitor {
+    type Value = ObjectKey;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a string")
+    }
+
+    fn visit_str<E>(self, key: &str) -> Result<ObjectKey, E> {
+        // Escaped keys may borrow the deserializer's scratch buffer.
+        Ok(ObjectKey(mesh_str(key)))
+    }
+}
+
 impl<'de> serde::de::Visitor<'de> for ParsedVisitor {
     type Value = Parsed;
 
@@ -124,11 +147,10 @@ impl<'de> serde::de::Visitor<'de> for ParsedVisitor {
 
     fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Parsed, A::Error> {
         let mut entries = Vec::new();
-        while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
-            let Parsed(value) = map.next_value()?;
-            entries.push([mesh_str(&key) as u64, value as u64]);
+        while let Some((ObjectKey(key), Parsed(value))) = map.next_entry()? {
+            entries.push([key as u64, value as u64]);
         }
-        let object = map::mesh_map_from_string_entries(&entries);
+        let object = map::mesh_map_from_string_entries(&mut entries);
         Ok(Parsed(alloc_json(JSON_OBJECT, object as u64)))
     }
 }
@@ -167,16 +189,14 @@ impl serde::Serialize for Tree {
                 seq.end()
             }
             JSON_OBJECT => {
-                let (keys, values) = (
-                    map::mesh_map_keys(value as *mut u8),
-                    map::mesh_map_values(value as *mut u8),
-                );
-                let len = list::mesh_list_length(keys);
-                let mut object = serializer.serialize_map(Some(len as usize))?;
+                // A persistent view may need compacting once. Serialization
+                // only reads those ordered entries and cannot run Mesh code.
+                let (entries, len) = unsafe { map::entries(value as *mut u8) };
+                let mut object = serializer.serialize_map(Some(len))?;
                 for i in 0..len {
-                    let key = unsafe { text_of(list::mesh_list_get(keys, i) as *const MeshString) };
-                    let value = self.child(list::mesh_list_get(values, i));
-                    object.serialize_entry(key, &value)?;
+                    let [key, value] = unsafe { *entries.add(i) };
+                    let key = unsafe { text_of(key as *const MeshString) };
+                    object.serialize_entry(key, &self.child(value))?;
                 }
                 object.end()
             }
@@ -256,9 +276,7 @@ pub(crate) unsafe fn bounded_json(
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_encode_string(s: *const MeshString) -> *mut MeshString {
     unsafe {
-        let text = (*s).as_str();
-        let val = serde_json::Value::String(text.to_string());
-        let json_text = serde_json::to_string(&val).unwrap_or_else(|_| "null".to_string());
+        let json_text = serde_json::to_string((*s).as_str()).expect("a string encodes");
         mesh_str(&json_text)
     }
 }
@@ -377,8 +395,9 @@ pub extern "C-unwind" fn mesh_json_object_get(obj: *mut u8, key: *mut u8) -> *mu
             return err_result("expected Object");
         }
         let m = (*j).value as *mut u8;
-        if map::mesh_map_has_key(m, key as u64) != 0 {
-            let val = map::mesh_map_get(m, key as u64);
+        // JSON null is itself a nonzero node pointer.
+        let val = map::mesh_map_get(m, key as u64);
+        if val != 0 {
             alloc_result(0, val as *mut u8) as *mut u8
         } else {
             let key_str = key as *const MeshString;
@@ -938,6 +957,83 @@ mod tests {
                     assert_eq!((*(field.value as *const MeshJson)).value, 2);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn parsed_keys_keep_their_first_position_after_unescaping() {
+        mesh_rt_init();
+        for count in [0, 4, 8, 24] {
+            let mut members = String::new();
+            for i in 0..count {
+                members.push_str(&format!(r#","k{i}":{i}"#));
+            }
+            let input = format!(
+                r#"{{"雪":0{members},"\u96ea":[-9223372036854775808,18446744073709551615,-0.0,{{"\ud83d\ude03":"\u0000"}}]}}"#
+            );
+            let expected = format!(
+                r#"{{"雪":[-9223372036854775808,18446744073709551615,-0.0,{{"😃":"\u0000"}}]{members}}}"#
+            );
+            unsafe {
+                let result = &*mesh_json_parse(mesh_str(&input));
+                assert_eq!(result.tag, 0);
+                assert_eq!((*mesh_json_encode(result.value)).as_str(), expected);
+                let field = &*mesh_json_object_get(result.value, mesh_str("雪").cast())
+                    .cast::<MeshResult>();
+                assert_eq!(field.tag, 0);
+                assert_eq!((*field.value.cast::<MeshJson>()).tag, JSON_ARRAY);
+            }
+        }
+    }
+
+    #[test]
+    fn object_encoding_reads_each_persistent_version_in_order() {
+        mesh_rt_init();
+        let members: Vec<_> = (0..12).map(|i| format!(r#""k{i}":{i}"#)).collect();
+        let input = format!("{{{}}}", members.join(","));
+        unsafe {
+            let parsed = &*mesh_json_parse(mesh_str(&input));
+            assert_eq!(parsed.tag, 0);
+            // The first update may append to the parsed map's table. The
+            // second starts again from the older value.
+            let replaced =
+                mesh_json_object_put(parsed.value, mesh_str("k0").cast(), mesh_json_null());
+            let added =
+                mesh_json_object_put(parsed.value, mesh_str("new").cast(), mesh_json_from_int(42));
+            let null = &*mesh_json_object_get(replaced, mesh_str("k0").cast()).cast::<MeshResult>();
+            assert_eq!(null.tag, 0);
+            assert_eq!((*null.value.cast::<MeshJson>()).tag, JSON_NULL);
+            assert_eq!(
+                (*mesh_json_encode(replaced)).as_str(),
+                input.replacen(r#""k0":0"#, r#""k0":null"#, 1)
+            );
+            assert_eq!(
+                (*mesh_json_encode(added)).as_str(),
+                format!(r#"{},"new":42}}"#, &input[..input.len() - 1])
+            );
+            assert_eq!((*mesh_json_encode(parsed.value)).as_str(), input);
+        }
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[test]
+    fn bounded_object_encoding_checks_nested_depth_and_bytes() {
+        mesh_rt_init();
+        let input = r#"{"雪":[1]}"#;
+        unsafe {
+            let parsed = &*mesh_json_parse(mesh_str(input));
+            assert_eq!(parsed.tag, 0);
+            let tree = parsed.value.cast::<MeshJson>();
+            assert_eq!(
+                bounded_json(tree, 3, input.len()).unwrap(),
+                input.as_bytes()
+            );
+            assert!(bounded_json(tree, 3, input.len() - 1)
+                .unwrap_err()
+                .contains("byte limit"));
+            assert!(bounded_json(tree, 2, input.len())
+                .unwrap_err()
+                .contains("depth limit"));
         }
     }
 

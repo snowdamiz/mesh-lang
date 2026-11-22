@@ -14,6 +14,8 @@
 
 use super::list::alloc_pair;
 use super::table::{self, Keys};
+use crate::string::{text_of, MeshString};
+use std::collections::HashMap;
 use std::ptr;
 
 /// Key type tag: integer keys (compared by value equality).
@@ -37,7 +39,8 @@ unsafe fn lookup(map: *mut u8, key: u64, keys: &Keys) -> Option<u64> {
 }
 
 /// The live entries, in order, as a table of their own.
-unsafe fn entries(map: *mut u8) -> (*const Entry, usize) {
+/// The caller must keep the entries live across any Mesh GC safepoint.
+pub(crate) unsafe fn entries(map: *mut u8) -> (*const Entry, usize) {
     let compact = table::compact::<2>(map);
     (
         table::entry::<2>(compact, 0) as *const Entry,
@@ -67,12 +70,31 @@ pub extern "C-unwind" fn mesh_map_new_typed(key_type: i64) -> *mut u8 {
     unsafe { table::alloc_table::<2>(0, key_type as u64) }
 }
 
-pub(crate) fn mesh_map_from_string_entries(entries: &[[u64; 2]]) -> *mut u8 {
-    let mut map = mesh_map_new_typed(KEY_TYPE_STR as i64);
-    for &[key, value] in entries {
-        map = mesh_map_put(map, key, value);
+/// Build a fresh map from scratch space containing live MeshString keys.
+/// A repeated key keeps its first position and takes its last entry.
+pub(crate) fn mesh_map_from_string_entries(entries: &mut [Entry]) -> *mut u8 {
+    let mut positions = (entries.len() > table::SMALL).then(HashMap::new);
+    let key_text = |key| unsafe { text_of(key as *const MeshString) };
+    let mut unique = 0;
+    for i in 0..entries.len() {
+        let entry = entries[i];
+        let key = key_text(entry[0]);
+        let position = match &mut positions {
+            Some(positions) => *positions.entry(key).or_insert(unique),
+            None => entries[..unique]
+                .iter()
+                .position(|entry| key_text(entry[0]) == key)
+                .unwrap_or(unique),
+        };
+        entries[position] = entry;
+        unique += usize::from(position == unique);
     }
-    map
+    mesh_map_from_unique_string_entries(&entries[..unique])
+}
+
+/// Build a string map in insertion order from entries with distinct keys.
+pub(crate) fn mesh_map_from_unique_string_entries(entries: &[Entry]) -> *mut u8 {
+    unsafe { table::table_from::<2>(entries, KEY_TYPE_STR) }
 }
 
 /// Ensure a map has string key_type. If the map is empty and has integer key_type,

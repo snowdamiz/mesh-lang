@@ -36,7 +36,7 @@ use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::list::{
     mesh_list_append, mesh_list_from_array, mesh_list_get, mesh_list_length, mesh_list_new,
 };
-use crate::collections::map::mesh_map_from_string_entries;
+use crate::collections::map::mesh_map_from_unique_string_entries;
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::text_of;
@@ -1154,7 +1154,7 @@ unsafe fn row_map(columns: &[PgColumn], row: Vec<RowValue>, values: Values) -> R
             entries.push([mesh_str(&column.name) as u64, value]);
         }
     }
-    Ok(mesh_map_from_string_entries(&entries) as u64)
+    Ok(mesh_map_from_unique_string_entries(&entries) as u64)
 }
 
 // ── Requests ───────────────────────────────────────────────────────────

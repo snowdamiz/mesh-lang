@@ -21,7 +21,7 @@ use std::ptr::NonNull;
 
 use crate::bytes::mesh_bytes_new;
 use crate::collections::list::mesh_list_from_array;
-use crate::collections::map::mesh_map_from_string_entries;
+use crate::collections::map::mesh_map_from_unique_string_entries;
 use crate::db::pg::{
     alloc_db_value, db_values, text_values, BindValue, MeshDbValue, DB_VALUE_BINARY, DB_VALUE_NULL,
     DB_VALUE_TEXT, MAX_DB_VALUE_BYTES,
@@ -256,7 +256,7 @@ unsafe fn read_rows(
                 entries.push([mesh_str(name) as u64, value]);
             }
         }
-        rows.push(mesh_map_from_string_entries(&entries) as u64);
+        rows.push(mesh_map_from_unique_string_entries(&entries) as u64);
     }
 }
 
