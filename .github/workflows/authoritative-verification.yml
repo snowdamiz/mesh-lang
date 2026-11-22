@@ -84,6 +84,7 @@ jobs:
           POSTGRES_USER: mesh_jobs_ci
           POSTGRES_DB: mesh_jobs_ci
           POSTGRES_HOST_AUTH_METHOD: trust
+          TZ: UTC
         ports:
           - 5432/tcp
         options: >-
@@ -258,6 +259,14 @@ jobs:
         env:
           MESH_TEST_DATABASE_URL: postgresql://mesh_jobs_ci@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mesh_jobs_ci?sslmode=disable
         run: bash scripts/verify-postgres-jobs.sh
+
+      - name: Prove PostgreSQL and SQLite drivers
+        timeout-minutes: 15
+        env:
+          MESH_TEST_DATABASE_URL: postgresql://mesh_jobs_ci@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/mesh_jobs_ci?sslmode=disable
+        run: |
+          python3 tools/db-performance/bench.py --self-test
+          bash scripts/verify-db-drivers.sh
 
   postgres-compatibility:
     name: PostgreSQL ${{ matrix.version }} compatibility (${{ matrix.os }})
