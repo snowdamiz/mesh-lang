@@ -18,6 +18,14 @@ Both drivers accept parameterized SQL and return errors through `Result`. The hi
 
 `Sqlite.open(":memory:")` creates an in-memory database; a filesystem path creates or opens a local database file.
 
+Mesh opens SQLite files in write-ahead logging (WAL) mode when the file and
+filesystem support it. Otherwise SQLite keeps the file's existing journal
+mode. Statements wait up to five seconds when the database is busy.
+WAL uses `-wal` and `-shm` sidecar files. Copying only the main file while it
+is open can lose committed rows. Use a SQLite backup or close every connection
+before copying the file. To opt out, execute `PRAGMA journal_mode = DELETE`
+after opening the connection.
+
 Each connection has one transaction and one worker thread. The thread runs
 writes, transaction commands, and statements inside a transaction. An idle
 connection can run read-only statements on the caller in WAL or memory mode.

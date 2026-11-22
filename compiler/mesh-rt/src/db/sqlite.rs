@@ -43,16 +43,19 @@ const MAX_SQLITE_ROWS: usize = 100_000;
 
 // ponytail: admission is bounded per connection rather than across all databases.
 const WRITE_QUEUE_CAPACITY: usize = 128;
+const BUSY_TIMEOUT_MS: c_int = 5_000;
 const CLOSED: &str = "SQLite connection is closed";
 
 struct Database {
     db: *mut sqlite3,
     effects: Box<Cell<StatementEffects>>,
+    inline_journal: Cell<bool>,
 }
 
 #[derive(Clone, Copy, Default)]
 struct StatementEffects {
     worker_only: bool,
+    journal_mode: bool,
 }
 
 // The database and its authorizer state are accessed under the connection mutex.
@@ -197,9 +200,9 @@ static CONNECTIONS: LazyLock<Mutex<Registry>> = LazyLock::new(|| Mutex::new(Regi
 unsafe extern "C" fn authorize_statement(
     context: *mut c_void,
     action: c_int,
+    argument: *const c_char,
     _: *const c_char,
-    _: *const c_char,
-    _: *const c_char,
+    schema: *const c_char,
     _: *const c_char,
 ) -> c_int {
     let effects = &*context.cast::<Cell<StatementEffects>>();
@@ -207,9 +210,21 @@ unsafe extern "C" fn authorize_statement(
     if matches!(
         action,
         SQLITE_TRANSACTION | SQLITE_SAVEPOINT | SQLITE_ATTACH | SQLITE_DETACH
-    ) {
-        // SQLite classifies transaction control and ATTACH as read-only.
+    ) || (action == SQLITE_READ
+        && !schema.is_null()
+        && CStr::from_ptr(schema).to_bytes() != b"main")
+    {
+        // SQLite classifies transaction control and ATTACH as read-only, and
+        // the main file's journal mode says nothing about attached files.
         current.worker_only = true;
+    }
+    if action == SQLITE_PRAGMA
+        && !argument.is_null()
+        && CStr::from_ptr(argument)
+            .to_bytes()
+            .eq_ignore_ascii_case(b"journal_mode")
+    {
+        current.journal_mode = true;
     }
     effects.set(current);
     SQLITE_OK
@@ -235,7 +250,20 @@ impl Database {
             let database = Self {
                 db,
                 effects: Box::new(Cell::new(StatementEffects::default())),
+                inline_journal: Cell::new(false),
             };
+            if sqlite3_db_readonly(db, c"main".as_ptr()) == 0 {
+                if let Ok(statement) = prepare_statement(db, "PRAGMA main.journal_mode = WAL") {
+                    sqlite3_step(statement.stmt);
+                }
+            }
+            // An actor can open a connection on its scheduler worker.
+            // Probe the journal mode before enabling SQLite's lock wait.
+            database.refresh_journal_mode();
+            if sqlite3_busy_timeout(db, BUSY_TIMEOUT_MS) != SQLITE_OK {
+                return Err(sqlite_err_string(db));
+            }
+
             let context = std::ptr::from_ref(database.effects.as_ref())
                 .cast_mut()
                 .cast();
@@ -257,16 +285,35 @@ impl Database {
         }
     }
 
+    fn refresh_journal_mode(&self) {
+        // Take the mode SQLite actually chose, including memory and fallback
+        // modes. A failed probe uses the conservative worker path.
+        let inline = unsafe {
+            prepare_statement(self.db, "PRAGMA main.journal_mode")
+                .ok()
+                .is_some_and(|statement| {
+                    if sqlite3_step(statement.stmt) != SQLITE_ROW {
+                        return false;
+                    }
+                    let value = sqlite3_column_text(statement.stmt, 0);
+                    !value.is_null()
+                        && matches!(CStr::from_ptr(value.cast()).to_bytes(), b"wal" | b"memory")
+                })
+        };
+        self.inline_journal.set(inline);
+    }
+
     fn inline_read(&self, statement: &StmtGuard) -> bool {
         unsafe {
             !statement.effects.worker_only
+                && !statement.effects.journal_mode
                 && sqlite3_get_autocommit(self.db) != 0
                 && sqlite3_stmt_readonly(statement.stmt) != 0
         }
     }
 
     fn step(&self, statement: StmtGuard, operation: Operation) -> Result<Reply, String> {
-        unsafe {
+        let result = unsafe {
             match operation {
                 Operation::Query(values) => {
                     let rows = read_rows(self.db, statement.stmt, |columns, bytes| {
@@ -287,7 +334,13 @@ impl Database {
                     _ => Err(sqlite_err_string(self.db)),
                 },
             }
+        };
+        let changed_journal = statement.effects.journal_mode;
+        drop(statement);
+        if changed_journal {
+            self.refresh_journal_mode();
         }
+        result
     }
 }
 
@@ -385,7 +438,7 @@ impl SqliteConn {
             if self.requests.lock().is_none() {
                 return Err(CLOSED.to_string());
             }
-            if self.state.pending.load(Ordering::Acquire) == 0 {
+            if db.inline_journal.get() && self.state.pending.load(Ordering::Acquire) == 0 {
                 let stmt = db.prepare(sql, &params)?;
                 if !matches!(operation, Operation::Transaction) && db.inline_read(&stmt) {
                     return match operation {
@@ -1171,6 +1224,127 @@ mod tests {
         );
         assert_eq!(query_cell(handle, "SELECT n FROM t", "n"), "1");
         mesh_sqlite_close(handle);
+    }
+
+    #[test]
+    fn wal_defaults_preserve_reads_during_a_write_and_follow_opt_out() {
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("wal.sqlite3");
+        let writer = open_handle(path.to_str().unwrap());
+        let reader = open_handle(path.to_str().unwrap());
+        assert_eq!(
+            query_cell(writer, "PRAGMA journal_mode", "journal_mode"),
+            "wal"
+        );
+        assert_eq!(query_cell(writer, "PRAGMA busy_timeout", "timeout"), "5000");
+        let execute = |sql| result(mesh_sqlite_execute(writer, mesh_str(sql), mesh_list_new())).tag;
+        assert_eq!(execute("CREATE TABLE t(n INTEGER)"), 0);
+        assert_eq!(execute("INSERT INTO t VALUES (1)"), 0);
+        assert_eq!(result(mesh_sqlite_begin(writer)).tag, 0);
+        assert_eq!(execute("UPDATE t SET n = 2"), 0);
+        assert_eq!(query_cell(reader, "SELECT n FROM t", "n"), "1");
+        assert_eq!(query_cell(writer, "SELECT n FROM t", "n"), "2");
+        assert_eq!(result(mesh_sqlite_commit(writer)).tag, 0);
+        assert_eq!(query_cell(reader, "SELECT n FROM t", "n"), "2");
+        mesh_sqlite_close(reader);
+        assert_eq!(
+            query_cell(writer, "PRAGMA journal_mode = DELETE", "journal_mode"),
+            "delete"
+        );
+        let conn = CONNECTIONS.lock().get(writer).unwrap();
+        assert!(matches!(
+            conn.dispatch(
+                "SELECT n FROM t",
+                Vec::new(),
+                Operation::Query(Values::Text)
+            ),
+            Ok(Dispatch::Queued(_))
+        ));
+        mesh_sqlite_close(writer);
+    }
+
+    #[test]
+    fn opening_a_locked_file_does_not_wait_for_the_writer() {
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("locked.sqlite3");
+        let writer = open_handle(path.to_str().unwrap());
+        let execute = |sql| result(mesh_sqlite_execute(writer, mesh_str(sql), mesh_list_new())).tag;
+        assert_eq!(execute("CREATE TABLE t(n INTEGER)"), 0);
+        assert_eq!(
+            query_cell(writer, "PRAGMA journal_mode = DELETE", "journal_mode"),
+            "delete"
+        );
+        assert_eq!(execute("BEGIN EXCLUSIVE"), 0);
+        assert_eq!(execute("INSERT INTO t VALUES (17)"), 0);
+
+        let (opened, ready) = mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            let handle = open_handle(path.to_str().unwrap());
+            opened.send(()).unwrap();
+            handle
+        });
+        let opened_while_locked = ready
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .is_ok();
+
+        assert_eq!(result(mesh_sqlite_commit(writer)).tag, 0);
+        let reader = reader.join().unwrap();
+        assert_eq!(query_cell(reader, "SELECT n FROM t", "n"), "17");
+        assert_eq!(query_cell(reader, "PRAGMA busy_timeout", "timeout"), "5000");
+        mesh_sqlite_close(reader);
+        mesh_sqlite_close(writer);
+        assert!(
+            opened_while_locked,
+            "Sqlite.open waited for the exclusive write lock before returning"
+        );
+    }
+
+    #[test]
+    fn memory_mode_keeps_inline_reads() {
+        mesh_rt_init();
+        let handle = open_handle(":memory:");
+        assert_eq!(
+            query_cell(handle, "PRAGMA journal_mode", "journal_mode"),
+            "memory"
+        );
+        let conn = CONNECTIONS.lock().get(handle).unwrap();
+        assert!(matches!(
+            conn.dispatch("SELECT 1", Vec::new(), Operation::Query(Values::Text)),
+            Ok(Dispatch::Inline(_))
+        ));
+        mesh_sqlite_close(handle);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_only_file_can_be_opened_and_read() {
+        use std::os::unix::fs::PermissionsExt;
+
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("readonly.sqlite3");
+        let path_str = path.to_str().unwrap();
+        let writer = open_handle(path_str);
+        assert_eq!(
+            query_cell(writer, "PRAGMA journal_mode = DELETE", "journal_mode"),
+            "delete"
+        );
+        assert_eq!(
+            result(mesh_sqlite_execute(
+                writer,
+                mesh_str("CREATE TABLE t AS SELECT 17 AS n"),
+                mesh_list_new()
+            ))
+            .tag,
+            0
+        );
+        mesh_sqlite_close(writer);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let reader = open_handle(path_str);
+        assert_eq!(query_cell(reader, "SELECT n FROM t", "n"), "17");
+        mesh_sqlite_close(reader);
     }
 
     fn texts(values: &[&str]) -> *mut u8 {
