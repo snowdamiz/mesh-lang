@@ -499,10 +499,11 @@ mod tests {
         });
         let mut conn = PgConn::from_test_stream(TcpStream::connect(address).unwrap());
 
-        assert!(conn.read_wire_message().is_err());
+        let mut buffer = super::super::pg::MessageBuffer::new();
+        assert!(conn.read_wire_message(&mut buffer).is_err());
         assert!(conn.is_broken());
         assert_eq!(
-            conn.read_wire_message().unwrap_err(),
+            conn.read_wire_message(&mut buffer).unwrap_err(),
             "PostgreSQL connection is unusable"
         );
         server.join().unwrap();

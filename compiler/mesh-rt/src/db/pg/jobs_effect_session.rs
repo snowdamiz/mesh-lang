@@ -8,8 +8,8 @@ use parking_lot::Mutex;
 
 use super::{
     finish_startup, parse_error_response_full, parse_pg_url, read_message_with_limit, text_params,
-    write_bind_values, write_describe_portal, write_execute, write_parse, write_sync, PgStream,
-    SslMode,
+    write_bind_values, write_describe_portal, write_execute, write_parse, write_sync,
+    MessageBuffer, PgStream, SslMode,
 };
 
 pub(crate) const IO_TIMEOUT: Duration = Duration::from_secs(5);
@@ -328,6 +328,7 @@ struct Frames<'a, R> {
     stream: &'a mut R,
     deadline: Instant,
     async_count: usize,
+    buffer: MessageBuffer,
 }
 
 impl<'a, R: Read> Frames<'a, R> {
@@ -336,48 +337,48 @@ impl<'a, R: Read> Frames<'a, R> {
             stream,
             deadline,
             async_count: 0,
+            buffer: MessageBuffer::new(),
         }
     }
 
-    fn next(&mut self) -> Option<(u8, Vec<u8>)> {
+    fn read<T>(&mut self, decode: impl FnOnce(u8, &[u8]) -> T) -> Option<T> {
         loop {
             // Rustls may already have the next frame in its plaintext buffer.
             remaining(self.deadline).ok()?;
-            match read_message_with_limit(self.stream, MAX_FRAME).ok()? {
-                (b'N' | b'S', _) if self.async_count < MAX_ASYNC => self.async_count += 1,
-                frame => return Some(frame),
+            let (tag, body) =
+                read_message_with_limit(self.stream, &mut self.buffer, MAX_FRAME).ok()?;
+            if matches!(tag, b'N' | b'S') && self.async_count < MAX_ASYNC {
+                self.async_count += 1;
+                continue;
             }
+            return Some(decode(tag, body));
         }
     }
 
     fn expect(&mut self, tag: u8, bytes: &[u8]) -> bool {
-        self.next()
-            .is_some_and(|(actual_tag, body)| actual_tag == tag && body == bytes)
+        self.read(|actual_tag, body| actual_tag == tag && body == bytes) == Some(true)
     }
 
     fn receipt(&mut self) -> Option<EffectReceipt> {
         if !(self.expect(b'1', b"") && self.expect(b'2', b"") && self.expect(b'T', BOOL_COLUMN)) {
             return None;
         }
-        let (tag, body) = self.next()?;
-        let receipt = match (tag, body.as_slice()) {
-            (b'D', b"\0\x01\0\0\0\x01t") if self.expect(b'C', b"SELECT 1\0") => {
-                EffectReceipt::Confirmed(true)
-            }
-            (b'D', b"\0\x01\0\0\0\x01f") if self.expect(b'C', b"SELECT 1\0") => {
-                EffectReceipt::Confirmed(false)
-            }
+        let receipt = self.read(|tag, body| match (tag, body) {
+            (b'D', b"\0\x01\0\0\0\x01t") => Some(EffectReceipt::Confirmed(true)),
+            (b'D', b"\0\x01\0\0\0\x01f") => Some(EffectReceipt::Confirmed(false)),
             (b'E', _)
                 if matches!(
-                    parse_error_response_full(&body).sqlstate.as_str(),
+                    parse_error_response_full(body).sqlstate.as_str(),
                     "55000" | "55P03" | "25000" | "57014"
                 ) =>
             {
-                EffectReceipt::Rejected
+                Some(EffectReceipt::Rejected)
             }
-            _ => return None,
-        };
-        self.expect(b'Z', b"I").then_some(receipt)
+            _ => None,
+        })??;
+        let command_complete =
+            !matches!(receipt, EffectReceipt::Confirmed(_)) || self.expect(b'C', b"SELECT 1\0");
+        (command_complete && self.expect(b'Z', b"I")).then_some(receipt)
     }
 
     fn reset(&mut self) -> bool {
@@ -457,6 +458,32 @@ mod tests {
             Frames::new(&mut prefix.as_slice(), deadline).receipt(),
             None
         );
+    }
+
+    #[test]
+    fn query_and_discard_need_separate_idle_receipts() {
+        let mut frames = Vec::new();
+        for (tag, body) in [
+            (b'1', b"".as_slice()),
+            (b'2', b""),
+            (b'T', BOOL_COLUMN),
+            (b'D', b"\0\x01\0\0\0\x01t"),
+            (b'C', b"SELECT 1\0"),
+            (b'Z', b"I"),
+            (b'S', b"setting\0value\0"),
+            (b'C', b"DISCARD ALL\0"),
+            (b'Z', b"I"),
+        ] {
+            append(&mut frames, tag, body);
+        }
+        let deadline = Instant::now() + IO_TIMEOUT;
+        let mut stream = frames.as_slice();
+        assert_eq!(
+            Frames::new(&mut stream, deadline).receipt(),
+            Some(EffectReceipt::Confirmed(true))
+        );
+        assert!(Frames::new(&mut stream, deadline).reset());
+        assert!(stream.is_empty());
     }
 
     #[test]
@@ -555,6 +582,29 @@ mod tests {
             let error = EffectSession::open(url, jobs).err().unwrap();
             assert!(error.contains("separate verified TLS login"));
         }
+    }
+
+    #[test]
+    fn fragmented_frame_cannot_cross_the_exchange_deadline() {
+        let (socket, mut peer) = pair();
+        socket.set_nodelay(true).unwrap();
+        let mut reply = Vec::new();
+        append(&mut reply, b'C', b"DISCARD ALL\0");
+        append(&mut reply, b'Z', b"I");
+        peer.write_all(&reply[..2]).unwrap();
+        let deadline = Instant::now() + Duration::from_millis(250);
+        let sender = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            peer.write_all(&reply[2..9]).unwrap();
+            std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+            std::thread::sleep(Duration::from_millis(15));
+            peer.write_all(&reply[9..]).unwrap();
+        });
+        let mut io = DeadlineSocket::new(&socket, deadline, None);
+        let error =
+            read_message_with_limit(&mut io, &mut MessageBuffer::new(), MAX_FRAME).unwrap_err();
+        assert!(error.starts_with("read body:"), "{error}");
+        sender.join().unwrap();
     }
 
     #[test]
