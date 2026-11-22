@@ -39123,6 +39123,90 @@
       "fraction_of_whole_claim_ceiling_required_after_hypothetical_cut_and_reserve": 0.9312775293744752
     }
   },
+  "linux_compiled_jobs_effect_dense_claim_turn_cpu": {
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "instrumenting_commit": "2611ccef56d0f354fc140031f8ec0ee217ab95ca",
+    "qualification": false,
+    "scope": "Linux GNU ARM64 two-vCPU fixed-order probe-off and probe-on diagnostics. Both use one release ELF. Productive turn CPU and observer overhead remain unresolved.",
+    "profile": "noop-8r-64s",
+    "build": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-turn-cpu/runtime-build/build.json",
+      "sha256": "f7584e0874c72bc6070e1858547a92713b37759d522d95e3bf517d0bd3876a59"
+    },
+    "link": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-turn-cpu/exact-link/link.json",
+      "sha256": "3b0a6cd519e8b285db68bcc4cc88c0948e399fe82202b120f71fda04429fb863"
+    },
+    "fixture_sha256": "9bd4d8c2ee3285c00d5f0744559022020cfeb3d08fe33ad32cc5b13c20dcad72",
+    "control": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-turn-cpu/pair-01-off/report.json",
+      "sha256": "01c86e00fb1deef7e2cbf1e0421f1acfa18a07bfbf8329ca2d090a9058f47882"
+    },
+    "instrumented": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-turn-cpu/pair-01-on/report.json",
+      "sha256": "2bde1e9e2b6e41aa3eb6cb0f6184ee57b8a8b8bfe196d0bb6642f1615c06cb8f"
+    },
+    "paired_report": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-turn-cpu/pair-01-on/pair-report.json",
+      "sha256": "af223dad57d056d16e2b583076b5b50b1f412c56d20a0ccb0d79b7c240eddb89"
+    },
+    "stock_claim_owners_joined": 8,
+    "jobs_reconciled": 4096,
+    "writes_reconciled": 8192,
+    "probe_on_active_claim_outcomes": {
+      "empty": 25,
+      "hint": 266,
+      "nonempty": 162
+    },
+    "probe_on_productive_cpu": {
+      "credit_cpu_ms_per_job": 0.0,
+      "eligible_confirmed_interior_turns": 162,
+      "empty_or_contention_upper_cpu_ms_per_job": 1.4454820830078126,
+      "individual_statement_coverage_verified": false,
+      "next_falsifier": "calibrate proc lag and due-reply carry-in against fresh same-backend thread CPU at the due, BEGIN and COMMIT boundaries in a separate test-only capture",
+      "owner_lower_ns": 0,
+      "owner_reason": "no validated upper bound for remaining owner bookkeeping inside the inner clock delta",
+      "postgres_lower_ns": 0,
+      "postgres_reason": "stale schedstat plus unbounded due-reply carry-in on the exact backend",
+      "raw_owner_inner_candidate_ns": 27542338,
+      "whole_lane_upper_cpu_ms_per_job": 1.4454820830078126
+    },
+    "probe_on_same_boot_requirements": {
+      "claim_statement_turns": 453,
+      "conditional_separate_child_app_cut_cpu_ms_per_job": 0.3,
+      "cpu_ms_per_excess_turn_for_reserve_screen": 2.57778707923077,
+      "durable_floor_cpu_ms_per_job": 4.624670734375,
+      "erasure_ceiling_can_cover_required_cut": {
+        "after_separate_cut": true,
+        "after_separate_cut_and_reserve": true,
+        "cut_required": true
+      },
+      "excess_turns": 325,
+      "ideal_full_batch_turns": 128,
+      "illustrative_reserve_cpu_ms_per_job": 0.1,
+      "required_cpu_ms_per_job": {
+        "after_separate_cut": 0.7181453132324223,
+        "after_separate_cut_and_reserve": 0.8181453132324222,
+        "cut_required": 1.0181453132324223
+      },
+      "same_boot_oban_budget_cpu_ms_per_job": 3.6065254211425777,
+      "shortfall_even_if_measured_lane_erased_cpu_ms_per_job": {
+        "after_separate_cut": 0,
+        "after_separate_cut_and_reserve": 0,
+        "cut_required": 0
+      }
+    },
+    "trials": {
+      "off": {
+        "listen": 409.9115167405542,
+        "oban": 904.8317186759781
+      },
+      "on": {
+        "listen": 350.93694796176385,
+        "oban": 554.5503681397546
+      }
+    }
+  },
   "linux_compiled_jobs_effect_64slot_pre_split_smaps": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
     "qualification": false,

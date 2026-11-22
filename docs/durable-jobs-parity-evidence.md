@@ -4705,6 +4705,25 @@ The next attribution needs to distinguish empty and productive
 turns before estimating the savings from coalescing them.
 [Claim-lane CPU receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Attribute dense claim turns by outcome
+
+The `2611ccef` release diagnostic recorded claim turns from eight
+claim owners and matched each owner to its authenticated PostgreSQL
+backend. The probe-off and probe-on boots used the same instrumented
+ELF and the frozen `noop-8r-64s` input. Each arm reconciled 1,024 jobs
+and 2,048 writes. In the instrumented window, 162 productive turns
+claimed all 1,024 jobs. There were also 25 empty turns and 266
+zero-row turns with contention hints.
+
+The PostgreSQL `schedstat` deltas can carry accounting lag and CPU
+from the prior due probe. The reducer assigns zero guaranteed CPU
+to productive turns, leaving the full 1.445 CPU-ms/job lane ceiling
+on this boot. Oban throughput varied from 905 to 555 jobs/s across
+the boots, so the pair cannot resolve observer overhead. The capture
+establishes the outcome counts and session identities. Removable CPU
+and the case for a dispatcher redesign remain unresolved.
+[Claim-turn receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
