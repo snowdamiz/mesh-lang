@@ -15,7 +15,7 @@ fn take<S>(pool: &SessionPool<S>) -> Checkout<'_, S> {
 
 fn wait_until_parked<S>(pool: &SessionPool<S>) {
     let deadline = Instant::now() + WAIT;
-    while pool.state.lock().unwrap().waiters == 0 {
+    while pool.state.lock().unwrap()._waiters == 0 {
         assert!(Instant::now() < deadline, "checkout never waited");
         thread::sleep(Duration::from_millis(1));
     }

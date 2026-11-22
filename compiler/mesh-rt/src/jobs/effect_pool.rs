@@ -6,13 +6,17 @@ pub(super) struct SessionPool<S> {
     changed: Condvar,
 }
 
+#[cfg(test)]
+type Waiters = usize;
+#[cfg(not(test))]
+type Waiters = ();
+
 struct State<S> {
     idle: Vec<S>,
     checked_out: usize,
     closed: bool,
     interrupt: u64,
-    #[cfg(test)]
-    waiters: usize,
+    _waiters: Waiters,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -34,8 +38,7 @@ impl<S> SessionPool<S> {
                 checked_out: 0,
                 closed: false,
                 interrupt: 0,
-                #[cfg(test)]
-                waiters: 0,
+                _waiters: Waiters::default(),
             }),
             changed: Condvar::new(),
         }
@@ -80,18 +83,14 @@ impl<S> SessionPool<S> {
                 return Err(CheckoutError::Unavailable);
             }
             #[cfg(test)]
-            {
-                state.waiters += 1;
-            }
+            let () = { state._waiters += 1 };
             waited = true;
             (state, _) = self
                 .changed
                 .wait_timeout(state, wait_left.min(probe_interval))
                 .unwrap();
             #[cfg(test)]
-            {
-                state.waiters -= 1;
-            }
+            let () = { state._waiters -= 1 };
         }
     }
 
