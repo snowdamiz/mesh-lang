@@ -4516,6 +4516,37 @@ Oban comparison. The whole-run CPU, RSS, and throughput gates for
 `slow-1r-64s` remain open.
 [Worker bootstrap receipts](../proof/jobs-parity/qualification-v1.json#L39361)
 
+### Compare the worker bootstrap draft on the frozen slow-64 input
+
+The `e905b1d0` release runtime ran with both bootstrap switches, worker
+THP disabled, and the lean immutable-file trim. Fresh 64 KiB and 4 KiB
+calibration on the linked ELF selected 105 ranges. At stock 64 KiB fault
+around, both held arms reached 64 exact children and reconciled 128 fenced
+commits and 64 consuming waits. Trim reduced peak summed tree RSS from
+347.8 to 200.1 MiB.
+
+The trace pilot and all five trace-off pairs on PostgreSQL 17.11
+reconciled the frozen 512-job input against Oban Basic 2.24.2. The five
+scored pairs covered 5,120 jobs. Each job committed both writes. Mesh
+and Oban both sampled 64 executing jobs in each pair. Mesh's timestamp
+estimate was 65 in groups 0 and 2, and the local adapter rejected the
+five-pair receipt under its extra estimate check.
+
+The unchanged frozen driver's replay passed the RSS and pickup limits.
+Mesh and Oban medians were 174.7 and 142.6 MiB peak RSS, and 1,151 and
+1,068 ms pickup p99. Throughput was 401 and 433 jobs/s. Runner CPU was
+2.546 and 1.496 CPU-ms/job, a ratio of 1.70. Throughput and CPU therefore
+missed their original gates. The initial single-pair CPU screen passed.
+The frozen replay includes all five pairs.
+
+Across the five Mesh arms, PostgreSQL CPU ranged from 1.532 to 3.354
+CPU-ms/job. Driver CPU rose from 0.127 to 0.368 CPU-ms/job between the
+fastest and slowest Mesh arms. The matched comparison measures the whole
+candidate against Oban. It cannot isolate the switches' effect on runner
+CPU. A separate immediate-return child-only comparison measured
+0.103–0.115 CPU-ms/job of savings with both switches enabled.
+[Frozen slow-64 and immediate-return receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Recheck the PR branch on the PostgreSQL version matrix
 
 The PR branch at `bdc83c72` passed the workspace build, formatting,
