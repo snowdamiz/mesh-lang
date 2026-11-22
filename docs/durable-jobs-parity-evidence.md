@@ -5533,3 +5533,44 @@ dense pair in which all arms slowed.
 
 [Warm-session Linux paired receipts](../proof/jobs-parity/linux-warm-jobs-20261122.json)
 [Warm-session Linux replay sources](../proof/jobs-parity/linux-warm-replay-20261122.tar.gz)
+
+### Screen sparse, short and large contexts on the retained runtime
+
+The regression replay used the retained named-effects release ELF
+with the frozen input digests, PostgreSQL 17.11 and Oban Basic
+2.24.2 Isolated. Both arms shared one backend for enqueue and
+observation. The observer counted Jobs runner, producer and
+application sessions and reported their SQL separately. Each
+profile used its original runner count, slot count, payload size
+and 250 ms fallback. Sparse used a physical cap of five, short
+used 20, and the large 512 KiB payloads ran with a cap of 96 in a
+4 GiB guest. The large profile warmed both engines with the
+entire batch before measurement.
+
+| Screen | Jobs/s, Mesh / Oban | Runner CPU-ms/job | Pickup p99, ms | Peak sampled RSS, MiB | Peak workload connections |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sparse, one slot | 2.90 / 2.02 | 8.68 / 19.10 | 5.9 / 246.3 | 28.7 / 131.6 | 5 / 4 |
+| Short, 16 slots | 1,156 / 449 | 1.09 / 4.24 | 108.4 / 281.7 | 36.8 / 135.1 | 13 / 19 |
+| Large, Mesh first | 128 / 258 | 15.51 / 81.85 | 491.7 / 241.4 | 245.5 / 1,103.5 | 65 / 81 |
+| Large, Oban first | 121 / 179 | 19.08 / 175.98 | 522.9 / 341.0 | 234.6 / 1,114.5 | 65 / 81 |
+
+The four screens reconciled 560 measured jobs and 1,120 ordered
+committed writes. Sparse and short preserved their throughput
+advantage in these screens. Large lost throughput and pickup in
+both orders while using less CPU and memory. Large Mesh claim
+p99 was 415 and 512 ms, compared with 168 and 150 ms for Oban.
+The replay uses a reconstructed guest and cannot establish a
+regression against a historical ELF measured on a separate run.
+The earlier large win remains historical evidence for that
+specific build.
+
+The initial sparse run reached reconciliation and hit a verifier
+SQL error while reading the settlement transaction ID. The
+corrected replay completed both arms. The public Linux fixture
+on the retained release runtime passed with polling and LISTEN.
+It covered handler actor startup, two committed effects, exact
+reap, a held deadline and reconciliation after session retirement.
+The corrected parity driver passed its 19 self-checks.
+
+[Regression ledgers and resource receipts](../proof/jobs-parity/linux-regression-screens-20261122.json)
+[Regression replay](../proof/jobs-parity/linux-regression/README.md)
