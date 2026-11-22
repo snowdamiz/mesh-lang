@@ -5618,3 +5618,20 @@ Erlang scheduler and async-pool values. The canonical pairs use
 their own series label and receipt.
 
 [Oban emulator provenance and live diagnostic audit](../proof/jobs-parity/linux-oban-emulator-modes-20261122.json)
+
+Five pairs per preserved profile completed with this diagnostic
+launcher and byte-matched inputs and components. The resulting
+scores apply locally to the reconstructed two-scheduler series.
+
+| Diagnostic profile | Mesh throughput wins | Median jobs/s, Mesh / Oban | Median pickup p99, ms | Median runner CPU-ms/job | Max sampled workload connections |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sparse | 5/5 | 2.878 / 2.012 | 5.9 / 241.7 | 8.68 / 22.15 | 5 / 4 |
+| Short | 4/5 | 728 / 444 | 164.2 / 283.9 | 1.58 / 6.88 | 13 / 19 |
+| Large | 2/5 | 169 / 215 | 357.6 / 286.8 | 10.31 / 75.82 | 65 / 81 |
+
+Short passed its local limits. Large missed throughput. Oban
+exceeded the sparse process limit in one or more samples. The
+receipt preserves all measured arms, host load and the initial
+Oban-first large pair as a separate diagnostic. Its generated
+broker source differed by one blank line, so the exact-hash
+series used a repeat in the same arm order.

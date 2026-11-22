@@ -5,10 +5,353 @@
     "compiled_caller"
   ],
   "enqueue_sql_scope": "shared producer and observer on parity_producer",
+  "extra_pair": {
+    "arms": [
+      {
+        "claim_span_ms": 128.283935546875,
+        "database_and_broker": {
+          "commit_timestamps": true,
+          "database_connection_limit": 96,
+          "durable": true,
+          "max_connections": 96,
+          "reserve": 0,
+          "superuser_reserve": 0,
+          "tls": true,
+          "user": "parity_producer"
+        },
+        "durable_enqueue_transactions": 1,
+        "median_claim_to_handler_ms": 234.9630126953125,
+        "metrics": {
+          "application_sql_calls_per_job": 0.0,
+          "claim_calls_per_job": 0.421875,
+          "claim_p99_ms": 199.740966796875,
+          "completed": 64,
+          "cpu_seconds_per_job": 0.121822109375,
+          "engine": "oban",
+          "enqueue_sql_calls_per_job": 0.203125,
+          "estimated_peak_executing": 64,
+          "event_buffer_bytes": null,
+          "event_logs_dropped": 0,
+          "events_dropped": 0,
+          "idle_queries_per_minute": 7041.487969418628,
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+          "jobs_per_second": 111.004355162784,
+          "pair": 0,
+          "peak_connections": 81,
+          "peak_executing": 19,
+          "peak_host_load_average_1m": 1.6015625,
+          "peak_processes": 32,
+          "peak_queued_context_bytes": null,
+          "peak_rss_bytes": 1161973760,
+          "peak_threads": 184,
+          "pickup_p99_ms": 473.68896484375,
+          "poll_ms": 250,
+          "runner_sql_calls_per_job": 8.578125,
+          "settlement_p99_ms": 576.553955078125,
+          "sql_calls_per_job": 8.78125
+        },
+        "ordered_write_pairs": {
+          "jobs": 64,
+          "minimum_hold_ms": 5.944,
+          "ordered": 64,
+          "worker_pids": 8
+        },
+        "phase": "warmup",
+        "raw_ledger_and_samples_sha256": "751f90a755e5c4ea35944cc9b14fa65a02fefcaa3b522d821fa5700e06544f8a",
+        "runner_shutdown_sha256": [
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+        ]
+      },
+      {
+        "claim_span_ms": 367,
+        "database_and_broker": {
+          "commit_timestamps": true,
+          "database_connection_limit": 96,
+          "durable": true,
+          "max_connections": 96,
+          "reserve": 0,
+          "superuser_reserve": 0,
+          "tls": true,
+          "user": "parity_producer"
+        },
+        "durable_enqueue_transactions": 1,
+        "median_claim_to_handler_ms": 36.802490234375,
+        "metrics": {
+          "application_sql_calls_per_job": 4.0,
+          "claim_calls_per_job": 2.09375,
+          "claim_p99_ms": 379.050048828125,
+          "completed": 64,
+          "cpu_seconds_per_job": 0.016852218750000002,
+          "engine": "mesh",
+          "enqueue_sql_calls_per_job": 4.21875,
+          "estimated_peak_executing": 16,
+          "event_buffer_bytes": null,
+          "event_logs_dropped": 0,
+          "events_dropped": 0,
+          "idle_queries_per_minute": 13334.478058486657,
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+          "jobs_per_second": 152.72131552485718,
+          "pair": 0,
+          "peak_connections": 65,
+          "peak_executing": 8,
+          "peak_host_load_average_1m": 1.755859375,
+          "peak_processes": 9,
+          "peak_queued_context_bytes": 4196960,
+          "peak_rss_bytes": 249729024,
+          "peak_threads": 81,
+          "pickup_p99_ms": 410.39697265625,
+          "poll_ms": 250,
+          "runner_sql_calls_per_job": 13.125,
+          "settlement_p99_ms": 419.06396484375,
+          "sql_calls_per_job": 21.34375
+        },
+        "ordered_write_pairs": {
+          "jobs": 64,
+          "minimum_hold_ms": 1.915,
+          "ordered": 64,
+          "worker_pids": 64
+        },
+        "phase": "warmup",
+        "raw_ledger_and_samples_sha256": "94886364fb48f464bfc4627cdb83feabab92e2c7411e5e58261bfed1ea737700",
+        "runner_shutdown_sha256": [
+          "5bc8b320772bc8174c37679bc82895ba8674632f486be0c0d142a3e26496f917",
+          "90d48bc63b5757a8a7d837dc099b7f9ae61c39a5cfb6ccdb28a43cf7bbefb65a",
+          "ebc6e56c48e644ca96ff3f65405416193ba3e0e5cef4648ea9fcacbce43882ce",
+          "5531a661d915e6f96bef599ff6b9563dc1e4c89c12c5511c32b14fa54a36595a",
+          "b5924c55af0b6329c21d72c2cb8d13e853bc77ad4e8d5d59cf0d3f40f1c7456f",
+          "5531a661d915e6f96bef599ff6b9563dc1e4c89c12c5511c32b14fa54a36595a",
+          "480834424afa2820359f4dd2e8e1780a20eefd39491e3d29442bba8a8533e73e",
+          "5531a661d915e6f96bef599ff6b9563dc1e4c89c12c5511c32b14fa54a36595a"
+        ]
+      },
+      {
+        "claim_span_ms": 101.98779296875,
+        "database_and_broker": {
+          "commit_timestamps": true,
+          "database_connection_limit": 96,
+          "durable": true,
+          "max_connections": 96,
+          "reserve": 0,
+          "superuser_reserve": 0,
+          "tls": true,
+          "user": "parity_producer"
+        },
+        "durable_enqueue_transactions": 1,
+        "median_claim_to_handler_ms": 162.79296875,
+        "metrics": {
+          "application_sql_calls_per_job": 0.0,
+          "claim_calls_per_job": 0.40625,
+          "claim_p99_ms": 149.804931640625,
+          "completed": 64,
+          "cpu_seconds_per_job": 0.1759779375,
+          "engine": "oban",
+          "enqueue_sql_calls_per_job": 0.1875,
+          "estimated_peak_executing": 57,
+          "event_buffer_bytes": null,
+          "event_logs_dropped": 0,
+          "events_dropped": 0,
+          "idle_queries_per_minute": 6773.999282501914,
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+          "jobs_per_second": 178.55444894445102,
+          "pair": 0,
+          "peak_connections": 81,
+          "peak_executing": 14,
+          "peak_host_load_average_1m": 4.982421875,
+          "peak_processes": 32,
+          "peak_queued_context_bytes": null,
+          "peak_rss_bytes": 1168617472,
+          "peak_threads": 184,
+          "pickup_p99_ms": 341.032958984375,
+          "poll_ms": 250,
+          "runner_sql_calls_per_job": 14.859375,
+          "settlement_p99_ms": 358.43408203125,
+          "sql_calls_per_job": 15.046875
+        },
+        "ordered_write_pairs": {
+          "jobs": 64,
+          "minimum_hold_ms": 1.452,
+          "ordered": 64,
+          "worker_pids": 8
+        },
+        "phase": "measured",
+        "raw_ledger_and_samples_sha256": "9f8cd38f39d79579fb9a3f22a85878fa522856c350845cfd3e5c16349e5498e1",
+        "runner_shutdown_sha256": [
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+          "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+        ]
+      },
+      {
+        "claim_span_ms": 503,
+        "database_and_broker": {
+          "commit_timestamps": true,
+          "database_connection_limit": 96,
+          "durable": true,
+          "max_connections": 96,
+          "reserve": 0,
+          "superuser_reserve": 0,
+          "tls": true,
+          "user": "parity_producer"
+        },
+        "durable_enqueue_transactions": 1,
+        "median_claim_to_handler_ms": 54.408935546875,
+        "metrics": {
+          "application_sql_calls_per_job": 4.0,
+          "claim_calls_per_job": 2.15625,
+          "claim_p99_ms": 512.373046875,
+          "completed": 64,
+          "cpu_seconds_per_job": 0.0190800625,
+          "engine": "mesh",
+          "enqueue_sql_calls_per_job": 4.21875,
+          "estimated_peak_executing": 16,
+          "event_buffer_bytes": null,
+          "event_logs_dropped": 0,
+          "events_dropped": 0,
+          "idle_queries_per_minute": 12874.080946323178,
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+          "jobs_per_second": 120.92377453185077,
+          "pair": 0,
+          "peak_connections": 65,
+          "peak_executing": 8,
+          "peak_host_load_average_1m": 4.603515625,
+          "peak_processes": 11,
+          "peak_queued_context_bytes": 4196960,
+          "peak_rss_bytes": 246042624,
+          "peak_threads": 91,
+          "pickup_p99_ms": 522.89208984375,
+          "poll_ms": 250,
+          "runner_sql_calls_per_job": 13.859375,
+          "settlement_p99_ms": 529.259033203125,
+          "sql_calls_per_job": 22.078125
+        },
+        "ordered_write_pairs": {
+          "jobs": 64,
+          "minimum_hold_ms": 1.446,
+          "ordered": 64,
+          "worker_pids": 64
+        },
+        "phase": "measured",
+        "raw_ledger_and_samples_sha256": "a32f51d680161e0598137ff9fdb3cf5b33df40b81b032df6e25d81210dbc0afd",
+        "runner_shutdown_sha256": [
+          "951d60c82c62ea1a498dc75bc988e7cb26324000691c842bfa4a7ceb662bd779",
+          "1ce89412c0500acb9e58b36108a4a7574e58c6aa60a9ce276ebba00015f2690f",
+          "e667b07b721da8be1e025573d26ad49fb5e14f90dc6c5d50783022c27292c87b",
+          "5a354bb6e4c5d4330bf08f10ec4389877c7cb0d66bcd41d9b6fcc9dbd88a284d",
+          "7b41e3094606ae5b04e5bce120134f70ceb1b5e091fd65190b4663b21450b485",
+          "218a90a739c299d38a0b1a49f4fe2d2d29522c704280816405f39bb9b872f808",
+          "951d60c82c62ea1a498dc75bc988e7cb26324000691c842bfa4a7ceb662bd779",
+          "e667b07b721da8be1e025573d26ad49fb5e14f90dc6c5d50783022c27292c87b"
+        ]
+      }
+    ],
+    "full_input_warmup": true,
+    "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+    "host_load": [
+      {
+        "cores": 15,
+        "event": "boot_start",
+        "load": [
+          6.3916015625,
+          10.39697265625,
+          16.90966796875
+        ],
+        "time": 1795371083.860432
+      },
+      {
+        "cores": 15,
+        "event": "FROZEN_DIAGNOSTIC_ARM large warmup oban",
+        "load": [
+          6.3916015625,
+          10.39697265625,
+          16.90966796875
+        ],
+        "time": 1795371086.466203
+      },
+      {
+        "cores": 15,
+        "event": "FROZEN_DIAGNOSTIC_ARM large warmup mesh",
+        "load": [
+          10.4931640625,
+          11.0712890625,
+          17.0341796875
+        ],
+        "time": 1795371098.0232372
+      },
+      {
+        "cores": 15,
+        "event": "FROZEN_DIAGNOSTIC_ARM large measured oban",
+        "load": [
+          15.97900390625,
+          12.19873046875,
+          17.39697265625
+        ],
+        "time": 1795371104.955921
+      },
+      {
+        "cores": 15,
+        "event": "FROZEN_DIAGNOSTIC_ARM large measured mesh",
+        "load": [
+          49.80224609375,
+          19.89501953125,
+          20.0205078125
+        ],
+        "time": 1795371125.384955
+      },
+      {
+        "cores": 15,
+        "event": "boot_end",
+        "load": [
+          49.8896484375,
+          20.91455078125,
+          20.38134765625
+        ],
+        "time": 1795371135.665665
+      }
+    ],
+    "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+    "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+    "manifest_sha256": "6c4b528d4c52b269c7063c1ff436fe53681332577e34700f3ebb4fbd328fe329",
+    "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+    "name": "large-02",
+    "oban_erl_flags": null,
+    "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "profile": "large",
+    "reason_for_separate_receipt": "Generated Oban broker source lacked one blank line and failed the byte-exact component check. Retried with the same arm order using the frozen template.",
+    "series": "reconstructed-explicit-schedulers-only",
+    "shared_component_sha256": {
+      "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+      "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+      "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+      "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+      "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+      "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+      "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+      "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+      "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+      "proof/oban-session.ex": "a12680ba399ee2511d69853c53db2b519c8661ec8a0a956352023ad6aa337fce",
+      "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+      "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+      "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+    }
+  },
   "groups": [
     {
       "arms": [
         {
+          "claim_span_ms": 8277,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 5,
@@ -20,6 +363,7 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.8369140625,
           "metrics": {
             "application_sql_calls_per_job": 4.0,
             "claim_calls_per_job": 3.0,
@@ -62,6 +406,7 @@
           ]
         },
         {
+          "claim_span_ms": 11673.134033203125,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 5,
@@ -73,6 +418,7 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 0.9385986328125,
           "metrics": {
             "application_sql_calls_per_job": 0.0,
             "claim_calls_per_job": 2.0,
@@ -164,8 +510,10 @@
       "manifest_sha256": "336be2018068b56c1eebde4ae8b4e54841d4501040d4ad00e9f886795d14175e",
       "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
       "name": "sparse-02",
+      "oban_erl_flags": null,
       "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
       "profile": "sparse",
+      "series": "reconstructed-explicit-schedulers-only",
       "shared_component_sha256": {
         "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
         "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
@@ -186,6 +534,739 @@
     {
       "arms": [
         {
+          "claim_span_ms": 11960.26708984375,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.0093994140625,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 2.0,
+            "claim_p99_ms": 251.253173828125,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.023254958333333336,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 9.416666666666666,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 876.6558376326436,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.0012049084077845,
+            "pair": 0,
+            "peak_connections": 4,
+            "peak_executing": 0,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 135647232,
+            "peak_threads": 23,
+            "pickup_p99_ms": 251.899169921875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 17.0,
+            "settlement_p99_ms": 254.1630859375,
+            "sql_calls_per_job": 26.416666666666668
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.382,
+            "ordered": 24,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "db4f1c7c51ea70a86cd51c27faa43c019e5e5dd5fb36aa8a05383e7a5a30f700",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        },
+        {
+          "claim_span_ms": 8249,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.762451171875,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 3.0,
+            "claim_p99_ms": 2.77490234375,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.006145958333333333,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 12.125,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.3209178650168,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.9075430072590973,
+            "pair": 0,
+            "peak_connections": 5,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": 1356,
+            "peak_rss_bytes": 30105600,
+            "peak_threads": 14,
+            "pickup_p99_ms": 5.60205078125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 18.166666666666668,
+            "settlement_p99_ms": 14.402099609375,
+            "sql_calls_per_job": 34.291666666666664
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.285,
+            "ordered": 24,
+            "worker_pids": 24
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "9657b6212b18cd4d48dfb593fd73d02255f5c2827731f1c7d20593d065ca8fa6",
+          "runner_shutdown_sha256": [
+            "6d5b9e5f884f79fb7c3ea0bd9fc384ccd19c68556c9ca4f2306b5c28067c8b57"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            66.2275390625,
+            44.7109375,
+            31.13134765625
+          ],
+          "time": 1795371384.6625202
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+          "load": [
+            61.64453125,
+            44.11767578125,
+            31.00146484375
+          ],
+          "time": 1795371387.580619
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured mesh",
+          "load": [
+            49.35546875,
+            42.2646484375,
+            30.5693359375
+          ],
+          "time": 1795371404.507645
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            42.00048828125,
+            40.92236328125,
+            30.2294921875
+          ],
+          "time": 1795371416.673722
+        }
+      ],
+      "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "1ed556515aacedb8535bdcbcce90ccf7001baaddf461e210f6329dd4cfb504b6",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "sparse-scored-02",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "sparse",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 8324,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 2.2120361328125,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 3.0,
+            "claim_p99_ms": 3.591064453125,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.008544875,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 12.125,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1774.5974592684074,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.8784975030123436,
+            "pair": 0,
+            "peak_connections": 5,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": 1356,
+            "peak_rss_bytes": 30134272,
+            "peak_threads": 14,
+            "pickup_p99_ms": 5.712890625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 18.166666666666668,
+            "settlement_p99_ms": 18.01611328125,
+            "sql_calls_per_job": 34.291666666666664
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.303,
+            "ordered": 24,
+            "worker_pids": 24
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "df3eeb7ad8ddf53db3c1195937da52faaf23affcef4dad536ed77265f9541529",
+          "runner_shutdown_sha256": [
+            "6b46eb622f3c37e8db0fe6667dc62b22ee084caa5992ad538ce25a665e7a6ab1"
+          ]
+        },
+        {
+          "claim_span_ms": 11767.408935546875,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.0494384765625,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 2.0,
+            "claim_p99_ms": 228.652099609375,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.022146916666666665,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 9.416666666666666,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 956.3649362555816,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.003627580126046,
+            "pair": 0,
+            "peak_connections": 4,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.240234375,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 135639040,
+            "peak_threads": 23,
+            "pickup_p99_ms": 229.72412109375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 17.0,
+            "settlement_p99_ms": 232.7099609375,
+            "sql_calls_per_job": 26.416666666666668
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.563,
+            "ordered": 24,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "64007ab4ed431227c35d3b346a7220ae93cdff5c295c7f7094c74357dd02f6e7",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            27.8203125,
+            37.26318359375,
+            29.42822265625
+          ],
+          "time": 1795371460.857515
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured mesh",
+          "load": [
+            25.91259765625,
+            36.7109375,
+            29.27880859375
+          ],
+          "time": 1795371463.641505
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+          "load": [
+            22.3095703125,
+            35.58349609375,
+            28.96533203125
+          ],
+          "time": 1795371475.763198
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            23.4462890625,
+            34.86181640625,
+            28.8525390625
+          ],
+          "time": 1795371494.6342459
+        }
+      ],
+      "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "336be2018068b56c1eebde4ae8b4e54841d4501040d4ad00e9f886795d14175e",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "sparse-scored-03",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "sparse",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 11695.203857421875,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.2259521484375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 2.0,
+            "claim_p99_ms": 240.471923828125,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.02141483333333333,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 9.416666666666666,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 957.5485954806703,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.012401786301371,
+            "pair": 0,
+            "peak_connections": 4,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.080078125,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 135647232,
+            "peak_threads": 23,
+            "pickup_p99_ms": 241.71484375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 17.0,
+            "settlement_p99_ms": 244.137939453125,
+            "sql_calls_per_job": 26.416666666666668
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.605,
+            "ordered": 24,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "1682320f4bebc8b6b4dd689a949de80dddfd134cadfcc1bb673d28a6914383d9",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        },
+        {
+          "claim_span_ms": 8416,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 2.863037109375,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 3.0416666666666665,
+            "claim_p99_ms": 11.81689453125,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.010235375,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 12.125,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1695.5385429961223,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.846259264153498,
+            "pair": 0,
+            "peak_connections": 5,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.0732421875,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": 1356,
+            "peak_rss_bytes": 30109696,
+            "peak_threads": 14,
+            "pickup_p99_ms": 14.14599609375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 18.333333333333332,
+            "settlement_p99_ms": 21.64599609375,
+            "sql_calls_per_job": 34.458333333333336
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.39,
+            "ordered": 24,
+            "worker_pids": 24
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "22b4155453fcb2d6ce0d9accab1b8760cd23eb08da38060e5aa296d9d78e98d9",
+          "runner_shutdown_sha256": [
+            "528280b244e84c82c882a480ebdde69c7cbf8e7120823d12e1fc96a053f2f092"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            36.228515625,
+            41.7294921875,
+            32.8466796875
+          ],
+          "time": 1795371624.0331662
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+          "load": [
+            36.228515625,
+            41.7294921875,
+            32.8466796875
+          ],
+          "time": 1795371626.151635
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured mesh",
+          "load": [
+            27.3876953125,
+            39.3505859375,
+            32.1982421875
+          ],
+          "time": 1795371642.735467
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            24.0927734375,
+            38.251953125,
+            31.8916015625
+          ],
+          "time": 1795371655.040978
+        }
+      ],
+      "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "1ed556515aacedb8535bdcbcce90ccf7001baaddf461e210f6329dd4cfb504b6",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "sparse-scored-04",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "sparse",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 8336,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 2.2750244140625,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 3.0,
+            "claim_p99_ms": 5.471923828125,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.013188041666666666,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 12.125,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1774.5199611717883,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.877093798104485,
+            "pair": 0,
+            "peak_connections": 5,
+            "peak_executing": 0,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": 1356,
+            "peak_rss_bytes": 30134272,
+            "peak_threads": 14,
+            "pickup_p99_ms": 7.84912109375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 18.166666666666668,
+            "settlement_p99_ms": 20.906982421875,
+            "sql_calls_per_job": 34.291666666666664
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.549,
+            "ordered": 24,
+            "worker_pids": 24
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "c4e934c551fe374387abda81a8518febac0dccc9666a7d5bb6bbde8511c87207",
+          "runner_shutdown_sha256": [
+            "09f4aeae05da09846009ba48af713e839f425c9108aa5ebe922af09ba6fcd07a"
+          ]
+        },
+        {
+          "claim_span_ms": 11696.033203125,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.174072265625,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 2.0,
+            "claim_p99_ms": 240.053955078125,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.033962291666666665,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 9.458333333333334,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 954.4613663183134,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.016779290214076,
+            "pair": 0,
+            "peak_connections": 4,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.283203125,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 135524352,
+            "peak_threads": 23,
+            "pickup_p99_ms": 241.526123046875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 17.0,
+            "settlement_p99_ms": 244.739013671875,
+            "sql_calls_per_job": 26.458333333333332
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.429,
+            "ordered": 24,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "86b53f08edb18d237c4f59642886f51667d6e1c7eab3aa5b6242b597dcfbd92d",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            15.32275390625,
+            23.30126953125,
+            26.6865234375
+          ],
+          "time": 1795371941.6707149
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured mesh",
+          "load": [
+            15.216796875,
+            23.146484375,
+            26.61181640625
+          ],
+          "time": 1795371944.5312798
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+          "load": [
+            14.9970703125,
+            22.84375,
+            26.4638671875
+          ],
+          "time": 1795371956.598328
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            13.61181640625,
+            22.025390625,
+            26.0859375
+          ],
+          "time": 1795371974.2592719
+        }
+      ],
+      "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "336be2018068b56c1eebde4ae8b4e54841d4501040d4ad00e9f886795d14175e",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "sparse-scored-05",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "sparse",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 104,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 20,
@@ -197,6 +1278,7 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 4.4339599609375,
           "metrics": {
             "application_sql_calls_per_job": 4.0,
             "claim_calls_per_job": 0.125,
@@ -239,6 +1321,7 @@
           ]
         },
         {
+          "claim_span_ms": 107.126953125,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 20,
@@ -250,6 +1333,7 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 2.0205078125,
           "metrics": {
             "application_sql_calls_per_job": 0.0,
             "claim_calls_per_job": 0.0703125,
@@ -341,8 +1425,10 @@
       "manifest_sha256": "412e6e4ecd912bd69f493ee39bd0909bfae158bd6fc093593f8b8c11cc03ecb4",
       "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
       "name": "short-01",
+      "oban_erl_flags": null,
       "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
       "profile": "short",
+      "series": "reconstructed-explicit-schedulers-only",
       "shared_component_sha256": {
         "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
         "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
@@ -363,6 +1449,739 @@
     {
       "arms": [
         {
+          "claim_span_ms": 130.98291015625,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 20,
+            "durable": true,
+            "max_connections": 20,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 2.788818359375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.0859375,
+            "claim_p99_ms": 282.1279296875,
+            "completed": 128,
+            "cpu_seconds_per_job": 0.008310671875,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.09375,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 944.0430625924812,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs_per_second": 444.34876794852454,
+            "pair": 0,
+            "peak_connections": 19,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.080078125,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 139034624,
+            "peak_threads": 23,
+            "pickup_p99_ms": 283.923828125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.2890625,
+            "settlement_p99_ms": 287.90380859375,
+            "sql_calls_per_job": 3.3828125
+          },
+          "ordered_write_pairs": {
+            "jobs": 128,
+            "minimum_hold_ms": 1.676,
+            "ordered": 128,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "fa6ed43b026cdaae97dd25695023aec01d104901b97c6870cc3262912f90c11b",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        },
+        {
+          "claim_span_ms": 158,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 20,
+            "durable": true,
+            "max_connections": 20,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 5.6260986328125,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.1484375,
+            "claim_p99_ms": 160.05908203125,
+            "completed": 128,
+            "cpu_seconds_per_job": 0.0016060703124999999,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.109375,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1735.2499453090438,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs_per_second": 728.1373257041275,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 10,
+            "peak_host_load_average_1m": 0.080078125,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": 21696,
+            "peak_rss_bytes": 42532864,
+            "peak_threads": 17,
+            "pickup_p99_ms": 164.237060546875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 1.625,
+            "settlement_p99_ms": 167.60302734375,
+            "sql_calls_per_job": 6.734375
+          },
+          "ordered_write_pairs": {
+            "jobs": 128,
+            "minimum_hold_ms": 1.227,
+            "ordered": 128,
+            "worker_pids": 128
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "38026b85aef0a180afeb6522ba4f93929854f7c2725b5f196b2e7f2c38f63c4e",
+          "runner_shutdown_sha256": [
+            "9910fef1b240868e89e8cce00cfbf0d22544189ff19ca95f1be50fbdd111a3ad"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            35.0771484375,
+            39.42724609375,
+            29.8818359375
+          ],
+          "time": 1795371431.501774
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+          "load": [
+            33.30908203125,
+            38.98828125,
+            29.78271484375
+          ],
+          "time": 1795371434.811203
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM short measured mesh",
+          "load": [
+            33.2041015625,
+            38.8720703125,
+            29.79541015625
+          ],
+          "time": 1795371441.430868
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            31.74609375,
+            38.4755859375,
+            29.70849609375
+          ],
+          "time": 1795371445.2536
+        }
+      ],
+      "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "f872756cf3c79f308e384e6db71e4ece4394db2a4d5131b2055c70843479c687",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "short-scored-02",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "short",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 506,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 20,
+            "durable": true,
+            "max_connections": 20,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 21.427490234375,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.171875,
+            "claim_p99_ms": 512.39208984375,
+            "completed": 128,
+            "cpu_seconds_per_job": 0.0032195859375,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.140625,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1673.1931474283015,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs_per_second": 229.30068905493852,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 16,
+            "peak_host_load_average_1m": 0.080078125,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": 21696,
+            "peak_rss_bytes": 52568064,
+            "peak_threads": 33,
+            "pickup_p99_ms": 528.318115234375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 1.7890625,
+            "settlement_p99_ms": 551.214111328125,
+            "sql_calls_per_job": 6.9296875
+          },
+          "ordered_write_pairs": {
+            "jobs": 128,
+            "minimum_hold_ms": 1.448,
+            "ordered": 128,
+            "worker_pids": 128
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "226cc60999ff5f1e723fe604eb5c4aa825596c899200a1889881d9dc13ba9d1c",
+          "runner_shutdown_sha256": [
+            "81521b9989cbe4123a382166764936ded361c0945eddaa1bd2e4409878a0b27a"
+          ]
+        },
+        {
+          "claim_span_ms": 134.593017578125,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 20,
+            "durable": true,
+            "max_connections": 20,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 3.5709228515625,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.078125,
+            "claim_p99_ms": 353.01611328125,
+            "completed": 128,
+            "cpu_seconds_per_job": 0.0122688046875,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.1015625,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 873.8113638349654,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs_per_second": 345.10272685445125,
+            "pair": 0,
+            "peak_connections": 19,
+            "peak_executing": 0,
+            "peak_host_load_average_1m": 0.3759765625,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 143331328,
+            "peak_threads": 23,
+            "pickup_p99_ms": 357.531005859375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.296875,
+            "settlement_p99_ms": 365.85595703125,
+            "sql_calls_per_job": 3.3984375
+          },
+          "ordered_write_pairs": {
+            "jobs": 128,
+            "minimum_hold_ms": 1.934,
+            "ordered": 128,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "8931a498b5b6b3456b4857981ab5094a2fa7f57508b6e6d3e7c48a8542010548",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            34.63818359375,
+            36.71240234375,
+            29.61328125
+          ],
+          "time": 1795371511.804501
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM short measured mesh",
+          "load": [
+            48.12646484375,
+            39.548828125,
+            30.70361328125
+          ],
+          "time": 1795371519.507736
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+          "load": [
+            49.4775390625,
+            39.97119140625,
+            30.904296875
+          ],
+          "time": 1795371523.885175
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            60.107421875,
+            42.79443359375,
+            32.0703125
+          ],
+          "time": 1795371537.866845
+        }
+      ],
+      "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "412e6e4ecd912bd69f493ee39bd0909bfae158bd6fc093593f8b8c11cc03ecb4",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "short-scored-03",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "short",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 124.0380859375,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 20,
+            "durable": true,
+            "max_connections": 20,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 2.7269287109375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.0859375,
+            "claim_p99_ms": 141.62109375,
+            "completed": 128,
+            "cpu_seconds_per_job": 0.0056774921875,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.0859375,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 875.3574318568963,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs_per_second": 860.8687370899572,
+            "pair": 0,
+            "peak_connections": 19,
+            "peak_executing": 0,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 138129408,
+            "peak_threads": 23,
+            "pickup_p99_ms": 144.633056640625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.2890625,
+            "settlement_p99_ms": 147.616943359375,
+            "sql_calls_per_job": 3.375
+          },
+          "ordered_write_pairs": {
+            "jobs": 128,
+            "minimum_hold_ms": 1.689,
+            "ordered": 128,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "abcbaff4fd1909e08af807ac02689b4843e9081ef2f4491cc962d8e7b7c3190e",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        },
+        {
+          "claim_span_ms": 137,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 20,
+            "durable": true,
+            "max_connections": 20,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 4.43505859375,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.15625,
+            "claim_p99_ms": 128.554931640625,
+            "completed": 128,
+            "cpu_seconds_per_job": 0.001373390625,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.109375,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1656.0540135624099,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs_per_second": 883.1065580121477,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 8,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 1,
+            "peak_queued_context_bytes": 21696,
+            "peak_rss_bytes": 40603648,
+            "peak_threads": 8,
+            "pickup_p99_ms": 137.171875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 1.640625,
+            "settlement_p99_ms": 141.892822265625,
+            "sql_calls_per_job": 6.75
+          },
+          "ordered_write_pairs": {
+            "jobs": 128,
+            "minimum_hold_ms": 1.264,
+            "ordered": 128,
+            "worker_pids": 128
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "2d23193148292af2c33ab4b7163142c9508284d18e6ff766ee8885de3d8ea2b9",
+          "runner_shutdown_sha256": [
+            "b13848e8e15991081a3a6f2063b232b751f2db9cd24a050443a0a3b1ac8d1f89"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            15.12060546875,
+            29.1123046875,
+            29.1044921875
+          ],
+          "time": 1795371790.540652
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+          "load": [
+            15.03076171875,
+            28.861328125,
+            29.015625
+          ],
+          "time": 1795371793.210329
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM short measured mesh",
+          "load": [
+            14.78759765625,
+            28.5810546875,
+            28.91552734375
+          ],
+          "time": 1795371798.6416929
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            14.78759765625,
+            28.5810546875,
+            28.91552734375
+          ],
+          "time": 1795371802.487436
+        }
+      ],
+      "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "f872756cf3c79f308e384e6db71e4ece4394db2a4d5131b2055c70843479c687",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "short-scored-04",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "short",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 168,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 20,
+            "durable": true,
+            "max_connections": 20,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 6.639892578125,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.125,
+            "claim_p99_ms": 168.9130859375,
+            "completed": 128,
+            "cpu_seconds_per_job": 0.00157634375,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.109375,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1774.863691199733,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs_per_second": 706.6428373107332,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 8,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 5,
+            "peak_queued_context_bytes": 21696,
+            "peak_rss_bytes": 57458688,
+            "peak_threads": 34,
+            "pickup_p99_ms": 176.002197265625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 1.515625,
+            "settlement_p99_ms": 181.006103515625,
+            "sql_calls_per_job": 6.625
+          },
+          "ordered_write_pairs": {
+            "jobs": 128,
+            "minimum_hold_ms": 1.311,
+            "ordered": 128,
+            "worker_pids": 128
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "442a303f7f0782da3e2d7c8749cb2c060b0286d0cdf30a6dabac0bc46cceb563",
+          "runner_shutdown_sha256": [
+            "0cf729fc773f76375b98994d51af1675c7708db74c70212fce88e69ee5e92687"
+          ]
+        },
+        {
+          "claim_span_ms": 373.8310546875,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 20,
+            "durable": true,
+            "max_connections": 20,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 3.7611083984375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.125,
+            "claim_p99_ms": 616.2880859375,
+            "completed": 128,
+            "cpu_seconds_per_job": 0.006876304687499999,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.109375,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 875.7059391477395,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "jobs_per_second": 203.39317075214524,
+            "pair": 0,
+            "peak_connections": 19,
+            "peak_executing": 15,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 139264000,
+            "peak_threads": 23,
+            "pickup_p99_ms": 619.62109375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.46875,
+            "settlement_p99_ms": 624.6611328125,
+            "sql_calls_per_job": 3.578125
+          },
+          "ordered_write_pairs": {
+            "jobs": 128,
+            "minimum_hold_ms": 1.717,
+            "ordered": 128,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "042fab67865a3e732dbecf128b6c904cff6e1a07eadb6310f5009d09b5846880",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            11.3046875,
+            19.4609375,
+            24.7099609375
+          ],
+          "time": 1795372066.387521
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM short measured mesh",
+          "load": [
+            11.0400390625,
+            19.2705078125,
+            24.61181640625
+          ],
+          "time": 1795372069.000155
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+          "load": [
+            11.0400390625,
+            19.2705078125,
+            24.61181640625
+          ],
+          "time": 1795372072.583662
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            11.04638671875,
+            18.998046875,
+            24.4521484375
+          ],
+          "time": 1795372078.592117
+        }
+      ],
+      "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "412e6e4ecd912bd69f493ee39bd0909bfae158bd6fc093593f8b8c11cc03ecb4",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "short-scored-05",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "short",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 157,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 96,
@@ -374,6 +2193,7 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 15.0889892578125,
           "metrics": {
             "application_sql_calls_per_job": 4.0,
             "claim_calls_per_job": 1.4375,
@@ -423,6 +2243,7 @@
           ]
         },
         {
+          "claim_span_ms": 133.4560546875,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 96,
@@ -434,6 +2255,7 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 53.771484375,
           "metrics": {
             "application_sql_calls_per_job": 0.0,
             "claim_calls_per_job": 0.28125,
@@ -483,6 +2305,7 @@
           ]
         },
         {
+          "claim_span_ms": 393,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 96,
@@ -494,6 +2317,7 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 45.14453125,
           "metrics": {
             "application_sql_calls_per_job": 4.0,
             "claim_calls_per_job": 1.84375,
@@ -543,6 +2367,7 @@
           ]
         },
         {
+          "claim_span_ms": 156.958984375,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 96,
@@ -554,6 +2379,7 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 79.318359375,
           "metrics": {
             "application_sql_calls_per_job": 0.0,
             "claim_calls_per_job": 0.296875,
@@ -672,8 +2498,10 @@
       "manifest_sha256": "9239c7683c85ba4282fb768f66f2a467e20ec2f2b239a408404f5d02ab4f4528",
       "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
       "name": "large-01",
+      "oban_erl_flags": null,
       "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
       "profile": "large",
+      "series": "reconstructed-explicit-schedulers-only",
       "shared_component_sha256": {
         "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
         "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
@@ -694,6 +2522,7 @@
     {
       "arms": [
         {
+          "claim_span_ms": 127.283935546875,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 96,
@@ -705,43 +2534,44 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 23.588623046875,
           "metrics": {
             "application_sql_calls_per_job": 0.0,
-            "claim_calls_per_job": 0.421875,
-            "claim_p99_ms": 199.740966796875,
+            "claim_calls_per_job": 0.265625,
+            "claim_p99_ms": 195.200927734375,
             "completed": 64,
-            "cpu_seconds_per_job": 0.121822109375,
+            "cpu_seconds_per_job": 0.053123484374999995,
             "engine": "oban",
-            "enqueue_sql_calls_per_job": 0.203125,
-            "estimated_peak_executing": 64,
+            "enqueue_sql_calls_per_job": 0.171875,
+            "estimated_peak_executing": 24,
             "event_buffer_bytes": null,
             "event_logs_dropped": 0,
             "events_dropped": 0,
-            "idle_queries_per_minute": 7041.487969418628,
+            "idle_queries_per_minute": 7568.621333545217,
             "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
-            "jobs_per_second": 111.004355162784,
+            "jobs_per_second": 281.620901551287,
             "pair": 0,
             "peak_connections": 81,
-            "peak_executing": 19,
-            "peak_host_load_average_1m": 1.6015625,
+            "peak_executing": 0,
+            "peak_host_load_average_1m": 0.0,
             "peak_processes": 32,
             "peak_queued_context_bytes": null,
-            "peak_rss_bytes": 1161973760,
+            "peak_rss_bytes": 1130590208,
             "peak_threads": 184,
-            "pickup_p99_ms": 473.68896484375,
+            "pickup_p99_ms": 222.81591796875,
             "poll_ms": 250,
-            "runner_sql_calls_per_job": 8.578125,
-            "settlement_p99_ms": 576.553955078125,
-            "sql_calls_per_job": 8.78125
+            "runner_sql_calls_per_job": 6.234375,
+            "settlement_p99_ms": 227.255859375,
+            "sql_calls_per_job": 6.40625
           },
           "ordered_write_pairs": {
             "jobs": 64,
-            "minimum_hold_ms": 5.944,
+            "minimum_hold_ms": 1.313,
             "ordered": 64,
-            "worker_pids": 8
+            "worker_pids": 3
           },
           "phase": "warmup",
-          "raw_ledger_and_samples_sha256": "751f90a755e5c4ea35944cc9b14fa65a02fefcaa3b522d821fa5700e06544f8a",
+          "raw_ledger_and_samples_sha256": "4514728a3b826fe6b33dc49c16fd87b323284136cc19a66911052595e590b3d5",
           "runner_shutdown_sha256": [
             "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
             "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
@@ -754,6 +2584,7 @@
           ]
         },
         {
+          "claim_span_ms": 180,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 96,
@@ -765,55 +2596,57 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 15.89599609375,
           "metrics": {
             "application_sql_calls_per_job": 4.0,
-            "claim_calls_per_job": 2.09375,
-            "claim_p99_ms": 379.050048828125,
+            "claim_calls_per_job": 1.578125,
+            "claim_p99_ms": 187.152099609375,
             "completed": 64,
-            "cpu_seconds_per_job": 0.016852218750000002,
+            "cpu_seconds_per_job": 0.0072325,
             "engine": "mesh",
-            "enqueue_sql_calls_per_job": 4.21875,
-            "estimated_peak_executing": 16,
+            "enqueue_sql_calls_per_job": 4.1875,
+            "estimated_peak_executing": 15,
             "event_buffer_bytes": null,
             "event_logs_dropped": 0,
             "events_dropped": 0,
-            "idle_queries_per_minute": 13334.478058486657,
+            "idle_queries_per_minute": 13045.619712961738,
             "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
-            "jobs_per_second": 152.72131552485718,
+            "jobs_per_second": 305.47003726551736,
             "pair": 0,
             "peak_connections": 65,
-            "peak_executing": 8,
-            "peak_host_load_average_1m": 1.755859375,
-            "peak_processes": 9,
+            "peak_executing": 0,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 8,
             "peak_queued_context_bytes": 4196960,
-            "peak_rss_bytes": 249729024,
-            "peak_threads": 81,
-            "pickup_p99_ms": 410.39697265625,
+            "peak_rss_bytes": 260567040,
+            "peak_threads": 64,
+            "pickup_p99_ms": 195.205078125,
             "poll_ms": 250,
-            "runner_sql_calls_per_job": 13.125,
-            "settlement_p99_ms": 419.06396484375,
-            "sql_calls_per_job": 21.34375
+            "runner_sql_calls_per_job": 8.734375,
+            "settlement_p99_ms": 209.51318359375,
+            "sql_calls_per_job": 16.921875
           },
           "ordered_write_pairs": {
             "jobs": 64,
-            "minimum_hold_ms": 1.915,
+            "minimum_hold_ms": 1.223,
             "ordered": 64,
             "worker_pids": 64
           },
           "phase": "warmup",
-          "raw_ledger_and_samples_sha256": "94886364fb48f464bfc4627cdb83feabab92e2c7411e5e58261bfed1ea737700",
+          "raw_ledger_and_samples_sha256": "251054cb4431aa34f8a530715ce21c0bc11b9190919da97054aad62b28bc4b58",
           "runner_shutdown_sha256": [
-            "5bc8b320772bc8174c37679bc82895ba8674632f486be0c0d142a3e26496f917",
-            "90d48bc63b5757a8a7d837dc099b7f9ae61c39a5cfb6ccdb28a43cf7bbefb65a",
-            "ebc6e56c48e644ca96ff3f65405416193ba3e0e5cef4648ea9fcacbce43882ce",
-            "5531a661d915e6f96bef599ff6b9563dc1e4c89c12c5511c32b14fa54a36595a",
-            "b5924c55af0b6329c21d72c2cb8d13e853bc77ad4e8d5d59cf0d3f40f1c7456f",
-            "5531a661d915e6f96bef599ff6b9563dc1e4c89c12c5511c32b14fa54a36595a",
-            "480834424afa2820359f4dd2e8e1780a20eefd39491e3d29442bba8a8533e73e",
-            "5531a661d915e6f96bef599ff6b9563dc1e4c89c12c5511c32b14fa54a36595a"
+            "fc1da11bd8d9fdf4b935188fad80b71673242caaa50b84483b7baa34fd372d82",
+            "104d98165918d45cf33ba38d1b34b05de90bd5fe2a4dd65fab5f828fec4f3a09",
+            "6801f5aa48a08004ba426fbb0f6d04eefc39a0e9103814ffb059e62b348b6ec0",
+            "a9c06cd5e68502519dee5be1dbbf909fab6e5407bccb5ccc696f2915c192515e",
+            "93255e99791ce41192ae253acd0d926aab2143444326ba1865f8628400ade0b5",
+            "e83a3697f299c6af0b18f7d40787fd3b05450db50b041833154c3b03c41a8e98",
+            "93255e99791ce41192ae253acd0d926aab2143444326ba1865f8628400ade0b5",
+            "12e64f534b89195448997d2141deb419101a33b03372fa89aaa94be03a3a5cba"
           ]
         },
         {
+          "claim_span_ms": 166.593994140625,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 96,
@@ -825,43 +2658,44 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 161.3934326171875,
           "metrics": {
             "application_sql_calls_per_job": 0.0,
-            "claim_calls_per_job": 0.40625,
-            "claim_p99_ms": 149.804931640625,
+            "claim_calls_per_job": 0.390625,
+            "claim_p99_ms": 278.7841796875,
             "completed": 64,
-            "cpu_seconds_per_job": 0.1759779375,
+            "cpu_seconds_per_job": 0.0616966875,
             "engine": "oban",
             "enqueue_sql_calls_per_job": 0.1875,
-            "estimated_peak_executing": 57,
+            "estimated_peak_executing": 56,
             "event_buffer_bytes": null,
             "event_logs_dropped": 0,
             "events_dropped": 0,
-            "idle_queries_per_minute": 6773.999282501914,
+            "idle_queries_per_minute": 7648.014407860656,
             "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
-            "jobs_per_second": 178.55444894445102,
+            "jobs_per_second": 153.348831386717,
             "pair": 0,
             "peak_connections": 81,
-            "peak_executing": 14,
-            "peak_host_load_average_1m": 4.982421875,
+            "peak_executing": 15,
+            "peak_host_load_average_1m": 5.56982421875,
             "peak_processes": 32,
             "peak_queued_context_bytes": null,
-            "peak_rss_bytes": 1168617472,
+            "peak_rss_bytes": 1187786752,
             "peak_threads": 184,
-            "pickup_p99_ms": 341.032958984375,
+            "pickup_p99_ms": 407.451171875,
             "poll_ms": 250,
-            "runner_sql_calls_per_job": 14.859375,
-            "settlement_p99_ms": 358.43408203125,
-            "sql_calls_per_job": 15.046875
+            "runner_sql_calls_per_job": 7.171875,
+            "settlement_p99_ms": 417.34912109375,
+            "sql_calls_per_job": 7.359375
           },
           "ordered_write_pairs": {
             "jobs": 64,
-            "minimum_hold_ms": 1.452,
+            "minimum_hold_ms": 2.324,
             "ordered": 64,
             "worker_pids": 8
           },
           "phase": "measured",
-          "raw_ledger_and_samples_sha256": "9f8cd38f39d79579fb9a3f22a85878fa522856c350845cfd3e5c16349e5498e1",
+          "raw_ledger_and_samples_sha256": "564a418eb4c95e67e81577e546bb4a9f58b74dbe891351e58f8798e963a38acb",
           "runner_shutdown_sha256": [
             "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
             "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
@@ -874,6 +2708,7 @@
           ]
         },
         {
+          "claim_span_ms": 209,
           "database_and_broker": {
             "commit_timestamps": true,
             "database_connection_limit": 96,
@@ -885,52 +2720,53 @@
             "user": "parity_producer"
           },
           "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 21.01953125,
           "metrics": {
             "application_sql_calls_per_job": 4.0,
-            "claim_calls_per_job": 2.15625,
-            "claim_p99_ms": 512.373046875,
+            "claim_calls_per_job": 1.609375,
+            "claim_p99_ms": 212.70703125,
             "completed": 64,
-            "cpu_seconds_per_job": 0.0190800625,
+            "cpu_seconds_per_job": 0.008479374999999999,
             "engine": "mesh",
-            "enqueue_sql_calls_per_job": 4.21875,
+            "enqueue_sql_calls_per_job": 4.203125,
             "estimated_peak_executing": 16,
             "event_buffer_bytes": null,
             "event_logs_dropped": 0,
             "events_dropped": 0,
-            "idle_queries_per_minute": 12874.080946323178,
+            "idle_queries_per_minute": 14005.102389310192,
             "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
-            "jobs_per_second": 120.92377453185077,
+            "jobs_per_second": 276.89444392217837,
             "pair": 0,
             "peak_connections": 65,
             "peak_executing": 8,
-            "peak_host_load_average_1m": 4.603515625,
-            "peak_processes": 11,
+            "peak_host_load_average_1m": 5.56982421875,
+            "peak_processes": 13,
             "peak_queued_context_bytes": 4196960,
-            "peak_rss_bytes": 246042624,
-            "peak_threads": 91,
-            "pickup_p99_ms": 522.89208984375,
+            "peak_rss_bytes": 253894656,
+            "peak_threads": 99,
+            "pickup_p99_ms": 223.798095703125,
             "poll_ms": 250,
-            "runner_sql_calls_per_job": 13.859375,
-            "settlement_p99_ms": 529.259033203125,
-            "sql_calls_per_job": 22.078125
+            "runner_sql_calls_per_job": 9.265625,
+            "settlement_p99_ms": 231.135009765625,
+            "sql_calls_per_job": 17.46875
           },
           "ordered_write_pairs": {
             "jobs": 64,
-            "minimum_hold_ms": 1.446,
+            "minimum_hold_ms": 1.393,
             "ordered": 64,
             "worker_pids": 64
           },
           "phase": "measured",
-          "raw_ledger_and_samples_sha256": "a32f51d680161e0598137ff9fdb3cf5b33df40b81b032df6e25d81210dbc0afd",
+          "raw_ledger_and_samples_sha256": "3220dcbab2206df1d83f80d7187f0e61c98da932c90be8e86b8fc7bcba19f84f",
           "runner_shutdown_sha256": [
-            "951d60c82c62ea1a498dc75bc988e7cb26324000691c842bfa4a7ceb662bd779",
-            "1ce89412c0500acb9e58b36108a4a7574e58c6aa60a9ce276ebba00015f2690f",
-            "e667b07b721da8be1e025573d26ad49fb5e14f90dc6c5d50783022c27292c87b",
-            "5a354bb6e4c5d4330bf08f10ec4389877c7cb0d66bcd41d9b6fcc9dbd88a284d",
-            "7b41e3094606ae5b04e5bce120134f70ceb1b5e091fd65190b4663b21450b485",
-            "218a90a739c299d38a0b1a49f4fe2d2d29522c704280816405f39bb9b872f808",
-            "951d60c82c62ea1a498dc75bc988e7cb26324000691c842bfa4a7ceb662bd779",
-            "e667b07b721da8be1e025573d26ad49fb5e14f90dc6c5d50783022c27292c87b"
+            "892dd02ca38691b5ea56f6422a9637fdaf9e4925fcd27bae835ba93076448cdf",
+            "b3694cbeabb1f5adafad8ab8b2dc4bd10590b852d698a152079413a967f233ef",
+            "8492ee44b6b194a09affea5dc5bd274ca79ef1b7eff1b14020383602ceebb6d6",
+            "f71d6465cae92e631ce6c5d85e5aa02e87cfdd06f7d83733a8c3fd5766c8d7ad",
+            "e122d55c696d873686468a47b38a115a90787f19736be8275c19475675baa028",
+            "892dd02ca38691b5ea56f6422a9637fdaf9e4925fcd27bae835ba93076448cdf",
+            "98868ecea2bcc4e356ea936f4c8afce2ab7c284fba6cbc6facfd1b061653d856",
+            "892dd02ca38691b5ea56f6422a9637fdaf9e4925fcd27bae835ba93076448cdf"
           ]
         }
       ],
@@ -941,70 +2777,72 @@
           "cores": 15,
           "event": "boot_start",
           "load": [
-            6.3916015625,
-            10.39697265625,
-            16.90966796875
+            10.00048828125,
+            12.5595703125,
+            19.30517578125
           ],
-          "time": 1795371083.860432
+          "time": 1795372480.088471
         },
         {
           "cores": 15,
           "event": "FROZEN_DIAGNOSTIC_ARM large warmup oban",
           "load": [
-            6.3916015625,
-            10.39697265625,
-            16.90966796875
+            10.00048828125,
+            12.5595703125,
+            19.30517578125
           ],
-          "time": 1795371086.466203
+          "time": 1795372482.54042
         },
         {
           "cores": 15,
           "event": "FROZEN_DIAGNOSTIC_ARM large warmup mesh",
           "load": [
-            10.4931640625,
-            11.0712890625,
-            17.0341796875
+            9.064453125,
+            12.2763671875,
+            19.1259765625
           ],
-          "time": 1795371098.0232372
+          "time": 1795372489.533291
         },
         {
           "cores": 15,
           "event": "FROZEN_DIAGNOSTIC_ARM large measured oban",
           "load": [
-            15.97900390625,
-            12.19873046875,
-            17.39697265625
+            8.65869140625,
+            12.138671875,
+            19.037109375
           ],
-          "time": 1795371104.955921
+          "time": 1795372494.29042
         },
         {
           "cores": 15,
           "event": "FROZEN_DIAGNOSTIC_ARM large measured mesh",
           "load": [
-            49.80224609375,
-            19.89501953125,
-            20.0205078125
+            8.60546875,
+            12.06982421875,
+            18.97216796875
           ],
-          "time": 1795371125.384955
+          "time": 1795372501.9331589
         },
         {
           "cores": 15,
           "event": "boot_end",
           "load": [
-            49.8896484375,
-            20.91455078125,
-            20.38134765625
+            8.796875,
+            12.0517578125,
+            18.92529296875
           ],
-          "time": 1795371135.665665
+          "time": 1795372507.20176
         }
       ],
       "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
       "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
-      "manifest_sha256": "6c4b528d4c52b269c7063c1ff436fe53681332577e34700f3ebb4fbd328fe329",
+      "manifest_sha256": "c0792f7f3d209c1be25d6ab2f94e5794f62bd15a46456c0a3c541014cf3903a9",
       "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
-      "name": "large-02",
+      "name": "large-02-replay",
+      "oban_erl_flags": null,
       "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
       "profile": "large",
+      "series": "reconstructed-explicit-schedulers-only",
       "shared_component_sha256": {
         "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
         "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
@@ -1016,12 +2854,1760 @@
         "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
         "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
         "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
-        "proof/oban-session.ex": "a12680ba399ee2511d69853c53db2b519c8661ec8a0a956352023ad6aa337fce",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 387,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 41.7724609375,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 1.90625,
+            "claim_p99_ms": 396.85400390625,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.018647015625,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 4.21875,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 13783.13064986298,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 146.31478128467486,
+            "pair": 0,
+            "peak_connections": 65,
+            "peak_executing": 11,
+            "peak_host_load_average_1m": 0.720703125,
+            "peak_processes": 12,
+            "peak_queued_context_bytes": 4196960,
+            "peak_rss_bytes": 250380288,
+            "peak_threads": 94,
+            "pickup_p99_ms": 418.693115234375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 11.046875,
+            "settlement_p99_ms": 437.4130859375,
+            "sql_calls_per_job": 19.265625
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.662,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "9a6217d7f1c7730f3b1bde29006d9001fc933a42605a13fd7fc79b996492a438",
+          "runner_shutdown_sha256": [
+            "5b2fbb7c86d947d9f79731e488271d9cf6d920212f9dc04f7be9b5f7071da325",
+            "c3331215263c92d0b1fbb2b0da9376a57639a03a32a1addb156f4896db532190",
+            "ed39095fa9b8224b233f21f8b1ac9feac0adfcaaa670ef5dd4ba5ac6cbfb44c6",
+            "7adca5d9887e5895e9d20773c8f97d42e50cac1e9929703ea2aa4fa7c5d7c450",
+            "c3331215263c92d0b1fbb2b0da9376a57639a03a32a1addb156f4896db532190",
+            "b2d6cac1d623df7ede3932b0f74d71e3855dd2a74a2c72232b372e4040812058",
+            "c3331215263c92d0b1fbb2b0da9376a57639a03a32a1addb156f4896db532190",
+            "9f4e147ff26d52ccae51c301078cba40d13925b66753997bc4fea661a624f4c0"
+          ]
+        },
+        {
+          "claim_span_ms": 159.712890625,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 67.323974609375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.3125,
+            "claim_p99_ms": 183.083984375,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.111060359375,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.1875,
+            "estimated_peak_executing": 40,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 7420.752747451743,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 191.199445680318,
+            "pair": 0,
+            "peak_connections": 81,
+            "peak_executing": 8,
+            "peak_host_load_average_1m": 1.939453125,
+            "peak_processes": 32,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 1151455232,
+            "peak_threads": 184,
+            "pickup_p99_ms": 320.817138671875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 7.0,
+            "settlement_p99_ms": 334.72900390625,
+            "sql_calls_per_job": 7.1875
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 2.052,
+            "ordered": 64,
+            "worker_pids": 5
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "6ec68038958a11a8dc36d5a7423f88dd29f8b53e01b842f344ba1e5daaab50f1",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        },
+        {
+          "claim_span_ms": 345,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 36.177490234375,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 1.828125,
+            "claim_p99_ms": 367.093017578125,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.01570228125,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 4.203125,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 13567.747417506167,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 161.6639028279959,
+            "pair": 0,
+            "peak_connections": 65,
+            "peak_executing": 8,
+            "peak_host_load_average_1m": 2.9052734375,
+            "peak_processes": 11,
+            "peak_queued_context_bytes": 4196960,
+            "peak_rss_bytes": 223576064,
+            "peak_threads": 86,
+            "pickup_p99_ms": 380.364013671875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 10.90625,
+            "settlement_p99_ms": 395.883056640625,
+            "sql_calls_per_job": 19.109375
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.499,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "9e07fdc7f062230ddf5959d4a4de541150af4d9fd4d49bc8ee47e21d69abacdf",
+          "runner_shutdown_sha256": [
+            "0b016e9ce21af6960f07105dabb23fbd2392290190cc56a5a397a0dc4f4befa9",
+            "9af4d4f5af71b960552b71c9454e45822e495e4ae960a90df02bca0c7825a4a3",
+            "fb4badecef0f79da38ea16e497539d4a3a00fbff820685590fcd0c9bf30cd2b5",
+            "fb4badecef0f79da38ea16e497539d4a3a00fbff820685590fcd0c9bf30cd2b5",
+            "fdcde241e4c7d6eada3d3e049032eefda5b427f8e0468cb81414e08605b2e320",
+            "a52e292741c9bf98a23af4debcdd35a82e45e7aec221ec9c8c3e6e3fece015f2",
+            "a52e292741c9bf98a23af4debcdd35a82e45e7aec221ec9c8c3e6e3fece015f2",
+            "f964889a282ab186a326e3ee406794261bb2f4cd06599ffec750f17c7e16bf80"
+          ]
+        },
+        {
+          "claim_span_ms": 126.382080078125,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 167.215576171875,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.421875,
+            "claim_p99_ms": 220.8359375,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.09023021875000001,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.203125,
+            "estimated_peak_executing": 56,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 7289.494330320695,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 137.35970937656705,
+            "pair": 0,
+            "peak_connections": 81,
+            "peak_executing": 14,
+            "peak_host_load_average_1m": 4.12744140625,
+            "peak_processes": 32,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 1164718080,
+            "peak_threads": 184,
+            "pickup_p99_ms": 447.31298828125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 8.140625,
+            "settlement_p99_ms": 465.929931640625,
+            "sql_calls_per_job": 8.34375
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.965,
+            "ordered": 64,
+            "worker_pids": 8
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "513ca7008c286275aa3ac81f3b1e944d50b40220eda17308f4870646338c0986",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        }
+      ],
+      "full_input_warmup": true,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            60.107421875,
+            42.79443359375,
+            32.0703125
+          ],
+          "time": 1795371538.598627
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup mesh",
+          "load": [
+            60.107421875,
+            42.79443359375,
+            32.0703125
+          ],
+          "time": 1795371542.2082748
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup oban",
+          "load": [
+            64.7890625,
+            44.39111328125,
+            32.763671875
+          ],
+          "time": 1795371548.7356641
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured mesh",
+          "load": [
+            65.080078125,
+            45.14599609375,
+            33.16845703125
+          ],
+          "time": 1795371559.117577
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured oban",
+          "load": [
+            70.2783203125,
+            46.5546875,
+            33.7353515625
+          ],
+          "time": 1795371565.450388
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            70.48779296875,
+            47.40283203125,
+            34.1875
+          ],
+          "time": 1795371576.446
+        }
+      ],
+      "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "9239c7683c85ba4282fb768f66f2a467e20ec2f2b239a408404f5d02ab4f4528",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "large-scored-03",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "large",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 246.69189453125,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 323.61669921875,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.515625,
+            "claim_p99_ms": 266.367919921875,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.12277728125,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.1875,
+            "estimated_peak_executing": 56,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 7299.571794787714,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 95.48860211904676,
+            "pair": 0,
+            "peak_connections": 81,
+            "peak_executing": 17,
+            "peak_host_load_average_1m": 1.521484375,
+            "peak_processes": 32,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 1187827712,
+            "peak_threads": 184,
+            "pickup_p99_ms": 621.135986328125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 9.546875,
+            "settlement_p99_ms": 670.237060546875,
+            "sql_calls_per_job": 9.734375
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.533,
+            "ordered": 64,
+            "worker_pids": 8
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "6ad5244410586a308a9f430bd38d3b67bb8a748d7089b2a7c29e3dbe802d2e3f",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        },
+        {
+          "claim_span_ms": 240,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 26.0260009765625,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 1.78125,
+            "claim_p99_ms": 246.867919921875,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.014002281249999998,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 4.203125,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 13255.875616361265,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 240.7716625978401,
+            "pair": 0,
+            "peak_connections": 65,
+            "peak_executing": 9,
+            "peak_host_load_average_1m": 1.3671875,
+            "peak_processes": 14,
+            "peak_queued_context_bytes": 4196960,
+            "peak_rss_bytes": 277848064,
+            "peak_threads": 101,
+            "pickup_p99_ms": 262.057861328125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 10.515625,
+            "settlement_p99_ms": 265.81201171875,
+            "sql_calls_per_job": 18.71875
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.316,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "3a436a3632d3bb562101d48beb46658cf5e92b21376df67ab9075ad768c9f702",
+          "runner_shutdown_sha256": [
+            "189a4f2e31db9cd768cc0fb515a094ebba53ae631136bb616d08297c31061ffc",
+            "dc81c6611013c8e3dcb8fa4a862c29274a3a38ff0d8d3be8655b4f6ffc19447a",
+            "1195c39ef3b8175dcf9e0209d90d02eb1a5b270ecbc652063a99a77d732502d9",
+            "1195c39ef3b8175dcf9e0209d90d02eb1a5b270ecbc652063a99a77d732502d9",
+            "9019056a7b81db8d149fe792eb5892c3d0fff51a572fcbb94d658c56409c08c8",
+            "f2cd67c5d0c9895c584f0ab2d7d5c364662d945454e8bfce060b51545c8edb53",
+            "f2cd67c5d0c9895c584f0ab2d7d5c364662d945454e8bfce060b51545c8edb53",
+            "2a6d8034d731fd1bc215171baf1bf150ebb7960a2b84b9b418385cae5bd0a789"
+          ]
+        },
+        {
+          "claim_span_ms": 120.677978515625,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 47.9791259765625,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.3125,
+            "claim_p99_ms": 182.50390625,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.075818265625,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.1875,
+            "estimated_peak_executing": 38,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 7274.717790728017,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 214.98878899862058,
+            "pair": 0,
+            "peak_connections": 81,
+            "peak_executing": 8,
+            "peak_host_load_average_1m": 1.25732421875,
+            "peak_processes": 32,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 1153765376,
+            "peak_threads": 184,
+            "pickup_p99_ms": 286.81982421875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 6.9375,
+            "settlement_p99_ms": 297.68994140625,
+            "sql_calls_per_job": 7.125
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.543,
+            "ordered": 64,
+            "worker_pids": 5
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "316f06d8da6e68854c61c2a70ce12abdeeba2bbfb0f038ef2af5e349009afb60",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        },
+        {
+          "claim_span_ms": 338,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 30.257080078125,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 1.671875,
+            "claim_p99_ms": 344.25,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.01031178125,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 4.21875,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 13946.65107070749,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 168.53106211394157,
+            "pair": 0,
+            "peak_connections": 65,
+            "peak_executing": 6,
+            "peak_host_load_average_1m": 1.15625,
+            "peak_processes": 9,
+            "peak_queued_context_bytes": 4196960,
+            "peak_rss_bytes": 219963392,
+            "peak_threads": 75,
+            "pickup_p99_ms": 357.570068359375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 10.03125,
+            "settlement_p99_ms": 379.751953125,
+            "sql_calls_per_job": 18.25
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.687,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "0f45e098626cf05753c10fef0c5b64f8ad3d2ba79f1c92273bf5451ff9233753",
+          "runner_shutdown_sha256": [
+            "f9deb2462e3862e1c196e69192b49d1deb106ba12e4396c68c69849b787fdd3c",
+            "f9deb2462e3862e1c196e69192b49d1deb106ba12e4396c68c69849b787fdd3c",
+            "308b4886622a684057ef982089c6e4425fe84541a1168a8d73f5d4b88635d930",
+            "f9deb2462e3862e1c196e69192b49d1deb106ba12e4396c68c69849b787fdd3c",
+            "f9deb2462e3862e1c196e69192b49d1deb106ba12e4396c68c69849b787fdd3c",
+            "1e954fc859a0238429059ebe0092b66bc97f80fae3a7a65dcbd52737dcc6c691",
+            "f9deb2462e3862e1c196e69192b49d1deb106ba12e4396c68c69849b787fdd3c",
+            "cbdcf033ab8f7fd168c2df52e7dc734ca4dafc9e85cd185f6bf996037cf9593f"
+          ]
+        }
+      ],
+      "full_input_warmup": true,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            13.240234375,
+            24.6015625,
+            27.349609375
+          ],
+          "time": 1795371880.595385
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup oban",
+          "load": [
+            14.58203125,
+            24.69091796875,
+            27.36474609375
+          ],
+          "time": 1795371883.57037
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup mesh",
+          "load": [
+            17.07373046875,
+            24.89697265625,
+            27.40673828125
+          ],
+          "time": 1795371895.562423
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured oban",
+          "load": [
+            17.3876953125,
+            24.83203125,
+            27.369140625
+          ],
+          "time": 1795371901.4752572
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured mesh",
+          "load": [
+            15.93115234375,
+            24.27685546875,
+            27.14208984375
+          ],
+          "time": 1795371909.837069
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            15.0556640625,
+            23.95654296875,
+            27.01220703125
+          ],
+          "time": 1795371915.957482
+        }
+      ],
+      "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "c0792f7f3d209c1be25d6ab2f94e5794f62bd15a46456c0a3c541014cf3903a9",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "large-scored-04",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "large",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 309,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 34.626953125,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 1.671875,
+            "claim_p99_ms": 324.60009765625,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.011890140625,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 4.203125,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 13626.601314788328,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 183.0370390541485,
+            "pair": 0,
+            "peak_connections": 65,
+            "peak_executing": 5,
+            "peak_host_load_average_1m": 0.16015625,
+            "peak_processes": 8,
+            "peak_queued_context_bytes": 4196960,
+            "peak_rss_bytes": 222035968,
+            "peak_threads": 69,
+            "pickup_p99_ms": 342.88818359375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 9.9375,
+            "settlement_p99_ms": 349.656005859375,
+            "sql_calls_per_job": 18.140625
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.613,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "c93554ef9833785cbaddb0a39ad788559f88877dbf56d32e56a0c87c4490b0be",
+          "runner_shutdown_sha256": [
+            "f265445b778abfd5991f988b42f55dcaf505e7aa3d05f98bb24b62253bf1b302",
+            "f265445b778abfd5991f988b42f55dcaf505e7aa3d05f98bb24b62253bf1b302",
+            "1de42be251b63101e62de5b97a7d02d9cf85d6edaea6ab23eb1284ea1f42ce26",
+            "6c7d8d0b9542f2fea5ad3478602558a9bd026fe2594debf868768cd3ff28e190",
+            "f265445b778abfd5991f988b42f55dcaf505e7aa3d05f98bb24b62253bf1b302",
+            "da8aa7c0bcb8f29d7aecf4e73fc57fe00b53acca2ca83898e056795fb2504aec",
+            "6c7d8d0b9542f2fea5ad3478602558a9bd026fe2594debf868768cd3ff28e190",
+            "5d7f1699db44cf7321c7a20031e6232c831c8c059093d8bbf1cf7ff77dd6cbb0"
+          ]
+        },
+        {
+          "claim_span_ms": 168.48193359375,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 53.5289306640625,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.3125,
+            "claim_p99_ms": 212.0859375,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.07744865625,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.1875,
+            "estimated_peak_executing": 32,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 7546.15586875275,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 202.66050669765207,
+            "pair": 0,
+            "peak_connections": 81,
+            "peak_executing": 8,
+            "peak_host_load_average_1m": 0.2275390625,
+            "peak_processes": 32,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 1151254528,
+            "peak_threads": 184,
+            "pickup_p99_ms": 305.844970703125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 7.0625,
+            "settlement_p99_ms": 315.799072265625,
+            "sql_calls_per_job": 7.25
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 2.182,
+            "ordered": 64,
+            "worker_pids": 5
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "84388384f4b89c172abe19412e1a8cba48669c36b20187561750ae106d84e522",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        },
+        {
+          "claim_span_ms": 208,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 18.45751953125,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 1.578125,
+            "claim_p99_ms": 213.73193359375,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.008967859375,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 4.203125,
+            "estimated_peak_executing": 16,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 13945.949173437039,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 269.65191836298044,
+            "pair": 0,
+            "peak_connections": 65,
+            "peak_executing": 7,
+            "peak_host_load_average_1m": 0.208984375,
+            "peak_processes": 13,
+            "peak_queued_context_bytes": 4196960,
+            "peak_rss_bytes": 251772928,
+            "peak_threads": 95,
+            "pickup_p99_ms": 223.64599609375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 9.1875,
+            "settlement_p99_ms": 237.343017578125,
+            "sql_calls_per_job": 17.390625
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.324,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "7b19554ba4cabdc60f61229a9b5f62addfcac20cce4ca023a59eeb5e7fc1ac6b",
+          "runner_shutdown_sha256": [
+            "000c16b5353e5354322ffd0e59b58898507858dea014bc4aa089857524f43018",
+            "a5b2fc7de95da64615d04d95e2da8ab9cc077c80111b766f2a43410a8667ef26",
+            "287ce628fbff2ebbf9eae29556743ec4f426138a5f5745cfb150b94d3d46eb0e",
+            "5c12bab9ad7b8de5c1b360b6242b228ea08e5303943ebf78a65d00fa131bb39f",
+            "c349c7d5dd2b9399f7a19cd5d0eef3e31a4ae29f2b687f4a331edae82e631447",
+            "000c16b5353e5354322ffd0e59b58898507858dea014bc4aa089857524f43018",
+            "000c16b5353e5354322ffd0e59b58898507858dea014bc4aa089857524f43018",
+            "3872625b6b106dc40e1637db92449958259d8d5efcfaecd9873c42f242070976"
+          ]
+        },
+        {
+          "claim_span_ms": 124.94287109375,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 70.19287109375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.296875,
+            "claim_p99_ms": 159.1650390625,
+            "completed": 64,
+            "cpu_seconds_per_job": 0.06341278125,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.171875,
+            "estimated_peak_executing": 40,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 7529.90666590289,
+            "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+            "jobs_per_second": 279.69216619952437,
+            "pair": 0,
+            "peak_connections": 81,
+            "peak_executing": 2,
+            "peak_host_load_average_1m": 1.7783203125,
+            "peak_processes": 32,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 1163886592,
+            "peak_threads": 184,
+            "pickup_p99_ms": 222.0400390625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 6.140625,
+            "settlement_p99_ms": 228.822998046875,
+            "sql_calls_per_job": 6.3125
+          },
+          "ordered_write_pairs": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.621,
+            "ordered": 64,
+            "worker_pids": 6
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "fd814854cdaddf9923f0712c266a69af1ba4e745e60b38fe0f6efdd168737d24",
+          "runner_shutdown_sha256": [
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420",
+            "d6c336a6a281c885347c4fa354dd02fec4ba8215f55963b940ff6dfb5a18f420"
+          ]
+        }
+      ],
+      "full_input_warmup": true,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            10.0234375,
+            15.47216796875,
+            21.79931640625
+          ],
+          "time": 1795372295.760291
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup mesh",
+          "load": [
+            10.341796875,
+            15.447265625,
+            21.75341796875
+          ],
+          "time": 1795372299.0665028
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup oban",
+          "load": [
+            10.31396484375,
+            15.3564453125,
+            21.68408203125
+          ],
+          "time": 1795372304.7710998
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured mesh",
+          "load": [
+            10.50537109375,
+            15.22900390625,
+            21.564453125
+          ],
+          "time": 1795372313.334859
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured oban",
+          "load": [
+            10.064453125,
+            15.05908203125,
+            21.46728515625
+          ],
+          "time": 1795372318.560278
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            9.73876953125,
+            14.908203125,
+            21.37646484375
+          ],
+          "time": 1795372325.928999
+        }
+      ],
+      "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "9239c7683c85ba4282fb768f66f2a467e20ec2f2b239a408404f5d02ab4f4528",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "large-scored-05",
+      "oban_erl_flags": null,
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "large",
+      "series": "reconstructed-explicit-schedulers-only",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "4ba2479c640a54df89bb5b02d2e3bec4649f20069d8d355e5081aab587fb6910",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
         "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
         "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
         "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
       }
     }
   ],
-  "status": "paired regression screens"
+  "mesh_runtime_archive_sha256": "f99dbbdf5cb0fd53bf85aa9609dfce335d5fada770ae3217e24b02ec818ae4e6",
+  "production_mesh_runtime_revision": "d8741576fcceae76b4ef93cfedd0805e414a8bfa",
+  "scores": {
+    "large": {
+      "budget_breaches": [
+        "comparison.jobs_per_second"
+      ],
+      "pairs": [
+        "large-01",
+        "large-02-replay",
+        "large-scored-03",
+        "large-scored-04",
+        "large-scored-05"
+      ],
+      "scored_jobs": 640,
+      "summary": {
+        "budgets": {
+          "cpu_seconds_per_job": {
+            "mesh_median": 0.01031178125,
+            "oban_median": 0.075818265625,
+            "relative_limit": 1.25,
+            "within_limit": true
+          },
+          "peak_connections": 96,
+          "peak_processes": 128,
+          "peak_rss_bytes": {
+            "mesh_median": 251772928,
+            "oban_median": 1163886592,
+            "relative_limit": 1.5,
+            "within_limit": true
+          },
+          "peak_threads": 672
+        },
+        "comparison": {
+          "jobs_per_second": {
+            "mesh_median": 168.53106211394157,
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 214.98878899862058,
+            "within_limit": false
+          },
+          "pickup_p99_ms": {
+            "mesh_median": 357.570068359375,
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 286.81982421875,
+            "within_limit": true
+          }
+        },
+        "mesh": {
+          "application_sql_calls_per_job": {
+            "max": 4.0,
+            "median": 4.0,
+            "min": 4.0
+          },
+          "claim_calls_per_job": {
+            "max": 1.84375,
+            "median": 1.671875,
+            "min": 1.578125
+          },
+          "claim_p99_ms": {
+            "max": 414.612060546875,
+            "median": 344.25,
+            "min": 212.70703125
+          },
+          "cpu_seconds_per_job": {
+            "max": 0.01570228125,
+            "median": 0.01031178125,
+            "min": 0.008479374999999999
+          },
+          "enqueue_sql_calls_per_job": {
+            "max": 4.21875,
+            "median": 4.203125,
+            "min": 4.203125
+          },
+          "event_logs_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "events_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "idle_queries_per_minute": {
+            "max": 14064.715307833267,
+            "median": 13946.65107070749,
+            "min": 13567.747417506167
+          },
+          "jobs_per_second": {
+            "max": 276.89444392217837,
+            "median": 168.53106211394157,
+            "min": 128.13890056604328
+          },
+          "peak_connections": {
+            "limit": 96,
+            "observed": 65,
+            "within_limit": true
+          },
+          "peak_host_load_average_1m": {
+            "max": 5.56982421875,
+            "median": 2.9052734375,
+            "min": 0.208984375
+          },
+          "peak_processes": {
+            "limit": 128,
+            "observed": 13,
+            "within_limit": true
+          },
+          "peak_queued_context_bytes": {
+            "limit": 33554432,
+            "observed": 4196960,
+            "within_limit": true
+          },
+          "peak_rss_bytes": {
+            "max": 257417216,
+            "median": 251772928,
+            "min": 219963392
+          },
+          "peak_threads": {
+            "limit": 672,
+            "observed": 99,
+            "within_limit": true
+          },
+          "pickup_p99_ms": {
+            "max": 491.6640625,
+            "median": 357.570068359375,
+            "min": 223.64599609375
+          },
+          "runner_sql_calls_per_job": {
+            "max": 10.90625,
+            "median": 10.03125,
+            "min": 9.1875
+          },
+          "settlement_p99_ms": {
+            "max": 499.4580078125,
+            "median": 379.751953125,
+            "min": 231.135009765625
+          },
+          "sql_calls_per_job": {
+            "max": 19.109375,
+            "median": 18.25,
+            "min": 17.390625
+          }
+        },
+        "oban": {
+          "application_sql_calls_per_job": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0
+          },
+          "claim_calls_per_job": {
+            "max": 0.421875,
+            "median": 0.3125,
+            "min": 0.296875
+          },
+          "claim_p99_ms": {
+            "max": 278.7841796875,
+            "median": 182.50390625,
+            "min": 159.1650390625
+          },
+          "cpu_seconds_per_job": {
+            "max": 0.09023021875000001,
+            "median": 0.075818265625,
+            "min": 0.0616966875
+          },
+          "enqueue_sql_calls_per_job": {
+            "max": 0.203125,
+            "median": 0.1875,
+            "min": 0.171875
+          },
+          "event_logs_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "events_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "idle_queries_per_minute": {
+            "max": 7648.014407860656,
+            "median": 7516.227575103047,
+            "min": 7274.717790728017
+          },
+          "jobs_per_second": {
+            "max": 279.69216619952437,
+            "median": 214.98878899862058,
+            "min": 137.35970937656705
+          },
+          "peak_connections": {
+            "limit": 96,
+            "observed": 81,
+            "within_limit": true
+          },
+          "peak_host_load_average_1m": {
+            "max": 5.56982421875,
+            "median": 3.55419921875,
+            "min": 1.25732421875
+          },
+          "peak_processes": {
+            "limit": 128,
+            "observed": 32,
+            "within_limit": true
+          },
+          "peak_rss_bytes": {
+            "max": 1187786752,
+            "median": 1163886592,
+            "min": 1153765376
+          },
+          "peak_threads": {
+            "limit": 672,
+            "observed": 184,
+            "within_limit": true
+          },
+          "pickup_p99_ms": {
+            "max": 447.31298828125,
+            "median": 286.81982421875,
+            "min": 222.0400390625
+          },
+          "runner_sql_calls_per_job": {
+            "max": 8.140625,
+            "median": 6.9375,
+            "min": 6.140625
+          },
+          "settlement_p99_ms": {
+            "max": 465.929931640625,
+            "median": 297.68994140625,
+            "min": 228.822998046875
+          },
+          "sql_calls_per_job": {
+            "max": 8.34375,
+            "median": 7.125,
+            "min": 6.3125
+          }
+        }
+      },
+      "throughput_pair_wins": 2
+    },
+    "short": {
+      "budget_breaches": [],
+      "pairs": [
+        "short-01",
+        "short-scored-02",
+        "short-scored-03",
+        "short-scored-04",
+        "short-scored-05"
+      ],
+      "scored_jobs": 1280,
+      "summary": {
+        "budgets": {
+          "cpu_seconds_per_job": {
+            "mesh_median": 0.00157634375,
+            "oban_median": 0.006876304687499999,
+            "relative_limit": 1.25,
+            "within_limit": true
+          },
+          "peak_connections": 20,
+          "peak_processes": 32,
+          "peak_rss_bytes": {
+            "mesh_median": 42532864,
+            "oban_median": 139264000,
+            "relative_limit": 1.5,
+            "within_limit": true
+          },
+          "peak_threads": 204
+        },
+        "comparison": {
+          "jobs_per_second": {
+            "mesh_median": 728.1373257041275,
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 444.34876794852454,
+            "within_limit": true
+          },
+          "pickup_p99_ms": {
+            "mesh_median": 164.237060546875,
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 283.923828125,
+            "within_limit": true
+          }
+        },
+        "mesh": {
+          "application_sql_calls_per_job": {
+            "max": 4.0,
+            "median": 4.0,
+            "min": 4.0
+          },
+          "claim_calls_per_job": {
+            "max": 0.171875,
+            "median": 0.1484375,
+            "min": 0.125
+          },
+          "claim_p99_ms": {
+            "max": 512.39208984375,
+            "median": 160.05908203125,
+            "min": 105.31103515625
+          },
+          "cpu_seconds_per_job": {
+            "max": 0.0032195859375,
+            "median": 0.00157634375,
+            "min": 0.0010921562499999998
+          },
+          "enqueue_sql_calls_per_job": {
+            "max": 1.140625,
+            "median": 1.109375,
+            "min": 1.109375
+          },
+          "event_logs_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "events_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "idle_queries_per_minute": {
+            "max": 1774.863691199733,
+            "median": 1696.862664962542,
+            "min": 1656.0540135624099
+          },
+          "jobs_per_second": {
+            "max": 1156.0900637484813,
+            "median": 728.1373257041275,
+            "min": 229.30068905493852
+          },
+          "peak_connections": {
+            "limit": 20,
+            "observed": 13,
+            "within_limit": true
+          },
+          "peak_host_load_average_1m": {
+            "max": 0.080078125,
+            "median": 0.0,
+            "min": 0.0
+          },
+          "peak_processes": {
+            "limit": 32,
+            "observed": 5,
+            "within_limit": true
+          },
+          "peak_queued_context_bytes": {
+            "limit": 33554432,
+            "observed": 21696,
+            "within_limit": true
+          },
+          "peak_rss_bytes": {
+            "max": 57458688,
+            "median": 42532864,
+            "min": 38543360
+          },
+          "peak_threads": {
+            "limit": 204,
+            "observed": 34,
+            "within_limit": true
+          },
+          "pickup_p99_ms": {
+            "max": 528.318115234375,
+            "median": 164.237060546875,
+            "min": 108.43408203125
+          },
+          "runner_sql_calls_per_job": {
+            "max": 1.7890625,
+            "median": 1.625,
+            "min": 1.5
+          },
+          "settlement_p99_ms": {
+            "max": 551.214111328125,
+            "median": 167.60302734375,
+            "min": 110.27197265625
+          },
+          "sql_calls_per_job": {
+            "max": 6.9296875,
+            "median": 6.734375,
+            "min": 6.609375
+          }
+        },
+        "oban": {
+          "application_sql_calls_per_job": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0
+          },
+          "claim_calls_per_job": {
+            "max": 0.125,
+            "median": 0.0859375,
+            "min": 0.0703125
+          },
+          "claim_p99_ms": {
+            "max": 616.2880859375,
+            "median": 282.1279296875,
+            "min": 141.62109375
+          },
+          "cpu_seconds_per_job": {
+            "max": 0.0122688046875,
+            "median": 0.006876304687499999,
+            "min": 0.00423840625
+          },
+          "enqueue_sql_calls_per_job": {
+            "max": 0.109375,
+            "median": 0.09375,
+            "min": 0.0859375
+          },
+          "event_logs_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "events_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "idle_queries_per_minute": {
+            "max": 955.5393163270803,
+            "median": 875.7059391477395,
+            "min": 873.8113638349654
+          },
+          "jobs_per_second": {
+            "max": 860.8687370899572,
+            "median": 444.34876794852454,
+            "min": 203.39317075214524
+          },
+          "peak_connections": {
+            "limit": 20,
+            "observed": 19,
+            "within_limit": true
+          },
+          "peak_host_load_average_1m": {
+            "max": 0.3759765625,
+            "median": 0.0,
+            "min": 0.0
+          },
+          "peak_processes": {
+            "limit": 32,
+            "observed": 4,
+            "within_limit": true
+          },
+          "peak_rss_bytes": {
+            "max": 143331328,
+            "median": 139264000,
+            "min": 138129408
+          },
+          "peak_threads": {
+            "limit": 204,
+            "observed": 23,
+            "within_limit": true
+          },
+          "pickup_p99_ms": {
+            "max": 619.62109375,
+            "median": 283.923828125,
+            "min": 144.633056640625
+          },
+          "runner_sql_calls_per_job": {
+            "max": 3.46875,
+            "median": 3.2890625,
+            "min": 3.2421875
+          },
+          "settlement_p99_ms": {
+            "max": 624.6611328125,
+            "median": 287.90380859375,
+            "min": 147.616943359375
+          },
+          "sql_calls_per_job": {
+            "max": 3.578125,
+            "median": 3.3828125,
+            "min": 3.3359375
+          }
+        }
+      },
+      "throughput_pair_wins": 4
+    },
+    "sparse": {
+      "budget_breaches": [
+        "oban.peak_processes"
+      ],
+      "pairs": [
+        "sparse-02",
+        "sparse-scored-02",
+        "sparse-scored-03",
+        "sparse-scored-04",
+        "sparse-scored-05"
+      ],
+      "scored_jobs": 240,
+      "summary": {
+        "budgets": {
+          "cpu_seconds_per_job": {
+            "mesh_median": 0.00868025,
+            "oban_median": 0.022146916666666665,
+            "relative_limit": 1.25,
+            "within_limit": true
+          },
+          "peak_connections": 5,
+          "peak_processes": 2,
+          "peak_rss_bytes": {
+            "mesh_median": 30121984,
+            "oban_median": 135647232,
+            "relative_limit": 1.5,
+            "within_limit": true
+          },
+          "peak_threads": 84
+        },
+        "comparison": {
+          "jobs_per_second": {
+            "mesh_median": 2.8784975030123436,
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2.012401786301371,
+            "within_limit": true
+          },
+          "listener_claim_p99_ms": {
+            "limit": 100,
+            "observed": 11.81689453125,
+            "within_limit": true
+          },
+          "pickup_p99_ms": {
+            "mesh_median": 5.908935546875,
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 241.71484375,
+            "within_limit": true
+          }
+        },
+        "mesh": {
+          "application_sql_calls_per_job": {
+            "max": 4.0,
+            "median": 4.0,
+            "min": 4.0
+          },
+          "claim_calls_per_job": {
+            "max": 3.0416666666666665,
+            "median": 3.0,
+            "min": 3.0
+          },
+          "claim_p99_ms": {
+            "max": 11.81689453125,
+            "median": 3.591064453125,
+            "min": 2.77490234375
+          },
+          "cpu_seconds_per_job": {
+            "max": 0.013188041666666666,
+            "median": 0.00868025,
+            "min": 0.006145958333333333
+          },
+          "enqueue_sql_calls_per_job": {
+            "max": 12.125,
+            "median": 12.125,
+            "min": 12.125
+          },
+          "event_logs_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "events_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "idle_queries_per_minute": {
+            "max": 1776.3209178650168,
+            "median": 1774.5199611717883,
+            "min": 1695.5385429961223
+          },
+          "jobs_per_second": {
+            "max": 2.9075430072590973,
+            "median": 2.8784975030123436,
+            "min": 2.846259264153498
+          },
+          "peak_connections": {
+            "limit": 5,
+            "observed": 5,
+            "within_limit": true
+          },
+          "peak_host_load_average_1m": {
+            "max": 0.0732421875,
+            "median": 0.0,
+            "min": 0.0
+          },
+          "peak_processes": {
+            "limit": 2,
+            "observed": 2,
+            "within_limit": true
+          },
+          "peak_queued_context_bytes": {
+            "limit": 33554432,
+            "observed": 1356,
+            "within_limit": true
+          },
+          "peak_rss_bytes": {
+            "max": 30134272,
+            "median": 30121984,
+            "min": 30105600
+          },
+          "peak_threads": {
+            "limit": 84,
+            "observed": 14,
+            "within_limit": true
+          },
+          "pickup_p99_ms": {
+            "budget": 750,
+            "max": 14.14599609375,
+            "median": 5.908935546875,
+            "min": 5.60205078125,
+            "within_budget": true
+          },
+          "runner_sql_calls_per_job": {
+            "max": 18.333333333333332,
+            "median": 18.166666666666668,
+            "min": 18.166666666666668
+          },
+          "settlement_p99_ms": {
+            "max": 21.64599609375,
+            "median": 18.01611328125,
+            "min": 14.402099609375
+          },
+          "sql_calls_per_job": {
+            "max": 34.458333333333336,
+            "median": 34.291666666666664,
+            "min": 34.291666666666664
+          }
+        },
+        "oban": {
+          "application_sql_calls_per_job": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0
+          },
+          "claim_calls_per_job": {
+            "max": 2.0,
+            "median": 2.0,
+            "min": 2.0
+          },
+          "claim_p99_ms": {
+            "max": 251.253173828125,
+            "median": 240.471923828125,
+            "min": 228.652099609375
+          },
+          "cpu_seconds_per_job": {
+            "max": 0.033962291666666665,
+            "median": 0.022146916666666665,
+            "min": 0.019099708333333333
+          },
+          "enqueue_sql_calls_per_job": {
+            "max": 9.458333333333334,
+            "median": 9.416666666666666,
+            "min": 9.416666666666666
+          },
+          "event_logs_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "events_dropped": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "idle_queries_per_minute": {
+            "max": 957.5485954806703,
+            "median": 956.3285876091676,
+            "min": 876.6558376326436
+          },
+          "jobs_per_second": {
+            "max": 2.0174977872048805,
+            "median": 2.012401786301371,
+            "min": 2.0012049084077845
+          },
+          "peak_connections": {
+            "limit": 5,
+            "observed": 4,
+            "within_limit": true
+          },
+          "peak_host_load_average_1m": {
+            "max": 0.283203125,
+            "median": 0.080078125,
+            "min": 0.0
+          },
+          "peak_processes": {
+            "limit": 2,
+            "observed": 4,
+            "within_limit": false
+          },
+          "peak_rss_bytes": {
+            "max": 138043392,
+            "median": 135647232,
+            "min": 135524352
+          },
+          "peak_threads": {
+            "limit": 84,
+            "observed": 23,
+            "within_limit": true
+          },
+          "pickup_p99_ms": {
+            "budget": 750,
+            "max": 251.899169921875,
+            "median": 241.71484375,
+            "min": 229.72412109375,
+            "within_budget": true
+          },
+          "runner_sql_calls_per_job": {
+            "max": 17.0,
+            "median": 17.0,
+            "min": 17.0
+          },
+          "settlement_p99_ms": {
+            "max": 254.1630859375,
+            "median": 244.739013671875,
+            "min": 232.7099609375
+          },
+          "sql_calls_per_job": {
+            "max": 26.458333333333332,
+            "median": 26.416666666666668,
+            "min": 26.416666666666668
+          }
+        }
+      },
+      "throughput_pair_wins": 5
+    }
+  },
+  "status": "five paired diagnostic runs per profile using the reconstructed two-scheduler Oban launcher"
 }
