@@ -38290,6 +38290,88 @@
       "sha256": "7ca15f29b74f005ffe33da9b019adc6ae20073f178a4ed7dc82e8dec3ada60e9"
     }
   },
+  "current_branch_postgres_compatibility_verification": {
+    "revision": "bdc83c722e47b2935da235e62f772e71118115c8",
+    "tree": "c2ef90f1bed91a5767a0c5cb29280f753df6d978",
+    "qualification": false,
+    "scope": "Exact local PR branch macOS ARM64 workspace build, runtime and library tests, and disposable TLS/SCRAM Jobs verification.",
+    "rustc": {
+      "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/rustc.txt",
+      "sha256": "352d6857968e80a6357a926ac685b9b07f77c479aaafde33e73a53945e802909"
+    },
+    "formatting": {
+      "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "workspace_build": {
+      "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/workspace-build.log",
+      "sha256": "85767204a7cedc8227361aa956bbf45b712b986bb8131503f8414453aa876fa1"
+    },
+    "workspace_runtime": {
+      "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/workspace-runtime.log",
+      "sha256": "c373445fbd01ae52b845cec72723ebd9e7dba00dccc1d88c521057375306a8a7"
+    },
+    "fresh_target_diagnostics": {
+      "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/fresh-diagnostics.log",
+      "sha256": "02b21524eb562fb0f5306ad279884631064fce9576647528ff72aa33dd18a4b2"
+    },
+    "workspace_runtime_tests": 1560,
+    "workspace_library_tests": 3,
+    "shared_target_build_failure": {
+      "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/compatibility-17.11.log",
+      "sha256": "8a1b1674441608ee35399c25a1e4028979e43a48bc58c7819aab3e4d2a52b3a0"
+    },
+    "postgres": {
+      "17.11": {
+        "compatibility": {
+          "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/fresh-compatibility-17.11.log",
+          "sha256": "89d9b4de0f4fd18f1fc386a151491e71dec023065936c2c4afc785d75ee4d974"
+        },
+        "effect_transaction": {
+          "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/effect-transaction-17.11.log",
+          "sha256": "dcb263da65ac45f5c3ccd767e65498875fbedaeb0b02cce2a1b4f789d5eecb1d"
+        },
+        "effect_fence": {
+          "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/effect-fence-17.11.log",
+          "sha256": "1734b88fd6db4593152df8caee882920c84ab7b08d973dda96c19e1723ca8b57"
+        },
+        "jobs_runtime_tests": 53,
+        "compiled_jobs_tests": 3
+      },
+      "18.7": {
+        "compatibility": {
+          "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/fresh-compatibility-18.7.log",
+          "sha256": "d6e0a0348bed84ec25bed8781a9f541f7c1d3d0b57f0aa9c5a08009f34d44d25"
+        },
+        "effect_transaction": {
+          "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/effect-transaction-18.7.log",
+          "sha256": "7e9f4606bc1cf85ff901144346c48be72253303bcc19006c7c3ebccf94f5694c"
+        },
+        "effect_fence": {
+          "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/effect-fence-18.7.log",
+          "sha256": "f72466306cda863806863b7c18eeb13b3a712f29afd7d37ec51467756feda0ff"
+        },
+        "jobs_runtime_tests": 53,
+        "compiled_jobs_tests": 3
+      },
+      "19.0": {
+        "compatibility": {
+          "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/fresh-compatibility-19.0.log",
+          "sha256": "2681e85ddb10b4376249f7d09d2526392b4fd7684fd8ca18edb1ca025b5943cb"
+        },
+        "effect_transaction": {
+          "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/effect-transaction-19.0.log",
+          "sha256": "7c76da0ae1dd5d5e3a2e94ce64d68f70b53200801e0e768dfbe82f3491655e75"
+        },
+        "effect_fence": {
+          "path": "target/jobs-parity/current-branch-verifier-bdc83c722e47b2935da235e62f772e71118115c8/effect-fence-19.0.log",
+          "sha256": "cbb448ed335a9d842bd2a1f389426441aeeef9ebe84a706dfe16437acc616de5"
+        },
+        "jobs_runtime_tests": 53,
+        "compiled_jobs_tests": 3
+      }
+    }
+  },
   "compiled_jobs_effect_wait_order_and_compatibility": {
     "revision": "0c36b42934e9d493c5074ad876f980040fc53489",
     "qualification": false,
@@ -39206,6 +39288,75 @@
         "oban": 554.5503681397546
       }
     }
+  },
+  "linux_compiled_jobs_effect_dense_claim_portal_cpu": {
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "qualification": false,
+    "scope": "Linux ARM64 split claim diagnostic on noop-8r-64s. Both modes use the same relinked PostgreSQL server and instrumented Mesh fixture.",
+    "summary": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-portal-bridge/summary-01.json",
+      "sha256": "558992e48845aefc2eef26f52c4d5899dc45bc100d3b2ede868bc47fc1b37223"
+    },
+    "postgres": "17.11",
+    "validated_jobs": 6144,
+    "validated_independent_writes": 12288,
+    "probes": [
+      {
+        "run": "on-01",
+        "mode": "on",
+        "raw_interior_portal_cpu_ms_per_job": {
+          "interior_empty": 0.00127799609375,
+          "interior_hint": 0.0096034794921875,
+          "interior_productive": 0.1100590751953125
+        },
+        "jobs_per_second": {
+          "listen": 1124.8136173572389,
+          "oban": 2650.727222398475
+        }
+      },
+      {
+        "run": "on-02",
+        "mode": "on",
+        "raw_interior_portal_cpu_ms_per_job": {
+          "interior_empty": 0.0017748974609375,
+          "interior_hint": 0.0116178037109375,
+          "interior_productive": 0.1241501044921875
+        },
+        "jobs_per_second": {
+          "listen": 947.5068640699541,
+          "oban": 1966.3153433676594
+        }
+      },
+      {
+        "run": "off-03",
+        "mode": "off",
+        "raw_interior_portal_cpu_ms_per_job": {},
+        "jobs_per_second": {
+          "listen": 1035.6480059418282,
+          "oban": 1158.3879965013364
+        }
+      }
+    ],
+    "rejected_controls": [
+      {
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-portal-bridge/off-01/extracted/extraction.json",
+          "sha256": "ef391a0bcd23eafa4d96e0f794abb9b0a86bece229d3c51e2d83cecdbc12e424"
+        },
+        "listen_after_edge_driver_cpu_excess_ns": 13167,
+        "run": "off-01"
+      },
+      {
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-dense-claim-portal-bridge/off-02/extracted/extraction.json",
+          "sha256": "ce4bdc2446b50501daa7b2caa50d18a7ec6b8c440022966a64463e3f56bfd8c5"
+        },
+        "listen_after_edge_driver_cpu_excess_ns": 15667,
+        "run": "off-02"
+      }
+    ],
+    "productive_credit_cpu_ms_per_job": null,
+    "off_on_off_comparison_valid": false
   },
   "linux_compiled_jobs_effect_64slot_pre_split_smaps": {
     "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",

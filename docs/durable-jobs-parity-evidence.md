@@ -4484,6 +4484,18 @@ of 0.15 CPU-ms/job in each pair. The first two captures failed
 guest setup or drain verification and are retained separately.
 [Pre-split validation receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Recheck the PR branch on the PostgreSQL version matrix
+
+The PR branch at `bdc83c72` passed the workspace build, formatting,
+and runtime and library suites from a fresh Cargo target on macOS
+ARM64. PostgreSQL 17.11, 18.7, and 19.0 each passed the versioned
+TLS/SCRAM verifier, fresh-install and upgrade role proofs, 53 Jobs
+runtime tests, and three compiled Jobs tests. Both standalone effect
+SQL proofs also passed on each version. The first attempt using the
+shared Cargo target reused an older compiler dependency and failed
+to build. The fresh target passed with the same source.
+[Current-branch verification receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Verify the integrated Jobs candidate
 
 Revision `8526a5bd` passed the compatibility verifier on macOS ARM64
@@ -4731,6 +4743,25 @@ the boots, so the pair cannot resolve observer overhead. The capture
 establishes the outcome counts and session identities. Removable CPU
 and the case for a dispatcher redesign remain unresolved.
 [Claim-turn receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure claim execution inside PostgreSQL
+
+A diagnostic PostgreSQL 17.11 build sampled backend thread CPU around
+the exact claim `PortalRun`. Both Linux ARM64 probe runs joined all
+eight claim backends to the client receipts and accounted for all
+1,024 Mesh jobs per run. Productive claims used 0.110 and 0.124 raw
+CPU-ms per workload job inside that bracket. Empty and contention
+turns used 0.011 and 0.013 CPU-ms per job. The bracket covers claim
+execution and excludes the separate due probe and transaction and
+protocol work outside `PortalRun`.
+
+A third capture using the same server binary with the meter off
+produced zero probe receipts. Two earlier controls failed CPU edge
+validation. Across the three validated boots, Oban ranged from 1,158
+to 2,651 jobs/s. The raw execution split is repeatable across the two
+probe runs. Host drift and the unverified debit for meter instructions
+still leave the stock claim-lane savings unresolved.
+[Portal execution receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 
