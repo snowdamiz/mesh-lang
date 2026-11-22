@@ -58,10 +58,25 @@ The raw sampler exported aggregate RSS. A pre-exec child sharing the runner's ad
 
 The unchanged fallback is `fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8`. The original Zig/LLD command and frozen object, archives, and link-time DSOs reproduce it byte for byte. To rebuild the candidate, use the same input files and apply the recorded linker fragment. The fragment selects whole sections by object or archive member and orders regular read-only data. The four PT_LOAD roles, GNU interpreter, constructors, dynamic ABI, unwind entries, and original garbage-collection settings are preserved.
 
-The provenance file lists repository-relative release link commands and hashes for the inputs, layout, maps, and audits. If the performance archive is available, `target/worker-hot-section-layout/REPLAY.md` shows how to regenerate the fragment from the pinned profiles and verify the normal and relocation sidecars. Run `export.py --archive PATH` to derive the compact files from that archive. The archive itself contains the original linker invocation and full guests. The portable score runs directly from the checked-in inputs.
+The provenance file lists repository-relative release link commands and hashes for the inputs, layout, maps, and audits. Place the pinned link inputs at those paths, then run the benchmark-specific relink in a fresh output directory. This command uses the archived macOS ARM64 Zig driver.
+
+```sh
+python3 -B proof/jobs-parity/linux-worker-layout/relink.py relink . target/worker-layout-rebuild
+```
+
+The command verifies the inputs, reproduces the stock ELF, and asks LLD for the normal symbol map with `--strip-debug`. It retains the resulting map and regenerates the original `order.ld` from the checked-in line indices. It checks the fragment digest and the final candidate digest before writing the receipt. Add `--stock-map PATH` to use a retained map. To extract the fragment without linking, run the following command with the stock map.
+
+```sh
+python3 -B proof/jobs-parity/linux-worker-layout/relink.py extract \
+  target/worker-hot-section-layout/stock/link.map target/reconstructed-order.ld
+```
+
+The indices are one-based lines in the stock LLD map. The receipt pins the archived map and its normalized digest. Normalization removes the checkout prefix from input names so an otherwise identical LLD map can come from another checkout. The extractor preserves the original order of 1,666 read-only data selectors and 2,228 text selectors. The resulting 595,792 bytes hash to `a5b21e88de9e5b027ea34acaba13f1830c6e07871b41947bbfdab30808a857de`. These indices apply to this archived ELF. The verification run generated its own stock map and linker script. The map, script, stock ELF, and candidate ELF all matched the archived bytes.
+
+If the full archive is available, `target/worker-hot-section-layout/REPLAY.md` shows how to derive the order from the pinned profiles and verify the normal and relocation sidecars. Run `export.py --archive PATH` to derive the compact score inputs from that archive. The portable score runs directly from the checked-in inputs.
 
 The compiler link entry point is `compiler/mesh-codegen/src/link.rs`. The independent portable compiler experiment keeps its adapter and method under `target/portable-mesh-section-layout`. The compiler layout owner is developing `scripts/mesh-section-layout.py` from that work. Its replay and the source artifact hashes let the compiler layout owner compare the approaches without borrowing benchmark claims from a different ELF.
 
 The optional archive root is `target/worker-hot-section-layout`. The `qualification/slow-01` through `qualification/slow-05` directories hold all five scored groups. The `canonical/slow-*` directories hold the unscored pilots. The first held diagnostic without the retained THP flag lives in `held-01`. The corrected held proof lives in `canonical-held-01`. Dense pilot timings have their own receipts in `canonical/noop-*`.
 
-[Link provenance](link-provenance.json) · [Archive exporter](export.py)
+[Link provenance](link-provenance.json) · [Map indices](order-map-indices.json) · [Relink helper](relink.py) · [Archive exporter](export.py)
