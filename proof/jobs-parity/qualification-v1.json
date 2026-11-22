@@ -38055,6 +38055,157 @@
       }
     }
   },
+  "linux_compiled_jobs_effect_64slot_lean_trim": {
+    "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
+    "qualification": false,
+    "scope": "One same-ELF full-occupancy Linux ARM64 held-worker pair under stock 64 KiB fault-around. Both arms used 64 fresh workers and compact per-worker validation receipts.",
+    "comparison": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/lean-comparison-01.json",
+      "sha256": "1d0e91ddcd5eb7304b6d588aa8089c489360ed4d2d698bead86ca8255e5baef0"
+    },
+    "build": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/link-01/link.json",
+      "sha256": "6a8ba8776c357a6cd189142f542b4484ffd42505b958fdcc669c2d5a9d9640d7"
+    },
+    "plan": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/plan-01/plan.json",
+      "sha256": "93756046bedfc1bbe922c90c8b3dd03bb3c8178fc0f359120bc1366b9f070e86"
+    },
+    "release_fixture_sha256": "9d219fc873adb04085e8cabfcc13add0c5eab18088b081255b20104f43866a36",
+    "plan_sha256": "2455923073a5883f798b8b3a5e672df067aaa59d97e1ab3b23a2ce32069727cd",
+    "historical_cutoffs_mib": {
+      "206": false,
+      "221.3": true
+    },
+    "arms": {
+      "control": {
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/control-01/extracted/extraction.json",
+          "sha256": "0dee0d9178405b94ed26815f5e9907b6d65604c59e7554387877a7e7edc79202"
+        },
+        "peak_tree_rss_bytes": 387575808,
+        "runner_cgroup_cpu_ms_per_job": 10.00103125,
+        "bootstrap_thread_cpu_ms_per_job": {
+          "bootstrap": 0.22334440625,
+          "bootstrap_excluding_advice_loops": 0.222810578125,
+          "drop_loop": 0.000265578125,
+          "split_loop": 0.00026825
+        },
+        "consuming_waits": 64,
+        "effects": 128,
+        "jobs": 64
+      },
+      "treatment": {
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/trim-01/extracted/extraction.json",
+          "sha256": "af445c054b3e5036b6192b7423862708dff27f8abf10240e84957a15dbbca700"
+        },
+        "peak_tree_rss_bytes": 218456064,
+        "runner_cgroup_cpu_ms_per_job": 10.625875,
+        "bootstrap_thread_cpu_ms_per_job": {
+          "bootstrap": 0.755787,
+          "bootstrap_excluding_advice_loops": 0.5447030625,
+          "drop_loop": 0.085038953125,
+          "split_loop": 0.126044984375
+        },
+        "consuming_waits": 64,
+        "effects": 128,
+        "jobs": 64
+      }
+    }
+  },
+  "linux_compiled_jobs_effect_64slot_lean_slow_timing_rejected": {
+    "revision": "2465f793b9d0d7f167ecbec1c94001caad900f08",
+    "qualification": false,
+    "scope": "Five unscored local pairs using the frozen workload and stock kernel with the lean trim fixture. The scorer rejected the comparison. Each Mesh arm estimated a peak of 65, and each live sample series peaked at 64. The one-millisecond sensitivity does not resolve exact committed occupancy.",
+    "profile": "slow-1r-64s",
+    "pilot": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pilot-01/slow-summary.json",
+      "sha256": "1bf9f7fa24d2e30c440cd7826696224d0be5a2ee799d256a9278d5b8f698c31d"
+    },
+    "groups": [
+      {
+        "pair": 0,
+        "result": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-0/slow-summary.json",
+          "sha256": "eb50b1a8ed8e2d977772e894db9730379ca56a205fbfe1c95c0e208d2610cbaf"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-0/extracted/extraction.json",
+          "sha256": "8877340fc65eb76b9fe49d01be0514188d01294d3d30d5aedeb890f8e28858ed"
+        },
+        "mesh_claim_timestamp_plus_one_ms_peak_sensitivity": 64
+      },
+      {
+        "pair": 1,
+        "result": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-1/slow-summary.json",
+          "sha256": "9ddf7c8ec265581c4596b6ca45831213f9aa1da2622446c8ed273f672b2b1f14"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-1/extracted/extraction.json",
+          "sha256": "63def8b9d4c7deee8782fcdb6139c371d17f9d5a90cff751626c84a0f21f8aa9"
+        },
+        "mesh_claim_timestamp_plus_one_ms_peak_sensitivity": 64
+      },
+      {
+        "pair": 2,
+        "result": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-2/slow-summary.json",
+          "sha256": "1c02cb30a2db9033b16d24a990fe6783b5ae921bb965d333b1ff9186b3a069e6"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-2/extracted/extraction.json",
+          "sha256": "aeaf4551692e7814fb661db027988a7d227864f8220354c3324780358739cc73"
+        },
+        "mesh_claim_timestamp_plus_one_ms_peak_sensitivity": 64
+      },
+      {
+        "pair": 3,
+        "result": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-3/slow-summary.json",
+          "sha256": "78283c4559e08db266c117b59e1137d99eddd0a27c53127b188e2751cc45eace"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-3/extracted/extraction.json",
+          "sha256": "61e622586b39e6c305b2572d7bf44408df33763498217abee58f9ff11269f954"
+        },
+        "mesh_claim_timestamp_plus_one_ms_peak_sensitivity": 64
+      },
+      {
+        "pair": 4,
+        "result": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-4/slow-summary.json",
+          "sha256": "d22f2c1e34b60c66c9b1501fc686bf98129b01b972b3e7b645ad285759fc9936"
+        },
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-64slot-lean-trim/slow-pair-4/extracted/extraction.json",
+          "sha256": "296f643c15000580cc20a84f784e31ce25a64c6331569eafbf5ddc889f358ff6"
+        },
+        "mesh_claim_timestamp_plus_one_ms_peak_sensitivity": 64
+      }
+    ],
+    "reconciled_jobs": 5120,
+    "committed_writes": 10240,
+    "mesh_estimated_peak": 65,
+    "mesh_live_sample_peak": 64,
+    "descriptive_medians": {
+      "listen": {
+        "jobs_per_second": 510.4120651985291,
+        "pickup_p99_ms": 878.443115234375,
+        "peak_rss_bytes": 192000000,
+        "cpu_seconds_per_job": 0.0017469999999999999
+      },
+      "oban": {
+        "jobs_per_second": 420.84908225628595,
+        "pickup_p99_ms": 1110.39404296875,
+        "peak_rss_bytes": 152862720,
+        "cpu_seconds_per_job": 0.0013241035156249998
+      }
+    },
+    "descriptive_runner_cpu_ratio": 1.3193832501648375,
+    "scorer_rejected": "arm lacks frozen workload, correctness or resource evidence"
+  },
   "linux_compiled_jobs_wait_order_noble_smoke": {
     "revision": "233fccbc37bad250008a1850e3caaad8f5b60309",
     "qualification": false,
@@ -38075,6 +38226,302 @@
       "path": "target/jobs-parity/linux-arm-ownership-guest/noble-wait-order-smoke/capture-2g.Bx0MkVrY/guest.serial",
       "sha256": "7ca15f29b74f005ffe33da9b019adc6ae20073f178a4ed7dc82e8dec3ada60e9"
     }
+  },
+  "compiled_jobs_effect_wait_order_and_compatibility": {
+    "revision": "0c36b42934e9d493c5074ad876f980040fc53489",
+    "qualification": false,
+    "scope": "Local Linux GNU ARM64 opt0 wait-order proof on PostgreSQL 17.11, and exact local macOS ARM64 PostgreSQL compatibility. The hosted workflow has not run on this revision.",
+    "linux_gnu_arm64": {
+      "postgres": "17.11",
+      "fixture": {
+        "fixture_sha256": "d3cb7aa8e7b20c6d8c161fd02b79f5626ea598372a7879eb39117325de9c1785",
+        "main_sha256": "e4500394a74cedc678488f1100bed2632c9e6ca8e67f25b4834838aded786457",
+        "opt_level": 0,
+        "profile": "debug",
+        "runtime_features": [],
+        "runtime_sha256": "6742eff6b0c36c371516bedd3228333a2e5f742d93479e6ae8282b42ae9e3ad5",
+        "runtime_source": "233fccbc37bad250008a1850e3caaad8f5b60309",
+        "source": "0c36b42934e9d493c5074ad876f980040fc53489",
+        "symbol": "_RNvNtNtCs88Ke6268T2G_7mesh_rt2db2pg11pg_jobs_ack",
+        "target": "aarch64-unknown-linux-gnu"
+      },
+      "physical_connection_cap": 5,
+      "arms": {
+        "poll": {
+          "pack": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-wait-order-database/poll/pack.json",
+            "sha256": "6041e9b1a9aa5c55af88cba60b5d86309e6fb585e89229b48e12e441ea86cf76"
+          },
+          "extraction": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-wait-order-database/poll-capture.BKzk0KEm/extraction.json",
+            "sha256": "598f8ee863ece46909f41a5f814b12b8003b0059bf9fc20188dde22345625c32"
+          },
+          "wait_order": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-wait-order-database/poll-capture.BKzk0KEm/evidence/wait-order.json",
+            "sha256": "b1e36af9833a16123f9a6600fc8ef034f7c81db106f84b9ea4a26c3cfa488b73"
+          },
+          "consuming_waits_before_settlement_submission": 3,
+          "state_and_attempt": [
+            [
+              "completed",
+              1
+            ],
+            [
+              "retryable",
+              1
+            ],
+            [
+              "completed",
+              2
+            ]
+          ],
+          "resets_including_session_setup": 8,
+          "listen_counters": []
+        },
+        "listen": {
+          "pack": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-wait-order-database/listen/pack.json",
+            "sha256": "4c5ada0eb999cd433f4be7379770f96c7022e6feeeca441fb58d02ecdf376548"
+          },
+          "extraction": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-wait-order-database/listen-capture.F1xabX4R/extraction.json",
+            "sha256": "83060cd84b7415e221683c26da689faf5e4dbc4d08fda80a970ab7e7640da67b"
+          },
+          "wait_order": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-wait-order-database/listen-capture.F1xabX4R/evidence/wait-order.json",
+            "sha256": "db8fc5126da02974d986ef3ef98e13ec2de4fe0d833db26094d555737f784d15"
+          },
+          "consuming_waits_before_settlement_submission": 3,
+          "state_and_attempt": [
+            [
+              "completed",
+              1
+            ],
+            [
+              "retryable",
+              1
+            ],
+            [
+              "completed",
+              2
+            ]
+          ],
+          "resets_including_session_setup": 8,
+          "listen_counters": [
+            [
+              1,
+              0,
+              1,
+              0
+            ],
+            [
+              1,
+              0,
+              1,
+              0
+            ]
+          ]
+        }
+      }
+    },
+    "macos_arm64": {
+      "17.11": {
+        "compatibility": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pg17.11.log",
+          "sha256": "5d4c455fc6d0d1768cbff5e1e85fbba7f46a4a450acef0fc2e679a788a3145c5"
+        },
+        "effect_fence": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pg17.11-effect-fence.log",
+          "sha256": "e0c9c34c46e552391efe9625b55f05f846d63bc4da8fc959ed7c5899cc96986d"
+        },
+        "effect_transaction": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pg17.11-effect-transaction.log",
+          "sha256": "58d8a6ef15fac10f5dab84b0707c5e9b64756025ba7cc251b4fc750fc3769ec0"
+        },
+        "database_backed_jobs_runtime_tests": 68,
+        "compiled_jobs_tests": 3
+      },
+      "18.7": {
+        "compatibility": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pg18.7.log",
+          "sha256": "e571292e92fa8e647fe3e2203541989fd559449862a93336edad783cb3aea7af"
+        },
+        "effect_fence": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pg18.7-effect-fence.log",
+          "sha256": "39169f360a2cf10714a94e02955b4bfab92ca57a18ce6c7453c49b21cf208a5e"
+        },
+        "effect_transaction": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pg18.7-effect-transaction.log",
+          "sha256": "1d04348363be6ca50b180cac9d558fc0e288a00c7f4270169b3c58bf1a6cf695"
+        },
+        "database_backed_jobs_runtime_tests": 68,
+        "compiled_jobs_tests": 3
+      },
+      "19.0": {
+        "compatibility": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pg19.0.log",
+          "sha256": "ff6c21bfda5f0ceac74b23ca710011961172b428b2d081fea88822e4e9c325c6"
+        },
+        "effect_fence": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pg19.0-effect-fence.log",
+          "sha256": "a6be217d989120ac0f70e05cddf2609a5233b91c67bffbaa1978bbb43383a228"
+        },
+        "effect_transaction": {
+          "path": "target/jobs-parity/native-arm64-authoritative/macos-0c36b429/pg19.0-effect-transaction.log",
+          "sha256": "81b7fa7edd8deab325a40f839c143ba564b2712c8ac3adbe4861b337cd28c169"
+        },
+        "database_backed_jobs_runtime_tests": 68,
+        "compiled_jobs_tests": 3
+      }
+    }
+  },
+  "linux_compiled_jobs_effect_sparse_hard_cap": {
+    "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "qualification": false,
+    "scope": "Local trace-off Linux ARM64 PostgreSQL 17.11 comparison with 24 sparse enqueue commits per arm and a shared producer-observer connection. The frozen thresholds passed for this single profile.",
+    "profile": "sparse-1r-1s",
+    "score": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/score-01.json",
+      "sha256": "c4b6e03678ce62121954822a5a61b7a978f1568602ac2de87dc2cef6181377e4"
+    },
+    "worker_slots": 1,
+    "physical_connection_cap": 5,
+    "reconciled_measured_jobs": 240,
+    "reconciled_measured_writes": 480,
+    "mesh_pair_wins": 5,
+    "gates": {
+      "cpu_seconds_per_job": {
+        "mesh_median": 0.009090833333333333,
+        "oban_median": 0.02618033333333333,
+        "relative_limit": 1.25,
+        "within_limit": true
+      },
+      "jobs_per_second": {
+        "mesh_median": 2.9082773453555384,
+        "ratio_limit": 1.0,
+        "reference": "oban",
+        "reference_median": 2.026256745428988,
+        "within_limit": true
+      },
+      "listener_claim_p99_ms": {
+        "limit": 100,
+        "observed": 4.097900390625,
+        "within_limit": true
+      },
+      "mesh_absolute_pickup_p99_ms": {
+        "limit": 750,
+        "observed": 7.93505859375,
+        "within_limit": true
+      },
+      "mesh_peak_connections": {
+        "limit": 5,
+        "observed": 5,
+        "within_limit": true
+      },
+      "mesh_peak_processes": {
+        "limit": 2,
+        "observed": 1,
+        "within_limit": true
+      },
+      "mesh_peak_threads": {
+        "limit": 84,
+        "observed": 10,
+        "within_limit": true
+      },
+      "oban_absolute_pickup_p99_ms": {
+        "limit": 750,
+        "observed": 253.72802734375,
+        "within_limit": true
+      },
+      "oban_peak_connections": {
+        "limit": 5,
+        "observed": 4,
+        "within_limit": true
+      },
+      "oban_peak_processes": {
+        "limit": 2,
+        "observed": 2,
+        "within_limit": true
+      },
+      "oban_peak_threads": {
+        "limit": 84,
+        "observed": 12,
+        "within_limit": true
+      },
+      "peak_queued_context_bytes": {
+        "limit": 33554432,
+        "observed": 1356,
+        "within_limit": true
+      },
+      "peak_rss_bytes": {
+        "mesh_median": 25178112,
+        "oban_median": 122613760,
+        "relative_limit": 1.5,
+        "within_limit": true
+      },
+      "pickup_p99_ms": {
+        "mesh_median": 5.97802734375,
+        "ratio_limit": 1.25,
+        "reference": "oban",
+        "reference_median": 248.77294921875,
+        "within_limit": true
+      }
+    },
+    "initial_pilot_version_log_parse_failure": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/pilot-01/extracted/extraction.json",
+      "sha256": "6320b4f6e2d4029b4366a6d07ddf7bf79460cd1aaf984e819f8abcafa8a72053"
+    },
+    "verified_pilot": {
+      "extraction": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/pilot-02/extracted/extraction.json",
+        "sha256": "5b4afb65655dc811989a64da97b77b90130a3d333176e0d1bdaba3d818a2c0f7"
+      },
+      "witness": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/pilot-02/extracted/evidence/listen/witness.json",
+        "sha256": "74fe96445076e61b98c912fecfbc4a29c772835238833e56fb374df40bdc2af0"
+      },
+      "versions": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/pilot-02/extracted/evidence/oban-versions.json",
+        "sha256": "0710631f8b5e5d9e5bcce88ce3e42bac8db3a26bcbb389ba64279022a370af7c"
+      }
+    },
+    "groups": [
+      {
+        "pair": 0,
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/pair-0/extracted/extraction.json",
+          "sha256": "dd41d2aba73f63eb392f81fee458233bb9703278f3b7a0c56693caa54b7b8502"
+        }
+      },
+      {
+        "pair": 1,
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/pair-1/extracted/extraction.json",
+          "sha256": "ab93d95be590264d95963780503cf6aaa1c79313209f0c7afa027bad07a82094"
+        }
+      },
+      {
+        "pair": 2,
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/pair-2/extracted/extraction.json",
+          "sha256": "593a7a2a12b44994a514523706e2bbd0730a4b4df1311e7fb2e67b94c05a44ee"
+        }
+      },
+      {
+        "pair": 3,
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/pair-3/extracted/extraction.json",
+          "sha256": "31b248d9c0ebed37f9e803f9bec798b6897b02f923c32e663104835ec430ef25"
+        }
+      },
+      {
+        "pair": 4,
+        "extraction": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-hard-cap/pair-4/extracted/extraction.json",
+          "sha256": "4e873cfed09154bd727a7883b8b968656f1222fa80bbe2a4fb50d99cbfcf7db5"
+        }
+      }
+    ]
   },
   "linux_compiled_jobs_effect_dense_backend_cpu": {
     "revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",

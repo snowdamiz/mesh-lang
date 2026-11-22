@@ -4400,9 +4400,37 @@ reference and missed the tighter 206 MiB reference.
 The two advice loops consumed 0.38 CPU-ms per worker in the
 treatment. The full runner-tree charge, including the detailed
 page and mapping witness, rose from 26.87 to 51.37 CPU-ms per
-completed job. A lean fixture and a matched slow-64 workload
-are needed to establish the runtime cost and the current Oban budget.
+completed job.
 [Stock-window trim receipts](../proof/jobs-parity/qualification-v1.json)
+
+The lean follow-up recalibrated all ranges on its own release-derived
+ELF. Both stock-window arms held 64 workers and reconciled 128 fenced
+commits and 64 exact consuming waits. Trimming reduced peak summed
+tree RSS from 369.6 to 208.3 MiB. This passed the historical 221.3 MiB
+reference and missed the 206 MiB reference again.
+
+The treatment spent 0.21 CPU-ms/worker in the two advice loops and
+0.76 CPU-ms/worker in the bootstrap validation bracket. The control
+spent 0.22 CPU-ms/worker in that bracket. End-to-end runner cgroup
+CPU was 10.00 versus 10.63 CPU-ms/job with the forced holds. This
+held-only diagnostic measures both arms with compact receipts. The
+frozen slow workload uses separate timing and resource gates.
+[Lean stock-window trim receipts](../proof/jobs-parity/qualification-v1.json)
+
+Five alternating pairs on the frozen `slow-1r-64s` input used the
+same trimmed ELF against stock Oban Basic. All 5,120 jobs reconciled
+two separate durable writes. The scorer rejected the comparison.
+All five Mesh arms estimated a peak of 65 against a 64-slot limit. Live
+database samples peaked at 64, and shifting the floored claim
+timestamps by 1 ms lowered the estimate to 64 in every arm. That
+precision check does not establish the exact committed peak.
+
+The preserved measurements are descriptive. Mesh and Oban medians
+were 510 and 421 jobs/s, 878 and 1,110 ms pickup p99, and 183.1 and
+145.8 MiB sampled peak tree RSS. Median runner CPU was 1.747 and
+1.324 CPU-ms/job. The ratio of 1.32 exceeds the 1.25 limit even
+before resolving the peak-estimate rejection.
+[Slow-64 measurement receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Verify the integrated Jobs candidate
 
@@ -4433,9 +4461,32 @@ The Noble ARM64 smoke attached the planned kernel and ELF probes.
 It observed a consuming wait with the expected terminal status before
 the acknowledgement entry, and rejected a reversed order and an
 absent tracepoint. The original interval reproduced its map lookup
-error. The smoke uses a small native fixture. The compiled PostgreSQL
-ordering proof and the hosted lane remain open.
+error. The smoke uses a small native fixture.
 [Wait-order smoke receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Prove consuming wait before compiled settlement submission
+
+The Linux ARM64 PostgreSQL 17.11 proof at `0c36b429` passed in
+polling and LISTEN modes. The proof uses the same opt0 ELF in both
+arms and the runtime archive built at `233fccbc`. Runtime and
+compiled fixture sources are identical at those revisions.
+
+For each mode, the consuming `wait4` returned for the exact worker
+before the runner entered `pg_jobs_ack`. The observer matched the
+worker PID and start time to the durable job, run, and attempt.
+The six traced dispositions covered normal completion, retryable
+settlement after the staged disconnect, and completion of the
+replacement. Each mode verified five TLS connections with SCRAM
+authentication and eight full resets, including startup resets.
+Both LISTEN enqueues received notification-driven scans with zero
+fallback scans. The hosted ARM64 workflow remains unrun.
+
+On macOS ARM64, `0c36b429` passed the compatibility verifier and both
+standalone effect proofs on PostgreSQL 17.11, 18.7, and 19.0. All three
+versions passed 68 database-backed Jobs runtime tests and three
+compiled Jobs tests. The Linux ordering proof covers the one-slot
+debug fixture on PostgreSQL 17.11.
+[Exact ordering and platform receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Compare short jobs under a physical cap of 20 connections
 
@@ -4634,6 +4685,29 @@ child reap. The first proof attempt exposed an extra observer
 connection in the verifier. The successful rerun used live runner
 status during the outage and retained durable reconciliation.
 [Listener comparison and outage proof](../proof/jobs-parity/qualification-v1.json)
+
+### Compare compiled sparse named effects under a physical cap of five
+
+Five alternating Linux ARM64 pairs at `8526a5bd` reconciled 240
+measured jobs and 480 durable writes on the frozen `sparse-1r-1s`
+input with PostgreSQL 17.11 and stock Oban Basic 2.24.2 Isolated.
+Mesh shared one Jobs connection for claim and lifecycle. Both
+arms used one connection for enqueue and observation. Admitted
+peaks were five for Mesh and four for Oban.
+
+Mesh won all five pairs, with median throughput of 2.908 jobs/s
+versus Oban's 2.026. Pickup p99 medians were 6.0 and 248.8 ms.
+Mesh recorded 24 notification scans per pair. Its worst claim p99
+was 4.1 ms against the 100 ms gate. Both arms met the remaining
+local gates. The scorer applies the frozen thresholds to this one
+profile and marks the comparison noncanonical.
+
+The first pilot completed the guest workload, but the archive
+reader rejected the combined version and diagnostic log. The
+corrected pilot retained that log and emitted a separate version
+receipt. It verified the cap, exact waits before settlement,
+and 48 per-operation resets.
+[Sparse hard-cap comparison receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 
