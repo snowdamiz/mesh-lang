@@ -5359,3 +5359,67 @@ runtime tests, all three compiled Jobs suites, and the compiled scoped
 login proof on fresh and upgraded schemas. All 18 parity self-checks
 and 12 fault-driver tests passed for each server version.
 [Integrated PostgreSQL matrix receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare ordinary Jobs on macOS
+
+The local stock comparison used release Mesh `e7abb534`, Oban Basic
+2.24.2 with Isolated notification, and PostgreSQL 17.11 over verified
+TLS and SCRAM. Mesh used batch claims and LISTEN with a 250 ms fallback.
+The host was a 15-logical-CPU Apple M5 Pro. Each comparison alternated
+five pairs and reconciled the same seeded workload, including a
+durable attempt and a separate durable effect for every completed job.
+
+The earlier Linux comparisons used two virtual CPUs and fenced warm
+app sessions. The ordinary macOS fixture opens a database connection
+inside each worker. In the five stock dense trials, mean handler
+entry to first commit ranged from 40.1 to 170.0 ms for Mesh and from
+0.4 to 1.1 ms for Oban. At the fastest measured Mesh mean, full
+occupancy of 64 slots would sustain at most 1,596 jobs/s if that stage
+cost persisted. The stage includes connection setup and scheduling.
+
+The `e4c8fc94` trial groups batch claim updates, gives the due query
+an index range, uses one Unix worker watchdog, and defers the single
+worker scheduler until the first actor spawn. Each row shows median
+throughput and its full range, median runner CPU and pickup p99, and
+median sampled peak resident memory.
+
+| Profile | Mesh | Mesh jobs/s (range) | Oban jobs/s (range) | Runner CPU-ms/job, Mesh and Oban | Pickup p99 in ms, Mesh and Oban | RSS MiB, Mesh and Oban |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| No-op, 8 runners, 64 slots | Stock | 720 (311–779) | 2,893 (2,428–4,593) | 7.14, 5.54 | 1,360, 352 | 150.5, 843.1 |
+| Slow, 1 runner, 64 slots | Stock | 362 (323–407) | 447 (421–513) | 7.56, 1.94 | 1,277, 1,043 | 405.0, 120.0 |
+| No-op, 8 runners, 64 slots | Trial | 497 (354–570) | 2,770 (1,870–2,879) | 7.31, 6.68 | 1,971, 363 | 259.5, 839.8 |
+| Slow, 1 runner, 64 slots | Trial | 71 (52–393) | 352 (210–466) | 8.68, 2.42 | 6,892, 1,329 | 94.2, 121.8 |
+| Short, 1 runner, 16 slots | Trial | 496 (459–642) | 885 (401–1,257) | 6.32, 4.80 | 238, 142 | 13.4, 106.8 |
+| Large, 8 runners, 64 slots | Trial | 316 (278–338) | 412 (337–737) | 15.67, 88.64 | 188, 149 | 126.7, 854.9 |
+
+Mesh missed throughput in all six comparisons. Connection, process,
+thread, and queued-context limits passed. The receipt reports the
+relative CPU, pickup, and RSS misses per profile. The one-minute
+host load reached 148 during the separate slow trial. Mesh sampled
+41–53 executing jobs in three arms, so the 94.2 MiB median reflects
+reduced occupancy in those arms.
+
+In a direct release comparison with the same Mesh settings, the trial
+cut runner CPU in all five pairs on each key profile. The median
+paired saving was 0.445 CPU-ms/job for dense and 0.581 CPU-ms/job for
+slow. Dense throughput medians were 437 and 442 jobs/s for trial and
+stock. On slow, stock won four pairs, the medians were 328 and
+361 jobs/s, and pickup p99 was 1,436 and 1,267 ms. All trial slow arms
+sampled 64 executing jobs. The ordinary startup and claim changes
+were removed from the default path at `cc8379d4`.
+[Per-trial receipt](../proof/jobs-parity/ordinary-jobs-macos-20261122.json)
+
+Use the same PostgreSQL installation for both commands. Build the
+release toolchains with the smoke command under
+[Record a baseline](#record-a-baseline) before reusing them.
+
+```sh
+python3 -B scripts/jobs-parity.py --load --mesh-batch --mesh-listen \
+  --postgres-version 17.11 --mesh-ref e7abb534 \
+  --toolchains target/jobs-parity/build --workload noop --runners 8 --slots 64
+
+python3 -B scripts/jobs-parity.py --load --mesh-batch --mesh-listen \
+  --postgres-version 17.11 --mesh-ref e4c8fc94 --against-ref e7abb534 \
+  --baseline-matches-mesh --toolchains target/jobs-parity/build \
+  --workload slow --runners 1 --slots 64
+```
