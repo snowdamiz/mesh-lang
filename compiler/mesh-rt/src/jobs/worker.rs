@@ -386,9 +386,16 @@ fn run_worker() -> Result<(), String> {
         .ok_or("job handler is missing from this executable")?;
 
     let (renew, updates) = crossbeam_channel::bounded(1);
+    let (claim_stdin, stdin_claimed) = crossbeam_channel::bounded(0);
     std::thread::Builder::new()
         .name("mesh-job-parent".into())
         .spawn(move || {
+            // The private parent stream uses stdin. Keep it locked across
+            // renewal frames so handler reads cannot consume control bytes.
+            let mut control = control.lock();
+            if claim_stdin.send(()).is_err() {
+                return;
+            }
             let mut frame = [0; 8];
             while control.read_exact(&mut frame).is_ok() {
                 if renew.send(u64::from_le_bytes(frame)).is_err() {
@@ -404,6 +411,7 @@ fn run_worker() -> Result<(), String> {
         .name("mesh-job-deadline".into())
         .spawn(move || enforce_deadlines(deadline, lease, updates))
         .map_err(|error| error.to_string())?;
+    stdin_claimed.recv().map_err(|error| error.to_string())?;
     remaining(deadline, lease);
 
     let reply = invoke(context, |input| unsafe { handler(input) });
