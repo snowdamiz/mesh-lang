@@ -5423,3 +5423,37 @@ python3 -B scripts/jobs-parity.py --load --mesh-batch --mesh-listen \
   --baseline-matches-mesh --toolchains target/jobs-parity/build \
   --workload slow --runners 1 --slots 64
 ```
+
+### Verify the opt-in warm session path
+
+The `d8741576` checkout passed the PostgreSQL compatibility and
+effect-fence checks on 17.11, 18.7, and 19.0 on macOS ARM64. Each
+version passed 36 PostgreSQL driver tests, 68 Jobs runtime tests,
+and three compiled Jobs suites. The compiled suites exercised scoped
+roles on fresh and upgraded databases. The effect-fence proof checked
+separate committed writes, idempotent replay, cancellation, and lease
+expiry.
+
+A two-vCPU Linux ARM64 guest used the same revision's release runtime
+and the standard debug proof fixture. PostgreSQL 17.11 used verified
+TLS and SCRAM. The fixture invoked `Jobs.start_effects` and
+`Jobs.effect` with polling and with LISTEN. In each mode, two ordered
+transactions committed through the same warm backend within a
+five-connection cap. The attempt remained executing while the
+worker was held and settled after the worker was reaped. Disconnecting
+the backend during an operation retired the session and forced a
+retry. A replacement attempt preserved the original committed
+effect and completed the second effect. The LISTEN run observed
+the notification with zero fallback scans.
+
+Run the polling proof on Linux GNU ARM64 with PostgreSQL 17.11.
+
+```sh
+env -u MESH_TEST_DATABASE_URL \
+  PG_BIN_DIR=/path/to/postgresql-17.11/bin \
+  bash scripts/verify-postgres-jobs.sh --effect-compiled
+```
+
+Set `MESH_EFFECT_LISTEN=1` and repeat for the LISTEN proof. The
+[compiled fixture](../scripts/fixtures/jobs-effect-compiled/README.md)
+describes the application routines and session reset.
