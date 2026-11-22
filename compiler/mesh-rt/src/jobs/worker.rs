@@ -25,9 +25,6 @@ use std::os::unix::net::UnixStream;
 ))]
 #[path = "worker_effect_endpoint_linux.rs"]
 mod effect_endpoint;
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
-#[path = "effect_watchdog_linux.rs"]
-mod effect_watchdog;
 
 const WORKER_ARG: &str = "--mesh-internal-job-attempt-v1";
 #[cfg(target_os = "linux")]
@@ -473,15 +470,6 @@ fn worker_uses_effect_stdin(arg: &[u8]) -> Option<bool> {
     None
 }
 
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
-pub(crate) fn is_effect_worker_process() -> bool {
-    let mut args = std::env::args_os();
-    args.len() == 2
-        && args
-            .nth(1)
-            .is_some_and(|arg| worker_uses_effect_stdin(arg.as_encoded_bytes()) == Some(true))
-}
-
 #[cfg(target_os = "linux")]
 fn thp_disable_requested(value: Option<&std::ffi::OsStr>) -> bool {
     value == Some(std::ffi::OsStr::new("1"))
@@ -658,10 +646,21 @@ fn run_worker(_effect_stdin: bool) -> Result<(), String> {
     let mut result = redirect_stdout().map_err(|error| error.to_string())?;
     #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
     if _effect_stdin {
-        return run_effect_worker(result);
+        let socket = effect_endpoint::receive_stdin().map_err(|error| error.to_string())?;
+        super::effects::enter_worker(socket);
     }
     let mut control = io::stdin();
-    let (request, context, handler) = worker_request(&mut control)?;
+    let request: Request =
+        read_frame(&mut control, MAX_REQUEST_HEADER).map_err(|error| error.to_string())?;
+    let context = String::from_utf8(
+        read_bytes(&mut control, MAX_DB_VALUE_BYTES).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    let handler = HANDLERS
+        .lock()
+        .get(&request.handler)
+        .copied()
+        .ok_or("job handler is missing from this executable")?;
 
     let (renew, updates) = crossbeam_channel::bounded(1);
     let (claim_stdin, stdin_claimed) = crossbeam_channel::bounded(0);
@@ -698,44 +697,15 @@ fn run_worker(_effect_stdin: bool) -> Result<(), String> {
         remaining(deadline, *lease.lock());
         unsafe { handler(input) }
     });
+    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    let reply = if _effect_stdin {
+        super::effects::finish_worker(reply)
+    } else {
+        reply
+    };
     remaining(deadline, u64::MAX);
     write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
     Ok(())
-}
-
-fn worker_request(reader: &mut impl Read) -> Result<(Request, String, Handler), String> {
-    let request: Request =
-        read_frame(reader, MAX_REQUEST_HEADER).map_err(|error| error.to_string())?;
-    let context = String::from_utf8(
-        read_bytes(reader, MAX_DB_VALUE_BYTES).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| error.to_string())?;
-    let handler = HANDLERS
-        .lock()
-        .get(&request.handler)
-        .copied()
-        .ok_or("job handler is missing from this executable")?;
-    Ok((request, context, handler))
-}
-
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
-fn run_effect_worker(mut result: File) -> Result<(), String> {
-    let socket = effect_endpoint::receive_stdin().map_err(|error| error.to_string())?;
-    super::effects::enter_worker(socket);
-    let mut control = effect_watchdog::Control(libc::STDIN_FILENO);
-    let (request, context, handler) = worker_request(&mut control)?;
-    let deadline = request.deadline;
-    let lease = Arc::new(Mutex::new(request.lease_deadline));
-    control
-        .supervise(deadline, Arc::clone(&lease))
-        .map_err(|error| error.to_string())?;
-    let reply = invoke(context, |input| {
-        remaining(deadline, *lease.lock());
-        unsafe { handler(input) }
-    });
-    let reply = super::effects::finish_worker(reply);
-    remaining(deadline, u64::MAX);
-    write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())
 }
 
 pub(super) fn invoke(
@@ -783,17 +753,13 @@ fn enforce_deadlines(deadline: u64, lease: &Mutex<u64>, updates: Receiver<u64>) 
 fn remaining(deadline: u64, lease: u64) -> Duration {
     let now = boot_millis().unwrap_or_else(|_| exit_worker(BOOTSTRAP_ERROR));
     if now >= deadline.min(lease) {
-        exit_worker(deadline_exit_code(deadline, lease));
+        exit_worker(if deadline <= lease {
+            TIMEOUT
+        } else {
+            LEASE_LOST
+        });
     }
     Duration::from_millis(deadline.min(lease) - now)
-}
-
-fn deadline_exit_code(deadline: u64, lease: u64) -> i32 {
-    if deadline <= lease {
-        TIMEOUT
-    } else {
-        LEASE_LOST
-    }
 }
 
 #[cfg(unix)]

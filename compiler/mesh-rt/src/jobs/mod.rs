@@ -15,8 +15,6 @@ mod worker;
 
 #[cfg(target_os = "linux")]
 pub(crate) use worker::apply_worker_startup_policy;
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
-pub(crate) use worker::is_effect_worker_process;
 
 use crate::db::jobs_connection::{self, PgJobDb};
 use crate::db::pg::JobsAckError;

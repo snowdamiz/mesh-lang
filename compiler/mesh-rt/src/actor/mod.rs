@@ -245,15 +245,6 @@ pub extern "C" fn mesh_rt_init_actor(num_schedulers: u32) {
 
         // Start worker threads in the background immediately so that actors
         // spawned during mesh_main() can begin executing right away.
-        #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
-        let sched = {
-            let mut sched = sched;
-            if sched.worker_bounds() == (1, 1) && crate::jobs::is_effect_worker_process() {
-                sched.defer_start_until_spawn();
-                return sched;
-            }
-            sched
-        };
         sched.start();
 
         sched
