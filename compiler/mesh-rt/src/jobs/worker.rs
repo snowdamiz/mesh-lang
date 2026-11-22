@@ -406,16 +406,17 @@ fn run_worker() -> Result<(), String> {
         })
         .map_err(|error| error.to_string())?;
     let deadline = request.deadline;
-    let lease = request.lease_deadline;
+    let lease = Arc::new(Mutex::new(request.lease_deadline));
+    let watchdog_lease = Arc::clone(&lease);
     std::thread::Builder::new()
         .name("mesh-job-deadline".into())
-        .spawn(move || enforce_deadlines(deadline, lease, updates))
+        .spawn(move || enforce_deadlines(deadline, &watchdog_lease, updates))
         .map_err(|error| error.to_string())?;
     stdin_claimed.recv().map_err(|error| error.to_string())?;
-    remaining(deadline, lease);
+    remaining(deadline, || *lease.lock());
 
     let reply = invoke(context, |input| unsafe { handler(input) });
-    remaining(deadline, u64::MAX);
+    remaining(deadline, || u64::MAX);
     write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -446,14 +447,15 @@ pub(super) fn invoke(
     }
 }
 
-fn enforce_deadlines(deadline: u64, mut lease: u64, updates: Receiver<u64>) {
+fn enforce_deadlines(deadline: u64, lease: &Mutex<u64>, updates: Receiver<u64>) {
     loop {
-        let wait = remaining(deadline, lease).min(Duration::from_millis(20));
+        let wait = remaining(deadline, || *lease.lock()).min(Duration::from_millis(20));
         match updates.recv_timeout(wait) {
             Ok(next) => {
                 // A delayed renewal may not revive a worker whose lease already ended.
-                remaining(deadline, lease);
-                lease = lease.max(next);
+                let mut accepted = lease.lock();
+                remaining(deadline, || *accepted);
+                *accepted = (*accepted).max(next);
             }
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => exit_worker(PARENT_GONE),
@@ -461,8 +463,11 @@ fn enforce_deadlines(deadline: u64, mut lease: u64, updates: Receiver<u64>) {
     }
 }
 
-fn remaining(deadline: u64, lease: u64) -> Duration {
+fn remaining(deadline: u64, lease: impl FnOnce() -> u64) -> Duration {
     let now = boot_millis().unwrap_or_else(|_| exit_worker(BOOTSTRAP_ERROR));
+    // Sample the lease after the clock so a startup pause cannot leave the
+    // handler checking a lease the watchdog has already extended.
+    let lease = lease();
     if now >= deadline.min(lease) {
         exit_worker(if deadline <= lease {
             TIMEOUT
