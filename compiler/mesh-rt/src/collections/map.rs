@@ -75,6 +75,11 @@ pub(crate) fn mesh_map_from_string_entries(entries: &[[u64; 2]]) -> *mut u8 {
     map
 }
 
+/// Build a string map in insertion order from entries with distinct keys.
+pub(crate) fn mesh_map_from_unique_string_entries(entries: &[[u64; 2]]) -> *mut u8 {
+    unsafe { table::table_from::<2>(entries, KEY_TYPE_STR) }
+}
+
 /// Ensure a map has string key_type. If the map is empty and has integer key_type,
 /// returns a new empty map with string key_type. Otherwise returns the map unchanged.
 /// Used by codegen to tag maps before the first string-key put.
@@ -473,6 +478,25 @@ mod tests {
         let hash = |map| mesh_map_hash_by(map, hash_word as *mut u8, hash_word as *mut u8);
         assert_eq!(hash(two), hash(other_two));
         assert_ne!(hash(one), hash(two));
+    }
+
+    #[test]
+    fn bulk_string_maps_preserve_order_and_lookup() {
+        mesh_rt_init();
+        for size in [0, 1, 8, 9, 64] {
+            let entries: Vec<_> = (0..size)
+                .map(|i| [crate::string::mesh_str(&format!("column_{i}")) as u64, i])
+                .collect();
+            let bulk = mesh_map_from_unique_string_entries(&entries);
+            let incremental = mesh_map_from_string_entries(&entries);
+            assert_eq!(mesh_map_size(bulk), size as i64);
+            assert_eq!(unsafe { live_entries(bulk) }, unsafe {
+                live_entries(incremental)
+            });
+            for [key, value] in entries {
+                assert_eq!(mesh_map_get(bulk, key), value);
+            }
+        }
     }
 
     #[test]

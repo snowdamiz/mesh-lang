@@ -1,8 +1,6 @@
 //! PostgreSQL connection pool for the Mesh runtime.
 //!
-//! Provides a bounded pool of PostgreSQL connections with Mutex+Condvar
-//! synchronization. Multiple Mesh actors share a fixed set of database
-//! connections, preventing connection exhaustion.
+//! Multiple Mesh actors share a bounded set of database connections.
 //!
 //! ## Functions
 //!
@@ -15,25 +13,44 @@
 //! Pool handles are opaque u64 values (Box::into_raw), same pattern as
 //! PgConn/SqliteConn handles.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
+use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
-use parking_lot::{Condvar, Mutex};
+use parking_lot::Mutex;
 
 use super::pg::{
-    mesh_pg_close, mesh_pg_execute, mesh_pg_execute_values, mesh_pg_query, mesh_pg_query_values,
-    open, pg_simple_command, PgConn, ANSWER_TIMEOUT,
+    connection_handle, drop_connection, mesh_pg_close, mesh_pg_execute, mesh_pg_execute_values,
+    mesh_pg_query, mesh_pg_query_values, open_handle, pg_simple_command, PgHandle,
 };
+use crate::actor::{cooperative_channel, cooperative_recv_timeout, CooperativeSender};
 use crate::io::{alloc_result, box_scalar, err_result};
 use crate::string::text_of;
 use crate::string::MeshString;
 
+// ponytail: one fixed health-check interval until a workload needs tuning.
+const HEALTH_CHECK_IDLE: Duration = Duration::from_millis(500);
+
 // ── Data Structures ──────────────────────────────────────────────────────
+
+struct IdleConnection {
+    handle: u64,
+    checked_in: Instant,
+}
+
+impl IdleConnection {
+    fn new(handle: u64) -> Self {
+        Self {
+            handle,
+            checked_in: Instant::now(),
+        }
+    }
+}
 
 struct PoolInner {
     url: String,
     /// Connections ready to lend.
-    idle: Vec<u64>,
+    idle: Vec<IdleConnection>,
     /// Handles currently checked out by this exact pool.
     leased: HashSet<u64>,
     /// Connections open or being opened, idle or lent: at most `max_conns`.
@@ -41,97 +58,208 @@ struct PoolInner {
     max_conns: usize,
     checkout_timeout_ms: u64,
     closed: bool,
+    waiters: VecDeque<Waiter>,
+    next_waiter: u64,
 }
 
 struct PgPool {
     inner: Mutex<PoolInner>,
-    available: Condvar,
+}
+
+enum Slot {
+    Idle(IdleConnection),
+    Open,
+}
+
+type Handoff = Result<Slot, &'static str>;
+
+struct Waiter {
+    id: u64,
+    sender: CooperativeSender<Handoff>,
+}
+
+impl PoolInner {
+    /// A handoff and a waiter leaving are serialized by the pool lock.
+    fn offer(&mut self, mut slot: Slot) {
+        while let Some(waiter) = self.waiters.pop_front() {
+            match waiter.sender.send(Ok(slot)) {
+                Ok(()) => return,
+                Err(error) => slot = error.0.expect("sent a slot"),
+            }
+        }
+        match slot {
+            Slot::Idle(conn) => self.idle.push(conn),
+            Slot::Open => self.total_created -= 1,
+        }
+    }
+}
+
+struct Registration<'a> {
+    pool: &'a PgPool,
+    id: u64,
+    receiver: Receiver<Handoff>,
+}
+
+impl Drop for Registration<'_> {
+    fn drop(&mut self) {
+        let mut inner = self.pool.inner.lock();
+        inner.waiters.retain(|waiter| waiter.id != self.id);
+        if let Ok(Ok(slot)) = self.receiver.try_recv() {
+            release_slot(inner, slot);
+        }
+    }
+}
+
+fn release_slot(mut inner: parking_lot::MutexGuard<'_, PoolInner>, slot: Slot) {
+    if !inner.closed {
+        inner.offer(slot);
+        return;
+    }
+    inner.total_created -= 1;
+    drop(inner);
+    if let Slot::Idle(conn) = slot {
+        drop_connection(conn.handle);
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
+#[cfg(test)]
 pub(crate) unsafe fn unbox_u64_payload(ptr: *mut u8) -> u64 {
     *(ptr as *const u64)
 }
 
 /// Whether an idle connection still answers `SELECT 1`, within a bounded
 /// time: a connection whose server went silent is dead too.
-fn health_check(handle: u64) -> bool {
-    let conn = unsafe { &mut *(handle as *mut PgConn) };
-    conn.set_read_timeout(Some(ANSWER_TIMEOUT));
-    let healthy = pg_simple_command(conn, "SELECT 1").is_ok();
-    conn.set_read_timeout(None);
-    healthy
+fn health_check(handle: u64, deadline: Instant, cooperative: bool) -> bool {
+    let handle = unsafe { PgHandle::from_handle(handle) };
+    let run = move |conn: &mut super::pg::PgConn| {
+        conn.with_deadline(deadline, |conn| pg_simple_command(conn, "SELECT 1"))
+    };
+    if cooperative {
+        handle.with_io(run).and_then(|result| result).is_ok()
+    } else {
+        handle.direct(run).is_ok()
+    }
+}
+
+/// Checkout owns the capacity reservation until it grants a lease. An actor
+/// can be cancelled while a handshake or a health check is on the I/O thread.
+struct CheckoutSlot<'a> {
+    pool: &'a PgPool,
+    handle: Option<u64>,
+    reserved: bool,
+}
+
+impl Drop for CheckoutSlot<'_> {
+    fn drop(&mut self) {
+        if self.reserved {
+            if let Some(handle) = self.handle.take() {
+                drop_connection(handle);
+            }
+            release_slot(self.pool.inner.lock(), Slot::Open);
+        }
+    }
 }
 
 /// A connection leased to the caller until it is checked in: an idle one
 /// that still answers, else a new one while the pool is below its maximum,
 /// else the first of either within the checkout timeout.
+#[cfg(test)]
 fn checkout(pool: &PgPool) -> Result<u64, String> {
-    let mut inner = pool.inner.lock();
-    // One deadline for the whole checkout: a wakeup that finds nothing to
-    // take waits only what is left of it.
-    let deadline = Instant::now() + Duration::from_millis(inner.checkout_timeout_ms);
+    checkout_with_wait(pool, true)
+}
+
+fn checkout_with_wait(pool: &PgPool, cooperative: bool) -> Result<u64, String> {
+    let deadline = Instant::now() + Duration::from_millis(pool.inner.lock().checkout_timeout_ms);
     loop {
+        let mut inner = pool.inner.lock();
         if inner.closed {
             return Err("pool is closed".to_string());
         }
-        if let Some(handle) = inner.idle.pop() {
-            inner.leased.insert(handle);
-            // Checked without the lock: a connection slow to answer holds up
-            // only this checkout, not every other checkout and checkin.
-            drop(inner);
-            if health_check(handle) {
-                return Ok(handle);
-            }
-            mesh_pg_close(handle);
-            inner = pool.inner.lock();
-            inner.leased.remove(&handle);
-            inner.total_created -= 1;
-            continue;
-        }
-        if inner.total_created < inner.max_conns {
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            return Err("pool checkout timeout".into());
+        };
+        let slot = if let Some(conn) = inner.idle.pop() {
+            Slot::Idle(conn)
+        } else if inner.total_created < inner.max_conns {
             inner.total_created += 1;
-            let url = inner.url.clone();
-            // Connected without the lock.
+            Slot::Open
+        } else {
+            let (sender, receiver) = cooperative_channel();
+            let id = inner.next_waiter;
+            inner.next_waiter += 1;
+            inner.waiters.push_back(Waiter { id, sender });
+            let registration = Registration { pool, id, receiver };
             drop(inner);
-            let opened = open(&url);
-            inner = pool.inner.lock();
-            match opened {
-                Ok(handle) if !inner.closed => {
-                    inner.leased.insert(handle);
-                    return Ok(handle);
-                }
-                Ok(handle) => {
-                    inner.total_created -= 1;
-                    drop(inner);
-                    mesh_pg_close(handle);
-                    return Err("pool is closed".to_string());
-                }
-                Err(error) => {
-                    inner.total_created -= 1;
-                    drop(inner);
-                    // The slot is free again, for a checkout waiting on one.
-                    pool.available.notify_one();
-                    return Err(format!("pool connect: {error}"));
-                }
+            let slot = if cooperative {
+                cooperative_recv_timeout(&registration.receiver, remaining)
+            } else {
+                registration.receiver.recv_timeout(remaining)
             }
+            .map_err(|_| "pool checkout timeout")??;
+            drop(registration);
+            inner = pool.inner.lock();
+            if inner.closed || Instant::now() >= deadline {
+                let reason = if inner.closed {
+                    "pool is closed"
+                } else {
+                    "pool checkout timeout"
+                };
+                release_slot(inner, slot);
+                return Err(reason.into());
+            }
+            slot
+        };
+        let url = matches!(slot, Slot::Open).then(|| inner.url.clone());
+        drop(inner);
+        let mut reservation = CheckoutSlot {
+            pool,
+            handle: None,
+            reserved: true,
+        };
+        let handle = match slot {
+            Slot::Idle(IdleConnection { handle, checked_in }) => {
+                reservation.handle = Some(handle);
+                if checked_in.elapsed() >= HEALTH_CHECK_IDLE
+                    && !health_check(handle, deadline, cooperative)
+                {
+                    continue;
+                }
+                handle
+            }
+            Slot::Open => match open_handle(&url.unwrap(), Some(deadline), cooperative) {
+                Ok(handle) => connection_handle(handle),
+                Err(error) => {
+                    return Err(if Instant::now() >= deadline {
+                        "pool checkout timeout".into()
+                    } else {
+                        format!("pool connect: {error}")
+                    });
+                }
+            },
+        };
+        let mut inner = pool.inner.lock();
+        reservation.reserved = false;
+        if inner.closed || Instant::now() >= deadline {
+            let reason = if inner.closed {
+                "pool is closed"
+            } else {
+                "pool checkout timeout"
+            };
+            release_slot(inner, Slot::Idle(IdleConnection::new(handle)));
+            return Err(reason.into());
         }
-        if pool.available.wait_until(&mut inner, deadline).timed_out() {
-            return Err("pool checkout timeout".to_string());
-        }
+        inner.leased.insert(handle);
+        return Ok(handle);
     }
 }
 
 /// `run` on a connection checked out of the pool and checked back in after:
 /// what it returns, or why no connection could be checked out.
 fn with_connection(pool_handle: u64, run: impl FnOnce(u64) -> *mut u8) -> *mut u8 {
-    match checkout(unsafe { &*(pool_handle as *const PgPool) }) {
-        Ok(conn_handle) => {
-            let result = run(conn_handle);
-            mesh_pool_checkin(pool_handle, conn_handle);
-            result
-        }
+    match unsafe { NativeLease::checkout_mesh(pool_handle) } {
+        Ok(lease) => run(lease.connection),
         Err(error) => err_result(&error),
     }
 }
@@ -139,21 +267,34 @@ fn with_connection(pool_handle: u64, run: impl FnOnce(u64) -> *mut u8) -> *mut u
 pub(super) struct NativeLease {
     pool: u64,
     pub(super) connection: u64,
+    cooperative: bool,
 }
 
 impl NativeLease {
     pub(super) unsafe fn checkout(pool: u64) -> Result<Self, String> {
+        Self::checkout_using(pool, false)
+    }
+
+    pub(super) unsafe fn checkout_mesh(pool: u64) -> Result<Self, String> {
+        Self::checkout_using(pool, true)
+    }
+
+    unsafe fn checkout_using(pool: u64, cooperative: bool) -> Result<Self, String> {
         if pool == 0 {
             return Err("invalid PostgreSQL pool".into());
         }
-        let connection = checkout(&*(pool as *const PgPool))?;
-        Ok(Self { pool, connection })
+        let connection = checkout_with_wait(&*(pool as *const PgPool), cooperative)?;
+        Ok(Self {
+            pool,
+            connection,
+            cooperative,
+        })
     }
 }
 
 impl Drop for NativeLease {
     fn drop(&mut self) {
-        mesh_pool_checkin(self.pool, self.connection);
+        checkin(self.pool, self.connection, self.cooperative);
     }
 }
 
@@ -184,7 +325,7 @@ pub(crate) unsafe fn is_open(pool: u64) -> bool {
 /// Pre-creates `min_conns` connections. Returns MeshResult with tag 0 (Ok)
 /// containing the pool handle as u64, or tag 1 (Err) with error message.
 #[no_mangle]
-pub extern "C" fn mesh_pool_open(
+pub extern "C-unwind" fn mesh_pool_open(
     url: *const MeshString,
     min_conns: i64,
     max_conns: i64,
@@ -198,13 +339,9 @@ pub extern "C" fn mesh_pool_open(
     // Pre-create min_conns connections
     let mut idle = Vec::with_capacity(min);
     for _ in 0..min {
-        match open(url) {
+        match open_handle(url, None, true) {
             Ok(handle) => idle.push(handle),
             Err(error) => {
-                // Close all already-created connections
-                for handle in idle {
-                    mesh_pg_close(handle);
-                }
                 return err_result(&format!("pool open: {error}"));
             }
         }
@@ -214,13 +351,17 @@ pub extern "C" fn mesh_pool_open(
         inner: Mutex::new(PoolInner {
             url: url.to_string(),
             total_created: idle.len(),
-            idle,
+            idle: idle
+                .into_iter()
+                .map(|handle| IdleConnection::new(connection_handle(handle)))
+                .collect(),
             leased: HashSet::new(),
             max_conns: max,
             checkout_timeout_ms: timeout_ms.max(100) as u64,
             closed: false,
+            waiters: VecDeque::new(),
+            next_waiter: 0,
         }),
-        available: Condvar::new(),
     });
     alloc_result(0, box_scalar(Box::into_raw(pool) as u64)) as *mut u8
 }
@@ -232,9 +373,10 @@ pub extern "C" fn mesh_pool_open(
 /// `mesh_pool_checkout(pool_handle: u64) -> *mut u8 (MeshResult<u64, String>)`
 ///
 /// Returns an idle connection, creates a new one if under max, or blocks
-/// with timeout if pool is exhausted. Performs health check on idle
-/// connections before returning them.
-pub(crate) fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
+/// with timeout if pool is exhausted. Checks connections idle for at least
+/// 500 milliseconds.
+#[cfg(test)]
+fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
     match checkout(unsafe { &*(pool_handle as *const PgPool) }) {
         Ok(handle) => alloc_result(0, box_scalar(handle)) as *mut u8,
         Err(error) => err_result(&error),
@@ -250,7 +392,12 @@ pub(crate) fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
 /// If the connection has an active transaction (txn_status != 'I'),
 /// sends ROLLBACK to clean it up. If ROLLBACK fails, the connection
 /// is destroyed instead of returned to idle.
-pub(crate) fn mesh_pool_checkin(pool_handle: u64, conn_handle: u64) {
+#[cfg(test)]
+fn mesh_pool_checkin(pool_handle: u64, conn_handle: u64) {
+    checkin(pool_handle, conn_handle, true);
+}
+
+fn checkin(pool_handle: u64, conn_handle: u64, cooperative: bool) {
     let pool = unsafe { &*(pool_handle as *const PgPool) };
     // Reject foreign and already-returned handles before dereferencing
     // them. This is the runtime backstop for pool provenance.
@@ -258,24 +405,25 @@ pub(crate) fn mesh_pool_checkin(pool_handle: u64, conn_handle: u64) {
         return;
     }
 
-    // Transaction cleanup (POOL-05): ROLLBACK if not idle
-    let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
-    let usable = !conn.is_broken()
-        && (conn.txn_status == b'I' || pg_simple_command(conn, "ROLLBACK").is_ok());
-    let kept = {
-        let mut inner = pool.inner.lock();
-        let kept = usable && !inner.closed;
-        if kept {
-            inner.idle.push(conn_handle);
-        } else {
-            inner.total_created -= 1;
-        }
-        kept
-    };
-    if !kept {
-        mesh_pg_close(conn_handle);
+    let handle = unsafe { PgHandle::from_handle(conn_handle) };
+    if handle
+        .clean(cooperative, move |usable| {
+            finish_checkin(pool, conn_handle, usable)
+        })
+        .is_err()
+    {
+        finish_checkin(pool, conn_handle, false);
     }
-    pool.available.notify_one();
+}
+
+fn finish_checkin(pool: &PgPool, handle: u64, usable: bool) {
+    let mut inner = pool.inner.lock();
+    if usable && !inner.closed {
+        inner.offer(Slot::Idle(IdleConnection::new(handle)));
+    } else {
+        drop_connection(handle);
+        release_slot(inner, Slot::Open);
+    }
 }
 
 /// Execute a read query (SELECT) with automatic checkout-use-checkin.
@@ -285,7 +433,7 @@ pub(crate) fn mesh_pool_checkin(pool_handle: u64, conn_handle: u64) {
 /// `mesh_pool_query(pool_handle: u64, sql: *const MeshString, params: *mut u8)
 ///     -> *mut u8 (MeshResult<List<Map<String, String>>, String>)`
 #[no_mangle]
-pub extern "C" fn mesh_pool_query(
+pub extern "C-unwind" fn mesh_pool_query(
     pool_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
@@ -300,7 +448,7 @@ pub extern "C" fn mesh_pool_query(
 /// `mesh_pool_execute(pool_handle: u64, sql: *const MeshString, params: *mut u8)
 ///     -> *mut u8 (MeshResult<Int, String>)`
 #[no_mangle]
-pub extern "C" fn mesh_pool_execute(
+pub extern "C-unwind" fn mesh_pool_execute(
     pool_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
@@ -309,7 +457,7 @@ pub extern "C" fn mesh_pool_execute(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_pool_query_values(
+pub extern "C-unwind" fn mesh_pool_query_values(
     pool_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
@@ -318,7 +466,7 @@ pub extern "C" fn mesh_pool_query_values(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_pool_execute_values(
+pub extern "C-unwind" fn mesh_pool_execute_values(
     pool_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
@@ -338,7 +486,7 @@ pub extern "C" fn mesh_pool_execute_values(
 /// Same checkout/query_as/checkin pattern as `mesh_pool_query` but delegates to
 /// `mesh_pg_query_as` for struct mapping.
 #[no_mangle]
-pub extern "C" fn mesh_pool_query_as(
+pub extern "C-unwind" fn mesh_pool_query_as(
     pool_handle: u64,
     sql: *mut u8,
     params: *mut u8,
@@ -366,19 +514,21 @@ pub extern "C" fn mesh_pool_close(pool_handle: u64) {
     let idle = {
         let mut inner = pool.inner.lock();
         inner.closed = true;
+        for waiter in inner.waiters.drain(..) {
+            let _ = waiter.sender.send(Err("pool is closed"));
+        }
         inner.total_created -= inner.idle.len();
         std::mem::take(&mut inner.idle)
     };
     // Close idle connections outside the lock
-    for handle in idle {
-        mesh_pg_close(handle);
+    for conn in idle {
+        mesh_pg_close(conn.handle);
     }
-    // Wake all blocked checkouts so they see closed=true
-    pool.available.notify_all();
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::pg::{open, PgConn};
     use super::*;
     use crate::collections::list::{mesh_list_append, mesh_list_length, mesh_list_new};
     use crate::collections::map::mesh_map_size;
@@ -388,6 +538,7 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::sync::mpsc;
+    use std::sync::Arc;
     use std::thread;
 
     fn mk_str(s: &[u8]) -> *mut MeshString {
@@ -406,18 +557,25 @@ mod tests {
             inner: Mutex::new(PoolInner {
                 url: url.to_string(),
                 total_created: idle.len() + leased.len(),
-                idle,
+                idle: idle.into_iter().map(IdleConnection::new).collect(),
                 leased: leased.iter().copied().collect(),
                 max_conns,
                 checkout_timeout_ms: timeout_ms,
                 closed: false,
+                waiters: VecDeque::new(),
+                next_waiter: 0,
             }),
-            available: Condvar::new(),
         })) as u64
     }
 
     fn pool(handle: u64) -> &'static PgPool {
         unsafe { &*(handle as *const PgPool) }
+    }
+
+    fn age_idle_connections(handle: u64) {
+        for conn in &mut pool(handle).inner.lock().idle {
+            conn.checked_in -= HEALTH_CHECK_IDLE;
+        }
     }
 
     /// AuthenticationOk and ReadyForQuery: a finished handshake.
@@ -432,6 +590,11 @@ mod tests {
         let length = u32::from_be_bytes(header[1..].try_into().unwrap()) as usize;
         socket.read_exact(&mut vec![0; length - 4]).ok()?;
         Some(header[0])
+    }
+
+    fn read_extended_request(socket: &mut TcpStream) {
+        assert_eq!(next_request(socket), Some(b'P'));
+        while next_request(socket).expect("statement ended before Sync") != b'S' {}
     }
 
     /// A PostgreSQL stand-in: `session` gets each connection it accepts,
@@ -492,7 +655,7 @@ mod tests {
         );
         server.join().unwrap();
 
-        let conn_handle = Box::into_raw(Box::new(conn)) as u64;
+        let conn_handle = connection_handle(Arc::new(PgHandle::new(Some(conn))));
         let pool_handle = pool_of("", Vec::new(), &[conn_handle], 1, 100);
 
         mesh_pool_checkin(pool_handle, conn_handle);
@@ -511,7 +674,7 @@ mod tests {
         let address = listener.local_addr().unwrap();
         let server = thread::spawn(move || listener.accept().unwrap());
         let conn = PgConn::from_test_stream(TcpStream::connect(address).unwrap());
-        let conn_handle = Box::into_raw(Box::new(conn)) as u64;
+        let conn_handle = connection_handle(Arc::new(PgHandle::new(Some(conn))));
         drop(server.join().unwrap());
 
         let pool_handle = pool_of("", Vec::new(), &[], 1, 100);
@@ -561,10 +724,9 @@ mod tests {
         mesh_pool_close(handle);
     }
 
-    /// A checkout waits its timeout in all, however often it wakes to find
-    /// nothing to take.
+    /// A timed-out checkout leaves no waiter or consumed slot.
     #[test]
-    fn a_checkout_waits_no_longer_than_its_timeout_however_often_it_wakes() {
+    fn checkout_timeout_removes_its_waiter() {
         let url = fake_server(|_, socket| serve(socket));
         let handle = pool_of(&url, Vec::new(), &[], 1, 1000);
         let held = checkout(pool(handle)).unwrap();
@@ -572,12 +734,10 @@ mod tests {
             let started = Instant::now();
             (checkout(pool(handle)), started.elapsed())
         });
-        thread::sleep(Duration::from_millis(700));
-        pool(handle).available.notify_one();
-
         let (result, waited) = waiter.join().unwrap();
         assert_eq!(result.unwrap_err(), "pool checkout timeout");
         assert!(waited < Duration::from_millis(1500), "waited {waited:?}");
+        assert!(pool(handle).inner.lock().waiters.is_empty());
         mesh_pool_checkin(handle, held);
         mesh_pool_close(handle);
     }
@@ -585,7 +745,7 @@ mod tests {
     /// An idle connection slow to answer its health check holds up only
     /// the checkout that took it.
     #[test]
-    fn an_idle_connection_is_checked_without_holding_the_pool() {
+    fn a_stale_idle_connection_is_checked_without_holding_the_pool() {
         let (asked, asked_signal) = mpsc::channel::<()>();
         let (answer, answered) = mpsc::channel::<()>();
         let answered = parking_lot::Mutex::new(answered);
@@ -598,6 +758,7 @@ mod tests {
             while next_request(&mut socket).is_some() {}
         });
         let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
+        age_idle_connections(handle);
         let taker = thread::spawn(move || checkout(pool(handle)));
         asked_signal.recv().unwrap();
 
@@ -608,9 +769,7 @@ mod tests {
         });
         let closed_promptly = closed_signal.recv_timeout(Duration::from_secs(2)).is_ok();
         answer.send(()).unwrap();
-        let conn = taker.join().unwrap().unwrap();
-        // Back in a closed pool, it is closed.
-        mesh_pool_checkin(handle, conn);
+        assert_eq!(taker.join().unwrap().unwrap_err(), "pool is closed");
 
         assert!(closed_promptly, "closing waited for the health check");
         assert_eq!(pool(handle).inner.lock().total_created, 0);
@@ -619,7 +778,7 @@ mod tests {
     /// An idle connection whose server went away is closed at checkout and
     /// a new one opened in its place.
     #[test]
-    fn an_idle_connection_that_died_is_replaced() {
+    fn a_stale_idle_connection_that_died_is_replaced_before_use() {
         let url = fake_server(|index, mut socket| {
             socket.write_all(AUTHENTICATED).unwrap();
             if index > 0 {
@@ -627,11 +786,274 @@ mod tests {
             }
         });
         let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
+        age_idle_connections(handle);
 
         let conn = checkout(pool(handle)).unwrap();
 
         assert_eq!(pool(handle).inner.lock().total_created, 1);
         mesh_pool_checkin(handle, conn);
+        mesh_pool_close(handle);
+    }
+
+    fn wait_for_waiters(handle: u64, count: usize) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while pool(handle).inner.lock().waiters.len() != count {
+            assert!(Instant::now() < deadline, "waiting for {count} waiters");
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn actors_and_threads_receive_pool_connections_in_arrival_order() {
+        let url = fake_server(|_, socket| serve(socket));
+        let handle = pool_of(&url, Vec::new(), &[], 1, 5000);
+        let held = checkout(pool(handle)).unwrap();
+        let (send, recv) = mpsc::channel();
+        let first = send.clone();
+        let actor = thread::spawn(move || {
+            crate::actor::in_actor(move || {
+                let conn = checkout(pool(handle)).unwrap();
+                first.send(1).unwrap();
+                mesh_pool_checkin(handle, conn);
+            })
+        });
+        wait_for_waiters(handle, 1);
+        let other = thread::spawn(move || {
+            let conn = checkout(pool(handle)).unwrap();
+            send.send(2).unwrap();
+            mesh_pool_checkin(handle, conn);
+        });
+        wait_for_waiters(handle, 2);
+        mesh_pool_checkin(handle, held);
+        assert_eq!(recv.into_iter().collect::<Vec<_>>(), [1, 2]);
+        actor.join().unwrap();
+        other.join().unwrap();
+        mesh_pool_close(handle);
+    }
+
+    #[test]
+    fn cancelling_an_actor_waiter_preserves_the_pool_slot() {
+        extern "C-unwind" fn wait(args: *const u8) {
+            let handle = *unsafe { Box::from_raw(args as *mut u64) };
+            let _ = unsafe { NativeLease::checkout_mesh(handle) };
+        }
+
+        let url = fake_server(|_, socket| serve(socket));
+        let handle = pool_of(&url, Vec::new(), &[], 1, 5000);
+        let held = checkout(pool(handle)).unwrap();
+        let pid = crate::actor::in_actor(move || {
+            crate::actor::mesh_actor_spawn(
+                wait as *const u8,
+                Box::into_raw(Box::new(handle)).cast(),
+                0,
+                1,
+            )
+        });
+        wait_for_waiters(handle, 1);
+        crate::actor::mesh_actor_exit(pid, 2);
+        wait_for_waiters(handle, 0);
+        mesh_pool_checkin(handle, held);
+        let conn = checkout(pool(handle)).unwrap();
+        assert_eq!(conn, held);
+        mesh_pool_checkin(handle, conn);
+        mesh_pool_close(handle);
+    }
+
+    #[test]
+    fn checkout_times_out_during_the_handshake_or_health_check() {
+        for health in [false, true] {
+            let url = fake_server(move |_, mut socket| {
+                if health {
+                    socket.write_all(AUTHENTICATED).unwrap();
+                    assert_eq!(next_request(&mut socket), Some(b'Q'));
+                }
+                assert_eq!(next_request(&mut socket), None);
+            });
+            let idle = health.then(|| open(&url).unwrap()).into_iter().collect();
+            let handle = pool_of(&url, idle, &[], 1, 100);
+            age_idle_connections(handle);
+            let started = Instant::now();
+            assert_eq!(checkout(pool(handle)).unwrap_err(), "pool checkout timeout");
+            assert!(started.elapsed() < Duration::from_secs(1));
+            assert_eq!(pool(handle).inner.lock().total_created, 0);
+            mesh_pool_close(handle);
+        }
+    }
+
+    #[test]
+    fn actor_queries_can_overlap_on_separate_pool_connections() {
+        let (seen, observed) = mpsc::channel();
+        let (release, released) = mpsc::channel();
+        let (release_other, released_other) = mpsc::channel();
+        let releases = [Mutex::new(released), Mutex::new(released_other)];
+        let url = fake_server(move |index, mut socket| {
+            socket.write_all(AUTHENTICATED).unwrap();
+            read_extended_request(&mut socket);
+            seen.send(index).unwrap();
+            releases[index]
+                .lock()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            socket.write_all(SELECTED).unwrap();
+        });
+        let idle = vec![open(&url).unwrap(), open(&url).unwrap()];
+        let handle = pool_of(&url, idle, &[], 2, 5000);
+        let actors = [0, 1].map(|_| {
+            thread::spawn(move || {
+                crate::actor::in_actor(move || {
+                    result(mesh_pool_execute(
+                        handle,
+                        mk_str(b"SELECT 1"),
+                        mesh_list_new(),
+                    ))
+                    .0
+                })
+            })
+        });
+        let first = observed.recv_timeout(Duration::from_secs(5)).unwrap();
+        let second = observed.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_ne!(first, second);
+        release.send(()).unwrap();
+        release_other.send(()).unwrap();
+        for actor in actors {
+            assert_eq!(actor.join().unwrap(), 0);
+        }
+        mesh_pool_close(handle);
+    }
+
+    #[test]
+    fn actor_cancelled_during_a_transaction_returns_a_rolled_back_connection() {
+        extern "C-unwind" fn statement(conn: u64) -> MeshResult {
+            let (tag, value) = result(mesh_pg_execute(
+                conn,
+                mk_str(b"INSERT INTO example VALUES (1)"),
+                mesh_list_new(),
+            ));
+            MeshResult { tag, value }
+        }
+
+        extern "C-unwind" fn transaction(args: *const u8) {
+            let handle = *unsafe { Box::from_raw(args as *mut u64) };
+            crate::db::repo::mesh_repo_transaction(
+                handle,
+                statement as *const u8,
+                std::ptr::null(),
+            );
+        }
+
+        let (pending, pending_signal) = mpsc::channel();
+        let (release, released) = mpsc::channel();
+        let released = Mutex::new(released);
+        let url = fake_server(move |_, mut socket| {
+            socket.write_all(AUTHENTICATED).unwrap();
+            assert_eq!(next_request(&mut socket), Some(b'Q'));
+            socket.write_all(b"C\0\0\0\x0aBEGIN\0Z\0\0\0\x05T").unwrap();
+            read_extended_request(&mut socket);
+            pending.send(()).unwrap();
+            released
+                .lock()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+            socket
+                .write_all(b"1\0\0\0\x04\x32\0\0\0\x04C\0\0\0\x0fINSERT 0 1\0Z\0\0\0\x05T")
+                .unwrap();
+            let mut rollback = [0; 14];
+            socket.read_exact(&mut rollback).unwrap();
+            assert_eq!(&rollback, b"Q\0\0\0\x0dROLLBACK\0");
+            socket
+                .write_all(b"C\0\0\0\x0dROLLBACK\0Z\0\0\0\x05I")
+                .unwrap();
+            serve_queries(socket);
+        });
+        let conn = open(&url).unwrap();
+        let handle = pool_of(&url, vec![conn], &[], 1, 5000);
+        let pid = crate::actor::in_actor(move || {
+            crate::actor::mesh_actor_spawn(
+                transaction as *const u8,
+                Box::into_raw(Box::new(handle)).cast(),
+                0,
+                1,
+            )
+        });
+        pending_signal.recv_timeout(Duration::from_secs(5)).unwrap();
+        crate::actor::mesh_actor_exit(pid, 2);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !pool(handle).inner.lock().leased.is_empty() {
+            assert!(
+                Instant::now() < deadline,
+                "the cancelled actor kept the lease"
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+        let waiter = thread::spawn(move || checkout(pool(handle)));
+        wait_for_waiters(handle, 1);
+        release.send(()).unwrap();
+        let returned = waiter.join().unwrap().unwrap();
+        assert_eq!(returned, conn);
+        assert_eq!(
+            unsafe { PgHandle::from_handle(conn) }.direct(|conn| conn.txn_status),
+            b'I'
+        );
+        mesh_pool_checkin(handle, conn);
+        mesh_pool_close(handle);
+    }
+
+    #[test]
+    fn a_recently_checked_in_connection_goes_straight_to_the_statement() {
+        mesh_rt_init();
+        let url = fake_server(|_, mut socket| {
+            socket.write_all(AUTHENTICATED).unwrap();
+            read_extended_request(&mut socket);
+            socket.write_all(SELECTED).unwrap();
+        });
+        let conn = open(&url).unwrap();
+        let handle = pool_of(&url, Vec::new(), &[conn], 1, 5000);
+        mesh_pool_checkin(handle, conn);
+
+        assert_eq!(
+            result(mesh_pool_execute(
+                handle,
+                mk_str(b"SELECT 1"),
+                mesh_list_new()
+            ))
+            .0,
+            0
+        );
+        mesh_pool_close(handle);
+    }
+
+    #[test]
+    fn a_recent_connection_reports_the_server_error_and_is_replaced() {
+        mesh_rt_init();
+        let url = fake_server(|index, mut socket| {
+            socket.write_all(AUTHENTICATED).unwrap();
+            read_extended_request(&mut socket);
+            if index == 0 {
+                let error =
+                    b"SFATAL\0C57P01\0Mterminating connection due to administrator command\0\0";
+                socket.write_all(b"E").unwrap();
+                socket
+                    .write_all(&(error.len() as u32 + 4).to_be_bytes())
+                    .unwrap();
+                socket.write_all(error).unwrap();
+            } else {
+                socket.write_all(SELECTED).unwrap();
+            }
+        });
+        let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
+        let statement = mk_str(b"SELECT 1");
+        let failure = error_text(mesh_pool_execute(handle, statement, mesh_list_new()));
+        assert!(failure.contains("57P01"), "{failure}");
+        assert!(
+            failure.contains("terminating connection due to administrator command"),
+            "{failure}"
+        );
+        assert_eq!(pool(handle).inner.lock().total_created, 0);
+        assert_eq!(
+            result(mesh_pool_execute(handle, statement, mesh_list_new())).0,
+            0
+        );
+        assert_eq!(pool(handle).inner.lock().total_created, 1);
         mesh_pool_close(handle);
     }
 
@@ -819,7 +1241,7 @@ mod tests {
         let kept = open(&url).unwrap();
         let refused = open(&url).unwrap();
         for conn in [kept, refused] {
-            unsafe { (*(conn as *mut PgConn)).txn_status = b'T' };
+            unsafe { PgHandle::from_handle(conn).direct(|conn| conn.txn_status = b'T') };
         }
         let handle = pool_of(&url, Vec::new(), &[kept, refused], 2, 100);
 
@@ -827,11 +1249,13 @@ mod tests {
         mesh_pool_checkin(handle, refused);
 
         let inner = pool(handle).inner.lock();
+        assert_eq!(inner.idle.len(), 1);
+        assert_eq!(inner.idle[0].handle, kept);
+        assert_eq!(inner.total_created, 1);
         assert_eq!(
-            (inner.idle.as_slice(), inner.total_created),
-            (&[kept][..], 1)
+            unsafe { PgHandle::from_handle(kept).direct(|conn| conn.txn_status) },
+            b'I'
         );
-        assert_eq!(unsafe { (*(kept as *const PgConn)).txn_status }, b'I');
     }
 
     extern "C-unwind" fn column_count(row: u64) -> u64 {
@@ -867,7 +1291,10 @@ mod tests {
         let (tag, _) = result(mesh_pool_execute(handle, mk_str(b"BEGIN"), mesh_list_new()));
         assert_eq!(tag, 0);
         let conn = checkout(pool(handle)).unwrap();
-        assert_eq!(unsafe { (*(conn as *const PgConn)).txn_status }, b'I');
+        assert_eq!(
+            unsafe { PgHandle::from_handle(conn).direct(|conn| conn.txn_status) },
+            b'I'
+        );
         mesh_pool_checkin(handle, conn);
         assert_eq!(pool(handle).inner.lock().idle.len(), 1);
         mesh_pool_close(handle);

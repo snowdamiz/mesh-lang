@@ -18,6 +18,20 @@ Both drivers accept parameterized SQL and return errors through `Result`. The hi
 
 `Sqlite.open(":memory:")` creates an in-memory database; a filesystem path creates or opens a local database file.
 
+Mesh opens SQLite files in write-ahead logging (WAL) mode when the file and
+filesystem support it. Otherwise SQLite keeps the file's existing journal
+mode. Statements wait up to five seconds when the database is busy.
+WAL uses `-wal` and `-shm` sidecar files. Copying only the main file while it
+is open can lose committed rows. Use a SQLite backup or close every connection
+before copying the file. To opt out, execute `PRAGMA journal_mode = DELETE`
+after opening the connection.
+
+Each connection has one transaction and one worker thread. The thread runs
+writes, transaction commands, and statements inside a transaction. An idle
+connection can run read-only statements on the caller in WAL or memory mode.
+Actors that need independent transactions must open separate connections.
+Requests fail if the connection's queue is full or the handle is closed.
+
 ```mesh
 fn run() -> Int!String do
   let db = Sqlite.open(":memory:")?
@@ -74,6 +88,21 @@ end
 ```
 
 `Pool.open(url, min_size, max_size, checkout_timeout_ms)` eagerly creates the minimum connections and bounds concurrent checkouts at the maximum.
+When all connections are in use, checkouts wait in arrival order. Waiting actors
+free their scheduler workers to run other actors. The checkout timeout includes
+waiting for a slot, checking an idle connection, and opening a connection.
+PostgreSQL operations from actors use one I/O thread per connection. A pool of
+`N` connections can use up to `N` I/O threads, started as actors use those
+connections. Calls from `main` use the socket directly.
+
+Each PostgreSQL connection caches up to 256 prepared statements. Set
+`statement_cache=off` in the connection URL when using a transaction-mode pooler.
+
+The pool reuses connections checked in less than 500 ms ago without a health
+check. It checks connections that have been idle longer before lending them.
+If PostgreSQL closed a recently used connection, the statement returns an
+error and the pool discards the connection. The pool never retries a
+statement after a connection failure.
 
 A URL is `postgres://user:password@host:port/database` (an IPv6 host in
 brackets, `[::1]`), with `sslmode` and `sslrootcert` in its query. Mesh verifies every TLS server's certificate and

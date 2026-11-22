@@ -7,7 +7,7 @@ use socket2::{SockRef, TcpKeepalive};
 
 use super::pg::{
     commit, connect, connect_with_socket, pg_jobs_ack, pg_simple_command, pg_text_query,
-    JobsAckError, PgConn, PgNotifications,
+    JobsAckError, PgConn, PgHandle, PgNotifications,
 };
 use super::pool::{connection_url, NativeLease};
 
@@ -220,5 +220,7 @@ pub(crate) unsafe fn with_connection<T>(
     if connection == 0 {
         return Err("invalid PostgreSQL connection".into());
     }
-    run(&mut PgJobDb(&mut *(connection as *mut PgConn)))
+    // A native Jobs operation holds the socket for the whole database call,
+    // including its per-request deadlines and transaction boundaries.
+    PgHandle::from_handle(connection).direct(|conn| run(&mut PgJobDb(conn)))
 }

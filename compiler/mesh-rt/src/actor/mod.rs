@@ -147,6 +147,58 @@ pub(crate) fn cooperative_channel<T>() -> (CooperativeSender<T>, std::sync::mpsc
     (CooperativeSender { sender, waiter }, receiver)
 }
 
+/// A one-shot reply that wakes the actor even when its producer gives up.
+pub(crate) struct CooperativeReply<T>(Option<CooperativeSender<Option<T>>>);
+
+pub(crate) struct CooperativeReplyReceiver<T>(std::sync::mpsc::Receiver<Option<T>>);
+
+impl<T> CooperativeReply<T> {
+    pub(crate) fn send(mut self, value: T) {
+        let _ = self.0.take().unwrap().send(Some(value));
+    }
+}
+
+impl<T> Drop for CooperativeReply<T> {
+    fn drop(&mut self) {
+        if let Some(sender) = self.0.take() {
+            let _ = sender.send(None);
+        }
+    }
+}
+
+pub(crate) fn cooperative_reply<T>() -> (CooperativeReply<T>, CooperativeReplyReceiver<T>) {
+    let (sender, receiver) = cooperative_channel();
+    (
+        CooperativeReply(Some(sender)),
+        CooperativeReplyReceiver(receiver),
+    )
+}
+
+/// Wait for a one-shot reply or a dropped producer without arming a scheduler timer.
+pub(crate) fn cooperative_recv<T>(
+    receiver: &CooperativeReplyReceiver<T>,
+) -> Result<T, std::sync::mpsc::RecvError> {
+    use std::sync::mpsc::{RecvError, TryRecvError};
+    if !stack::CURRENT_YIELDER.with(|current| current.yielder.get().is_some()) {
+        return receiver.0.recv()?.ok_or(RecvError);
+    }
+
+    let (_, me) = running_process();
+    loop {
+        me.lock().set_live_state(ProcessState::Waiting);
+        let reply = match receiver.0.try_recv() {
+            Ok(Some(value)) => Ok(value),
+            Ok(None) | Err(TryRecvError::Disconnected) => Err(RecvError),
+            Err(TryRecvError::Empty) => {
+                stack::yield_current();
+                continue;
+            }
+        };
+        me.lock().set_live_state(ProcessState::Ready);
+        return reply;
+    }
+}
+
 /// Receive a reply with a monotonic timeout while yielding a Mesh coroutine.
 ///
 /// This is the scheduler-aware equivalent of `Receiver::recv_timeout`: an
@@ -2197,6 +2249,30 @@ mod tests {
                 Err(RecvTimeoutError::Timeout)
             ]
         );
+    }
+
+    #[test]
+    fn cooperative_recv_wakes_for_reply_and_sender_drop() {
+        use std::sync::mpsc::RecvError;
+        use std::time::Duration;
+        let answers = in_actor(|| {
+            let (reply, receiver) = cooperative_reply();
+            let (abandoned, disconnected) = cooperative_reply::<i32>();
+            let worker = std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(10));
+                reply.send(42);
+                std::thread::sleep(Duration::from_millis(10));
+                drop(abandoned);
+            });
+            let answers = (cooperative_recv(&receiver), cooperative_recv(&disconnected));
+            worker.join().unwrap();
+            answers
+        });
+        assert_eq!(answers, (Ok(42), Err(RecvError)));
+
+        let (reply, receiver) = cooperative_reply();
+        std::thread::spawn(move || reply.send(7));
+        assert_eq!(cooperative_recv(&receiver), Ok(7));
     }
 
     #[test]

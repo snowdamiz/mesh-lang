@@ -103,6 +103,11 @@ and calls through unknown function values in grouped code. Use ordinary
 share scheduler workers, so an ordinary actor that blocks its thread can
 delay a group on that worker.
 
+Ordinary actors park while waiting for PostgreSQL pool connections and socket
+replies. Database I/O uses up to one thread per connection. When an actor dies
+with a pooled request in flight, the pool waits for the exchange to finish and
+rolls back any open transaction before lending the connection again.
+
 At optimization level 2 or higher, the compiler can run a grouped actor's
 untimed scalar receive loop directly on its worker's stack. Between messages
 the worker saves the loop arguments. The actor keeps its PID and mailbox.

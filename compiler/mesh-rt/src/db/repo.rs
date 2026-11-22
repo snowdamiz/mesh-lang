@@ -33,9 +33,9 @@ use crate::db::changeset::{
     add_error, map_constraint_error, mesh_changeset_changes, mesh_changeset_valid,
 };
 use crate::db::expr::{clone_expr, parse_expr, render_expr, SqlExpr};
-use crate::db::pool::{
-    mesh_pool_checkin, mesh_pool_checkout, mesh_pool_execute, mesh_pool_query, unbox_u64_payload,
-};
+#[cfg(test)]
+use crate::db::pool::unbox_u64_payload;
+use crate::db::pool::{mesh_pool_execute, mesh_pool_query, NativeLease};
 use crate::db::query::{query_parts, QueryParts};
 use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::{mesh_str, MeshString};
@@ -248,12 +248,15 @@ fn select_sql(
 
     // LIMIT clause
     if query.limit >= 0 {
-        sql.push_str(&format!(" LIMIT {}", query.limit));
+        sql.push_str(&format!(" LIMIT ${param_idx}"));
+        params.push(query.limit.to_string());
+        param_idx += 1;
     }
 
     // OFFSET clause
     if query.offset >= 0 {
-        sql.push_str(&format!(" OFFSET {}", query.offset));
+        sql.push_str(&format!(" OFFSET ${param_idx}"));
+        params.push(query.offset.to_string());
     }
 
     (sql, params)
@@ -285,7 +288,7 @@ fn run_query(pool: u64, sql: &str, params: &[String]) -> *mut u8 {
 /// Reads the Query struct's slots, builds complete SELECT SQL with all
 /// clause types, and executes via Pool.query.
 #[no_mangle]
-pub extern "C" fn mesh_repo_all(pool: u64, query: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_all(pool: u64, query: *mut u8) -> *mut u8 {
     let (sql, params) = select_sql(unsafe { &query_parts(query) }, None, 1);
     run_query(pool, &sql, &params)
 }
@@ -296,7 +299,7 @@ pub extern "C" fn mesh_repo_all(pool: u64, query: *mut u8) -> *mut u8 {
 ///
 /// Runs the query with LIMIT 1 and returns its row, or Err("not found").
 #[no_mangle]
-pub extern "C" fn mesh_repo_one(pool: u64, query: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_one(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let mut parts = query_parts(query);
         parts.limit = 1;
@@ -347,7 +350,7 @@ unsafe fn primary_key(pool: u64, table: &str) -> Result<String, *mut u8> {
 ///
 /// Builds: `SELECT * FROM "table" WHERE "<primary key>" = $1 LIMIT 1`
 #[no_mangle]
-pub extern "C" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
     unsafe {
         let table_str = text_of(table);
         let key = match primary_key(pool, table_str) {
@@ -371,7 +374,7 @@ pub extern "C" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut 
 ///
 /// Builds: `SELECT * FROM "table" WHERE "field" = $1 LIMIT 1`
 #[no_mangle]
-pub extern "C" fn mesh_repo_get_by(
+pub extern "C-unwind" fn mesh_repo_get_by(
     pool: u64,
     table: *mut u8,
     field: *mut u8,
@@ -399,7 +402,7 @@ pub extern "C" fn mesh_repo_get_by(
 /// Builds: `SELECT COUNT(*) FROM "table" WHERE ...`
 /// Parses the integer from the first row's first column.
 #[no_mangle]
-pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (select, params) = select_sql(&query_parts(query), Some("1"), 1);
         let sql = counted_sql(&select);
@@ -435,7 +438,7 @@ unsafe fn single_value(
 /// Builds: `SELECT EXISTS(SELECT 1 FROM "table" WHERE ... LIMIT 1)`
 /// Returns the Bool, boxed as a Result payload is.
 #[no_mangle]
-pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (select, params) = select_sql(&query_parts(query), Some("1"), 1);
         let sql = exists_sql(&select);
@@ -617,7 +620,7 @@ fn build_insert_expr_sql_pure(
 /// 3. Executes via Pool.query (RETURNING produces rows)
 /// 4. Returns the first (inserted) row
 #[no_mangle]
-pub extern "C" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -> *mut u8 {
     unsafe {
         let table_str = text_of(table);
         let (columns, values) = map_to_columns_and_values(fields);
@@ -641,7 +644,7 @@ pub extern "C" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -
 ///
 /// `Repo.insert_expr(pool, table, expr_fields_map)` -> `Result<Map<String,String>, String>`
 #[no_mangle]
-pub extern "C" fn mesh_repo_insert_expr(
+pub extern "C-unwind" fn mesh_repo_insert_expr(
     pool: u64,
     table: *mut u8,
     expr_fields: *mut u8,
@@ -670,7 +673,7 @@ pub extern "C" fn mesh_repo_insert_expr(
 /// 3. Params: SET values first ($1..$N), then id ($N+1)
 /// 4. Returns the first (updated) row
 #[no_mangle]
-pub extern "C" fn mesh_repo_update(
+pub extern "C-unwind" fn mesh_repo_update(
     pool: u64,
     table: *mut u8,
     id: *mut u8,
@@ -732,7 +735,7 @@ unsafe fn update_by_key(
 /// 1. Builds DELETE SQL with WHERE <primary key> = $1, RETURNING *
 /// 2. Returns the first (deleted) row
 #[no_mangle]
-pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
     unsafe {
         let table_str = text_of(table);
         let key = match primary_key(pool, table_str) {
@@ -754,21 +757,14 @@ pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *m
 /// `Repo.transaction(pool, callback)`: `Pg.transaction` on a connection
 /// checked out of `pool` for it, and checked back in after.
 #[no_mangle]
-pub extern "C" fn mesh_repo_transaction(
+pub extern "C-unwind" fn mesh_repo_transaction(
     pool: u64,
     fn_ptr: *const u8,
     env_ptr: *const u8,
 ) -> *mut u8 {
-    unsafe {
-        let checkout_result = mesh_pool_checkout(pool);
-        let r = &*(checkout_result as *const MeshResult);
-        if r.tag != 0 {
-            return checkout_result;
-        }
-        let conn_handle = unbox_u64_payload(r.value);
-        let result = crate::db::pg::mesh_pg_transaction(conn_handle, fn_ptr, env_ptr);
-        mesh_pool_checkin(pool, conn_handle);
-        result
+    match unsafe { NativeLease::checkout_mesh(pool) } {
+        Ok(lease) => crate::db::pg::mesh_pg_transaction(lease.connection, fn_ptr, env_ptr),
+        Err(error) => err_result(&error),
     }
 }
 
@@ -815,7 +811,7 @@ unsafe fn changeset_changes(changeset: *mut u8) -> Result<(Vec<String>, Vec<Stri
 /// 4. On success: return Ok(first_row)
 /// 5. On PG error: parse structured error, map constraint to changeset error, return Err(changeset)
 #[no_mangle]
-pub extern "C" fn mesh_repo_insert_changeset(
+pub extern "C-unwind" fn mesh_repo_insert_changeset(
     pool: u64,
     table: *mut u8,
     changeset: *mut u8,
@@ -838,7 +834,7 @@ pub extern "C" fn mesh_repo_insert_changeset(
 ///
 /// Same pattern as insert_changeset but builds UPDATE SQL with WHERE <primary key> = $N+1.
 #[no_mangle]
-pub extern "C" fn mesh_repo_update_changeset(
+pub extern "C-unwind" fn mesh_repo_update_changeset(
     pool: u64,
     table: *mut u8,
     id: *mut u8,
@@ -1168,7 +1164,7 @@ unsafe fn row_json(row: *mut u8, associations: &AssocTree) -> serde_json::Value 
 /// `Map<String, String>` can hold: a pointer there would be read, printed and
 /// copied between actors as a string.
 #[no_mangle]
-pub extern "C" fn mesh_repo_preload(
+pub extern "C-unwind" fn mesh_repo_preload(
     pool: u64,
     rows: *mut u8,
     associations: *mut u8,
@@ -1326,7 +1322,7 @@ fn where_sql(query: &QueryParts, start_idx: usize) -> (String, Vec<String>, usiz
 /// Update rows matching a Query's WHERE conditions.
 /// `Repo.update_where(pool, table, fields_map, query)` -> `Result<Map<String,String>, String>`
 #[no_mangle]
-pub extern "C" fn mesh_repo_update_where(
+pub extern "C-unwind" fn mesh_repo_update_where(
     pool: u64,
     table: *mut u8,
     fields: *mut u8,
@@ -1363,7 +1359,7 @@ pub extern "C" fn mesh_repo_update_where(
 /// `Repo.update_where_expr(pool, table, expr_fields_map, query)`
 ///   -> `Result<Map<String,String>, String>`
 #[no_mangle]
-pub extern "C" fn mesh_repo_update_where_expr(
+pub extern "C-unwind" fn mesh_repo_update_where_expr(
     pool: u64,
     table: *mut u8,
     expr_fields: *mut u8,
@@ -1389,7 +1385,11 @@ pub extern "C" fn mesh_repo_update_where_expr(
 /// Delete rows matching a Query's WHERE conditions.
 /// `Repo.delete_where(pool, table, query)` -> `Result<Int, String>`
 #[no_mangle]
-pub extern "C" fn mesh_repo_delete_where(pool: u64, table: *mut u8, query: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_delete_where(
+    pool: u64,
+    table: *mut u8,
+    query: *mut u8,
+) -> *mut u8 {
     unsafe {
         let table_str = text_of(table);
 
@@ -1421,7 +1421,7 @@ pub extern "C" fn mesh_repo_delete_where(pool: u64, table: *mut u8, query: *mut 
 ///   ON CONFLICT ("target1", "target2") DO UPDATE SET "col" = EXCLUDED."col", ...
 ///   RETURNING *
 #[no_mangle]
-pub extern "C" fn mesh_repo_insert_or_update(
+pub extern "C-unwind" fn mesh_repo_insert_or_update(
     pool: u64,
     table: *mut u8,
     fields: *mut u8,
@@ -1457,7 +1457,7 @@ pub extern "C" fn mesh_repo_insert_or_update(
 /// `Repo.insert_or_update_expr(pool, table, fields_map, conflict_targets, expr_fields_map)`
 ///   -> `Result<Map<String,String>, String>`
 #[no_mangle]
-pub extern "C" fn mesh_repo_insert_or_update_expr(
+pub extern "C-unwind" fn mesh_repo_insert_or_update_expr(
     pool: u64,
     table: *mut u8,
     fields: *mut u8,
@@ -1491,7 +1491,7 @@ pub extern "C" fn mesh_repo_insert_or_update_expr(
 /// Delete rows matching a Query's WHERE conditions and return deleted rows.
 /// `Repo.delete_where_returning(pool, table, query)` -> `Result<List<Map<String,String>>, String>`
 #[no_mangle]
-pub extern "C" fn mesh_repo_delete_where_returning(
+pub extern "C-unwind" fn mesh_repo_delete_where_returning(
     pool: u64,
     table: *mut u8,
     query: *mut u8,
@@ -1515,7 +1515,7 @@ pub extern "C" fn mesh_repo_delete_where_returning(
 /// Execute raw SQL and return rows.
 /// `Repo.query_raw(pool, sql, params)` -> `Result<List<Map<String,String>>, String>`
 #[no_mangle]
-pub extern "C" fn mesh_repo_query_raw(pool: u64, sql: *mut u8, params: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_query_raw(pool: u64, sql: *mut u8, params: *mut u8) -> *mut u8 {
     let sql_ptr = sql as *const MeshString;
     mesh_pool_query(pool, sql_ptr, params)
 }
@@ -1523,7 +1523,11 @@ pub extern "C" fn mesh_repo_query_raw(pool: u64, sql: *mut u8, params: *mut u8) 
 /// Execute raw SQL and return affected row count.
 /// `Repo.execute_raw(pool, sql, params)` -> `Result<Int, String>`
 #[no_mangle]
-pub extern "C" fn mesh_repo_execute_raw(pool: u64, sql: *mut u8, params: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_repo_execute_raw(
+    pool: u64,
+    sql: *mut u8,
+    params: *mut u8,
+) -> *mut u8 {
     let sql_ptr = sql as *const MeshString;
     mesh_pool_execute(pool, sql_ptr, params)
 }
@@ -1907,7 +1911,7 @@ mod tests {
 
     #[test]
     fn test_select_with_order_limit_offset() {
-        let (sql, _) = build_select_sql_from_parts(
+        let (sql, params) = build_select_sql_from_parts(
             "users",
             &[],
             &[],
@@ -1924,8 +1928,9 @@ mod tests {
         );
         assert_eq!(
             sql,
-            "SELECT * FROM \"users\" ORDER BY \"name\" ASC, \"age\" DESC LIMIT 10 OFFSET 20"
+            "SELECT * FROM \"users\" ORDER BY \"name\" ASC, \"age\" DESC LIMIT $1 OFFSET $2"
         );
+        assert_eq!(params, ["10", "20"]);
     }
 
     #[test]
@@ -1947,9 +1952,9 @@ mod tests {
         );
         assert_eq!(
             sql,
-            "SELECT \"id\", \"name\" FROM \"users\" INNER JOIN \"posts\" ON posts.user_id = users.id WHERE \"active\" = $1 ORDER BY \"name\" ASC LIMIT 10 OFFSET 0"
+            "SELECT \"id\", \"name\" FROM \"users\" INNER JOIN \"posts\" ON posts.user_id = users.id WHERE \"active\" = $1 ORDER BY \"name\" ASC LIMIT $2 OFFSET $3"
         );
-        assert_eq!(params, vec!["true"]);
+        assert_eq!(params, ["true", "10", "0"]);
     }
 
     #[test]
@@ -2863,11 +2868,11 @@ mod tests {
              FROM \"articles\" INNER JOIN \"writers\" ON writers.handle = articles.author_id \
              WHERE \"status\" IN ($2, $3) AND \"kind\" NOT IN ($4) AND \"year\" BETWEEN $5 AND $6 \
              AND (\"a\" = $7 OR \"b\" = $8) AND (\"views\" > $9) AND \"author_id\" IN (SELECT \
-             \"handle\" FROM \"bans\" WHERE \"active\" = $10) LIMIT 5) AND \"score\" > $11"
+             \"handle\" FROM \"bans\" WHERE \"active\" = $10) LIMIT $11) AND \"score\" > $12"
         );
         assert_eq!(
             params,
-            ["Ada", "live", "pinned", "draft", "2020", "2026", "1", "2", "10", "t", "3"]
+            ["Ada", "live", "pinned", "draft", "2020", "2026", "1", "2", "10", "t", "5", "3"]
         );
     }
 

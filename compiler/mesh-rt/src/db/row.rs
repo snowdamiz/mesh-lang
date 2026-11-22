@@ -11,9 +11,63 @@
 //! - `mesh_row_parse_float`: Parse a string to Float (f64)
 //! - `mesh_row_parse_bool`: Parse a string to Bool (0 or 1)
 
-use crate::collections::map::{mesh_map_get, mesh_map_has_key};
+use std::collections::HashMap;
+
+use crate::collections::map::{
+    mesh_map_from_unique_string_entries, mesh_map_get, mesh_map_has_key,
+};
 use crate::io::{alloc_result, err_result};
-use crate::string::text_of;
+use crate::string::{mesh_str, text_of};
+
+/// Column keys and their layout for every map in one result set. Row encoding
+/// runs without a scheduler safepoint, so Mesh pointers in this scratch buffer
+/// remain live until the maps are published to the caller.
+pub(super) struct RowKeys {
+    by_column: Vec<usize>,
+    entries: Vec<[u64; 2]>,
+}
+
+impl RowKeys {
+    pub(super) fn new<'a>(columns: impl ExactSizeIterator<Item = &'a str>) -> Self {
+        let count = columns.len();
+        let mut indexes = HashMap::with_capacity(count);
+        let mut entries = Vec::with_capacity(count);
+        let by_column = columns
+            .map(|name| {
+                *indexes.entry(name).or_insert_with(|| {
+                    let index = entries.len();
+                    entries.push([mesh_str(name) as u64, 0]);
+                    index
+                })
+            })
+            .collect();
+        Self { by_column, entries }
+    }
+
+    pub(super) fn encode(
+        &mut self,
+        values: impl IntoIterator<Item = Result<u64, String>>,
+    ) -> Result<u64, String> {
+        for (&index, value) in self.by_column.iter().zip(values) {
+            self.entries[index][1] = value?;
+        }
+        Ok(mesh_map_from_unique_string_entries(&self.entries) as u64)
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn row_keys_keep_the_last_duplicate_value_in_the_first_position() {
+    crate::gc::mesh_rt_init();
+    let mut keys = RowKeys::new(["a", "b", "a"].into_iter());
+    let first = keys.encode([Ok(1), Ok(2), Ok(3)]).unwrap() as *mut u8;
+    let second = keys.encode([Ok(4), Ok(5), Ok(6)]).unwrap() as *mut u8;
+    let (_, first) = unsafe { crate::collections::map::live_entries(first) };
+    let (_, second) = unsafe { crate::collections::map::live_entries(second) };
+    assert_eq!(first.len(), 2);
+    assert_eq!(first, [[second[0][0], 3], [second[1][0], 2]]);
+    assert_eq!(second, [[first[0][0], 6], [first[1][0], 5]]);
+}
 
 /// `Ok(payload)`, the payload unboxed as generated `from_row` code reads it.
 fn ok(payload: *mut u8) -> *mut u8 {
