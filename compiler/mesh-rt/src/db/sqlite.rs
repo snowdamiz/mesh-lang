@@ -14,7 +14,6 @@ use libsqlite3_sys::*;
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::cell::Cell;
-use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr::NonNull;
@@ -22,14 +21,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, SyncSender, TrySendError};
 use std::sync::{Arc, LazyLock};
 
+use super::row::RowKeys;
 use crate::actor::{
     cooperative_recv, cooperative_reply, CooperativeReply, CooperativeReplyReceiver,
 };
 use crate::bytes::mesh_bytes_new;
 use crate::collections::list::mesh_list_from_array;
-use crate::collections::map::mesh_map_from_string_entries;
 use crate::db::pg::{
-    alloc_db_value, db_values, text_values, BindValue, MeshDbValue, DB_VALUE_BINARY, DB_VALUE_NULL,
+    alloc_db_value, db_values, text_values, BindValue, DB_VALUE_BINARY, DB_VALUE_NULL,
     DB_VALUE_TEXT, MAX_DB_VALUE_BYTES,
 };
 use crate::io::{alloc_result, box_scalar, err_result};
@@ -629,10 +628,11 @@ fn encode_reply(reply: Reply, operation: Operation) -> *mut u8 {
         Reply::Unit => alloc_result(0, std::ptr::null_mut()) as *mut u8,
         Reply::Rows { columns, rows } => {
             let typed = matches!(operation, Operation::Query(Values::Typed));
+            let mut keys = RowKeys::new(columns.iter().map(String::as_str));
             let rows: Vec<_> = rows
                 .into_iter()
                 .map(|row| {
-                    encode_row(&columns, row.into_iter().map(|cell| Ok(cell.encode(typed))))
+                    keys.encode(row.into_iter().map(|cell| Ok(cell.encode(typed))))
                         .unwrap()
                 })
                 .collect();
@@ -696,24 +696,6 @@ impl ResultValue<'_> {
     }
 }
 
-fn encode_row(
-    columns: &[String],
-    values: impl IntoIterator<Item = Result<u64, String>>,
-) -> Result<u64, String> {
-    let mut entries = Vec::<[u64; 2]>::with_capacity(columns.len());
-    let mut indexes = HashMap::<&str, usize>::with_capacity(columns.len());
-    for (name, value) in columns.iter().zip(values) {
-        let value = value?;
-        if let Some(index) = indexes.get(name.as_str()).copied() {
-            entries[index][1] = value;
-        } else {
-            indexes.insert(name.as_str(), entries.len());
-            entries.push([mesh_str(name) as u64, value]);
-        }
-    }
-    Ok(mesh_map_from_string_entries(&entries) as u64)
-}
-
 fn encode_rows(rows: &[u64]) -> *mut u8 {
     alloc_result(0, mesh_list_from_array(rows.as_ptr(), rows.len() as i64)) as *mut u8
 }
@@ -723,13 +705,12 @@ unsafe fn read_mesh_rows(
     stmt: *mut sqlite3_stmt,
     values: Values,
 ) -> Result<*mut u8, String> {
+    let mut keys = None;
     let (_, rows) = read_rows(db, stmt, |columns, bytes| {
-        encode_row(
-            columns,
-            (0..columns.len() as c_int).map(|i| {
+        keys.get_or_insert_with(|| RowKeys::new(columns.iter().map(String::as_str)))
+            .encode((0..columns.len() as c_int).map(|i| {
                 read_cell(stmt, i, values, bytes).map(|cell| cell.encode(values == Values::Typed))
-            }),
-        )
+            }))
     })?;
     Ok(encode_rows(&rows))
 }
@@ -974,6 +955,7 @@ mod tests {
     use crate::collections::list::{
         mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new,
     };
+    use crate::db::pg::MeshDbValue;
     use crate::gc::mesh_rt_init;
     use crate::io::MeshResult;
     use crate::string::mesh_string_new;

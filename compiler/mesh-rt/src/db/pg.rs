@@ -15,9 +15,8 @@
 //! (local development). The wire protocol is implemented from scratch using
 //! `std::net::TcpStream` and cryptography libraries.
 
-use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::io::{ErrorKind, Read, Write};
+use std::io::{BufReader, ErrorKind, Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -33,11 +32,11 @@ use rustls_pki_types::{pem::PemObject, CertificateDer, ServerName};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
+use super::row::RowKeys;
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::list::{
     mesh_list_append, mesh_list_from_array, mesh_list_get, mesh_list_length, mesh_list_new,
 };
-use crate::collections::map::mesh_map_from_string_entries;
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::text_of;
@@ -166,7 +165,7 @@ impl Write for PgStream {
 
 /// Wrapper around a (possibly TLS-wrapped) stream to a PostgreSQL server.
 pub(super) struct PgConn {
-    stream: PgStream,
+    stream: BufReader<PgStream>,
     /// Transaction status byte from the most recent ReadyForQuery message.
     /// b'I' = idle (not in transaction), b'T' = in transaction block,
     /// b'E' = in a failed transaction block. Updated on every ReadyForQuery.
@@ -235,8 +234,9 @@ impl PgConn {
         // send it only on the next read.
         let result = self
             .stream
+            .get_mut()
             .write_all(bytes)
-            .and_then(|()| self.stream.flush());
+            .and_then(|()| self.stream.get_mut().flush());
         if result.is_err() {
             self.broken = true;
         }
@@ -260,15 +260,15 @@ impl PgConn {
 
     /// Wait at most `timeout` for each read (`None`: as long as it takes).
     pub(super) fn set_read_timeout(&self, timeout: Option<Duration>) {
-        let _ = self.stream.tcp().set_read_timeout(timeout);
+        let _ = self.stream.get_ref().tcp().set_read_timeout(timeout);
     }
 
     pub(super) fn set_write_timeout(&self, timeout: Option<Duration>) {
-        let _ = self.stream.tcp().set_write_timeout(timeout);
+        let _ = self.stream.get_ref().tcp().set_write_timeout(timeout);
     }
 
     pub(super) fn socket_timeouts(&self) -> (Option<Duration>, Option<Duration>) {
-        let socket = self.stream.tcp();
+        let socket = self.stream.get_ref().tcp();
         (
             socket.read_timeout().unwrap_or(None),
             socket.write_timeout().unwrap_or(None),
@@ -281,9 +281,9 @@ impl PgConn {
         run: impl FnOnce(&mut Self) -> T,
     ) -> T {
         let (read, write) = self.socket_timeouts();
-        self.stream.set_deadline(Some(deadline));
+        self.stream.get_mut().set_deadline(Some(deadline));
         let result = run(self);
-        self.stream.set_deadline(None);
+        self.stream.get_mut().set_deadline(None);
         self.set_read_timeout(read);
         self.set_write_timeout(write);
         result
@@ -292,7 +292,7 @@ impl PgConn {
     #[cfg(test)]
     pub(super) fn from_test_stream(stream: TcpStream) -> Self {
         Self {
-            stream: PgStream::Plain(PgSocket::new(stream)),
+            stream: BufReader::new(PgStream::Plain(PgSocket::new(stream))),
             txn_status: b'I',
             broken: false,
             statements: None,
@@ -812,7 +812,7 @@ fn negotiate_tls(mut stream: PgSocket, url: &PgUrl) -> Result<PgStream, String> 
 // ── Wire Protocol Helpers (Message Reading) ────────────────────────────
 
 /// Read a single message from the server: returns (tag_byte, body_bytes).
-fn read_message(stream: &mut PgStream) -> Result<(u8, Vec<u8>), String> {
+fn read_message(stream: &mut impl Read) -> Result<(u8, Vec<u8>), String> {
     let mut tag = [0u8; 1];
     stream
         .read_exact(&mut tag)
@@ -1238,11 +1238,14 @@ pub(crate) unsafe fn alloc_db_value(tag: u8, payload: *mut u8) -> *mut MeshDbVal
 
 /// A row as a `Map<String, String>` or, typed, a `Map<String, DbValue>`. A
 /// later column of the same name wins.
-unsafe fn row_map(columns: &[PgColumn], row: Vec<RowValue>, values: Values) -> Result<u64, String> {
-    let mut entries = Vec::<[u64; 2]>::with_capacity(columns.len());
-    let mut indexes = HashMap::<&str, usize>::with_capacity(columns.len());
-    for (column, value) in columns.iter().zip(row) {
-        let value = match (values, value) {
+unsafe fn row_map(
+    keys: &mut RowKeys,
+    columns: &[PgColumn],
+    row: Vec<RowValue>,
+    values: Values,
+) -> Result<u64, String> {
+    keys.encode(columns.iter().zip(row).map(|(column, value)| {
+        Ok(match (values, value) {
             (Values::Text, value) => mesh_str(&value.lossy()) as u64,
             (Values::Typed, RowValue::Text(bytes)) => {
                 let text = std::str::from_utf8(bytes).map_err(|_| {
@@ -1257,15 +1260,8 @@ unsafe fn row_map(columns: &[PgColumn], row: Vec<RowValue>, values: Values) -> R
             (Values::Typed, RowValue::Null) => {
                 alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut()) as u64
             }
-        };
-        if let Some(index) = indexes.get(column.name.as_str()).copied() {
-            entries[index][1] = value;
-        } else {
-            indexes.insert(column.name.as_str(), entries.len());
-            entries.push([mesh_str(&column.name) as u64, value]);
-        }
-    }
-    Ok(mesh_map_from_string_entries(&entries) as u64)
+        })
+    }))
 }
 
 // ── Requests ───────────────────────────────────────────────────────────
@@ -1519,7 +1515,7 @@ fn query<R>(
     sql: &str,
     params: &[BindValue],
     values: Values,
-    mut decode: impl FnMut(&[PgColumn], Vec<RowValue>) -> Result<R, String>,
+    mut decode: impl FnMut(&[PgColumn], &mut Option<RowKeys>, Vec<RowValue>) -> Result<R, String>,
 ) -> Result<Vec<R>, Failure> {
     statement_request(conn, sql, |conn, statement, parse, status| {
         let mut message = Vec::new();
@@ -1543,6 +1539,7 @@ fn query<R>(
         write_sync(&mut message);
 
         let mut columns = Vec::new();
+        let mut keys = None;
         let mut row_bytes = decoded_row_bytes(&columns);
         let mut rows = Vec::new();
         // The final Result and list allocations, with their GC headers.
@@ -1551,6 +1548,7 @@ fn query<R>(
             match tag {
                 b'T' => {
                     columns = parse_row_description(body)?;
+                    keys = None;
                     row_bytes = decoded_row_bytes(&columns);
                 }
                 b'D' if rows.len() == MAX_PG_ROWS => {
@@ -1558,7 +1556,11 @@ fn query<R>(
                 }
                 b'D' => {
                     result_bytes = add_result_bytes(result_bytes, row_bytes + body.len())?;
-                    rows.push(decode(&columns, parse_typed_row(body, &columns)?)?);
+                    rows.push(decode(
+                        &columns,
+                        &mut keys,
+                        parse_typed_row(body, &columns)?,
+                    )?);
                 }
                 _ => {} // NoData: a statement that returns no rows.
             }
@@ -1891,7 +1893,7 @@ fn connect_with_deadline(
 
     stream.set_deadline(None);
     let conn = PgConn {
-        stream,
+        stream: BufReader::new(stream),
         txn_status,
         broken: false,
         statements: pg_url.statement_cache.then(StatementCache::default),
@@ -1947,8 +1949,10 @@ unsafe fn mesh_query(
 ) -> *mut u8 {
     let conn = &mut *(conn_handle as *mut PgConn);
     let rows = bind_params(params, values).and_then(|params| {
-        query(conn, text_of(sql), &params, values, |columns, row| {
-            row_map(columns, row, values)
+        query(conn, text_of(sql), &params, values, |columns, keys, row| {
+            let keys = keys
+                .get_or_insert_with(|| RowKeys::new(columns.iter().map(|col| col.name.as_str())));
+            row_map(keys, columns, row, values)
         })
     });
     match rows {
@@ -2306,7 +2310,7 @@ fn text_query(
         sql,
         &text_params(params),
         Values::Text,
-        |columns, row| {
+        |columns, _, row| {
             Ok(columns
                 .iter()
                 .zip(row)
@@ -2410,6 +2414,25 @@ mod tests {
         output.extend_from_slice(&(4 + body.len() as i32).to_be_bytes());
         output.extend_from_slice(body);
         output
+    }
+
+    #[test]
+    fn buffered_frames_handle_split_reads_and_reject_bad_lengths() {
+        let complete = message(b'D', b"value");
+        let split = (&complete[..3]).chain(&complete[3..]);
+        let mut stream = BufReader::with_capacity(5, split);
+        assert_eq!(
+            read_message(&mut stream).unwrap(),
+            (b'D', b"value".to_vec())
+        );
+
+        let mut over_limit = vec![b'D'];
+        over_limit.extend_from_slice(&((MAX_PG_MESSAGE_BYTES + 1) as i32).to_be_bytes());
+        let error = read_message(&mut BufReader::new(over_limit.as_slice())).unwrap_err();
+        assert!(error.starts_with("invalid PostgreSQL message length:"));
+
+        let error = read_message(&mut BufReader::new(&complete[..complete.len() - 1])).unwrap_err();
+        assert!(error.starts_with("read body:"));
     }
 
     /// An ErrorResponse with severity, SQLSTATE, message, detail and
@@ -2607,10 +2630,10 @@ mod tests {
         });
         let conn = connect(&url).unwrap();
         peer.join().unwrap();
-        assert_eq!(conn.stream.tcp().read_timeout().unwrap(), None);
+        assert_eq!(conn.stream.get_ref().tcp().read_timeout().unwrap(), None);
         conn.set_read_timeout(Some(ANSWER_TIMEOUT));
         assert_eq!(
-            conn.stream.tcp().read_timeout().unwrap(),
+            conn.stream.get_ref().tcp().read_timeout().unwrap(),
             Some(ANSWER_TIMEOUT)
         );
     }
@@ -2713,7 +2736,7 @@ mod tests {
         });
         let conn = connect(&url).unwrap();
         peer.join().unwrap();
-        assert!(matches!(conn.stream, PgStream::Plain(_)));
+        assert!(matches!(conn.stream.get_ref(), PgStream::Plain(_)));
         // Anything but S or N is refused.
         let (url, peer) = wire_peer("sslmode=require", |mut socket| {
             socket.read_exact(&mut [0; 8]).unwrap();
@@ -2840,7 +2863,7 @@ mod tests {
             &format!("sslmode=verify-full&sslrootcert={ca}"),
         ))
         .unwrap();
-        assert!(matches!(conn.inner.stream, PgStream::Tls(_)));
+        assert!(matches!(conn.inner.stream.get_ref(), PgStream::Tls(_)));
         let rows = native_pg_query(
             &mut conn,
             "SELECT ssl::text FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
@@ -3346,9 +3369,11 @@ mod tests {
         mesh_rt_init();
         let columns = [column("payload", 25, false), column("payload", 17, true)];
         let row = data_row(&[Some(b"old"), Some(&[0xff])]);
+        let mut keys = RowKeys::new(columns.iter().map(|col| col.name.as_str()));
 
         let map = unsafe {
             row_map(
+                &mut keys,
                 &columns,
                 parse_typed_row(&row, &columns).unwrap(),
                 Values::Typed,
@@ -3528,7 +3553,7 @@ mod tests {
                     "SELECT payload",
                     &[],
                     Values::Typed,
-                    |_, row| Ok(row.len())
+                    |_, _, row| Ok(row.len())
                 )
                 .unwrap(),
                 [1]
@@ -4148,7 +4173,7 @@ mod tests {
         let (handle, peer) = peer_connection(|mut socket| {
             let _ = socket.read_to_end(&mut Vec::new());
         });
-        let PgStream::Plain(stream) = &conn_of(handle).stream else {
+        let PgStream::Plain(stream) = conn_of(handle).stream.get_ref() else {
             unreachable!()
         };
         stream.tcp.shutdown(std::net::Shutdown::Write).unwrap();
