@@ -18,10 +18,10 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::io::{ErrorKind, Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use hmac::{Hmac, Mac};
@@ -73,8 +73,55 @@ pub struct MeshDbValue {
 
 /// A PostgreSQL connection stream that may be plain TCP or TLS-wrapped.
 enum PgStream {
-    Plain(TcpStream),
-    Tls(StreamOwned<ClientConnection, TcpStream>),
+    Plain(PgSocket),
+    Tls(StreamOwned<ClientConnection, PgSocket>),
+}
+
+struct PgSocket {
+    tcp: TcpStream,
+    deadline: Option<Instant>,
+}
+
+impl PgSocket {
+    fn new(tcp: TcpStream) -> Self {
+        Self {
+            tcp,
+            deadline: None,
+        }
+    }
+}
+
+fn remaining(deadline: Instant) -> std::io::Result<Duration> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        return Err(std::io::Error::new(
+            ErrorKind::TimedOut,
+            "PostgreSQL connection deadline elapsed",
+        ));
+    }
+    Ok(left.max(Duration::from_micros(1)))
+}
+
+impl Read for PgSocket {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if let Some(deadline) = self.deadline {
+            self.tcp.set_read_timeout(Some(remaining(deadline)?))?;
+        }
+        self.tcp.read(buf)
+    }
+}
+
+impl Write for PgSocket {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Some(deadline) = self.deadline {
+            self.tcp.set_write_timeout(Some(remaining(deadline)?))?;
+        }
+        self.tcp.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.tcp.flush()
+    }
 }
 
 impl Read for PgStream {
@@ -89,8 +136,15 @@ impl Read for PgStream {
 impl PgStream {
     fn tcp(&self) -> &TcpStream {
         match self {
-            PgStream::Plain(s) => s,
-            PgStream::Tls(s) => &s.sock,
+            PgStream::Plain(s) => &s.tcp,
+            PgStream::Tls(s) => &s.sock.tcp,
+        }
+    }
+
+    fn set_deadline(&mut self, deadline: Option<Instant>) {
+        match self {
+            PgStream::Plain(s) => s.deadline = deadline,
+            PgStream::Tls(s) => s.sock.deadline = deadline,
         }
     }
 }
@@ -221,10 +275,24 @@ impl PgConn {
         )
     }
 
+    pub(super) fn with_deadline<T>(
+        &mut self,
+        deadline: Instant,
+        run: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let (read, write) = self.socket_timeouts();
+        self.stream.set_deadline(Some(deadline));
+        let result = run(self);
+        self.stream.set_deadline(None);
+        self.set_read_timeout(read);
+        self.set_write_timeout(write);
+        result
+    }
+
     #[cfg(test)]
     pub(super) fn from_test_stream(stream: TcpStream) -> Self {
         Self {
-            stream: PgStream::Plain(stream),
+            stream: PgStream::Plain(PgSocket::new(stream)),
             txn_status: b'I',
             broken: false,
             statements: None,
@@ -681,10 +749,10 @@ fn write_terminate(buf: &mut Vec<u8>) {
 /// Upgrade a TCP stream to a TLS-wrapped stream using rustls, trusting the
 /// public roots and the CAs in `root_cert` (a PEM file), if any.
 fn upgrade_to_tls(
-    stream: TcpStream,
+    stream: PgSocket,
     hostname: &str,
     root_cert: Option<&str>,
-) -> Result<StreamOwned<ClientConnection, TcpStream>, String> {
+) -> Result<StreamOwned<ClientConnection, PgSocket>, String> {
     let mut root_store = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     if let Some(path) = root_cert {
         let unreadable = |error: &dyn std::fmt::Display| format!("sslrootcert {path}: {error}");
@@ -710,7 +778,7 @@ fn upgrade_to_tls(
 /// For prefer/require, sends the SSLRequest message and reads the 1-byte response.
 /// 'S' = server accepts SSL -> upgrade to TLS.
 /// 'N' = server declines -> error on require, fallback on prefer.
-fn negotiate_tls(mut stream: TcpStream, url: &PgUrl) -> Result<PgStream, String> {
+fn negotiate_tls(mut stream: PgSocket, url: &PgUrl) -> Result<PgStream, String> {
     let sslmode = url.sslmode;
     if sslmode == SslMode::Disable {
         return Ok(PgStream::Plain(stream));
@@ -1632,6 +1700,15 @@ pub(super) fn open(url: &str) -> Result<u64, String> {
     connect(url).map(|conn| Box::into_raw(Box::new(conn)) as u64)
 }
 
+pub(super) fn open_until(url: &str, deadline: Instant) -> Result<u64, String> {
+    connect_with_deadline(url, Some(deadline), |_| Ok(()))
+        .map(|conn| Box::into_raw(Box::new(conn)) as u64)
+}
+
+pub(super) fn drop_connection(handle: u64) {
+    drop(unsafe { Box::from_raw(handle as *mut PgConn) });
+}
+
 /// Connect, authenticate and wait for the server to be ready: the handshake
 /// `Pg.connect` and the native API share.
 pub(super) fn connect(url: &str) -> Result<PgConn, String> {
@@ -1642,17 +1719,55 @@ pub(super) fn connect_with_socket(
     url: &str,
     register: impl FnOnce(&TcpStream) -> Result<(), String>,
 ) -> Result<PgConn, String> {
+    connect_with_deadline(url, None, register)
+}
+
+fn resolve(host: &str, port: u16, deadline: Option<Instant>) -> Result<Vec<SocketAddr>, String> {
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return Ok(vec![SocketAddr::new(ip, port)]);
+    }
+    fn lookup(host: &str, port: u16) -> Result<Vec<SocketAddr>, String> {
+        (host, port)
+            .to_socket_addrs()
+            .map(Iterator::collect)
+            .map_err(|error| format!("DNS resolution failed: {error}"))
+    }
+    let Some(deadline) = deadline else {
+        return lookup(host, port);
+    };
+    // The system resolver has no deadline parameter.
+    let host = host.to_owned();
+    let (send, recv) = std::sync::mpsc::sync_channel(1);
+    std::thread::Builder::new()
+        .name("mesh-pg-resolve".into())
+        .spawn(move || {
+            let _ = send.send(lookup(&host, port));
+        })
+        .map_err(|error| format!("start PostgreSQL resolver: {error}"))?;
+    recv.recv_timeout(remaining(deadline).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("DNS resolution failed: {error}"))?
+}
+
+fn connect_with_deadline(
+    url: &str,
+    deadline: Option<Instant>,
+    register: impl FnOnce(&TcpStream) -> Result<(), String>,
+) -> Result<PgConn, String> {
     let pg_url = parse_pg_url(url)?;
 
-    let addrs = (pg_url.host.as_str(), pg_url.port)
-        .to_socket_addrs()
-        .map_err(|e| format!("DNS resolution failed: {}", e))?;
+    let addrs = resolve(&pg_url.host, pg_url.port, deadline)?;
     // Each address in turn, as libpq tries them: `localhost` can name ::1
     // first for a server that listens on 127.0.0.1 alone.
     let mut failure = "could not resolve host".to_string();
     let stream = addrs
+        .into_iter()
         .filter_map(|addr| {
-            TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+            let timeout = deadline.map(remaining).transpose().map(|left| {
+                left.unwrap_or(Duration::from_secs(10))
+                    .min(Duration::from_secs(10))
+            });
+            timeout
+                .and_then(|timeout| TcpStream::connect_timeout(&addr, timeout))
                 .map_err(|e| failure = format!("connection failed: {}", e))
                 .ok()
         })
@@ -1665,7 +1780,9 @@ pub(super) fn connect_with_socket(
     let _ = stream.set_read_timeout(Some(ANSWER_TIMEOUT));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
 
-    let mut stream = negotiate_tls(stream, &pg_url).map_err(|e| format!("TLS: {}", e))?;
+    let mut socket = PgSocket::new(stream);
+    socket.deadline = deadline;
+    let mut stream = negotiate_tls(socket, &pg_url).map_err(|e| format!("TLS: {}", e))?;
 
     // Send StartupMessage
     let mut buf = Vec::new();
@@ -1772,6 +1889,7 @@ pub(super) fn connect_with_socket(
         }
     }
 
+    stream.set_deadline(None);
     let conn = PgConn {
         stream,
         txn_status,
@@ -1780,6 +1898,7 @@ pub(super) fn connect_with_socket(
     };
     // Connected: statements take as long as they take.
     conn.set_read_timeout(None);
+    conn.set_write_timeout(Some(Duration::from_secs(10)));
     Ok(conn)
 }
 
@@ -1989,7 +2108,7 @@ pub(crate) unsafe fn invoke_transaction_callback(
 /// 4. On Err result from closure: ROLLBACK and propagate the Err.
 /// 5. On panic: ROLLBACK and return Err("transaction aborted: panic in callback").
 #[no_mangle]
-pub extern "C" fn mesh_pg_transaction(
+pub extern "C-unwind" fn mesh_pg_transaction(
     conn_handle: u64,
     fn_ptr: *const u8,
     env_ptr: *const u8,
@@ -2024,7 +2143,12 @@ pub extern "C" fn mesh_pg_transaction(
                     result_ptr // propagate the Err result
                 }
             }
-            Err(_) => {
+            Err(panic) => {
+                if crate::actor::stack::is_cancelling_coroutine()
+                    || panic.is::<crate::actor::stack::ActorStopped>()
+                {
+                    std::panic::resume_unwind(panic);
+                }
                 // Panic -> ROLLBACK
                 let _ = pg_simple_command(conn, "ROLLBACK");
                 err_result("transaction aborted: panic in callback")
@@ -2070,7 +2194,7 @@ pub(crate) unsafe fn decode_rows(
 /// 4. Collects all per-row results into a new list.
 /// 5. Returns Ok(list_of_results).
 #[no_mangle]
-pub extern "C" fn mesh_pg_query_as(
+pub extern "C-unwind" fn mesh_pg_query_as(
     conn_handle: u64,
     sql: *mut u8,
     params: *mut u8,
@@ -2234,7 +2358,7 @@ mod tests {
             socket.read_exact(&mut length).unwrap();
             let mut startup = vec![0; u32::from_be_bytes(length) as usize - 4];
             socket.read_exact(&mut startup).unwrap();
-            let mut stream = PgStream::Plain(socket);
+            let mut stream = PgStream::Plain(PgSocket::new(socket));
             fn auth(output: &mut Vec<u8>, kind: i32, data: &[u8]) {
                 output.push(b'R');
                 output.extend_from_slice(&(8 + data.len() as i32).to_be_bytes());
@@ -2533,7 +2657,7 @@ mod tests {
         let (url, peer) = wire_peer("sslmode=disable", |mut socket| {
             read_startup(&mut socket);
             socket.write_all(&auth(5, b"salt")).unwrap();
-            let mut stream = PgStream::Plain(socket);
+            let mut stream = PgStream::Plain(PgSocket::new(socket));
             let (tag, body) = read_message(&mut stream).unwrap();
             assert_eq!(tag, b'p');
             let expected = compute_md5_password("user", "password", b"salt");
@@ -3047,7 +3171,7 @@ mod tests {
                 socket
                     .write_all(&[auth(0, b""), ready(b'I')].concat())
                     .unwrap();
-                let mut stream = PgStream::Plain(socket);
+                let mut stream = PgStream::Plain(PgSocket::new(socket));
                 while read_message(&mut stream).unwrap().0 != b'S' {}
                 stream.write_all(&reply).unwrap();
             });
@@ -3352,7 +3476,7 @@ mod tests {
     ) -> (PgConn, std::thread::JoinHandle<()>) {
         let (url, peer) = wire_peer(options, move |mut socket| {
             read_startup(&mut socket);
-            let mut stream = PgStream::Plain(socket);
+            let mut stream = PgStream::Plain(PgSocket::new(socket));
             reply(&mut stream, &[message(b'R', &[0; 4]), ready(b'I')]);
             script(stream);
         });
@@ -4027,7 +4151,7 @@ mod tests {
         let PgStream::Plain(stream) = &conn_of(handle).stream else {
             unreachable!()
         };
-        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        stream.tcp.shutdown(std::net::Shutdown::Write).unwrap();
         let error = outcome(mesh_pg_execute(handle, sql, mesh_list_new())).unwrap_err();
         assert!(error.starts_with("send execute: "), "{error}");
         assert!(conn_of(handle).is_broken());

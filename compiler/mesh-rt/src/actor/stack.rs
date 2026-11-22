@@ -209,6 +209,10 @@ thread_local! {
     static DROPPING_STACK_LIMIT: Cell<usize> = const { Cell::new(0) };
 }
 
+pub(crate) fn is_cancelling_coroutine() -> bool {
+    DROPPING_STACK_LIMIT.get() != 0
+}
+
 impl CoroutineHandle {
     /// Create a new coroutine that will call `entry_fn(args_ptr)`.
     ///

@@ -74,6 +74,9 @@ end
 ```
 
 `Pool.open(url, min_size, max_size, checkout_timeout_ms)` eagerly creates the minimum connections and bounds concurrent checkouts at the maximum.
+When all connections are in use, checkouts wait in arrival order. Waiting actors
+free their scheduler workers to run other actors. The checkout timeout includes
+waiting for a slot, checking an idle connection, and opening a connection.
 
 Each PostgreSQL connection caches up to 256 prepared statements. Set
 `statement_cache=off` in the connection URL when using a transaction-mode pooler.

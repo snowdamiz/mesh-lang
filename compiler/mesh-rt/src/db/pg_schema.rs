@@ -204,12 +204,12 @@ pub(crate) fn build_drop_partition_sql(partition_name: &str) -> Result<String, S
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_pg_create_extension(pool: u64, name: *const MeshString) -> *mut u8 {
+pub extern "C-unwind" fn mesh_pg_create_extension(pool: u64, name: *const MeshString) -> *mut u8 {
     unsafe { execute_ddl(pool, build_create_extension_sql(text_of(name))) }
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_pg_create_range_partitioned_table(
+pub extern "C-unwind" fn mesh_pg_create_range_partitioned_table(
     pool: u64,
     table: *const MeshString,
     columns: *mut u8,
@@ -226,7 +226,7 @@ pub extern "C" fn mesh_pg_create_range_partitioned_table(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_pg_create_gin_index(
+pub extern "C-unwind" fn mesh_pg_create_gin_index(
     pool: u64,
     table: *const MeshString,
     index_name: *const MeshString,
@@ -245,7 +245,7 @@ pub extern "C" fn mesh_pg_create_gin_index(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_pg_create_daily_partitions_ahead(
+pub extern "C-unwind" fn mesh_pg_create_daily_partitions_ahead(
     pool: u64,
     parent_table: *const MeshString,
     days: i64,
@@ -274,7 +274,7 @@ pub extern "C" fn mesh_pg_create_daily_partitions_ahead(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_pg_list_daily_partitions_before(
+pub extern "C-unwind" fn mesh_pg_list_daily_partitions_before(
     pool: u64,
     parent_table: *const MeshString,
     max_days: i64,
@@ -308,7 +308,10 @@ pub extern "C" fn mesh_pg_list_daily_partitions_before(
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_pg_drop_partition(pool: u64, partition_name: *const MeshString) -> *mut u8 {
+pub extern "C-unwind" fn mesh_pg_drop_partition(
+    pool: u64,
+    partition_name: *const MeshString,
+) -> *mut u8 {
     unsafe { execute_ddl(pool, build_drop_partition_sql(text_of(partition_name))) }
 }
 
