@@ -337,19 +337,21 @@ timezone = 'UTC'
 SELECT json_build_object(
  'runner', coalesce(sum(calls) FILTER (WHERE rolname='parity_subject'),0),
  'enqueue', coalesce(sum(calls) FILTER (WHERE rolname='parity_producer'),0),
+ 'application', coalesce(sum(calls) FILTER (WHERE rolname='compiled_caller'),0),
  'claims', coalesce(sum(calls) FILTER (WHERE rolname='parity_subject' AND ({claim_query})),0),
  'dealloc', (SELECT dealloc FROM pg_stat_statements_info)
 )
 FROM pg_stat_statements JOIN pg_roles ON userid = pg_roles.oid
 WHERE dbid = (SELECT oid FROM pg_database WHERE datname = '{engine}')
-  AND rolname IN ('parity_subject', 'parity_producer')
+  AND rolname IN ('parity_subject', 'parity_producer', 'compiled_caller')
 """))
 
     def observe(self, engine, namespace):
         relation, scope = job_relation(engine, namespace)
         return json.loads(self.sql(engine, f"""
 SELECT json_build_object(
- 'connections', (SELECT count(*) FROM pg_stat_activity WHERE usename IN ('parity_subject', 'parity_producer')
+ 'connections', (SELECT count(*) FROM pg_stat_activity
+                    WHERE usename IN ('parity_subject', 'parity_producer', 'compiled_caller')
                     AND datname = current_database()),
  'executing', count(*) FILTER (WHERE state = 'executing'),
  'terminal', count(*) FILTER (WHERE state IN ('completed','discarded','cancelled'))
@@ -964,7 +966,8 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
                 raise FixtureError("PostgreSQL evicted statement counters during the trial")
             runner_calls = after["runner"] - idle_calls_after["runner"]
             enqueue_calls = after["enqueue"] - idle_calls_after["enqueue"]
-            calls = runner_calls + enqueue_calls
+            application_calls = after["application"] - idle_calls_after["application"]
+            calls = runner_calls + enqueue_calls + application_calls
             claim_calls = after["claims"] - idle_calls_after["claims"]
             idle_calls = idle_calls_after["runner"] - idle_calls_before["runner"]
             if listener:
@@ -1024,6 +1027,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
            "statement_counter_deallocations": after["dealloc"],
            "raw_runner_sql_calls": runner_calls, "raw_enqueue_sql_calls": enqueue_calls,
+           "raw_application_sql_calls": application_calls,
            "raw_claim_calls": claim_calls, "raw_idle_sql_calls": idle_calls, "idle_seconds": idle_s}
     if listener:
         raw["listener_trial"] = listener_evidence
@@ -1039,6 +1043,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         "sql_calls_per_job": calls / len(rows),
         "runner_sql_calls_per_job": runner_calls / len(rows),
         "enqueue_sql_calls_per_job": enqueue_calls / len(rows),
+        "application_sql_calls_per_job": application_calls / len(rows),
         "claim_calls_per_job": claim_calls / len(rows),
         "idle_queries_per_minute": idle_calls * 60 / idle_s,
         "cpu_seconds_per_job": cpu / len(rows),
@@ -1822,7 +1827,8 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
                     mesh_events, *, matched_baseline=False):
     keys = ("jobs_per_second", "pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms",
             "sql_calls_per_job", "runner_sql_calls_per_job",
-            "enqueue_sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
+            "enqueue_sql_calls_per_job", "application_sql_calls_per_job",
+            "claim_calls_per_job", "idle_queries_per_minute",
             "cpu_seconds_per_job", "peak_rss_bytes", "events_dropped", "event_logs_dropped",
             "peak_host_load_average_1m", "pickup_max_ms")
     summary = {}
@@ -2302,6 +2308,8 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                                                        "oban": "Basic engine attempted_at"},
                     "settlement_timestamp": "durable commit timestamp of the terminal row version",
                     "resource_scope": "runner process trees; sampled RSS, processes, threads and connections",
+                    "workload_connection_roles": ["parity_subject", "parity_producer", "compiled_caller"],
+                    "application_sql_role": "compiled_caller",
                 })
                 subjects = {"mesh": Subject("mesh", [str(executable)], ROOT, cluster, env, poll_ms=poll_ms)}
                 if args.j2_lane_7:
