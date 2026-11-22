@@ -5574,3 +5574,19 @@ The corrected parity driver passed its 19 self-checks.
 
 [Regression ledgers and resource receipts](../proof/jobs-parity/linux-regression-screens-20261122.json)
 [Regression replay](../proof/jobs-parity/linux-regression/README.md)
+
+The two retained large screens spread their 64 claims over 393
+and 503 ms, versus 157 and 102 ms for Oban. The median time
+from claim to handler entry was 45 and 54 ms on Mesh, versus
+79 and 163 ms. Time spent dispatching claims explains the
+pickup gap in these pairs.
+
+A separate large control relinked the same fixture with the
+original `8526a5bd` runtime. It took 499 ms to issue its 64
+claims, with a 54 ms median from claim to handler entry. It
+completed 104 jobs/s versus Oban's 71, with the host one-minute
+load rising from 61 to 77 across the measured arms on 15
+logical CPUs. The control shows a long claim span before the
+current integration. The changing host load prevents a
+runtime-to-runtime speed comparison across these runs.
+[Original-runtime large control](../proof/jobs-parity/linux-large-historical-control-20261122.json)

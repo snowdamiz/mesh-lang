@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+from statistics import median
 
 
 def load(path):
@@ -55,10 +56,14 @@ def summarize(group):
             assert raw["raw_sql_calls"] == (
                 raw["raw_runner_sql_calls"] + raw["raw_application_sql_calls"] + raw["raw_enqueue_sql_calls"]
             )
+            claimed = [row["claimed_ms"] for row in raw["attempts"]]
             result["arms"].append({
                 "phase": phase,
                 "metrics": metrics,
                 "ordered_write_pairs": writes,
+                "claim_span_ms": max(claimed) - min(claimed),
+                "median_claim_to_handler_ms": median(row["entered_ms"] - row["claimed_ms"]
+                                                     for row in raw["attempts"]),
                 "durable_enqueue_transactions": len(raw["transactions"]),
                 "database_and_broker": load(arm / "database.json"),
                 "raw_ledger_and_samples_sha256": digest(arm / "raw.json"),
