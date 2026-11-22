@@ -25,6 +25,11 @@ binary results only for PostgreSQL `BYTEA` (OID 17), and keep all other columns
 in text format. SQL NULL becomes `Null`, so it is distinct from empty text and
 empty bytes.
 
+The pool skips its health check for connections checked in less than 500 ms
+ago. A statement on a connection the server has closed returns an error.
+The pool discards the connection and never retries the statement after a
+connection failure.
+
 Safety limits are 16 MiB per parameter/result cell, 64 MiB per wire message,
 64 MiB of decoded typed-result allocations, 32,767 parameters/columns, and
 100,000 result rows. Limit violations drain to `ReadyForQuery` where possible;

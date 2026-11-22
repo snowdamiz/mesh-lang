@@ -75,6 +75,12 @@ end
 
 `Pool.open(url, min_size, max_size, checkout_timeout_ms)` eagerly creates the minimum connections and bounds concurrent checkouts at the maximum.
 
+The pool reuses connections checked in less than 500 ms ago without a health
+check. It checks connections that have been idle longer before lending them.
+If PostgreSQL closed a recently used connection, the statement returns an
+error and the pool discards the connection. The pool never retries a
+statement after a connection failure.
+
 A URL is `postgres://user:password@host:port/database` (an IPv6 host in
 brackets, `[::1]`), with `sslmode` and `sslrootcert` in its query. Mesh verifies every TLS server's certificate and
 name, so `require`, `verify-ca` and `verify-full` all mean what libpq calls

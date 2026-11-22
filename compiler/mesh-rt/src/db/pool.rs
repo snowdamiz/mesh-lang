@@ -28,12 +28,29 @@ use crate::io::{alloc_result, box_scalar, err_result};
 use crate::string::text_of;
 use crate::string::MeshString;
 
+// ponytail: one fixed health-check interval until a workload needs tuning.
+const HEALTH_CHECK_IDLE: Duration = Duration::from_millis(500);
+
 // ── Data Structures ──────────────────────────────────────────────────────
+
+struct IdleConnection {
+    handle: u64,
+    checked_in: Instant,
+}
+
+impl IdleConnection {
+    fn new(handle: u64) -> Self {
+        Self {
+            handle,
+            checked_in: Instant::now(),
+        }
+    }
+}
 
 struct PoolInner {
     url: String,
     /// Connections ready to lend.
-    idle: Vec<u64>,
+    idle: Vec<IdleConnection>,
     /// Handles currently checked out by this exact pool.
     leased: HashSet<u64>,
     /// Connections open or being opened, idle or lent: at most `max_conns`.
@@ -76,12 +93,12 @@ fn checkout(pool: &PgPool) -> Result<u64, String> {
         if inner.closed {
             return Err("pool is closed".to_string());
         }
-        if let Some(handle) = inner.idle.pop() {
+        if let Some(IdleConnection { handle, checked_in }) = inner.idle.pop() {
             inner.leased.insert(handle);
             // Checked without the lock: a connection slow to answer holds up
             // only this checkout, not every other checkout and checkin.
             drop(inner);
-            if health_check(handle) {
+            if checked_in.elapsed() < HEALTH_CHECK_IDLE || health_check(handle) {
                 return Ok(handle);
             }
             mesh_pg_close(handle);
@@ -199,11 +216,11 @@ pub extern "C" fn mesh_pool_open(
     let mut idle = Vec::with_capacity(min);
     for _ in 0..min {
         match open(url) {
-            Ok(handle) => idle.push(handle),
+            Ok(handle) => idle.push(IdleConnection::new(handle)),
             Err(error) => {
                 // Close all already-created connections
-                for handle in idle {
-                    mesh_pg_close(handle);
+                for conn in idle {
+                    mesh_pg_close(conn.handle);
                 }
                 return err_result(&format!("pool open: {error}"));
             }
@@ -232,8 +249,8 @@ pub extern "C" fn mesh_pool_open(
 /// `mesh_pool_checkout(pool_handle: u64) -> *mut u8 (MeshResult<u64, String>)`
 ///
 /// Returns an idle connection, creates a new one if under max, or blocks
-/// with timeout if pool is exhausted. Performs health check on idle
-/// connections before returning them.
+/// with timeout if pool is exhausted. Checks connections idle for at least
+/// 500 milliseconds.
 pub(crate) fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
     match checkout(unsafe { &*(pool_handle as *const PgPool) }) {
         Ok(handle) => alloc_result(0, box_scalar(handle)) as *mut u8,
@@ -266,7 +283,7 @@ pub(crate) fn mesh_pool_checkin(pool_handle: u64, conn_handle: u64) {
         let mut inner = pool.inner.lock();
         let kept = usable && !inner.closed;
         if kept {
-            inner.idle.push(conn_handle);
+            inner.idle.push(IdleConnection::new(conn_handle));
         } else {
             inner.total_created -= 1;
         }
@@ -370,8 +387,8 @@ pub extern "C" fn mesh_pool_close(pool_handle: u64) {
         std::mem::take(&mut inner.idle)
     };
     // Close idle connections outside the lock
-    for handle in idle {
-        mesh_pg_close(handle);
+    for conn in idle {
+        mesh_pg_close(conn.handle);
     }
     // Wake all blocked checkouts so they see closed=true
     pool.available.notify_all();
@@ -406,7 +423,7 @@ mod tests {
             inner: Mutex::new(PoolInner {
                 url: url.to_string(),
                 total_created: idle.len() + leased.len(),
-                idle,
+                idle: idle.into_iter().map(IdleConnection::new).collect(),
                 leased: leased.iter().copied().collect(),
                 max_conns,
                 checkout_timeout_ms: timeout_ms,
@@ -418,6 +435,12 @@ mod tests {
 
     fn pool(handle: u64) -> &'static PgPool {
         unsafe { &*(handle as *const PgPool) }
+    }
+
+    fn age_idle_connections(handle: u64) {
+        for conn in &mut pool(handle).inner.lock().idle {
+            conn.checked_in -= HEALTH_CHECK_IDLE;
+        }
     }
 
     /// AuthenticationOk and ReadyForQuery: a finished handshake.
@@ -432,6 +455,11 @@ mod tests {
         let length = u32::from_be_bytes(header[1..].try_into().unwrap()) as usize;
         socket.read_exact(&mut vec![0; length - 4]).ok()?;
         Some(header[0])
+    }
+
+    fn read_extended_request(socket: &mut TcpStream) {
+        assert_eq!(next_request(socket), Some(b'P'));
+        while next_request(socket).expect("statement ended before Sync") != b'S' {}
     }
 
     /// A PostgreSQL stand-in: `session` gets each connection it accepts,
@@ -585,7 +613,7 @@ mod tests {
     /// An idle connection slow to answer its health check holds up only
     /// the checkout that took it.
     #[test]
-    fn an_idle_connection_is_checked_without_holding_the_pool() {
+    fn a_stale_idle_connection_is_checked_without_holding_the_pool() {
         let (asked, asked_signal) = mpsc::channel::<()>();
         let (answer, answered) = mpsc::channel::<()>();
         let answered = parking_lot::Mutex::new(answered);
@@ -598,6 +626,7 @@ mod tests {
             while next_request(&mut socket).is_some() {}
         });
         let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
+        age_idle_connections(handle);
         let taker = thread::spawn(move || checkout(pool(handle)));
         asked_signal.recv().unwrap();
 
@@ -619,7 +648,7 @@ mod tests {
     /// An idle connection whose server went away is closed at checkout and
     /// a new one opened in its place.
     #[test]
-    fn an_idle_connection_that_died_is_replaced() {
+    fn a_stale_idle_connection_that_died_is_replaced_before_use() {
         let url = fake_server(|index, mut socket| {
             socket.write_all(AUTHENTICATED).unwrap();
             if index > 0 {
@@ -627,11 +656,71 @@ mod tests {
             }
         });
         let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
+        age_idle_connections(handle);
 
         let conn = checkout(pool(handle)).unwrap();
 
         assert_eq!(pool(handle).inner.lock().total_created, 1);
         mesh_pool_checkin(handle, conn);
+        mesh_pool_close(handle);
+    }
+
+    #[test]
+    fn a_recently_checked_in_connection_goes_straight_to_the_statement() {
+        mesh_rt_init();
+        let url = fake_server(|_, mut socket| {
+            socket.write_all(AUTHENTICATED).unwrap();
+            read_extended_request(&mut socket);
+            socket.write_all(SELECTED).unwrap();
+        });
+        let conn = open(&url).unwrap();
+        let handle = pool_of(&url, Vec::new(), &[conn], 1, 5000);
+        mesh_pool_checkin(handle, conn);
+
+        assert_eq!(
+            result(mesh_pool_execute(
+                handle,
+                mk_str(b"SELECT 1"),
+                mesh_list_new()
+            ))
+            .0,
+            0
+        );
+        mesh_pool_close(handle);
+    }
+
+    #[test]
+    fn a_recent_connection_reports_the_server_error_and_is_replaced() {
+        mesh_rt_init();
+        let url = fake_server(|index, mut socket| {
+            socket.write_all(AUTHENTICATED).unwrap();
+            read_extended_request(&mut socket);
+            if index == 0 {
+                let error =
+                    b"SFATAL\0C57P01\0Mterminating connection due to administrator command\0\0";
+                socket.write_all(b"E").unwrap();
+                socket
+                    .write_all(&(error.len() as u32 + 4).to_be_bytes())
+                    .unwrap();
+                socket.write_all(error).unwrap();
+            } else {
+                socket.write_all(SELECTED).unwrap();
+            }
+        });
+        let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
+        let statement = mk_str(b"SELECT 1");
+        let failure = error_text(mesh_pool_execute(handle, statement, mesh_list_new()));
+        assert!(failure.contains("57P01"), "{failure}");
+        assert!(
+            failure.contains("terminating connection due to administrator command"),
+            "{failure}"
+        );
+        assert_eq!(pool(handle).inner.lock().total_created, 0);
+        assert_eq!(
+            result(mesh_pool_execute(handle, statement, mesh_list_new())).0,
+            0
+        );
+        assert_eq!(pool(handle).inner.lock().total_created, 1);
         mesh_pool_close(handle);
     }
 
@@ -827,10 +916,9 @@ mod tests {
         mesh_pool_checkin(handle, refused);
 
         let inner = pool(handle).inner.lock();
-        assert_eq!(
-            (inner.idle.as_slice(), inner.total_created),
-            (&[kept][..], 1)
-        );
+        assert_eq!(inner.idle.len(), 1);
+        assert_eq!(inner.idle[0].handle, kept);
+        assert_eq!(inner.total_created, 1);
         assert_eq!(unsafe { (*(kept as *const PgConn)).txn_status }, b'I');
     }
 

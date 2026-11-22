@@ -1149,6 +1149,7 @@ enum Values {
 /// connection failing, a reply the driver cannot decode, a limit).
 enum Failure {
     Server(PgError),
+    IncompleteServer(PgError),
     Other(String),
 }
 
@@ -1163,7 +1164,9 @@ impl Failure {
     /// structured form Repo maps constraint violations from.
     fn structured(self) -> String {
         match self {
-            Failure::Server(error) => format_pg_error_string(&error),
+            Failure::Server(error) | Failure::IncompleteServer(error) => {
+                format_pg_error_string(&error)
+            }
             Failure::Other(message) => message,
         }
     }
@@ -1171,7 +1174,7 @@ impl Failure {
     /// Only the message.
     fn message(self) -> String {
         match self {
-            Failure::Server(error) => error.message,
+            Failure::Server(error) | Failure::IncompleteServer(error) => error.message,
             Failure::Other(message) => message,
         }
     }
@@ -1193,9 +1196,15 @@ fn request(
     let mut count = 0;
     let mut failure = None;
     loop {
-        let (tag, body) = conn
-            .read_wire_message()
-            .map_err(|error| format!("read {what}: {error}"))?;
+        let (tag, body) = match conn.read_wire_message() {
+            Ok(message) => message,
+            Err(error) => {
+                return Err(match failure {
+                    Some(Failure::Server(server)) => Failure::IncompleteServer(server),
+                    _ => Failure::Other(format!("read {what}: {error}")),
+                });
+            }
+        };
         match tag {
             b'C' => {
                 count = parse_command_tag(String::from_utf8_lossy(&body).trim_end_matches('\0'))
@@ -1957,7 +1966,7 @@ pub(super) fn pg_jobs_ack(
     params: &[&str],
 ) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
     let rows = text_query(conn, sql, params).map_err(|failure| match failure {
-        // request() returns a server error only after reading ReadyForQuery.
+        // Only a complete exchange confirms that the server rejected it.
         Failure::Server(error)
             if error.sqlstate.len() == 5
                 && !error.sqlstate.starts_with("08")
