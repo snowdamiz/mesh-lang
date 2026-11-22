@@ -65,7 +65,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("profile", choices=["sparse", "short", "large"])
+    parser.add_argument("profile", choices=["noop", "slow", "sparse", "short", "large"])
     parser.add_argument("output", type=Path, help="fresh evidence directory")
     parser.add_argument("--mesh", type=Path, required=True, help="release ELF built with the frozen worker fixture")
     parser.add_argument("--mesh-sha256", required=True)

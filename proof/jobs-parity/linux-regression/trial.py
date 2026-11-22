@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import importlib.util
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import sys
@@ -25,6 +26,8 @@ h.CONFIG = PROOF / "jobs-parity-profiles.json"
 
 # runners, slots, app sessions per runner, physical Postgres cap, guest GiB, input digest.
 PROFILES = {
+    "noop": (8, 64, 4, 96, 2, "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a"),
+    "slow": (1, 64, 8, 68, 2, "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd"),
     "sparse": (1, 1, 1, 5, 2, "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5"),
     "short": (1, 16, 8, 20, 2, "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1"),
     "large": (8, 64, 4, 96, 4, "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1"),
@@ -204,6 +207,36 @@ class Subject(h.Subject):
         return result
 
 
+def oban_environment(env, flags):
+    # Prevent alternate launcher environment hooks from adding emulator flags.
+    env = {key: value for key, value in env.items()
+           if key not in {"ERL_AFLAGS", "ERL_ZFLAGS", "ELIXIR_ERL_OPTIONS"}}
+    return dict(env, ERL_FLAGS=flags)
+
+
+def verify_oban_runners(evidence, flags, runners):
+    tokens = shlex.split(flags)
+    options = dict(zip(tokens[::2], tokens[1::2], strict=True))
+    schedulers, schedulers_online = map(int, options["+S"].split(":"))
+    dirty_cpu, dirty_cpu_online = map(int, options["+SDcpu"].split(":"))
+    expected = dict(schedulers=schedulers, schedulers_online=schedulers_online,
+                    dirty_cpu_schedulers=dirty_cpu, dirty_cpu_schedulers_online=dirty_cpu_online,
+                    dirty_io_schedulers=int(options["+SDio"]), async_threads=int(options["+A"]))
+    results = []
+    for path in sorted(evidence.glob("runner-*.log")):
+        config, = [json.loads(line.removeprefix("BEAM_CONFIG "))
+                   for line in path.read_text().splitlines() if line.startswith("BEAM_CONFIG ")]
+        assert config["erl_flags"] == flags, config
+        assert all(config[key] == value for key, value in expected.items()), config
+        argv = config["argv"]
+        for name, value in options.items():
+            received = [arg for index, arg in enumerate(argv[1:], 1) if argv[index - 1] in {name, "-" + name[1:]}]
+            assert received == [value], config
+        results.append(config)
+    assert len(results) == runners, results
+    h.write_json(evidence / "oban-emulator.json", results)
+
+
 def measure(profile, arm, warmup, root, evidence, cluster, settings, workload, batches):
     label = f"warmup-{arm}" if warmup else arm
     print(f"FROZEN_DIAGNOSTIC_ARM {profile} {'warmup' if warmup else 'measured'} {arm}", flush=True)
@@ -217,6 +250,8 @@ def measure(profile, arm, warmup, root, evidence, cluster, settings, workload, b
         env.update(JOBS_PARITY_MESH_BATCH="1", JOBS_PARITY_MESH_LISTEN="1",
                    MESH_EFFECT_LANES=str(cluster.lanes), MESH_EFFECT_APP_URL=cluster.url("mesh", "compiled_caller"),
                    MESH_DIAGNOSTIC_JOB_DISABLE_THP="1")
+    if arm == "oban":
+        env = oban_environment(env, settings["oban_erl_flags"])
     command = PROOF / ("oban" if arm == "oban" else "mesh-current")
     subject = Subject(arm, [str(command)], PROOF, cluster, env)
     result = h.run_trial(subject, h.allocate_slots(cluster.runners, cluster.slots), workload,
@@ -229,6 +264,7 @@ def measure(profile, arm, warmup, root, evidence, cluster, settings, workload, b
         assert result["application_sql_calls_per_job"] > 0, result
     else:
         assert result["application_sql_calls_per_job"] == 0, result
+        verify_oban_runners(out, settings["oban_erl_flags"], cluster.runners)
     if profile == "sparse":
         assert result["peak_connections"] == (5 if arm == "mesh" else 4), result
     h.write_json(out / "metrics.json", result)
@@ -242,9 +278,11 @@ def run(config, root, evidence):
     mem_kib = int(Path("/proc/meminfo").read_text().splitlines()[0].split()[1])
     assert (memory - 0.5) * 1024**2 < mem_kib <= memory * 1024**2, mem_kib
     settings = json.loads(h.CONFIG.read_text())
+    assert config["oban_erl_flags"] == settings["oban_erl_flags"], config
     workload = settings["workloads"][profile]
     batches = h.inputs(workload, slots, settings["seed"])
-    versions = h.checked([str(PROOF / "oban"), "versions"], log=evidence / "oban-versions.log")
+    versions = h.checked([str(PROOF / "oban"), "versions"], log=evidence / "oban-versions.log",
+                         env=oban_environment(os.environ, settings["oban_erl_flags"]))
     assert json.loads(versions.splitlines()[-1]) == {"oban": "2.24.2", "erlang": "29.1.1", "elixir": "1.20.4"}
 
     scratch, out = root / "cluster", evidence / "cluster"

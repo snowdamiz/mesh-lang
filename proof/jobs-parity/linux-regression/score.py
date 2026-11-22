@@ -11,7 +11,8 @@ spec = importlib.util.spec_from_file_location("jobs_parity", ROOT / "scripts/job
 harness = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(harness)
 
-TOPOLOGY = {"sparse": (1, 1, 5), "short": (1, 16, 20), "large": (8, 64, 96)}
+TOPOLOGY = {"noop": (8, 64, 96), "slow": (1, 64, 68),
+            "sparse": (1, 1, 5), "short": (1, 16, 20), "large": (8, 64, 96)}
 
 
 def score(receipt):
@@ -21,8 +22,15 @@ def score(receipt):
     assert len({group["kernel_sha256"] for group in receipt["groups"]}) == 1
     assert all(group["shared_component_sha256"] == receipt["groups"][0]["shared_component_sha256"]
                for group in receipt["groups"])
+    profiles = {group["profile"] for group in receipt["groups"]}
+    assert len({group["series"] for group in receipt["groups"]}) == 1
+    if {group["series"] for group in receipt["groups"]} == {"canonical-oban-flags"}:
+        assert all(group["oban_erl_flags"] == settings["oban_erl_flags"] for group in receipt["groups"])
+        assert profiles == set(TOPOLOGY)
     result = {}
     for profile, (runners, slots, cap) in TOPOLOGY.items():
+        if profile not in profiles:
+            continue
         groups = [group for group in receipt["groups"] if group["profile"] == profile]
         pairs = []
         wins = 0

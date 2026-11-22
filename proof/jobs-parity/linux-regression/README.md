@@ -14,7 +14,10 @@ its Mesh source, the runtime build and link commands, and the Oban
 producer source. The fixture builds against Rust 1.99.0, Zig 0.15.2,
 and the historical compiler at `8526a5bd`. The archived benchmark
 scripts use the two-role observer recorded in the paired receipt.
-The regression screen uses the corrected observer at `7b61e9bb`.
+This driver uses the corrected observer at `7b61e9bb`. It reads
+`oban_erl_flags` from the frozen profile and records each Oban
+runner's effective emulator settings. The older two-scheduler
+diagnostic driver is available at `229ce02d`.
 
 The retained ELF has SHA-256
 `fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8`.
@@ -27,9 +30,9 @@ the runtime after `35fa53ff`.
 work=target/jobs-perf-work
 mesh="$work/mesh-frozen-final"
 digest=fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8
-for profile in sparse short large; do
+for profile in noop slow sparse short large; do
   python3 -B proof/jobs-parity/linux-regression/run.py "$profile" \
-    "$work/regression/${profile}-replay-01" --mesh "$mesh" --mesh-sha256 "$digest"
+    "$work/canonical/${profile}-replay-01" --mesh "$mesh" --mesh-sha256 "$digest"
 done
 ```
 
@@ -50,12 +53,19 @@ are the same as in the parity driver.
 
 | Profile | Runners and slots | Guest | Physical cap | Input |
 | --- | --- | --- | ---: | --- |
+| No-op | 8 runners, 64 slots | 2 vCPUs, 2 GiB | 96 | 1,024 jobs, 1 KiB, 0 ms hold |
+| Slow | 1 runner, 64 slots | 2 vCPUs, 2 GiB | 68 | 512 jobs, 16 KiB, 100 ms hold |
 | Sparse | 1 runner, 1 slot | 2 vCPUs, 2 GiB | 5 | 24 one-job batches, 1 KiB, 1 ms hold |
 | Short | 1 runner, 16 slots | 2 vCPUs, 2 GiB | 20 | 128 jobs, 1 KiB, 1 ms hold |
 | Large | 8 runners, 64 slots | 2 vCPUs, 4 GiB | 96 | 64 jobs, 512 KiB, 1 ms hold |
 
-The large case runs a full unmeasured batch for each engine before
-the comparison. The inherited base image, reconstructed native OTP
+No-op, slow and large run a full unmeasured batch for each engine
+before the comparison. The inherited base image, reconstructed native OTP
 build and observer adapter distinguish these screens from the old
-guest receipts. Keep each one-pair screen separate from five-pair
-claims.
+guest receipts.
+
+Run `python3 -B proof/jobs-parity/linux-regression/score.py RECEIPT.json`
+on the combined receipt. The scorer verifies five pairs per profile,
+one release ELF and identical common component hashes. It uses
+the existing parity limits for throughput, pickup, CPU, RSS,
+connections, processes, threads and the sparse listener.

@@ -23,12 +23,14 @@ def summarize(group):
     phases = [json.loads(line) for line in (group / "host-load.jsonl").read_text().splitlines()]
     measured = [point["event"].split()[-1] for point in phases if " measured " in point["event"]]
     assert measured == config["arms"], phases
-    expected_jobs = {"sparse": 24, "short": 128, "large": 64}[profile]
+    expected_jobs = {"noop": 1024, "slow": 512, "sparse": 24, "short": 128, "large": 64}[profile]
     result = {
         "name": group.name,
         "profile": profile,
         "mesh_elf_sha256": config["hashes"]["proof/mesh-current"],
         "oban_revision": config["oban_revision"],
+        "oban_erl_flags": config.get("oban_erl_flags"),
+        "series": config.get("series", "reconstructed-explicit-schedulers-only"),
         "guest_base_sha256": config["base_cpio_sha256"],
         "kernel_sha256": config["kernel_sha256"],
         "manifest_sha256": digest(evidence / "config.json"),
@@ -66,6 +68,8 @@ def summarize(group):
                                                      for row in raw["attempts"]),
                 "durable_enqueue_transactions": len(raw["transactions"]),
                 "database_and_broker": load(arm / "database.json"),
+                **({"oban_emulator": load(arm / "oban-emulator.json")}
+                   if engine == "oban" and config.get("oban_erl_flags") else {}),
                 "raw_ledger_and_samples_sha256": digest(arm / "raw.json"),
                 "runner_shutdown_sha256": [digest(path) for path in sorted(arm.glob("runner-*.log"))],
             })

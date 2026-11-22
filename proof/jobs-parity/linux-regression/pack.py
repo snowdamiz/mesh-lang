@@ -98,9 +98,11 @@ def pack(output, profile, arms, mesh, mesh_sha, assets):
     for library in ("libstdc++.so.6", "libtinfo.so.6"):
         copy(f"lib/aarch64-linux-gnu/{library}", assets / "beam/usr/lib/aarch64-linux-gnu" / library)
 
+    settings = json.loads((ROOT / "scripts/jobs-parity-profiles.json").read_text())
     config = {"profile": profile, "arms": arms, "hashes": hashes, "base_cpio_sha256": digest(base),
               "kernel_sha256": digest((assets / "kernel.Image").read_bytes()),
-              "full_input_warmup": profile == "large", "oban_revision": OBAN_REVISION}
+              "full_input_warmup": profile in ("noop", "slow", "large"), "oban_revision": OBAN_REVISION,
+              "oban_erl_flags": settings["oban_erl_flags"], "series": "canonical-oban-flags"}
     add_file("proof/config.json", json.dumps(config).encode())
     add(overlay, "TRAILER!!!", 0)
     with output.open("xb") as stream:
