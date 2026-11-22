@@ -387,12 +387,17 @@ def trial(binary, mode, actors, args, url, proxy):
 def run_blocks(args, url, proxy):
     rng = random.Random(args.seed)
     trials = []
+    first_side = {}
     for block in range(1, args.blocks + 1):
         scenarios = [(mode, actors) for mode in args.mode for actors in args.actors]
         rng.shuffle(scenarios)
         for mode, actors in scenarios:
             sides = [("baseline", args.baseline), ("candidate", args.candidate)]
-            rng.shuffle(sides)
+            if block % 2 == 1:
+                rng.shuffle(sides)
+                first_side[mode, actors] = sides[0][0]
+            elif first_side[mode, actors] == "baseline":
+                sides.reverse()
             for side, binary in sides:
                 record = dict(block=block, mode=mode, actors=actors, side=side)
                 try:

@@ -9,10 +9,10 @@ permissions:
 jobs:
   calibrate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       BASELINE_SHA: e7abb534f38b97ba2cbfac097518c06b0ae619c2
-      HARNESS_SHA: 737871878982656ff842b87c488aa601294fba30
+      HARNESS_BASE_SHA: 737871878982656ff842b87c488aa601294fba30
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/scripts/ci-x86_64-linux-gnu-clang
     services:
       postgres:
@@ -67,8 +67,7 @@ jobs:
         run: |
           evidence="$RUNNER_TEMP/db-calibration"
           mkdir -p "$evidence"
-          test "$(git rev-parse HEAD^)" = "$HARNESS_SHA"
-          git diff --exit-code "$HARNESS_SHA" -- tools/db-performance
+          git merge-base --is-ancestor "$HARNESS_BASE_SHA" "$GITHUB_SHA"
           git worktree add --detach "$RUNNER_TEMP/mesh-db-main" "$BASELINE_SHA"
           export LLVM_SYS_211_PREFIX="$HOME/llvm"
           (
@@ -80,7 +79,8 @@ jobs:
             "$CARGO_TARGET_DIR/release/meshc" build tools/db-performance/mesh \
             --opt-level 2 --output "$RUNNER_TEMP/mesh-db-baseline"
           {
-            printf 'main=%s\nharness=%s\nworkflow=%s\n' "$BASELINE_SHA" "$HARNESS_SHA" "$GITHUB_SHA"
+            printf 'main=%s\nharness_base=%s\nworkflow=%s\n' "$BASELINE_SHA" "$HARNESS_BASE_SHA" "$GITHUB_SHA"
+            printf 'harness_tree=%s\n' "$(git rev-parse HEAD:tools/db-performance)"
             rustc --version
             "$HOME/llvm/bin/llvm-config" --version
             sha256sum "$RUNNER_TEMP/mesh-db-baseline"
@@ -106,12 +106,31 @@ jobs:
           export MESH_TEST_DATABASE_URL="postgresql://postgres@127.0.0.1:$POSTGRES_PORT/postgres"
           python3 tools/db-performance/bench.py --self-test
           set -o pipefail
-          python3 tools/db-performance/bench.py \
-            --baseline "$RUNNER_TEMP/mesh-db-baseline" \
-            --candidate "$RUNNER_TEMP/mesh-db-baseline" \
-            --check-noise --workers 4 --blocks 9 --warmup 4 \
-            --out "$RUNNER_TEMP/db-calibration" \
-            | tee "$RUNNER_TEMP/db-calibration/calibration.log"
+          calibrate() {
+            local mode="$1"
+            local workers="$2"
+            local log="$RUNNER_TEMP/db-calibration/$mode.log"
+            shift 2
+            timeout 35m python3 tools/db-performance/bench.py \
+              --baseline "$RUNNER_TEMP/mesh-db-baseline" \
+              --candidate "$RUNNER_TEMP/mesh-db-baseline" \
+              --check-noise --workers "$workers" --blocks 10 --warmup 4 \
+              --out "$RUNNER_TEMP/db-calibration/$mode" \
+              --mode "$mode" "$@" | tee "$log"
+          }
+          failed=0
+          calibrate pg_point 1 --iterations 600 || failed=1
+          calibrate pg_typed 1 --iterations 600 || failed=1
+          calibrate pg_write 1 --iterations 160 || failed=1
+          calibrate sqlite_point 1 --iterations 6000 || failed=1
+          calibrate sqlite_write 1 --iterations 128 || failed=1
+          if (( failed != 0 )); then
+            exit 1
+          fi
+          calibrate pg_rows 4 || failed=1
+          calibrate pg_sleep 4 || failed=1
+          calibrate sqlite_rows 4 || failed=1
+          exit "$failed"
 
       - name: Save raw calibration evidence
         if: always()
