@@ -5590,3 +5590,31 @@ logical CPUs. The control shows a long claim span before the
 current integration. The changing host load prevents a
 runtime-to-runtime speed comparison across these runs.
 [Original-runtime large control](../proof/jobs-parity/linux-large-historical-control-20261122.json)
+
+### Separate the Oban emulator configurations
+
+The reconstructed Linux warm-session groups, initial regression
+screens and original-runtime replay used the two-scheduler launcher.
+Its static guest init starts the driver with an explicit four-entry
+environment. The driver did not set `ERL_FLAGS`. An unscored replay
+captured live BEAM argv and confirmed that `-S 2:2` was the only
+explicit scheduler or async-pool flag. It observed two dirty CPU
+schedulers, 10 dirty I/O schedulers and one async thread. Its
+`ERL_FLAGS`, `ERL_AFLAGS`, `ERL_ZFLAGS` and
+`ELIXIR_ERL_OPTIONS` values were all absent.
+
+The historical sparse bundle pins the Git profile containing
+`+S 2:2 +SDcpu 1:1 +SDio 1 +A 2`. Its saved runner records have
+PID, cgroup, thread and backend observations. The archived launch
+adapter and live argv or environment were unavailable for the
+old hard-cap runs. The top-level driver at the historical revision
+does export the pinned flags when invoked through its normal entry
+point, as did the macOS ordinary comparison. Keep the older guest
+measurements in their historical series.
+
+The prospective canonical guest driver reads all four flags from
+the frozen profile and verifies each runner's live argv and effective
+Erlang scheduler and async-pool values. The canonical pairs use
+their own series label and receipt.
+
+[Oban emulator provenance and live diagnostic audit](../proof/jobs-parity/linux-oban-emulator-modes-20261122.json)

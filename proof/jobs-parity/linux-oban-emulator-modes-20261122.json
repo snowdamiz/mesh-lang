@@ -1,0 +1,82 @@
+{
+  "canonical_profile": {
+    "expected": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+    "source": "scripts/jobs-parity-profiles.json"
+  },
+  "historical_sparse": {
+    "live_flags_confirmation": "unavailable in surviving receipts",
+    "observed_peak_threads": 12,
+    "pinned_guest_driver_sha256": "2bd8b4cddd261438948d7160cdd3f3a22c1a80d87f5573ddac3f845d1d84a7d5",
+    "pinned_guest_init_sha256": "91c57e7c102e9b70c72435983d4a8844a4bc83c43058f66437fb096bd7e472c9",
+    "pinned_profile_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+    "pinned_workload_config_sha256": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297"
+  },
+  "reconstructed_audit": {
+    "component_sha256": {
+      "init": "f23fe760afc6eee500e490fea9749eeb6263e911719c5a25b760a1168dcafb0a",
+      "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+      "opt/otp/erts-17.1/bin/erlexec": "e134c135802739db08efc625fb956da22394a636bb00df764bb0dcf392b9a348",
+      "proof/oban": "0243b43635ee3e36e82e7878cf7dcbe1800492d74e2d97edb2003eefe84e1cb6",
+      "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+      "proof/trial.py": "30e2c0c2bc160ae54692bcde35711c5f98af9d18d0ef48d89f181d89ffb70f8b"
+    },
+    "observed_oban_runner": {
+      "argv": [
+        "/opt/otp/erts-17.1/bin/beam.smp",
+        "-S",
+        "2:2",
+        "--",
+        "-root",
+        "/opt/otp",
+        "-bindir",
+        "/opt/otp/erts-17.1/bin",
+        "-progname",
+        "erl",
+        "--",
+        "-home",
+        "/tmp",
+        "--",
+        "-noshell",
+        "-elixir_root",
+        "/opt/elixir",
+        "-pa",
+        "/opt/elixir/eex/ebin",
+        "/opt/elixir/elixir/ebin",
+        "/opt/elixir/ex_unit/ebin",
+        "/opt/elixir/iex/ebin",
+        "/opt/elixir/logger/ebin",
+        "/opt/elixir/mix/ebin",
+        "/opt/fixtures/db_connection/ebin",
+        "/opt/fixtures/decimal/ebin",
+        "/opt/fixtures/ecto/ebin",
+        "/opt/fixtures/ecto_sql/ebin",
+        "/opt/fixtures/jason/ebin",
+        "/opt/fixtures/jobs_parity_oban/ebin",
+        "/opt/fixtures/oban/ebin",
+        "/opt/fixtures/postgrex/ebin",
+        "/opt/fixtures/telemetry/ebin",
+        "-s",
+        "elixir",
+        "start_cli",
+        "--",
+        "--",
+        "-extra",
+        "/proof/fixture.exs",
+        "--",
+        "run"
+      ],
+      "async_threads": 1,
+      "dirty_cpu_schedulers": 2,
+      "dirty_cpu_schedulers_online": 2,
+      "dirty_io_schedulers": 10,
+      "elixir_erl_options": null,
+      "erl_aflags": null,
+      "erl_flags": null,
+      "erl_zflags": null,
+      "schedulers": 2,
+      "schedulers_online": 2
+    },
+    "runner_log_sha256": "31c26ce0f957967b1bf5f5f4f6b87a7490059b4acd9bacd06c1c1acb3e65f1a1",
+    "scope": "unscored live boot using the diagnostic launcher and instrumented fixture"
+  }
+}
