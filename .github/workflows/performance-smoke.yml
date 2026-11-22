@@ -1,36 +1,39 @@
-name: Performance suite smoke
+name: Hosted database benchmark calibration
 
 on:
-  pull_request:
-    paths:
-      - 'compiler/**'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'tools/performance/**'
-      - '.github/workflows/performance-smoke.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'compiler/**'
-      - 'Cargo.lock'
-      - 'Cargo.toml'
-      - 'tools/performance/**'
-      - '.github/workflows/performance-smoke.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  smoke:
+  calibrate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
+    env:
+      BASELINE_SHA: e7abb534f38b97ba2cbfac097518c06b0ae619c2
+      HARNESS_SHA: 737871878982656ff842b87c488aa601294fba30
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/scripts/ci-x86_64-linux-gnu-clang
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Read toolchain versions
         id: versions
-        shell: bash
         run: cat tools/performance/versions.env >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache@v4
@@ -52,62 +55,68 @@ jobs:
           printf '%s  %s\n' "$LLVM_SHA256" "$RUNNER_TEMP/$archive" | sha256sum -c -
           mkdir -p "$HOME/llvm"
           tar -xJf "$RUNNER_TEMP/$archive" --strip-components=1 -C "$HOME/llvm"
+          rm "$RUNNER_TEMP/$archive"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ steps.versions.outputs.PERF_RUST_VERSION }}
 
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ steps.versions.outputs.PERF_GO_VERSION }}
-          cache: false
-
-      - uses: erlef/setup-beam@v1.24.1
-        with:
-          otp-version: ${{ steps.versions.outputs.PERF_OTP_VERSION }}
-          elixir-version: ${{ steps.versions.outputs.PERF_ELIXIR_VERSION }}
-          version-type: strict
-          install-hex: true
-          install-rebar: true
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: performance-suite-ubuntu-x86_64
-
-      - name: Install k6
+      - name: Build the exact main baseline
         env:
-          K6_VERSION: ${{ steps.versions.outputs.PERF_K6_VERSION }}
-          K6_SHA256: ${{ steps.versions.outputs.PERF_K6_LINUX_AMD64_SHA256 }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/mesh-db-build
         run: |
-          cd "$RUNNER_TEMP"
-          archive="k6-v${K6_VERSION}-linux-amd64.tar.gz"
-          curl --fail --silent --show-error --location --retry 3 \
-            "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/$archive" \
-            --output "$archive"
-          printf '%s  %s\n' "$K6_SHA256" "$archive" | sha256sum -c -
-          tar -xzf "$archive"
-          printf '%s\n' "$RUNNER_TEMP/${archive%.tar.gz}" >> "$GITHUB_PATH"
-
-      - name: Build all four implementations
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/scripts/ci-x86_64-linux-gnu-clang
-        run: |
+          evidence="$RUNNER_TEMP/db-calibration"
+          mkdir -p "$evidence"
+          test "$(git rev-parse HEAD^)" = "$HARNESS_SHA"
+          git diff --exit-code "$HARNESS_SHA" -- tools/db-performance
+          git worktree add --detach "$RUNNER_TEMP/mesh-db-main" "$BASELINE_SHA"
           export LLVM_SYS_211_PREFIX="$HOME/llvm"
-          bash tools/performance/build.sh
+          (
+            cd "$RUNNER_TEMP/mesh-db-main"
+            test "$(git rev-parse HEAD)" = "$BASELINE_SHA"
+            cargo build --locked --release -p meshc -p mesh-rt
+          )
+          MESH_RT_LIB_PATH="$CARGO_TARGET_DIR/release/libmesh_rt.a" \
+            "$CARGO_TARGET_DIR/release/meshc" build tools/db-performance/mesh \
+            --opt-level 2 --output "$RUNNER_TEMP/mesh-db-baseline"
+          {
+            printf 'main=%s\nharness=%s\nworkflow=%s\n' "$BASELINE_SHA" "$HARNESS_SHA" "$GITHUB_SHA"
+            rustc --version
+            "$HOME/llvm/bin/llvm-config" --version
+            sha256sum "$RUNNER_TEMP/mesh-db-baseline"
+          } | tee "$evidence/build.txt"
+          git worktree remove "$RUNNER_TEMP/mesh-db-main"
 
-      - name: Verify workload parity
-        env:
-          K6_VERSION: ${{ steps.versions.outputs.PERF_K6_VERSION }}
+      - name: Wait for the runner to become idle
         run: |
-          python3 -m unittest discover -s tools/performance
-          python3 tools/performance/run.py smoke \
-            --bin-dir .tmp/performance/bin --out .tmp/performance/ci \
-            --require-k6 --k6-version "$K6_VERSION"
+          for attempt in {1..60}; do
+            uptime | tee -a "$RUNNER_TEMP/db-calibration/host-load.txt"
+            if awk '{exit !($1 <= 0.5)}' /proc/loadavg; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Runner load did not settle before calibration" >&2
+          exit 1
 
-      - name: Save smoke evidence
+      - name: Run same-binary calibration
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+        run: |
+          export MESH_TEST_DATABASE_URL="postgresql://postgres@127.0.0.1:$POSTGRES_PORT/postgres"
+          python3 tools/db-performance/bench.py --self-test
+          set -o pipefail
+          python3 tools/db-performance/bench.py \
+            --baseline "$RUNNER_TEMP/mesh-db-baseline" \
+            --candidate "$RUNNER_TEMP/mesh-db-baseline" \
+            --check-noise --workers 4 --blocks 9 --warmup 4 \
+            --out "$RUNNER_TEMP/db-calibration" \
+            | tee "$RUNNER_TEMP/db-calibration/calibration.log"
+
+      - name: Save raw calibration evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: performance-smoke
-          path: .tmp/performance/ci
-          if-no-files-found: ignore
+          name: db-driver-calibration
+          path: ${{ runner.temp }}/db-calibration
+          if-no-files-found: error
