@@ -99,48 +99,20 @@ jobs:
           echo "Runner load did not settle before calibration" >&2
           exit 1
 
-      - name: Run same-binary calibration
+      - name: Check SQLite row calibration on one worker
         env:
           POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
-        run: |
-          export MESH_TEST_DATABASE_URL="postgresql://postgres@127.0.0.1:$POSTGRES_PORT/postgres"
-          python3 tools/db-performance/bench.py --self-test
-          set -o pipefail
-          calibrate() {
-            local output="$1"
-            local mode="$2"
-            local workers="$3"
-            local seed="$4"
-            shift 4
-            printf 'Running %s\n' "$output"
-            uptime
-            timeout 35m python3 tools/db-performance/bench.py \
-              --baseline "$RUNNER_TEMP/mesh-db-baseline" \
-              --candidate "$RUNNER_TEMP/mesh-db-baseline" \
-              --check-noise --workers "$workers" --blocks 10 --warmup 4 \
-              --seed "$seed" --out "$RUNNER_TEMP/db-calibration/$output" \
-              --mode "$mode" "$@" | tee "$RUNNER_TEMP/db-calibration/$output.log"
-          }
+        run: bash tools/db-performance/calibrate-hosted.sh pilot
 
-          mkdir -p "$RUNNER_TEMP/db-calibration/pilot" "$RUNNER_TEMP/db-calibration/full"
-          failed=0
-          calibrate pilot/pg_write pg_write 1 89 --actors 1 --iterations 10000 || failed=1
-          calibrate pilot/sqlite_write sqlite_write 1 89 --actors 1 --iterations 10000 || failed=1
-          if (( failed != 0 )); then
-            exit 1
-          fi
+      - name: Qualify the full one-worker matrix
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+        run: bash tools/db-performance/calibrate-hosted.sh full
 
-          calibrate full/pg_point pg_point 1 97 --iterations 600 || failed=1
-          calibrate full/pg_typed pg_typed 1 97 --iterations 600 || failed=1
-          calibrate full/pg_write_single pg_write 1 97 --actors 1 --iterations 10000 || failed=1
-          calibrate full/pg_write_multi pg_write 1 97 --actors 16 64 --iterations 160 || failed=1
-          calibrate full/sqlite_point sqlite_point 1 97 --iterations 6000 || failed=1
-          calibrate full/sqlite_write_single sqlite_write 1 97 --actors 1 --iterations 10000 || failed=1
-          calibrate full/sqlite_write_multi sqlite_write 1 97 --actors 16 64 --iterations 128 || failed=1
-          calibrate full/pg_rows pg_rows 4 97 || failed=1
-          calibrate full/pg_sleep pg_sleep 4 97 || failed=1
-          calibrate full/sqlite_rows sqlite_rows 4 97 || failed=1
-          exit "$failed"
+      - name: Check idle and loaded ticker wakes
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
+        run: bash tools/db-performance/calibrate-hosted.sh ticker
 
       - name: Save raw calibration evidence
         if: always()
