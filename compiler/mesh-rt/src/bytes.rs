@@ -11,7 +11,7 @@ use subtle::ConstantTimeEq;
 use crate::collections::list::{
     mesh_list_builder_new, mesh_list_builder_push, mesh_list_get, mesh_list_length,
 };
-use crate::gc::mesh_gc_alloc_actor;
+use crate::gc::{alloc_actor_leaf, mesh_gc_alloc_actor};
 use crate::io::{alloc_result, err_result, ok_int, MeshResult};
 use crate::string::{mesh_str, MeshString};
 use crate::wide_num::{mesh_u64_new, mesh_u64_value, MeshWideNum};
@@ -104,7 +104,7 @@ fn binary_error(tag: BinaryErrorTag) -> *mut MeshResult {
     alloc_result(1, value.cast())
 }
 
-fn allocate(len: usize) -> *mut MeshBytes {
+fn allocate(len: usize, leaf: bool) -> *mut MeshBytes {
     let Some(total) = MeshBytes::HEADER_SIZE.checked_add(len) else {
         return ptr::null_mut();
     };
@@ -113,7 +113,12 @@ fn allocate(len: usize) -> *mut MeshBytes {
     }
 
     unsafe {
-        let value = mesh_gc_alloc_actor(total as u64, 8) as *mut MeshBytes;
+        let allocation = if leaf {
+            alloc_actor_leaf(total as u64, 8)
+        } else {
+            mesh_gc_alloc_actor(total as u64, 8)
+        };
+        let value = allocation.cast::<MeshBytes>();
         (*value).len = len as u64;
         value
     }
@@ -260,7 +265,11 @@ pub extern "C" fn mesh_bytes_new(data: *const u8, len: u64) -> *mut MeshBytes {
     if data.is_null() && len != 0 {
         return ptr::null_mut();
     }
-    let value = allocate(len);
+    unsafe { copy_bytes(data, len, false) }
+}
+
+unsafe fn copy_bytes(data: *const u8, len: usize, leaf: bool) -> *mut MeshBytes {
+    let value = allocate(len, leaf);
     if value.is_null() {
         return ptr::null_mut();
     }
@@ -384,7 +393,7 @@ pub extern "C" fn mesh_bytes_from_list(values: *mut u8) -> *mut MeshResult {
             return err_result("byte value out of range");
         }
     }
-    let bytes = allocate(len);
+    let bytes = allocate(len, true);
     unsafe {
         for index in 0..len {
             *(*bytes).data_ptr_mut().add(index) = mesh_list_get(values, index as i64) as u8;
@@ -415,7 +424,7 @@ pub extern "C" fn mesh_bytes_repeat(byte: i64, count: i64) -> *mut MeshResult {
     let Ok(count) = usize::try_from(count) else {
         return err_result("byte count out of range");
     };
-    let bytes = allocate(count);
+    let bytes = allocate(count, true);
     if bytes.is_null() {
         return err_result("byte length overflow");
     }
@@ -472,7 +481,7 @@ pub extern "C" fn mesh_bytes_concat(
             .len
             .checked_add((*right).len)
             .and_then(|len| usize::try_from(len).ok())
-            .map_or(ptr::null_mut(), allocate);
+            .map_or(ptr::null_mut(), |len| allocate(len, false));
         if value.is_null() {
             return err_result("byte length overflow");
         }
@@ -501,7 +510,10 @@ pub extern "C" fn mesh_bytes_secure_equals(left: *const MeshBytes, right: *const
 
 #[no_mangle]
 pub extern "C" fn mesh_bytes_from_utf8(text: *const MeshString) -> *mut MeshBytes {
-    unsafe { mesh_bytes_new((*text).as_bytes().as_ptr(), (*text).len) }
+    unsafe {
+        let bytes = (*text).as_bytes();
+        copy_bytes(bytes.as_ptr(), bytes.len(), true)
+    }
 }
 
 #[no_mangle]

@@ -29,6 +29,9 @@ pub const MARK_BIT: u8 = 0x01;
 /// Free bit in GcHeader flags: object is on the free list.
 pub const FREE_BIT: u8 = 0x02;
 
+/// The object's body contains no outgoing GC references.
+const LEAF_BIT: u8 = 0x04;
+
 /// Object header prepended to every GC-managed allocation.
 ///
 /// The user-visible pointer starts immediately after this header.
@@ -38,7 +41,7 @@ pub const FREE_BIT: u8 = 0x02;
 pub struct GcHeader {
     /// Size of the user data in bytes (not including the header).
     pub size: u32,
-    /// Flags: bit 0 = marked, bit 1 = free.
+    /// Flags: bit 0 = marked, bit 1 = free, bit 2 = pointer-free.
     pub flags: u8,
     /// Reserved padding for 8-byte alignment of the `next` pointer.
     pub _pad: [u8; 3],
@@ -378,25 +381,30 @@ impl ActorHeap {
     /// The pointer is past the GcHeader -- callers see only user data.
     /// The pointer is valid until the object is collected or `reset()` is called.
     pub fn alloc(&mut self, size: usize, align: usize) -> *mut u8 {
-        self.alloc_with_size_policy(size, align, false)
+        self.alloc_with_flags(size, align, false, 0)
+    }
+
+    /// Allocate a body that will hold only data, such as immutable text.
+    pub(crate) fn alloc_leaf(&mut self, size: usize, align: usize) -> *mut u8 {
+        self.alloc_with_flags(size, align, false, LEAF_BIT)
     }
 
     /// Allocate an object whose header must describe exactly `size` bytes.
     /// Larger free blocks are left available for ordinary reuse.
     pub(crate) fn alloc_exact(&mut self, size: usize, align: usize) -> *mut u8 {
-        self.alloc_with_size_policy(size, align, true)
+        self.alloc_with_flags(size, align, true, 0)
     }
 
-    fn alloc_with_size_policy(&mut self, size: usize, align: usize, exact: bool) -> *mut u8 {
+    fn alloc_with_flags(&mut self, size: usize, align: usize, exact: bool, flags: u8) -> *mut u8 {
         let align = if align == 0 { 1 } else { align };
 
         // 1. Try the free list first: find a block with sufficient size.
-        if let Some(data_ptr) = self.alloc_from_free_list(size, align, exact) {
+        if let Some(data_ptr) = self.alloc_from_free_list(size, align, exact, flags) {
             return data_ptr;
         }
 
         // 2. Bump-allocate: GcHeader + user data from pages.
-        self.bump_alloc_with_header(size, align)
+        self.bump_alloc_with_header(size, align, flags)
     }
 
     /// Try to allocate from the free bins (smallest fitting bin first).
@@ -404,8 +412,15 @@ impl ActorHeap {
     /// A free block of `size` up to `MAX_REUSE_WASTE_FACTOR * size` bytes
     /// whose data pointer satisfies `align` may be reused; exact mode requires
     /// equal size. The block is unlinked, its full physical capacity wiped,
-    /// FREE_BIT cleared, and it is linked into all_objects.
-    fn alloc_from_free_list(&mut self, size: usize, align: usize, exact: bool) -> Option<*mut u8> {
+    /// its flags replaced by those of the new allocation, and it is linked
+    /// into all_objects.
+    fn alloc_from_free_list(
+        &mut self,
+        size: usize,
+        align: usize,
+        exact: bool,
+        flags: u8,
+    ) -> Option<*mut u8> {
         let bins = self.free_bins.as_deref_mut()?;
         let max_size = if exact {
             size
@@ -431,8 +446,7 @@ impl ActorHeap {
         // heap by another full threshold before collecting again.
         self.total_allocated += GC_HEADER_SIZE + reusable_capacity;
 
-        // Clear the free bit, zero flags, link into all_objects list.
-        header.flags = 0;
+        header.flags = flags;
         header.next = self.all_objects;
         self.all_objects = current;
 
@@ -448,7 +462,7 @@ impl ActorHeap {
 
     /// Bump-allocate `GC_HEADER_SIZE + size` bytes from pages and initialize
     /// the GcHeader.
-    fn bump_alloc_with_header(&mut self, size: usize, align: usize) -> *mut u8 {
+    fn bump_alloc_with_header(&mut self, size: usize, align: usize, flags: u8) -> *mut u8 {
         // Headers sit on granule boundaries so the start bitmap can name them.
         let align = align.max(GRANULE);
         let total = GC_HEADER_SIZE + size;
@@ -477,7 +491,7 @@ impl ActorHeap {
         unsafe {
             header_ptr.write(GcHeader {
                 size: size as u32,
-                flags: 0,
+                flags,
                 _pad: [0; 3],
                 next: self.all_objects,
             });
@@ -713,13 +727,15 @@ impl ActorHeap {
         }
     }
 
-    /// Mark the live object `word` points into, if any, and queue it for tracing.
+    /// Mark the live object `word` points into, if any, and queue its outgoing edges.
     fn mark_word(&self, word: usize, worklist: &mut Vec<*mut GcHeader>) {
         if let Some(header) = self.find_object_containing(word as *const u8) {
             let hdr = unsafe { &mut *header };
             if !hdr.is_marked() {
                 hdr.set_marked();
-                worklist.push(header);
+                if hdr.flags & LEAF_BIT == 0 {
+                    worklist.push(header);
+                }
             }
         }
     }
@@ -1221,6 +1237,43 @@ mod tests {
         // the requested object body.
         let reused_capacity = unsafe { std::slice::from_raw_parts(ptr_small, 256) };
         assert!(reused_capacity.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn leaf_and_exact_traced_allocations_reuse_the_same_block() {
+        let mut heap = ActorHeap::new();
+        let leaf = heap.alloc_leaf(64, 8);
+        let child = heap.alloc(8, 8);
+        unsafe { leaf.cast::<usize>().write(child as usize) };
+
+        // A live interior root marks the leaf without following its body.
+        let roots = [unsafe { leaf.add(63) } as usize];
+        let top = roots.as_ptr().cast();
+        let bottom = unsafe { roots.as_ptr().add(roots.len()) }.cast();
+        heap.collect(bottom, top);
+        assert_eq!(heap.live_allocation_size(leaf), Some(64));
+        assert_eq!(heap.live_allocation_size(child), None);
+        heap.collect(top, top);
+
+        let exact = heap.alloc_exact(64, 8);
+        assert_eq!(exact, leaf);
+        assert_eq!(heap.live_allocation_size(exact), Some(64));
+        assert!(unsafe { std::slice::from_raw_parts(exact, 64) }
+            .iter()
+            .all(|byte| *byte == 0));
+        let child = heap.alloc(8, 8);
+        unsafe { exact.cast::<usize>().write(child as usize) };
+        heap.collect(bottom, top);
+        assert_eq!(heap.live_allocation_size(child), Some(8));
+        heap.collect(top, top);
+
+        let leaf_again = heap.alloc_leaf(64, 8);
+        assert_eq!(leaf_again, exact);
+        let child = heap.alloc(8, 8);
+        unsafe { leaf_again.cast::<usize>().write(child as usize) };
+        heap.collect(bottom, top);
+        assert_eq!(heap.live_allocation_size(leaf_again), Some(64));
+        assert_eq!(heap.live_allocation_size(child), None);
     }
 
     #[test]

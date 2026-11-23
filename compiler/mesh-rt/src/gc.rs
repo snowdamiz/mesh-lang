@@ -162,21 +162,31 @@ pub extern "C" fn mesh_gc_alloc(size: u64, align: u64) -> *mut u8 {
 #[no_mangle]
 pub extern "C" fn mesh_gc_alloc_actor(size: u64, align: u64) -> *mut u8 {
     // Try to allocate from the current actor's heap.
-    if let Some(ptr) = try_alloc_from_actor_heap(size as usize, align as usize) {
+    if let Some(ptr) = try_alloc_from_actor_heap(size as usize, align as usize, false) {
         return ptr;
     }
     // Fallback to global arena.
     mesh_gc_alloc(size, align)
 }
 
+/// Allocate a body that contains no managed references.
+pub(crate) fn alloc_actor_leaf(size: u64, align: u64) -> *mut u8 {
+    try_alloc_from_actor_heap(size as usize, align as usize, true)
+        .unwrap_or_else(|| mesh_gc_alloc(size, align))
+}
+
 /// Attempt to allocate from the current actor's per-actor heap.
 ///
 /// Returns `Some(ptr)` if running in an actor context and the allocation
 /// succeeded. Returns `None` if no actor context is available.
-fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
+fn try_alloc_from_actor_heap(size: usize, align: usize, leaf: bool) -> Option<*mut u8> {
     crate::actor::stack::with_allocation_process(|process| {
         let mut process = process.lock();
-        let ptr = process.heap.alloc(size, align);
+        let ptr = if leaf {
+            process.heap.alloc_leaf(size, align)
+        } else {
+            process.heap.alloc(size, align)
+        };
         // Not here: runtime functions keep fresh objects in Rust-side
         // temporaries no scan can see. Compiled code's next reduction check is
         // a point where every live value is on the stack or in a register.
@@ -287,6 +297,31 @@ mod tests {
         // Read it back -- the pointer IS the data, no header to skip.
         let val = unsafe { *(ptr as *const u64) };
         assert_eq!(val, 0xDEADBEEF_CAFEBABE);
+    }
+
+    #[test]
+    fn raw_native_string_and_bytes_constructors_remain_conservative() {
+        use crate::actor::process::{Priority, Process, ProcessId};
+        use crate::actor::stack;
+        use std::sync::Arc;
+
+        let pid = ProcessId(1);
+        let process = Arc::new(parking_lot::Mutex::new(Process::new(pid, Priority::Normal)));
+        stack::set_current_process(pid, &process);
+        let string_child = mesh_gc_alloc_actor(8, 8);
+        let bytes_child = mesh_gc_alloc_actor(8, 8);
+        let words = [string_child as usize, bytes_child as usize];
+        let raw_string = crate::string::mesh_string_new(words.as_ptr().cast(), 8);
+        let raw_bytes = crate::bytes::mesh_bytes_copy_from(words[1..].as_ptr().cast(), 8);
+        stack::clear_current_pid();
+
+        let roots = [raw_string as usize, raw_bytes as usize];
+        let top = roots.as_ptr().cast();
+        let bottom = unsafe { roots.as_ptr().add(roots.len()) }.cast();
+        let mut process = process.lock();
+        process.heap.collect(bottom, top);
+        assert_eq!(process.heap.live_allocation_size(string_child), Some(8));
+        assert_eq!(process.heap.live_allocation_size(bytes_child), Some(8));
     }
 
     #[test]

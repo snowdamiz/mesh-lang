@@ -4,15 +4,15 @@
 //! is `{ len: u64, data: [u8; len] }` -- the data bytes immediately follow
 //! the length field in memory.
 //!
-//! All string functions allocate via `mesh_gc_alloc_actor` so they are managed
-//! by the per-actor GC heap (falling back to the global arena outside actor
-//! context).
+//! Runtime-created text is a leaf in the per-actor heap. The raw native
+//! constructor uses conservative allocation. Both use the global arena
+//! outside actor context.
 
 use std::io::Write;
 use std::ptr;
 
 use crate::collections::list::{mesh_list_builder_new, mesh_list_builder_push};
-use crate::gc::mesh_gc_alloc_actor;
+use crate::gc::{alloc_actor_leaf, mesh_gc_alloc_actor};
 use crate::option::alloc_option;
 
 /// A GC-managed Mesh string.
@@ -81,16 +81,27 @@ impl MeshString {
 /// the string data is zeroed.
 #[no_mangle]
 pub extern "C" fn mesh_string_new(data: *const u8, len: u64) -> *mut MeshString {
-    unsafe {
-        let total = MeshString::HEADER_SIZE + len as usize;
-        let ptr = mesh_gc_alloc_actor(total as u64, 8) as *mut MeshString;
-        (*ptr).len = len;
-        if !data.is_null() && len > 0 {
-            let dst = (*ptr).data_ptr_mut();
-            ptr::copy_nonoverlapping(data, dst, len as usize);
-        }
-        ptr
+    unsafe { copy_string(data, len, false) }
+}
+
+unsafe fn allocate(len: u64, leaf: bool) -> *mut MeshString {
+    let total = MeshString::HEADER_SIZE as u64 + len;
+    let allocation = if leaf {
+        alloc_actor_leaf(total, 8)
+    } else {
+        mesh_gc_alloc_actor(total, 8)
+    };
+    let string = allocation.cast::<MeshString>();
+    (*string).len = len;
+    string
+}
+
+unsafe fn copy_string(data: *const u8, len: u64, leaf: bool) -> *mut MeshString {
+    let string = allocate(len, leaf);
+    if !data.is_null() && len > 0 {
+        ptr::copy_nonoverlapping(data, (*string).data_ptr_mut(), len as usize);
     }
+    string
 }
 
 /// The text of the Mesh string at `pointer`.
@@ -100,7 +111,7 @@ pub(crate) unsafe fn text_of<'a, T>(pointer: *const T) -> &'a str {
 
 /// A new Mesh string holding `text`.
 pub(crate) fn mesh_str(text: &str) -> *mut MeshString {
-    mesh_string_new(text.as_ptr(), text.len() as u64)
+    unsafe { copy_string(text.as_ptr(), text.len() as u64, true) }
 }
 
 /// Concatenate two Mesh strings, returning a new GC-managed string.
@@ -113,7 +124,7 @@ pub extern "C" fn mesh_string_concat(
         let a_len = (*a).len;
         let b_len = (*b).len;
         let new_len = a_len + b_len;
-        let result = mesh_string_new(ptr::null(), new_len);
+        let result = allocate(new_len, true);
         let dst = (*result).data_ptr_mut();
         ptr::copy_nonoverlapping((*a).data_ptr(), dst, a_len as usize);
         ptr::copy_nonoverlapping((*b).data_ptr(), dst.add(a_len as usize), b_len as usize);
@@ -130,7 +141,7 @@ pub extern "C" fn mesh_int_to_string(val: i64) -> *mut MeshString {
     let mut remaining = &mut buf[..];
     write!(remaining, "{val}").expect("an i64 fits in 20 bytes");
     let len = 20 - remaining.len();
-    mesh_string_new(buf.as_ptr(), len as u64)
+    unsafe { copy_string(buf.as_ptr(), len as u64, true) }
 }
 
 /// Convert an f64 float to a GC-managed Mesh string. A whole number keeps
@@ -144,14 +155,14 @@ pub extern "C" fn mesh_float_to_string(val: f64) -> *mut MeshString {
             s.insert_str(e, ".0");
         }
     }
-    mesh_string_new(s.as_ptr(), s.len() as u64)
+    mesh_str(&s)
 }
 
 /// Convert a boolean (i8: 0 = false, non-zero = true) to a GC-managed Mesh string.
 #[no_mangle]
 pub extern "C" fn mesh_bool_to_string(val: i8) -> *mut MeshString {
     let s = if val != 0 { "true" } else { "false" };
-    mesh_string_new(s.as_ptr(), s.len() as u64)
+    mesh_str(s)
 }
 
 /// Identity function for string-to-string conversion.
@@ -184,7 +195,7 @@ pub extern "C" fn mesh_string_inspect(s: *const MeshString) -> *mut MeshString {
         }
     }
     out.push('"');
-    mesh_string_new(out.as_ptr(), out.len() as u64)
+    mesh_str(&out)
 }
 
 /// Print a Mesh string to stdout (no trailing newline).
@@ -238,7 +249,7 @@ pub extern "C" fn mesh_string_slice(s: *const MeshString, start: i64, end: i64) 
         let start = (start.max(0) as usize).min(char_count);
         let end = (end.max(0) as usize).min(char_count).max(start);
         let sliced: String = text.chars().skip(start).take(end - start).collect();
-        mesh_string_new(sliced.as_ptr(), sliced.len() as u64)
+        mesh_str(&sliced)
     }
 }
 
@@ -286,7 +297,7 @@ pub extern "C" fn mesh_string_ends_with(s: *const MeshString, suffix: *const Mes
 pub extern "C" fn mesh_string_trim(s: *const MeshString) -> *mut MeshString {
     unsafe {
         let trimmed = (*s).as_str().trim();
-        mesh_string_new(trimmed.as_ptr(), trimmed.len() as u64)
+        mesh_str(trimmed)
     }
 }
 
@@ -328,7 +339,7 @@ pub extern "C-unwind" fn mesh_string_repeat(
 pub extern "C" fn mesh_string_to_upper(s: *const MeshString) -> *mut MeshString {
     unsafe {
         let upper = (*s).as_str().to_uppercase();
-        mesh_string_new(upper.as_ptr(), upper.len() as u64)
+        mesh_str(&upper)
     }
 }
 
@@ -337,7 +348,7 @@ pub extern "C" fn mesh_string_to_upper(s: *const MeshString) -> *mut MeshString 
 pub extern "C" fn mesh_string_to_lower(s: *const MeshString) -> *mut MeshString {
     unsafe {
         let lower = (*s).as_str().to_lowercase();
-        mesh_string_new(lower.as_ptr(), lower.len() as u64)
+        mesh_str(&lower)
     }
 }
 
@@ -350,7 +361,7 @@ pub extern "C" fn mesh_string_replace(
 ) -> *mut MeshString {
     unsafe {
         let result = (*s).as_str().replace((*from).as_str(), (*to).as_str());
-        mesh_string_new(result.as_ptr(), result.len() as u64)
+        mesh_str(&result)
     }
 }
 
@@ -386,7 +397,7 @@ pub extern "C" fn mesh_string_split(s: *const MeshString, delim: *const MeshStri
         let parts: Vec<&str> = text.split(delimiter).collect();
         let mut list = mesh_list_builder_new(parts.len() as i64);
         for part in &parts {
-            let mesh_str = mesh_string_new(part.as_ptr(), part.len() as u64);
+            let mesh_str = mesh_str(part);
             list = mesh_list_builder_push(list, mesh_str as u64);
         }
         list
@@ -408,7 +419,7 @@ pub extern "C" fn mesh_string_join(list: *mut u8, sep: *const MeshString) -> *mu
             parts.push((*mesh_str).as_str());
         }
         let result = parts.join(separator);
-        mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
+        mesh_str(&result).cast()
     }
 }
 
