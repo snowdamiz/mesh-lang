@@ -89,6 +89,43 @@ def text_json(value):
     return json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
+def write_scorecard(data):
+    profiles = [("ordinary-dense", "Dense no-op"), ("ordinary", "Short"),
+                ("ordinary-slow", "Slow"), ("ordinary-sparse", "Sparse"),
+                ("ordinary-large", "Large · EXTERNAL")]
+    lines = [
+        "# Four native queue engines on the same two CPUs",
+        "",
+        "The five workloads below use the original trusted Mesh V1 runner and its protected Mesh control. Each completed rotation contains both Mesh modes and all three stock peers on the same Linode. Rates are median jobs per second. The last column counts the rotations in which trusted Mesh was faster than each peer.",
+        "",
+    ]
+    for metric, title in [("submit_jobs_per_s", "Submission through last settlement"),
+                          ("commit_jobs_per_s", "First enqueue commit through last settlement")]:
+        lines.extend([f"## {title}", "",
+                      "| Workload | Rotations | Protected Mesh | Trusted Mesh | Oban | River | Apalis | Trusted wins vs Oban / River / Apalis |",
+                      "|---|---:|---:|---:|---:|---:|---:|---|"])
+        for series, label in profiles:
+            blocks = data.get(series, {}).get("blocks", [])
+            if not blocks:
+                lines.append(f"| {label} | 0/5 | — | — | — | — | — | — |")
+                continue
+            scores = [block["scores"] for block in blocks]
+            protected, = (k for k, s in scores[0].items() if s["engine"] == "mesh" and k != "ordinary")
+            peers = [next(k for k, s in scores[0].items() if s["engine"] == engine)
+                     for engine in ("oban", "go", "rust")]
+            rates = " | ".join(f"{median(s[k][metric] for s in scores):,.2f}"
+                               for k in (protected, "ordinary", *peers))
+            wins = " / ".join(str(sum(s["ordinary"][metric] > s[k][metric] for s in scores)) for k in peers)
+            lines.append(f"| {label} | {len(blocks)}/5 | {rates} | {wins} |")
+        lines.append("")
+    lines += [
+        "Dense, short, slow and sparse use each engine's standard producer. Large uses the direct-file Mesh producer with both Mesh modes and PostgreSQL EXTERNAL argument storage on every engine. The sparse workload includes the prescribed gaps between arrivals. Every completed job has two independently committed application writes.",
+        "",
+        "Protected Mesh executes a fresh process and fences its two application writes. Trusted Mesh runs the handler in the application's process with its database credentials. These scores belong to the captured V1 binaries. [Per-rotation chart](chart.html) · [Data, binary identities and raw digests](scores.json) · [Original four-engine baseline](../2026-11-23-baseline/README.md)", "",
+    ]
+    (HERE / "four-engine-scorecard.md").write_text("\n".join(lines))
+
+
 def write_producer_budgets(data):
     lines = [
         "# How much can faster enqueue change the native comparison?",
@@ -139,7 +176,11 @@ def refresh(collect):
         for item in run.read_json(HERE / "series-list.json"):
             name = item["name"]
             live = SUITE / item["live"] if "live" in item else None
-            current = capture(SUITE / item["path"], live)
+            archived = SUITE / item["path"]
+            if (item.get("pending") and name not in data
+                    and not any(path and (path / "series.json").is_file() for path in (archived, live))):
+                continue
+            current = capture(archived, live)
             previous = data.get(name)
             if previous:
                 old = {b["attempt"]: b for b in previous["blocks"]}
@@ -152,6 +193,7 @@ def refresh(collect):
         target.write_text(text_json(data))
     if not data:
         raise ValueError("use --collect to replay the original ledgers")
+    write_scorecard(data)
     write_producer_budgets(data)
     embedded = json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False)
     template = (HERE / "view.html.in").read_text()
