@@ -462,7 +462,7 @@ env -u MESH_TEST_DATABASE_URL PG_BIN_DIR=/path/to/postgresql/bin \
 
 ### Exercise the compiled effect candidate
 
-Use `Jobs.start_effects` to opt in on compiled Linux GNU ARM64. Omit
+Use `Jobs.start_effects` to opt in on compiled GNU/Linux ARM64 or x86-64. Omit
 `effect_sessions` to prewarm one application session. Set `"listen":true`
 to exercise LISTEN on a non-drain runner.
 

@@ -15,14 +15,11 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use crate::db::pg::MAX_DB_VALUE_BYTES;
 use crate::string::{mesh_str, MeshString};
 
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+#[cfg(mesh_jobs_effects)]
 use std::os::fd::OwnedFd;
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+#[cfg(mesh_jobs_effects)]
 use std::os::unix::net::UnixStream;
-#[cfg(any(
-    all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
-    all(target_os = "linux", test),
-))]
+#[cfg(any(mesh_jobs_effects, all(target_os = "linux", test)))]
 #[path = "worker_effect_endpoint_linux.rs"]
 mod effect_endpoint;
 
@@ -130,7 +127,7 @@ struct Request {
 pub(super) enum WorkerPoll {
     Running,
     AwaitingReply,
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     AwaitingEffectRelay,
     Exited(Reply),
     TimedOut,
@@ -147,7 +144,7 @@ pub(super) struct WorkerProcess {
 
 enum WorkerInput {
     Pipe,
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     Effects {
         peer: UnixStream,
         input: OwnedFd,
@@ -173,7 +170,7 @@ impl WorkerProcess {
         )
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     pub(super) fn start_effects(
         handler: &str,
         context: String,
@@ -221,7 +218,7 @@ impl WorkerProcess {
                 command.arg(WORKER_ARG).stdin(Stdio::piped());
                 None
             }
-            #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+            #[cfg(mesh_jobs_effects)]
             WorkerInput::Effects {
                 peer,
                 input,
@@ -239,7 +236,7 @@ impl WorkerProcess {
                 Some((peer, endpoint))
             }
         };
-        #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+        #[cfg(not(mesh_jobs_effects))]
         let effects: Option<()> = effects;
         let child = command
             .env("MESH_SCHEDULER_MIN_WORKERS", "1")
@@ -271,7 +268,7 @@ impl WorkerProcess {
         std::thread::Builder::new()
             .name("mesh-job-control".into())
             .spawn(move || {
-                #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+                #[cfg(mesh_jobs_effects)]
                 if let Some((peer, endpoint)) = effects {
                     let sent = effect_endpoint::send(&peer, &endpoint);
                     drop(endpoint);
@@ -280,7 +277,7 @@ impl WorkerProcess {
                     }
                     return;
                 }
-                #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+                #[cfg(not(mesh_jobs_effects))]
                 let _ = effects;
                 write_control(input.unwrap(), request, context, renewal_requests, latest);
             })
@@ -463,7 +460,7 @@ fn worker_uses_effect_stdin(arg: &[u8]) -> Option<bool> {
     if arg == WORKER_ARG.as_bytes() {
         return Some(false);
     }
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     if arg == effect_endpoint::WORKER_ARG.as_bytes() {
         return Some(true);
     }
@@ -475,10 +472,7 @@ fn thp_disable_requested(value: Option<&std::ffi::OsStr>) -> bool {
     value == Some(std::ffi::OsStr::new("1"))
 }
 
-#[cfg(all(
-    target_os = "linux",
-    any(all(target_arch = "aarch64", target_env = "gnu"), test)
-))]
+#[cfg(all(target_os = "linux", any(mesh_jobs_effects, test)))]
 fn configure_effect_worker_env(command: &mut Command, thp: Option<&std::ffi::OsStr>) {
     command.env_clear();
     if thp_disable_requested(thp) {
@@ -528,9 +522,9 @@ fn is_current_worker() -> io::Result<bool> {
     // C main on musl can leave Rust's argv empty. Read through Linux's
     // maximum argv[0] (32 pages, at most 2 MiB), the longest accepted marker,
     // its NUL, and at least one byte of any extra argument.
-    #[cfg(all(target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     const MARKER_LEN: usize = effect_endpoint::WORKER_ARG.len();
-    #[cfg(not(all(target_arch = "aarch64", target_env = "gnu")))]
+    #[cfg(not(mesh_jobs_effects))]
     const MARKER_LEN: usize = WORKER_ARG.len();
     const LIMIT: u64 = 2 * 1024 * 1024 + MARKER_LEN as u64 + 2;
     let mut command_line = Vec::new();
@@ -560,7 +554,7 @@ mod thp_tests {
     #[test]
     fn worker_selectors_require_exact_argument_and_count() {
         const EFFECT_ARG: &str = "--mesh-internal-job-attempt-effect-v1";
-        let effect_supported = cfg!(all(target_arch = "aarch64", target_env = "gnu"));
+        let effect_supported = cfg!(mesh_jobs_effects);
         assert_eq!(worker_uses_effect_stdin(WORKER_ARG.as_bytes()), Some(false));
         assert_eq!(
             worker_uses_effect_stdin(EFFECT_ARG.as_bytes()),
@@ -644,7 +638,7 @@ fn run_worker(_effect_stdin: bool) -> Result<(), String> {
     crate::panic::ignore_sigpipe();
     crate::process_signal::mesh_process_install_shutdown_signals();
     let mut result = redirect_stdout().map_err(|error| error.to_string())?;
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     if _effect_stdin {
         let socket = effect_endpoint::receive_stdin().map_err(|error| error.to_string())?;
         super::effects::enter_worker(socket);
@@ -697,7 +691,7 @@ fn run_worker(_effect_stdin: bool) -> Result<(), String> {
         remaining(deadline, *lease.lock());
         unsafe { handler(input) }
     });
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     let reply = if _effect_stdin {
         super::effects::finish_worker(reply)
     } else {

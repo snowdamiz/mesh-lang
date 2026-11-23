@@ -2090,10 +2090,7 @@ pub fn native_pg_close(conn: NativePgConn) {
     close(conn.inner);
 }
 
-#[cfg(any(
-    all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
-    all(unix, test)
-))]
+#[cfg(any(mesh_jobs_effects, all(unix, test)))]
 pub(crate) mod jobs_effect_session;
 
 #[cfg(test)]

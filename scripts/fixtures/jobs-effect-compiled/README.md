@@ -1,6 +1,6 @@
 # Run the compiled Jobs effect candidate
 
-The candidate supports compiled Linux GNU ARM64 programs with one queue of
+The candidate supports compiled GNU/Linux ARM64 and x86-64 programs with one queue of
 1 to 64 runner slots, batch claims, and a Jobs pool capped at one connection.
 LISTEN defaults to off. To enable it, set `"listen":true` on a non-drain runner.
 With one slot and one application session, claims and lifecycle work share a
@@ -108,7 +108,7 @@ the runtime fails the attempt even if the handler reports success.
 
 ## Reconcile two commits
 
-Use PostgreSQL 17.11 and the repository's Linux GNU ARM64 Rust and LLVM
+Use PostgreSQL 17.11 and the repository's native GNU/Linux Rust and LLVM
 toolchain. Run the fixture from the checkout root.
 
 ```sh
@@ -206,7 +206,7 @@ Record the backend count through the producer before stopping the runner.
 
 The Linux diagnostic accepts only `MESH_DIAGNOSTIC_JOB_DISABLE_THP=1`
 with exactly one argument after `argv[0]`. Use the ordinary selector
-`--mesh-internal-job-attempt-v1` or the Linux GNU ARM64 named-effect selector
+`--mesh-internal-job-attempt-v1` or the GNU/Linux ARM64 and x86-64 named-effect selector
 `--mesh-internal-job-attempt-effect-v1`. The named-effect spawn clears its
 environment and forwards only the literal `1` for this diagnostic, alongside
 the existing scheduler settings. Other values preserve the inherited policy.
@@ -219,7 +219,7 @@ Pages faulted before the check can keep their original backing. A failed
 `prctl` or readback exits with worker bootstrap status 174.
 
 Run the deterministic argument and environment tests on Linux. The selector
-test covers both markers on GNU ARM64 and checks that other Linux targets
+test covers both markers on GNU/Linux ARM64 and x86-64 and checks that other Linux targets
 reject the named-effect marker.
 
 ```sh

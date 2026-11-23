@@ -7,6 +7,7 @@ from pathlib import Path
 import secrets
 from select import select
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -17,6 +18,7 @@ FIXTURE = Path(__file__).resolve().parent
 ROOT = FIXTURE.parents[2]
 NS = "compiled-effect-proof"
 ROLES = {"compiled_runner": 3, "compiled_caller": 1, "compiled_producer": 1}
+WORKER_ARG = "--mesh-internal-job-attempt-effect-v1"
 
 
 def wait_for(check, label, owner=None):
@@ -107,6 +109,14 @@ class Proof:
             [str(self.meshc.resolve()), "build", ".", "--output", str(self.binary)],
             cwd=self.path, check=True,
         )
+        bootstrap = subprocess.run(
+            [self.binary, WORKER_ARG], cwd=self.path, env={}, stdin=subprocess.DEVNULL,
+            capture_output=True, timeout=5,
+        )
+        equal(bootstrap.returncode, 174, "worker without a control socket failed bootstrap")
+        equal(bootstrap.stdout, b"", "failed bootstrap did not publish a reply")
+        print("Compiled Jobs bootstrap: rejected an invalid control descriptor")
+
         logins = "\n".join(
             f"CREATE ROLE {role} LOGIN CONNECTION LIMIT {limit} PASSWORD '{self.passwords[role]}';"
             for role, limit in ROLES.items()
@@ -231,20 +241,22 @@ class Proof:
                 self.run_compiled(self.timeout)
                 self.run_compiled(self.stage_disconnect)
                 self.run_compiled(self.reconcile_retry)
+                self.run_compiled(self.parent_disconnect, expected_exit=-signal.SIGKILL)
             finally:
                 if producer.poll() is None:
                     producer.terminate()
 
-    def run_compiled(self, check):
+    def run_compiled(self, check, expected_exit=0):
         for name in ("ready", "status", "stop"):
             (self.path / name).unlink(missing_ok=True)
         with (self.path / "runner.log").open("w+") as log:
             with subprocess.Popen([self.binary], cwd=self.path, env=self.env, stdout=log, stderr=log) as owner:
                 try:
                     check(owner)
-                    (self.path / "stop").touch()
+                    if expected_exit == 0:
+                        (self.path / "stop").touch()
                     owner.wait(timeout=10)
-                    equal(owner.returncode, 0, "runner exit")
+                    equal(owner.returncode, expected_exit, "runner exit")
                     wait_for(lambda: self.producer("""
                         SELECT count(*) = 0 FROM pg_catalog.pg_stat_activity
                         WHERE datname = current_database() AND usename IN ('compiled_runner', 'compiled_caller')
@@ -271,13 +283,15 @@ class Proof:
         children = self.children(owner)
         equal(len(children), 1, "one fresh exec'd worker")
         child = children.pop()
-        environ = Path(f"/proc/{child}/environ").read_bytes()
-        for name in ("MESH_EFFECT_APP_URL", "MESH_EFFECT_JOBS_URL", "MESH_TEST_DATABASE_URL"):
-            if name.encode() + b"=" in environ:
-                raise AssertionError("worker inherited a database environment variable")
+        environ = Path(f"/proc/{child}/environ").read_bytes().split(b"\0")
+        expected_env = {b"MESH_SCHEDULER_MIN_WORKERS=1", b"MESH_SCHEDULER_MAX_WORKERS=1"}
+        if self.env.get("MESH_DIAGNOSTIC_JOB_DISABLE_THP") == "1":
+            expected_env.add(b"MESH_DIAGNOSTIC_JOB_DISABLE_THP=1")
+        if set(environ[:-1]) != expected_env or environ[-1] != b"":
+            raise AssertionError("worker environment did not match the launch allowlist")
         equal(
             Path(f"/proc/{child}/cmdline").read_bytes().split(b"\0")[1:],
-            [b"--mesh-internal-job-attempt-effect-v1", b""],
+            [WORKER_ARG.encode(), b""],
             "worker command line",
         )
         first = self.effects(job)
@@ -366,6 +380,38 @@ class Proof:
         wait_for(lambda: self.state(self.fault_job) == "completed:2", "replacement settlement", owner)
         equal(self.children(owner), set(), "replacement worker reaped")
         print("Compiled Jobs fault: one interrupted submission, two durable effects after a replacement attempt")
+
+    def parent_disconnect(self, owner):
+        wait_for((self.path / "ready").exists, "parent-death runner admission", owner)
+        marks = self.path / "parent-death"
+        marks.mkdir()
+        job = self.enqueue(owner, marks, "runner disconnected")
+        wait_for((marks / "committed-1").exists, "effect before parent death", owner)
+        children = self.children(owner)
+        equal(len(children), 1, "one held child before parent death")
+        child = children.pop()
+        stat = Path(f"/proc/{child}/stat")
+
+        def identity():
+            fields = stat.read_text().rsplit(")", 1)[1].split()
+            return fields[0], fields[19]
+
+        state, start_time = identity()
+        if state == "Z":
+            raise AssertionError("the held child already exited")
+        owner.kill()
+
+        def child_exited():
+            try:
+                state, current_start = identity()
+            except FileNotFoundError:
+                return True
+            return state == "Z" or current_start != start_time
+
+        wait_for(child_exited, "control EOF stopped the held child")
+        equal(self.state(job), "executing:1", "no settlement after runner death")
+        equal([row["stage"] for row in self.effects(job)], [1], "only the first effect committed")
+        print("Compiled Jobs parent death: control EOF stopped the exact held child")
 
 
 if __name__ == "__main__":

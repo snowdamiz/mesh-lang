@@ -69,7 +69,7 @@ extern "C" fn repl_jobs_effect(_name: *const MeshString, _values: *const u8) -> 
 }
 
 fn repl_jobs_effect_unsupported() -> *mut MeshResult {
-    let message = b"Jobs effects require a compiled Linux GNU ARM64 Mesh program";
+    let message = b"Jobs effects require a compiled Mesh program";
     let text = mesh_rt::mesh_string_new(message.as_ptr(), message.len() as u64);
     mesh_rt::io::mesh_alloc_result(1, text.cast()).cast()
 }
@@ -3008,10 +3008,7 @@ mod tests {
             let result = unsafe { &*result };
             assert_eq!(result.tag, 1);
             let text = unsafe { (*result.value.cast::<MeshString>()).as_str() };
-            assert_eq!(
-                text,
-                "Jobs effects require a compiled Linux GNU ARM64 Mesh program"
-            );
+            assert_eq!(text, "Jobs effects require a compiled Mesh program");
         }
     }
 

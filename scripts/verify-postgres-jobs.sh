@@ -45,8 +45,13 @@ if [[ -n "$sql_proof" ]] && { [[ -n "$postgres_version" ]] || "$parity_driver_ch
 fi
 
 if [[ "$sql_proof" == effect-compiled ]]; then
-  if [[ "$(uname -s)" != Linux || "$(uname -m)" != aarch64 || "$(getconf GNU_LIBC_VERSION 2>/dev/null)" != glibc* ]]; then
-    echo "--effect-compiled requires Linux GNU ARM64." >&2
+  case "$(uname -m)" in
+    aarch64|x86_64) effect_arch_supported=true ;;
+    *) effect_arch_supported=false ;;
+  esac
+  if ! "$effect_arch_supported" || [[ "$(uname -s)" != Linux ||
+      "$(getconf GNU_LIBC_VERSION 2>/dev/null)" != glibc* || "$(getconf LONG_BIT 2>/dev/null)" != 64 ]]; then
+    echo "--effect-compiled requires GNU/Linux ARM64 or x86-64." >&2
     exit 2
   fi
 fi

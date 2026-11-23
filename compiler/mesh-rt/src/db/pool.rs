@@ -161,7 +161,7 @@ pub(super) unsafe fn connection_url(pool: u64) -> Result<String, String> {
     pool_connection_settings(pool).map(|(url, _)| url)
 }
 
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+#[cfg(mesh_jobs_effects)]
 pub(crate) unsafe fn effects_connection_url(pool: u64) -> Result<String, String> {
     let (url, max_conns) = pool_connection_settings(pool)?;
     if max_conns != 1 {

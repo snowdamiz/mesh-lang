@@ -1,11 +1,8 @@
 mod cron;
 mod drain_store;
-#[cfg(any(
-    all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
-    test
-))]
+#[cfg(any(mesh_jobs_effects, test))]
 mod effect_pool;
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+#[cfg(mesh_jobs_effects)]
 mod effects;
 mod events;
 mod runner;
@@ -149,7 +146,7 @@ pub extern "C" fn mesh_jobs_start_effects_v1(
     app_url: *const MeshString,
     operations: *const crate::json::MeshJson,
 ) -> *mut MeshResult {
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     {
         let result = unsafe {
             crate::json::bounded_json(operations, 6, effects::MAX_REGISTRY_BYTES).and_then(
@@ -170,10 +167,10 @@ pub extern "C" fn mesh_jobs_start_effects_v1(
             Err(error) => err_result(&error),
         }
     }
-    #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+    #[cfg(not(mesh_jobs_effects))]
     {
         let _ = (pool, config, fn_ptr, env_ptr, app_url, operations);
-        err_result("Jobs effects require a compiled Linux GNU ARM64 Mesh program")
+        err_result("Jobs effects require a compiled GNU/Linux Mesh program on ARM64 or x86-64")
     }
 }
 
@@ -182,17 +179,17 @@ pub extern "C" fn mesh_jobs_effect_v1(
     name: *const MeshString,
     values: *const crate::json::MeshJson,
 ) -> *mut MeshResult {
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     {
         match unsafe { effects::call(text_of(name), values) } {
             Ok(applied) => alloc_result(0, crate::io::box_scalar(applied)),
             Err(error) => err_result(error),
         }
     }
-    #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+    #[cfg(not(mesh_jobs_effects))]
     {
         let _ = (name, values);
-        err_result("Jobs effects require a compiled Linux GNU ARM64 Mesh program")
+        err_result("Jobs effects require a compiled GNU/Linux Mesh program on ARM64 or x86-64")
     }
 }
 

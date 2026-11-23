@@ -40,9 +40,9 @@ pub(super) trait JobProcess: Send {
     fn reply_pending(&self) -> bool;
     fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String>;
     fn renew(&mut self, lease_deadline: u64) -> Result<(), String>;
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     fn activate_effects(&mut self) {}
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     fn confirm_effect_lease(&mut self, _: Instant) {}
     fn limit_effect_deadline(&mut self, _: Instant) {}
     fn kill(&mut self) -> Result<(), String>;
@@ -93,7 +93,7 @@ struct Config {
     listen: bool,
     #[serde(deserialize_with = "effect_session_count")]
     effect_sessions: Option<usize>,
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     #[serde(skip)]
     effects: Option<super::effects::Effects>,
 }
@@ -128,7 +128,7 @@ impl Default for Config {
             event_log: false,
             listen: false,
             effect_sessions: None,
-            #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+            #[cfg(mesh_jobs_effects)]
             effects: None,
         }
     }
@@ -156,10 +156,7 @@ impl Config {
         Ok(config)
     }
 
-    #[cfg(any(
-        all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
-        test
-    ))]
+    #[cfg(any(mesh_jobs_effects, test))]
     fn parse_effects(json: &str) -> Result<Self, String> {
         let mut config = Self::parse_fields(json)?;
         let slots = config.queues.values().sum::<usize>();
@@ -265,10 +262,7 @@ fn grace(ms: u64) -> Result<Duration, String> {
 
 enum Phase {
     Running,
-    #[cfg(any(
-        all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
-        test
-    ))]
+    #[cfg(any(mesh_jobs_effects, test))]
     DrainingRetiredEffects,
     Stopping {
         deadline: Instant,
@@ -280,10 +274,7 @@ impl Phase {
     fn name(&self) -> &'static str {
         match self {
             Self::Running => "running",
-            #[cfg(any(
-                all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
-                test
-            ))]
+            #[cfg(any(mesh_jobs_effects, test))]
             Self::DrainingRetiredEffects => "stopping",
             Self::Stopping { .. } => "stopping",
             Self::Stopped => "stopped",
@@ -484,10 +475,7 @@ impl State {
         }
     }
 
-    #[cfg(any(
-        all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"),
-        test
-    ))]
+    #[cfg(any(mesh_jobs_effects, test))]
     fn drain_retired_effects(&mut self) {
         if matches!(self.phase, Phase::Running) {
             self.last_error = Some("Jobs effect session retired".into());
@@ -738,7 +726,7 @@ pub(super) fn start(
     )
 }
 
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+#[cfg(mesh_jobs_effects)]
 pub(super) fn start_effects(
     pool: u64,
     config_json: &str,
@@ -1026,7 +1014,7 @@ fn start_configured(
                     }
                 }
             }
-            #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+            #[cfg(mesh_jobs_effects)]
             if let Some(effects) = &dispatcher.config.effects {
                 effects.close();
             }
@@ -1300,7 +1288,7 @@ impl Running {
                 self.reaped = true;
                 return self.stop.take();
             }
-            #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+            #[cfg(mesh_jobs_effects)]
             Ok(WorkerPoll::AwaitingEffectRelay) => {
                 self.reaped = true;
                 return None;
@@ -1448,7 +1436,7 @@ impl Execution {
                 return false;
             }
         }
-        #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+        #[cfg(mesh_jobs_effects)]
         worker.process.confirm_effect_lease(renewed.expires_at);
         worker.lease_deadline = renewed.expires_at;
         true
@@ -2546,7 +2534,7 @@ fn reserve_claims(runner: &Runner, queue: &str, slots: usize) -> usize {
 }
 
 fn observe_effect_retirement(_runner: &Runner, _state: &mut State) -> bool {
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     if _runner
         .config
         .effects
@@ -2601,7 +2589,7 @@ fn launch_confirmed(
                 runner.reply_wake.clone(),
             )
         };
-        #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+        #[cfg(mesh_jobs_effects)]
         let process = match &runner.config.effects {
             Some(effects) => effects.start(
                 &runner.config.namespace,
@@ -2615,7 +2603,7 @@ fn launch_confirmed(
             ),
             None => launch(context),
         };
-        #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+        #[cfg(not(mesh_jobs_effects))]
         let process = launch(context);
         match process {
             Ok(process) => {
@@ -2652,7 +2640,7 @@ fn launch_confirmed(
     };
     job.observe_local_lease_loss(runner);
     state.jobs.insert(token.clone(), job);
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     if runner.config.effects.is_some() {
         if let Execution::Running(worker) = &mut state.jobs.get_mut(&token).unwrap().execution {
             worker.process.activate_effects();

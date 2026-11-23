@@ -556,11 +556,11 @@ fn effect_retirement_refunds_a_pending_batch_and_drains_the_active_attempt() {
 
     // On the production target the pending reply observes pool exhaustion.
     // Other targets exercise the same runner transition without a Linux pool.
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     {
         runner.config.effects = Some(super::super::effects::Effects::retired_fixture());
     }
-    #[cfg(not(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu")))]
+    #[cfg(not(mesh_jobs_effects))]
     runner.state.lock().drain_retired_effects();
 
     send.send((

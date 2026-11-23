@@ -234,7 +234,7 @@ pub extern "C-unwind" fn mesh_json_encode(json: *mut u8) -> *mut MeshString {
     mesh_str(&text)
 }
 
-#[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+#[cfg(mesh_jobs_effects)]
 pub(crate) unsafe fn bounded_json(
     value: *const MeshJson,
     max_depth: usize,
@@ -1015,7 +1015,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(target_os = "linux", target_arch = "aarch64", target_env = "gnu"))]
+    #[cfg(mesh_jobs_effects)]
     #[test]
     fn bounded_object_encoding_checks_nested_depth_and_bytes() {
         mesh_rt_init();
