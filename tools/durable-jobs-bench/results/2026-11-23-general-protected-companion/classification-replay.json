@@ -1,0 +1,95 @@
+{
+  "alpha": {
+    "native_prerequisite": [
+      "_GLOBAL_OFFSET_TABLE_",
+      "__errno_location",
+      "_exit",
+      "clock_gettime",
+      "fcntl",
+      "getpgrp",
+      "getpid",
+      "getrlimit",
+      "prctl",
+      "pthread_create",
+      "pthread_join",
+      "readlink",
+      "strcmp",
+      "strncmp"
+    ],
+    "fortified_printf_present": true,
+    "after_single_import_allowlist_change": "native archive audit passed",
+    "exports": [
+      "invoice_probe_clock",
+      "invoice_probe_pid"
+    ]
+  },
+  "beta": {
+    "native_prerequisite": [
+      "_GLOBAL_OFFSET_TABLE_",
+      "__errno_location",
+      "_exit",
+      "clock_gettime",
+      "fcntl",
+      "getpgrp",
+      "getpid",
+      "getrlimit",
+      "prctl",
+      "pthread_create",
+      "pthread_join",
+      "readlink",
+      "strcmp",
+      "strncmp"
+    ],
+    "fortified_printf_present": true,
+    "after_single_import_allowlist_change": "native archive audit passed",
+    "exports": [
+      "notice_probe_clock",
+      "notice_probe_pid"
+    ]
+  },
+  "actor": {
+    "native_prerequisite": [
+      "_GLOBAL_OFFSET_TABLE_",
+      "__errno_location",
+      "_exit",
+      "clock_gettime",
+      "fcntl",
+      "getpgrp",
+      "getpid",
+      "getrlimit",
+      "prctl",
+      "pthread_create",
+      "pthread_join",
+      "readlink",
+      "strcmp",
+      "strncmp"
+    ],
+    "fortified_printf_present": true,
+    "after_single_import_allowlist_change": "native archive audit passed",
+    "exports": [
+      "actor_probe_clock",
+      "actor_probe_pid"
+    ]
+  },
+  "dynamic": {
+    "native_prerequisite": [
+      "_GLOBAL_OFFSET_TABLE_",
+      "__errno_location",
+      "_exit",
+      "clock_gettime",
+      "dlclose",
+      "dlopen",
+      "fcntl",
+      "getpgrp",
+      "getpid",
+      "getrlimit",
+      "pthread_create",
+      "pthread_join",
+      "readlink",
+      "strcmp",
+      "strncmp"
+    ],
+    "fortified_printf_present": true,
+    "after_single_import_allowlist_change": "dynamic refused"
+  }
+}

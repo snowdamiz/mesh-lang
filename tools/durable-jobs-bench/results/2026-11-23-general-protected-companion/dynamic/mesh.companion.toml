@@ -1,0 +1,8 @@
+version = 1
+contract = "synchronous-fresh-exec-v1"
+
+[[archive]]
+path = "libidentity.a"
+sha256 = "4c30f613aa062f6695a9e93f9a7bf04528d7a677c22348a78f4925ff092f76bb"
+exports = ["dynamic_probe_clock", "dynamic_probe_pid"]
+system_imports = ["_GLOBAL_OFFSET_TABLE_", "__dprintf_chk", "__errno_location", "_exit", "clock_gettime", "dlclose", "dlopen", "fcntl", "getpgrp", "getpid", "getrlimit", "pthread_create", "pthread_join", "readlink", "strcmp", "strncmp"]

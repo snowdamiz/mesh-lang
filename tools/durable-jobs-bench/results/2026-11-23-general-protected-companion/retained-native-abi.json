@@ -1,0 +1,20 @@
+{
+  "files": [
+    {
+      "path": "target/general-protected-companion/evidence/native-attempt-04/remote.tar.gz",
+      "sha256": "e46ddc7661ac58194124b9e67e65144ebb39c3f14aee9cd5d7d3a94a31747928",
+      "bytes": 122932269
+    },
+    {
+      "path": "target/general-protected-companion/evidence/native-attempt-04/out/abi/meshc",
+      "sha256": "8db9564bb588ab6272ceb64c2d29ea15a333141f70b37b207c2db7e59bdc4d95",
+      "bytes": 176349344
+    },
+    {
+      "path": "target/general-protected-companion/evidence/native-attempt-04/out/abi/libmesh_rt.a",
+      "sha256": "f991472f92bb16e609389e9e27a9ff7a5979c3e883115e224798847744f89a09",
+      "bytes": 98248730
+    }
+  ],
+  "scope": "stage 04 exact compiler and runtime, retained in the shared checkout under cleanup hold"
+}

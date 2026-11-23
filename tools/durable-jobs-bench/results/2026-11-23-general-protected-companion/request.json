@@ -1,0 +1,26 @@
+{
+  "id": "general-protected-companion-link-retry",
+  "controller": "linode-native-stepchange-controller-v1",
+  "operator_id": "general-protected-companion-builder-v1",
+  "source_sha": "7bdc8f721e65f6c0ab5fb28cb6362506acfcc68e",
+  "state": "ready",
+  "ready": true,
+  "ready_at": "2026-11-23T21:02:12.881178+00:00",
+  "kind": "Exclusive Linux AMD64 setup and protected correctness proof",
+  "scope": "Private exact 7bdc8f72 overlay build. Compile two independent GNU AMD64 Mesh packages and classify transitive actor and dynamic native controls. Compare stock/native link plans, then run fenced PostgreSQL executions, two constructors, fresh native-thread TLS, exact PIDs and waits, digest replacement and fallback. No benchmark or installation into shared builds.",
+  "expected_duration_minutes": 16,
+  "requested_window_minutes": 30,
+  "prerequisites": [
+    "existing GNU AMD64 Linode",
+    "cached Rust 1.99 and LLVM 21.1.8 toolchain and Cargo release cache",
+    "PostgreSQL 17.11 proof adapter",
+    "existing shared locks"
+  ],
+  "stage_archive": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/general-protected-companion/native-stage-04.tar.gz",
+  "stage_sha256": "8f370891f3dac68b0fe4ab63766bfdd9887573d361495bd85494e3288ae01d4c",
+  "member_manifest_sha256": "88ede86c56c0e2b30085ed077b922b87d42edfea07f4b8faa056a399fd87ed92",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/general-protected-companion/evidence/native-attempt-04",
+  "command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/general-protected-companion/replay/dispatch.py /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/general-protected-companion/native-stage-04.tar.gz /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/general-protected-companion/evidence/native-attempt-04 --request general-protected-companion-link-retry",
+  "supersedes": "Native stage-03 built the exact Rust compiler/runtime. BFD could not read LLVM bitcode archives for the standalone helper. Stage 04 builds the helper first with the existing pinned clang and lld, then saves a single native ABI copy for build-free proof retries.",
+  "parent_request": "general-protected-companion-build-retry"
+}
