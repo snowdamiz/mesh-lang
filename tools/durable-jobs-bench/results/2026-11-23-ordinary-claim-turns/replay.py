@@ -63,6 +63,45 @@ def residence(jobs, start, end, stamp_delay_us):
             "peak_resident_jobs": peak}
 
 
+def peer_budgets(mesh_path, ledger):
+    jobs = ledger["jobs"]
+    expected = {j["job_key"]: (j["payload_sha256"], j["hold_ms"]) for j in jobs}
+    mesh_tx = ledger["transactions"][0]
+    mesh_producer_us = mesh_tx["committed_us"] - mesh_tx["submitted_us"]
+    job_us = [
+        sum(j["settled_us"] - min(j["claimed_us"] + delay, j["entered_us"]) for j in jobs)
+        for delay in (999, 0)
+    ]
+    result = {}
+    for peer, engine in (("oban", "oban"), ("river", "go"), ("apalis", "rust")):
+        path = mesh_path.parents[2] / f"measured-{peer}" / f"measured-{engine}" / "raw.tar.gz"
+        with tarfile.open(path) as archive:
+            assert json.load(archive.extractfile("status.json"))["exit_code"] == 0
+            other = json.load(archive.extractfile("adapter/ledger.json"))
+        request = json.loads((path.parent / "request.json").read_text())
+        assert request["phase"] == "measured" and request["engine"] == other["engine"] == engine
+        assert request["profile"] == other["profile"] == ledger["profile"]
+        assert other["input_sha256"] == ledger["input_sha256"]
+        assert len(other["jobs"]) == len(expected) and len(other["transactions"]) == 1
+        assert all(j["state"] == "completed" for j in other["jobs"])
+        assert {j["job_key"]: (j["payload_sha256"], j["hold_ms"]) for j in other["jobs"]} == expected
+        tx = other["transactions"][0]
+        terminal = max(j["settled_us"] for j in other["jobs"])
+        horizons = {
+            "drain": terminal - tx["committed_us"],
+            "full_with_mesh_producer": terminal - tx["submitted_us"] - mesh_producer_us,
+        }
+        budgets = {}
+        for label, horizon in horizons.items():
+            budgets[label] = {
+                "available_after_commit_us": horizon,
+                "required_mean_jobs": [round(s / horizon, 4) for s in job_us] if horizon > 0 else None,
+                "exceeds_configured_slots_at_lower_bound": horizon * ledger["slots"] < job_us[0],
+            }
+        result[peer] = {"sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "windows": budgets}
+    return {"mesh_producer_us": mesh_producer_us, "summed_job_residence_us": job_us, "peers": result}
+
+
 def reduce_arm(path, expected_jobs, runners, limit):
     def read_json(name):
         return json.load(archive.extractfile(name))
@@ -126,6 +165,7 @@ def reduce_arm(path, expected_jobs, runners, limit):
         "backlog_window_us": last_stamp - start,
         "residence_from_earliest_stamps": residence(jobs, start, last_stamp, 0),
         "residence_from_latest_stamps": residence(jobs, start, last_stamp, 999),
+        "fixed_residence_budgets": peer_budgets(path, ledger),
     }
 
 

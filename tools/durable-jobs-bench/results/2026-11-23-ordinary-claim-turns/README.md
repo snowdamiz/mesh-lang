@@ -10,6 +10,18 @@ Between the enqueue commit and the last recorded claim stamp, **13.79–14.25 jo
 | Short, 5 groups | 22–28 | 0 | 4.57–7.53 across groups |
 | Slow, 5 groups | 58–69 | 0 | 7.42–12.49 across groups |
 
+## How much concurrency would matching each peer require?
+
+The measured dense Mesh jobs accumulated 30.82–31.84 job-seconds between their own claim stamps and terminal commits. Dividing this sum by each peer's available wall time gives the necessary mean number of resident jobs **if individual Mesh residences stay fixed**. These are capacity requirements. They allow perfect scheduling and omit slot time before the claim stamp and after the terminal commit. The full-submit comparison also keeps Mesh's measured 613.376 ms from submission to enqueue commit. All four engines submitted the same jobs in a single durable transaction.
+
+| Same-block peer | Mean jobs needed to match commit-to-terminal | Mean jobs needed to match submit-to-terminal |
+|---|---:|---:|
+| Oban | 21.27–21.97 | 31.35–32.39 |
+| River | 29.44–30.42 | 60.56–62.57 |
+| Apalis | 35.83–37.02 | 107.98–111.57 |
+
+With 64 slots, the full River comparison leaves little room for a gradual startup and final drain. The full Apalis comparison requires a shorter producer interval or shorter individual job residences. In the five short blocks, fixed residence and the measured Mesh producer already exceeded the 16-slot capacity requirement for River in three and for Apalis in five. In the five slow blocks the corresponding counts were one and five at 64 slots. Each result uses that block's peer, workload and timestamps. [Matched raw archive hashes and per-arm budgets](result.json)
+
 ## Derivation
 
 A granting transaction cannot commit before it stamps every row it grants or after the first handler in that grant enters. Each job therefore gives a closed interval between its database claim stamp and its recorded handler entry. The claim stamp is floored to milliseconds. The replay groups intervals by the actual trusted runner PID, verifies each PID against the CPU affinity capture, and checks its job count against the runner exit reports. The maximum batch width is the smaller of 16 and the local slot limit.
