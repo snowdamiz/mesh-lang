@@ -1,0 +1,12 @@
+{
+  "group": 2,
+  "order": [
+    "candidate",
+    "baseline"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}

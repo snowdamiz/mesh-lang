@@ -1,0 +1,11 @@
+{
+  "group": 1,
+  "order": [
+    "baseline",
+    "candidate"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}
