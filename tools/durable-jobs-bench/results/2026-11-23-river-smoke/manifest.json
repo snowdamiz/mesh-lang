@@ -1,0 +1,46 @@
+{
+  "purpose": "SETUP-only functional diagnostics",
+  "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4",
+  "binary_sha256": {
+    "linux-amd64": "e00cbd00137964ddda85f6eb96835b6b8d0b347ec91e68147c99d28eaf2d7131",
+    "darwin-arm64": "94fa65506149d41e9929b809129e631df031092527778617089ba1bb37489e36"
+  },
+  "original_source_archive_sha256": "e399c2a7df7692777f443253cb73e5db1051c100f9f51446173b435049866b82",
+  "native": [
+    {
+      "label": "native-short-01",
+      "profile": "short",
+      "faults": false,
+      "wrapper": "original",
+      "exit_code": 0,
+      "archive_sha256": "53f86608cbc19161a504dd35220ef4c2ba3930a95279a3192034b0cae6b71419"
+    },
+    {
+      "label": "native-sparse-01",
+      "profile": "sparse",
+      "faults": true,
+      "wrapper": "original",
+      "exit_code": 0,
+      "archive_sha256": "9a03670296f439fd158effd0907e02d3fcc7e6ae97dd40234c79775e90382e0b"
+    },
+    {
+      "label": "native-short-verifier-01",
+      "profile": "short",
+      "faults": false,
+      "wrapper": "raw-verifier",
+      "exit_code": 0,
+      "archive_sha256": "4e4da28f47b6c7f26346b4b322b2d24e47b9bf6e4e0901108c3359e277a0aa56"
+    },
+    {
+      "label": "native-sparse-verifier-01",
+      "profile": "sparse",
+      "faults": true,
+      "wrapper": "raw-verifier",
+      "exit_code": 0,
+      "archive_sha256": "35ad85b29a84c8fc76fb5cff582c7f2722a76b7256decbdfddccc94bc6ee680c"
+    }
+  ],
+  "matched_submit_timing": "HOLD",
+  "verified_source_archive_sha256": "f208a4ca632e9edc05948fbd93485b53bb6e0e2075676ab813d0917e26d7c593",
+  "native_verifier_restage": "passed short ledger and sparse witnesses in SETUP"
+}

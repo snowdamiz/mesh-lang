@@ -1,0 +1,73 @@
+{
+  "local_build_checks": {
+    "darwin-build-01.log": [],
+    "final-gates.log": [
+      "all modules verified"
+    ],
+    "verify-02.log": [
+      "# mesh-lang/durable-jobs-bench/river",
+      "./main.go:297:10: metrics.HandlerPeakBound undefined (type metrics has no field or method HandlerPeakBound)",
+      "FAIL\tmesh-lang/durable-jobs-bench/river [build failed]",
+      "FAIL"
+    ],
+    "verify-03.log": [
+      "?   \tmesh-lang/durable-jobs-bench/river\t[no test files]",
+      "all modules verified"
+    ],
+    "verify-04.log": [
+      "?   \tmesh-lang/durable-jobs-bench/river\t[no test files]",
+      "all modules verified"
+    ],
+    "verify-and-linux-amd64-01.log": [
+      "?   \tmesh-lang/durable-jobs-bench/river\t[no test files]",
+      "all modules verified"
+    ]
+  },
+  "initial_local_sparse": {
+    "capture": "local-sparse-01",
+    "database_started": false,
+    "error": "Unix-domain socket path exceeded the 103-byte limit"
+  },
+  "initial_native_probe": {
+    "preflight": [
+      "Linux x86_64",
+      "4 CPUs",
+      "Ubuntu 24.04.5 LTS"
+    ]
+  },
+  "initial_native_stage": {
+    "first_source_validation": "failed",
+    "second_source_validation": "passed"
+  },
+  "offline_checks": {
+    "go_module_verification": "all modules verified",
+    "go_package_check": "go test -mod=readonly ./... exited 0 (no test files)",
+    "linux_and_darwin_rebuilds": "byte-identical to the tested binaries",
+    "offline_matrix_tests_passed": 7,
+    "patched_wrapper_local_sparse": "exit 0"
+  },
+  "native_verifier_restage": {
+    "initial_lock_attempts": "native lock busy; no upload",
+    "final_checks": [
+      "river-bench: OK",
+      "incoming.tgz: OK",
+      "jobs-parity-profiles.json: OK",
+      "jobs-parity.py: OK",
+      "db.go: OK",
+      "evidence.go: OK",
+      "go.mod: OK",
+      "go.sum: OK",
+      "main.go: OK",
+      "prepare_input.py: OK",
+      "raw_evidence.py: OK",
+      "run: OK",
+      "run.py: OK",
+      "worker.go: OK",
+      "verify.py: OK",
+      "native-short-verifier-01 exit 0",
+      "native-sparse-verifier-01 exit 0"
+    ],
+    "postgres_version": "17.11",
+    "phase": "diagnostic"
+  }
+}

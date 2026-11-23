@@ -1,0 +1,25 @@
+river-bench: go1.26.4
+	path	mesh-lang/durable-jobs-bench/river
+	mod	mesh-lang/durable-jobs-bench/river	(devel)
+	dep	github.com/jackc/pgpassfile	v1.0.0	h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
+	dep	github.com/jackc/pgservicefile	v0.0.0-20240606120523-5a60cdf6a761	h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
+	dep	github.com/jackc/pgx/v5	v5.13.0	h1:Hl08k64maU0nrRyVUEbwCnK6/gT0EhMrtAqBHz9/gA4=
+	dep	github.com/jackc/puddle/v2	v2.2.3	h1:f8HoREISb3l5eO9coPgK7U3hKLhWGokOFVcThl5jrao=
+	dep	github.com/riverqueue/river	v0.51.2	h1:lCFmF8zlKftfjDEW6zCtcRamXmCgOFk6XjeJ82gAEh8=
+	dep	github.com/riverqueue/river/riverdriver	v0.51.2	h1:hIDg+sRD7h3Xcjy2ozlbDBnjsyLVDbLnB2cWgTR1SoU=
+	dep	github.com/riverqueue/river/riverdriver/riverpgxv5	v0.51.2	h1:vLucKpDFLu/w6m8/jQl4NV4bxu1U8iiM835pfPooJ+U=
+	dep	github.com/riverqueue/river/rivershared	v0.51.2	h1:d4MU7Az6iMQb9ADhgi9GEoO1ThB7Ou1Oe2EtvRaRIoA=
+	dep	github.com/riverqueue/river/rivertype	v0.51.2	h1:2GIvVH6cRJcXtIlba8bHmZDvlcydtND0PZQBHCRyEsw=
+	dep	github.com/tidwall/gjson	v1.20.0	h1:+agJ3rEzKcCXKDKo0ml26UROcpcAlnZyjq+TjbY5Fto=
+	dep	github.com/tidwall/match	v1.2.0	h1:0pt8FlkOwjN2fPt4bIl4BoNxb98gGHN2ObFEDkrfZnM=
+	dep	github.com/tidwall/pretty	v1.2.1	h1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4=
+	dep	github.com/tidwall/sjson	v1.2.5	h1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY=
+	dep	golang.org/x/sync	v0.24.0	h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=
+	dep	golang.org/x/text	v0.43.0	h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	CGO_ENABLED=0
+	build	GOARCH=amd64
+	build	GOOS=linux
+	build	GOAMD64=v1
