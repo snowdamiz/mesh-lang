@@ -316,6 +316,42 @@ pub struct PeerSessionTelemetrySnapshot {
     pub lanes: Vec<OutboundLaneTelemetrySnapshot>,
 }
 
+// Integrate the time spent in extended parks even while they are in progress.
+#[derive(Debug, Default)]
+struct SchedulerIdleParks {
+    total: Duration,
+    since: Option<Instant>,
+    parked: u32,
+}
+
+impl SchedulerIdleParks {
+    fn total_at(&self, now: Instant) -> Duration {
+        self.since.map_or(self.total, |since| {
+            self.total
+                .saturating_add((now - since).saturating_mul(self.parked))
+        })
+    }
+
+    fn change(&mut self, entering: bool) {
+        let now = Instant::now();
+        self.total = self.total_at(now);
+        if entering {
+            self.parked += 1;
+        } else {
+            self.parked -= 1;
+        }
+        self.since = (self.parked != 0).then_some(now);
+    }
+}
+
+struct SchedulerIdlePark<'a>(&'a Mutex<SchedulerIdleParks>);
+
+impl Drop for SchedulerIdlePark<'_> {
+    fn drop(&mut self) {
+        self.0.lock().change(false);
+    }
+}
+
 #[derive(Debug)]
 pub struct RuntimeTelemetry {
     active_workers: AtomicU32,
@@ -325,6 +361,7 @@ pub struct RuntimeTelemetry {
     worker_run_queue_depths: Mutex<Vec<u32>>,
     scheduler_busy_nanos: AtomicU64,
     scheduler_idle_nanos: AtomicU64,
+    scheduler_idle_parks: Mutex<SchedulerIdleParks>,
     pub(crate) mailbox_usage: MailboxUsage,
     mailbox_depth: MailboxDepth,
     http_connections: AtomicU32,
@@ -359,6 +396,7 @@ impl RuntimeTelemetry {
             worker_run_queue_depths: Mutex::new(Vec::new()),
             scheduler_busy_nanos: AtomicU64::new(0),
             scheduler_idle_nanos: AtomicU64::new(0),
+            scheduler_idle_parks: Mutex::default(),
             mailbox_usage: MailboxUsage::default(),
             mailbox_depth: MailboxDepth::new(),
             http_connections: AtomicU32::new(0),
@@ -420,6 +458,11 @@ impl RuntimeTelemetry {
             self.scheduler_idle_nanos
                 .fetch_add(nanos, Ordering::Relaxed);
         }
+    }
+
+    pub(crate) fn track_scheduler_idle_park(&self) -> impl Drop + '_ {
+        self.scheduler_idle_parks.lock().change(true);
+        SchedulerIdlePark(&self.scheduler_idle_parks)
     }
 
     pub(crate) fn record_mailbox_depth_sample(&self, depth: usize) {
@@ -516,6 +559,7 @@ impl RuntimeTelemetry {
     pub fn snapshot(&self) -> LocalTelemetrySnapshot {
         let [mailbox_depth_p50, mailbox_depth_p95, mailbox_depth_max] =
             self.mailbox_depth.snapshot();
+        let idle_parks = self.scheduler_idle_parks.lock().total_at(Instant::now());
         LocalTelemetrySnapshot {
             active_workers: self.active_workers.load(Ordering::Relaxed) as u16,
             configured_workers: self.configured_workers.load(Ordering::Relaxed) as u16,
@@ -527,7 +571,8 @@ impl RuntimeTelemetry {
             ),
             scheduler_idle_time: Duration::from_nanos(
                 self.scheduler_idle_nanos.load(Ordering::Relaxed),
-            ),
+            )
+            .saturating_add(idle_parks),
             mailbox_messages: self.mailbox_usage.messages(),
             mailbox_depth_p50,
             mailbox_depth_p95,
@@ -1028,6 +1073,22 @@ mod tests {
         assert_eq!(snapshot.worker_run_queue_depths, vec![1, 2, 3, 4]);
         assert_eq!(snapshot.scheduler_busy_time, Duration::from_millis(3));
         assert_eq!(snapshot.scheduler_idle_time, Duration::from_millis(5));
+    }
+
+    #[test]
+    fn scheduler_snapshot_includes_an_in_progress_idle_park() {
+        let telemetry = RuntimeTelemetry::new(1, 1);
+        telemetry.record_scheduler_cycle(false, Duration::from_millis(5));
+        let park = telemetry.track_scheduler_idle_park();
+        let during = telemetry.snapshot().scheduler_idle_time;
+        std::thread::sleep(Duration::from_millis(1));
+        let later = telemetry.snapshot().scheduler_idle_time;
+        assert!(later > during);
+        drop(park);
+
+        let ended = telemetry.snapshot().scheduler_idle_time;
+        assert!(ended >= later);
+        assert_eq!(telemetry.snapshot().scheduler_idle_time, ended);
     }
 
     #[test]

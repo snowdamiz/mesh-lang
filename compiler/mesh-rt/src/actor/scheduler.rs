@@ -89,6 +89,9 @@ enum LinkedChild {
 // Only a grouped actor resuming on its owner can hand off to another
 // suspended grouped actor there. Overflow takes the normal notification path.
 const MAX_GROUP_HANDOFFS: usize = 3;
+const IDLE_SPIN_CYCLES: u32 = 100;
+const IDLE_POLL_INTERVAL: Duration = Duration::from_micros(1_100);
+const COLD_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(16);
 
 #[derive(Clone, Copy)]
 enum HandoffSlot {
@@ -1034,6 +1037,9 @@ impl Scheduler {
     /// Signal the scheduler to shut down.
     pub fn signal_shutdown(&self) {
         self.shutdown.store(true, Ordering::SeqCst);
+        for worker in self.sleepers.iter() {
+            worker.wake();
+        }
     }
 
     /// Check if shutdown has been signaled.
@@ -1482,7 +1488,10 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
     let mut prefer_grouped = false;
     let mut step_rescue = StepRescue::default();
 
-    let mut spin_count: u32 = 0;
+    // Scan immediately, then publish idle and scan again before the first park.
+    // The spin budget is useful after a dispatch, when more work may be imminent.
+    let mut spin_count = IDLE_SPIN_CYCLES;
+    let mut may_extend_cold_park = sleepers.len() == 1;
     let sleep = &*sleepers[worker_index];
     CURRENT_WORKER.set(sleep);
     CURRENT_WORKER_INDEX.set(worker_index);
@@ -1833,19 +1842,34 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             }
         }
 
-        // Backoff when idle to avoid burning CPU: spin, then park for as long
-        // as this used to sleep. `WorkerSleep::wake` cuts the park short.
+        // Preserve spin and sweep cadence after a dispatch. Before the first
+        // dispatch, a single worker with no managed actors has no suspended
+        // actors to sweep or peers to rescue. A producer or shutdown can wake
+        // it after it publishes idle, and the next scan covers earlier work.
         if !did_work && defer_shared {
             std::thread::yield_now();
         } else if !did_work {
             spin_count = spin_count.saturating_add(1);
-            if spin_count > 100 {
-                idle.park(std::time::Duration::from_micros(1_100));
+            if spin_count > IDLE_SPIN_CYCLES {
+                if may_extend_cold_park
+                    && idle.published
+                    && !movable
+                    && active_count.load(Ordering::SeqCst) == 0
+                    && !shutdown.load(Ordering::SeqCst)
+                {
+                    let telemetry = crate::dist::telemetry::runtime_telemetry();
+                    telemetry.record_scheduler_cycle(false, cycle_started_at.elapsed());
+                    let _park = telemetry.track_scheduler_idle_park();
+                    idle.park(COLD_IDLE_POLL_INTERVAL);
+                    continue;
+                }
+                idle.park(IDLE_POLL_INTERVAL);
             } else {
                 std::hint::spin_loop();
             }
         } else {
             spin_count = 0;
+            may_extend_cold_park = false;
         }
         crate::dist::telemetry::runtime_telemetry()
             .record_scheduler_cycle(did_work, cycle_started_at.elapsed());
@@ -3289,6 +3313,46 @@ mod tests {
         workers[1].shared_claims.fetch_add(1, Ordering::Relaxed);
         assert!(claim.defer(next, 4, &workers, COROUTINE_CLAIM));
         assert_eq!(claim.offer.as_ref().unwrap().peer, 1);
+    }
+
+    #[test]
+    fn first_actor_runs_after_cold_workers_advertise_idle() {
+        extern "C" fn send_started(args: *const u8) {
+            let sender = unsafe { &*args.cast::<std::sync::mpsc::Sender<usize>>() };
+            let _ = sender.send(CURRENT_WORKER_INDEX.get());
+        }
+
+        let timeout = Duration::from_secs(5);
+        for workers in [1, 2] {
+            for priority in [0, 1] {
+                let scheduler = Scheduler::new(workers);
+                let (started, event) = std::sync::mpsc::channel::<usize>();
+                scheduler.start();
+                let deadline = Instant::now() + timeout;
+                let all_idle = || {
+                    scheduler
+                        .sleepers
+                        .iter()
+                        .all(|worker| worker.idle.load(Ordering::SeqCst))
+                };
+                while !all_idle() && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                let worker = all_idle().then(|| {
+                    scheduler.spawn(
+                        send_started as *const u8,
+                        std::ptr::from_ref(&started).cast(),
+                        0,
+                        priority,
+                    );
+                    event.recv_timeout(timeout)
+                });
+                scheduler.signal_shutdown();
+                scheduler.wait();
+                assert!(matches!(worker, Some(Ok(index)) if index < workers as usize));
+                assert_eq!(scheduler.active_count(), 0);
+            }
+        }
     }
 
     #[test]
