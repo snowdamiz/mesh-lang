@@ -1,0 +1,72 @@
+[
+  {
+    "group": 1,
+    "profile": "short",
+    "phases": [
+      "measured"
+    ],
+    "order": [
+      "apalis",
+      "bulk",
+      "scalar",
+      "oban",
+      "river"
+    ]
+  },
+  {
+    "group": 2,
+    "profile": "short",
+    "phases": [
+      "measured"
+    ],
+    "order": [
+      "scalar",
+      "river",
+      "apalis",
+      "oban",
+      "bulk"
+    ]
+  },
+  {
+    "group": 3,
+    "profile": "short",
+    "phases": [
+      "measured"
+    ],
+    "order": [
+      "oban",
+      "river",
+      "bulk",
+      "scalar",
+      "apalis"
+    ]
+  },
+  {
+    "group": 4,
+    "profile": "short",
+    "phases": [
+      "measured"
+    ],
+    "order": [
+      "bulk",
+      "apalis",
+      "oban",
+      "scalar",
+      "river"
+    ]
+  },
+  {
+    "group": 5,
+    "profile": "short",
+    "phases": [
+      "measured"
+    ],
+    "order": [
+      "scalar",
+      "apalis",
+      "river",
+      "bulk",
+      "oban"
+    ]
+  }
+]
