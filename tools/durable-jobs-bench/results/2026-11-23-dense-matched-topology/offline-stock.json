@@ -1,0 +1,890 @@
+{
+  "negative_checks": [
+    "canonical rejects the two-runner ledger",
+    "incorrect diagnostic count rejected",
+    "incorrect observed runner slot count rejected"
+  ],
+  "qualified_historical_arms": 34,
+  "receipts": [
+    {
+      "group": 1,
+      "lane": "river",
+      "phase": "warmup",
+      "raw_sha256": "88517123a2dc75052a9b1481c29ee0f8616117f4293ee4bfe9658bcc84f3cea8",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          98,
+          124,
+          151,
+          131,
+          142,
+          131,
+          142,
+          105
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 34,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 1,
+      "lane": "apalis",
+      "phase": "warmup",
+      "raw_sha256": "7c040e786df2bc6ba7d82e6128d002a5562ca3ad18e88ff23ff5edac4c30ef47",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 184,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 1,
+      "lane": "oban",
+      "phase": "warmup",
+      "raw_sha256": "64a74953f446e55c5836670c0b8ad438925254d745734bce9c7c190079469f81",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          114,
+          186,
+          67,
+          93,
+          142,
+          131,
+          133,
+          158
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 1,
+      "lane": "river",
+      "phase": "measured",
+      "raw_sha256": "6939bbfc01fe7d2220d0bfacc39bb0b9053b136939ef2c77f41395d6f72d6a2e",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          126,
+          137,
+          107,
+          120,
+          139,
+          147,
+          126,
+          122
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 30,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 1,
+      "lane": "apalis",
+      "phase": "measured",
+      "raw_sha256": "842667758b26171e1f5dfe248adf8586551741ffef57a886dc0af14651c4ed90",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 186,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 1,
+      "lane": "oban",
+      "phase": "measured",
+      "raw_sha256": "7e741ce040a1459f2be50d67e13d26fd1b9956ebea08408f0b086acd40aa5244",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          148,
+          163,
+          112,
+          85,
+          77,
+          168,
+          142,
+          129
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 2,
+      "lane": "river",
+      "phase": "warmup",
+      "raw_sha256": "a706122be3c2c5007b96df487925802baba1ecb99185c00abdb5fe61f431fc0f",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          117,
+          126,
+          112,
+          167,
+          117,
+          131,
+          116,
+          138
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 37,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 2,
+      "lane": "apalis",
+      "phase": "warmup",
+      "raw_sha256": "53f899ad4b53612de19f154d45b5fea8809c4ed452c4745a9c673aca191216db",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 183,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 2,
+      "lane": "oban",
+      "phase": "warmup",
+      "raw_sha256": "b2f630bd10684b4086db49892a67a14fd97299c815bf449d6b5301bb1846a3c9",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          214,
+          107,
+          107,
+          157,
+          81,
+          136,
+          157,
+          65
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 2,
+      "lane": "river",
+      "phase": "measured",
+      "raw_sha256": "4ce184efb3c14668d1292975a17b20fc7eb211df1072317cea2f20142e67ce43",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          126,
+          146,
+          148,
+          119,
+          112,
+          110,
+          132,
+          131
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 36,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 2,
+      "lane": "apalis",
+      "phase": "measured",
+      "raw_sha256": "3a7d4699d8a5284e20d94842a2bc03fe10764ade61bdc0bcaa5d819d680b2fe5",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 179,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 2,
+      "lane": "oban",
+      "phase": "measured",
+      "raw_sha256": "44b2c5d93510816be0595e294853940abae3c8cac64931a363f7e2d8c664595e",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          96,
+          164,
+          102,
+          176,
+          149,
+          83,
+          180,
+          74
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 3,
+      "lane": "river",
+      "phase": "warmup",
+      "raw_sha256": "7d154ab1ec65f3348253aab911f45d9d84a621851bdefa5973f5e629aab0ef50",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          126,
+          130,
+          126,
+          127,
+          109,
+          118,
+          156,
+          132
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 32,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 3,
+      "lane": "apalis",
+      "phase": "warmup",
+      "raw_sha256": "37cd3dfcc2607b3bcb5e1ca5b0143f2450a09640af5a410fcb049cafc6bd3292",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 177,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 3,
+      "lane": "oban",
+      "phase": "warmup",
+      "raw_sha256": "748d75c419d0542d2fc7f56db3cee1edc0174918aa1ad565d12f9c6f1973dfac",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          90,
+          159,
+          121,
+          196,
+          101,
+          171,
+          55,
+          131
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 3,
+      "lane": "river",
+      "phase": "measured",
+      "raw_sha256": "0d854544ce858bfb53a669348de61917761d4b39b55f2e0a3986913d616c30b4",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          109,
+          132,
+          148,
+          124,
+          143,
+          99,
+          130,
+          139
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 37,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 3,
+      "lane": "apalis",
+      "phase": "measured",
+      "raw_sha256": "35b04cb836bf43626d5af17aefdae01336fb42d7250366a0a1f988ee9af13644",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 177,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 3,
+      "lane": "oban",
+      "phase": "measured",
+      "raw_sha256": "3efeaef52813f602c57b2273f4dc7ed46266d595758bd19b56e0ce47902f50b4",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          103,
+          159,
+          137,
+          96,
+          134,
+          57,
+          192,
+          146
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 4,
+      "lane": "river",
+      "phase": "warmup",
+      "raw_sha256": "2a9666846a281c78098df8487a324ee38702ed8787f9a7f93167bca113d61136",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          139,
+          137,
+          111,
+          135,
+          141,
+          115,
+          121,
+          125
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 34,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 4,
+      "lane": "apalis",
+      "phase": "warmup",
+      "raw_sha256": "671e30be6956de9421b02fc8ab00a9e9de5756cff3c75331ca23a4dd37142aa3",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 182,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 4,
+      "lane": "oban",
+      "phase": "warmup",
+      "raw_sha256": "8bd75852a4da54c8ce3ed22e04d94f4d746d975cb48d5b6db167cfb32155322e",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          88,
+          191,
+          67,
+          209,
+          71,
+          86,
+          158,
+          154
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 4,
+      "lane": "river",
+      "phase": "measured",
+      "raw_sha256": "b29771e6a565f884fe41bba4ab7725d7f6958e161f7c89ac1f4542801eb1364a",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          115,
+          147,
+          120,
+          143,
+          127,
+          112,
+          138,
+          122
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 35,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 4,
+      "lane": "apalis",
+      "phase": "measured",
+      "raw_sha256": "685545c079ca6e391b01ec3bacd37779e511387c179ab48bc9517090ad8ce25f",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 187,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 4,
+      "lane": "oban",
+      "phase": "measured",
+      "raw_sha256": "b427b9e12a7f2c88ab6a8ff886443678ec7b67cf264ac8a5e3d1eed052005748",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          56,
+          161,
+          156,
+          189,
+          147,
+          92,
+          96,
+          127
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 5,
+      "lane": "river",
+      "phase": "warmup",
+      "raw_sha256": "27d8b5f52cc50692c4ff791e34a7f47682e59dd0c1e09a12066c4d05932df52d",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          134,
+          145,
+          131,
+          128,
+          97,
+          135,
+          140,
+          114
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 32,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 5,
+      "lane": "apalis",
+      "phase": "warmup",
+      "raw_sha256": "45cfca6bde0a6678b30721948427e244fada7b14a8c945d9c931a35f2dc831c3",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 179,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 5,
+      "lane": "oban",
+      "phase": "warmup",
+      "raw_sha256": "827b436b1a7bb844ce92a912b3aaef144be87a0b42ec9599bd3a69085336f56e",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          104,
+          134,
+          211,
+          80,
+          159,
+          85,
+          106,
+          145
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 5,
+      "lane": "river",
+      "phase": "measured",
+      "raw_sha256": "be2ff791c66a578b333a7c971b2e4f6a8d4ad5d488f10e5225d454d1bdffef96",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          105,
+          135,
+          105,
+          130,
+          123,
+          130,
+          131,
+          165
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before batch read",
+        "terminal_transactions": 30,
+        "total_slots": 64
+      }
+    },
+    {
+      "group": 5,
+      "lane": "apalis",
+      "phase": "measured",
+      "raw_sha256": "879638998ebc5a37d4ffd5eef57eb90e6e094a8adbb4f3553da9ca809cd5de94",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm producer session call",
+        "terminal_transactions": 181,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 5,
+      "lane": "oban",
+      "phase": "measured",
+      "raw_sha256": "7031847046676be27fc843ec7d6f740c64cf6333e2923c00628dffc817679a1f",
+      "topology": {
+        "configured_runner_pool_max": 80,
+        "jobs_by_runner": [
+          107,
+          138,
+          99,
+          80,
+          129,
+          166,
+          163,
+          142
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "warm_sessions_by_role": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      }
+    },
+    {
+      "group": 1,
+      "lane": "stock-a",
+      "phase": "diagnostic",
+      "raw_sha256": "565b7099f6cbe9f16745b54c3accbaa800d3c4a7225e75a9695ef8a7ea1896aa",
+      "topology": {
+        "admission_hints": 356,
+        "app_sql_calls": 4096,
+        "app_sql_ms": 115.23535100000002,
+        "claim_calls": 588,
+        "configured_runner_pool_max": 32,
+        "jobs_by_runner": [
+          73,
+          99,
+          209,
+          196,
+          116,
+          106,
+          182,
+          43
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "used_application_sessions": 16,
+        "warm_application_sessions": 32,
+        "warm_queue_sessions": 32
+      }
+    },
+    {
+      "group": 1,
+      "lane": "tuned-2x32",
+      "phase": "diagnostic",
+      "raw_sha256": "67bb142f37775c72a32d3857bfab16b05bda88244232254f806e9d0fcb97c262",
+      "topology": {
+        "admission_hints": 53,
+        "app_sql_calls": 4096,
+        "app_sql_ms": 83.47052999999998,
+        "claim_calls": 155,
+        "configured_runner_pool_max": 8,
+        "jobs_by_runner": [
+          468,
+          556
+        ],
+        "postgres_cap": 96,
+        "runners": 2,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 32,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "used_application_sessions": 4,
+        "warm_application_sessions": 32,
+        "warm_queue_sessions": 8
+      }
+    },
+    {
+      "group": 2,
+      "lane": "stock-a",
+      "phase": "diagnostic",
+      "raw_sha256": "7fc912c12424caa1d7c908fd33fdf4391e4aaa0eb9237b619992b5402083430d",
+      "topology": {
+        "admission_hints": 364,
+        "app_sql_calls": 4096,
+        "app_sql_ms": 101.71484899999994,
+        "claim_calls": 580,
+        "configured_runner_pool_max": 32,
+        "jobs_by_runner": [
+          70,
+          80,
+          85,
+          146,
+          94,
+          222,
+          123,
+          204
+        ],
+        "postgres_cap": 96,
+        "runners": 8,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 8,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "used_application_sessions": 16,
+        "warm_application_sessions": 32,
+        "warm_queue_sessions": 32
+      }
+    },
+    {
+      "group": 2,
+      "lane": "tuned-2x32",
+      "phase": "diagnostic",
+      "raw_sha256": "98b3f91da5599ab0b94da844bb2e850f4c26513cb690988d1b4f49544d6b694b",
+      "topology": {
+        "admission_hints": 55,
+        "app_sql_calls": 4096,
+        "app_sql_ms": 83.36017899999996,
+        "claim_calls": 158,
+        "configured_runner_pool_max": 8,
+        "jobs_by_runner": [
+          505,
+          519
+        ],
+        "postgres_cap": 96,
+        "runners": 2,
+        "scheduler_workers_per_runner": 2,
+        "slots_per_runner": 32,
+        "submit_boundary": "before warm broker call",
+        "terminal_transactions": 1024,
+        "total_slots": 64,
+        "used_application_sessions": 4,
+        "warm_application_sessions": 32,
+        "warm_queue_sessions": 8
+      }
+    }
+  ]
+}

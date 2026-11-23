@@ -1,0 +1,62 @@
+{
+  "historical_envelope": [
+    {
+      "modeled_if_drain_fixed_jobs_per_s": {
+        "max": 588.2628351453725,
+        "median": 696.9354818861923,
+        "min": 716.6065041332341
+      },
+      "native_commit_jobs_per_s": 759.2755443575595,
+      "native_submit_to_commit_ms": 510.066,
+      "zero_submit_upper_if_drain_fixed": 759.2755443575595
+    },
+    {
+      "modeled_if_drain_fixed_jobs_per_s": {
+        "max": 593.4984677133066,
+        "median": 704.2963007330981,
+        "min": 724.3910261995419
+      },
+      "native_commit_jobs_per_s": 768.0203525393423,
+      "native_submit_to_commit_ms": 494.948,
+      "zero_submit_upper_if_drain_fixed": 768.0203525393423
+    }
+  ],
+  "local": {
+    "bulk": {
+      "jobs": 1024,
+      "used_application_sessions": 4,
+      "writer": {
+        "bulk_calls": 8,
+        "migration_sha256": "78b12a8efaff7ae0ac4e1b1457d255c688b77825df4cbf07fc4fc873e8ad4d03",
+        "mode": "bulk",
+        "producer_sha256": "78b12a8efaff7ae0ac4e1b1457d255c688b77825df4cbf07fc4fc873e8ad4d03",
+        "runner_sha256": "16af053cf4aec1d6c8529ec615eb6b243a9caf135b526f4b3aa41c9e370ba06e",
+        "scalar_calls": 0,
+        "statements": {
+          "SELECT ordinal, receipt FROM mesh_jobs.enqueue_batch_v1($1, $2::jsonb)\n         ORDER BY ordinal::integer": 8
+        }
+      }
+    },
+    "scalar": {
+      "jobs": 1024,
+      "used_application_sessions": 4,
+      "writer": {
+        "bulk_calls": 0,
+        "migration_sha256": "78b12a8efaff7ae0ac4e1b1457d255c688b77825df4cbf07fc4fc873e8ad4d03",
+        "mode": "scalar",
+        "producer_sha256": "16af053cf4aec1d6c8529ec615eb6b243a9caf135b526f4b3aa41c9e370ba06e",
+        "runner_sha256": "16af053cf4aec1d6c8529ec615eb6b243a9caf135b526f4b3aa41c9e370ba06e",
+        "scalar_calls": 1024,
+        "statements": {
+          "SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt": 1024
+        }
+      }
+    }
+  },
+  "producer_screen_wall_ms": {
+    "max": 392.0645,
+    "median": 120.63552049999998,
+    "min": 80.303167
+  },
+  "scope": "The prior producer-only timings and native two-runner drain came from separate runs. These values bound the fixed-drain model and are not native combined results."
+}

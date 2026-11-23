@@ -1,0 +1,52 @@
+{
+  "go": {
+    "adapter_status": {
+      "error": "",
+      "finished_at": "2026-11-23T23:41:41.112724Z",
+      "ok": true
+    },
+    "jobs": 1024,
+    "native_rss": 0,
+    "platform_limit": "Stock adapter requires Linux RSS to emit the final scoring ledger.",
+    "topology": [
+      {
+        "handler_calls": 549,
+        "peak_concurrent_handlers": 32,
+        "pid": 4640,
+        "slots": 32
+      },
+      {
+        "handler_calls": 475,
+        "peak_concurrent_handlers": 32,
+        "pid": 4642,
+        "slots": 32
+      }
+    ]
+  },
+  "oban": {
+    "jobs": 1024,
+    "topology": {
+      "22021": {
+        "index": 0,
+        "slots": 32
+      },
+      "22024": {
+        "index": 1,
+        "slots": 32
+      }
+    }
+  },
+  "rust": {
+    "jobs": 1024,
+    "topology": {
+      "runner-0": {
+        "pid": 4716,
+        "slots": 32
+      },
+      "runner-1": {
+        "pid": 4717,
+        "slots": 32
+      }
+    }
+  }
+}
