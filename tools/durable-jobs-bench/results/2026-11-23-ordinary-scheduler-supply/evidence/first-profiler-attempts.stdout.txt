@@ -1,0 +1,20 @@
+{
+  "exit_code": -9
+}
+{
+  "first_runner_pid": 7620,
+  "sampling_start_us": 1795469108274784
+}
+Sampling process 7620 for 4 seconds with 1 millisecond of run time between samples
+{"observed_us":1795469110644317,"application":[],"queue":[{"pid":7692,"wait_event_type":null,"wait_event":null,"state":"active","query":"WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n        "},{"pid":7698,"wait_event_type":null,"wait_event":null,"state":"active","query":"SELECT coalesce(status, 'contention_hint'), id, token, context, timeout_ms, context_bytes,\n         "}]}
+{"observed_us":1795469110814398,"application":[],"queue":[{"pid":7688,"wait_event_type":null,"wait_event":null,"state":"active","query":"SELECT coalesce(mesh_jobs.settle_state($1, $2::uuid, $3::uuid, $4::jsonb, false), 'stale')"},{"pid":7692,"wait_event_type":null,"wait_event":null,"state":"active","query":"WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n        "},{"pid":7698,"wait_event_type":null,"wait_event":null,"state":"active","query":"WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n        "},{"pid":7704,"wait_event_type":null,"wait_event":null,"state":"active","query":"WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n        "}]}
+{
+  "exit_code": -9
+}
+{
+  "first_runner_pid": 9220,
+  "sampling_start_us": 1795469133274530
+}
+Sampling process 9220 for 4 seconds with 1 millisecond of run time between samples
+{"observed_us":1795469136343514,"application":[],"queue":[{"pid":9324,"wait_event_type":null,"wait_event":null,"state":"active","query":"WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n        "}]}
+{"observed_us":1795469136542995,"application":[],"queue":[{"pid":9295,"wait_event_type":"LWLock","wait_event":"WALWrite","state":"active","query":"SELECT coalesce(mesh_jobs.settle_state($1, $2::uuid, $3::uuid, $4::jsonb, false), 'stale')"},{"pid":9316,"wait_event_type":null,"wait_event":null,"state":"active","query":"SELECT coalesce(status, 'contention_hint'), id, token, context, timeout_ms, context_bytes,\n         "},{"pid":9336,"wait_event_type":null,"wait_event":null,"state":"active","query":"WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n        "}]}
