@@ -1,0 +1,56 @@
+{
+  "id": "ordinary-trusted-large-assembly-matched",
+  "controller": "linode-native-stepchange-controller-v1",
+  "operator_id": "ordinary-trusted-large-assembly",
+  "state": "ready",
+  "ready": true,
+  "requested_at": "2026-11-23T21:18:02.449681+00:00",
+  "kind": "Controller-owned TIMING",
+  "scope": "Five rotated large warmup/measured blocks across ordinary V1 with the direct-file producer, protected Mesh direct-file, stock Oban, stock River, and stock Apalis, all using the verified EXTERNAL storage policy. Preserve the input, production transaction, two application commits, terminal checks, 64 executable slots, 96 physical DB connections, TLS/fsync, and CPUs 0,1. Keep the ordinary-trusted-shared-process and protected execution guarantees explicit.",
+  "expected_timing_minutes": 20,
+  "source_sha": "3828f20d2d6beb683868cce33e6dd1958365914b",
+  "storage_source_sha": "be40e1cc",
+  "external_peer_source_sha": "21460a1d",
+  "freeze": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-large-assembly/freeze-retry/freeze.json",
+  "freeze_sha256": "17c10ff5cc35cebcd4e5f3b6148f009b15e4d8eceaa70e123fd89e31a82f2cf4",
+  "source_archive_sha256": "6be2b3c364bbd613c8b27f9512d97b3232c4d1a155b8a17a6f969d4530582cd2",
+  "native_config": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-large-assembly/freeze-retry/external.json",
+  "native_config_sha256": "4ec240683bbc395a45e8fabbea591314581e401fc955effdbd245014fbf1cc4e",
+  "ordinary_runner_sha256": "faefaf34344958650a0fbdd19556d86d9f5126c5007b9c77225447004a6781e4",
+  "direct_broker_sha256": "e4bab43e5e22662d6ecd4a4d32aaf554978779c1d1f0c88f72284bc99f06e419",
+  "native_setup_status": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-large-assembly/evidence/native/ordinary-trusted-large-assembly-retry-4dc852e1cc18/setup-status.json",
+  "setup_receipts": {
+    "external": {
+      "raw": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-large-assembly/evidence/native/ordinary-trusted-large-assembly-retry-4dc852e1cc18/external/diagnostic-mesh/raw.tar.gz",
+      "raw_sha256": "7785a3dabc3a73dac0730475502c9f7ea14268d32e85a2427a549da7b80b50d2",
+      "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-large-assembly/evidence/native/ordinary-trusted-large-assembly-retry-4dc852e1cc18/external/reconciled.json",
+      "receipt_sha256": "c866cf5fd32ca2ecc862af8dff4d5481daa1b3336a292ddf187b05bf720b04ff"
+    },
+    "default": {
+      "raw": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-large-assembly/evidence/native/ordinary-trusted-large-assembly-retry-4dc852e1cc18/default/diagnostic-mesh/raw.tar.gz",
+      "raw_sha256": "39ef8be8532a491cc7358d95f4865f6ed6d667825ee998919a95076a17f9b81f",
+      "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-large-assembly/evidence/native/ordinary-trusted-large-assembly-retry-4dc852e1cc18/default/reconciled.json",
+      "receipt_sha256": "b3700a5b0f0f9b029759d33668f11dfdde357b6c6a729112ef4eef3eaeb71883"
+    }
+  },
+  "original_failure_raw": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-large-assembly/evidence/native/ordinary-trusted-large-assembly-3bbbe1e285fb/external/diagnostic-mesh/raw.tar.gz",
+  "original_failure_sha256": "e10740f850f411dbe45159693ca3dc5c3ca837ce0c00a478a42b9d93e3fe558a",
+  "timing_command": "PYTHONPATH=tools/durable-jobs-bench python3 -B target/ordinary-trusted-large-assembly/replay-retry/interleave.py dispatch ordinary-trusted-large-assembly-matched --config target/ordinary-trusted-large-assembly/freeze-retry/external.json",
+  "timing_commands_by_group": [
+    "PYTHONPATH=tools/durable-jobs-bench python3 -B target/ordinary-trusted-large-assembly/replay-retry/interleave.py dispatch ordinary-trusted-large-assembly-matched --config target/ordinary-trusted-large-assembly/freeze-retry/external.json --group 1",
+    "PYTHONPATH=tools/durable-jobs-bench python3 -B target/ordinary-trusted-large-assembly/replay-retry/interleave.py dispatch ordinary-trusted-large-assembly-matched --config target/ordinary-trusted-large-assembly/freeze-retry/external.json --group 2",
+    "PYTHONPATH=tools/durable-jobs-bench python3 -B target/ordinary-trusted-large-assembly/replay-retry/interleave.py dispatch ordinary-trusted-large-assembly-matched --config target/ordinary-trusted-large-assembly/freeze-retry/external.json --group 3",
+    "PYTHONPATH=tools/durable-jobs-bench python3 -B target/ordinary-trusted-large-assembly/replay-retry/interleave.py dispatch ordinary-trusted-large-assembly-matched --config target/ordinary-trusted-large-assembly/freeze-retry/external.json --group 4",
+    "PYTHONPATH=tools/durable-jobs-bench python3 -B target/ordinary-trusted-large-assembly/replay-retry/interleave.py dispatch ordinary-trusted-large-assembly-matched --config target/ordinary-trusted-large-assembly/freeze-retry/external.json --group 5"
+  ],
+  "summarize_command": "PYTHONPATH=tools/durable-jobs-bench python3 -B target/ordinary-trusted-large-assembly/replay-retry/interleave.py summarize ordinary-trusted-large-assembly-matched",
+  "block_replay_command": "python3 -B target/ordinary-trusted-large-assembly/replay-retry/receipt.py block external <block-directory>",
+  "driver_sha256": {
+    "target/ordinary-trusted-large-assembly/replay-retry/interleave.py": "14531caa8d5203cb30c809237066de7492e4b81438afcae5a071971708b5ba4a",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-large-assembly/evidence/ordinary-trusted-large-assembly-matched",
+  "reporting": "Report enqueue submit-to-commit, commit-to-terminal drain, end-to-end, and available storage sizes per arm; report between-block spread. Replay full raw ledger and policy/affinity evidence before scoring. Default EXTENDED remains separately reproducible and outside this symmetric scoring request."
+}

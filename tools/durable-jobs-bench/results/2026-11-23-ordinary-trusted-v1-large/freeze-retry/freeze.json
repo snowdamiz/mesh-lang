@@ -1,0 +1,44 @@
+{
+  "archive_sha256": "6be2b3c364bbd613c8b27f9512d97b3232c4d1a155b8a17a6f969d4530582cd2",
+  "drivers": {
+    "assemble.py": "7581f746fcbf9da86e650f069b6197eae5cad5f6f8694a8be5f75119586ba3f4",
+    "assembly.py": "eb3c1ddea9329bf9ef6bc0b251c8ab9301be6c62556e7dabe8720fc8c016667f",
+    "freeze.py": "5ba643320ae398841efabebe525bb3a9c4ca58cba8623ab00a9b4c75e6af4eaf",
+    "install.remote.sh": "c885dce5d182ccf5bfee536ceb07b07ab7f3a0557ab706251240716bc8230381",
+    "interleave.py": "14531caa8d5203cb30c809237066de7492e4b81438afcae5a071971708b5ba4a",
+    "receipt.py": "69ed0893fa6b13e5014d9415898b0de24fcf2190020edf213db4b38ff7bd7354",
+    "setup.py": "895c4d162474ed97de31ede0a97cb2a0a512155409c554da22bb286d42629282"
+  },
+  "inventories": {
+    "default": "070411d8f4f80fcad05f2c20cff1d8a2431dce4dfc3754b5b6693006d2a0de85",
+    "external": "4ec240683bbc395a45e8fabbea591314581e401fc955effdbd245014fbf1cc4e"
+  },
+  "native_overlay": "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-large-6be2b3c364bbd613",
+  "sources": {
+    "proof/jobs-parity/linux-regression/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+    "proof/jobs-parity/linux-regression/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+    "proof/jobs-parity/linux-regression/trial.py": "db8e121ab9b1f6aed2293b26c79a4fbfa8ac8aba6ff228be54b360bd32048a8e",
+    "proof/jobs-parity/linux-regression/trusted-application.sql": "3d318097587c0baef9182d8abb35b3f9d437a00b4f509798e320a4931085ee41",
+    "scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+    "scripts/jobs-parity.py": "09aad1d1c6cb5c0d46408bf314879812bb24fa504cf26a00e728b5f21ad1c5c8",
+    "scripts/lib/jobs_parity_fault.py": "f77ff946f67b255b4a037bf5a3e28dc7ad0a3588e4efb438ce73cf5abead594b",
+    "tools/durable-jobs-bench/native/arm.py": "654d1d044b574259b31bee6aab84a1bafc174ccae32a5a2f71e85d84bd6b7e83",
+    "tools/durable-jobs-bench/native/assembly-pins.json": "3385db8d0037ae13db0f9fba0fbc6d959dc2ea35ac52149f48e4a39938c3084f",
+    "tools/durable-jobs-bench/native/assembly.py": "eb3c1ddea9329bf9ef6bc0b251c8ab9301be6c62556e7dabe8720fc8c016667f",
+    "tools/durable-jobs-bench/native/direct-trial.py": "3498bcecedd5916f6e82292d2a711fe495f8ff7e563803eeee8072f5125012ad",
+    "tools/durable-jobs-bench/native/ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
+    "tools/durable-jobs-bench/native/run": "f7c686cd7345f2a033cb3886185ceb18866c89042f731ba632e7efe70e1e818a",
+    "tools/durable-jobs-bench/native/storage.py": "c84147a01fc33afa2f057f48a2c91925db7f5a4298665d4c675fb9b8818665e0"
+  },
+  "upstream": {
+    "direct-file.json": "fa3bbc29304b8e20eed6b4501366f31c3847a2de445a19b91f1bd4adcda7c6ef",
+    "direct-prepare.py": "ecd26276c21d38b5600ac5ddd8a00b2a4cf8f25aefa96ec5f818f3b493a948dc",
+    "local-pins.json": "e6dfa2941ff9d257eaa87b4229dbe6ebe3f04fe9d9af1d5face2ed652a5c84e9",
+    "peer-storage-replay.py": "32ad8bd8d4f040de2d647feba162ddf5e0d3ff4ab2abf621cb1fd50404896eeb",
+    "storage-upstream.py": "64ff4c291a49b0ba59efe6ad902edf91a7389d1d1e9fe17b3ee439dc8aa2ccb0",
+    "symmetric-external.json": "c0e006781695432e6613d193e9c3847fc1aa6f10361c42218d9ebde7d11f66bc",
+    "v1-build.json": "1ed88d1cb35691805af90cdaef32d517b1e5d7f307d832266a36462ba12364f9",
+    "v1-native.json": "fab17eaa9dadfeb6c0b2b811a18682de2b9ce1e22031e55241a4502db3966023",
+    "worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  }
+}

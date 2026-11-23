@@ -1,0 +1,24 @@
+{
+  "application_commits": 128,
+  "commit_jobs_per_s": 101.56279754725844,
+  "commit_to_terminal_ms": 630.152,
+  "completed": 64,
+  "compression": {
+    "none": 64
+  },
+  "conservative_ledger_peak_slots": 13,
+  "launch_checks": {
+    "owned-launch": 9
+  },
+  "payload_bytes": 33554432,
+  "payloads": 64,
+  "peak_connections": 65,
+  "raw_sha256": "39ef8be8532a491cc7358d95f4865f6ed6d667825ee998919a95076a17f9b81f",
+  "sampled_peak_slots": 8,
+  "stored_column_bytes": 33559808,
+  "submit_jobs_per_s": 29.161586171575838,
+  "submit_to_commit_ms": 1564.516,
+  "submit_to_terminal_ms": 2194.668,
+  "terminal_transactions": 64,
+  "toast_heap_bytes": 34471936
+}

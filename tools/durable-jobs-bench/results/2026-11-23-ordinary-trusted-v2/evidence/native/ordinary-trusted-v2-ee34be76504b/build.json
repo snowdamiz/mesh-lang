@@ -1,0 +1,20 @@
+{
+  "admission_proof_sha": "2381cbc15dc9280cebc9800cdc5c2d54e511b429",
+  "architecture": "x86_64",
+  "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+  "compiler_sha256": "e023d5944764878969ca40b7edb59c779498a435b44d308776076f4c7f2e8c19",
+  "execution_contract": "ordinary-trusted-shared-process-v2",
+  "files": {
+    "libworker_identity.a": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+    "main.mpl": "89c37190755ec407ae6d1b0f447cef26c43201b0117f3f7e7df0c9f7679cf167",
+    "mesh": "cbd23c92eba11f9237c11ae6a5fc60128e1852956f4be21913f8e7f716b25a5f",
+    "mesh.toml": "64bbe65a533a942753a2bfe8fa5fd4e025a1fa9f4a8dbf25d82ad22ad4137325",
+    "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+    "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+    "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+  },
+  "queue_base_sha": "bd7851b9398198955b4c8df630310a29b38cddd4",
+  "runtime_sha256": "106e01264a1cb0bad77bcdf6b7ac877b4dcf2405c7b013b70ea0d46de252c545",
+  "system": "Linux",
+  "version": "3828f20d2d6beb683868cce33e6dd1958365914b"
+}

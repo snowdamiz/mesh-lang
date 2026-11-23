@@ -1,0 +1,15 @@
+{
+  "group": 1,
+  "order": [
+    "apalis",
+    "oban",
+    "river",
+    "ordinary",
+    "protected-mesh"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}

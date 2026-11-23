@@ -18,6 +18,39 @@ token-fenced application effects. The V1 experiment trusts the shared
 application process and its application writes. Its scores use the
 `ordinary-trusted-shared-process` contract.
 
+The native V1 runner ELF has SHA-256
+`faefaf34344958650a0fbdd19556d86d9f5126c5007b9c77225447004a6781e4`.
+The protected Mesh control uses
+`3dc20c730bd269da86c9c98f225d5f85bdc0dd3d3a31908e0eac90aa50d8dfd2`.
+The peer executable hashes match the published storage series. Each
+profile's `series.json` records the exact adapter, artifact, and PostgreSQL
+pins for every lane. [Peer executable hashes](../2026-11-23-payload-storage-symmetric/README.md)
+
+## Native comparison
+
+The November 23 arms shared CPUs 0 and 1 with PostgreSQL 17.11. Every arm
+reconciled two independently committed application writes per terminal job.
+The short profile used 128 jobs per arm and the slow profile used 512.
+Both ran five matched blocks. The dense checkpoint uses 1,024 tiny jobs
+and one matched block recorded as `noop` in the inventory.
+
+| Lane | Dense jobs/s from submit | Short jobs/s from submit | Slow jobs/s from submit | Slow jobs/s from first commit |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary V1 | 358.24 | 442.10 | 243.52 | 364.41 |
+| Protected Mesh | 174.69 | 200.58 | 163.20 | 206.13 |
+| Oban | 641.43 | 280.80 | 245.29 | 321.21 |
+| River | 912.49 | 719.93 | 286.93 | 391.57 |
+| Apalis | 1,139.36 | 843.41 | 344.19 | 445.15 |
+
+Short and slow values are five-block medians. V1's short submit range was
+278.76–466.03 jobs/s. It finished ahead of protected Mesh in five blocks
+and Oban in four. Median CPU on the two pinned CPUs, including PostgreSQL,
+was 4.38 ms/job for V1 and 9.06 ms/job for protected Mesh. On slow, the
+V1 range was 227.33–253.18 jobs/s from submit. The slow lane finished ahead
+of protected Mesh in five blocks and Oban in one. The separate large
+comparison combines the V1 worker with a direct-file producer and tuned
+PostgreSQL storage. [Dense checkpoint](evidence/ordinary-trusted-v1-dense/summary-partial.json) · [Short results](evidence/ordinary-trusted-v1-short/summary.json) · [Slow results](evidence/ordinary-trusted-v1-slow/summary.json)
+
 ## Rebuild and replay
 
 Restore the exact packet to a fresh directory inside the checkout.

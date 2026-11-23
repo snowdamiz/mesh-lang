@@ -1,0 +1,15 @@
+{
+  "group": 5,
+  "order": [
+    "river-external",
+    "apalis-external",
+    "ordinary",
+    "mesh-direct-external",
+    "oban-external"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "large"
+}

@@ -12,5 +12,9 @@ destination="$root/target/$id"
 mkdir "$destination"
 cp -p "$here/ordinary-trusted-v1.tar.gz" "$destination/"
 cp -Rp "$here/replay" "$destination/"
-mkdir "$destination/evidence"
+if [[ -d "$here/evidence" ]]; then
+    cp -Rp "$here/evidence" "$destination/"
+else
+    mkdir "$destination/evidence"
+fi
 printf '%s\n' "$destination"
