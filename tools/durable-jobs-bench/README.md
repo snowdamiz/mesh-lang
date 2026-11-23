@@ -2,7 +2,7 @@
 
 ## Adapter handoff
 
-The matrix owner runs official timing. Keep builders and functional smokes off the host during timing. While setting up, each lane should publish its host command, build identity, and ready state in its own README. State now is **IDLE**, with the Linode running and all three locks released.
+The matrix owner runs official timing. Keep builders and functional smokes off the host during timing. While setting up, each lane should publish its host command, build identity, and ready state in its own README. For the active assignment and handoff protocol, see `target/linode-jobs-stepchange/requests/STATUS.md` and `README.md` in the same directory.
 
 The [reversed controls](results/2026-11-23-controls/README.md) and [four-engine baseline](results/2026-11-23-baseline/README.md) are sealed. The due-query improvement has a [four-engine repeat](results/2026-11-23-due-range-repeat/README.md), [alternating dense pairs](results/2026-11-23-due-range-focused/README.md), and an [integrated product proof](results/2026-11-23-mesh-due-range/README.md). The [ordered-enqueue repeat](results/2026-11-23-ordered-enqueue-repeat/README.md) measured a short-profile regression and held the patch. The [worker attribution capture](results/2026-11-23-native-worker-cost/README.md) closed without qualifying a worker candidate.
 
@@ -76,3 +76,51 @@ python3 -B "$bench/run.py" dispatch --kind repeat --series 2026-11-23-mesh-repea
 python3 -B "$bench/run.py" summarize --series 2026-11-23-mesh-repeat \
     > "$bench/results/2026-11-23-mesh-repeat/comparison.csv"
 ```
+
+## Interleave pinned artifacts
+
+Use `interleave.py` to compare multiple Mesh artifacts in the same block as
+Oban and River, or to run a direct pair. Build, link, and run correctness
+smokes during SETUP. The standalone release builder uses the same frozen
+fixture and explicit runtime archive as the native bootstrap.
+
+```sh
+native=tools/durable-jobs-bench/native
+"$native/build-linux" "$source" "$artifact" "$build_state" "$rust_bin" "$llvm_prefix"
+```
+
+Supply a pinned checkout or a source bundle produced by `native/linode bundle`.
+The builder expects an x86-64 Linux host with Rust 1.99.0 and LLVM 21.1.8.
+Use absolute paths. `artifact` must be a new directory whose parent exists.
+Set `CARGO_HOME` or `CARGO_TARGET_DIR` to a prepared cache if needed.
+
+The interleave config pins the boot ID, kernel, and PostgreSQL storage device
+major and minor number in `host`. Record Linux `getconf CLK_TCK` in
+`clock_ticks`. In `lanes`, give each label an `engine` and an `inventory`
+in the standard format. The first label is the reference for paired changes.
+List the frozen `profiles` and record the shared CPU mask in `cpus`.
+The adapter, its workers, and PostgreSQL inherit the mask. Use a fresh series
+for each mask. The three-CPU Mesh and Oban launcher takes
+`NATIVE_JOBS_CPU_COUNT=3`. Both CPU caps retain the standard engine scheduler
+settings. The host recorder runs on a spare CPU.
+
+Set `contract` to `strict-frozen` for the original workload and isolated
+worker execution. Record the launch settings in `description`.
+Use `persistent-worker` and a separate series for a candidate that reuses a
+worker process. Describe the worker lifetime, fault and cleanup rules, and any
+prework in the config. Report the time spent outside the submit window as well
+as both throughput windows. The durable-ledger verifier runs for both contracts.
+
+```sh
+bench=tools/durable-jobs-bench
+python3 -B "$bench/interleave.py" dispatch "$series" --config "$config"
+python3 -B "$bench/interleave.py" summarize "$series" > "$bench/results/$series/summary.json"
+```
+
+Add `--group` to dispatch one rotation at a time. Run the same dispatch
+again to recover a missing export. If recovery leaves an incomplete block,
+dispatch creates a fresh block and keeps every earlier attempt. The offline
+summary reports missing blocks, measured distributions, paired deltas, and
+raw archive hashes for each selected block. Host CPU counters cover the
+sampled interval bracketing submit and final settlement. They include the
+work on the pinned CPUs, including PostgreSQL.

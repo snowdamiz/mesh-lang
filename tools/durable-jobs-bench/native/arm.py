@@ -203,11 +203,15 @@ def run_arm(args, out, state, artifacts):
         raise ValueError("local component smoke requires diagnostic phase")
     before = host_snapshot()
     h.write_json(out / "host-before.json", before)
+    cpu_count = os.environ.get("NATIVE_JOBS_CPU_COUNT", "2")
+    thp = os.environ.get("NATIVE_JOBS_MESH_THP", "disabled")
+    if cpu_count not in {"2", "3"} or thp not in {"disabled", "host"}:
+        raise ValueError("invalid CPU count or Mesh worker THP policy")
     if not args.local_smoke:
         if before["system"] != "Linux" or before["architecture"] != "x86_64":
             raise RuntimeError("benchmark requires native x86-64 Linux")
-        if len(before["cpus"]) != 2 or before["host_logical_cpus"] != 4:
-            raise RuntimeError("expected two pinned CPUs on the four-CPU Linode")
+        if len(before["cpus"]) != int(cpu_count) or before["host_logical_cpus"] != 4:
+            raise RuntimeError(f"expected {cpu_count} pinned CPUs on the four-CPU Linode")
 
     manifest_path = artifacts / f"{engine}.json"
     build = json.loads(manifest_path.read_text())
@@ -219,7 +223,8 @@ def run_arm(args, out, state, artifacts):
             raise RuntimeError(f"artifact failed SHA-256 check: {name}")
     h.write_json(out / "build.json", build)
     h.write_json(out / "invocation.json", dict(engine=engine, profile=profile, phase=phase,
-                                               local_smoke=args.local_smoke))
+                                               local_smoke=args.local_smoke, cpu_count=int(cpu_count),
+                                               mesh_worker_thp=thp if engine == "mesh" else None))
     if engine == "mesh":
         if not re.fullmatch(r"[0-9a-f]{40}", build["version"]) or build.get("base_revision") != MESH_REVISION:
             raise RuntimeError("wrong Mesh runtime lineage")
@@ -257,8 +262,9 @@ def run_arm(args, out, state, artifacts):
                 h.write_json(out / "oban-preflight.json", report)
         else:
             env.update(JOBS_PARITY_MESH_BATCH="1", JOBS_PARITY_MESH_LISTEN="1",
-                       MESH_EFFECT_LANES=str(lanes), MESH_EFFECT_APP_URL=cluster.url("mesh", "compiled_caller"),
-                       MESH_DIAGNOSTIC_JOB_DISABLE_THP="1")
+                       MESH_EFFECT_LANES=str(lanes), MESH_EFFECT_APP_URL=cluster.url("mesh", "compiled_caller"))
+            if thp == "disabled":
+                env["MESH_DIAGNOSTIC_JOB_DISABLE_THP"] = "1"
         subject = Subject(engine, [str(command)], artifacts, cluster, env)
         metrics = h.run_trial(subject, h.allocate_slots(runners, slots), workload,
                               batches, scratch, out, settings, 0)

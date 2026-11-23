@@ -39,7 +39,7 @@ case "$action" in
             printf '%s\n' "$revision" > "$bundle/source/NATIVE_MESH_REVISION"
             adapter="$bundle/source/tools/durable-jobs-bench/native"
             mkdir -p "$adapter"
-            cp "$here"/{README.md,arm.py,ledger.py,build,manifest.py,prepare-oban.py,bootstrap,run} "$adapter/"
+            cp "$here"/{README.md,arm.py,ledger.py,build,build-linux,manifest.py,prepare-oban.py,bootstrap,run} "$adapter/"
             find "$bundle/source" -type d -exec chmod 755 '{}' +
             find "$bundle/source" -type f -exec chmod a+r '{}' +
             COPYFILE_DISABLE=1 tar --no-xattrs -czf "$bundle/source.tar.gz" -C "$bundle/source" .

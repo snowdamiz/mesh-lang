@@ -14,6 +14,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import interleave
 import run
 from verify import ENGINES, PROFILES, SUITE, expected_inputs, plan, reconcile
 from worker import safe_bytes
@@ -94,6 +95,26 @@ class MatrixTests(unittest.TestCase):
             reference, reversed_order = [b["order"] for b in controls if b["profile"] == profile]
             self.assertEqual(reference[::-1], reversed_order)
         run.check_inventory(CONFIG)
+
+    def test_interleave_recovers_partial_receipt_before_retrying_a_block(self):
+        config = {"lanes": {"current": {"engine": "mesh"}, "river": {"engine": "go"}}}
+        manifest = {"config": config, "remote": {"current": "remote-mesh", "river": "remote-river"}}
+        block = next(interleave.plan(["short"], list(config["lanes"])))
+        with tempfile.TemporaryDirectory(dir=SUITE) as temporary:
+            root = Path(temporary)
+            path = root / "blocks" / (run.block_prefix(block) + ".1")
+            arm = path / "measured-current" / "measured-mesh"
+            arm.mkdir(parents=True)
+            request = {"attempt": "a" * 32}
+            run.write_json(arm / "request.json", request)
+            with (patch.object(run, "archive_arm") as recover,
+                  patch.object(interleave, "select_attempt", return_value=("recovered", {})),
+                  patch.object(run, "dispatch_arm") as dispatch):
+                self.assertTrue(interleave.dispatch_block(root, manifest, block))
+                recover.assert_called_once_with(arm, run.REMOTE / "remote-mesh", request["attempt"])
+                dispatch.assert_not_called()
+            self.assertEqual(list(interleave.attempt_paths(root, block)), [path])
+            self.assertEqual(run.read_json(arm / "request.json"), request)
 
     def test_two_windows_have_a_common_durable_end(self):
         example = ledger("short", "mesh")

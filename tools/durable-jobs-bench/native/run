@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
-base=/var/lib/durable-jobs-bench/native
+base="${NATIVE_JOBS_BASE:-/var/lib/durable-jobs-bench/native}"
+[[ "$base" == /* ]]
 artifact="${NATIVE_JOBS_ARTIFACTS:?set NATIVE_JOBS_ARTIFACTS to the prepared native build directory}"
 engine="${1:?usage: run ENGINE PROFILE ABSOLUTE_EVIDENCE_DIR}"
 profile="${2:?missing profile}"
@@ -16,11 +17,15 @@ case "$profile" in dense|noop|slow|sparse|short|large) ;; *) exit 2 ;; esac
 exec 9>"$base/native.lock"
 flock -n 9
 tool="$base/toolchain"
+pg_bin="${NATIVE_JOBS_PG_BIN:-$tool/pgsql-17.11/bin}"
+[[ "$pg_bin" == /* ]]
 env_args=(env -i
     "PATH=$tool/otp-29.1.1/bin:$tool/elixir-1.20.4/bin:/usr/bin:/bin"
-    LC_ALL=C.UTF-8 "PG_BIN_DIR=$tool/pgsql-17.11/bin"
+    LC_ALL=C.UTF-8 "PG_BIN_DIR=$pg_bin"
     ERL_CRASH_DUMP=/dev/null
     "DURABLE_JOBS_PHASE=${DURABLE_JOBS_PHASE:-diagnostic}"
+    "NATIVE_JOBS_CPU_COUNT=${NATIVE_JOBS_CPU_COUNT:-2}"
+    "NATIVE_JOBS_MESH_THP=${NATIVE_JOBS_MESH_THP:-disabled}"
     "NATIVE_JOBS_STATE=$base" "NATIVE_JOBS_ARTIFACTS=$artifact")
 
 # SSH starts in /root, which the producer cannot traverse after dropping UID.

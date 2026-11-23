@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Rebuild the pinned compiler, runtime, and frozen runner on a prepared Linux host.
+set -euo pipefail
+[[ "$#" == 5 ]] || {
+    echo 'Usage: build-linux SOURCE ABSOLUTE_ARTIFACT_DIR ABSOLUTE_STATE_DIR RUST_BIN LLVM_PREFIX' >&2
+    exit 2
+}
+source="$(cd "$1" && pwd -P)"
+for path in "$2" "$3" "$4" "$5"; do [[ "$path" == /* ]]; done
+[[ "$(uname -sm)" == 'Linux x86_64' ]]
+[[ "$("$4/rustc" --version | cut -d' ' -f2)" == 1.99.0 ]]
+[[ "$("$5/bin/llvm-config" --version)" == 21.1.8 ]]
+[[ -x "$source/tools/durable-jobs-bench/native/build" ]]
+[[ -x "$source/scripts/ci-x86_64-linux-gnu-clang" ]]
+export PATH="$4:$5/bin:/usr/bin:/bin"
+export LLVM_SYS_211_PREFIX="$5"
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$source/scripts/ci-x86_64-linux-gnu-clang"
+export NATIVE_JOBS_STATE="$3" LC_ALL=C.UTF-8
+# Source variants build all components from the same revision. Do not
+# inherit an unrelated prebuilt compiler or an experimental codegen override.
+unset NATIVE_JOBS_MESHC NATIVE_JOBS_REUSE_LOCAL_BUILD CARGO_ENCODED_RUSTFLAGS RUSTFLAGS
+exec "$source/tools/durable-jobs-bench/native/build" "$2" mesh
