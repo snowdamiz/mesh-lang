@@ -1,0 +1,30 @@
+{
+  "adapter_files": {
+    "arm.py": "b250cdff94dd553c4721390db6dea5663de1d443be8a5d65ec0f85174afc44a3",
+    "direct-trial.py": "aa71b4a2e638121106de6313d3593f36ea49bc710386a944588d696d70f22e06",
+    "ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
+    "run": "a99e61532ef0dea214ec2d9404822ad786a2a84a09f54a819b000d233cba598c"
+  },
+  "architecture": "arm64",
+  "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+  "compiler_sha256": "75b48bb3514971b99163041bce67d7b2f358064e5a0fd0ee06364c0b084c92eb",
+  "engine": "mesh",
+  "files": {
+    "broker": "abe32f6885344da54aff39d625455a388a17c2c4631328dfe1f0f391a57ead10",
+    "broker-source/libworker_identity.a": "020bf67bedee2223c048d861dd69e6ae4b9548e7f7552aab43854e07f4243e26",
+    "broker-source/main.mpl": "64f06243db4bb1b9fd2c04181c9faa46c207596b7e7f5686fd710d780ff11b22",
+    "broker-source/mesh.toml": "e1637f42b868b8ee6bf055404b25fe71e74aa277c3f351305f314bb856beac33",
+    "broker-source/worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+    "broker-source/worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+    "broker-source/worker_identity.o": "d1690d209850275fe09cedf1824c0bb17b0bc9520153b1ca1287a5b799440b14"
+  },
+  "fixture": "linux-warm-replay-20261122",
+  "fixture_archive_sha256": "76d93c2c7147d4cd12f69d7ad8e2698b721cb999535c4a9c9bfc5e79581d37ad",
+  "producer": "mesh-direct-file",
+  "runtime_sha256": "c181ec5b635f24c8a68c3e013c8f401cd4eff6a25a8e9e16ed3965059efd24f1",
+  "stock_manifest": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/direct-producer-v3/local-stock/mesh.json",
+  "stock_manifest_sha256": "8a97b6647814c74f5591b632dfae170a5873e6f1e887cea6a3fdea7a18c2100f",
+  "stock_runner_sha256": "af5d8a42a80eba6e57d4bfc0bb17ace876d200470606277091d1d1f53a95a675",
+  "system": "Darwin",
+  "version": "fbe5252d9d687e104a31cf3ca89e83db2867260b"
+}

@@ -1,0 +1,7 @@
+{
+  "delivery": "steered",
+  "messageId": "message:mcp:2f1991c3-dd17-4811-9b3e-2108f91fc6c3:thread-send:ordinary-broker-once-sealed-controller-intake-v1",
+  "runId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A824787c5-935c-433b-8c9b-93389c4f3694%253Adelegate-task%253Alinode-native-stepchange-controller-v1:ordinal:1",
+  "status": "running",
+  "threadId": "thread:delegated-task:command%3Amcp%3A824787c5-935c-433b-8c9b-93389c4f3694%3Adelegate-task%3Alinode-native-stepchange-controller-v1"
+}
