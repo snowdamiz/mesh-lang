@@ -1,0 +1,310 @@
+{
+  "component": {
+    "groups": 5,
+    "median_and_range_by_trial_ms": {
+      "control-a": {
+        "min": 103.368,
+        "median": 148.057,
+        "max": 479.352
+      },
+      "control-b": {
+        "min": 87.331,
+        "median": 171.967,
+        "max": 296.792
+      },
+      "candidate": {
+        "min": 43.694,
+        "median": 66.288,
+        "max": 102.536
+      }
+    },
+    "paired_commit_delta_ms": {
+      "control-a": {
+        "min": -418.715,
+        "median": -80.73799999999999,
+        "max": -0.8319999999999936
+      },
+      "control-b": {
+        "min": -236.15499999999997,
+        "median": -69.43100000000001,
+        "max": -20.012
+      }
+    },
+    "pg_enqueue_execute_ms": {
+      "control-a": {
+        "min": 33.98863400000002,
+        "median": 45.643656000000036,
+        "max": 108.70874999999997
+      },
+      "control-b": {
+        "min": 44.80632199999998,
+        "median": 53.80280600000004,
+        "max": 71.48137199999998
+      },
+      "candidate": {
+        "min": 22.872535000000003,
+        "median": 26.72392700000001,
+        "max": 60.99209699999999
+      }
+    },
+    "client_1min_load_by_trial": {
+      "min": 118.15234375,
+      "median": 118.54052734375,
+      "max": 124.80224609375
+    },
+    "wire": {
+      "control-a": {
+        "client_bytes": 205259,
+        "server_bytes": 33314,
+        "client_tls_records": 136,
+        "server_tls_records": 136,
+        "enqueue_sql_calls": 128
+      },
+      "control-b": {
+        "client_bytes": 205259,
+        "server_bytes": 33314,
+        "client_tls_records": 136,
+        "server_tls_records": 136,
+        "enqueue_sql_calls": 128
+      },
+      "candidate": {
+        "client_bytes": 203015,
+        "server_bytes": 33314,
+        "client_tls_records": 34,
+        "server_tls_records": 136,
+        "enqueue_sql_calls": 128
+      }
+    }
+  },
+  "dense": {
+    "groups": 9,
+    "median_and_range_by_trial_ms": {
+      "control-a": {
+        "min": 132.205,
+        "median": 150.081,
+        "max": 290.763
+      },
+      "control-b": {
+        "min": 129.517,
+        "median": 143.519,
+        "max": 290.298
+      },
+      "candidate": {
+        "min": 111.056,
+        "median": 152.872,
+        "max": 189.083
+      }
+    },
+    "paired_commit_delta_ms": {
+      "control-a": {
+        "min": -136.783,
+        "median": -34.415000000000006,
+        "max": 2.7910000000000252
+      },
+      "control-b": {
+        "min": -103.107,
+        "median": -22.917000000000016,
+        "max": 45.56399999999999
+      }
+    },
+    "pg_enqueue_execute_ms": {
+      "control-a": {
+        "min": 79.30559500000004,
+        "median": 89.31395599999986,
+        "max": 151.91766900000025
+      },
+      "control-b": {
+        "min": 78.16100199999988,
+        "median": 86.11848700000009,
+        "max": 156.1686159999998
+      },
+      "candidate": {
+        "min": 76.85675399999995,
+        "median": 102.71208199999992,
+        "max": 124.57571999999973
+      }
+    },
+    "client_1min_load_by_trial": {
+      "min": 86.36328125,
+      "median": 92.74951171875,
+      "max": 98.734375
+    },
+    "wire": {
+      "control-a": {
+        "client_bytes": 1638579,
+        "server_bytes": 264587,
+        "client_tls_records": 1053,
+        "server_tls_records": 1053,
+        "enqueue_sql_calls": 1024
+      },
+      "control-b": {
+        "client_bytes": 1638579,
+        "server_bytes": 264587,
+        "client_tls_records": 1053,
+        "server_tls_records": 1053,
+        "enqueue_sql_calls": 1024
+      },
+      "candidate": {
+        "client_bytes": 1620627,
+        "server_bytes": 264587,
+        "client_tls_records": 237,
+        "server_tls_records": 1053,
+        "enqueue_sql_calls": 1024
+      }
+    }
+  },
+  "large": {
+    "groups": 5,
+    "median_and_range_by_trial_ms": {
+      "control-a": {
+        "min": 681.904,
+        "median": 769.082,
+        "max": 869.761
+      },
+      "control-b": {
+        "min": 689.258,
+        "median": 705.067,
+        "max": 916.787
+      },
+      "candidate": {
+        "min": 656.429,
+        "median": 738.808,
+        "max": 1104.776
+      }
+    },
+    "paired_commit_delta_ms": {
+      "control-a": {
+        "min": -210.062,
+        "median": 56.903999999999996,
+        "max": 235.0150000000001
+      },
+      "control-b": {
+        "min": -35.49000000000001,
+        "median": 33.740999999999985,
+        "max": 272.55899999999997
+      }
+    },
+    "pg_enqueue_execute_ms": {
+      "control-a": {
+        "min": 510.09625600000004,
+        "median": 567.508387,
+        "max": 657.5550479999999
+      },
+      "control-b": {
+        "min": 507.1006740000001,
+        "median": 521.9781670000001,
+        "max": 711.76492
+      },
+      "candidate": {
+        "min": 493.5435839999999,
+        "median": 554.6642939999999,
+        "max": 832.877497
+      }
+    },
+    "client_1min_load_by_trial": {
+      "min": 63.57275390625,
+      "median": 74.388671875,
+      "max": 86.36328125
+    },
+    "wire": {
+      "control-a": {
+        "client_bytes": 33658675,
+        "server_bytes": 25875,
+        "client_tls_records": 2309,
+        "server_tls_records": 261,
+        "enqueue_sql_calls": 64
+      },
+      "control-b": {
+        "client_bytes": 33658675,
+        "server_bytes": 25875,
+        "client_tls_records": 2309,
+        "server_tls_records": 261,
+        "enqueue_sql_calls": 64
+      },
+      "candidate": {
+        "client_bytes": 33658675,
+        "server_bytes": 25875,
+        "client_tls_records": 2309,
+        "server_tls_records": 261,
+        "enqueue_sql_calls": 64
+      }
+    }
+  },
+  "sparse": {
+    "groups": 5,
+    "median_and_range_by_trial_ms": {
+      "control-a": {
+        "min": 0.6625000000000001,
+        "median": 0.7685,
+        "max": 0.846
+      },
+      "control-b": {
+        "min": 0.749,
+        "median": 0.8745,
+        "max": 1.573
+      },
+      "candidate": {
+        "min": 0.635,
+        "median": 0.717,
+        "max": 2.6505
+      }
+    },
+    "paired_commit_delta_ms": {
+      "control-a": {
+        "min": -0.1070000000000001,
+        "median": -0.0119999999999999,
+        "max": 1.8045
+      },
+      "control-b": {
+        "min": -0.23950000000000005,
+        "median": -0.059499999999999886,
+        "max": 1.0775000000000001
+      }
+    },
+    "pg_enqueue_execute_ms": {
+      "control-a": {
+        "min": 5.1294200000000005,
+        "median": 6.1141239999999994,
+        "max": 6.832040000000001
+      },
+      "control-b": {
+        "min": 7.102543000000001,
+        "median": 9.177165000000002,
+        "max": 16.158378000000003
+      },
+      "candidate": {
+        "min": 5.232709999999998,
+        "median": 6.7075429999999985,
+        "max": 10.567290000000002
+      }
+    },
+    "client_1min_load_by_trial": {
+      "min": 55.48974609375,
+      "median": 59.36279296875,
+      "max": 59.36279296875
+    },
+    "wire": {
+      "control-a": {
+        "client_bytes": 58560,
+        "server_bytes": 16200,
+        "client_tls_records": 216,
+        "server_tls_records": 216,
+        "enqueue_sql_calls": 24
+      },
+      "control-b": {
+        "client_bytes": 58560,
+        "server_bytes": 16200,
+        "client_tls_records": 216,
+        "server_tls_records": 216,
+        "enqueue_sql_calls": 24
+      },
+      "candidate": {
+        "client_bytes": 58560,
+        "server_bytes": 16200,
+        "client_tls_records": 216,
+        "server_tls_records": 216,
+        "enqueue_sql_calls": 24
+      }
+    }
+  }
+}

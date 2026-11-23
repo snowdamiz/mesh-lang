@@ -1,0 +1,16 @@
+{
+  "stock_revision": "3f69b150820fd01ba716d533be4f2eedea25ed27",
+  "stock_source_sha256": "c1b991220264472ce05938c4bf766f191ff72c61d428c31c5e1f4c34c38f5c49",
+  "candidate_revision": "77c447f773a4d0af5c5578873a2410301b3ba069",
+  "candidate_source_sha256": "0c1695ebb875c875095429750731c137656e47b04c59e273d03b813392c5caef",
+  "changed_paths": [
+    "NATIVE_MESH_REVISION",
+    "compiler/mesh-rt/src/db/jobs_connection.rs",
+    "compiler/mesh-rt/src/db/pg.rs",
+    "compiler/mesh-rt/src/db/pg/jobs_enqueue.rs",
+    "compiler/mesh-rt/src/jobs/mod.rs",
+    "compiler/mesh-rt/src/jobs/store.rs",
+    "compiler/mesh-rt/src/jobs/store_tests.rs"
+  ],
+  "identical_files": 686
+}
