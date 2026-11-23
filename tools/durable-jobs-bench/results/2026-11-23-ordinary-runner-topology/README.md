@@ -57,6 +57,26 @@ The sealed intake is `ordinary-runner-topology`, request SHA-256 `b113fb34d563b2
 
 For a subsequent same-size cross-engine comparison, run Mesh, Oban, River, and Apalis with matched process and slot allocations where each engine supports them. Keep the same two CPUs, input, durability, connection cap and two committed application writes. Pin the queue, app and broker budgets and record actual backend use. An independently tuned comparison should give each engine the same aggregate resource envelope and an equivalent chance to choose its process count, worker concurrency and pool sizing. Freeze the chosen deployments before fresh matched, rotated measurements. Keep these two comparison policies in distinct result series. [Prior canonical comparison](../2026-11-23-ordinary-trusted-v1/README.md)
 
+On November 23, 2026, two opposite-order groups reconciled all eight
+diagnostic arms on CPUs 0 and 1 with PostgreSQL 17.11. Each arm used the
+same V1 ELF, the same broker, 1,024 jobs and two independent application
+commits per job. The exact launch pins and the release receipt are in the
+packet. [Native summary](evidence/native-01/summary.json) · [Release receipt](evidence/native-01/controller/ordinary-runner-topology.released.json)
+
+| Topology | Submit jobs/s | Drain jobs/s | Runner CPU (ms/job) | Claim calls | Mean occupied slots |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 8 × 8, control A | 349.90 | 437.10 | 1.636 | 584.0 | 13.88 |
+| 8 × 8, control B | 353.09 | 441.84 | 1.645 | 597.0 | 14.12 |
+| 2 × 32 | 555.51 | 763.65 | 0.644 | 156.5 | 38.62 |
+| 1 × 64 | 512.96 | 695.51 | 0.505 | 89.5 | 42.62 |
+
+The 2 × 32 layout finished ahead of both stock controls in each group.
+Its median paired change against control A was 58.04% more submit
+throughput and 60.75% less runner CPU per job. Changing the process count
+also changes scheduler workers and physical queue sessions. These two
+groups measured topology only. The 8 × 8 deployment remains the
+canonical V1 comparison with peers.
+
 ## Replay
 
 Run from the repository root. Archived runs can be verified without the original executable or a database. A fresh local run needs the pinned Mach-O, exact V1 source archive contents, and PostgreSQL 17.11.
@@ -72,6 +92,7 @@ for series in local-01 local-02 local-activity-01; do
     cmp "$replay_dir/$series-summary.json" "$packet/evidence/$series-summary.json"
 done
 python3 -B "$packet/native-dispatch.py" check
+python3 -B "$packet/replay.py" native "$packet/evidence/native-01"
 ```
 
 To reproduce timing with the retained local inputs, run `python3 -B "$packet/local.py" local-repeat-01`. Supply `--source`, `--artifacts`, and `--pg-bin` to use another location for the same pins. The isolated pre-series smoke and the initial replay rejection are retained. The frozen harness writes the legacy label “one process per batch” for dense even when the trusted adapter uses a warm broker. The final replay checks the broker's readiness, database audit, and stable physical backend directly. [Initial replay rejection](evidence/initial-replay-rejection.json) · [Initial smoke](evidence/first-smoke.tar.gz) · [Matrix tests](evidence/matrix-tests.log)
