@@ -34,11 +34,13 @@ def build(dest):
     s = code.read_text()
     assert s.count(BASE) == 1 and s.count("MAX_CLAIM_BATCH") == 4
     original = sha(code)
-    code.write_text(s.replace(BASE, WIDE))
+    ordered = "[Option<Vec<_>>; MAX_CLAIM_BATCH + MAX_OVERSIZED_PER_BATCH] =\n        Default::default();"
+    assert s.count(ordered) == 1
+    code.write_text(s.replace(BASE, WIDE).replace(ordered, ordered.replace("Default::default()", "std::array::from_fn(|_| None)")))
     temp = dest / "tmp"
     temp.mkdir()
     env = dict(os.environ, TMPDIR=str(temp), CARGO_NET_OFFLINE="true")
-    target = dest / "cargo"
+    target = AREA / "cargo"
     toolchain_bin = Path("/opt/homebrew/opt/rustup/bin")
     env["PATH"] = str(toolchain_bin) + os.pathsep + env["PATH"]
     cargo = toolchain_bin / "cargo"
