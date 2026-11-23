@@ -1,0 +1,3152 @@
+{
+  "postgres": {
+    "measured": {
+      "apalis-external": {
+        "commit_jobs_per_s": 314.5287720108709,
+        "commit_to_terminal_ms": 203.479,
+        "committed_application_writes": 128,
+        "completed": 64,
+        "database_temp_bytes": 0,
+        "database_temp_files": 0,
+        "ddl_us": 18511,
+        "engine": "rust",
+        "mesh_claim": [],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 81,
+        "peak_postgres_pss_kib": 298160,
+        "peak_postgres_rss_sum_kib": 1979092,
+        "policy": "EXTERNAL",
+        "postgres_memory_sample_peak_us": 84504,
+        "postgres_memory_samples_in_window": 2,
+        "postgres_memory_samples_total": 22,
+        "raw_sha256": "aba72823b08b79df3cd35e22d7d1011f2ac02c9c5e4b97524d7f210f986c1973",
+        "sampled_peak_slots": 33,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "16384"
+          }
+        },
+        "storage_verification_us": 203788,
+        "stored_column_bytes": 33558528,
+        "submit_jobs_per_s": 72.31899910505238,
+        "submit_to_commit_ms": 681.489,
+        "submit_to_terminal_ms": 884.968,
+        "temp_blocks_by_role": {
+          "parity_owner": {
+            "calls": 2,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 23,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 761,
+            "read_blocks": 0,
+            "rolname": "parity_subject",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          }
+        },
+        "terminal_transactions": 17,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 16
+      },
+      "oban-external": {
+        "commit_jobs_per_s": 127.72946898469043,
+        "commit_to_terminal_ms": 501.059,
+        "committed_application_writes": 128,
+        "completed": 64,
+        "database_temp_bytes": 33567872,
+        "database_temp_files": 1,
+        "ddl_us": 19179,
+        "engine": "oban",
+        "mesh_claim": [],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 81,
+        "peak_postgres_pss_kib": 384542,
+        "peak_postgres_rss_sum_kib": 1923604,
+        "policy": "EXTERNAL",
+        "postgres_memory_sample_peak_us": 334573,
+        "postgres_memory_samples_in_window": 5,
+        "postgres_memory_samples_total": 48,
+        "raw_sha256": "54d20d065ba3b696195c6197013ba543ae5cc0f7c781b3a2aecdf4ec6a24ea96",
+        "sampled_peak_slots": 8,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "16384"
+          }
+        },
+        "storage_verification_us": 103849,
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 35.433349868896606,
+        "submit_to_commit_ms": 1305.149,
+        "submit_to_terminal_ms": 1806.208,
+        "temp_blocks_by_role": {
+          "parity_owner": {
+            "calls": 10,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 19,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 1,
+            "written_blocks": 4097
+          },
+          "parity_subject": {
+            "calls": 951,
+            "read_blocks": 0,
+            "rolname": "parity_subject",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          }
+        },
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 16
+      },
+      "ordinary": {
+        "application_commits": 128,
+        "commit_jobs_per_s": 105.85160927524726,
+        "commit_to_terminal_ms": 604.62,
+        "completed": 64,
+        "compression": {
+          "none": 64
+        },
+        "conservative_ledger_peak_slots": 16,
+        "database_temp_bytes": 0,
+        "database_temp_files": 0,
+        "launch_checks": {
+          "owned-launch": 9
+        },
+        "mesh_claim": [
+          {
+            "calls": 220,
+            "execution_ms": 621.3432010000001,
+            "queryid": "1470094052699674672",
+            "read_blocks": 0,
+            "rows": 141,
+            "written_blocks": 0
+          }
+        ],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 65,
+        "peak_postgres_pss_kib": 217302,
+        "peak_postgres_rss_sum_kib": 1496844,
+        "postgres_memory_sample_peak_us": 126299,
+        "postgres_memory_samples_in_window": 5,
+        "postgres_memory_samples_total": 27,
+        "raw_sha256": "85143a6a7a8a55666ca8cfe2c8ebb71443fbbf51d072c85a266acc625d63ccdb",
+        "sampled_peak_slots": 13,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "16384"
+          }
+        },
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 45.96370447348936,
+        "submit_to_commit_ms": 787.783,
+        "submit_to_terminal_ms": 1392.403,
+        "temp_blocks_by_role": {
+          "compiled_caller": {
+            "calls": 256,
+            "read_blocks": 0,
+            "rolname": "compiled_caller",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_owner": {
+            "calls": 10,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 274,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 1519,
+            "read_blocks": 0,
+            "rolname": "parity_subject",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          }
+        },
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 16
+      },
+      "ordinary-4mb-a": {
+        "application_commits": 128,
+        "commit_jobs_per_s": 108.51485551416543,
+        "commit_to_terminal_ms": 589.781,
+        "completed": 64,
+        "compression": {
+          "none": 64
+        },
+        "conservative_ledger_peak_slots": 13,
+        "database_temp_bytes": 16791392,
+        "database_temp_files": 4,
+        "launch_checks": {
+          "owned-launch": 9
+        },
+        "mesh_claim": [
+          {
+            "calls": 210,
+            "execution_ms": 572.6593550000002,
+            "queryid": "1470094052699674672",
+            "read_blocks": 2052,
+            "rows": 129,
+            "written_blocks": 2052
+          }
+        ],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 65,
+        "peak_postgres_pss_kib": 211154,
+        "peak_postgres_rss_sum_kib": 1421804,
+        "postgres_memory_sample_peak_us": 96130,
+        "postgres_memory_samples_in_window": 4,
+        "postgres_memory_samples_total": 26,
+        "raw_sha256": "090345088069575932b2be0316c8cb37d671998697a94e1dd5d83acd3a6c744d",
+        "sampled_peak_slots": 0,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "4096"
+          }
+        },
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 47.69637678945254,
+        "submit_to_commit_ms": 752.04,
+        "submit_to_terminal_ms": 1341.821,
+        "temp_blocks_by_role": {
+          "compiled_caller": {
+            "calls": 256,
+            "read_blocks": 0,
+            "rolname": "compiled_caller",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_owner": {
+            "calls": 10,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 274,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 1482,
+            "read_blocks": 2052,
+            "rolname": "parity_subject",
+            "spilling_statements": 1,
+            "written_blocks": 2052
+          }
+        },
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 4
+      },
+      "ordinary-4mb-b": {
+        "application_commits": 128,
+        "commit_jobs_per_s": 101.64716047068988,
+        "commit_to_terminal_ms": 629.629,
+        "completed": 64,
+        "compression": {
+          "none": 64
+        },
+        "conservative_ledger_peak_slots": 12,
+        "database_temp_bytes": 25187088,
+        "database_temp_files": 6,
+        "launch_checks": {
+          "owned-launch": 9
+        },
+        "mesh_claim": [
+          {
+            "calls": 224,
+            "execution_ms": 651.2963380000004,
+            "queryid": "1470094052699674672",
+            "read_blocks": 3078,
+            "rows": 140,
+            "written_blocks": 3078
+          }
+        ],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 65,
+        "peak_postgres_pss_kib": 209309,
+        "peak_postgres_rss_sum_kib": 1387908,
+        "postgres_memory_sample_peak_us": 104305,
+        "postgres_memory_samples_in_window": 5,
+        "postgres_memory_samples_total": 27,
+        "raw_sha256": "0431d34574702dc7b6d296fe6cccaa4e85d1b44eb0e3ff6cb9c45523a5a41f16",
+        "sampled_peak_slots": 8,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "4096"
+          }
+        },
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 41.06293986268296,
+        "submit_to_commit_ms": 928.954,
+        "submit_to_terminal_ms": 1558.583,
+        "temp_blocks_by_role": {
+          "compiled_caller": {
+            "calls": 256,
+            "read_blocks": 0,
+            "rolname": "compiled_caller",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_owner": {
+            "calls": 10,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 275,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 1560,
+            "read_blocks": 3078,
+            "rolname": "parity_subject",
+            "spilling_statements": 1,
+            "written_blocks": 3078
+          }
+        },
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 4
+      },
+      "river-external": {
+        "commit_jobs_per_s": 75.55705620264402,
+        "commit_to_terminal_ms": 847.042,
+        "committed_application_writes": 128,
+        "completed": 64,
+        "database_temp_bytes": 33566208,
+        "database_temp_files": 1,
+        "ddl_us": 171,
+        "engine": "go",
+        "mesh_claim": [],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 73,
+        "peak_postgres_pss_kib": 277091,
+        "peak_postgres_rss_sum_kib": 1630020,
+        "policy": "EXTERNAL",
+        "postgres_memory_sample_peak_us": 216891,
+        "postgres_memory_samples_in_window": 8,
+        "postgres_memory_samples_total": 24,
+        "raw_sha256": "051858af0186dc4bad015a6f2fd8e0dc0cb52d7c70d6c0a2d646946af191f6f2",
+        "sampled_peak_slots": 61,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "16384"
+          }
+        },
+        "storage_verification_us": 68854,
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 27.326837516332056,
+        "submit_to_commit_ms": 1494.978,
+        "submit_to_terminal_ms": 2342.02,
+        "temp_blocks_by_role": {
+          "parity_owner": {
+            "calls": 2,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 527,
+            "read_blocks": 0,
+            "rolname": "parity_subject",
+            "spilling_statements": 1,
+            "written_blocks": 4097
+          }
+        },
+        "terminal_transactions": 13,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 16
+      }
+    },
+    "warmup": {
+      "apalis-external": {
+        "commit_jobs_per_s": 313.61941304166726,
+        "commit_to_terminal_ms": 204.069,
+        "committed_application_writes": 128,
+        "completed": 64,
+        "database_temp_bytes": 0,
+        "database_temp_files": 0,
+        "ddl_us": 18175,
+        "engine": "rust",
+        "mesh_claim": [],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 81,
+        "peak_postgres_pss_kib": 292943,
+        "peak_postgres_rss_sum_kib": 1967616,
+        "policy": "EXTERNAL",
+        "postgres_memory_sample_peak_us": 48095,
+        "postgres_memory_samples_in_window": 2,
+        "postgres_memory_samples_total": 21,
+        "raw_sha256": "6646a8bf7ae04c85570bb43281636d8424cf520f6d34a43bfe63ed12f8058880",
+        "sampled_peak_slots": 0,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "16384"
+          }
+        },
+        "storage_verification_us": 210103,
+        "stored_column_bytes": 33558528,
+        "submit_jobs_per_s": 76.97923845882754,
+        "submit_to_commit_ms": 627.324,
+        "submit_to_terminal_ms": 831.393,
+        "temp_blocks_by_role": {
+          "parity_owner": {
+            "calls": 2,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 22,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 764,
+            "read_blocks": 0,
+            "rolname": "parity_subject",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          }
+        },
+        "terminal_transactions": 16,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 16
+      },
+      "oban-external": {
+        "commit_jobs_per_s": 106.96545684278084,
+        "commit_to_terminal_ms": 598.324,
+        "committed_application_writes": 128,
+        "completed": 64,
+        "database_temp_bytes": 33567872,
+        "database_temp_files": 1,
+        "ddl_us": 19469,
+        "engine": "oban",
+        "mesh_claim": [],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 81,
+        "peak_postgres_pss_kib": 385314,
+        "peak_postgres_rss_sum_kib": 1945732,
+        "policy": "EXTERNAL",
+        "postgres_memory_sample_peak_us": 166364,
+        "postgres_memory_samples_in_window": 6,
+        "postgres_memory_samples_total": 48,
+        "raw_sha256": "3a48fa425a99e0cb18d9bed3213c8065c240e0712967c7ea744d443f3f31e131",
+        "sampled_peak_slots": 22,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "16384"
+          }
+        },
+        "storage_verification_us": 98131,
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 34.37995219037899,
+        "submit_to_commit_ms": 1263.226,
+        "submit_to_terminal_ms": 1861.55,
+        "temp_blocks_by_role": {
+          "parity_owner": {
+            "calls": 10,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 20,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 1,
+            "written_blocks": 4097
+          },
+          "parity_subject": {
+            "calls": 962,
+            "read_blocks": 0,
+            "rolname": "parity_subject",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          }
+        },
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 16
+      },
+      "ordinary": {
+        "application_commits": 128,
+        "commit_jobs_per_s": 115.03963474915967,
+        "commit_to_terminal_ms": 556.33,
+        "completed": 64,
+        "compression": {
+          "none": 64
+        },
+        "conservative_ledger_peak_slots": 14,
+        "database_temp_bytes": 0,
+        "database_temp_files": 0,
+        "launch_checks": {
+          "owned-launch": 9
+        },
+        "mesh_claim": [
+          {
+            "calls": 216,
+            "execution_ms": 582.7777219999997,
+            "queryid": "1470094052699674672",
+            "read_blocks": 0,
+            "rows": 137,
+            "written_blocks": 0
+          }
+        ],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 65,
+        "peak_postgres_pss_kib": 212021,
+        "peak_postgres_rss_sum_kib": 1377352,
+        "postgres_memory_sample_peak_us": 81735,
+        "postgres_memory_samples_in_window": 4,
+        "postgres_memory_samples_total": 26,
+        "raw_sha256": "2350dd68a34e7aecf7bbff1fff390f762f4d75b94faf7091ae6e05f5e863e235",
+        "sampled_peak_slots": 8,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "16384"
+          }
+        },
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 49.42802507236572,
+        "submit_to_commit_ms": 738.482,
+        "submit_to_terminal_ms": 1294.812,
+        "temp_blocks_by_role": {
+          "compiled_caller": {
+            "calls": 256,
+            "read_blocks": 0,
+            "rolname": "compiled_caller",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_owner": {
+            "calls": 10,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 274,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 1518,
+            "read_blocks": 0,
+            "rolname": "parity_subject",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          }
+        },
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 16
+      },
+      "ordinary-4mb-a": {
+        "application_commits": 128,
+        "commit_jobs_per_s": 109.80960044747412,
+        "commit_to_terminal_ms": 582.827,
+        "completed": 64,
+        "compression": {
+          "none": 64
+        },
+        "conservative_ledger_peak_slots": 13,
+        "database_temp_bytes": 20989240,
+        "database_temp_files": 5,
+        "launch_checks": {
+          "owned-launch": 9
+        },
+        "mesh_claim": [
+          {
+            "calls": 210,
+            "execution_ms": 593.4830589999999,
+            "queryid": "1470094052699674672",
+            "read_blocks": 2565,
+            "rows": 132,
+            "written_blocks": 2565
+          }
+        ],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 65,
+        "peak_postgres_pss_kib": 217815,
+        "peak_postgres_rss_sum_kib": 1405900,
+        "postgres_memory_sample_peak_us": 112392,
+        "postgres_memory_samples_in_window": 4,
+        "postgres_memory_samples_total": 27,
+        "raw_sha256": "5687d684c27eb36daa90af7e67335a02ea15630960e653670bb2d13f7f2137a2",
+        "sampled_peak_slots": 7,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "4096"
+          }
+        },
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 48.83073284248274,
+        "submit_to_commit_ms": 727.823,
+        "submit_to_terminal_ms": 1310.65,
+        "temp_blocks_by_role": {
+          "compiled_caller": {
+            "calls": 256,
+            "read_blocks": 0,
+            "rolname": "compiled_caller",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_owner": {
+            "calls": 10,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 274,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 1489,
+            "read_blocks": 2565,
+            "rolname": "parity_subject",
+            "spilling_statements": 1,
+            "written_blocks": 2565
+          }
+        },
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 4
+      },
+      "ordinary-4mb-b": {
+        "application_commits": 128,
+        "commit_jobs_per_s": 101.65539456588381,
+        "commit_to_terminal_ms": 629.578,
+        "completed": 64,
+        "compression": {
+          "none": 64
+        },
+        "conservative_ledger_peak_slots": 12,
+        "database_temp_bytes": 33582784,
+        "database_temp_files": 8,
+        "launch_checks": {
+          "owned-launch": 9
+        },
+        "mesh_claim": [
+          {
+            "calls": 214,
+            "execution_ms": 682.3949889999999,
+            "queryid": "1470094052699674672",
+            "read_blocks": 4104,
+            "rows": 143,
+            "written_blocks": 4104
+          }
+        ],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 65,
+        "peak_postgres_pss_kib": 216661,
+        "peak_postgres_rss_sum_kib": 1436248,
+        "postgres_memory_sample_peak_us": 113893,
+        "postgres_memory_samples_in_window": 5,
+        "postgres_memory_samples_total": 26,
+        "raw_sha256": "a6ea4599c23cfcef9f4a9c76e62acc8a49c380c474592b5aca199f404b0e820c",
+        "sampled_peak_slots": 8,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "4096"
+          }
+        },
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 47.99450462921995,
+        "submit_to_commit_ms": 703.908,
+        "submit_to_terminal_ms": 1333.486,
+        "temp_blocks_by_role": {
+          "compiled_caller": {
+            "calls": 256,
+            "read_blocks": 0,
+            "rolname": "compiled_caller",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_owner": {
+            "calls": 10,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_producer": {
+            "calls": 274,
+            "read_blocks": 0,
+            "rolname": "parity_producer",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 1511,
+            "read_blocks": 4104,
+            "rolname": "parity_subject",
+            "spilling_statements": 1,
+            "written_blocks": 4104
+          }
+        },
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 4
+      },
+      "river-external": {
+        "commit_jobs_per_s": 74.03277338336714,
+        "commit_to_terminal_ms": 864.482,
+        "committed_application_writes": 128,
+        "completed": 64,
+        "database_temp_bytes": 33566208,
+        "database_temp_files": 1,
+        "ddl_us": 206,
+        "engine": "go",
+        "mesh_claim": [],
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "peak_connections": 71,
+        "peak_postgres_pss_kib": 301755,
+        "peak_postgres_rss_sum_kib": 1597084,
+        "policy": "EXTERNAL",
+        "postgres_memory_sample_peak_us": 126700,
+        "postgres_memory_samples_in_window": 8,
+        "postgres_memory_samples_total": 22,
+        "raw_sha256": "29cf8e3b2a03154af80431c75e7582303e86d64bdd01ea7565db36b317238e77",
+        "sampled_peak_slots": 60,
+        "settings": {
+          "autovacuum": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "block_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8192"
+          },
+          "effective_cache_size": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "524288"
+          },
+          "fsync": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "full_page_writes": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "hash_mem_multiplier": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "jit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "on"
+          },
+          "log_temp_files": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "maintenance_work_mem": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "65536"
+          },
+          "max_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "96"
+          },
+          "max_parallel_workers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "max_parallel_workers_per_gather": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "2"
+          },
+          "max_worker_processes": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "8"
+          },
+          "pg_stat_statements.track": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "top"
+          },
+          "reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "shared_buffers": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "8kB",
+            "value": "16384"
+          },
+          "shared_preload_libraries": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "pg_stat_statements"
+          },
+          "ssl": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "superuser_reserved_connections": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "0"
+          },
+          "synchronous_commit": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "temp_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "1024"
+          },
+          "temp_file_limit": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "kB",
+            "value": "-1"
+          },
+          "track_commit_timestamp": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": null,
+            "value": "on"
+          },
+          "track_io_timing": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_buffers": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": "8kB",
+            "value": "512"
+          },
+          "wal_compression": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "off"
+          },
+          "wal_level": {
+            "cluster_conf": null,
+            "source": "default",
+            "unit": null,
+            "value": "replica"
+          },
+          "work_mem": {
+            "cluster_conf": true,
+            "source": "configuration file",
+            "unit": "kB",
+            "value": "16384"
+          }
+        },
+        "storage_verification_us": 64746,
+        "stored_column_bytes": 33559808,
+        "submit_jobs_per_s": 27.416108848806157,
+        "submit_to_commit_ms": 1469.912,
+        "submit_to_terminal_ms": 2334.394,
+        "temp_blocks_by_role": {
+          "parity_owner": {
+            "calls": 2,
+            "read_blocks": 0,
+            "rolname": "parity_owner",
+            "spilling_statements": 0,
+            "written_blocks": 0
+          },
+          "parity_subject": {
+            "calls": 532,
+            "read_blocks": 0,
+            "rolname": "parity_subject",
+            "spilling_statements": 1,
+            "written_blocks": 4097
+          }
+        },
+        "terminal_transactions": 11,
+        "toast_heap_bytes": 34471936,
+        "work_mem_mib": 16
+      }
+    }
+  },
+  "raw_sha256": {
+    "measured-apalis-external/measured-rust": "aba72823b08b79df3cd35e22d7d1011f2ac02c9c5e4b97524d7f210f986c1973",
+    "measured-oban-external/measured-oban": "54d20d065ba3b696195c6197013ba543ae5cc0f7c781b3a2aecdf4ec6a24ea96",
+    "measured-ordinary-4mb-a/measured-mesh": "090345088069575932b2be0316c8cb37d671998697a94e1dd5d83acd3a6c744d",
+    "measured-ordinary-4mb-b/measured-mesh": "0431d34574702dc7b6d296fe6cccaa4e85d1b44eb0e3ff6cb9c45523a5a41f16",
+    "measured-ordinary/measured-mesh": "85143a6a7a8a55666ca8cfe2c8ebb71443fbbf51d072c85a266acc625d63ccdb",
+    "measured-river-external/measured-go": "051858af0186dc4bad015a6f2fd8e0dc0cb52d7c70d6c0a2d646946af191f6f2",
+    "warmup-apalis-external/warmup-rust": "6646a8bf7ae04c85570bb43281636d8424cf520f6d34a43bfe63ed12f8058880",
+    "warmup-oban-external/warmup-oban": "3a48fa425a99e0cb18d9bed3213c8065c240e0712967c7ea744d443f3f31e131",
+    "warmup-ordinary-4mb-a/warmup-mesh": "5687d684c27eb36daa90af7e67335a02ea15630960e653670bb2d13f7f2137a2",
+    "warmup-ordinary-4mb-b/warmup-mesh": "a6ea4599c23cfcef9f4a9c76e62acc8a49c380c474592b5aca199f404b0e820c",
+    "warmup-ordinary/warmup-mesh": "2350dd68a34e7aecf7bbff1fff390f762f4d75b94faf7091ae6e05f5e863e235",
+    "warmup-river-external/warmup-go": "29cf8e3b2a03154af80431c75e7582303e86d64bdd01ea7565db36b317238e77"
+  },
+  "scores": {
+    "apalis-external": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 9.568999999999999,
+      "attempt_to_effect_commit_p99_ms": 27.932,
+      "claim_to_last_settlement_ms": null,
+      "commit_jobs_per_s": 314.5287720108709,
+      "commit_to_pickup_p50_ms": 143.96949999999998,
+      "commit_to_pickup_p99_ms": 164.653,
+      "commit_to_settlement_p50_ms": 191.329,
+      "commit_to_settlement_p99_ms": 203.479,
+      "completed": 64,
+      "cpu_iowait_percent": 0.851063829787234,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 44,
+      "disk_flushes": 58,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 70410240,
+      "effect_commit_to_settlement_p50_ms": 23.7735,
+      "effect_commit_to_settlement_p99_ms": 42.216,
+      "entry_to_attempt_commit_p50_ms": 12.7765,
+      "entry_to_attempt_commit_p99_ms": 27.79,
+      "failed": 0,
+      "first_claim_from_commit_ms": null,
+      "first_commit_us": 1795474399034546,
+      "first_submit_to_commit_ms": 681.489,
+      "first_submit_us": 1795474398353057,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1175.493,
+      "host_samples": 6,
+      "last_settlement_us": 1795474399238025,
+      "observed_arm_wall_ms": 8864.579031,
+      "ordered_independent_writes": 64,
+      "peak_connections": 81,
+      "peak_executing": 33,
+      "peak_runner_rss_bytes": 113758208,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "pinned_kernel_cpu_ms_per_job": 15.78125,
+      "pinned_user_cpu_ms_per_job": 9.53125,
+      "runner_cpu_ms_per_job": 5.611640625000001,
+      "submit_jobs_per_s": 72.31899910505238,
+      "submit_to_pickup_p50_ms": 825.4585,
+      "submit_to_pickup_p99_ms": 846.142,
+      "submit_to_settlement_p50_ms": 872.818,
+      "submit_to_settlement_p99_ms": 884.968
+    },
+    "oban-external": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 9.160499999999999,
+      "attempt_to_effect_commit_p99_ms": 26.102,
+      "claim_to_entry_p50_ms": 125.8955,
+      "claim_to_entry_p99_ms": 341.322,
+      "claim_to_last_settlement_ms": 492.951,
+      "commit_jobs_per_s": 127.72946898469043,
+      "commit_to_claim_p50_ms": 134.591,
+      "commit_to_claim_p99_ms": 294.243,
+      "commit_to_pickup_p50_ms": 287.849,
+      "commit_to_pickup_p99_ms": 475.913,
+      "commit_to_settlement_p50_ms": 316.058,
+      "commit_to_settlement_p99_ms": 501.059,
+      "completed": 64,
+      "cpu_iowait_percent": 0.23923444976076555,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 53,
+      "disk_flushes": 110,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 70852608,
+      "effect_commit_to_settlement_p50_ms": 9.908999999999999,
+      "effect_commit_to_settlement_p99_ms": 25.635,
+      "entry_to_attempt_commit_p50_ms": 4.9795,
+      "entry_to_attempt_commit_p99_ms": 12.777,
+      "failed": 0,
+      "first_claim_from_commit_ms": 8.108,
+      "first_commit_us": 1795474389331790,
+      "first_submit_to_commit_ms": 1305.149,
+      "first_submit_us": 1795474388026641,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 2107.393,
+      "host_samples": 10,
+      "last_settlement_us": 1795474389832849,
+      "observed_arm_wall_ms": 16448.481883,
+      "ordered_independent_writes": 64,
+      "peak_connections": 81,
+      "peak_executing": 8,
+      "peak_runner_rss_bytes": 848891904,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "pinned_kernel_cpu_ms_per_job": 22.03125,
+      "pinned_user_cpu_ms_per_job": 24.0625,
+      "runner_cpu_ms_per_job": 146.436796875,
+      "submit_jobs_per_s": 35.433349868896606,
+      "submit_to_pickup_p50_ms": 1592.998,
+      "submit_to_pickup_p99_ms": 1781.062,
+      "submit_to_settlement_p50_ms": 1621.2069999999999,
+      "submit_to_settlement_p99_ms": 1806.208
+    },
+    "ordinary": {
+      "affinity": [
+        0,
+        1
+      ],
+      "application_pg_calls_per_job": 4.0,
+      "application_pg_execution_ms_per_job": 0.10795404687499999,
+      "attempt_to_effect_commit_p50_ms": 7.3865,
+      "attempt_to_effect_commit_p99_ms": 35.281,
+      "claim_to_entry_p50_ms": 41.74,
+      "claim_to_entry_p99_ms": 78.752,
+      "claim_to_last_settlement_ms": 586.748,
+      "commit_jobs_per_s": 105.85160927524726,
+      "commit_to_claim_p50_ms": 307.872,
+      "commit_to_claim_p99_ms": 531.872,
+      "commit_to_pickup_p50_ms": 345.8855,
+      "commit_to_pickup_p99_ms": 582.415,
+      "commit_to_settlement_p50_ms": 369.0835,
+      "commit_to_settlement_p99_ms": 604.62,
+      "completed": 64,
+      "cpu_iowait_percent": 0.6191950464396285,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 64,
+      "disk_flushes": 228,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 71811072,
+      "effect_commit_to_settlement_p50_ms": 13.812000000000001,
+      "effect_commit_to_settlement_p99_ms": 61.873,
+      "entry_to_attempt_commit_p50_ms": 9.0975,
+      "entry_to_attempt_commit_p99_ms": 35.845,
+      "failed": 0,
+      "first_claim_from_commit_ms": 17.872,
+      "first_commit_us": 1795474359227128,
+      "first_submit_to_commit_ms": 787.783,
+      "first_submit_us": 1795474358439345,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1665.933,
+      "host_samples": 8,
+      "last_settlement_us": 1795474359831748,
+      "mean_occupied_slots_lower": 8.388142965829777,
+      "mean_slot_residence_lower_ms": 79.244359375,
+      "observed_arm_wall_ms": 9639.526075,
+      "ordered_independent_writes": 64,
+      "peak_connections": 65,
+      "peak_executing": 13,
+      "peak_runner_rss_bytes": 114970624,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "pinned_kernel_cpu_ms_per_job": 18.90625,
+      "pinned_user_cpu_ms_per_job": 18.75,
+      "runner_cpu_ms_per_job": 17.523187500000002,
+      "submit_jobs_per_s": 45.96370447348936,
+      "submit_to_pickup_p50_ms": 1133.6685,
+      "submit_to_pickup_p99_ms": 1370.198,
+      "submit_to_settlement_p50_ms": 1156.8665,
+      "submit_to_settlement_p99_ms": 1392.403
+    },
+    "ordinary-4mb-a": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 4.209,
+      "attempt_to_effect_commit_p99_ms": 17.208,
+      "claim_to_entry_p50_ms": 28.860500000000002,
+      "claim_to_entry_p99_ms": 90.403,
+      "claim_to_last_settlement_ms": 563.753,
+      "commit_jobs_per_s": 108.51485551416543,
+      "commit_to_claim_p50_ms": 340.528,
+      "commit_to_claim_p99_ms": 570.028,
+      "commit_to_pickup_p50_ms": 367.73,
+      "commit_to_pickup_p99_ms": 581.295,
+      "commit_to_settlement_p50_ms": 377.02549999999997,
+      "commit_to_settlement_p99_ms": 589.781,
+      "completed": 64,
+      "cpu_iowait_percent": 0.7246376811594203,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 68,
+      "disk_flushes": 234,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 71921664,
+      "effect_commit_to_settlement_p50_ms": 4.1685,
+      "effect_commit_to_settlement_p99_ms": 25.6,
+      "entry_to_attempt_commit_p50_ms": 3.6835,
+      "entry_to_attempt_commit_p99_ms": 16.396,
+      "failed": 0,
+      "first_claim_from_commit_ms": 26.028,
+      "first_commit_us": 1795474337829972,
+      "first_submit_to_commit_ms": 752.04,
+      "first_submit_us": 1795474337077932,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1409.222,
+      "host_samples": 7,
+      "last_settlement_us": 1795474338419753,
+      "mean_occupied_slots_lower": 5.5981694900310455,
+      "mean_slot_residence_lower_ms": 51.58896875,
+      "observed_arm_wall_ms": 9460.868359,
+      "ordered_independent_writes": 64,
+      "peak_connections": 65,
+      "peak_executing": 0,
+      "peak_runner_rss_bytes": 90759168,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "pinned_kernel_cpu_ms_per_job": 16.40625,
+      "pinned_user_cpu_ms_per_job": 17.5,
+      "runner_cpu_ms_per_job": 17.098781250000002,
+      "submit_jobs_per_s": 47.69637678945254,
+      "submit_to_pickup_p50_ms": 1119.77,
+      "submit_to_pickup_p99_ms": 1333.335,
+      "submit_to_settlement_p50_ms": 1129.0655000000002,
+      "submit_to_settlement_p99_ms": 1341.821
+    },
+    "ordinary-4mb-b": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 5.1815,
+      "attempt_to_effect_commit_p99_ms": 15.729,
+      "claim_to_entry_p50_ms": 39.0875,
+      "claim_to_entry_p99_ms": 78.063,
+      "claim_to_last_settlement_ms": 580.119,
+      "commit_jobs_per_s": 101.64716047068988,
+      "commit_to_claim_p50_ms": 368.01,
+      "commit_to_claim_p99_ms": 619.51,
+      "commit_to_pickup_p50_ms": 388.457,
+      "commit_to_pickup_p99_ms": 625.253,
+      "commit_to_settlement_p50_ms": 405.624,
+      "commit_to_settlement_p99_ms": 629.629,
+      "completed": 64,
+      "cpu_iowait_percent": 1.917808219178082,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 155,
+      "disk_flushes": 238,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 71901184,
+      "effect_commit_to_settlement_p50_ms": 5.8395,
+      "effect_commit_to_settlement_p99_ms": 18.457,
+      "entry_to_attempt_commit_p50_ms": 3.6855,
+      "entry_to_attempt_commit_p99_ms": 14.131,
+      "failed": 0,
+      "first_claim_from_commit_ms": 49.51,
+      "first_commit_us": 1795474370457490,
+      "first_submit_to_commit_ms": 928.954,
+      "first_submit_us": 1795474369528536,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1871.826,
+      "host_samples": 9,
+      "last_settlement_us": 1795474371087119,
+      "mean_occupied_slots_lower": 5.516315163373987,
+      "mean_slot_residence_lower_ms": 54.26925,
+      "observed_arm_wall_ms": 9788.068935,
+      "ordered_independent_writes": 64,
+      "peak_connections": 65,
+      "peak_executing": 8,
+      "peak_runner_rss_bytes": 98598912,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "pinned_kernel_cpu_ms_per_job": 20.46875,
+      "pinned_user_cpu_ms_per_job": 20.15625,
+      "runner_cpu_ms_per_job": 18.452375,
+      "submit_jobs_per_s": 41.06293986268296,
+      "submit_to_pickup_p50_ms": 1317.411,
+      "submit_to_pickup_p99_ms": 1554.207,
+      "submit_to_settlement_p50_ms": 1334.578,
+      "submit_to_settlement_p99_ms": 1558.583
+    },
+    "river-external": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 15.9565,
+      "attempt_to_effect_commit_p99_ms": 151.261,
+      "claim_to_entry_p50_ms": 387.0435,
+      "claim_to_entry_p99_ms": 587.601,
+      "claim_to_last_settlement_ms": 846.228,
+      "commit_jobs_per_s": 75.55705620264402,
+      "commit_to_claim_p50_ms": 10.4255,
+      "commit_to_claim_p99_ms": 21.625,
+      "commit_to_pickup_p50_ms": 402.277,
+      "commit_to_pickup_p99_ms": 593.752,
+      "commit_to_settlement_p50_ms": 788.021,
+      "commit_to_settlement_p99_ms": 847.042,
+      "completed": 64,
+      "cpu_iowait_percent": 0.199203187250996,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 52,
+      "disk_flushes": 107,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 70967296,
+      "effect_commit_to_settlement_p50_ms": 200.3955,
+      "effect_commit_to_settlement_p99_ms": 392.362,
+      "entry_to_attempt_commit_p50_ms": 117.95349999999999,
+      "entry_to_attempt_commit_p99_ms": 227.98,
+      "failed": 0,
+      "first_claim_from_commit_ms": 0.814,
+      "first_commit_us": 1795474349373218,
+      "first_submit_to_commit_ms": 1494.978,
+      "first_submit_us": 1795474347878240,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 2520.102,
+      "host_samples": 12,
+      "last_settlement_us": 1795474350220260,
+      "observed_arm_wall_ms": 8812.180745,
+      "ordered_independent_writes": 64,
+      "peak_connections": 73,
+      "peak_executing": 61,
+      "peak_runner_rss_bytes": 228143104,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "pinned_kernel_cpu_ms_per_job": 26.25,
+      "pinned_user_cpu_ms_per_job": 29.375,
+      "runner_cpu_ms_per_job": 14.013187499999999,
+      "submit_jobs_per_s": 27.326837516332056,
+      "submit_to_pickup_p50_ms": 1897.255,
+      "submit_to_pickup_p99_ms": 2088.73,
+      "submit_to_settlement_p50_ms": 2282.999,
+      "submit_to_settlement_p99_ms": 2342.02
+    }
+  }
+}
