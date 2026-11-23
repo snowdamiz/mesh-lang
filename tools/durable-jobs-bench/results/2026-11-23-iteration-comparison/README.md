@@ -10,6 +10,8 @@ For each trusted Mesh rotation, the paired time budget shows how much end-to-end
 
 Protected Mesh creates a separate process for each attempt. The smaller-worker experiment preserves fresh exec and fenced writes for its eligible handler. The trusted shared-process experiment runs ordinary application SQL in the runner's trust domain. Both write transactions must commit independently in every scored job. The symmetric storage series configures PostgreSQL EXTERNAL payload storage on all four engines. The separate Mesh-only storage series retains the default storage on its peers.
 
+The paired handler-progress tables follow the short and large batches through both application writes. They count how many Mesh jobs were still waiting for each step at the instant the peer finished, relative to each arm’s own enqueue commit. [Handler progress and backlog](handler-progress.md)
+
 ## Replay
 
 From the checkout root, rebuild the standalone page from the committed score data.

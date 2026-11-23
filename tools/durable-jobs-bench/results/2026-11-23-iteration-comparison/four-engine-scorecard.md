@@ -61,6 +61,19 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | River | 697.01 | 754.41 | 2/5 | 2/5 |
 | Apalis | 742.12 | 790.22 | 0/5 | 1/5 |
 
+## Large jobs with equal PostgreSQL work_mem
+
+5/5 matched rotations. All four engines use EXTERNAL argument storage and 16 MiB work_mem. Both extra Mesh controls use the same executable at 4 MiB.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Trusted Mesh · 16 MiB | 47.54 | 105.85 | — | — |
+| Same binary · 4 MiB A | 47.26 | 101.40 | 3/5 | 4/5 |
+| Same binary · 4 MiB B | 43.67 | 101.65 | 5/5 | 4/5 |
+| Oban | 36.89 | 116.70 | 5/5 | 1/5 |
+| River | 27.33 | 72.61 | 5/5 | 5/5 |
+| Apalis | 75.52 | 321.68 | 0/5 | 0/5 |
+
 Dense, short, slow and sparse use each engine's standard producer. Large uses the direct-file Mesh producer with both Mesh modes and PostgreSQL EXTERNAL argument storage on every engine. The sparse workload includes the prescribed gaps between arrivals. Every completed job has two independently committed application writes.
 
-Protected Mesh executes a fresh process and fences its two application writes. Trusted Mesh runs the handler in the application's process with its database credentials. The five-workload comparison uses the V1 binaries. The short grouped-success comparison uses its own frozen V2 inventory. [Per-rotation chart](chart.html) · [Data, binary identities and raw digests](scores.json) · [Slow-job slot use](slow-slots.md) · [How each engine groups durable completions](../2026-11-23-native-completion-batches/README.md) · [Original four-engine baseline](../2026-11-23-baseline/README.md)
+Protected Mesh executes a fresh process and fences its two application writes. Trusted Mesh runs the handler in the application's process with its database credentials. The five-workload comparison uses the V1 binaries. The short grouped-success comparison uses its own frozen V2 inventory. [Per-rotation chart](chart.html) · [Data, binary identities and raw digests](scores.json) · [Handler entry and the remaining backlog](handler-progress.md) · [Slow-job slot use](slow-slots.md) · [How each engine groups durable completions](../2026-11-23-native-completion-batches/README.md) · [Original four-engine baseline](../2026-11-23-baseline/README.md)

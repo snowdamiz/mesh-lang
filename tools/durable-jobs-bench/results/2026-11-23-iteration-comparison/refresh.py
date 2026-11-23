@@ -151,10 +151,16 @@ def write_scorecard(data):
     add_policy_table(lines, data.get("bulk-short", {}), "Short jobs with both producer and runner changes",
                      "Both Mesh lanes use the V2 grouped-success policy. Only the producer's set-based enqueue switch changes.",
                      [("bulk", "Trusted Mesh · batch enqueue"), ("scalar", "Same binary · scalar enqueue"), *peers])
+    add_policy_table(lines, data.get("workmem-large", {}), "Large jobs with equal PostgreSQL work_mem",
+                     "All four engines use EXTERNAL argument storage and 16 MiB work_mem. "
+                     "Both extra Mesh controls use the same executable at 4 MiB.",
+                     [("ordinary", "Trusted Mesh · 16 MiB"), ("ordinary-4mb-a", "Same binary · 4 MiB A"),
+                      ("ordinary-4mb-b", "Same binary · 4 MiB B"), ("oban-external", "Oban"),
+                      ("river-external", "River"), ("apalis-external", "Apalis")])
     lines += [
         "Dense, short, slow and sparse use each engine's standard producer. Large uses the direct-file Mesh producer with both Mesh modes and PostgreSQL EXTERNAL argument storage on every engine. The sparse workload includes the prescribed gaps between arrivals. Every completed job has two independently committed application writes.",
         "",
-        "Protected Mesh executes a fresh process and fences its two application writes. Trusted Mesh runs the handler in the application's process with its database credentials. The five-workload comparison uses the V1 binaries. The short grouped-success comparison uses its own frozen V2 inventory. [Per-rotation chart](chart.html) · [Data, binary identities and raw digests](scores.json) · [Slow-job slot use](slow-slots.md) · [How each engine groups durable completions](../2026-11-23-native-completion-batches/README.md) · [Original four-engine baseline](../2026-11-23-baseline/README.md)", "",
+        "Protected Mesh executes a fresh process and fences its two application writes. Trusted Mesh runs the handler in the application's process with its database credentials. The five-workload comparison uses the V1 binaries. The short grouped-success comparison uses its own frozen V2 inventory. [Per-rotation chart](chart.html) · [Data, binary identities and raw digests](scores.json) · [Handler entry and the remaining backlog](handler-progress.md) · [Slow-job slot use](slow-slots.md) · [How each engine groups durable completions](../2026-11-23-native-completion-batches/README.md) · [Original four-engine baseline](../2026-11-23-baseline/README.md)", "",
     ]
     (HERE / "four-engine-scorecard.md").write_text("\n".join(lines))
 
@@ -173,6 +179,7 @@ def write_producer_budgets(data):
     for series, workload, lane in [
         ("ordinary", "Short", "ordinary"), ("ordinary-slow", "Slow", "ordinary"),
         ("ordinary-large", "Large · EXTERNAL", "ordinary"), ("ordinary-dense", "Dense", "ordinary"),
+        ("workmem-large", "Large · EXTERNAL and 16 MiB work_mem", "ordinary"),
         ("ordinary-cohort", "Short · grouped settlements", "ordinary-success-cohort"),
         ("bulk-slow", "Slow · batch enqueue", "bulk"), ("bulk-short", "Short · batch enqueue and grouped settlements", "bulk"),
     ]:

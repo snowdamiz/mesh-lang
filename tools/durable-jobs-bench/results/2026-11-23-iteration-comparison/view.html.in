@@ -54,6 +54,7 @@ const workloads={noop:"Dense no-op",slow:"Slow · 64 slots",sparse:"Sparse arriv
 const names={mesh:"Mesh",ordinary:"Mesh · trusted",stock:"Mesh · stock",current:"Mesh · current",historical:"Mesh · archived",
  lean:"Mesh · smaller worker",admission:"Mesh · set-based claims",combined:"Mesh · combined",
  "mesh-strict":"Mesh · fresh worker","mesh-trusted-persistent":"Mesh · reusable worker",
+ "ordinary-4mb-a":"Mesh · 4 MiB control A","ordinary-4mb-b":"Mesh · 4 MiB control B",
  "admission-v3":"Mesh · set-based admission","ordinary-stock":"Mesh · trusted, individual settlements",
  "ordinary-success-cohort":"Mesh · trusted, grouped settlements",bulk:"Mesh · batch enqueue",scalar:"Mesh · same binary, scalar enqueue",
  "protected-mesh":"Mesh · protected","mesh-stock-a":"Mesh · stock A","mesh-stock-b":"Mesh · stock B",
