@@ -23,6 +23,8 @@ class AdmissionCut(Cut):
     def reply(self, pg, cli, target):
         if not target or self.placement in ("partial_row", "drop_ready"):
             return super().reply(pg, cli, target)
+        if self.placement in ("wrong_commit_tag", "malformed_transaction_ready"):
+            return self.damage_receipt(pg, cli)
         rows = 0
         while True:
             kind, header, data = frame(pg)
@@ -39,6 +41,25 @@ class AdmissionCut(Cut):
             if kind == b"Z":
                 # Continue relaying through the client's ROLLBACK or close.
                 assert data == b"T" and rows == 2
+                return False
+
+
+    def damage_receipt(self, pg, cli):
+        while True:
+            kind, header, data = frame(pg)
+            if kind == b"C" and self.placement == "wrong_commit_tag":
+                assert data == b"COMMIT\0"
+                data = b"ROLLBACK\0"
+                header = struct.pack("!I", len(data) + 4)
+                self.witness = dict(real_command="COMMIT", relayed_command="ROLLBACK")
+            if kind == b"Z" and self.placement == "malformed_transaction_ready":
+                assert data == b"T"
+                cli.sendall(kind + struct.pack("!I", 4))
+                self.witness = dict(real_state="T", relayed_state="")
+                return True
+            cli.sendall(kind + header + data)
+            if kind == b"Z":
+                assert data == b"I" and self.witness
                 return False
 
 
@@ -59,7 +80,7 @@ def run_case(cluster, executable, placement):
         SELECT '{ns}','parity',1,'default',jsonb_build_object('key',n),'{{}}','[]','available',
             0,n,60000,0,0,0,n FROM generate_series(1,2) n;
     """)
-    post_commit = placement == "drop_ready"
+    post_commit = placement in ("drop_ready", "wrong_commit_tag")
 
     def matches(sql):
         return sql == b"COMMIT" if post_commit else b"FROM mesh_jobs.claim_admitted_v3(" in sql
@@ -104,7 +125,8 @@ def main():
             cluster.prepare_database("mesh")
             cluster.sql("mesh", "SET ROLE parity_subject;\n" + schema)
             cases = {placement: run_case(cluster, args.executable.resolve(), placement)
-                     for placement in ("partial_row", "bad_ordinal", "missing_last_row", "drop_ready")}
+                     for placement in ("partial_row", "bad_ordinal", "missing_last_row", "drop_ready",
+                                       "wrong_commit_tag", "malformed_transaction_ready")}
         finally:
             cluster.stop()
     args.output.write_text(json.dumps(dict(schema_sha256=digest(schema.encode()),
