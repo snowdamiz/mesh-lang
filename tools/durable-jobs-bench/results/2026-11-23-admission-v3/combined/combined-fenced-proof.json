@@ -1,0 +1,237 @@
+[
+  {
+    "claim": {
+      "id": "af564fff-36b0-42db-b0fd-4aaa91847a23",
+      "attempt": 1,
+      "state": "executing",
+      "xid": "760",
+      "committed_us": 1795464813626616
+    },
+    "effects": [
+      {
+        "step": 1,
+        "worker_pid": 1175441,
+        "backend": 1175423,
+        "xid": "761",
+        "entered_us": 1795464813640703,
+        "committed_us": 1795464813746838
+      },
+      {
+        "step": 2,
+        "worker_pid": null,
+        "backend": 1175423,
+        "xid": "762",
+        "entered_us": null,
+        "committed_us": 1795464813832935
+      }
+    ],
+    "reap": [
+      1175419,
+      1175441,
+      1,
+      0,
+      2851,
+      4752,
+      165,
+      0,
+      13824,
+      1795464813899684
+    ],
+    "settled": {
+      "id": "af564fff-36b0-42db-b0fd-4aaa91847a23",
+      "attempt": 1,
+      "state": "completed",
+      "xid": "763",
+      "committed_us": 1795464813905129
+    },
+    "exec": {
+      "pid": 1175441,
+      "ppid": 1175419,
+      "pgrp": 1175441,
+      "start_ticks": 1658602,
+      "argv0": "/proc/self/fd/4"
+    },
+    "witness": [
+      "LEAN_CTOR_A 1175441 1175441 0x607416e9890c",
+      "LEAN_CTOR_B 1175441 1175445",
+      "LEAN_THREAD_TLS 1175441 917",
+      "LEAN_HANDLER 1175441 1175445"
+    ],
+    "resets": 3
+  },
+  {
+    "claim": {
+      "id": "ebfe9a41-7ece-45b7-bc0c-feb4fef4b81f",
+      "attempt": 1,
+      "state": "executing",
+      "xid": "760",
+      "committed_us": 1795464813626616
+    },
+    "effects": [
+      {
+        "step": 1,
+        "worker_pid": 1175446,
+        "backend": 1175423,
+        "xid": "765",
+        "entered_us": 1795464813638032,
+        "committed_us": 1795464813941914
+      },
+      {
+        "step": 2,
+        "worker_pid": null,
+        "backend": 1175423,
+        "xid": "768",
+        "entered_us": null,
+        "committed_us": 1795464814024857
+      }
+    ],
+    "reap": [
+      1175419,
+      1175446,
+      1,
+      0,
+      2109,
+      6328,
+      168,
+      0,
+      13824,
+      1795464814083746
+    ],
+    "settled": {
+      "id": "ebfe9a41-7ece-45b7-bc0c-feb4fef4b81f",
+      "attempt": 1,
+      "state": "completed",
+      "xid": "771",
+      "committed_us": 1795464814084627
+    },
+    "exec": {
+      "pid": 1175446,
+      "ppid": 1175419,
+      "pgrp": 1175446,
+      "start_ticks": 1658602,
+      "argv0": "/proc/self/fd/4"
+    },
+    "witness": [
+      "LEAN_CTOR_A 1175446 1175446 0x5e4f5096090c",
+      "LEAN_CTOR_B 1175446 1175450",
+      "LEAN_THREAD_TLS 1175446 917",
+      "LEAN_HANDLER 1175446 1175450"
+    ],
+    "resets": 5
+  },
+  {
+    "claim": {
+      "id": "dff563e6-a5f4-42e2-aba4-d9cabe2e7c66",
+      "attempt": 1,
+      "state": "executing",
+      "xid": "775",
+      "committed_us": 1795464814119091
+    },
+    "effects": [
+      {
+        "step": 1,
+        "worker_pid": 1175492,
+        "backend": 1175423,
+        "xid": "778",
+        "entered_us": 1795464814125069,
+        "committed_us": 1795464814182336
+      },
+      {
+        "step": 2,
+        "worker_pid": null,
+        "backend": 1175423,
+        "xid": "781",
+        "entered_us": null,
+        "committed_us": 1795464814265325
+      }
+    ],
+    "reap": [
+      1175419,
+      1175492,
+      1,
+      0,
+      2410,
+      3214,
+      169,
+      0,
+      13824,
+      1795464814319259
+    ],
+    "settled": {
+      "id": "dff563e6-a5f4-42e2-aba4-d9cabe2e7c66",
+      "attempt": 1,
+      "state": "completed",
+      "xid": "783",
+      "committed_us": 1795464814320257
+    },
+    "exec": {
+      "pid": 1175492,
+      "ppid": 1175419,
+      "pgrp": 1175492,
+      "start_ticks": 1658651,
+      "argv0": "/proc/self/fd/4"
+    },
+    "witness": [
+      "LEAN_CTOR_A 1175492 1175492 0x5d30cb04b90c",
+      "LEAN_CTOR_B 1175492 1175496",
+      "LEAN_THREAD_TLS 1175492 917",
+      "LEAN_HANDLER 1175492 1175496"
+    ],
+    "resets": 7
+  },
+  {
+    "claim": {
+      "id": "6ae6f975-f208-4a7a-83ab-bfd50230f1fe",
+      "attempt": 1,
+      "state": "executing",
+      "xid": "791",
+      "committed_us": 1795464814513410
+    },
+    "effects": [
+      {
+        "step": 1,
+        "worker_pid": 1175535,
+        "backend": 1175517,
+        "xid": "794",
+        "entered_us": 1795464814520998,
+        "committed_us": 1795464814586271
+      },
+      {
+        "step": 2,
+        "worker_pid": null,
+        "backend": 1175517,
+        "xid": "797",
+        "entered_us": null,
+        "committed_us": 1795464814665205
+      }
+    ],
+    "reap": [
+      1175513,
+      1175535,
+      1,
+      0,
+      2516,
+      2516,
+      310,
+      0,
+      8320,
+      1795464814724300
+    ],
+    "settled": {
+      "id": "6ae6f975-f208-4a7a-83ab-bfd50230f1fe",
+      "attempt": 1,
+      "state": "completed",
+      "xid": "800",
+      "committed_us": 1795464814729402
+    },
+    "exec": {
+      "pid": 1175535,
+      "ppid": 1175513,
+      "pgrp": 1175535,
+      "start_ticks": 1658690,
+      "argv0": "/proc/self/exe"
+    },
+    "witness": [],
+    "resets": 10
+  }
+]
