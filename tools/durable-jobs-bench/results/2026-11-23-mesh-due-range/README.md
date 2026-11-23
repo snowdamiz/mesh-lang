@@ -12,3 +12,5 @@ PG_BIN_DIR=/opt/homebrew/opt/postgresql@17/bin \
 ```
 
 The exact candidate passed the macOS workspace suite with 4,813 tests, the PostgreSQL 17.11 compatibility and scoped-role gate, and the effect-fence proof. The native Linux dense and sparse diagnostic arms reconciled 1,048 jobs with two ordered writes per job. [Local proof receipt](local-proof.json), [full native repeat](../2026-11-23-due-range-repeat/README.md)
+
+Host verification matched 409 raw arm status records to 409 sanitized local archives. The build caches were removed. The sealed runner and scoped source stay available for replay. [Host archive verification](host-verification.json), [compiler and runtime hashes](mesh-toolchain.txt)

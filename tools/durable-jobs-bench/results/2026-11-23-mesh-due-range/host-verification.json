@@ -1,0 +1,49 @@
+{
+  "host_and_local_evidence": {
+    "all_profile_repeat": {
+      "host_status_records": 160,
+      "local_archives": 160,
+      "series": "2026-11-23-due-range-repeat-835451850a3942f5a1d80047645291a5"
+    },
+    "baseline": {
+      "host_status_records": 160,
+      "local_archives": 160,
+      "series": "2026-11-23-baseline-d517bb9324fe45c2b2d64138014cc409"
+    },
+    "candidate_smoke": {
+      "host_status_records": 2,
+      "local_archives": 2,
+      "series": "due-range-smoke-638422621b5549519ec5cf11d1f84533"
+    },
+    "dense_profile": {
+      "host_status_records": 2,
+      "local_archives": 2,
+      "series": "dense-profile-d0555e035ac34570aef9eacd470a165f"
+    },
+    "focused_baseline": {
+      "host_status_records": 10,
+      "local_archives": 10,
+      "series": "due-range-focus-baseline-8bb74432ed6f463f8244a6f1ab9ce1c2"
+    },
+    "focused_candidate": {
+      "host_status_records": 10,
+      "local_archives": 10,
+      "series": "due-range-focus-candidate-fcbb23d1598a4fa789467a04ada2c5d8"
+    },
+    "reversed_controls": {
+      "host_status_records": 64,
+      "local_archives": 64,
+      "series": "2026-11-23-controls-27cefb81f0ca4f6787b74aad51774a82"
+    },
+    "setup_transport": {
+      "host_status_records": 1,
+      "local_archives": 1,
+      "series": "transport-check-83644cac0fe84490a4119c1df52014dc"
+    }
+  },
+  "removed_disposable_build_paths": [
+    "/var/tmp/mesh-durable-jobs-matrix/due-range-ee59322673e9/cargo-target",
+    "/var/tmp/mesh-durable-jobs-matrix/due-range-ee59322673e9/cargo-home"
+  ],
+  "retained_candidate": "/var/tmp/mesh-durable-jobs-matrix/due-range-ee59322673e9/artifact/mesh"
+}

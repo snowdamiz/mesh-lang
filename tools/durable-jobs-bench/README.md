@@ -2,7 +2,7 @@
 
 ## Adapter handoff
 
-The matrix owner runs official timing. Keep builders and functional smokes off the host during timing. While setting up, each lane should publish its host command, build identity, and ready state in its own README. State now is **TIMING** for the Mesh due-query repeat. The [reversed controls](results/2026-11-23-controls/README.md) and [four-engine baseline](results/2026-11-23-baseline/README.md) are complete.
+The matrix owner runs official timing. Keep builders and functional smokes off the host during timing. While setting up, each lane should publish its host command, build identity, and ready state in its own README. State now is **IDLE**. The [reversed controls](results/2026-11-23-controls/README.md), [four-engine baseline](results/2026-11-23-baseline/README.md), [full candidate repeat](results/2026-11-23-due-range-repeat/README.md), and [alternating dense pairs](results/2026-11-23-due-range-focused/README.md) are complete.
 
 Each adapter runs one fresh, single-engine arm per invocation. Entry point arguments are `PROFILE EVIDENCE_DIRECTORY` (plus any fixed arguments in the adapter's command prefix). The controller creates an empty mode-0700 evidence directory and pins the invocation to the shared two CPUs. Use a separate owned scratch directory for disposable data and credentials. Start a fresh capped PostgreSQL cluster or reset an equivalently isolated owned trial cluster outside the timed window. Return nonzero on any failure, retaining the safe evidence produced so far. The controller provides `DURABLE_JOBS_PHASE` (`warmup`, `measured`, or `diagnostic`). Adapters should run exactly one stand-alone arm per call and defer warmup ordering to the controller.
 

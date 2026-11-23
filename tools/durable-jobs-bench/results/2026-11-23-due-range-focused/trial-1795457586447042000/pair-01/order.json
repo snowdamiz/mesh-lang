@@ -1,0 +1,8 @@
+{
+  "order": [
+    "baseline",
+    "candidate"
+  ],
+  "pair": 1,
+  "profile": "noop"
+}

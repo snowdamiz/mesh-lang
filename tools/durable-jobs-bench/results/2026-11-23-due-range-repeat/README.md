@@ -2,7 +2,7 @@
 
 The candidate repeated all five profiles in five rotated groups. All 100 measured arms and 60 unmeasured warmups passed. The measured arms reconciled 35,040 jobs and 70,080 ordered application commits. The four engines reused the baseline's host boot, CPU mask, disk, PostgreSQL 17.11 TLS setup, and frozen inputs. The candidate changed the Mesh due query and rebuilt its Rust runtime. Oban, River, and Apalis used their baseline release and wrapper fingerprints. [Build and plan witness](../2026-11-23-mesh-due-range/README.md), [validated blocks](index.json)
 
-The table shows submit-to-durable-settlement jobs/s. Cells show the median [minimum–maximum] across five arms. The two full series ran at different times. The alternating no-op pairs test the old/new Mesh change directly.
+The table shows submit-to-durable-settlement jobs/s. Cells show the median [minimum–maximum] across five arms. The two full series ran at different times. Five alternating no-op pairs test the old/new Mesh change directly. [Alternating dense repeat](../2026-11-23-due-range-focused/README.md)
 
 | Profile | Baseline Mesh | Candidate Mesh | Oban | River | Apalis |
 | --- | ---: | ---: | ---: | ---: | ---: |
