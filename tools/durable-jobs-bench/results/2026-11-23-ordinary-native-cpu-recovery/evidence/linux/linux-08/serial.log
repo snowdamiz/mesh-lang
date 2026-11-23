@@ -1,0 +1,26 @@
+PLATFORM aarch64 6.12.115-0-virt 3.14.4
+AFFINITY workload [0, 1] recorder [2]
+2026-11-23 23:30:56.900 UTC [391] WARNING:  no usable system locales were found
+The files belonging to this database system will be owned by user "nobody".
+SERVER 17.11
+LEGACY REJECTED unexpected TLS role census: {'pg_producer': 1, 'pg_application': 32, 'pg_jobs': 23}
+LEGACY REJECTED unexpected TLS role census: {'pg_producer': 1, 'pg_application': 32, 'pg_jobs': 26}
+Traceback (most recent call last):
+  File [35m"/roster/linux-roster-smoke.py"[0m, line [35m296[0m, in [35m<module>[0m
+    [31mmain[0m[1;31m()[0m
+    [31m~~~~[0m[1;31m^^[0m
+  File [35m"/roster/linux-roster-smoke.py"[0m, line [35m287[0m, in [35mmain[0m
+    [31mfixture[0m[1;31m(postmaster, engine, jobs, runners, broker.pid)[0m
+    [31m~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"/roster/linux-roster-smoke.py"[0m, line [35m219[0m, in [35mfixture[0m
+    [31mtrusted_frame[0m[1;31m(roster)[0m
+    [31m~~~~~~~~~~~~~[0m[1;31m^^^^^^^^[0m
+  File [35m"/roster/linux-roster-smoke.py"[0m, line [35m94[0m, in [35mtrusted_frame[0m
+    frame = roster.frame()
+  File [35m"/roster/dynamic_roster.py"[0m, line [35m233[0m, in [35mframe[0m
+    [31mbefore_deadline[0m[1;31m(deadline)[0m
+    [31m~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^[0m
+  File [35m"/roster/dynamic_roster.py"[0m, line [35m24[0m, in [35mbefore_deadline[0m
+    raise TimeoutError("roster snapshot exceeded the existing frame limit")
+[1;35mTimeoutError[0m: [35mroster snapshot exceeded the existing frame limit[0m
+ROSTER_SMOKE_EXIT 1

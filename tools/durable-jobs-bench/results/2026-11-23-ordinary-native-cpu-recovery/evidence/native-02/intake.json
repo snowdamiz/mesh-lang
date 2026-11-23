@@ -1,0 +1,62 @@
+{
+  "assignment": {
+    "request": "ordinary-native-cpu",
+    "utc_end": "2026-11-23T23:18:26Z",
+    "utc_start": "2026-11-23T23:06:26Z"
+  },
+  "request": {
+    "artifacts": {
+      "oban": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+      "ordinary": "8306bc3eeeeae1e44959dd08a081898e36c466ff467c0f11fc680cb26c067094",
+      "river": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0"
+    },
+    "clock_ticks": 100,
+    "controller": "linode-native-stepchange-controller-v1",
+    "cpus": [
+      0,
+      1
+    ],
+    "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-native-cpu/native-02",
+    "expected_setup_minutes": 12,
+    "frozen_input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "host": [
+      "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "6.8.0-149-generic",
+      "8:0"
+    ],
+    "id": "ordinary-native-cpu",
+    "kind": "Exclusive controller-owned SETUP diagnostic after priority series",
+    "local_clock_receipts": {
+      "after_sha256": "7c1317e6acf667898202cc1409f29c271fe658d00df1091d50a93a5712885bc1",
+      "before_sha256": "d5e214d7bd9d1b84cda9c20ac50dde9eca8b83311ced39d8726ab13f30cb29f5",
+      "mac_tests_sha256": "9004ad6a400b7c9e3e37836cc43c745da375e6317a5168f473a954c170a5c4c8"
+    },
+    "local_gate": "Reproduced old AttributeError and passed corrected default libc clock on a real local Linux ARM64 CPython 3.14.4 guest. Verified staged worker entry and exact imported canonical worker; root reporter sampled UID 65534 child and rejected exit during the sample and after reap. All six macOS tests passed, including the signed ABI seam, PID replacement, and the five canonical archived dense ledgers.",
+    "local_sha256": {
+      "target/ordinary-native-cpu/canonical_worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b",
+      "target/ordinary-native-cpu/check.py": "5135bf1a9dbfffe2258e21b23b781e3afd778412815eeafd648486946f477e30",
+      "target/ordinary-native-cpu/clock-smoke.py": "d5a485e1f8d3c425b145659ba529b5aec10f577dba12d752bbb43898dc354c20",
+      "target/ordinary-native-cpu/collector.py": "effa74c206bc58021cdb0befacdf5268ff1a0582e29286d4be7798365cc4bf3f",
+      "target/ordinary-native-cpu/diagnose.py": "6ed147e02d4fcb8a5c0b5035b3e40ff08500f714f2d0930c1180bb62a99162aa",
+      "target/ordinary-native-cpu/inventory.json": "cf2ad9e10cac5f1df46b3d2103ba2fbb9a7d994c4143fa4bddb59b694046c132",
+      "target/ordinary-native-cpu/local-vz-smoke.py": "8cafc5a725ac1cab3b36e4cf90852511b74e2616e1f8c33109f994de766fe3f2",
+      "target/ordinary-native-cpu/reduce.py": "9c0d73f003cf1e9af664dee5bf3785eed9ff997c6e570c824357f9a7d1b4f9d6",
+      "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+      "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+      "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+    },
+    "operator_id": "ordinary-native-cpu",
+    "ordinary_runner_elf_sha256": "faefaf34344958650a0fbdd19556d86d9f5126c5007b9c77225447004a6781e4",
+    "portable_packet": "tools/durable-jobs-bench/results/2026-11-23-ordinary-native-cpu",
+    "prerequisites": "Controller-owned explicit SETUP in requests/STATUS.md with UTC bounds and release of priority work; existing local, remote matrix, and native locks. No background services, build, scoring, or connection-cap changes. Controller owns dispatch and publishes release/exit after locks clear.",
+    "ready": true,
+    "replaces_request_sha256": "f9f6fc3499b0aeadd562d4e21d659d60d7eaf349f7a2319c0470b9b4b059dc30",
+    "replay_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-native-cpu/diagnose.py replay /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-native-cpu/native-02",
+    "requested_at": "2026-11-23T22:06:46.024131+00:00",
+    "scope": "Read-only CPU attribution with the existing signed/pinned ordinary V1 runner and stock Oban and River. Two opposite lane orders with OFF/ON/OFF per lane, 18 disposable noop trials. Oban and ordinary get role and root process CPU; River gets high-rate host tick and standard rusage controls. CPU 0,1, 8 runners \u00d7 8 slots, noop dense 1,024 jobs, PG 17.11 TLS, max 96 physical connections, ordinary 32 application sessions and one broker.",
+    "setup_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-native-cpu/diagnose.py dispatch /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-native-cpu/native-02",
+    "source_sha": "3828f20d2d6beb683868cce33e6dd1958365914b",
+    "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-native-cpu",
+    "state": "ready"
+  }
+}
