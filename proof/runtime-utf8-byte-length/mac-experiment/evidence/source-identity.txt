@@ -1,0 +1,2 @@
+Verified 1504 tracked blobs from dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17 with the single compiler patch at compiler/mesh-codegen/src/codegen/expr.rs.
+Patched blob 07977890cb2b5c10603fdc4de0bcacc4b76a2d56

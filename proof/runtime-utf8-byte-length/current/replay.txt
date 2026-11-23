@@ -1,0 +1,10 @@
+baseline 73b022d9432a81b07c21496340eeea2bac4e5f64168dbf3a55a6b0076298b7d3
+candidate 7c06ba2620888cb5ab65e9fec1600e927c02f6eb4b3687700003e14f7df6a757
+runtime d2e3ad1f6cf8334d4b75a57d2b6fef18197780c72435eb7a2cb1ec5c4610231b
+native target aarch64-apple-darwin
+baseline passed O0/O1/O2, panic, GC stress, frozen producer IR and component byte sum
+candidate passed O0/O1/O2, panic, GC stress, frozen producer IR and component byte sum
+baseline x86_64-unknown-linux-gnu verified IR and object d02e2b10a6c0794f425b39c99709f691203731f837e97d4e5fce24c7760da0ad
+candidate x86_64-unknown-linux-gnu verified IR and object 6c81b9ea2ae89b018df128a7d99f75e6e4548ca6c4fec71e733f798b5299abfd
+baseline armv7-linux-androideabi verified IR and object d539cf5d13544769e63ac80df171cea71123c2373bc62acf3e5fb70ecbef298f
+candidate armv7-linux-androideabi verified IR and object d539cf5d13544769e63ac80df171cea71123c2373bc62acf3e5fb70ecbef298f
