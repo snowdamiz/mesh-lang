@@ -1,6 +1,6 @@
 # November 23 native benchmark checkpoint
 
-**Setup in progress.** SSH to `root@172.234.135.126:22` initially timed out before authentication. The saved client transcripts in [access/](access/) preserve the failures and the subsequent successful authentication after the firewall rule was saved. The host preflight records Ubuntu 24.04.5, four online x86-64 vCPUs, 7,941 MiB of RAM, and ext4 on `/dev/sda`. No official timing arms have run. The comparison and the Mesh optimization repeat remain open.
+**Setup checkpoint.** SSH to `root@172.234.135.126:22` initially timed out before authentication. The saved client transcripts in [access/](access/) preserve the failures and the subsequent successful authentication after the firewall rule was saved. The host preflight records Ubuntu 24.04.5, four online x86-64 vCPUs, 7,941 MiB of RAM, and ext4 on `/dev/sda`. The setup checks described here precede the [reversed controls](../2026-11-23-controls/README.md).
 
 The frozen Mesh fixture calls `Jobs.start_effects`. At `dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17`, `compiler/mesh-rt/src/jobs/mod.rs` and the worker dispatch require GNU Linux ARM64 for that path. The unchanged x86-64 build exercises the unsupported-platform return. Commit `3f69b150` ports the fenced effects path to AMD64. The matrix requires the port's native smoke before timing. [Native adapter handoff](../../native/README.md)
 
@@ -18,4 +18,4 @@ To retry the authorized endpoint from the checkout root, run `python3 -B tools/d
 
 The SSH transport test preserved a deliberately rejected invocation on the host and in the local [transport check](../2026-11-23-transport-check/README.md).
 
-The coordinator holds official timing until River's replacement measures batch input inside the submit window and passes a native setup smoke. The older binary and translator receipts remain setup evidence. The AMD64 runtime proof and native runner builds use the shared `native.lock`. Apalis passed its Linux functional and sparse smokes, and Oban passed its Linux short smoke.
+The coordinator held official timing until River's replacement included batch input in its submit window and passed native large and sparse setup smokes. The older binary and translator receipts remain setup evidence. The AMD64 runtime proof and native runner builds use the shared `native.lock`. Apalis passed its Linux functional and sparse smokes, and Oban passed its Linux short smoke.

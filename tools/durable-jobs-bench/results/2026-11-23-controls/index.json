@@ -1,0 +1,18 @@
+{
+  "kind": "controls",
+  "required_four_engine_blocks": 10,
+  "validated_blocks": {
+    "01-noop": "01-noop.1795451955120188000",
+    "01-slow": "01-slow.1795452065139084000",
+    "01-sparse": "01-sparse.1795452153081121000",
+    "01-short": "01-short.1795452226804580000",
+    "01-large": "01-large.1795452257954690000",
+    "02-slow": "02-slow.1795452360400166000",
+    "02-sparse": "02-sparse.1795452448098826000",
+    "02-short": "02-short.1795452522418819000",
+    "02-large": "02-large.1795452553935094000",
+    "02-noop": "02-noop.1795452681057145000"
+  },
+  "missing_blocks": [],
+  "invalid_or_incomplete_attempts": {}
+}
