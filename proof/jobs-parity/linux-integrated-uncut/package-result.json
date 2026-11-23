@@ -1,0 +1,194 @@
+{
+  "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+  "glibc": "glibc 2.43",
+  "kernel": "6.12.115-0-virt",
+  "archive": "target/integrated-uncut-delivery/package-linux-06",
+  "guest_cpio_sha256": "aa0dcdaf829e7320a26fe8c3c4f81424d5cb9380bd079b3a90fa3add65da0911",
+  "guest_serial_sha256": "6ce8ae4bfde7084e41a7239e7090648593d8add67eed0bf0529f730022056129",
+  "config_sha256": "6db3bb2b4cb4eba5fdac1d56213723a01cf5b423a2df2d9746b011ca930fdf09",
+  "executable_and_fixture_sha256": {
+    "init": "f23fe760afc6eee500e490fea9749eeb6263e911719c5a25b760a1168dcafb0a",
+    "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+    "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+    "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+    "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+    "proof/jobs_parity_fault.py": "f77ff946f67b255b4a037bf5a3e28dc7ad0a3588e4efb438ce73cf5abead594b",
+    "proof/mesh-current": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+    "proof/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+    "proof/package_guest.py": "6e3509acfa46239cfc906fec00a81ff711a9adc22bf94fa02103ff161e01e3c9",
+    "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+    "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+    "proof/trial.py": "d32e342ee62b742a5c00ac158f60e654057802080a7144ca4d649d2b8c1563bf"
+  },
+  "cases": {
+    "stop": {
+      "ledger": {
+        "first": {
+          "attempt": 1,
+          "commit": "2026-11-23T03:21:32.467654+00:00",
+          "pid": 450,
+          "xid": "758"
+        },
+        "second": {
+          "attempt": 1,
+          "commit": "2026-11-23T03:21:32.594876+00:00",
+          "xid": "759"
+        }
+      },
+      "pid": 450,
+      "runner_exit": 0,
+      "terminal": {
+        "attempt": 1,
+        "fence": null,
+        "id": "be71660a-3407-4288-b844-b06030152a53",
+        "state": "completed"
+      }
+    },
+    "deadline": {
+      "ledger": {
+        "first": {
+          "attempt": 1,
+          "commit": "2026-11-23T03:21:33.021631+00:00",
+          "pid": 510,
+          "xid": "779"
+        },
+        "second": null
+      },
+      "pid": 510,
+      "reason": "job handler timed out",
+      "terminal": {
+        "attempt": 1,
+        "fence": null,
+        "id": "9a44ca94-f1a3-4f1f-bc09-4a6112c76b44",
+        "state": "discarded"
+      }
+    },
+    "renew_and_recover": {
+      "expires_after_ms": 1795404098522,
+      "expires_before_ms": 1795404098026,
+      "initial": {
+        "attempt": 1,
+        "id": "fa451dde-81fd-487b-82ea-69079548060f",
+        "state": "executing"
+      },
+      "ledger": {
+        "first": {
+          "attempt": 1,
+          "commit": "2026-11-23T03:21:36.601248+00:00",
+          "pid": 766,
+          "xid": "808"
+        },
+        "second": {
+          "attempt": 2,
+          "commit": "2026-11-23T03:21:39.694595+00:00",
+          "xid": "826"
+        }
+      },
+      "old_worker": 766,
+      "replacement": {
+        "attempt": 2,
+        "id": "fa451dde-81fd-487b-82ea-69079548060f",
+        "state": "executing"
+      },
+      "replacement_worker": 815,
+      "stale_fence_rejected": true,
+      "fence_changed": true
+    },
+    "lost_acknowledgment": {
+      "cut": {
+        "effect_session_tls": true,
+        "placement": "after_durable_commit",
+        "withheld_response_bytes": 97
+      },
+      "first_attempt_returned_complete": true,
+      "first_worker": 884,
+      "ledger": {
+        "first": {
+          "attempt": 1,
+          "commit": "2026-11-23T03:21:40.049694+00:00",
+          "pid": 884,
+          "xid": "847"
+        },
+        "second": {
+          "attempt": 2,
+          "commit": "2026-11-23T03:21:41.160248+00:00",
+          "xid": "856"
+        }
+      },
+      "replacement_worker": 910
+    },
+    "listen": {
+      "after": {
+        "due_scans": 0,
+        "fallback_scans": 0,
+        "notification_scans": 1,
+        "subscribed": true,
+        "subscription_scans": 1,
+        "subscriptions": 1
+      },
+      "before": {
+        "due_scans": 0,
+        "fallback_scans": 0,
+        "notification_scans": 0,
+        "subscribed": true,
+        "subscription_scans": 1,
+        "subscriptions": 1
+      },
+      "ledger": {
+        "first": {
+          "attempt": 1,
+          "commit": "2026-11-23T03:21:41.484839+00:00",
+          "pid": 968,
+          "xid": "878"
+        },
+        "second": {
+          "attempt": 1,
+          "commit": "2026-11-23T03:21:41.501397+00:00",
+          "xid": "879"
+        }
+      },
+      "tls_sessions": [
+        {
+          "listener": false,
+          "pid": 951,
+          "port": 36882,
+          "tls": true
+        },
+        {
+          "listener": false,
+          "pid": 953,
+          "port": 36896,
+          "tls": true
+        },
+        {
+          "listener": true,
+          "pid": 958,
+          "port": 36902,
+          "tls": true
+        }
+      ]
+    }
+  },
+  "prior_attempts": {
+    "package-linux-01": {
+      "reason": "Guest denied observer read of /proc/PID/exe.",
+      "failure_sha256": "d6cbdca8fa1f4422c364e82708562d69fcc2761c93770f23daa0b69487a4804e"
+    },
+    "package-linux-02": {
+      "reason": "Probe expected the ordinary worker selector.",
+      "failure_sha256": "b0725407c7fa8a8e9544e923cf1aba657d90f05403032131688d365c72f8a267"
+    },
+    "package-linux-03": {
+      "reason": "Probe expected the package pathname as worker argv[0]; protected respawn used /proc/self/exe.",
+      "failure_sha256": "6ebafcf9b9317ca9967e4c74c732d62344e1f1a9ee8c4ee283fc4c900fb5d6e4"
+    },
+    "package-linux-04": {
+      "reason": "Stop, deadline, and owner recovery passed. Expected product rejection of plaintext app URL.",
+      "failure_sha256": "4e758f7ba4c386592f8ea8a05b1a937492f9ba0024527e34eac5a5748aeea3b6"
+    },
+    "package-linux-05": {
+      "reason": "Reply-gate fixture was missing its threading import.",
+      "failure_sha256": "61c128e41b845554aee2d15ea77eab5542d1c3a1ec3fedcd47309dddd30645f2"
+    }
+  }
+}

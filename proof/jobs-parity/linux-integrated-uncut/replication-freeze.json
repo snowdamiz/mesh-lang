@@ -1,0 +1,53 @@
+{
+  "primary_elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+  "image_path": "target/integrated-idle-worker-layout/combined/mesh",
+  "primary_and_repeat_share_guest_path": {
+    "primary": "mesh-current",
+    "primary-repeat": "mesh-current"
+  },
+  "groups": {
+    "replicate-01": [
+      "primary",
+      "oban",
+      "primary-repeat"
+    ],
+    "replicate-02": [
+      "primary-repeat",
+      "oban",
+      "primary"
+    ],
+    "replicate-03": [
+      "primary",
+      "oban",
+      "primary-repeat"
+    ],
+    "replicate-04": [
+      "primary-repeat",
+      "oban",
+      "primary"
+    ],
+    "replicate-05": [
+      "primary",
+      "oban",
+      "primary-repeat"
+    ]
+  },
+  "profile": "slow",
+  "warmup_jobs": 512,
+  "measured_jobs": 512,
+  "hold_ms": 100,
+  "slots": 64,
+  "full_overlap_required_for_every_measured_arm": true,
+  "completed_groups_are_kept_regardless_of_result": true,
+  "inputs": {
+    "target/integrated-uncut-delivery/replication.py": "70e14f6688e6248c3580b96f0c0e6c87c7b94898efcf0acdbf1af9e791cf17ec",
+    "target/integrated-slow-elf-cuts/canonical-freeze.json": "f0612a92277257f4706a22c6211da1cc586d572bac05e9ee2ab00c8502c5fd3d",
+    "target/integrated-slow-elf-cuts/canonical_guard.py": "1c5b66f2552b8abe87a5c605529574d81969d00833a1511ca48a15ab673e4521",
+    "target/worker-hot-section-layout/shutdown_adapter.py": "639e799b30644ce82500e9ee11ce655407e24c7d36af61614743a8bc86ff08cd",
+    "proof/jobs-parity/linux-regression/run.py": "d12de0fdbaad58588412f0b185144469368c0636b954c0545b6bf37e16b79646",
+    "proof/jobs-parity/linux-regression/pack.py": "0445b5d91a57d126565989674d1572ed0455bfa7e351256cbf98c96ac4d82a21",
+    "proof/jobs-parity/linux-regression/trial.py": "da5f0ec52227fb24ec4613a571ec0d201d8a626b9bc7a8986823eb48e1cfb26a",
+    "target/integrated-runtime-queue/canonical_current.py": "8a9936f33cf77f8c480c8b3d484ed8738e020d95c8f8b6029075f994ff243bc2",
+    "target/integrated-runtime-queue/reduce.py": "f9451d72ca3260765cf409897db952c7ce3fbb128737d6d11336aedcfb8e8fd1"
+  }
+}

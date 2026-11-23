@@ -1,0 +1,3362 @@
+{
+  "schema": 1,
+  "intervals_sha256": "a03693fa90d4274afab3ebe62b81e2f929043043097746ae3bc95b38ad2153fb",
+  "replication_freeze_sha256": "02c4c08983f7069ba119c3082278c49b716e8721ac405241f85dd708f6364e07",
+  "scorer_sha256": {
+    "scripts/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+    "scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297"
+  },
+  "series": {
+    "pilots": {
+      "planned_groups": 2,
+      "source_sha256": "dc2f5ea68167c0c27d12b00802c45a3a6130af146bb8d082b46462741d1957c4",
+      "mesh_roles": {
+        "exact-control": "df2c2f3c control",
+        "combined": "f14316c5 candidate",
+        "exact-control-repeat": "df2c2f3c control repeat"
+      },
+      "groups": [
+        {
+          "name": "slow-01",
+          "order": [
+            "exact-control",
+            "combined",
+            "oban",
+            "exact-control-repeat"
+          ],
+          "measured": {
+            "exact-control": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.294921875,
+                "claim_p99_ms": 933.916015625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0013555078125,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.091796875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1696.2555859060085,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 484.2125144046823,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 3.09619140625,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 230805504,
+                "peak_threads": 456,
+                "pickup_p99_ms": 935.56494140625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 2.212890625,
+                "settlement_p99_ms": 1037.195068359375,
+                "sql_calls_per_job": 7.3046875
+              },
+              "shutdown": {
+                "peak_rss_bytes": 230805504,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "539d8151510e8500b0def104f2d44d982ca1d7f0c326cfe8d613f9a530eb3459",
+              "shutdown_sha256": "398ad5cf745677141ace98218c786f83badf577254d43b360082f37336fe5c23",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "combined": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.265625,
+                "claim_p99_ms": 927.958984375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.001179681640625,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.091796875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1776.669040476166,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 489.59516426162986,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 3.4892578125,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 228163584,
+                "peak_threads": 456,
+                "pickup_p99_ms": 929.304931640625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 2.095703125,
+                "settlement_p99_ms": 1034.3759765625,
+                "sql_calls_per_job": 7.1875
+              },
+              "shutdown": {
+                "peak_rss_bytes": 228163584,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "379223c36369c94dbc6ee3b78bacea99649d647492e50f9336955afbbf99d485",
+              "shutdown_sha256": "71f47a8f04dd82633f7029d3603118f597c30d756025bc9625baf20c3fc017ba",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.064453125,
+                "claim_p99_ms": 1279.21484375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.00187464453125,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.048828125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 875.9398843253686,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 368.3689394571475,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 3.4892578125,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 150999040,
+                "peak_threads": 12,
+                "pickup_p99_ms": 1283.061767578125,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.255859375,
+                "settlement_p99_ms": 1388.90380859375,
+                "sql_calls_per_job": 3.3046875
+              },
+              "shutdown": {
+                "peak_rss_bytes": 150999040,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "185193daa6e1cb2412be1a35a0fb09dd7d1dd3b1453905be86515cec64726105",
+              "shutdown_sha256": "43a03670e54941cc4c85c1ee175d763065aea1d1dc9ac8925c8c52f4f8bb62e4",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "exact-control-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.146484375,
+                "claim_p99_ms": 1151.14404296875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0021145957031249996,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.095703125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1734.6768780160182,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 395.64419204539263,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 3.20947265625,
+                "peak_processes": 60,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 213553152,
+                "peak_threads": 430,
+                "pickup_p99_ms": 1178.195068359375,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.630859375,
+                "settlement_p99_ms": 1281.575927734375,
+                "sql_calls_per_job": 6.7265625
+              },
+              "shutdown": {
+                "peak_rss_bytes": 213553152,
+                "peak_processes": 60,
+                "peak_threads": 430
+              },
+              "overlap": 64,
+              "raw_sha256": "fd4d12b988b41b1209cb0eb0b6041b5f19ba2516dfcbc5535203b1dedcd759ff",
+              "shutdown_sha256": "0ab2b1e7a0d1c30fa8df0f483963f0ecc957e8378064cf6a9f5da55b8e6db087",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup exact-control",
+              "time": 1795399631.35296,
+              "load": [
+                86.25341796875,
+                60.52734375,
+                63.6767578125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup combined",
+              "time": 1795399641.685227,
+              "load": [
+                89.74365234375,
+                62.0966796875,
+                64.19482421875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795399648.424927,
+              "load": [
+                83.96630859375,
+                61.7646484375,
+                64.0517578125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup exact-control-repeat",
+              "time": 1795399656.204993,
+              "load": [
+                81.005859375,
+                61.51953125,
+                63.95166015625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured exact-control",
+              "time": 1795399662.1935449,
+              "load": [
+                75.0439453125,
+                60.89111328125,
+                63.7001953125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured combined",
+              "time": 1795399667.73298,
+              "load": [
+                69.5146484375,
+                59.9794921875,
+                63.36181640625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795399673.172661,
+              "load": [
+                64.50830078125,
+                59.099609375,
+                63.03125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured exact-control-repeat",
+              "time": 1795399679.904983,
+              "load": [
+                59.66259765625,
+                58.1845703125,
+                62.68505859375
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "3453260b34ce97cb73411decb51e368eebcfbd9e8d5568f81318316bbaa448f3",
+          "serial_sha256": "acdad03ebf849f33ab89010805f99c3104546cc33e3714351bbb2438b555a563",
+          "scores": {
+            "exact-control": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "a5e7a5b51890f704332c1a53a76c0c49f2504ad277faa3480ec79afd56b2280b"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "a5e7a5b51890f704332c1a53a76c0c49f2504ad277faa3480ec79afd56b2280b"
+              }
+            },
+            "combined": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "1ad7f58148b0fd4ce942a5f42e35f1ea3359d14760665d80d30e5bcdd99b0227"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "1ad7f58148b0fd4ce942a5f42e35f1ea3359d14760665d80d30e5bcdd99b0227"
+              }
+            },
+            "exact-control-repeat": {
+              "ordinary": {
+                "misses": [],
+                "summary_sha256": "57d4e52ac675ff04c2393fc6677bb2ceeaad01817ab510e90c23848b3d6b29bc"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "57d4e52ac675ff04c2393fc6677bb2ceeaad01817ab510e90c23848b3d6b29bc"
+              }
+            }
+          }
+        },
+        {
+          "name": "slow-02",
+          "order": [
+            "exact-control-repeat",
+            "oban",
+            "combined",
+            "exact-control"
+          ],
+          "measured": {
+            "exact-control-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.13671875,
+                "claim_p99_ms": 2109.72509765625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0031758046874999996,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.10546875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1729.3185985140913,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 229.33734948981882,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 7.87646484375,
+                "peak_processes": 64,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 226717696,
+                "peak_threads": 450,
+                "pickup_p99_ms": 2115.7861328125,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.634765625,
+                "settlement_p99_ms": 2222.922119140625,
+                "sql_calls_per_job": 6.740234375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 226717696,
+                "peak_processes": 64,
+                "peak_threads": 450
+              },
+              "overlap": 64,
+              "raw_sha256": "b801dc2f82b39e24ae23c4f9c47280b90261d295a25d41fcc610f81f8e704615",
+              "shutdown_sha256": "acf4a435fe67cbad6791222e03d4d1ce0ebbfe32e46479edc43679153aeedd2c",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.0703125,
+                "claim_p99_ms": 1305.8349609375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0035268476562499997,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.046875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 875.214496632289,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 358.2619082273659,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 7.24560546875,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 148860928,
+                "peak_threads": 12,
+                "pickup_p99_ms": 1308.52099609375,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.265625,
+                "settlement_p99_ms": 1425.041015625,
+                "sql_calls_per_job": 3.3125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 148996096,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "0bbfd254ea16a5d4c565fc13acf221ce80730f1e6f5721b78fd926bf9df58302",
+              "shutdown_sha256": "b3af7a65a2479531aeb1e4ab7e7ab81da080fdaa8dc88bd9fd8bc5a4d171b738",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "combined": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.28515625,
+                "claim_p99_ms": 907.68408203125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0013762871093749999,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.091796875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1654.2819276457715,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 498.0588512322679,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 6.6650390625,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 229474304,
+                "peak_threads": 456,
+                "pickup_p99_ms": 909.76904296875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 2.173828125,
+                "settlement_p99_ms": 1012.447021484375,
+                "sql_calls_per_job": 7.265625
+              },
+              "shutdown": {
+                "peak_rss_bytes": 229474304,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "4b83128d2287527ec78c013bfb2bbc3995bc0e56dc0af0ec8b1ec14483383b79",
+              "shutdown_sha256": "899919442bca76852a75143b3ea93cadd823cdec697f004d11a7441208e5ea37",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "exact-control": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.216796875,
+                "claim_p99_ms": 1092.614013671875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.001753951171875,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.09375,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1475.6912677821836,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 417.4605705517943,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 6.130859375,
+                "peak_processes": 64,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 227622912,
+                "peak_threads": 449,
+                "pickup_p99_ms": 1098.716064453125,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.921875,
+                "settlement_p99_ms": 1202.955078125,
+                "sql_calls_per_job": 7.015625
+              },
+              "shutdown": {
+                "peak_rss_bytes": 227622912,
+                "peak_processes": 64,
+                "peak_threads": 449
+              },
+              "overlap": 64,
+              "raw_sha256": "fd55133bcf18587d6c71dd3f066364d83ad86687943ebebec83aa0f04fdec12a",
+              "shutdown_sha256": "754ca90f8ae1e7c3d763c444d452b8be4ae361881fd7bf3d5c2d0cac01fc836f",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup exact-control-repeat",
+              "time": 1795399693.071889,
+              "load": [
+                49.10498046875,
+                55.921875,
+                61.79833984375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795399700.217998,
+              "load": [
+                46.61376953125,
+                55.2919921875,
+                61.54150390625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup combined",
+              "time": 1795399709.231758,
+              "load": [
+                44.4658203125,
+                54.5419921875,
+                61.20166015625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup exact-control",
+              "time": 1795399721.327949,
+              "load": [
+                42.62255859375,
+                53.8154296875,
+                60.86572265625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured exact-control-repeat",
+              "time": 1795399729.5223072,
+              "load": [
+                39.015625,
+                52.669921875,
+                60.3759765625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795399738.2095659,
+              "load": [
+                35.74560546875,
+                51.5263671875,
+                59.88037109375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured combined",
+              "time": 1795399748.117326,
+              "load": [
+                34.4228515625,
+                50.7060546875,
+                59.490234375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured exact-control",
+              "time": 1795399754.140917,
+              "load": [
+                32.38671875,
+                50.01318359375,
+                59.1943359375
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "5983d71dd59402e68dc021f3c3e7f824424bc45821140bf5959e1f05030d9e12",
+          "serial_sha256": "7a1191b3fe8deddbe57fb340331677a86f6138195b356d4ccfe06373dd238128",
+          "scores": {
+            "exact-control": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "303349cd2aad39c0de0114138433a9ff1821ad2721f04992c296b4c1dfa6669f"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "e253a13472eb310225ca6a0a8d52b3dd411316589b3306c842f2e8da50b30547"
+              }
+            },
+            "combined": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "0b487193d53ca2cef166442de2d6d20e13a54559ee66b480b66e0c066906a15a"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "3377d1c26ae58c09fcc6d7a1deafa4e8aab1d4d3d4fed4c09381629d063cf697"
+              }
+            },
+            "exact-control-repeat": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "d4345c94b5a22185a302949bde498d62eb301f664eab1fbf0b3f1d411567cf3a"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "0b426fe65daa26dd5aedd6cc72a4bf55a5769f76ad81f013a6b747d959a1d301"
+              }
+            }
+          }
+        }
+      ],
+      "aggregate": {
+        "exact-control": {
+          "ordinary": {
+            "misses": [
+              "budgets.peak_rss_bytes"
+            ],
+            "summary_sha256": "5b98acb3142f33b20afeac544871c5ea7eb790ac66967f67e1bbc88db1f3722c"
+          },
+          "through_shutdown": {
+            "misses": [
+              "budgets.peak_rss_bytes"
+            ],
+            "summary_sha256": "3374c9ee66cec8b536fb1af24936a5fe5cf93e2333a02ebac9f0f395de9d413b"
+          }
+        },
+        "combined": {
+          "ordinary": {
+            "misses": [
+              "budgets.peak_rss_bytes"
+            ],
+            "summary_sha256": "460190cba9fdb79eab9088c695ab7ea360f1f6e34c1994b90fa7e90485f730ac"
+          },
+          "through_shutdown": {
+            "misses": [
+              "budgets.peak_rss_bytes"
+            ],
+            "summary_sha256": "167ff22bc7d1631386bf467f7c232e274fb3196df5b3e6e9f468aca8609da41a"
+          }
+        },
+        "exact-control-repeat": {
+          "ordinary": {
+            "misses": [
+              "comparison.jobs_per_second",
+              "comparison.pickup_p99_ms"
+            ],
+            "summary_sha256": "5f781cfe59b3fcc87034ce695f5484e175262e89a6d808a56eb903360b51f069"
+          },
+          "through_shutdown": {
+            "misses": [
+              "comparison.jobs_per_second",
+              "comparison.pickup_p99_ms"
+            ],
+            "summary_sha256": "d09eb0673c1b3b1e71855ecf83af9149cb720380ca75c4e725724778a07676d0"
+          }
+        }
+      }
+    },
+    "extra-cut": {
+      "planned_groups": 5,
+      "source_sha256": "b26d242254cc9aa825ab7daf3bc9b583eaef199669e98093804caf26bab3b9a3",
+      "mesh_roles": {
+        "uncut": "f14316c5 control",
+        "packaged": "882826a9 primary",
+        "uncut-repeat": "f14316c5 control repeat"
+      },
+      "groups": [
+        {
+          "name": "slow-01",
+          "order": [
+            "uncut",
+            "packaged",
+            "oban",
+            "uncut-repeat"
+          ],
+          "measured": {
+            "uncut": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.130859375,
+                "claim_p99_ms": 1809.821044921875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0023640078125,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.103515625,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1653.9387269477904,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 264.42332909681454,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 62,
+                "peak_host_load_average_1m": 8.22607421875,
+                "peak_processes": 61,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 215056384,
+                "peak_threads": 428,
+                "pickup_p99_ms": 1826.636962890625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.58984375,
+                "settlement_p99_ms": 1933.297119140625,
+                "sql_calls_per_job": 6.693359375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 215056384,
+                "peak_processes": 61,
+                "peak_threads": 428
+              },
+              "overlap": 64,
+              "raw_sha256": "b4fc8e2a8b54c518c986f5a930eabb8c424ace1932252d21d1321211ecf49ed4",
+              "shutdown_sha256": "c695eefc3b355e899ee4016505b1995a2ec278ed201ff98108c2a5ac5d2db367",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "packaged": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.1171875,
+                "claim_p99_ms": 2677.18408203125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.003705255859375,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.111328125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1646.1446397808259,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 182.83858606705306,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 7.1142578125,
+                "peak_processes": 59,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 202342400,
+                "peak_threads": 429,
+                "pickup_p99_ms": 2690.406005859375,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.578125,
+                "settlement_p99_ms": 2796.6259765625,
+                "sql_calls_per_job": 6.689453125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 202342400,
+                "peak_processes": 59,
+                "peak_threads": 429
+              },
+              "overlap": 64,
+              "raw_sha256": "abfd5df54d623d16cacc8003fa4254dbd582d8c620db8bdc78402f8f69f51892",
+              "shutdown_sha256": "3425661bed120121cf5446cb54e88bff929514f76259be1e3d5d454714612525",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.07421875,
+                "claim_p99_ms": 2699.9619140625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0050819296875,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.056640625,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 863.8455243162132,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 174.9851894993133,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 5.50830078125,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 154095616,
+                "peak_threads": 12,
+                "pickup_p99_ms": 2707.2919921875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.30859375,
+                "settlement_p99_ms": 2887.89501953125,
+                "sql_calls_per_job": 3.365234375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 154095616,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "2aca7b1c73df6094f9ba2819a56d4c2410661d470457e72de8511977f7449ee5",
+              "shutdown_sha256": "b02c372a5c5d620452e422856f08279e2d86b68ce5e448ffb4e4c3f36b7a33cd",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "uncut-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.16015625,
+                "claim_p99_ms": 1683.798095703125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.002498130859375,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.103515625,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1514.2694773319959,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 281.2197697249234,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 5.06689453125,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 228167680,
+                "peak_threads": 456,
+                "pickup_p99_ms": 1703.026123046875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.724609375,
+                "settlement_p99_ms": 1809.662109375,
+                "sql_calls_per_job": 6.828125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 228167680,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "2bab829040b1699ecc7be2b0a758bd50c767c9b22c64d66218f6655db8fb0c26",
+              "shutdown_sha256": "e080585a8a7675597faee6d9008fd04b30161fde5cb5f9eeb6da4959e7c9910d",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut",
+              "time": 1795400517.4735591,
+              "load": [
+                59.42919921875,
+                67.5029296875,
+                66.1318359375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup packaged",
+              "time": 1795400529.953791,
+              "load": [
+                78.81103515625,
+                71.42724609375,
+                67.54248046875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795400551.01277,
+              "load": [
+                84.859375,
+                73.1748046875,
+                68.25244140625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut-repeat",
+              "time": 1795400565.4405189,
+              "load": [
+                86.2841796875,
+                74.15478515625,
+                68.69287109375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut",
+              "time": 1795400574.2749069,
+              "load": [
+                92.60791015625,
+                75.87060546875,
+                69.36328125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured packaged",
+              "time": 1795400582.645178,
+              "load": [
+                100.1689453125,
+                78.07275390625,
+                70.22216796875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795400592.698966,
+              "load": [
+                96.20947265625,
+                77.94091796875,
+                70.26611328125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut-repeat",
+              "time": 1795400609.444096,
+              "load": [
+                95.21875,
+                78.62646484375,
+                70.64453125
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "560562971f3d4242633c00900c402ab57f9f1a6975d0307aa84ac78dd0e83ff1",
+          "serial_sha256": "acac785102f41837c79dee0b9d46612139ef5d97599786d78b6ca62ec6416d10",
+          "scores": {
+            "uncut": {
+              "ordinary": {
+                "misses": [],
+                "summary_sha256": "74e96331824b86ff6a11066b3da0934110c3dd01c58df43da0648f1b7601923f"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "74e96331824b86ff6a11066b3da0934110c3dd01c58df43da0648f1b7601923f"
+              }
+            },
+            "packaged": {
+              "ordinary": {
+                "misses": [],
+                "summary_sha256": "19ecaa077dc8755ed7c58c60f520601f757a6ee7ec22c1fd31ee4ab09d8ddc9c"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "19ecaa077dc8755ed7c58c60f520601f757a6ee7ec22c1fd31ee4ab09d8ddc9c"
+              }
+            },
+            "uncut-repeat": {
+              "ordinary": {
+                "misses": [],
+                "summary_sha256": "8975cf7fdc67d1965342633c71e08ed1913a8e52439abe6d25c010755434aec5"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "8975cf7fdc67d1965342633c71e08ed1913a8e52439abe6d25c010755434aec5"
+              }
+            }
+          }
+        },
+        {
+          "name": "slow-02",
+          "order": [
+            "uncut-repeat",
+            "oban",
+            "packaged",
+            "uncut"
+          ],
+          "measured": {
+            "uncut-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.22265625,
+                "claim_p99_ms": 1218.133056640625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.00179609375,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.095703125,
+                "estimated_peak_executing": 65,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1670.392797140487,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 372.1179143246851,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 0.771484375,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 226455552,
+                "peak_threads": 456,
+                "pickup_p99_ms": 1259.282958984375,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.935546875,
+                "settlement_p99_ms": 1372.402099609375,
+                "sql_calls_per_job": 7.03125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 226455552,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "0ac80df52efd1be8021304284671d5904944ee035be7d405bdcb0dc62f8949e7",
+              "shutdown_sha256": "c46d5bcae21253fb4a2ed7a38c72ec966b888ecb9f1bbd93f6627c55a95bd7ff",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.0546875,
+                "claim_p99_ms": 1323.067138671875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.002145873046875,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.048828125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 955.5960026752939,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 356.3087391084806,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 0.9755859375,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 142462976,
+                "peak_threads": 12,
+                "pickup_p99_ms": 1328.237060546875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.21875,
+                "settlement_p99_ms": 1434.989013671875,
+                "sql_calls_per_job": 3.267578125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 142462976,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "5e0bbf96712f3c0dbc04d21b06935e41945eb8dabe83e2b67f5da6408e19ff7a",
+              "shutdown_sha256": "de48aff2aa9c9fbe74dcba9d0bacc7122ef9a7c654d8c4365db5e3ad0d205dcc",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "packaged": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.197265625,
+                "claim_p99_ms": 1140.571044921875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.001717091796875,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.09375,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1653.694508041818,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 405.3371515116608,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 1.37841796875,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 219918336,
+                "peak_threads": 456,
+                "pickup_p99_ms": 1148.55712890625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.84765625,
+                "settlement_p99_ms": 1256.177978515625,
+                "sql_calls_per_job": 6.94140625
+              },
+              "shutdown": {
+                "peak_rss_bytes": 219918336,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "ea586eca55a59bb4f078ac5d9b8e9c1f8379ac67bbcb79eb274b04b2cbbf0ca6",
+              "shutdown_sha256": "74c2328bfb187ad3036751e0ff1ef76625f37548144bb7b941aa6e9312c1d8c8",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "uncut": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.412109375,
+                "claim_p99_ms": 873.0390625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.001053009765625,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.091796875,
+                "estimated_peak_executing": 65,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1734.3923954604506,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 521.9930575226019,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 1.37841796875,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 226074624,
+                "peak_threads": 456,
+                "pickup_p99_ms": 875.66015625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 2.685546875,
+                "settlement_p99_ms": 978.02294921875,
+                "sql_calls_per_job": 7.77734375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 226074624,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "31ac0d6fbdecf0fc6305b8a7ceae92b3300575d89131f0bd9f960b85c42dbc62",
+              "shutdown_sha256": "2427f918bacbe844a17b3a55ff00544b4d9a1e5e975821d49df87d39d41ce5b0",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut-repeat",
+              "time": 1795400625.500406,
+              "load": [
+                89.701171875,
+                78.28466796875,
+                70.66552734375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795400632.4226491,
+              "load": [
+                79.6669921875,
+                76.5126953125,
+                70.1259765625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup packaged",
+              "time": 1795400640.583238,
+              "load": [
+                74.087890625,
+                75.408203125,
+                69.7734375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut",
+              "time": 1795400648.064679,
+              "load": [
+                65.84228515625,
+                73.58642578125,
+                69.19140625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut-repeat",
+              "time": 1795400654.509801,
+              "load": [
+                61.2900390625,
+                72.51416015625,
+                68.83837890625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795400661.0008209,
+              "load": [
+                57.8232421875,
+                71.60888671875,
+                68.5400390625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured packaged",
+              "time": 1795400668.267636,
+              "load": [
+                51.21630859375,
+                69.73046875,
+                67.908203125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut",
+              "time": 1795400675.150468,
+              "load": [
+                47.75537109375,
+                68.70556640625,
+                67.55712890625
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "352f8a3d7d56b2c77a4f2e9676cb748c79a1f6bcab51df6060642bfcd2a761d3",
+          "serial_sha256": "6af3a32c66aaae6d4c8637bc8a5f547c8cd4a7840d910d64db3633c6c9b7a702",
+          "scores": {
+            "uncut": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "58a5c8bf9265d9af3d099729573b6923168d2b093a73324bd6d0bc62c4707aac"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "58a5c8bf9265d9af3d099729573b6923168d2b093a73324bd6d0bc62c4707aac"
+              }
+            },
+            "packaged": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "f6cefe40c939f2c6e96e3acc4b23759b779cb238aa728943b4a2cf47c59eb93d"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "f6cefe40c939f2c6e96e3acc4b23759b779cb238aa728943b4a2cf47c59eb93d"
+              }
+            },
+            "uncut-repeat": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "a431af5c52d6c3063aeb79ee961c88ac0a7aba58f15bab88387e33282d5d707b"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "a431af5c52d6c3063aeb79ee961c88ac0a7aba58f15bab88387e33282d5d707b"
+              }
+            }
+          }
+        },
+        {
+          "name": "slow-03",
+          "order": [
+            "uncut",
+            "packaged",
+            "oban",
+            "uncut-repeat"
+          ],
+          "measured": {
+            "uncut": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.15625,
+                "claim_p99_ms": 1422.25390625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0019726328124999998,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.099609375,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1657.1404423193965,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 261.62640486128254,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 1.12451171875,
+                "peak_processes": 64,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 222216192,
+                "peak_threads": 446,
+                "pickup_p99_ms": 1424.281982421875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.69140625,
+                "settlement_p99_ms": 1955.843994140625,
+                "sql_calls_per_job": 6.791015625
+              },
+              "shutdown": {
+                "peak_rss_bytes": 222216192,
+                "peak_processes": 64,
+                "peak_threads": 446
+              },
+              "overlap": 64,
+              "raw_sha256": "56feee34975679efa47e8d1a486db439981eb4418fac31f0f8d09ed8c71767d8",
+              "shutdown_sha256": "f2d5e30f74e41ec7105b4fa1f78b7233e2dda6d40198e189f7d393093ed244a7",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "packaged": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.15234375,
+                "claim_p99_ms": 1620.205078125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0022039394531249996,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.1015625,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1654.6290729261962,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 295.30015359564186,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 5.91015625,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 221503488,
+                "peak_threads": 456,
+                "pickup_p99_ms": 1623.947998046875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.671875,
+                "settlement_p99_ms": 1729.319091796875,
+                "sql_calls_per_job": 6.7734375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 221503488,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "107ae086b002f2f177be6ce070dbe1833fbe6bba19ec07f9f9983f0d32449163",
+              "shutdown_sha256": "ce0ab1d79843479bfb1b77e621b257c7b8d3dd50c31aa8c37d32948ceeb0ea50",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.0625,
+                "claim_p99_ms": 1290.8662109375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.002291857421875,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.048828125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 874.0282017290018,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 364.0991923903402,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 5.5166015625,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 152530944,
+                "peak_threads": 12,
+                "pickup_p99_ms": 1294.135009765625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.2421875,
+                "settlement_p99_ms": 1404.955078125,
+                "sql_calls_per_job": 3.291015625
+              },
+              "shutdown": {
+                "peak_rss_bytes": 152686592,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "7880841b748e610f768ead983a2a60f333539446921518e826d8be6d1cc63fe2",
+              "shutdown_sha256": "e6c80834e083b5044026ad41fd75edfdc2f2bfe3c94663f60fe8f986bee08c5e",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "uncut-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.20703125,
+                "claim_p99_ms": 1210.73095703125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.001668982421875,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.095703125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1734.2481244566652,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 384.22635209658426,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 5.92431640625,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 228864000,
+                "peak_threads": 456,
+                "pickup_p99_ms": 1214.162841796875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.873046875,
+                "settlement_p99_ms": 1317.880859375,
+                "sql_calls_per_job": 6.96875
+              },
+              "shutdown": {
+                "peak_rss_bytes": 228864000,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "17bfc614a7225bcfce76cbce527ccff5d0ee669167622f225d2b063e731c94ce",
+              "shutdown_sha256": "4ce18299622233f87a39d3c7526aff5fdbf1f174385ac86820d3c203f2acb605",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut",
+              "time": 1795400706.8937888,
+              "load": [
+                37.306640625,
+                64.111328125,
+                65.92724609375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup packaged",
+              "time": 1795400713.694453,
+              "load": [
+                37.37109375,
+                63.236328125,
+                65.5947265625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795400721.66402,
+              "load": [
+                36.62060546875,
+                62.65087890625,
+                65.3740234375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut-repeat",
+              "time": 1795400729.930518,
+              "load": [
+                33.8759765625,
+                61.1982421875,
+                64.826171875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut",
+              "time": 1795400735.541793,
+              "load": [
+                33.2451171875,
+                60.61376953125,
+                64.5986328125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured packaged",
+              "time": 1795400742.5969229,
+              "load": [
+                31.970703125,
+                59.4404296875,
+                64.13525390625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795400749.7583091,
+              "load": [
+                31.251953125,
+                58.83544921875,
+                63.89404296875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut-repeat",
+              "time": 1795400757.3098938,
+              "load": [
+                28.49951171875,
+                57.34130859375,
+                63.3046875
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "939a9e656a510f6d20419c5db94630d64ac05f16663729ae1e6f92e3887f4ed8",
+          "serial_sha256": "e98481c612633f57eb6f044154e791dc5346a43de2e0cb854ad10b726b58fb00",
+          "scores": {
+            "uncut": {
+              "ordinary": {
+                "misses": [
+                  "comparison.jobs_per_second"
+                ],
+                "summary_sha256": "161f637cde5483932fa0181f325245350b920c13db05c4d45c70dd05c5649e9c"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "comparison.jobs_per_second"
+                ],
+                "summary_sha256": "5eeb5cc43cb800080dcca5a1b1cd13a5ae030da2e086db9052adc0b7d6ac47a3"
+              }
+            },
+            "packaged": {
+              "ordinary": {
+                "misses": [
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "36a9f4cd8a7d6397cfebe2e442d40da62284f75c008b5be9d22c0ecac3e81598"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "691b2d1b1db2548f97d6dc15d0bce8e94142a07354a0b9b2213b683b6c1c3b4a"
+              }
+            },
+            "uncut-repeat": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "3f013def351da658f8d773e5e03ed0ba54d451bb85301c128fdd5914ab5eb251"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "0e255462c1ed8973eb0b097d001baadf6da2b5c6a02b5546f3c79ffbb98fcf1b"
+              }
+            }
+          }
+        },
+        {
+          "name": "slow-04",
+          "order": [
+            "uncut-repeat",
+            "oban",
+            "packaged",
+            "uncut"
+          ],
+          "measured": {
+            "uncut-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.111328125,
+                "claim_p99_ms": 2569.419921875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.00333304296875,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.111328125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1650.735703667203,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 161.80401252582448,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 63,
+                "peak_host_load_average_1m": 0.33447265625,
+                "peak_processes": 59,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 208343040,
+                "peak_threads": 417,
+                "pickup_p99_ms": 2589.016845703125,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.56640625,
+                "settlement_p99_ms": 3096.598876953125,
+                "sql_calls_per_job": 6.677734375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 208343040,
+                "peak_processes": 59,
+                "peak_threads": 417
+              },
+              "overlap": 64,
+              "raw_sha256": "5a21b7b974f8d2476a9ba482c6bc13e3fbf1295a09ed4f94e5dac183f9a5a3ac",
+              "shutdown_sha256": "f2c09859c9bb6d870929e96bad41fc0d141fed1a809b0b51f1e1083fd007dfab",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.078125,
+                "claim_p99_ms": 1747.5849609375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0056327109375,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.046875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 715.674799695994,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 274.52730923305745,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 4.19873046875,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 152788992,
+                "peak_threads": 12,
+                "pickup_p99_ms": 1754.18603515625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.318359375,
+                "settlement_p99_ms": 1864.27392578125,
+                "sql_calls_per_job": 3.365234375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 154042368,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "64345c580f72eb3f6499798c26c23d4d87d9ce49a54b9f5de20667fa4168f1a0",
+              "shutdown_sha256": "9b7720dbdbda8f97c2c7055fbd2cdcbeaa93645f9f38061ac99e550d0f265839",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "packaged": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.13671875,
+                "claim_p99_ms": 1319.700927734375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.00205445703125,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.09765625,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1730.2871283706804,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 352.31863289446494,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 4.19873046875,
+                "peak_processes": 60,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 204726272,
+                "peak_threads": 419,
+                "pickup_p99_ms": 1337.8779296875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.609375,
+                "settlement_p99_ms": 1450.52490234375,
+                "sql_calls_per_job": 6.70703125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 204726272,
+                "peak_processes": 60,
+                "peak_threads": 419
+              },
+              "overlap": 64,
+              "raw_sha256": "0cb1a1e58c0d38ecbab1949cf44a1b4e12cd9661e3c25313b20adb7987e340ff",
+              "shutdown_sha256": "4407083c5759fbd0e6fec6c69c0fda6141468cf9d8a1a5fd3ee1f0d030a03f4a",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "uncut": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.17578125,
+                "claim_p99_ms": 1457.552978515625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.002058923828125,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.09765625,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1727.119954007921,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 324.84300392788356,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 4.09130859375,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 228429824,
+                "peak_threads": 456,
+                "pickup_p99_ms": 1462.197021484375,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.7734375,
+                "settlement_p99_ms": 1565.779052734375,
+                "sql_calls_per_job": 6.87109375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 228429824,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "e2e4a6871bbab546d383260a3aa8aa2bd9bd08edd4f06db9253b4ce2aa08d49d",
+              "shutdown_sha256": "47707821bdcdff9268190105e2c08f771168a6e1b1e71652c103f7b40201da4d",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut-repeat",
+              "time": 1795400769.0088372,
+              "load": [
+                25.408203125,
+                55.73193359375,
+                62.6640625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795400776.150802,
+              "load": [
+                25.85595703125,
+                55.3212890625,
+                62.478515625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup packaged",
+              "time": 1795400782.739724,
+              "load": [
+                24.73388671875,
+                54.10888671875,
+                61.96435546875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut",
+              "time": 1795400790.1296482,
+              "load": [
+                24.4345703125,
+                53.55908203125,
+                61.72412109375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut-repeat",
+              "time": 1795400796.628309,
+              "load": [
+                24.4794921875,
+                53.08447265625,
+                61.5087890625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795400808.194941,
+              "load": [
+                32.59326171875,
+                53.40771484375,
+                61.47216796875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured packaged",
+              "time": 1795400824.561451,
+              "load": [
+                45.8427734375,
+                55.22314453125,
+                61.97314453125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut",
+              "time": 1795400834.227603,
+              "load": [
+                54.1396484375,
+                56.708984375,
+                62.42236328125
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "d3366d5facc4326b028c54ae3f45219796457a6fde2f72d91b434c1b3b431083",
+          "serial_sha256": "59e83c7ce48a931f2da7f7911cbcc07793fe8fd7cae83c797980e7bcfd20e890",
+          "scores": {
+            "uncut": {
+              "ordinary": {
+                "misses": [],
+                "summary_sha256": "5d2a25be0fc203bdd92056835ffe3eb4a44db42e32a3a1dfc554b8ede793f8b2"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "a6f92c6409f01cf6c9f8b680f7cf2e0fb4facec58385bb8102eb1a90478566eb"
+              }
+            },
+            "packaged": {
+              "ordinary": {
+                "misses": [],
+                "summary_sha256": "03e26181c0c7b9be11b5dbb2bb783d82b403cc2f2e5fda16a52d56c9f5189ec0"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "ef6e8a6641182c79868cf9d9d37c6a4a23b2f06dbdd78b843f25c5e1acd12c58"
+              }
+            },
+            "uncut-repeat": {
+              "ordinary": {
+                "misses": [
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "6a91f0c79d7bd17aec648d7fd6202d4218454dc73d0043ce1620bf89f5c7bc2f"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "6f0be28cb74eaab15cd15e1315bbbf0bc9fd49f9eac27979000492392fd0bd6a"
+              }
+            }
+          }
+        },
+        {
+          "name": "slow-05",
+          "order": [
+            "uncut",
+            "packaged",
+            "oban",
+            "uncut-repeat"
+          ],
+          "measured": {
+            "uncut": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.15625,
+                "claim_p99_ms": 1128.696044921875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0018134335937499998,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.095703125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1761.201739265474,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 404.6585812853279,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 8.34716796875,
+                "peak_processes": 61,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 214192128,
+                "peak_threads": 428,
+                "pickup_p99_ms": 1134.55615234375,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.6875,
+                "settlement_p99_ms": 1239.885009765625,
+                "sql_calls_per_job": 6.783203125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 214192128,
+                "peak_processes": 61,
+                "peak_threads": 428
+              },
+              "overlap": 64,
+              "raw_sha256": "915aecfb620366be374c43aac300309833057514643677df7431e64013e0fff2",
+              "shutdown_sha256": "aa005be26f08687d7657d8f573492443662e2566137608197bf1fb8c034b3b45",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "packaged": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.09765625,
+                "claim_p99_ms": 4813.029052734375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.005476789062499999,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.119140625,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1650.8544714842144,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 99.04558057071529,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 59,
+                "peak_host_load_average_1m": 8.82958984375,
+                "peak_processes": 49,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 174714880,
+                "peak_threads": 341,
+                "pickup_p99_ms": 5049.012939453125,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.583984375,
+                "settlement_p99_ms": 5156.090087890625,
+                "sql_calls_per_job": 6.703125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 174714880,
+                "peak_processes": 49,
+                "peak_threads": 341
+              },
+              "overlap": 57,
+              "raw_sha256": "7b1d6a83e2f2c6bf141024a94f5b4696f17e1a065c64264f303c80427f2616dd",
+              "shutdown_sha256": "c71b318e4989f23e79f6d85d59f1aeb7b267053b2e6acbec62fa0125ac427d37",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.056640625,
+                "claim_p99_ms": 1516.27294921875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.003937662109375,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.048828125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 869.5891691881098,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 311.183390510559,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 7.4755859375,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 155058176,
+                "peak_threads": 12,
+                "pickup_p99_ms": 1523.426025390625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.232421875,
+                "settlement_p99_ms": 1643.758056640625,
+                "sql_calls_per_job": 3.28125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 155058176,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "d941d0c353c93d7d1af8c5ea380c40a0c6c51af4a69e891b7afeb62d6654c882",
+              "shutdown_sha256": "13018d778ac666a4c650534c099e26223358464e81825404394ff065368faace",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "uncut-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.1640625,
+                "claim_p99_ms": 1190.81689453125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.00193132421875,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.095703125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1734.7607807321842,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 389.21364313013476,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 7.037109375,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 227860480,
+                "peak_threads": 456,
+                "pickup_p99_ms": 1199.537841796875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.71875,
+                "settlement_p99_ms": 1305.552001953125,
+                "sql_calls_per_job": 6.814453125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 227860480,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "ff6ffe660c928ce5979d0bc2a175f545f6830c0a3c0bc03124c670e7ccb5dd79",
+              "shutdown_sha256": "8ea171a80a604067d54bad6bfd6f84c1245061ac996aec94bf4dc4e694723606",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut",
+              "time": 1795400849.281059,
+              "load": [
+                50.8740234375,
+                55.94921875,
+                62.05615234375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup packaged",
+              "time": 1795400856.59314,
+              "load": [
+                47.7607421875,
+                55.21923828125,
+                61.7626953125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795400864.676558,
+              "load": [
+                43.8544921875,
+                54.140625,
+                61.30322265625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup uncut-repeat",
+              "time": 1795400874.730886,
+              "load": [
+                40.8525390625,
+                53.17626953125,
+                60.8779296875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut",
+              "time": 1795400885.4324632,
+              "load": [
+                44.30859375,
+                53.4755859375,
+                60.8916015625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured packaged",
+              "time": 1795400892.98829,
+              "load": [
+                46.6787109375,
+                53.701171875,
+                60.88623046875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795400907.602766,
+              "load": [
+                64.92138671875,
+                57.45556640625,
+                62.10302734375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured uncut-repeat",
+              "time": 1795400923.996894,
+              "load": [
+                65.77978515625,
+                57.9921875,
+                62.2119140625
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "6a906399503c07b80124e2329dba5ace25e7dd67c11b04b863eccededcad492d",
+          "serial_sha256": "e9d4c51ad2333ae2cbb7107e3558b102799f9d18901128c5e84451b31ea786b3",
+          "scores": {
+            "uncut": {
+              "ordinary": {
+                "misses": [],
+                "summary_sha256": "205d6117a4227a46f235f303b3e5084bc8fecff3a5943126de8168a748af14cb"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "205d6117a4227a46f235f303b3e5084bc8fecff3a5943126de8168a748af14cb"
+              }
+            },
+            "packaged": {
+              "ordinary": {
+                "misses": [
+                  "budgets.cpu_seconds_per_job",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "efd75e4c019b46a6b0f1aa0d5ee51988ab771f0bd57db60c7c1932a93385742a"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.cpu_seconds_per_job",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "efd75e4c019b46a6b0f1aa0d5ee51988ab771f0bd57db60c7c1932a93385742a"
+              }
+            },
+            "uncut-repeat": {
+              "ordinary": {
+                "misses": [],
+                "summary_sha256": "29c4fd73fb048fed68e34d158be666254692f57ce306a513a3b4e4c5e66f2e12"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "29c4fd73fb048fed68e34d158be666254692f57ce306a513a3b4e4c5e66f2e12"
+              }
+            }
+          }
+        }
+      ],
+      "aggregate": {
+        "uncut": {
+          "ordinary": {
+            "misses": [],
+            "summary_sha256": "44337d9540c848af7563e4530b431d5b3f23cbacf68e186066f6bb68706b32f4"
+          },
+          "through_shutdown": {
+            "misses": [],
+            "summary_sha256": "ab2523effeba0f1e9be57034a51d4b0bcc0ffda1937160d04929485f30710c64"
+          }
+        },
+        "packaged": {
+          "ordinary": {
+            "misses": [
+              "comparison.jobs_per_second"
+            ],
+            "summary_sha256": "9f31d0fa2113c581e85b0501a28cdf10e0485d405022cb788695828c124b3f0f"
+          },
+          "through_shutdown": {
+            "misses": [
+              "comparison.jobs_per_second"
+            ],
+            "summary_sha256": "613e2b697dd2da1fbf057e9758ea0a69d2082ca82d568e362f29edb02b7c5ca2"
+          }
+        },
+        "uncut-repeat": {
+          "ordinary": {
+            "misses": [],
+            "summary_sha256": "c8d3c799f95aa6a71efa1fe7e9e85138a34931580dec8329c9df28dcdcbb964e"
+          },
+          "through_shutdown": {
+            "misses": [],
+            "summary_sha256": "2434e637cf889ecfb8b480bf4ccc57afcc709343f7252c26bf1540ed018990a1"
+          }
+        }
+      }
+    },
+    "replication": {
+      "planned_groups": 5,
+      "source_sha256": "382fb2df51eaa651282f2e901273ce5e274fbd076246326a03e8a8c3f973a63b",
+      "mesh_roles": {
+        "primary": "f14316c5 primary",
+        "primary-repeat": "f14316c5 comparator"
+      },
+      "groups": [
+        {
+          "name": "replicate-01",
+          "order": [
+            "primary",
+            "oban",
+            "primary-repeat"
+          ],
+          "measured": {
+            "primary": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.12109375,
+                "claim_p99_ms": 2090.571044921875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0030874609374999997,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.10546875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1733.8993704296072,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 231.7995548931086,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 0.7314453125,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 225480704,
+                "peak_threads": 456,
+                "pickup_p99_ms": 2095.869140625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.576171875,
+                "settlement_p99_ms": 2205.908935546875,
+                "sql_calls_per_job": 6.681640625
+              },
+              "shutdown": {
+                "peak_rss_bytes": 225480704,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "7751ad2d3acad8aee604006cd4932fdd87b178f68399e3304ff8df476e1a3ac5",
+              "shutdown_sha256": "1d0f344717591a733f50ec6d3e1321cd772fd120ddce4961ace865963ebd12e5",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.091796875,
+                "claim_p99_ms": 1307.822998046875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0024211035156249997,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.048828125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 875.5858428378396,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 359.4240514215074,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 0.69921875,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 148090880,
+                "peak_threads": 12,
+                "pickup_p99_ms": 1318.5419921875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.337890625,
+                "settlement_p99_ms": 1423.192138671875,
+                "sql_calls_per_job": 3.38671875
+              },
+              "shutdown": {
+                "peak_rss_bytes": 148090880,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "d1da7bc9d45ab2979e7429a74bf2ed8c431c758df862568165b49b9818f0dcb7",
+              "shutdown_sha256": "a9d7d8f40c7528388cf4611082704e39dcbea4ffae7985e40439a401d9de785c",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "primary-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.39453125,
+                "claim_p99_ms": 837.049072265625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.001060513671875,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.08984375,
+                "estimated_peak_executing": 65,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1771.6813395656359,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 539.456713601401,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 0.64306640625,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 228859904,
+                "peak_threads": 456,
+                "pickup_p99_ms": 839.149169921875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 2.625,
+                "settlement_p99_ms": 945.632080078125,
+                "sql_calls_per_job": 7.71484375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 228859904,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "195ae638e883e5c7c2e41ebd7a9ab733155c1e31a1499782206ab60a2e95e79d",
+              "shutdown_sha256": "68353d8595feb379c6b226bfb82b89949f6033dee524e1f258b05085000408dd",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary",
+              "time": 1795401145.6528032,
+              "load": [
+                59.1064453125,
+                53.28271484375,
+                59.076171875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795401152.7080388,
+              "load": [
+                52.02392578125,
+                51.9560546875,
+                58.53759765625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary-repeat",
+              "time": 1795401159.7886531,
+              "load": [
+                48.81884765625,
+                51.29248046875,
+                58.2646484375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary",
+              "time": 1795401167.11292,
+              "load": [
+                46.4306640625,
+                50.75634765625,
+                58.0341796875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795401175.389612,
+              "load": [
+                42.20361328125,
+                49.69677734375,
+                57.572265625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary-repeat",
+              "time": 1795401183.476755,
+              "load": [
+                38.15185546875,
+                48.57275390625,
+                57.08056640625
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "30f31e5d15e95bcd4c059bda2b6d8becdb1e4ff8e25c0bbe5f2e37065c583f9b",
+          "serial_sha256": "7ba1f55bca6f25da2418da37cf996146aa191b4c8276edd738da3bb9fe6b9b48",
+          "scores": {
+            "primary": {
+              "ordinary": {
+                "misses": [
+                  "budgets.cpu_seconds_per_job",
+                  "budgets.peak_rss_bytes",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "d99a3cdb6abad3b2d8284f8523a4e6c97f077769e26cc5c5cf1bb29675869907"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.cpu_seconds_per_job",
+                  "budgets.peak_rss_bytes",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "d99a3cdb6abad3b2d8284f8523a4e6c97f077769e26cc5c5cf1bb29675869907"
+              }
+            },
+            "primary-repeat": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "c57c0d315aa6939883884df0da64a2557829fa990ab90bed4cb3889063e232ae"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "c57c0d315aa6939883884df0da64a2557829fa990ab90bed4cb3889063e232ae"
+              }
+            }
+          }
+        },
+        {
+          "name": "replicate-02",
+          "order": [
+            "primary-repeat",
+            "oban",
+            "primary"
+          ],
+          "measured": {
+            "primary-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.103515625,
+                "claim_p99_ms": 2812.1298828125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.003993625,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.11328125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1505.254547029116,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 169.61849120041475,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 62,
+                "peak_host_load_average_1m": 2.3564453125,
+                "peak_processes": 49,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 202223616,
+                "peak_threads": 344,
+                "pickup_p99_ms": 2828.3408203125,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.56640625,
+                "settlement_p99_ms": 2959.762939453125,
+                "sql_calls_per_job": 6.6796875
+              },
+              "shutdown": {
+                "peak_rss_bytes": 202223616,
+                "peak_processes": 49,
+                "peak_threads": 344
+              },
+              "overlap": 53,
+              "raw_sha256": "60fe9afa16f8c664b563bea46143c0403b90eca71a277a54800d18a5dba02a81",
+              "shutdown_sha256": "1092a2b77a03a653f4cfb85558ae490048ebc3007c20a0c35a74739ba373ef29",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.07421875,
+                "claim_p99_ms": 1482.743896484375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.009397384765624999,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.05078125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 792.7635876440976,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 312.1616168472295,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 2.27685546875,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 154062848,
+                "peak_threads": 12,
+                "pickup_p99_ms": 1490.93701171875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.29296875,
+                "settlement_p99_ms": 1627.35498046875,
+                "sql_calls_per_job": 3.34375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 154193920,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "59792b5256c1621ff7ce9c679fd32b24a0b464f8df37b19fbcc840647842eb4f",
+              "shutdown_sha256": "79e059bf42156135306365b1f0c6369352a3ff146cffbb646f3409424f0272d7",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "primary": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.14453125,
+                "claim_p99_ms": 1699.98291015625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0024167890625,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.103515625,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1654.6525298049792,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 276.6373050488123,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 62,
+                "peak_host_load_average_1m": 2.09423828125,
+                "peak_processes": 62,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 217165824,
+                "peak_threads": 435,
+                "pickup_p99_ms": 1703.971923828125,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.64453125,
+                "settlement_p99_ms": 1841.892822265625,
+                "sql_calls_per_job": 6.748046875
+              },
+              "shutdown": {
+                "peak_rss_bytes": 217165824,
+                "peak_processes": 62,
+                "peak_threads": 435
+              },
+              "overlap": 64,
+              "raw_sha256": "e17250f15450490c59a24c050348a6bff8ffa5d6d908d139bcbcedb1aa6ff7b7",
+              "shutdown_sha256": "21d7d85bc6aded00989ada30232d3fbbcbc119b074142ea7eaa93b68cf52dc34",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary-repeat",
+              "time": 1795401194.621907,
+              "load": [
+                34.56982421875,
+                47.45263671875,
+                56.5830078125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795401203.2748318,
+              "load": [
+                35.19287109375,
+                47.14501953125,
+                56.3662109375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary",
+              "time": 1795401211.3974102,
+              "load": [
+                38.62060546875,
+                47.6572265625,
+                56.49267578125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary-repeat",
+              "time": 1795401225.610324,
+              "load": [
+                51.18212890625,
+                49.953125,
+                57.15478515625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795401239.1887412,
+              "load": [
+                68.34521484375,
+                53.7822265625,
+                58.39306640625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary",
+              "time": 1795401253.258601,
+              "load": [
+                57.05615234375,
+                51.99658203125,
+                57.6748046875
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "97dca316f35413af9ed49dc3996c0ed29884be16cdd21c0a37b8c9fdfe393350",
+          "serial_sha256": "94b417e591e5d64a96fd37b824fd694bc8a429fdad7df2ece44519f5aa4b28c2",
+          "scores": {
+            "primary": {
+              "ordinary": {
+                "misses": [
+                  "comparison.jobs_per_second"
+                ],
+                "summary_sha256": "a265335be362ba9b7c53a847b0be9be67db9ad7be558a1a3fe6c1ff6b0432fb2"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "comparison.jobs_per_second"
+                ],
+                "summary_sha256": "81b63f539f7afd41c1d3ef5a7ec4468fc923e55f5aade860dbb4c1507432f760"
+              }
+            },
+            "primary-repeat": {
+              "ordinary": {
+                "misses": [
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "22d519e836ca526c703d3d0078edca2953c300818b91f7c61d52180a32ddbabb"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "8ad5d4b21b35843a4d136f38e41862e439cd446e75649bb084ae60c29418dd23"
+              }
+            }
+          }
+        },
+        {
+          "name": "replicate-03",
+          "order": [
+            "primary",
+            "oban",
+            "primary-repeat"
+          ],
+          "measured": {
+            "primary": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.3359375,
+                "claim_p99_ms": 852.864013671875,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0009066269531249999,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.091796875,
+                "estimated_peak_executing": 65,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1777.1347392845498,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 531.868455157127,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 0.2099609375,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 228278272,
+                "peak_threads": 456,
+                "pickup_p99_ms": 856.2958984375,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 2.376953125,
+                "settlement_p99_ms": 959.680908203125,
+                "sql_calls_per_job": 7.46875
+              },
+              "shutdown": {
+                "peak_rss_bytes": 228278272,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "a31e57c83ee520931b4ae88839511ad87ad2d705be6efb52ba95754ecc4b931e",
+              "shutdown_sha256": "93f8ebf646501d297165d5ffe350a0f3171e44a8b04d2165be222827aed8e2e8",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.03125,
+                "claim_p99_ms": 945.7080078125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0011920546875,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.044921875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 957.4336119688985,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 476.08239601236676,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 0.56591796875,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 151310336,
+                "peak_threads": 12,
+                "pickup_p99_ms": 956.782958984375,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.1328125,
+                "settlement_p99_ms": 1075.048095703125,
+                "sql_calls_per_job": 3.177734375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 151310336,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "8e3a1d8a847fc8670d88189df69f9b71ef934423b8b9a545507d3cb782d53795",
+              "shutdown_sha256": "3caf4ce16ecd0079649f13b0d6a792b1087ec8a4be05b87661c0e004fc2fc600",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "primary-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.470703125,
+                "claim_p99_ms": 829.220947265625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.000792,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.08984375,
+                "estimated_peak_executing": 65,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1774.3184590025019,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 548.0326088433561,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 1.56201171875,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 229089280,
+                "peak_threads": 456,
+                "pickup_p99_ms": 831.135009765625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 2.912109375,
+                "settlement_p99_ms": 932.462890625,
+                "sql_calls_per_job": 8.001953125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 229089280,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "d620808b834fdee483bd421e5448972785cbb3aa8b36a57c0f34063948226956",
+              "shutdown_sha256": "d5a7e51875ada2c0cb8af7807e4e625b35ab9692c9038e25d6d14dd4485dbe65",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary",
+              "time": 1795401267.485544,
+              "load": [
+                50.798828125,
+                50.89404296875,
+                57.18310546875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795401276.014397,
+              "load": [
+                50.09375,
+                50.74609375,
+                57.09375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary-repeat",
+              "time": 1795401284.182364,
+              "load": [
+                43.2275390625,
+                49.25537109375,
+                56.490234375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary",
+              "time": 1795401289.218293,
+              "load": [
+                40.005859375,
+                48.4873046875,
+                56.1767578125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795401294.375982,
+              "load": [
+                36.80224609375,
+                47.68212890625,
+                55.84716796875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary-repeat",
+              "time": 1795401300.369835,
+              "load": [
+                33.85498046875,
+                46.89013671875,
+                55.51953125
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "5fb434f722c986f2140e1150d142b7935f0f60f82f338700e654ba1c07660a66",
+          "serial_sha256": "6d91bd1daa9c46e77bb44f53b45af7bf0822390731f1f479b9bf1d830db57242",
+          "scores": {
+            "primary": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "da0dcda38bec181557da9e8871629b9ea5e856b19ac9acd3f3ec078059de53ea"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "da0dcda38bec181557da9e8871629b9ea5e856b19ac9acd3f3ec078059de53ea"
+              }
+            },
+            "primary-repeat": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "71791df6a47a89b4cf7782a0ffd7e054bbf66cd0ade258e6b8f7ee2109e03ec4"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "71791df6a47a89b4cf7782a0ffd7e054bbf66cd0ade258e6b8f7ee2109e03ec4"
+              }
+            }
+          }
+        },
+        {
+          "name": "replicate-04",
+          "order": [
+            "primary-repeat",
+            "oban",
+            "primary"
+          ],
+          "measured": {
+            "primary-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.384765625,
+                "claim_p99_ms": 840.89501953125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0008575078125,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.091796875,
+                "estimated_peak_executing": 65,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1774.9493313873054,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 530.6827268586467,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 0.0,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 228864000,
+                "peak_threads": 456,
+                "pickup_p99_ms": 842.840087890625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 2.572265625,
+                "settlement_p99_ms": 944.3701171875,
+                "sql_calls_per_job": 7.6640625
+              },
+              "shutdown": {
+                "peak_rss_bytes": 228864000,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "6d272e8d256007f851d32735606ac750e0de3a51c2ed5129e93246b5d90a5453",
+              "shutdown_sha256": "dd2e7f62e39ac9812a48e7dcec4e3bbd0f4887d8a0ad66c1749c62d11d679a66",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.05859375,
+                "claim_p99_ms": 973.681884765625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0012119511718749999,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.044921875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 877.9865567434239,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 473.3123754880327,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 0.0,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 152621056,
+                "peak_threads": 12,
+                "pickup_p99_ms": 977.976806640625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.22265625,
+                "settlement_p99_ms": 1081.413818359375,
+                "sql_calls_per_job": 3.267578125
+              },
+              "shutdown": {
+                "peak_rss_bytes": 152752128,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "9d8229effe5c99cb6c81c36b40ee523766ad1d534592671d77ebc1c380ab76ec",
+              "shutdown_sha256": "e0b04087afbd319d972db95bf394a2982146b232e0a3a3d3d822c07565a1885d",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "primary": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.130859375,
+                "claim_p99_ms": 2063.74609375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.002357435546875,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.107421875,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1649.9832492408398,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 229.92448125746967,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 60,
+                "peak_host_load_average_1m": 3.603515625,
+                "peak_processes": 53,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 192978944,
+                "peak_threads": 372,
+                "pickup_p99_ms": 2076.76513671875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.623046875,
+                "settlement_p99_ms": 2224.30712890625,
+                "sql_calls_per_job": 6.73046875
+              },
+              "shutdown": {
+                "peak_rss_bytes": 192978944,
+                "peak_processes": 53,
+                "peak_threads": 372
+              },
+              "overlap": 64,
+              "raw_sha256": "d59aa8065bf972c529b20a7424ee1ed692ad42880bce3c14959cd4579ababa99",
+              "shutdown_sha256": "4538662a00816f484ccd5be42e32c7ab061db10e67f64c0c55ddfaba54ba5792",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary-repeat",
+              "time": 1795401309.17212,
+              "load": [
+                29.4052734375,
+                45.509765625,
+                54.9287109375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795401314.1591868,
+              "load": [
+                27.13037109375,
+                44.7705078125,
+                54.6123046875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary",
+              "time": 1795401320.154469,
+              "load": [
+                25.83837890625,
+                44.20947265625,
+                54.3564453125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary-repeat",
+              "time": 1795401325.459341,
+              "load": [
+                24.64990234375,
+                43.65771484375,
+                54.10205078125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795401330.51167,
+              "load": [
+                22.755859375,
+                42.94921875,
+                53.79052734375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary",
+              "time": 1795401336.340208,
+              "load": [
+                21.09375,
+                42.26904296875,
+                53.48681640625
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "4bacf6ac7459be53a863764bf2bd8ca786faef2a9c10ae6c65e8ec2f230e03c2",
+          "serial_sha256": "169739a5a132798e0bc0af7e0c5a0a7ec70aa44a3fc8c716d61a71c2de6dfb37",
+          "scores": {
+            "primary": {
+              "ordinary": {
+                "misses": [
+                  "budgets.cpu_seconds_per_job",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "62107753b97b995ba680c5790e8c5fdfe3f67af388f3b7ae768f616933c008ad"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.cpu_seconds_per_job",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "c949a6879bcfe06a5900018f38e0a4bd8b683932fdd7788a545125b13e3a2ed0"
+              }
+            },
+            "primary-repeat": {
+              "ordinary": {
+                "misses": [],
+                "summary_sha256": "ab28e87e970dba9d4e8624ebc699d167e116c1aa8a2ceeff21df64bca259120d"
+              },
+              "through_shutdown": {
+                "misses": [],
+                "summary_sha256": "04077df041f8f73861f81ddf560ed9217a3794897c13b2e29cbc2133ce7d6912"
+              }
+            }
+          }
+        },
+        {
+          "name": "replicate-05",
+          "order": [
+            "primary",
+            "oban",
+            "primary-repeat"
+          ],
+          "measured": {
+            "primary": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.1171875,
+                "claim_p99_ms": 4711.43798828125,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0061552265624999995,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.12109375,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1706.5626535080864,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 105.71762876766931,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 63,
+                "peak_host_load_average_1m": 2.13623046875,
+                "peak_processes": 64,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 224739328,
+                "peak_threads": 452,
+                "pickup_p99_ms": 4724.448974609375,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.666015625,
+                "settlement_p99_ms": 4831.375,
+                "sql_calls_per_job": 6.787109375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 224739328,
+                "peak_processes": 64,
+                "peak_threads": 452
+              },
+              "overlap": 64,
+              "raw_sha256": "d3627cf8278e4c76a3eff162711f13d11295003334f19f93e7bb38e79de8bb1f",
+              "shutdown_sha256": "65b3e0fbb06e25d0e4151daf1b01c3e86897f9ad80c38218817160a003d54dff",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "oban": {
+              "metrics": {
+                "application_sql_calls_per_job": 0.0,
+                "claim_calls_per_job": 0.0625,
+                "claim_p99_ms": 1863.00390625,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.0038012773437499994,
+                "engine": "oban",
+                "enqueue_sql_calls_per_job": 0.05078125,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 874.2911092863503,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 258.278538818409,
+                "pair": 0,
+                "peak_connections": 67,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 1.88232421875,
+                "peak_processes": 2,
+                "peak_queued_context_bytes": null,
+                "peak_rss_bytes": 144994304,
+                "peak_threads": 12,
+                "pickup_p99_ms": 1873.010009765625,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 3.265625,
+                "settlement_p99_ms": 1980.677978515625,
+                "sql_calls_per_job": 3.31640625
+              },
+              "shutdown": {
+                "peak_rss_bytes": 144994304,
+                "peak_processes": 2,
+                "peak_threads": 12
+              },
+              "overlap": 64,
+              "raw_sha256": "ab62a76b9ded84a573b39168ee5795744e140bebdf83c4268f4668b73c0c3abd",
+              "shutdown_sha256": "d0982729bc3bb57c3c081a25e02e47b5fdec563f379d09f8e38db8cc595b739f",
+              "ordered_distinct_xid_write_pairs": 512
+            },
+            "primary-repeat": {
+              "metrics": {
+                "application_sql_calls_per_job": 4.0,
+                "claim_calls_per_job": 0.138671875,
+                "claim_p99_ms": 1309.656005859375,
+                "completed": 512,
+                "cpu_seconds_per_job": 0.002013626953125,
+                "engine": "mesh",
+                "enqueue_sql_calls_per_job": 1.09765625,
+                "estimated_peak_executing": 64,
+                "event_buffer_bytes": null,
+                "event_logs_dropped": 0,
+                "events_dropped": 0,
+                "idle_queries_per_minute": 1595.6527101448546,
+                "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+                "jobs_per_second": 356.71437652054004,
+                "pair": 0,
+                "peak_connections": 13,
+                "peak_executing": 64,
+                "peak_host_load_average_1m": 1.7314453125,
+                "peak_processes": 65,
+                "peak_queued_context_bytes": 267488,
+                "peak_rss_bytes": 225939456,
+                "peak_threads": 456,
+                "pickup_p99_ms": 1324.72607421875,
+                "poll_ms": 250,
+                "runner_sql_calls_per_job": 1.61328125,
+                "settlement_p99_ms": 1433.06005859375,
+                "sql_calls_per_job": 6.7109375
+              },
+              "shutdown": {
+                "peak_rss_bytes": 225939456,
+                "peak_processes": 65,
+                "peak_threads": 456
+              },
+              "overlap": 64,
+              "raw_sha256": "a22292301f9f559041707fc99b3b8feb3819944021f97ef50cc8f143073488f6",
+              "shutdown_sha256": "224289653fc0fce09890900f2ee7e8895be8a16bb0de5c5cee0a638fd23dc904",
+              "ordered_distinct_xid_write_pairs": 512
+            }
+          },
+          "phase_load": [
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary",
+              "time": 1795401371.686144,
+              "load": [
+                75.1884765625,
+                52.1494140625,
+                56.55810546875
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+              "time": 1795401387.328979,
+              "load": [
+                78.89794921875,
+                54.11279296875,
+                57.18212890625
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow warmup primary-repeat",
+              "time": 1795401401.0678809,
+              "load": [
+                87.12548828125,
+                57.2353515625,
+                58.2470703125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary",
+              "time": 1795401408.3724601,
+              "load": [
+                87.9833984375,
+                58.41015625,
+                58.65283203125
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+              "time": 1795401421.8682141,
+              "load": [
+                95.025390625,
+                60.8974609375,
+                59.53271484375
+              ],
+              "cores": 15
+            },
+            {
+              "event": "FROZEN_DIAGNOSTIC_ARM slow measured primary-repeat",
+              "time": 1795401432.931702,
+              "load": [
+                91.92822265625,
+                61.92138671875,
+                59.92333984375
+              ],
+              "cores": 15
+            }
+          ],
+          "receipt_sha256": "d71481dd494ee07bef79ece1c33290a52d0243a0a4073c25ce3496e0cc67f6e3",
+          "serial_sha256": "b85873285f5ce019f4d60b13becdeb775475b7aeee8138478430f473ad3efdc6",
+          "scores": {
+            "primary": {
+              "ordinary": {
+                "misses": [
+                  "budgets.cpu_seconds_per_job",
+                  "budgets.peak_rss_bytes",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "f454708cf1ac325ad948ef4639840aae190a43fa1e1e7ae75b24350415337509"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.cpu_seconds_per_job",
+                  "budgets.peak_rss_bytes",
+                  "comparison.jobs_per_second",
+                  "comparison.pickup_p99_ms"
+                ],
+                "summary_sha256": "f454708cf1ac325ad948ef4639840aae190a43fa1e1e7ae75b24350415337509"
+              }
+            },
+            "primary-repeat": {
+              "ordinary": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "0eee39d4efb30512df1fcf514b12e61a65defd2ce9607f937318c718da4145fc"
+              },
+              "through_shutdown": {
+                "misses": [
+                  "budgets.peak_rss_bytes"
+                ],
+                "summary_sha256": "0eee39d4efb30512df1fcf514b12e61a65defd2ce9607f937318c718da4145fc"
+              }
+            }
+          }
+        }
+      ],
+      "aggregate": {
+        "primary": {
+          "ordinary": {
+            "misses": [
+              "comparison.jobs_per_second",
+              "comparison.pickup_p99_ms"
+            ],
+            "summary_sha256": "d5979079be016b5797dbe7c3f351473d708323f5d67d028de1f92faddf596b3a"
+          },
+          "through_shutdown": {
+            "misses": [
+              "comparison.jobs_per_second",
+              "comparison.pickup_p99_ms"
+            ],
+            "summary_sha256": "25217ff28aee915fb5a90e1009d988d2e382fb598530068c33ec0181b9a58ed4"
+          }
+        },
+        "primary-repeat": {
+          "ordinary": {
+            "misses": [
+              "budgets.peak_rss_bytes"
+            ],
+            "summary_sha256": "0e327c51d47f7a1a010ed085bd351f3d2bbac95eb0548f189e62dfc48cf70194"
+          },
+          "through_shutdown": {
+            "misses": [
+              "budgets.peak_rss_bytes"
+            ],
+            "summary_sha256": "7cd678c26a0e4e095d4d60122ec12c8e82fdfbaedebac8617c67ed92584a96a3"
+          }
+        }
+      }
+    }
+  }
+}

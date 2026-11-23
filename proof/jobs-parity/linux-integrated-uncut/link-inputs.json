@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "target": "aarch64-unknown-linux-gnu",
+  "lld_argv": [
+    "ld.lld",
+    "--error-limit=0",
+    "-mllvm",
+    "-float-abi=hard",
+    "--entry",
+    "_start",
+    "-z",
+    "stack-size=16777216",
+    "--build-id=none",
+    "--image-base=16777216",
+    "--gc-sections",
+    "--eh-frame-hdr",
+    "-znow",
+    "-m",
+    "aarch64linux",
+    "crt1.o",
+    "-dynamic-linker",
+    "/lib/ld-linux-aarch64.so.1",
+    "fixture.o",
+    "libworker_identity.a",
+    "runtime-candidate.a",
+    "libubsan_rt.a",
+    "--as-needed",
+    "libgcc_s.so.1",
+    "libm.so.6",
+    "libc.so.6",
+    "libld.so.2",
+    "libresolv.so.2",
+    "libc_nonshared.a",
+    "libcompiler_rt.a"
+  ],
+  "inputs": {
+    "zig": {
+      "path": "target/jobs-perf-work/tooling/zig-aarch64-macos-0.15.2/zig",
+      "sha256": "c65cd34917923f575448cc0603dd7c2326da0af0e5c323043d090662dcdf351c"
+    },
+    "crt1.o": {
+      "path": "target/dense-cpu-sampling/zig-global/o/b22038b94896a40f7138eaa0cc50b274/crt1.o",
+      "sha256": "4272fe32051e1a3fe909609fafe1f4c7b79c1d0d2d52695fa6e00ec47f5a00ca"
+    },
+    "fixture.o": {
+      "path": "target/dense-cpu-sampling/fixture.o",
+      "sha256": "30482784e2c50f54d991a3a26e7604d713e281a3a37c584ddbfc4cba15d1e178"
+    },
+    "libworker_identity.a": {
+      "path": "target/jobs-perf-work/frozen-fixture/libworker_identity.a",
+      "sha256": "209c5ecfa8964cd8132d26d90c29154d749a7f666a25395ae53f131b5c29b4d6"
+    },
+    "libubsan_rt.a": {
+      "path": "target/dense-cpu-sampling/zig-global/o/efb6d44915e825c3cd0ac5f5baff8c4a/libubsan_rt.a",
+      "sha256": "d2a690502afd6069802ac49e3d8ed34a32908def2b687793e1a7372552d22b39"
+    },
+    "libgcc_s.so.1": {
+      "path": "target/linux-queue-perf/libgcc_s.so.1",
+      "sha256": "a886d874bfcc27b5b3de47504eb861af8f15cf8c2aea160bd3b973e1a1a95255"
+    },
+    "libm.so.6": {
+      "path": "target/dense-cpu-sampling/zig-global/o/374d07d15c95c2a34e3130058561b75a/libm.so.6",
+      "sha256": "c24156abd0a52c0fbb41d1a4832e669e1276cec972dd1b32b446a7a52e6d93c8"
+    },
+    "libc.so.6": {
+      "path": "target/dense-cpu-sampling/zig-global/o/374d07d15c95c2a34e3130058561b75a/libc.so.6",
+      "sha256": "a7026802a4120b0200792ccc21408c2b0f09c5de78ad3f6df368ec33826e2069"
+    },
+    "libld.so.2": {
+      "path": "target/dense-cpu-sampling/zig-global/o/374d07d15c95c2a34e3130058561b75a/libld.so.2",
+      "sha256": "3871b49c8ef1d4985360171ead5fd2a59bc679a051dd232668ea448fd43dcb9e"
+    },
+    "libresolv.so.2": {
+      "path": "target/dense-cpu-sampling/zig-global/o/374d07d15c95c2a34e3130058561b75a/libresolv.so.2",
+      "sha256": "28cbd054727d9dd00587cf5e08d00f665f5eb9f7fe54a8a403f33df44eed92cd"
+    },
+    "libc_nonshared.a": {
+      "path": "target/dense-cpu-sampling/zig-global/o/1c68040a16315fb05b9010af8a123d0f/libc_nonshared.a",
+      "sha256": "7d9c14f63bd9fa4b23981216cf9071f266a95f46b4ded1bc703706676357d810"
+    },
+    "libcompiler_rt.a": {
+      "path": "target/dense-cpu-sampling/zig-global/o/620b986409482e6dd410d5075b4912d1/libcompiler_rt.a",
+      "sha256": "e2b01958a7614b66f596877cbf2d3077ab0206d3efc8325a65a129ff796c5737"
+    },
+    "runtime-candidate.a": {
+      "path": "target/integrated-idle-worker-layout/runtime-candidate.a",
+      "sha256": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+    }
+  },
+  "unarranged_elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+  "unarranged_symbols_sha256": "6f87959b5705a7574830f130dd61fb46c25e0bca881176639750c5588b6a6459",
+  "layout_elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+  "unarranged_order_sha256": "88238288b3cc985e023c40a9015f3b45c7f552d986ad7353f8d73e702ae5acfa",
+  "placed_order_sha256": "1f804d680a87bca59072c0485432f94c28ea927d145996f63b52c8a4401ef982",
+  "portable_linker_script_sha256": "24e0fac385bcb8edc8f6fbafb1251fff3179680885814af7811c5f9b03d5d797",
+  "archived_linker_script_sha256": "8ca0adb666620961179ad3c131f4b0a62015acf77441b9eca132801d57c355b5",
+  "archived_unarranged_symbols_map_sha256": "0f5ce385c5ee86da4951bf9499ef7569a8a00a08d0e6256cc2e028ae21e96391",
+  "archived_layout_map_sha256": "87b026f918845334fe29372724e0ef10b7e295033273d6e99efa062d9dcf9e86"
+}

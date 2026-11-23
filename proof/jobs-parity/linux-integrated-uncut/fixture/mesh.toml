@@ -1,0 +1,12 @@
+[package]
+name = "jobs-parity-mesh"
+version = "0.1.0"
+
+[native]
+abi = 1
+bindings = ["worker_identity.mpl"]
+
+[[native.libraries]]
+target = "aarch64-unknown-linux-gnu"
+path = "libworker_identity.a"
+sha256 = "209c5ecfa8964cd8132d26d90c29154d749a7f666a25395ae53f131b5c29b4d6"
