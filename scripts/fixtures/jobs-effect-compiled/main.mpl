@@ -63,7 +63,12 @@ fn serve(pool :: PoolHandle) -> String!String do
   else
     "\"listen\":false,\"poll_ms\":25"
   end
-  let config = "{\"namespace\":\"compiled-effect-proof\",\"queues\":{\"default\":1},\"workers\":[{\"worker\":\"proof\",\"version\":1}],\"claim_batch\":true,\"cron_interval_ms\":0,\"lease_ms\":60000," <> wakeup_config <> "}"
+  let strategy = if Env.get("MESH_EFFECT_SET_BASED_BATCH", "") == "1" do
+    ",\"claim_batch_strategy\":\"set_based\""
+  else
+    ""
+  end
+  let config = "{\"namespace\":\"compiled-effect-proof\",\"queues\":{\"default\":1},\"workers\":[{\"worker\":\"proof\",\"version\":1}],\"claim_batch\":true,\"cron_interval_ms\":0,\"lease_ms\":60000," <> wakeup_config <> strategy <> "}"
   let runner = Jobs.start_effects(pool, config, handler, Env.get("MESH_EFFECT_APP_URL", ""), registry)?
   check_local_control(runner, listen)?
   let marks = Env.get("MESH_EFFECT_MARKS", "")

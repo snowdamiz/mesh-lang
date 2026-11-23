@@ -73,7 +73,14 @@ fn durable_jobs_survive_process_boundaries() {
     proof.run("migrate", "");
     prove_transaction_and_restart(&proof);
     prove_competing_processes(&proof);
-    prove_batch_admission(&proof);
+    prove_batch_admission(&proof, None);
+    let set_based_dir = temp.path().join("set-based-batch");
+    fs::create_dir(&set_based_dir).unwrap();
+    let set_based = Proof::new(&url, proof.binary.clone(), &set_based_dir);
+    prove_batch_admission(&set_based, Some("set_based"));
+    set_based
+        .clean()
+        .expect("delete set-based batch proof data");
     queue_rotation::prove(&proof);
     prove_local_controls(&proof, false);
     prove_local_controls(&proof, true);
@@ -498,8 +505,8 @@ fn prove_competing_processes(proof: &Proof) {
     proof.control(json!({"action": "scale", "queue": "default", "concurrency": 1}));
 }
 
-fn prove_batch_admission(proof: &Proof) {
-    proof.control(json!({"action": "scale", "queue": "default", "concurrency": 3}));
+fn prove_batch_admission(proof: &Proof, strategy: Option<&str>) {
+    proof.control(json!({"action": "configure", "queue": "default", "concurrency": 3}));
     let labels = [
         "batch-first",
         "batch-second",
@@ -507,7 +514,7 @@ fn prove_batch_admission(proof: &Proof) {
         "batch-fourth",
         "batch-fifth",
     ];
-    let config = json!({
+    let mut config = json!({
             "namespace": proof.namespace,
             "queues": {"default": 4},
             "workers": [{"worker": "proof", "version": 1}],
@@ -516,6 +523,9 @@ fn prove_batch_admission(proof: &Proof) {
             "shutdown_grace_ms": 8000,
             "claim_batch": true,
     });
+    if let Some(strategy) = strategy {
+        config["claim_batch_strategy"] = strategy.into();
+    }
     let mut workers: Vec<_> = (0..4)
         .map(|index| {
             proof.worker_with_config(&format!("batch-admission-{index}"), true, config.clone())
@@ -568,6 +578,16 @@ fn prove_batch_admission(proof: &Proof) {
     }
     for worker in &mut workers {
         worker.stop();
+    }
+    if strategy.is_some() {
+        assert_eq!(
+            proof.sql(&format!(
+                "SELECT count(DISTINCT xmin::text) FROM mesh_jobs.jobs WHERE namespace={} AND state='completed'",
+                quoted(&proof.namespace),
+            )),
+            labels.len().to_string()
+        );
+        println!("Set-based batch claims preserved individual terminal transactions");
     }
     println!("J2 lane 3 passed: a committed pause held the backlog while admitted work settled, and resume observed the reduced cap");
 }

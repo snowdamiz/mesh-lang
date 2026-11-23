@@ -19,8 +19,9 @@ use super::events::{
     self, Acknowledgement, Events, FailureKind, Identity, Kind, LeaseLoss, Operation,
 };
 use super::store::{
-    claim_batch_with_timing, claim_with_timing, drain_work, finish, next_due_ms, prune, recover,
-    renew, Claim, ClaimBatch, LeaseStatus, Outcome, OversizedClaim, Settlement, MAX_CLAIM_BATCH,
+    claim_batch_set, claim_batch_with_timing, claim_with_timing, drain_work, finish, next_due_ms,
+    next_due_ms_since, prune, recover, renew, Claim, ClaimBatch, LeaseStatus, Outcome,
+    OversizedClaim, SetClaimBatch, Settlement, MAX_CLAIM_BATCH,
 };
 use super::trusted::TrustedAttempt;
 use super::with_pool;
@@ -89,6 +90,7 @@ struct Config {
     prune_page_size: u32,
     drain: bool,
     claim_batch: bool,
+    claim_batch_strategy: BatchStrategy,
     event_buffer: usize,
     event_log: bool,
     listen: bool,
@@ -98,6 +100,14 @@ struct Config {
     #[cfg(mesh_jobs_effects)]
     #[serde(skip)]
     effects: Option<super::effects::Effects>,
+}
+
+#[derive(Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum BatchStrategy {
+    #[default]
+    Cursor,
+    SetBased,
 }
 
 #[derive(Default, Deserialize, PartialEq, Eq)]
@@ -134,6 +144,7 @@ impl Default for Config {
             prune_page_size: 1000,
             drain: false,
             claim_batch: false,
+            claim_batch_strategy: BatchStrategy::Cursor,
             event_buffer: 0,
             event_log: false,
             listen: false,
@@ -203,6 +214,11 @@ impl Config {
             return Err("runner configuration exceeds 128 KiB".into());
         }
         let config: Self = serde_json::from_str(json).map_err(|error| error.to_string())?;
+        if config.claim_batch_strategy == BatchStrategy::SetBased
+            && (!config.claim_batch || config.execution != WorkerExecution::FreshProcess)
+        {
+            return Err("Jobs set_based claim_batch_strategy requires batch claims and fresh-process execution".into());
+        }
         if !identifier(&config.namespace) {
             return Err("invalid runner namespace".into());
         }
@@ -826,6 +842,9 @@ pub(super) fn drain(
     if config.execution == WorkerExecution::TrustedSharedProcess {
         return Err("Jobs.drain requires fresh-process execution".into());
     }
+    if config.claim_batch_strategy == BatchStrategy::SetBased {
+        return Err("Jobs.drain does not use claim_batch_strategy".into());
+    }
     config.claim_batch = false;
     let wire: serde_json::Value =
         serde_json::from_str(config_json).map_err(|error| error.to_string())?;
@@ -894,7 +913,8 @@ fn start_configured(
                  SELECT to_regprocedure('mesh_jobs.try_renew(text,uuid,uuid,bigint)') AS renew,
                         to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') AS settle,
                         to_regprocedure('mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint)') AS batch,
-                        to_regprocedure('mesh_jobs.claim_drain_v1(text,text,jsonb,bigint,bigint,jsonb)') AS single_claim
+                        to_regprocedure('mesh_jobs.claim_drain_v1(text,text,jsonb,bigint,bigint,jsonb)') AS single_claim,
+                        to_regprocedure('mesh_jobs.claim_batch_set_v1(text,text,jsonb,bigint,integer,bigint)') AS batch_set
              ) SELECT CASE
                  WHEN version <> 1 OR to_regclass('mesh_jobs.cron_schedules') IS NULL
                      OR renew IS NULL OR settle IS NULL THEN 'migrate'
@@ -904,9 +924,14 @@ fn start_configured(
                  WHEN $1::boolean AND NOT has_function_privilege(batch, 'EXECUTE') THEN 'batch_permissions'
                  WHEN $2::boolean AND single_claim IS NULL THEN 'migrate'
                  WHEN $2::boolean AND NOT has_function_privilege(single_claim, 'EXECUTE') THEN 'single_permissions'
+                 WHEN $3::boolean AND batch_set IS NULL THEN 'migrate'
+                 WHEN $3::boolean AND NOT has_function_privilege(batch_set, 'EXECUTE') THEN 'batch_set_permissions'
                  ELSE 'ready'
              END FROM mesh_jobs.schema_version CROSS JOIN functions WHERE singleton",
-            &[&config.claim_batch.to_string(), &default_claim.to_string()],
+            &[
+                &config.claim_batch.to_string(), &default_claim.to_string(),
+                &(config.claim_batch_strategy == BatchStrategy::SetBased).to_string(),
+            ],
         )?;
         match rows
             .first()
@@ -921,6 +946,9 @@ fn start_configured(
             Some("batch_permissions") => {
                 Err("Jobs batch runner needs EXECUTE on mesh_jobs.claim_batch_v1".into())
             }
+            Some("batch_set_permissions") => Err(
+                "Jobs set-based batch runner needs EXECUTE on mesh_jobs.claim_batch_set_v1".into(),
+            ),
             Some("single_permissions") => {
                 Err("Jobs runner needs EXECUTE on mesh_jobs.claim_drain_v1".into())
             }
@@ -2126,6 +2154,49 @@ fn read_batch_claim(
     db: &mut PgJobDb<'_>,
 ) -> BatchResult {
     let config = &runner.config;
+    if config.claim_batch_strategy == BatchStrategy::SetBased {
+        let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
+        match claim_batch_set(
+            db,
+            &config.namespace,
+            queue,
+            workers,
+            config.lease_ms,
+            slots,
+            runner.events.is_some(),
+        )? {
+            SetClaimBatch::Batch(batch) => return Ok((lease, batch, None)),
+            SetClaimBatch::Empty(cutoff) => {
+                let next_due = match (runner.wakeups.as_ref(), cutoff) {
+                    (Some(_), Some(cutoff)) => {
+                        next_due_ms_since(db, &config.namespace, queue, workers, cutoff)
+                            .map_err(|error| runner.record_error(error))
+                            .ok()
+                            .flatten()
+                            .and_then(|delay| {
+                                Instant::now().checked_add(Duration::from_millis(delay))
+                            })
+                    }
+                    _ => None,
+                };
+                return Ok((lease, ClaimBatch::default(), next_due));
+            }
+            SetClaimBatch::Fallback => {
+                let next_due = runner.probe_due(db, queue, workers);
+                let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
+                let batch = super::store::claim_batch_cursor_checked(
+                    db,
+                    &config.namespace,
+                    queue,
+                    workers,
+                    config.lease_ms,
+                    slots,
+                    runner.events.is_some(),
+                )?;
+                return Ok((lease, batch, next_due));
+            }
+        }
+    }
     let next_due = runner.probe_due(db, queue, workers);
     let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
     let batch = claim_batch_with_timing(

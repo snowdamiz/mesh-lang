@@ -1065,7 +1065,11 @@ fn parse_row_description(body: &[u8]) -> Result<Vec<PgColumn>, String> {
             .get(offset..offset + 18)
             .ok_or_else(|| "truncated PostgreSQL RowDescription".to_string())?;
         let oid = u32::from_be_bytes([fields[6], fields[7], fields[8], fields[9]]);
-        let binary = i16::from_be_bytes([fields[16], fields[17]]) == 1;
+        let binary = match i16::from_be_bytes([fields[16], fields[17]]) {
+            0 => false,
+            1 => true,
+            _ => return Err("invalid PostgreSQL column format".into()),
+        };
         columns.push(PgColumn { name, oid, binary });
         offset += 18;
     }
@@ -1244,7 +1248,7 @@ impl Failure {
 
 /// Send `message` and read the replies up to ReadyForQuery, which gives the
 /// connection its transaction status, passing each RowDescription, NoData
-/// and DataRow to `rows` as (tag, body). Returns the row count of the last
+/// DataRow and CommandComplete to `rows` as (tag, body). Returns the row count of the last
 /// CommandComplete, or the first failure, the server's or `rows`'s. Either
 /// way every reply is read, which leaves the connection ready for the next
 /// request unless it broke. `what` names the request in I/O errors.
@@ -1263,7 +1267,12 @@ fn request(
             .read_wire_message(&mut buffer)
             .map_err(|error| format!("read {what}: {error}"))?;
         match tag {
-            b'C' => count = parse_command_tag(String::from_utf8_lossy(body).trim_end_matches('\0')),
+            b'C' => {
+                count = parse_command_tag(String::from_utf8_lossy(body).trim_end_matches('\0'));
+                if failure.is_none() {
+                    failure = rows(tag, body).err().map(Failure::Other);
+                }
+            }
             b'E' if failure.is_none() => {
                 failure = Some(Failure::Server(parse_error_response_full(body)))
             }
@@ -1271,7 +1280,11 @@ fn request(
                 failure = rows(tag, body).err().map(Failure::Other)
             }
             b'Z' => {
-                conn.txn_status = body.first().copied().unwrap_or(b'I');
+                let [status @ (b'I' | b'T' | b'E')] = body else {
+                    conn.broken = true;
+                    return Err(format!("{what} returned malformed ReadyForQuery").into());
+                };
+                conn.txn_status = *status;
                 return failure.map_or(Ok(count), Err);
             }
             // CopyInResponse: COPY FROM STDIN waits for rows, and the driver
@@ -1309,11 +1322,11 @@ fn prepare(conn: &mut PgConn, sql: &str) -> Result<Vec<PgColumn>, Failure> {
     let mut columns = None;
     request(conn, "prepare", &message, |tag, body| {
         // A RowDescription, or NoData.
-        columns = Some(if tag == b'T' {
-            parse_row_description(body)?
-        } else {
-            Vec::new()
-        });
+        match tag {
+            b'T' => columns = Some(parse_row_description(body)?),
+            b'n' => columns = Some(Vec::new()),
+            _ => {}
+        }
         Ok(())
     })?;
     Ok(columns.ok_or_else(|| "PostgreSQL prepare returned no row description".to_string())?)
@@ -2063,6 +2076,148 @@ pub(super) fn pg_jobs_ack(
         ));
     }
     Ok(rows)
+}
+
+// Each checked claim uses separate exchanges for BEGIN, its SELECT, and
+// COMMIT. Keeping Sync at the SELECT makes its results revocable.
+pub(crate) enum JobsClaimCommand {
+    Begin,
+    Commit,
+    Rollback,
+}
+
+pub(super) fn pg_jobs_claim_command(
+    conn: &mut PgConn,
+    command: JobsClaimCommand,
+) -> Result<(), String> {
+    use JobsClaimCommand::*;
+    let (sql, complete, ready): (&str, &[u8], u8) = match command {
+        Begin if conn.txn_status == b'I' => {
+            ("BEGIN ISOLATION LEVEL READ COMMITTED", b"BEGIN\0", b'T')
+        }
+        Commit if conn.txn_status == b'T' => ("COMMIT", b"COMMIT\0", b'I'),
+        Rollback => ("ROLLBACK", b"ROLLBACK\0", b'I'),
+        _ => return Err("Jobs claim transaction started in an unexpected state".into()),
+    };
+    let mut message = vec![b'Q'];
+    message.extend_from_slice(&(sql.len() as i32 + 5).to_be_bytes());
+    message.extend_from_slice(sql.as_bytes());
+    message.push(0);
+    let mut confirmed = false;
+    let result = request(conn, sql, &message, |tag, body| {
+        if tag == b'C' && body == complete && !confirmed {
+            confirmed = true;
+            Ok(())
+        } else {
+            Err(format!("Jobs claim received an invalid {sql} receipt"))
+        }
+    });
+    match result {
+        Ok(_) if confirmed && conn.txn_status == ready => Ok(()),
+        other => {
+            // The COMMIT may have executed. Reuse would give a later caller
+            // a connection whose reply stream or outcome we cannot establish.
+            conn.broken = true;
+            Err(other
+                .err()
+                .map(Failure::message)
+                .unwrap_or_else(|| format!("Jobs claim did not confirm {sql}")))
+        }
+    }
+}
+
+pub(crate) type JobsClaimRow = [Option<String>; 8];
+
+pub(super) fn pg_jobs_claim_rows(
+    conn: &mut PgConn,
+    sql: &str,
+    params: &[&str],
+    limit: usize,
+) -> Result<Option<Vec<JobsClaimRow>>, String> {
+    if conn.txn_status != b'T' {
+        return Err("Jobs claim SELECT requires an open PostgreSQL transaction".into());
+    }
+    validate_sql(sql)?;
+    let mut message = Vec::new();
+    write_parse(&mut message, sql);
+    write_bind_values(&mut message, &text_params(params), &[])?;
+    write_describe_portal(&mut message);
+    write_execute(&mut message);
+    write_sync(&mut message);
+    let mut columns = None;
+    let mut rows = Vec::new();
+    let mut select_count = None;
+    let mut reply_bytes = 0;
+    let names = [
+        "status",
+        "id",
+        "token",
+        "context",
+        "timeout_ms",
+        "context_bytes",
+        "observed_at_ms",
+        "ordinality",
+    ];
+    let result = request(conn, "Jobs claim SELECT", &message, |tag, body| {
+        // The ordinary query budget is larger. Check this batch's wire
+        // limit on both paths even if PostgreSQL's reply is malformed.
+        const MAX_CLAIM_REPLY_BYTES: usize = 32 * 1024 * 1024;
+        reply_bytes += 5 + body.len();
+        if reply_bytes > MAX_CLAIM_REPLY_BYTES {
+            return Err("Jobs claim SELECT exceeds the 32 MiB reply limit".into());
+        }
+        let invalid = || "Jobs claim returned an invalid SELECT receipt".to_string();
+        match tag {
+            b'T' if columns.is_none() && select_count.is_none() => {
+                let desc = parse_row_description(body)?;
+                if desc.len() != names.len()
+                    || desc.iter().zip(names).any(|(column, name)| {
+                        column.name != name || column.oid != 25 || column.binary
+                    })
+                {
+                    return Err(invalid());
+                }
+                columns = Some(desc);
+            }
+            b'D' if rows.len() < limit && select_count.is_none() => {
+                let fields = columns.as_ref().ok_or_else(invalid)?;
+                let mut row = std::array::from_fn(|_| None);
+                for (slot, field) in row.iter_mut().zip(parse_typed_row(body, fields)?) {
+                    match field {
+                        RowValue::Text(bytes) => {
+                            *slot = Some(
+                                std::str::from_utf8(bytes)
+                                    .map_err(|_| "Jobs claim contains invalid UTF-8")?
+                                    .to_owned(),
+                            )
+                        }
+                        RowValue::Null => {}
+                        RowValue::Binary(_) => return Err(invalid()),
+                    }
+                }
+                rows.push(row);
+            }
+            b'C' if columns.is_some() && select_count.is_none() => {
+                let count = body
+                    .strip_prefix(b"SELECT ")
+                    .and_then(|count| count.strip_suffix(b"\0"))
+                    .filter(|count| count.iter().all(u8::is_ascii_digit))
+                    .and_then(|count| std::str::from_utf8(count).ok()?.parse::<usize>().ok())
+                    .ok_or_else(invalid)?;
+                select_count = Some(count);
+            }
+            _ => return Err(invalid()),
+        }
+        Ok(())
+    });
+    match result {
+        Ok(_) if conn.txn_status == b'T' && select_count == Some(rows.len()) => Ok(Some(rows)),
+        Ok(_) => Err("Jobs claim did not confirm every row in an open transaction".into()),
+        Err(Failure::Server(error)) if error.sqlstate == "55P03" && conn.txn_status == b'E' => {
+            Ok(None)
+        }
+        Err(error) => Err(error.message()),
+    }
 }
 
 fn text_query(

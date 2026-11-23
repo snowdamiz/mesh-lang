@@ -1,9 +1,10 @@
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
-use crate::db::pg::JobsAckError;
+use crate::db::jobs_connection::PgJobDb;
+use crate::db::pg::{JobsAckError, JobsClaimCommand, JobsClaimRow};
 
 pub(super) trait Database {
     fn query(&mut self, sql: &str, params: &[&str]) -> Result<Vec<Vec<(String, String)>>, String>;
@@ -725,6 +726,38 @@ pub(super) fn claim_batch(
     )
 }
 
+const CURSOR_CLAIM_SQL: &str = "SELECT coalesce(status, 'contention_hint') AS status, id, token, context, timeout_ms, context_bytes,
+                    CASE WHEN $7::boolean AND status = 'claimed'
+                    THEN floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text END AS observed_at_ms,
+                    ordinality::text
+             FROM (VALUES (1)) AS probe_anchor(dummy)
+             LEFT JOIN LATERAL (
+                 SELECT * FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,
+                     nullif($6, '')::bigint) WITH ORDINALITY
+             ) AS result ON true
+             WHERE CASE WHEN ordinality IS NOT NULL THEN true ELSE EXISTS (
+                 SELECT FROM mesh_jobs.queues q
+                 WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active'
+                     AND q.concurrency > 0
+                     AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                         WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
+                     AND q.concurrency > (SELECT count(*) FROM mesh_jobs.jobs running
+                         WHERE running.namespace = q.namespace AND running.queue = q.name
+                             AND running.state = 'executing')
+                     AND EXISTS (SELECT FROM mesh_jobs.jobs j
+                         WHERE j.namespace = q.namespace AND j.queue = q.name
+                             AND j.state IN ('available', 'scheduled', 'retryable')
+                             AND j.scheduled_at_ms <= coalesce(nullif($6, '')::bigint,
+                                 floor(extract(epoch FROM pg_catalog.statement_timestamp()) * 1000)::bigint)
+                             AND j.attempt < j.max_attempts
+                             AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                                 WHERE w.worker = j.worker AND w.version = j.version)
+                             AND NOT EXISTS (SELECT FROM mesh_jobs.batch_context_blocks b
+                                 WHERE b.namespace = j.namespace AND b.id = j.id
+                                     AND b.row_version = j.xmin AND b.row_location = j.ctid
+                                     AND b.encoding = current_setting('client_encoding')::name))
+             ) END";
+
 pub(super) fn claim_batch_with_timing(
     db: &mut impl Database,
     namespace: &str,
@@ -762,37 +795,7 @@ pub(super) fn claim_batch_with_timing(
         // The two wrapper fields fit the function's 1 KiB framing reserve:
         // 20 rows * (two 4-byte lengths + 2 ordinal digits) + 16 * 20 bigint bytes = 520.
         let rows = db.query(
-            "SELECT coalesce(status, 'contention_hint'), id, token, context, timeout_ms, context_bytes,
-                    CASE WHEN $7::boolean AND status = 'claimed'
-                    THEN floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text END,
-                    ordinality::text
-             FROM (VALUES (1)) AS probe_anchor(dummy)
-             LEFT JOIN LATERAL (
-                 SELECT * FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,
-                     nullif($6, '')::bigint) WITH ORDINALITY
-             ) AS result ON true
-             WHERE CASE WHEN ordinality IS NOT NULL THEN true ELSE EXISTS (
-                 SELECT FROM mesh_jobs.queues q
-                 WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active'
-                     AND q.concurrency > 0
-                     AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
-                         WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
-                     AND q.concurrency > (SELECT count(*) FROM mesh_jobs.jobs running
-                         WHERE running.namespace = q.namespace AND running.queue = q.name
-                             AND running.state = 'executing')
-                     AND EXISTS (SELECT FROM mesh_jobs.jobs j
-                         WHERE j.namespace = q.namespace AND j.queue = q.name
-                             AND j.state IN ('available', 'scheduled', 'retryable')
-                             AND j.scheduled_at_ms <= coalesce(nullif($6, '')::bigint,
-                                 floor(extract(epoch FROM pg_catalog.statement_timestamp()) * 1000)::bigint)
-                             AND j.attempt < j.max_attempts
-                             AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
-                                 WHERE w.worker = j.worker AND w.version = j.version)
-                             AND NOT EXISTS (SELECT FROM mesh_jobs.batch_context_blocks b
-                                 WHERE b.namespace = j.namespace AND b.id = j.id
-                                     AND b.row_version = j.xmin AND b.row_location = j.ctid
-                                     AND b.encoding = current_setting('client_encoding')::name))
-             ) END",
+            CURSOR_CLAIM_SQL,
             &[
                 namespace,
                 queue,
@@ -812,6 +815,272 @@ pub(super) fn claim_batch_with_timing(
         Ok(batch)
     })();
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
+}
+
+pub(super) enum SetClaimBatch {
+    Batch(ClaimBatch),
+    Empty(Option<u64>),
+    Fallback,
+}
+
+pub(super) fn claim_batch_set(
+    db: &mut PgJobDb<'_>,
+    namespace: &str,
+    queue: &str,
+    workers: &str,
+    lease_ms: u64,
+    slots: usize,
+    observe: bool,
+) -> Result<SetClaimBatch, String> {
+    let params = [
+        namespace,
+        queue,
+        workers,
+        &lease_ms.to_string(),
+        &slots.to_string(),
+        &observe.to_string(),
+    ];
+    let batch = checked_claim(
+        db,
+        "SELECT status, id, token, context, timeout_ms, context_bytes,
+                CASE WHEN $6::boolean AND status = 'claimed'
+                    THEN mesh_jobs.now_ms()::text END AS observed_at_ms, ordinality::text
+         FROM mesh_jobs.claim_batch_set_v1($1, $2, $3::jsonb, $4::bigint, $5::integer, NULL)
+         WITH ORDINALITY",
+        &params,
+        slots.max(1),
+        |rows| {
+            let invalid = || "Jobs set-based claim returned an invalid marker".to_string();
+            match rows.as_slice() {
+                [] => Ok(SetClaimBatch::Empty(None)),
+                [row] if matches!(row[0].as_deref(), Some("empty" | "fallback")) => {
+                    if row[7].as_deref() != Some("1")
+                        || row[1..7]
+                            .iter()
+                            .enumerate()
+                            .any(|(index, field)| index != 3 && field.is_some())
+                    {
+                        return Err(invalid());
+                    }
+                    match (row[0].as_deref(), row[4].as_deref()) {
+                        (Some("empty"), Some(cutoff)) => cutoff
+                            .parse::<u64>()
+                            .ok()
+                            .filter(|&value| value <= MAX_TIMESTAMP_MS)
+                            .map(|value| SetClaimBatch::Empty(Some(value)))
+                            .ok_or_else(invalid),
+                        (Some("fallback"), None) => Ok(SetClaimBatch::Fallback),
+                        _ => Err(invalid()),
+                    }
+                }
+                _ => decode_checked_batch(rows, slots, observe, queue, workers, false)
+                    .map(SetClaimBatch::Batch),
+            }
+        },
+    )?;
+    Ok(batch.unwrap_or_else(|| {
+        SetClaimBatch::Batch(ClaimBatch {
+            contention_hint: true,
+            ..ClaimBatch::default()
+        })
+    }))
+}
+
+// Conservative set-based sizing hands the entire ordered scan back to the
+// cursor, with the same validation and transaction receipt requirements.
+pub(super) fn claim_batch_cursor_checked(
+    db: &mut PgJobDb<'_>,
+    namespace: &str,
+    queue: &str,
+    workers: &str,
+    lease_ms: u64,
+    slots: usize,
+    observe: bool,
+) -> Result<ClaimBatch, String> {
+    let params = [
+        namespace,
+        queue,
+        workers,
+        &lease_ms.to_string(),
+        &slots.to_string(),
+        "",
+        &observe.to_string(),
+    ];
+    let batch = checked_claim(
+        db,
+        CURSOR_CLAIM_SQL,
+        &params,
+        slots + MAX_OVERSIZED_PER_BATCH,
+        |rows| decode_checked_batch(rows, slots, observe, queue, workers, true),
+    )?;
+    Ok(batch.unwrap_or_else(|| ClaimBatch {
+        contention_hint: true,
+        ..ClaimBatch::default()
+    }))
+}
+
+fn checked_claim<T>(
+    db: &mut PgJobDb<'_>,
+    sql: &str,
+    params: &[&str],
+    limit: usize,
+    decode: impl FnOnce(Vec<JobsClaimRow>) -> Result<T, String>,
+) -> Result<Option<T>, String> {
+    db.claim_command(JobsClaimCommand::Begin)?;
+    let value = db
+        .claim_rows(sql, params, limit)
+        .and_then(|rows| rows.map(decode).transpose());
+    match value {
+        Ok(Some(batch)) => {
+            db.claim_command(JobsClaimCommand::Commit)?;
+            Ok(Some(batch))
+        }
+        Ok(None) => {
+            db.claim_command(JobsClaimCommand::Rollback)?;
+            Ok(None)
+        }
+        Err(error) => Err(rollback_error(
+            error,
+            db.claim_command(JobsClaimCommand::Rollback),
+        )),
+    }
+}
+
+fn decode_checked_batch(
+    rows: Vec<JobsClaimRow>,
+    slots: usize,
+    observe: bool,
+    queue: &str,
+    workers: &str,
+    cursor: bool,
+) -> Result<ClaimBatch, String> {
+    let invalid = || "Jobs batch claim returned an invalid grant".to_string();
+    let mut ids = HashSet::with_capacity(rows.len());
+    let mut tokens = HashSet::with_capacity(rows.len());
+    let registered: Vec<Worker> = if rows.iter().any(|r| r[0].as_deref() == Some("claimed")) {
+        decode(workers)?
+    } else {
+        Vec::new()
+    };
+    for row in &rows {
+        let [status, id, token, context, timeout, bytes, observed_at, ordinal] =
+            row.each_ref().map(Option::as_deref);
+        match status {
+            Some("contention_hint")
+                if cursor && rows.len() == 1 && row[1..].iter().all(Option::is_none) =>
+            {
+                continue
+            }
+            Some("oversized")
+                if cursor
+                    && token.is_none()
+                    && context.is_none()
+                    && timeout.is_none()
+                    && observed_at.is_none() => {}
+            Some("claimed") => {
+                let (Some(id), Some(token), Some(context), Some(timeout)) =
+                    (id, token, context, timeout)
+                else {
+                    return Err(invalid());
+                };
+                if !uuid_field(token)
+                    || !tokens.insert(token)
+                    || !timeout
+                        .parse::<u64>()
+                        .is_ok_and(|ms| ms > 0 && ms <= MAX_DURATION_MS)
+                {
+                    return Err(invalid());
+                }
+                if observe {
+                    if !observed_at.is_some_and(|value| {
+                        value
+                            .parse::<u64>()
+                            .is_ok_and(|ms| ms > 0 && ms <= MAX_TIMESTAMP_MS)
+                    }) {
+                        return Err(invalid());
+                    }
+                } else if observed_at.is_some() {
+                    return Err(invalid());
+                }
+                validate_claim_context(context, id, queue, &registered)?;
+            }
+            _ => return Err(invalid()),
+        }
+        if !id.is_some_and(|id| uuid_field(id) && ids.insert(id))
+            || bytes.is_none()
+            || ordinal.is_none()
+        {
+            return Err(invalid());
+        }
+    }
+    let rows = rows
+        .into_iter()
+        .map(|row| {
+            row.into_iter()
+                .map(|field| (String::new(), field.unwrap_or_default()))
+                .collect()
+        })
+        .collect();
+    decode_claim_batch(rows, slots, observe)
+}
+
+fn uuid_field(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(index, byte)| match index {
+            8 | 13 | 18 | 23 => byte == b'-',
+            _ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
+        })
+}
+
+fn validate_claim_context(
+    body: &str,
+    id: &str,
+    queue: &str,
+    workers: &[Worker],
+) -> Result<(), String> {
+    use serde::de::IgnoredAny;
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Context<'a> {
+        id: &'a str,
+        effect_key: &'a str,
+        worker: &'a str,
+        version: u32,
+        queue: &'a str,
+        attempt: u32,
+        max_attempts: u32,
+        scheduled_at_ms: u64,
+        #[serde(rename = "args")]
+        _args: BTreeMap<String, IgnoredAny>,
+        #[serde(rename = "metadata")]
+        _metadata: BTreeMap<String, IgnoredAny>,
+        #[serde(rename = "tags")]
+        _tags: Vec<String>,
+    }
+
+    let invalid = || "Jobs batch claim returned an invalid context envelope".to_string();
+    let context: Context<'_> = serde_json::from_str(body).map_err(|_| invalid())?;
+    let run = context
+        .effect_key
+        .strip_prefix(id)
+        .and_then(|suffix| suffix.strip_prefix('/'));
+    if context.id != id
+        || context.queue != queue
+        || !run
+            .and_then(|value| value.parse::<u64>().ok())
+            .is_some_and(|run| run > 0)
+        || context.attempt == 0
+        || context.attempt > context.max_attempts
+        || context.max_attempts > 100
+        || context.scheduled_at_ms > MAX_TIMESTAMP_MS
+        || !workers
+            .iter()
+            .any(|worker| worker.worker == context.worker && worker.version == context.version)
+    {
+        return Err(invalid());
+    }
+    Ok(())
 }
 
 fn decode_claim_batch(
@@ -897,6 +1166,41 @@ fn decode_claim_batch(
         }
     }
     Ok(batch)
+}
+
+pub(super) fn next_due_ms_since(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers: &str,
+    cutoff: u64,
+) -> Result<Option<u64>, String> {
+    let delay = response(
+        db,
+        "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
+         SELECT coalesce((
+             SELECT greatest(j.scheduled_at_ms - (SELECT now_ms FROM clock), 0)::text
+             FROM mesh_jobs.queues q JOIN mesh_jobs.jobs j
+                 ON j.namespace = q.namespace AND j.queue = q.name
+             WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active' AND q.concurrency > 0
+                 AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                     WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
+                 AND j.state IN ('available', 'scheduled', 'retryable')
+                 AND j.scheduled_at_ms > $4::bigint AND j.attempt < j.max_attempts
+                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                             WHERE w.worker = j.worker AND w.version = j.version)
+             ORDER BY j.scheduled_at_ms LIMIT 1
+         ), '')",
+        &[namespace, queue, workers, &cutoff.to_string()],
+    )?;
+    if delay.is_empty() {
+        Ok(None)
+    } else {
+        delay
+            .parse::<u64>()
+            .map(Some)
+            .map_err(|error| error.to_string())
+    }
 }
 
 pub(super) fn next_due_ms(

@@ -606,6 +606,14 @@ When an empty batch still sees eligible work and available capacity, the runner 
 
 Batch dispatch uses two dedicated PostgreSQL sessions per runner, one for claims and one for renewal and settlement. Include both in the runner's connection budget. The database limits each job context to 16 MiB and each batch reply to 32 MiB. The runner reports an oversized job in `last_error` and continues claiming later jobs. A batch drain reports oversized jobs and can finish after processing its remaining eligible work. For restricted worker roles, grant `EXECUTE` on `mesh_jobs.claim_batch_v1(text, text, jsonb, bigint, integer, bigint)` and `SELECT`, `INSERT`, and `UPDATE` on `mesh_jobs.batch_context_blocks`. Existing runners can continue with single claims during rollout.
 
+#### Use set-based batch claims
+
+Set `claim_batch_strategy: "set_based"` together with `claim_batch: true` to enable the set-based claim path for a fresh-process `Jobs.start` or `Jobs.start_effects` runner. Each claim batch commits before any attempt starts. Every handler outcome still settles in its own transaction after that attempt exits. A process starts only after the runner validates the complete batch response and receives PostgreSQL's COMMIT confirmation.
+
+Run `Jobs.migrate` as the schema owner before opting in. For scoped installations, apply [the optional set-based claim grant](https://github.com/snowdamiz/mesh-lang/blob/main/scripts/fixtures/jobs-set-based-claim-grant.sql) to the existing worker role or grant `EXECUTE` on `mesh_jobs.claim_batch_set_v1(text, text, jsonb, bigint, integer, bigint)` to the existing batch-worker role. Keep the cursor grants for the size and encoding fallback. Both strategies enforce the same queue capacity and priority rules and can coexist with single-claim workers during rollout.
+
+The cursor is the default batch strategy. Remove `claim_batch_strategy` or set it to `"cursor"` to switch back on the next runner start. Trusted shared-process runners use the cursor. The separate bounded `Jobs.drain` API uses its own claim strategy. When a claim COMMIT is unacknowledged, the runner starts none of that batch and any committed claims go through normal lease recovery.
+
 #### Wake runners after commits
 
 Set `listen: true` in a long-running runner's config to subscribe to PostgreSQL wake hints. Run `Jobs.migrate` before enabling publishing. Enable publishing on the sessions that enqueue jobs or resume queues, for example with `ALTER ROLE app_writer IN DATABASE app_db SET mesh_jobs.publish_wakeups = 'on'` for new sessions or `SET LOCAL mesh_jobs.publish_wakeups = 'on'` inside a transaction using `Jobs.enqueue_in`. Publishing and listening each default to off. A runner can listen with publishing disabled.

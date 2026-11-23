@@ -1538,3 +1538,229 @@ fn locked_job_operations_leave_the_claim_for_retry() {
     assert_eq!(f.get(&claim.id)["state"], "executing");
     assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
 }
+
+struct CheckedSession {
+    pool: u64,
+    session: crate::db::jobs_connection::JobSession,
+}
+
+impl CheckedSession {
+    fn open(url: &str) -> Self {
+        use crate::db::pool::{mesh_pool_open, unbox_u64_payload};
+        use crate::io::MeshResult;
+        use crate::string::mesh_str;
+
+        crate::gc::mesh_rt_init();
+        let pool = unsafe { &*mesh_pool_open(mesh_str(url), 0, 1, 500).cast::<MeshResult>() };
+        assert_eq!(pool.tag, 0);
+        let pool = unsafe { unbox_u64_payload(pool.value) };
+        let session = unsafe { crate::db::jobs_connection::JobSession::from_pool(pool) }.unwrap();
+        Self { pool, session }
+    }
+
+    fn set(&mut self, ns: &str) -> SetClaimBatch {
+        self.session
+            .with(|db| claim_batch_set(db, ns, "default", WORKERS, 60_000, 16, true))
+            .unwrap()
+    }
+}
+
+impl Drop for CheckedSession {
+    fn drop(&mut self) {
+        crate::db::pool::mesh_pool_close(self.pool);
+    }
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn checked_set_batch_shares_capacity_with_existing_claimers_and_controls() {
+    let mut fixture = Fixture::new();
+    fixture.ops(json!({"action":"configure","queue":"default","concurrency":3}));
+    let jobs = fixture.enqueue(json!([
+        {"worker":"Deliver","priority":0},{"worker":"Deliver","priority":1},
+        {"worker":"Deliver","priority":2},{"worker":"Deliver","priority":3},
+        {"worker":"Deliver","priority":4},{"worker":"Deliver","priority":5}
+    ]));
+    let ns = fixture.ns.clone();
+    let ready = |db: SetClaimBatch| match db {
+        SetClaimBatch::Batch(batch) => batch.claims,
+        SetClaimBatch::Empty(_) => Vec::new(),
+        SetClaimBatch::Fallback => panic!("small grants should not need the cursor"),
+    };
+    let mut set = CheckedSession::open(&fixture.url);
+    let mut legacy = Connection::open(&fixture.url);
+    let legacy_grant = claim(&mut legacy, &ns, "default", WORKERS, 60_000)
+        .unwrap()
+        .unwrap();
+    assert_eq!(legacy_grant.id, id(&jobs[0]));
+
+    // A producer's foreign-key check must remain compatible with the
+    // admission lock held while a batch waits for its own commit.
+    let mut precommit = Connection::open(&fixture.url);
+    precommit.simple("BEGIN").unwrap();
+    assert_eq!(
+        response(
+            &mut precommit,
+            "SELECT id FROM mesh_jobs.claim_batch_set_v1($1,'default',$2::jsonb,60000,1,NULL)",
+            &[&ns, WORKERS]
+        )
+        .unwrap(),
+        id(&jobs[1])
+    );
+    fixture.db.simple("SET lock_timeout = '250ms'").unwrap();
+    fixture.enqueue(json!({"worker":"Deliver","priority":9}));
+    fixture.db.simple("RESET lock_timeout").unwrap();
+    precommit.simple("ROLLBACK").unwrap();
+
+    let mut admin = Connection::open(&fixture.url);
+    admin.simple("BEGIN").unwrap();
+    admin
+        .query(
+            "SELECT mesh_jobs.queue_control($1,'default','scale',2)",
+            &[&ns],
+        )
+        .unwrap();
+    assert!(
+        claim_batch(&mut legacy, &ns, "default", WORKERS, 60_000, 16, None)
+            .unwrap()
+            .claims
+            .is_empty()
+    );
+    assert!(matches!(
+        set.set(&ns),
+        SetClaimBatch::Batch(ClaimBatch {
+            contention_hint: true,
+            ..
+        })
+    ));
+    admin.simple("COMMIT").unwrap();
+
+    let grant = ready(set.set(&ns)).pop().unwrap();
+    assert_eq!(grant.id, id(&jobs[1]));
+    assert!(grant.observed_at_ms.is_some());
+    assert!(ready(set.set(&ns)).is_empty());
+    assert!(fixture.try_claim().is_none());
+
+    // Namespace control may take its advisory lock before touching queues.
+    // Admission must return while that exclusive lock is still held.
+    admin.simple("BEGIN").unwrap();
+    admin
+        .query("SELECT mesh_jobs.set_namespace_paused($1,true)", &[&ns])
+        .unwrap();
+    assert_eq!(
+        fixture.finish(&legacy_grant, Outcome::Complete),
+        Settlement::Completed
+    );
+    assert!(ready(set.set(&ns)).is_empty());
+    admin
+        .query(
+            "SELECT mesh_jobs.queue_control($1,'default','pause',NULL)",
+            &[&ns],
+        )
+        .unwrap();
+    admin.simple("COMMIT").unwrap();
+    assert!(ready(set.set(&ns)).is_empty());
+
+    fixture.ops(json!({"action":"cancel","id":grant.id}));
+    assert_eq!(
+        renew(&mut legacy, &ns, &grant.id, &grant.token, 60_000).unwrap(),
+        LeaseStatus::Cancelled
+    );
+    fixture.expire(&grant.id);
+    assert_eq!(fixture.finish(&grant, Outcome::Complete), Settlement::Stale);
+    assert_eq!(recover(&mut legacy, &ns, 1, None).unwrap(), 1);
+    assert_eq!(fixture.get(&grant.id)["state"], "cancelled");
+    admin
+        .query("SELECT mesh_jobs.set_namespace_paused($1,false)", &[&ns])
+        .unwrap();
+    fixture.ops(json!({"action":"resume","queue":"default"}));
+
+    admin.simple("BEGIN").unwrap();
+    admin
+        .query(
+            "SELECT id FROM mesh_jobs.jobs WHERE namespace=$1 AND id=$2::uuid FOR NO KEY UPDATE",
+            &[&ns, id(&jobs[2])],
+        )
+        .unwrap();
+    assert_eq!(
+        ready(set.set(&ns))
+            .iter()
+            .map(|grant| grant.id.as_str())
+            .collect::<Vec<_>>(),
+        [id(&jobs[3]), id(&jobs[4])]
+    );
+    admin.simple("ROLLBACK").unwrap();
+}
+
+#[test]
+#[ignore = "requires the claim admission wire proof relay"]
+fn checked_grant_never_escapes_an_invalid_or_uncertain_reply() {
+    let Ok(url) = std::env::var("MESH_TEST_CLAIM_RELAY_URL") else {
+        return;
+    };
+    let ns = std::env::var("MESH_TEST_CLAIM_RELAY_NAMESPACE").expect("wire proof namespace");
+    let mut session = CheckedSession::open(&url);
+    let result = session.session.with(|db| {
+        if std::env::var_os("MESH_TEST_CLAIM_RELAY_CURSOR").is_some() {
+            claim_batch_cursor_checked(db, &ns, "default", WORKERS, 60_000, 2, false)
+                .map(SetClaimBatch::Batch)
+        } else {
+            claim_batch_set(db, &ns, "default", WORKERS, 60_000, 2, false)
+        }
+    });
+    if std::env::var("MESH_TEST_CLAIM_RELAY_CASE").as_deref() == Ok("reply_budget") {
+        assert!(matches!(&result, Err(error) if error.contains("32 MiB reply limit")));
+    }
+    assert!(
+        result.is_err(),
+        "the checked client returned a launchable grant"
+    );
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn checked_batch_keeps_the_ordered_prefix_when_the_set_reply_needs_cursor_sizing() {
+    let mut fixture = Fixture::new();
+    fixture.ops(json!({"action":"configure","queue":"default","concurrency":2}));
+    let jobs = fixture.enqueue(json!([
+        {"worker":"Deliver","priority":0},
+        {"worker":"Deliver","priority":1},
+        {"worker":"Deliver","priority":2}
+    ]));
+    let large = id(&jobs[1]);
+    fixture
+        .db
+        .query(
+            "UPDATE mesh_jobs.jobs SET args = jsonb_build_object(
+           'blob',(SELECT string_agg(md5(x::text), '') FROM generate_series(1,4096) x))
+         WHERE namespace=$1 AND id=$2::uuid",
+            &[&fixture.ns, large],
+        )
+        .unwrap();
+    let mut set = CheckedSession::open(&fixture.url);
+    assert!(matches!(set.set(&fixture.ns), SetClaimBatch::Fallback));
+    assert_eq!(fixture.get(id(&jobs[0]))["attempt"], 0);
+    assert_eq!(fixture.get(large)["attempt"], 0);
+    let batch = set
+        .session
+        .with(|db| {
+            claim_batch_cursor_checked(db, &fixture.ns, "default", WORKERS, 60_000, 2, false)
+        })
+        .unwrap();
+    assert_eq!(
+        batch
+            .claims
+            .iter()
+            .map(|job| job.id.as_str())
+            .collect::<Vec<_>>(),
+        [id(&jobs[0]), large]
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&batch.claims[1].context).unwrap()["args"]["blob"]
+            .as_str()
+            .unwrap()
+            .len(),
+        131_072
+    );
+    assert!(fixture.try_claim().is_none());
+}

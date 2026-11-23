@@ -108,7 +108,14 @@ for database in jobs_role_fresh jobs_role_upgrade; do
     denied jobs_worker "SELECT mesh_jobs.claim_batch_v1('upgrade','default','$workers',60000,1,NULL);"
     statement jobs_migrator "REVOKE UPDATE ON mesh_jobs.jobs, mesh_jobs.queues FROM jobs_worker;"
   fi
+  denied jobs_worker "SELECT mesh_jobs.claim_batch_set_v1('proof','default','$workers',60000,1,NULL);"
   as_role jobs_migrator < scripts/fixtures/jobs-role-grants.sql
+  denied jobs_worker "SELECT mesh_jobs.claim_batch_set_v1('proof','default','$workers',60000,1,NULL);"
+  as_role jobs_migrator < scripts/fixtures/jobs-set-based-claim-grant.sql
+  # Reapplying the normal owner migration must preserve the scoped opt-in grant.
+  as_role jobs_migrator < compiler/mesh-rt/src/jobs/schema.sql >/dev/null
+  expect jobs_worker "SELECT has_function_privilege(
+    'mesh_jobs.claim_batch_set_v1(text,text,jsonb,bigint,integer,bigint)', 'EXECUTE');" t
 
   expect jobs_migrator "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
@@ -129,6 +136,9 @@ for database in jobs_role_fresh jobs_role_upgrade; do
     mesh_jobs.jobs WHERE namespace='proof'; SELECT count(*) FROM mesh_jobs.receipts
     WHERE namespace='proof';" $'1\n1\n1'
   denied jobs_producer "SELECT mesh_jobs.claim('proof','default','$workers',60000);"
+  for unprivileged in jobs_producer jobs_operator jobs_inspector; do
+    denied "$unprivileged" "SELECT mesh_jobs.claim_batch_set_v1('proof','default','$workers',60000,1,NULL);"
+  done
   denied jobs_producer "SELECT mesh_jobs.claim_drain_v1('proof','default','$workers',60000,NULL,NULL);"
   denied jobs_producer "SELECT mesh_jobs.queue_control('proof','default','pause',NULL);"
   denied jobs_worker "SELECT mesh_jobs.set_namespace_paused('proof',true);"
@@ -138,7 +148,7 @@ for database in jobs_role_fresh jobs_role_upgrade; do
   expect jobs_operator "SELECT mesh_jobs.queue_control('proof','default','resume',NULL)->>'state';" active
 
   attempt="$(statement jobs_worker "SELECT id || ' ' || token FROM
-    mesh_jobs.claim_batch_v1('proof','default','$workers',60000,1,NULL) WHERE status='claimed';")"
+    mesh_jobs.claim_batch_set_v1('proof','default','$workers',60000,1,NULL) WHERE status='claimed';")"
   read -r job_id job_token <<<"$attempt"
   [[ "$job_id" == "$receipt_id" && "$job_token" =~ ^[0-9a-f-]{36}$ ]]
   expect jobs_worker "SELECT mesh_jobs.try_renew('proof','$job_id','$job_token',60000);" active
