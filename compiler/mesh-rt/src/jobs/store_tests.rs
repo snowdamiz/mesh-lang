@@ -134,6 +134,87 @@ fn id(value: &Value) -> &str {
     value["id"].as_str().unwrap()
 }
 
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn next_due_uses_one_clock_for_the_first_eligible_future_job() {
+    let fixture = Fixture::new();
+    let mut db = Connection::open(&fixture.url);
+    db.simple("BEGIN").unwrap();
+    // Roll back the clock replacement before fixture cleanup. Advancing the
+    // test clock on every call detects independently sampled cutoffs and delays.
+    db.simple("CREATE TEMP SEQUENCE due_clock START WITH 1000")
+        .unwrap();
+    db.simple(
+        "CREATE OR REPLACE FUNCTION mesh_jobs.now_ms() RETURNS bigint
+         LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp
+         AS $$ SELECT nextval('pg_temp.due_clock') $$",
+    )
+    .unwrap();
+    let ns = fixture.ns.as_str();
+    db.query(
+        "INSERT INTO mesh_jobs.queues (namespace, name) VALUES ($1, 'default'), ($1, '')",
+        &[ns],
+    )
+    .unwrap();
+    let probe = |db: &mut Connection, workers: &str, now_ms: u64, expected: Option<u64>| {
+        let now_ms = now_ms.to_string();
+        db.query(
+            "SELECT setval('pg_temp.due_clock', $1::bigint, false)",
+            &[&now_ms],
+        )
+        .unwrap();
+        assert_eq!(next_due_ms(db, ns, "default", workers).unwrap(), expected);
+        if expected.is_some() {
+            assert_eq!(
+                response(db, "SELECT currval('pg_temp.due_clock')::text", &[]).unwrap(),
+                now_ms
+            );
+        }
+    };
+    probe(&mut db, WORKERS, 1000, None);
+    db.query(
+        "INSERT INTO mesh_jobs.jobs (namespace, worker, version, queue, args, metadata,
+             tags, state, priority, attempt, max_attempts, timeout_ms, backoff_base_ms,
+             backoff_max_ms, inserted_at_ms, scheduled_at_ms)
+         SELECT $1, 'Deliver', version, 'default', '{}', '{}', '[]', state, 0, attempt,
+                3, 1000, 0, 0, 0, scheduled_at_ms
+         FROM (VALUES (2, 'scheduled', 0, 1001), (1, 'scheduled', 3, 1002),
+                      (1, 'suspended', 0, 1003), (1, 'retryable', 1, 1004),
+                      (1, 'scheduled', 0, 1005), (1, 'available', 0, 1006)
+               UNION ALL SELECT 1, 'available', 0, n FROM generate_series(0, 1000) n
+         ) AS seed(version, state, attempt, scheduled_at_ms)",
+        &[ns],
+    )
+    .unwrap();
+    db.query(
+        "UPDATE mesh_jobs.jobs SET state = 'executing', attempt = 1,
+             lease_token = gen_random_uuid(), lease_expires_at_ms = 5000
+         WHERE namespace = $1 AND scheduled_at_ms = 0",
+        &[ns],
+    )
+    .unwrap();
+    probe(&mut db, "[]", 1000, None);
+    probe(&mut db, WORKERS, 1000, Some(4));
+    probe(&mut db, WORKERS, 1004, Some(1));
+    probe(&mut db, WORKERS, 1005, Some(1));
+    probe(&mut db, WORKERS, 1006, None);
+    for queue in ["default", ""] {
+        db.query(
+            "UPDATE mesh_jobs.queues SET state = 'paused' WHERE namespace = $1 AND name = $2",
+            &[ns, queue],
+        )
+        .unwrap();
+        probe(&mut db, WORKERS, 1000, None);
+        db.query(
+            "UPDATE mesh_jobs.queues SET state = 'active' WHERE namespace = $1 AND name = $2",
+            &[ns, queue],
+        )
+        .unwrap();
+        probe(&mut db, WORKERS, 1000, Some(4));
+    }
+    db.simple("ROLLBACK").unwrap();
+}
+
 fn batch_row(fields: [&str; 8]) -> Vec<(String, String)> {
     fields
         .into_iter()
