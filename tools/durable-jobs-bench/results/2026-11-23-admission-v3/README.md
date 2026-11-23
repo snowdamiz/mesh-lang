@@ -77,6 +77,23 @@ PG_BIN_DIR=/opt/homebrew/opt/postgresql@17/bin python3 -B "$lane/edges.py" \
 
 Build the isolated `mesh-rt` test executable with `cargo test --locked -p mesh-rt --lib --no-run` and pass that executable to `wire_proof.py --candidate "$lane/source" --scratch "$lane/tmp" --output "$lane/wire.json"`. The guest overlay requires the prior frozen Linux guest, fixture object, and real settlement pipeline assets in the target lanes. See the prior [settlement pipeline replay](../../../../target/dense-settlement-pipeline/REPLAY.md). To reduce the committed guest evidence independently, extract the timing archive into a fresh directory and pass its five `committed-*` paths to `summarize.py --runs` with `--price "$record/receipts/explicit-prices.json"`.
 
-Linode is pending controller SETUP for the exact candidate. The PostgreSQL changes are isolated and have not been integrated or pushed.
+## Linode AMD64 setup
+
+The controller built commit `bd7851b9` with the pinned stock compiler. The exact ELF SHA-256 is `cf4f22be4995fd5f7c00a45e1ea97753c1c65577cc34142195f6d98d11087483`. All four setup smokes passed independent ledger replay on CPUs 0 and 1 with verified TLS, PostgreSQL 17.11, durability enabled, and zero reserved connections.
+
+| Profile and mode | Commit-to-terminal jobs/s | Submit-to-terminal jobs/s | Runner CPU-ms/job | Peak connections / cap | Terminal XIDs |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| No-op strict | 217.05 | 194.51 | 5.514 | 65 / 96 | 1,024 |
+| No-op cohort | 217.15 | 193.40 | 5.506 | 65 / 96 | 739 |
+| Short strict | 247.20 | 216.93 | 4.794 | 13 / 20 | 128 |
+| Short cohort | 275.15 | 239.99 | 4.487 | 13 / 20 | 65 |
+
+Each no-op smoke retained 1,024 distinct worker PIDs, 2,048 independent application commits, and 2,080 full resets including startup. Each short smoke retained 128 distinct worker PIDs, 256 independent application commits, and 264 resets. These are single setup runs. The controller's separate matched strict comparison determines the performance verdict. [Reduced smokes](receipts/native-smokes.json) · [Raw native archive](../2026-11-23-admission-v3-setup-bd7851b9/raw.tar.gz) · [Executable pins](receipts/native-artifact.json)
+
+The full isolated workspace test command exited zero with 4,817 passed test entries and 64 ignored across 123 test binaries and doc-test groups. The separately enabled wire and PostgreSQL compatibility checks supplement the default workspace test entry points. [Workspace log](receipts/workspace.log.gz)
+
+Five additional fresh scripted arms per mode at each width priced strict admission, probing and settlement at 0.514 versus stock 0.906 CPU-ms/job for single-job turns, and 0.373 versus 0.595 at width four. These component prices exclude the concurrent dispatcher and do not predict native throughput. [Width one](receipts/price-width-1.json) · [Width four](receipts/price-width-4.json)
+
+The PostgreSQL changes are isolated as candidate commits. No integration merge or push occurred.
 
 The [combined lean-worker source and pins](combined/README.md) are staged independently of admission qualification.
