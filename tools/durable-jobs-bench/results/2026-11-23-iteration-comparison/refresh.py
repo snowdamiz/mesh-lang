@@ -150,6 +150,18 @@ def write_scorecard(data):
                      "The original V1 trusted runner and its protected control use their standard producer.",
                      [("bulk", "Trusted Mesh · batch enqueue"), ("scalar", "Same binary · scalar enqueue"),
                       ("ordinary", "Original trusted Mesh"), ("protected-mesh", "Protected Mesh"), *peers])
+    add_policy_table(lines, data.get("bulk-v2-slow", {}), "Slow jobs with grouped successes",
+                     "This pilot stopped after two opposite orders. The V2 lanes can settle up to eight successes "
+                     "together. V1 keeps one terminal transaction per job. Both policies used the same 512-job "
+                     "input and 100 ms hold. [Extension decision](../2026-11-23-bulk-enqueue-v2-slow/README.md)",
+                     [("bulk", "V2 · batch enqueue"), ("scalar", "V2 · scalar enqueue"),
+                      ("v1-bulk", "V1 · batch enqueue"), ("v1-scalar", "V1 · scalar enqueue"), *peers])
+    add_policy_table(lines, data.get("exit-confirmed-short", {}), "Short jobs with confirmed actor teardown",
+                     "Zero hold sends ready completions to a writer as soon as they are available. The writer-off "
+                     "control runs the same executable and also waits for actor teardown. The earlier bulk V2 "
+                     "runner could settle while teardown was still running.",
+                     [("writer-zero", "Mesh · zero-hold writer"), ("writer-off", "Same runner · writer off"),
+                      ("bulk", "Earlier bulk V2"), *peers])
     add_policy_table(lines, data.get("bulk-short", {}), "Short jobs with both producer and runner changes",
                      "Both Mesh lanes use the V2 grouped-success policy. Only the producer's set-based enqueue switch changes.",
                      [("bulk", "Trusted Mesh · batch enqueue"), ("scalar", "Same binary · scalar enqueue"), *peers])

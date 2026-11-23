@@ -49,6 +49,33 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | River | 288.66 | 387.57 | 1/5 | 1/5 |
 | Apalis | 355.45 | 457.84 | 0/5 | 1/5 |
 
+## Slow jobs with grouped successes
+
+2/5 matched rotations. This pilot stopped after two opposite orders. The V2 lanes can settle up to eight successes together. V1 keeps one terminal transaction per job. Both policies used the same 512-job input and 100 ms hold. [Extension decision](../2026-11-23-bulk-enqueue-v2-slow/README.md)
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| V2 · batch enqueue | 260.90 | 363.53 | — | — |
+| V2 · scalar enqueue | 254.10 | 383.25 | 2/2 | 0/2 |
+| V1 · batch enqueue | 263.05 | 360.88 | 1/2 | 1/2 |
+| V1 · scalar enqueue | 243.40 | 351.32 | 2/2 | 1/2 |
+| Oban | 236.63 | 310.37 | 2/2 | 2/2 |
+| River | 273.80 | 368.18 | 1/2 | 1/2 |
+| Apalis | 342.64 | 450.95 | 0/2 | 0/2 |
+
+## Short jobs with confirmed actor teardown
+
+5/5 matched rotations. Zero hold sends ready completions to a writer as soon as they are available. The writer-off control runs the same executable and also waits for actor teardown. The earlier bulk V2 runner could settle while teardown was still running.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh · zero-hold writer | 614.76 | 745.43 | — | — |
+| Same runner · writer off | 597.33 | 727.77 | 3/5 | 4/5 |
+| Earlier bulk V2 | 638.54 | 766.58 | 1/5 | 2/5 |
+| Oban | 287.89 | 324.38 | 5/5 | 5/5 |
+| River | 555.75 | 602.45 | 2/5 | 2/5 |
+| Apalis | 871.13 | 957.50 | 0/5 | 0/5 |
+
 ## Short jobs with both producer and runner changes
 
 5/5 matched rotations. Both Mesh lanes use the V2 grouped-success policy. Only the producer's set-based enqueue switch changes.

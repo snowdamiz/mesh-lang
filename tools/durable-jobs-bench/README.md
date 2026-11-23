@@ -1,5 +1,7 @@
 # Native durable Jobs comparison
 
+Compare Mesh, Oban, River, and Apalis across all five workloads. The scorecard reports both submission through final settlement and enqueue commit through final settlement. [Four-engine scorecard](results/2026-11-23-iteration-comparison/four-engine-scorecard.md) · [Interactive chart and per-rotation results](results/2026-11-23-iteration-comparison/chart.html)
+
 ## Adapter handoff
 
 The matrix owner runs official timing. Keep builders and functional smokes off the host during timing. While setting up, each lane should publish its host command, build identity, and ready state in its own README. For the active assignment and handoff protocol, see `target/linode-jobs-stepchange/requests/STATUS.md` and `README.md` in the same directory.

@@ -1,0 +1,15 @@
+{
+  "group": 5,
+  "order": [
+    "writer-zero",
+    "writer-off",
+    "apalis",
+    "river",
+    "bulk",
+    "oban"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}
