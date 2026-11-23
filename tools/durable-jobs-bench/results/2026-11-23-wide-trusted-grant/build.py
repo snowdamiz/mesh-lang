@@ -39,7 +39,9 @@ def build(dest):
     temp.mkdir()
     env = dict(os.environ, TMPDIR=str(temp), CARGO_NET_OFFLINE="true")
     target = dest / "cargo"
-    cargo = "/opt/homebrew/opt/rustup/bin/cargo"
+    toolchain_bin = Path("/opt/homebrew/opt/rustup/bin")
+    env["PATH"] = str(toolchain_bin) + os.pathsep + env["PATH"]
+    cargo = toolchain_bin / "cargo"
     subprocess.run([cargo, "+1.99.0", "build", "--offline", "--locked", "-j", "4", "-p", "mesh-rt",
                     "--target-dir", target], cwd=tree, env=env, check=True)
     runtime = target / "debug/libmesh_rt.a"
