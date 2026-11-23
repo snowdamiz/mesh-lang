@@ -116,3 +116,30 @@ Extract the `recovery/run.py` file to
 `target/jobs-perf-work/canonical-recovery/run.py` to use the same entry
 point in the shared checkout. It restores the base and init by SHA-256
 and checks the complete guest manifest before launching.
+
+## Reproduce the resolver-pinned score
+
+From the checkout root, extract the resolver-pinned archive into a fresh
+directory. Rebuild the paired receipt and score, then compare both files
+byte-for-byte with the tracked copies. The independent verifier also
+reconciles the archived ledgers and recalculates the budget decisions.
+
+```sh
+p=proof/jobs-parity/linux-regression
+a=proof/jobs-parity/linux-canonical-inetrc
+mkdir -p target
+c=$(mktemp -d target/resolver-pinned-replay.XXXXXX)
+mkdir "$c/extracted"
+tar -xzf "$a-raw-20261122.tar.gz" -C "$c/extracted"
+python3 -B "$p/summarize.py" "$c/extracted"/{noop,slow,sparse,short,large}-0{1,2,3,4,5} > "$c/receipt.json"
+python3 -B "$p/score.py" "$c/receipt.json" > "$c/score.json"
+cmp "$c/receipt.json" "$a-receipt-20261122.json"
+cmp "$c/score.json" "$a-score-20261122.json"
+python3 -B "$c/extracted/recovery/publication/verify.py" "$c/extracted" "$a-receipt-20261122.json" "$a-score-20261122.json"
+shasum -a 256 "$a-raw-20261122.tar.gz" "$a-receipt-20261122.json" "$a-score-20261122.json"
+```
+
+The archive contains the original exports used by the scorer and the
+audit with all 25 guest serial SHA-256 digests. The audit checked each
+local serial's transport digest and successful exit marker, then compared
+its decoded payload with the original export.

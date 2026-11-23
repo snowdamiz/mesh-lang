@@ -5727,4 +5727,56 @@ limit of two. The Mesh ELF, database, workloads, and limits stayed pinned.
 The pilots reconciled 3,216 measured jobs and 6,432 ordered commits.
 They verified the package before starting a fresh five-pair series.
 [Resolver pilot receipts](../proof/jobs-parity/linux-oban-resolver-pilots-20261122.json)
-[Resume](../target/jobs-perf-work/canonical-inetrc/RESUME.md)
+[Resolver-pinned results](#canonical-linux-comparison-with-the-pinned-resolver)
+
+### Canonical Linux comparison with the pinned resolver
+
+Dense no-op, slow, sparse, and large missed at least one configured limit.
+Short passed all configured limits.
+The `canonical-oban-flags-inetrc` series used the frozen Mesh ELF and
+five fresh pairs per profile, alternating which engine ran first.
+All 25 guest proofs exited zero. The ledgers reconcile 17,520 measured
+jobs and 16,000 warmup jobs. Each job recorded one attempt and one effect
+in distinct ordered commits before or at settlement. The preflight,
+95 measured Oban runners, and each Oban broker used the pinned `[file]`
+resolver. Measured arms started at host load averages of 8.73 to 275.61
+on 15 logical CPUs.
+
+The highest measured start load was in `large-04`. Mesh started at
+275.61 and Oban at 183.65. The score includes every verified pair.
+
+Ratios use each engine's median across the five measured arms. The
+throughput gate requires Mesh to exceed 1.00× Oban. The pickup p99,
+runner CPU per job, and peak RSS limits are 1.25×, 1.25×, and 1.50×.
+Throughput runs from the first committed enqueue to durable settlement.
+Runner CPU includes startup and idle.
+
+| Profile | Mesh jobs/s (range) | Oban jobs/s (range) | Mesh throughput wins | Throughput | Pickup p99 | Runner CPU | Peak RSS | Failed gates |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Dense no-op | 522.6 (461.5 to 1123.9) | 2195.2 (1162.2 to 2445.9) | 0 of 5 | 0.238× | 4.207× | 0.438× | 0.380× | Throughput, Pickup p99 |
+| Slow | 447.7 (206.8 to 477.6) | 440.5 (348.0 to 506.3) | 2 of 5 | 1.016× | 0.978× | 1.017× | 2.326× | Peak RSS |
+| Sparse | 2.875 (2.154 to 2.915) | 2.016 (1.984 to 2.045) | 5 of 5 | 1.426× | 0.032× | 0.632× | 0.270× | Mesh listener claim p99 |
+| Short | 787.2 (180.8 to 1018.0) | 357.0 (182.3 to 846.2) | 4 of 5 | 2.205× | 0.448× | 0.350× | 0.427× | None |
+| Large | 141.8 (59.6 to 367.1) | 235.6 (107.6 to 293.2) | 1 of 5 | 0.602× | 1.777× | 0.109× | 0.264× | Throughput, Pickup p99 |
+
+| Profile | Connections, Mesh / Oban (cap) | Processes, Mesh / Oban (cap) | Threads, Mesh / Oban (cap) |
+| --- | ---: | ---: | ---: |
+| Dense no-op | 65 / 81 (96) | 27 / 16 (128) | 180 / 96 (672) |
+| Slow | 13 / 67 (68) | 65 / 2 (128) | 456 / 12 (588) |
+| Sparse | 5 / 4 (5) | 2 / 2 (2) | 14 / 12 (84) |
+| Short | 13 / 19 (20) | 7 / 2 (32) | 47 / 12 (204) |
+| Large | 65 / 81 (96) | 18 / 16 (128) | 149 / 96 (672) |
+
+The worst sparse pickup p99 was 170.17 ms for Mesh and 285.74 ms for
+Oban against the 750 ms limit. The worst Mesh sparse claim p99 was
+143.19 ms in `sparse-05` against 100 ms. Both engines stayed within
+the connection, process, and thread caps. The largest Mesh queued-context
+sample was 4,196,960 bytes against 33,554,432 bytes.
+
+The tracked evidence has these SHA-256 digests.
+
+- `dd751a9d8a4baa35146956b1716d3bc8e49035ce3a66a084b684a55ddd78eb76` [Raw archive](../proof/jobs-parity/linux-canonical-inetrc-raw-20261122.tar.gz)
+- `d412a7362a2fbd003c2a491cdeee291c588fa8ae567b77f2cee6b1e4b2c5b8fe` [Paired receipt](../proof/jobs-parity/linux-canonical-inetrc-receipt-20261122.json)
+- `6cfe8fe930fe29e828ca2b36c3e70559b76f25f0ecc28b342964ee9e6c856665` [Score](../proof/jobs-parity/linux-canonical-inetrc-score-20261122.json)
+
+[Replay and verification commands](../proof/jobs-parity/linux-regression/README.md#reproduce-the-resolver-pinned-score)
