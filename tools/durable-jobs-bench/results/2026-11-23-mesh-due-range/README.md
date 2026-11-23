@@ -10,3 +10,5 @@ The candidate build uses the baseline compiler and frozen worker sources with a 
 PG_BIN_DIR=/opt/homebrew/opt/postgresql@17/bin \
     python3 -B tools/durable-jobs-bench/results/2026-11-23-mesh-due-range/verify-plan.py
 ```
+
+The exact candidate passed the macOS workspace suite with 4,813 tests, the PostgreSQL 17.11 compatibility and scoped-role gate, and the effect-fence proof. The native Linux dense and sparse diagnostic arms reconciled 1,048 jobs with two ordered writes per job. [Local proof receipt](local-proof.json), [full native repeat](../2026-11-23-due-range-repeat/README.md)

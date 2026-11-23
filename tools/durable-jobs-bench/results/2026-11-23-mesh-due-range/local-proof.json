@@ -1,0 +1,26 @@
+{
+  "effect-fence": {
+    "log_sha256": "18bcfc3adca8f6b2d785dd49bf8d322ff4c16a24576ca647efa3876c78cb5c3f",
+    "rust_tests_failed": 0,
+    "rust_tests_ignored": 0,
+    "rust_tests_passed": 0
+  },
+  "llvm": "21.1.8",
+  "platform": "Darwin arm64",
+  "postgres": {
+    "log_sha256": "5340122296474be46eccf78361f2356093ee8aa9a32d7286ba47d2b52da55a95",
+    "rust_tests_failed": 0,
+    "rust_tests_ignored": 6,
+    "rust_tests_passed": 117
+  },
+  "postgres_release": "17.11",
+  "revision": "ee59322673e9fb5fc861e4a53781a70840adbcde",
+  "rust": "1.99.0",
+  "temporary_checkout_removed": true,
+  "workspace": {
+    "log_sha256": "12a188018d0abfb3a622b64cfae8c946cbdf2fe93bb92e09d2790fc6b65944e5",
+    "rust_tests_failed": 0,
+    "rust_tests_ignored": 62,
+    "rust_tests_passed": 4813
+  }
+}
