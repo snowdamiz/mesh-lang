@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-topology-scheduler-supply/local.py", line 17, in <module>
+    base = runpy.run_path(str(PRIOR / "local.py"), init_globals={})
+  File "<frozen runpy>", line 294, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/local.py", line 13, in <module>
+    from arm import INPUT, LAYOUTS, ORDERS, read, sha, write
+ImportError: cannot import name 'INPUT' from 'arm' (/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-topology-scheduler-supply/arm.py)
