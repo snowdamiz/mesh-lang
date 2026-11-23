@@ -3,18 +3,21 @@
 from contextlib import ExitStack
 import ctypes
 import errno
-import importlib.util
 from pathlib import Path
-from types import SimpleNamespace
+import tarfile
+from types import ModuleType, SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 
 HERE = Path(__file__).resolve().parent
-SPEC = importlib.util.spec_from_file_location(
-    "repaired_capture", HERE / "linode-dense-runtime-attribution/native.py")
-capture = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(capture)
+payload = HERE.parent / "recovered/dependencies.tar"
+capture = ModuleType("repaired_capture")
+capture.__file__ = f"{payload}:native.py"
+with tarfile.open(payload, "r:") as archive:
+    source = archive.extractfile("native.py")
+    with source:
+        exec(compile(source.read(), capture.__file__, "exec"), vars(capture))
 
 
 class ClockTests(unittest.TestCase):

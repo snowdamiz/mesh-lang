@@ -48,6 +48,7 @@ From this directory, check the hashes and replay both receipts with Python 3. Th
 
 ```sh
 shasum -a 256 -c SHA256SUMS
+python3 -B replay/test-clock.py
 export PYTHONPATH="$PWD/replay/frozen/tools/durable-jobs-bench"
 for capture in initial recovered; do
 	python3 -B replay/reduce.py "$capture/evidence.tar.gz" | cmp - "$capture/reduced.json" || exit 1
