@@ -9,17 +9,26 @@ terminal rows in one transaction inside the trusted shared process contract.
 The protected Mesh control still runs fresh workers with fenced effects and
 one terminal transaction per job. [Exact build and peer pins](evidence/ordinary-trusted-v2-short/series.json)
 
-In the first matched two-CPU block, 128 jobs per arm ran on PostgreSQL
-17.11 with verified TLS. The success cohort reached 527.39 jobs/s from
-first submit and 728.70 from first commit. The same-image ordinary stock
-lane reached 436.72 and 569.21. The submit rates for the fresh peer controls
-were 199.68 for protected Mesh, 298.04 for Oban, 715.12 for River, and
-944.09 for Apalis. The packet includes the measured arms and warmups for
-this block. [First block and its raw hashes](evidence/ordinary-trusted-v2-short/summary-partial.json)
+Five matched two-CPU blocks completed, with 128 jobs per arm, PostgreSQL
+17.11, and verified TLS. The packet includes all 30 measured arms.
+
+| Lane | Jobs/s from submit, median [range] | Jobs/s from first commit | Runner CPU (ms/job) |
+| --- | ---: | ---: | ---: |
+| Ordinary V2, success cohort | 502.74 [402.47–527.39] | 691.00 | 1.32 |
+| Ordinary V2, stock queue policy | 437.54 [419.96–476.75] | 585.93 | 1.27 |
+| Protected Mesh | 199.68 [192.55–212.15] | 223.55 | 4.83 |
+| Oban | 298.04 [268.32–337.23] | 335.35 | 11.23 |
+| River | 715.12 [475.17–724.10] | 772.55 | 0.92 |
+| Apalis | 925.66 [885.73–944.09] | 999.87 | 0.61 |
+
+The success cohort finished ahead of same-image stock in three blocks
+and Oban in five. River and Apalis finished ahead of the cohort in all
+five blocks. Every arm kept two independent application commits per job.
+The ordinary cohort may share terminal XIDs across eligible successes.
+[Five-block raw hashes and results](evidence/ordinary-trusted-v2-short/summary.json) · [Original first-block checkpoint](evidence/ordinary-trusted-v2-short/summary-partial.json)
 
 Run the driver from the checkout root with `PYTHONPATH` pointing at the
-benchmark suite. Its summary selects the same retained block offline and
-reports the four missing rotations with exit status 1.
+benchmark suite. It replays the five selected blocks offline.
 
 ```sh
 suite=tools/durable-jobs-bench

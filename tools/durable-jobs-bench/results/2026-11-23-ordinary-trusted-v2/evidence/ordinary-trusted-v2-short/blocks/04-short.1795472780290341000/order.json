@@ -1,0 +1,15 @@
+{
+  "group": 4,
+  "order": [
+    "ordinary-success-cohort",
+    "protected-mesh",
+    "ordinary-stock",
+    "river",
+    "oban",
+    "apalis"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}
