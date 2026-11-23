@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Native durable queue benchmark · 2026-11-23</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --text: var(--foreground, CanvasText);
+      --subtle: var(--muted-foreground, color-mix(in srgb, CanvasText 75%, Canvas));
+      --rule: var(--border, color-mix(in srgb, CanvasText 24%, Canvas));
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--text); font: 14px/1.45 var(--font-sans, system-ui), sans-serif; }
+    main { max-width: 68rem; margin-inline: auto; }
+    h1 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+    p { margin: 4px 0 0; }
+    .context, .legend, footer { color: var(--subtle); font-size: 12px; }
+    .control { display: flex; align-items: center; gap: 9px; margin-top: 12px; }
+    label { font-weight: 600; }
+    select {
+      min-width: 0;
+      max-width: 100%;
+      min-height: 33px;
+      padding: 3px 7px;
+      border: 1px solid var(--rule);
+      border-radius: 5px;
+      background: var(--background, Canvas);
+      color: var(--text);
+      font: inherit;
+    }
+    a:focus-visible, select:focus-visible { outline: 2px solid var(--ring, Highlight); outline-offset: 2px; }
+    a { color: var(--text); text-underline-offset: .18em; }
+    #window { font-size: 13px; margin-top: 6px; }
+    #profiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 20px; margin-top: 12px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+    caption { border-top: 1px solid var(--rule); padding: 6px 0 4px; text-align: start; }
+    .caption { display: flex; align-items: baseline; justify-content: space-between; gap: 5px; }
+    .profile { font-size: 15px; font-weight: 650; }
+    .scale { color: var(--subtle); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    col.engine { width: 23%; }
+    col.median { width: 19%; }
+    col.range { width: 10.4em; }
+    th, td { height: 26px; padding: 2px 0; text-align: start; }
+    thead th { height: 20px; color: var(--subtle); font-weight: 500; }
+    tbody th { font-weight: 600; }
+    .language { color: var(--subtle); font-weight: 400; }
+    .number { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    td.median { font-weight: 650; }
+    .plot-cell { padding-inline: 4px 7px; }
+    .track { position: relative; display: block; margin: 0 3px; height: 10px; }
+    .track::before, .range-line, .dot { position: absolute; top: 50%; transform: translateY(-50%); }
+    .track::before { content: ""; inset-inline: 0; border-top: 1px solid var(--rule); }
+    .range-line {
+      left: var(--min);
+      width: calc(var(--max) - var(--min));
+      border-top: 2px solid currentColor;
+    }
+    .range-line::before, .range-line::after {
+      content: "";
+      position: absolute;
+      top: -4px;
+      height: 6px;
+      border-inline-start: 1px solid currentColor;
+    }
+    .range-line::before { left: 0; }
+    .range-line::after { right: 0; }
+    .dot { left: var(--median); width: 7px; height: 7px; background: currentColor; border-radius: 50%; transform: translate(-50%, -50%); }
+    .mesh { color: var(--chart-1, light-dark(#08715e, #65c6a6)); }
+    .oban { color: var(--chart-2, light-dark(#7844a8, #c7a1e8)); }
+    .go { color: var(--chart-3, light-dark(#286898, #82bbdf)); }
+    .rust { color: var(--chart-4, light-dark(#9e542e, #e5aa81)); }
+    footer { margin-top: 13px; padding-top: 7px; border-top: 1px solid var(--rule); }
+    @media (max-width: 650px) {
+      #profiles { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+      select { font-size: 16px; }
+    }
+    @media (forced-colors: active) {
+      .track { color: CanvasText; forced-color-adjust: none; }
+      .track::before { border-color: GrayText; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Native durable queue benchmark</h1>
+    <p class="context"><time datetime="2026-11-23">November 23, 2026</time> · Linode x86-64, 2 pinned CPUs · Baseline <code>069c9c68</code></p>
+    <p class="context">5 preselected measured rounds per engine and profile. All 60 full warmup arms excluded.</p>
+    <div class="control">
+      <label for="measure">Measure</label>
+      <select id="measure" aria-describedby="window">
+        <option value="commit_jobs_per_s">Commit → durable settlement rate</option>
+        <option value="submit_jobs_per_s">Submit → durable settlement rate</option>
+        <option value="commit_to_pickup_p99_ms">Pickup latency (p99)</option>
+      </select>
+    </div>
+    <p id="window" aria-live="polite"></p>
+    <p class="legend">Dot shows the median. Line spans the min–max. Each profile has its own scale.</p>
+    <div id="profiles"></div>
+    <noscript>Enable JavaScript to view and switch the benchmark measures.</noscript>
+    <footer>Frozen sources · <a id="csv" download="comparison.csv">Comparison CSV</a> · <a id="index" download="index.json">Validated block index</a></footer>
+  </main>
+  <!-- Refresh the embedded sources with python3 -B generate_chart.py. -->
+  <script id="baseline" type="application/json">
+{
+  "results": {
+    "commit_jobs_per_s": {
+      "noop": {
+        "mesh": [
+          190.3378980971043,
+          187.6506106891212,
+          194.81080332441593
+        ],
+        "oban": [
+          707.5996478586128,
+          698.1188288238538,
+          719.1097084726433
+        ],
+        "go": [
+          926.4210022536276,
+          918.0768799731032,
+          954.111344048451
+        ],
+        "rust": [
+          1187.1926950549482,
+          1148.5318644687536,
+          1217.249278149781
+        ]
+      },
+      "slow": {
+        "mesh": [
+          205.63438206868187,
+          184.72437643797284,
+          210.34278479057335
+        ],
+        "oban": [
+          323.9552916388531,
+          301.79675167668137,
+          334.50387913434054
+        ],
+        "go": [
+          390.6109934107282,
+          333.4060488452885,
+          405.821638219521
+        ],
+        "rust": [
+          471.64032266830515,
+          377.49064567858,
+          510.6350724513376
+        ]
+      },
+      "sparse": {
+        "mesh": [
+          2.6477043961601225,
+          2.6397384019243693,
+          2.6552770034756468
+        ],
+        "oban": [
+          2.0394544357411672,
+          2.0337069987484226,
+          2.0429080489640796
+        ],
+        "go": [
+          2.084288813300611,
+          2.084252249754905,
+          2.0848010187727644
+        ],
+        "rust": [
+          2.4965773484913028,
+          2.4929796653881144,
+          2.4987693560921245
+        ]
+      },
+      "short": {
+        "mesh": [
+          224.90625977375836,
+          198.91807217307115,
+          235.22795978336976
+        ],
+        "oban": [
+          303.46998966305347,
+          278.7893572162883,
+          349.46992510968715
+        ],
+        "go": [
+          791.1783612718192,
+          493.7395369648905,
+          807.8767987881848
+        ],
+        "rust": [
+          876.3581840215255,
+          327.2326598646586,
+          993.8814175233717
+        ]
+      },
+      "large": {
+        "mesh": [
+          75.69404938327091,
+          75.01796328573991,
+          79.483062035288
+        ],
+        "oban": [
+          124.63073277028803,
+          119.68880909634949,
+          127.84173193586341
+        ],
+        "go": [
+          68.15935657567393,
+          66.9118707931775,
+          76.1030482838168
+        ],
+        "rust": [
+          362.6925387344297,
+          2.5258196985442085,
+          391.46604032100214
+        ]
+      }
+    },
+    "submit_jobs_per_s": {
+      "noop": {
+        "mesh": [
+          170.90288293469624,
+          168.81713427968745,
+          175.9128571683802
+        ],
+        "oban": [
+          636.4490122920431,
+          630.1658677796315,
+          654.8403187230614
+        ],
+        "go": [
+          869.8148755332288,
+          849.6289511065089,
+          886.7397765138656
+        ],
+        "rust": [
+          1138.6558079229983,
+          1104.2002743247556,
+          1156.4257860363846
+        ]
+      },
+      "slow": {
+        "mesh": [
+          163.1722209492098,
+          150.0792019538436,
+          166.41314663858444
+        ],
+        "oban": [
+          246.14236739921265,
+          231.95675456257123,
+          250.05054732743827
+        ],
+        "go": [
+          286.5956633374177,
+          252.78720106802592,
+          295.22014370071133
+        ],
+        "rust": [
+          363.32516324795665,
+          302.8709444427027,
+          383.9589163959456
+        ]
+      },
+      "sparse": {
+        "mesh": [
+          2.6457307056229937,
+          2.6378473055708698,
+          2.653475062807202
+        ],
+        "oban": [
+          2.033806266733353,
+          2.0268267409386067,
+          2.037503650527374
+        ],
+        "go": [
+          2.083581662988132,
+          2.0834402181570253,
+          2.084130621844659
+        ],
+        "rust": [
+          2.495081829847271,
+          2.4914082747558264,
+          2.497069584797674
+        ]
+      },
+      "short": {
+        "mesh": [
+          198.92270920297264,
+          174.1233636824915,
+          209.20912413292623
+        ],
+        "oban": [
+          273.8600575106121,
+          249.70688703299447,
+          308.7819516949234
+        ],
+        "go": [
+          726.6657961815984,
+          466.52330794183035,
+          739.6877130936283
+        ],
+        "rust": [
+          818.9274609409988,
+          317.35406052041105,
+          897.8108845541457
+        ]
+      },
+      "large": {
+        "mesh": [
+          23.80914293409741,
+          23.004908312859563,
+          24.017226355603558
+        ],
+        "oban": [
+          24.761870124765004,
+          23.84427009149866,
+          24.81652253049427
+        ],
+        "go": [
+          19.98708334738675,
+          19.755135100430167,
+          21.06259474053845
+        ],
+        "rust": [
+          38.64239602176533,
+          2.3902043747985364,
+          40.34644992217548
+        ]
+      }
+    },
+    "commit_to_pickup_p99_ms": {
+      "noop": {
+        "mesh": [
+          5310.721,
+          5163.205,
+          5364.85
+        ],
+        "oban": [
+          1408.183,
+          1382.491,
+          1445.32
+        ],
+        "go": [
+          859.576,
+          836.662,
+          890.55
+        ],
+        "rust": [
+          840.106,
+          822.122,
+          869.251
+        ]
+      },
+      "slow": {
+        "mesh": [
+          2357.542,
+          2315.451,
+          2630.203
+        ],
+        "oban": [
+          1470.268,
+          1414.681,
+          1567.158
+        ],
+        "go": [
+          1189.457,
+          1136.613,
+          1192.517
+        ],
+        "rust": [
+          969.793,
+          885.237,
+          1084.133
+        ]
+      },
+      "sparse": {
+        "mesh": [
+          14.443,
+          13.283,
+          15.594
+        ],
+        "oban": [
+          226.004,
+          224.853,
+          233.716
+        ],
+        "go": [
+          4.53,
+          2.069,
+          5.359
+        ],
+        "rust": [
+          5.719,
+          5.219,
+          8.044
+        ]
+      },
+      "short": {
+        "mesh": [
+          538.425,
+          528.336,
+          629.591
+        ],
+        "oban": [
+          412.005,
+          358.488,
+          452.341
+        ],
+        "go": [
+          150.684,
+          143.681,
+          162.058
+        ],
+        "rust": [
+          138.281,
+          122.248,
+          155.861
+        ]
+      },
+      "large": {
+        "mesh": [
+          831.166,
+          795.599,
+          835.134
+        ],
+        "oban": [
+          478.472,
+          473.111,
+          503.729
+        ],
+        "go": [
+          597.553,
+          548.081,
+          608.784
+        ],
+        "rust": [
+          132.738,
+          124.417,
+          163.006
+        ]
+      }
+    }
+  },
+  "sources": {
+    "csv": [
+      "profile,engine,metric,n,median,min,max",
+      "noop,mesh,commit_jobs_per_s,5,190.3378980971043,187.6506106891212,194.81080332441593",
+      "noop,mesh,submit_jobs_per_s,5,170.90288293469624,168.81713427968745,175.9128571683802",
+      "noop,mesh,commit_to_pickup_p99_ms,5,5310.721,5163.205,5364.85",
+      "noop,mesh,submit_to_pickup_p99_ms,5,5914.067,5727.887,5973.635",
+      "noop,mesh,commit_to_settlement_p99_ms,5,5354.642,5234.777,5413.406",
+      "noop,mesh,submit_to_settlement_p99_ms,5,5973.772,5799.459,6018.765",
+      "noop,mesh,runner_cpu_ms_per_job,5,5.8052841796875,5.6998994140625,5.8292265625",
+      "noop,mesh,peak_runner_rss_bytes,5,140115968,107347968,154271744",
+      "noop,mesh,peak_connections,5,65,65,65",
+      "noop,mesh,cpu_steal_percent,5,0.0,0.0,0.0",
+      "noop,mesh,cpu_iowait_percent,5,0.08090614886731391,0.0,0.16155088852988692",
+      "noop,oban,commit_jobs_per_s,5,707.5996478586128,698.1188288238538,719.1097084726433",
+      "noop,oban,submit_jobs_per_s,5,636.4490122920431,630.1658677796315,654.8403187230614",
+      "noop,oban,commit_to_pickup_p99_ms,5,1408.183,1382.491,1445.32",
+      "noop,oban,submit_to_pickup_p99_ms,5,1575.711,1533.324,1603.49",
+      "noop,oban,commit_to_settlement_p99_ms,5,1437.093,1413.781,1458.094",
+      "noop,oban,submit_to_settlement_p99_ms,5,1598.874,1555.225,1616.264",
+      "noop,oban,runner_cpu_ms_per_job,5,9.962009765624998,9.8784814453125,10.172770507812498",
+      "noop,oban,peak_runner_rss_bytes,5,799186944,784674816,806117376",
+      "noop,oban,peak_connections,5,81,81,81",
+      "noop,oban,cpu_steal_percent,5,0.0,0.0,0.0",
+      "noop,oban,cpu_iowait_percent,5,0.0,0.0,0.2958579881656805",
+      "noop,go,commit_jobs_per_s,5,926.4210022536276,918.0768799731032,954.111344048451",
+      "noop,go,submit_jobs_per_s,5,869.8148755332288,849.6289511065089,886.7397765138656",
+      "noop,go,commit_to_pickup_p99_ms,5,859.576,836.662,890.55",
+      "noop,go,submit_to_pickup_p99_ms,5,930.913,916.291,983.445",
+      "noop,go,commit_to_settlement_p99_ms,5,1088.897,1032.977,1112.337",
+      "noop,go,submit_to_settlement_p99_ms,5,1162.458,1114.519,1205.232",
+      "noop,go,runner_cpu_ms_per_job,5,0.763955078125,0.7402763671875,0.7928203125000001",
+      "noop,go,peak_runner_rss_bytes,5,128856064,128737280,130142208",
+      "noop,go,peak_connections,5,80,79,81",
+      "noop,go,cpu_steal_percent,5,0.0,0.0,0.0",
+      "noop,go,cpu_iowait_percent,5,0.0,0.0,0.35587188612099646",
+      "noop,rust,commit_jobs_per_s,5,1187.1926950549482,1148.5318644687536,1217.249278149781",
+      "noop,rust,submit_jobs_per_s,5,1138.6558079229983,1104.2002743247556,1156.4257860363846",
+      "noop,rust,commit_to_pickup_p99_ms,5,840.106,822.122,869.251",
+      "noop,rust,submit_to_pickup_p99_ms,5,876.873,864.994,905.046",
+      "noop,rust,commit_to_settlement_p99_ms,5,858.864,837.611,887.079",
+      "noop,rust,submit_to_settlement_p99_ms,5,895.631,883.593,922.874",
+      "noop,rust,runner_cpu_ms_per_job,5,0.592095703125,0.5764863281249999,0.6303994140625",
+      "noop,rust,peak_runner_rss_bytes,5,69992448,69599232,70385664",
+      "noop,rust,peak_connections,5,81,81,81",
+      "noop,rust,cpu_steal_percent,5,0.0,0.0,0.0",
+      "noop,rust,cpu_iowait_percent,5,0.41841004184100417,0.0,0.8403361344537815",
+      "slow,mesh,commit_jobs_per_s,5,205.63438206868187,184.72437643797284,210.34278479057335",
+      "slow,mesh,submit_jobs_per_s,5,163.1722209492098,150.0792019538436,166.41314663858444",
+      "slow,mesh,commit_to_pickup_p99_ms,5,2357.542,2315.451,2630.203",
+      "slow,mesh,submit_to_pickup_p99_ms,5,3007.917,2958.009,3270.038",
+      "slow,mesh,commit_to_settlement_p99_ms,5,2466.995,2423.721,2742.016",
+      "slow,mesh,submit_to_settlement_p99_ms,5,3117.416,3066.279,3381.851",
+      "slow,mesh,runner_cpu_ms_per_job,5,4.741046875,4.671482421875,5.04782421875",
+      "slow,mesh,peak_runner_rss_bytes,5,214020096,200794112,220917760",
+      "slow,mesh,peak_connections,5,13,13,13",
+      "slow,mesh,cpu_steal_percent,5,0.0,0.0,0.0",
+      "slow,mesh,cpu_iowait_percent,5,0.7861635220125787,0.5908419497784343,1.7955801104972375",
+      "slow,oban,commit_jobs_per_s,5,323.9552916388531,301.79675167668137,334.50387913434054",
+      "slow,oban,submit_jobs_per_s,5,246.14236739921265,231.95675456257123,250.05054732743827",
+      "slow,oban,commit_to_pickup_p99_ms,5,1470.268,1414.681,1567.158",
+      "slow,oban,submit_to_pickup_p99_ms,5,1967.238,1931.642,2077.96",
+      "slow,oban,commit_to_settlement_p99_ms,5,1578.593,1528.407,1695.341",
+      "slow,oban,submit_to_settlement_p99_ms,5,2078.225,2045.368,2206.143",
+      "slow,oban,runner_cpu_ms_per_job,5,3.9499882812500005,3.89740625,4.08643359375",
+      "slow,oban,peak_runner_rss_bytes,5,128860160,127905792,131006464",
+      "slow,oban,peak_connections,5,67,67,67",
+      "slow,oban,cpu_steal_percent,5,0.0,0.0,0.0",
+      "slow,oban,cpu_iowait_percent,5,0.6493506493506493,0.21978021978021978,2.7559055118110236",
+      "slow,go,commit_jobs_per_s,5,390.6109934107282,333.4060488452885,405.821638219521",
+      "slow,go,submit_jobs_per_s,5,286.5956633374177,252.78720106802592,295.22014370071133",
+      "slow,go,commit_to_pickup_p99_ms,5,1189.457,1136.613,1192.517",
+      "slow,go,submit_to_pickup_p99_ms,5,1662.455,1609.274,1697.024",
+      "slow,go,commit_to_settlement_p99_ms,5,1310.767,1261.638,1535.665",
+      "slow,go,submit_to_settlement_p99_ms,5,1786.489,1734.299,2025.419",
+      "slow,go,runner_cpu_ms_per_job,5,0.894611328125,0.876021484375,0.903638671875",
+      "slow,go,peak_runner_rss_bytes,5,36597760,34766848,37396480",
+      "slow,go,peak_connections,5,67,67,67",
+      "slow,go,cpu_steal_percent,5,0.0,0.0,0.0",
+      "slow,go,cpu_iowait_percent,5,0.746268656716418,0.449438202247191,1.1204481792717087",
+      "slow,rust,commit_jobs_per_s,5,471.64032266830515,377.49064567858,510.6350724513376",
+      "slow,rust,submit_jobs_per_s,5,363.32516324795665,302.8709444427027,383.9589163959456",
+      "slow,rust,commit_to_pickup_p99_ms,5,969.793,885.237,1084.133",
+      "slow,rust,submit_to_pickup_p99_ms,5,1293.56,1216.04,1425.208",
+      "slow,rust,commit_to_settlement_p99_ms,5,1085.573,1002.673,1356.325",
+      "slow,rust,submit_to_settlement_p99_ms,5,1409.206,1333.476,1690.489",
+      "slow,rust,runner_cpu_ms_per_job,5,0.47866992187499996,0.46099804687499996,0.49311718749999994",
+      "slow,rust,peak_runner_rss_bytes,5,12873728,12320768,13197312",
+      "slow,rust,peak_connections,5,67,67,67",
+      "slow,rust,cpu_steal_percent,5,0.0,0.0,0.0",
+      "slow,rust,cpu_iowait_percent,5,0.6289308176100629,0.4914004914004914,0.6329113924050633",
+      "sparse,mesh,commit_jobs_per_s,5,2.6477043961601225,2.6397384019243693,2.6552770034756468",
+      "sparse,mesh,submit_jobs_per_s,5,2.6457307056229937,2.6378473055708698,2.653475062807202",
+      "sparse,mesh,commit_to_pickup_p99_ms,5,14.443,13.283,15.594",
+      "sparse,mesh,submit_to_pickup_p99_ms,5,19.936,19.387,20.496",
+      "sparse,mesh,commit_to_settlement_p99_ms,5,25.919,23.522,27.029",
+      "sparse,mesh,submit_to_settlement_p99_ms,5,31.863,29.13,33.694",
+      "sparse,mesh,runner_cpu_ms_per_job,5,18.383,17.909666666666666,18.891374999999996",
+      "sparse,mesh,peak_runner_rss_bytes,5,14942208,8650752,15204352",
+      "sparse,mesh,peak_connections,5,5,5,5",
+      "sparse,mesh,cpu_steal_percent,5,0.0,0.0,0.0",
+      "sparse,mesh,cpu_iowait_percent,5,0.16304347826086957,0.10869565217391304,0.27839643652561247",
+      "sparse,oban,commit_jobs_per_s,5,2.0394544357411672,2.0337069987484226,2.0429080489640796",
+      "sparse,oban,submit_jobs_per_s,5,2.033806266733353,2.0268267409386067,2.037503650527374",
+      "sparse,oban,commit_to_pickup_p99_ms,5,226.004,224.853,233.716",
+      "sparse,oban,submit_to_pickup_p99_ms,5,228.399,227.318,252.944",
+      "sparse,oban,commit_to_settlement_p99_ms,5,229.692,228.281,238.724",
+      "sparse,oban,submit_to_settlement_p99_ms,5,232.246,230.746,259.228",
+      "sparse,oban,runner_cpu_ms_per_job,5,55.94816666666667,53.959666666666664,64.30016666666667",
+      "sparse,oban,peak_runner_rss_bytes,5,98177024,96800768,100560896",
+      "sparse,oban,peak_connections,5,4,4,4",
+      "sparse,oban,cpu_steal_percent,5,0.0,0.0,0.0",
+      "sparse,oban,cpu_iowait_percent,5,0.12427506213753108,0.12391573729863693,0.12631578947368421",
+      "sparse,go,commit_jobs_per_s,5,2.084288813300611,2.084252249754905,2.0848010187727644",
+      "sparse,go,submit_jobs_per_s,5,2.083581662988132,2.0834402181570253,2.084130621844659",
+      "sparse,go,commit_to_pickup_p99_ms,5,4.53,2.069,5.359",
+      "sparse,go,submit_to_pickup_p99_ms,5,6.492,5.842,7.61",
+      "sparse,go,commit_to_settlement_p99_ms,5,245.659,241.485,247.389",
+      "sparse,go,submit_to_settlement_p99_ms,5,247.577,243.207,248.58",
+      "sparse,go,runner_cpu_ms_per_job,5,6.962375000000001,6.799541666666666,7.101625000000001",
+      "sparse,go,peak_runner_rss_bytes,5,14008320,13946880,14057472",
+      "sparse,go,peak_connections,5,4,4,4",
+      "sparse,go,cpu_steal_percent,5,0.0,0.0,0.0",
+      "sparse,go,cpu_iowait_percent,5,0.12942191544434858,0.08449514152936206,0.16927634363097757",
+      "sparse,rust,commit_jobs_per_s,5,2.4965773484913028,2.4929796653881144,2.4987693560921245",
+      "sparse,rust,submit_jobs_per_s,5,2.495081829847271,2.4914082747558264,2.497069584797674",
+      "sparse,rust,commit_to_pickup_p99_ms,5,5.719,5.219,8.044",
+      "sparse,rust,submit_to_pickup_p99_ms,5,9.007,8.57,12.839",
+      "sparse,rust,commit_to_settlement_p99_ms,5,11.702,9.694,12.758",
+      "sparse,rust,submit_to_settlement_p99_ms,5,15.714,13.828,18.496",
+      "sparse,rust,runner_cpu_ms_per_job,5,3.5420416666666665,3.373291666666667,3.7585416666666664",
+      "sparse,rust,peak_runner_rss_bytes,5,8388608,8257536,8519680",
+      "sparse,rust,peak_connections,5,4,4,4",
+      "sparse,rust,cpu_steal_percent,5,0.0,0.0,0.05040322580645161",
+      "sparse,rust,cpu_iowait_percent,5,0.10095911155981828,0.10070493454179255,0.15416238437821173",
+      "short,mesh,commit_jobs_per_s,5,224.90625977375836,198.91807217307115,235.22795978336976",
+      "short,mesh,submit_jobs_per_s,5,198.92270920297264,174.1233636824915,209.20912413292623",
+      "short,mesh,commit_to_pickup_p99_ms,5,538.425,528.336,629.591",
+      "short,mesh,submit_to_pickup_p99_ms,5,613.5,596.011,721.221",
+      "short,mesh,commit_to_settlement_p99_ms,5,550.121,537.925,642.717",
+      "short,mesh,submit_to_settlement_p99_ms,5,624.727,605.6,734.347",
+      "short,mesh,runner_cpu_ms_per_job,5,4.690171875,4.66871875,5.273359375",
+      "short,mesh,peak_runner_rss_bytes,5,22675456,16252928,28442624",
+      "short,mesh,peak_connections,5,13,13,13",
+      "short,mesh,cpu_steal_percent,5,0.0,0.0,0.0",
+      "short,mesh,cpu_iowait_percent,5,1.1299435028248588,0.5780346820809249,1.4814814814814814",
+      "short,oban,commit_jobs_per_s,5,303.46998966305347,278.7893572162883,349.46992510968715",
+      "short,oban,submit_jobs_per_s,5,273.8600575106121,249.70688703299447,308.7819516949234",
+      "short,oban,commit_to_pickup_p99_ms,5,412.005,358.488,452.341",
+      "short,oban,submit_to_pickup_p99_ms,5,457.609,406.751,505.814",
+      "short,oban,commit_to_settlement_p99_ms,5,421.356,366.053,458.921",
+      "short,oban,submit_to_settlement_p99_ms,5,466.96,414.316,512.394",
+      "short,oban,runner_cpu_ms_per_job,5,11.080218749999998,11.0069609375,11.2610859375",
+      "short,oban,peak_runner_rss_bytes,5,104046592,101588992,105160704",
+      "short,oban,peak_connections,5,19,19,19",
+      "short,oban,cpu_steal_percent,5,0.0,0.0,0.0",
+      "short,oban,cpu_iowait_percent,5,0.0,0.0,0.7575757575757576",
+      "short,go,commit_jobs_per_s,5,791.1783612718192,493.7395369648905,807.8767987881848",
+      "short,go,submit_jobs_per_s,5,726.6657961815984,466.52330794183035,739.6877130936283",
+      "short,go,commit_to_pickup_p99_ms,5,150.684,143.681,162.058",
+      "short,go,submit_to_pickup_p99_ms,5,163.848,158.287,179.465",
+      "short,go,commit_to_settlement_p99_ms,5,161.784,158.44,259.246",
+      "short,go,submit_to_settlement_p99_ms,5,176.147,173.046,274.37",
+      "short,go,runner_cpu_ms_per_job,5,0.83175,0.805859375,0.921984375",
+      "short,go,peak_runner_rss_bytes,5,17580032,17227776,17739776",
+      "short,go,peak_connections,5,18,18,19",
+      "short,go,cpu_steal_percent,5,0.0,0.0,0.0",
+      "short,go,cpu_iowait_percent,5,0.0,0.0,1.1235955056179776",
+      "short,rust,commit_jobs_per_s,5,876.3581840215255,327.2326598646586,993.8814175233717",
+      "short,rust,submit_jobs_per_s,5,818.9274609409988,317.35406052041105,897.8108845541457",
+      "short,rust,commit_to_pickup_p99_ms,5,138.281,122.248,155.861",
+      "short,rust,submit_to_pickup_p99_ms,5,148.524,135.905,168.037",
+      "short,rust,commit_to_settlement_p99_ms,5,146.059,128.788,391.159",
+      "short,rust,submit_to_settlement_p99_ms,5,156.302,142.569,403.335",
+      "short,rust,runner_cpu_ms_per_job,5,0.630484375,0.6077031249999999,0.730484375",
+      "short,rust,peak_runner_rss_bytes,5,9043968,8912896,9306112",
+      "short,rust,peak_connections,5,19,19,19",
+      "short,rust,cpu_steal_percent,5,0.0,0.0,0.0",
+      "short,rust,cpu_iowait_percent,5,1.1494252873563218,0.0,2.1739130434782608",
+      "large,mesh,commit_jobs_per_s,5,75.69404938327091,75.01796328573991,79.483062035288",
+      "large,mesh,submit_jobs_per_s,5,23.80914293409741,23.004908312859563,24.017226355603558",
+      "large,mesh,commit_to_pickup_p99_ms,5,831.166,795.599,835.134",
+      "large,mesh,submit_to_pickup_p99_ms,5,2675.006,2655.15,2770.852",
+      "large,mesh,commit_to_settlement_p99_ms,5,845.509,805.203,853.129",
+      "large,mesh,submit_to_settlement_p99_ms,5,2688.043,2664.754,2782.015",
+      "large,mesh,runner_cpu_ms_per_job,5,25.801437499999995,25.626453125,26.940468749999997",
+      "large,mesh,peak_runner_rss_bytes,5,77860864,72482816,86781952",
+      "large,mesh,peak_connections,5,65,65,65",
+      "large,mesh,cpu_steal_percent,5,0.0,0.0,0.0",
+      "large,mesh,cpu_iowait_percent,5,0.3395585738539898,0.33613445378151263,1.1686143572621035",
+      "large,oban,commit_jobs_per_s,5,124.63073277028803,119.68880909634949,127.84173193586341",
+      "large,oban,submit_jobs_per_s,5,24.761870124765004,23.84427009149866,24.81652253049427",
+      "large,oban,commit_to_pickup_p99_ms,5,478.472,473.111,503.729",
+      "large,oban,submit_to_pickup_p99_ms,5,2556.78,2541.261,2647.062",
+      "large,oban,commit_to_settlement_p99_ms,5,513.517,500.619,534.72",
+      "large,oban,submit_to_settlement_p99_ms,5,2584.619,2578.927,2684.083",
+      "large,oban,runner_cpu_ms_per_job,5,147.03128125,143.79765625,147.27590625",
+      "large,oban,peak_runner_rss_bytes,5,858431488,853983232,872218624",
+      "large,oban,peak_connections,5,81,81,81",
+      "large,oban,cpu_steal_percent,5,0.0,0.0,0.0",
+      "large,oban,cpu_iowait_percent,5,0.1773049645390071,0.0,0.35842293906810035",
+      "large,go,commit_jobs_per_s,5,68.15935657567393,66.9118707931775,76.1030482838168",
+      "large,go,submit_jobs_per_s,5,19.98708334738675,19.755135100430167,21.06259474053845",
+      "large,go,commit_to_pickup_p99_ms,5,597.553,548.081,608.784",
+      "large,go,submit_to_pickup_p99_ms,5,2856.167,2753.958,2891.966",
+      "large,go,commit_to_settlement_p99_ms,5,938.976,840.965,956.482",
+      "large,go,submit_to_settlement_p99_ms,5,3202.068,3038.562,3239.664",
+      "large,go,runner_cpu_ms_per_job,5,14.839203125,14.738421875,15.1381875",
+      "large,go,peak_runner_rss_bytes,5,230023168,228519936,230944768",
+      "large,go,peak_connections,5,75,72,77",
+      "large,go,cpu_steal_percent,5,0.0,0.0,0.0",
+      "large,go,cpu_iowait_percent,5,0.14814814814814814,0.13966480446927373,0.2962962962962963",
+      "large,rust,commit_jobs_per_s,5,362.6925387344297,2.5258196985442085,391.46604032100214",
+      "large,rust,submit_jobs_per_s,5,38.64239602176533,2.3902043747985364,40.34644992217548",
+      "large,rust,commit_to_pickup_p99_ms,5,132.738,124.417,163.006",
+      "large,rust,submit_to_pickup_p99_ms,5,1591.25,1566.891,1640.596",
+      "large,rust,commit_to_settlement_p99_ms,5,176.458,163.488,25338.309",
+      "large,rust,submit_to_settlement_p99_ms,5,1656.212,1586.261,26775.953",
+      "large,rust,runner_cpu_ms_per_job,5,5.906328125,5.761453125000001,6.1106875",
+      "large,rust,peak_runner_rss_bytes,5,113315840,111628288,114728960",
+      "large,rust,peak_connections,5,81,81,81",
+      "large,rust,cpu_steal_percent,5,0.0,0.0,0.0",
+      "large,rust,cpu_iowait_percent,5,0.27100271002710025,0.018480872297172428,0.5434782608695652",
+      ""
+    ],
+    "index": [
+      "{",
+      "  \"kind\": \"baseline\",",
+      "  \"required_four_engine_blocks\": 25,",
+      "  \"validated_blocks\": {",
+      "    \"01-noop\": \"01-noop.1795452802771686000\",",
+      "    \"01-slow\": \"01-slow.1795452900722812000\",",
+      "    \"01-sparse\": \"01-sparse.1795452995041634000\",",
+      "    \"01-short\": \"01-short.1795453068478526000\",",
+      "    \"01-large\": \"01-large.1795453101025792000\",",
+      "    \"02-slow\": \"02-slow.1795453202134820000\",",
+      "    \"02-sparse\": \"02-sparse.1795453289959432000\",",
+      "    \"02-short\": \"02-short.1795453364013293000\",",
+      "    \"02-large\": \"02-large.1795453397938584000\",",
+      "    \"02-noop\": \"02-noop.1795453524822587000\",",
+      "    \"03-sparse\": \"03-sparse.1795453621399036000\",",
+      "    \"03-short\": \"03-short.1795453695611118000\",",
+      "    \"03-large\": \"03-large.1795453727615765000\",",
+      "    \"03-noop\": \"03-noop.1795453829468552000\",",
+      "    \"03-slow\": \"03-slow.1795453926302385000\",",
+      "    \"04-short\": \"04-short.1795454015202124000\",",
+      "    \"04-large\": \"04-large.1795454046677081000\",",
+      "    \"04-noop\": \"04-noop.1795454149417513000\",",
+      "    \"04-slow\": \"04-slow.1795454246206136000\",",
+      "    \"04-sparse\": \"04-sparse.1795454333774899000\",",
+      "    \"05-large\": \"05-large.1795454407828460000\",",
+      "    \"05-noop\": \"05-noop.1795454510032876000\",",
+      "    \"05-slow\": \"05-slow.1795454606334539000\",",
+      "    \"05-sparse\": \"05-sparse.1795454696568080000\",",
+      "    \"05-short\": \"05-short.1795454770279297000\"",
+      "  },",
+      "  \"missing_blocks\": [],",
+      "  \"invalid_or_incomplete_attempts\": {}",
+      "}",
+      ""
+    ]
+  }
+}
+</script>
+  <script>
+    const baseline = JSON.parse(document.getElementById("baseline").textContent);
+    const profiles = { noop: "Dense no-op", slow: "Slow", sparse: "Sparse", short: "Short", large: "Large payload" };
+    const engines = { mesh: ["Mesh", ""], oban: ["Oban", "Elixir"], go: ["River", "Go"], rust: ["Apalis", "Rust"] };
+    const measures = {
+      commit_jobs_per_s: {
+        unit: "jobs/s", direction: "higher",
+        window: "First confirmed enqueue commit to final durable settlement.",
+      },
+      submit_jobs_per_s: {
+        unit: "jobs/s", direction: "higher",
+        window: "First submission to final durable settlement, including batch input and submission before the first commit.",
+      },
+      commit_to_pickup_p99_ms: {
+        unit: "ms", direction: "lower",
+        window: "Each job’s enqueue commit to handler entry. The table summarizes the five per-round p99 values.",
+      },
+    };
+    const measure = document.getElementById("measure");
+    const scaleNumber = new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 });
+
+    function profileTable(profile, measureName, unit) {
+      const series = baseline.results[measureName][profile];
+      const max = Math.max(...Object.values(series).map(row => row[2]));
+      const step = max === 0 ? 1 : 10 ** Math.floor(Math.log10(max)) / 4;
+      const limit = Math.max(step, Math.ceil(max / step) * step);
+      const decimals = unit === "ms" ? 3 : (profile === "sparse" ? 4 : 2);
+      const format = new Intl.NumberFormat("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      const position = value => value / limit * 100 + "%";
+      const table = document.createElement("table");
+      table.dataset.profile = profile;
+      table.dataset.limit = limit;
+      table.innerHTML = `
+        <caption><span class="caption"><span class="profile">${profiles[profile]}</span><span class="scale">0–${scaleNumber.format(limit)} ${unit}</span></span></caption>
+        <colgroup><col class="engine"><col><col class="median"><col class="range"></colgroup>
+        <thead><tr><th scope="col">Engine</th><th scope="col" class="plot-cell" aria-hidden="true">Plot</th><th scope="col" class="number">Median</th><th scope="col" class="number">Min–max</th></tr></thead>
+        <tbody>${Object.entries(engines).map(([key, [engine, language]]) => {
+          const [median, min, max] = series[key];
+          return `<tr data-engine="${key}">
+            <th scope="row">${engine}${language ? ` <span class="language">/ ${language}</span>` : ""}</th>
+            <td class="plot-cell" aria-hidden="true">
+              <span class="track ${key}" style="--min:${position(min)};--max:${position(max)};--median:${position(median)}">
+                <span class="range-line"></span><span class="dot"></span>
+              </span>
+            </td>
+            <td class="number median" title="${median} ${unit}">${format.format(median)}</td>
+            <td class="number range" title="${min}–${max} ${unit}">${format.format(min)}–${format.format(max)}</td>
+          </tr>`;
+        }).join("")}</tbody>`;
+      return table;
+    }
+
+    function render() {
+      const { unit, direction, window } = measures[measure.value];
+      const spacing = unit === "jobs/s" ? " Sparse rates include the 250 ms spacing between jobs." : "";
+      document.getElementById("window").textContent = `${unit} · ${direction} is better. ${window}${spacing}`;
+      document.getElementById("profiles").replaceChildren(
+        ...Object.keys(profiles).map(profile => profileTable(profile, measure.value, unit)),
+      );
+    }
+
+    for (const [id, type] of [["csv", "text/csv"], ["index", "application/json"]]) {
+      const source = new Blob([baseline.sources[id].join("\n")], { type });
+      document.getElementById(id).href = URL.createObjectURL(source);
+    }
+    measure.addEventListener("change", render);
+    render();
+  </script>
+</body>
+</html>
