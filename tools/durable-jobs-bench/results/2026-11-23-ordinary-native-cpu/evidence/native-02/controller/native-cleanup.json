@@ -1,0 +1,12 @@
+{
+  "holds": [
+    "/var/tmp/mesh-durable-jobs-matrix/ordinary-native-cpu-e261a9ea7dbf-oban-off",
+    "/var/tmp/mesh-durable-jobs-matrix/ordinary-native-cpu-e261a9ea7dbf-oban-on",
+    "/var/tmp/mesh-durable-jobs-matrix/ordinary-native-cpu-e261a9ea7dbf-ordinary-off",
+    "/var/tmp/mesh-durable-jobs-matrix/ordinary-native-cpu-e261a9ea7dbf-ordinary-on"
+  ],
+  "removed": [
+    "/var/tmp/mesh-durable-jobs-matrix/ordinary-native-cpu-e261a9ea7dbf-river-off",
+    "/var/tmp/mesh-durable-jobs-matrix/ordinary-native-cpu-e261a9ea7dbf-river-on"
+  ]
+}
