@@ -32,7 +32,7 @@ test "$(nproc --all)" = 4
 test "$("$pg/bin/postgres" --version)" = 'postgres (PostgreSQL) 17.11'
 test "$(cat /proc/sys/kernel/random/boot_id)" = "$EXPECTED_BOOT"
 test "$(uname -r)" = "$EXPECTED_KERNEL"
-test "$(findmnt -T "$base/scratch" -n -o MAJ:MIN)" = "$EXPECTED_MOUNT"
+test "$(findmnt -T "$base/scratch" -rno MAJ:MIN)" = "$EXPECTED_MOUNT"
 check "$pg_sha" "$pg/bin/postgres"
 check "$pg_stats_sha" "$pg/lib/pg_stat_statements.so"
 check "$stock_manifest_sha" "$stock/mesh.json"
@@ -129,7 +129,7 @@ data="$evidence/rows"
 state="$setup/scratch-${evidence##*/}"
 chmod 0711 "$evidence"
 install -d -o nobody -g nogroup -m 0700 "$data" "$state" "$state/scratch"
-test "$(findmnt -T "$state" -n -o MAJ:MIN)" = "$EXPECTED_MOUNT"
+test "$(findmnt -T "$state" -rno MAJ:MIN)" = "$EXPECTED_MOUNT"
 if [[ "$step" == semantic-* ]]; then
     choice="${step#semantic-}"
     shape="${choice#*-}"

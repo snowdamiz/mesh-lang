@@ -25,6 +25,12 @@ with the passing replay.
 Native AMD64 qualification is pending an exclusive SETUP window from
 `linode-queue-matrix-and-iterations-v1`. The official Mesh, Oban, River, and
 Apalis baseline sealed all 25 blocks at `069c9c68`. The owner is running
-a separate repeat for the scheduled-work query candidate `ee593226`.
-Dense attribution requested its own window before ordered enqueue.
+a separate focused comparison for the scheduled-work query candidate
+`ee593226` after sealing its 25-block repeat. The worker-cost lane owns
+dense attribution and queued its SETUP after ordered enqueue.
 [Native baseline](../2026-11-23-baseline/README.md) · [Run the qualification](REPLAY.md)
+
+An isolated integration check on product base `ba8dab03` passed the
+workspace and PostgreSQL proofs with the ordered-enqueue patch applied.
+The isolated native build still uses the sealed ordered-enqueue source.
+[Integration verification](integration-verification.json)

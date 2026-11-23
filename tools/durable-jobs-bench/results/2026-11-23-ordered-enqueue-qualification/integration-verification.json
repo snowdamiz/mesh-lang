@@ -1,0 +1,37 @@
+{
+  "integration_parent": "ba8dab0381e8c8be12853faea9c1351c1ba42dde",
+  "local_verification_commit": "b9cfe6897e542adf7dfdc01f19f64926306c87d6",
+  "postgres": "17.11",
+  "proofs": {
+    "build": {
+      "exit": 0,
+      "local_log_sha256": "df2d6e7eb89bcf02ff44ff680dd812ce313c3c4dcadebc20894c721ab1d5bf92"
+    },
+    "core": {
+      "exit": 0,
+      "local_log_sha256": "6aff6c895c5d1044d3e750727e9b8712808416bebc197220c3c00e770821203c"
+    },
+    "fence": {
+      "exit": 0,
+      "local_log_sha256": "4573fff35a6bbb55283c42391e90d19beb2ff5ff68f9bf4cce59f6adf43f2ed1"
+    },
+    "fmt": {
+      "exit": 0,
+      "local_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "postgres": {
+      "exit": 0,
+      "local_log_sha256": "5dcbde82658a2416c5c5bc35e4d2f2e33588255aff0a4d90cf19f4601a29a0e2"
+    },
+    "runtime": {
+      "exit": 0,
+      "local_log_sha256": "7716ec4d7d894d86ac43461043a902336f6fc1e25b7a8baac5c13c8640dec9cf"
+    },
+    "transaction": {
+      "exit": 0,
+      "local_log_sha256": "c328f7076f69fe18204328c0d76066db8ea3d2e8992edfae7e1e25e67c563f45"
+    }
+  },
+  "sealed_native_candidate": "77c447f773a4d0af5c5578873a2410301b3ba069",
+  "system": "Darwin arm64"
+}
