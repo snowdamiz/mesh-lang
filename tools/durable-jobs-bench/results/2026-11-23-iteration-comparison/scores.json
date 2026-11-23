@@ -1,0 +1,2767 @@
+{
+  "baseline": {
+    "blocks": [
+      {
+        "attempt": "01-noop.1795452802771686000",
+        "group": 1,
+        "order": [
+          "mesh",
+          "oban",
+          "rust",
+          "go"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-go": "5a369eea080b194d1942f038b1da8f3e3a1b51e473b2cb35d00f80a83f5da690",
+          "measured-mesh": "f081ca34dfe69a460f3677a34da6d17743ddfb10b60679bebdad996de62a7de1",
+          "measured-oban": "f1e3d4098674970ba28a2065648799ebaf76071f4830d6c67f0ee36e4cb0460c",
+          "measured-rust": "c7938bbbaa33cb8b868c7e123927c99be4e75ad46ef8fd5f51ad3015c274261f",
+          "warmup-go": "a58ec4fa2aef4ec6c0f5c30ee39bff5baf93064700d58c6b3be4f1fa3aa55ac9",
+          "warmup-mesh": "17d4106f6d8ad3ae18873ff69287b66b6c070f34468e8285c09f017fa050ca3f",
+          "warmup-oban": "d7363a84b8bdb24d6ff208e220f4c559e9955eac3b8b528fc5f1e55ab183f59f",
+          "warmup-rust": "d1a8e3fd0f63d137a6c725e59ee039d649ec57148af98e7c71bfd074fe7b3580"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 918.0768799731032,
+            "commit_to_pickup_p99_ms": 859.576,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 71.337,
+            "peak_runner_rss_bytes": 130142208,
+            "runner_cpu_ms_per_job": 0.7537998046875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 862.8883840392614
+          },
+          "mesh": {
+            "commit_jobs_per_s": 190.3378980971043,
+            "commit_to_pickup_p99_ms": 5306.88,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.08090614886731391,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 626.362,
+            "peak_runner_rss_bytes": 154271744,
+            "runner_cpu_ms_per_job": 5.8126728515625,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 170.4885629479071
+          },
+          "oban": {
+            "commit_jobs_per_s": 704.9710094441331,
+            "commit_to_pickup_p99_ms": 1408.183,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 169.616,
+            "peak_runner_rss_bytes": 806117376,
+            "runner_cpu_ms_per_job": 10.172770507812498,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 631.2578676059916
+          },
+          "rust": {
+            "commit_jobs_per_s": 1187.1926950549482,
+            "commit_to_pickup_p99_ms": 840.106,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.4166666666666667,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 36.767,
+            "peak_runner_rss_bytes": 69992448,
+            "runner_cpu_ms_per_job": 0.5946298828125001,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 1138.6558079229983
+          }
+        }
+      },
+      {
+        "attempt": "01-slow.1795452900722812000",
+        "group": 1,
+        "order": [
+          "oban",
+          "go",
+          "mesh",
+          "rust"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-go": "646a5197ea4cf8c32eb48aa91649c82794c698de1249d9b56b10452ff60d280c",
+          "measured-mesh": "d8c48e6a3f307ea7f6bf94569c5707f77e5814a32e89fcf698a95990079cbb7d",
+          "measured-oban": "9656157ef94c0e3885f48d3c8dcfa8166e3b491019c3ec1a7668c15fed4d9d6e",
+          "measured-rust": "641ab3639fb5d99294dcba9c011f935a1bbea875c91e121ead73742341c99b26",
+          "warmup-go": "87f43557131017073113d5eeead89ab22f7adf7a685f8c3db60ed5faa1c8b2ea",
+          "warmup-mesh": "90cd9cc1af0af94a83fe7d86d68b814e70660523f71edbf4ae3f97300f4ff72c",
+          "warmup-oban": "7d07604bf3f0151ce410e4bf756e1596f0457cd26d4b06c4a6d5e1fb31a3c549",
+          "warmup-rust": "fef9b5c9ad465969544791c66cade3ddd019871c78b451d253a280d0391fb8bf"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 405.821638219521,
+            "commit_to_pickup_p99_ms": 1136.613,
+            "completed": 512,
+            "cpu_iowait_percent": 1.1204481792717087,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 472.661,
+            "peak_runner_rss_bytes": 37396480,
+            "runner_cpu_ms_per_job": 0.880259765625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 295.22014370071133
+          },
+          "mesh": {
+            "commit_jobs_per_s": 198.98355159989381,
+            "commit_to_pickup_p99_ms": 2449.033,
+            "completed": 512,
+            "cpu_iowait_percent": 0.5908419497784343,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 651.313,
+            "peak_runner_rss_bytes": 214642688,
+            "runner_cpu_ms_per_job": 4.90635546875,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 158.78972456805784
+          },
+          "oban": {
+            "commit_jobs_per_s": 323.9552916388531,
+            "commit_to_pickup_p99_ms": 1467.606,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6507592190889371,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 499.632,
+            "peak_runner_rss_bytes": 131006464,
+            "runner_cpu_ms_per_job": 4.08643359375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 246.14236739921265
+          },
+          "rust": {
+            "commit_jobs_per_s": 510.6350724513376,
+            "commit_to_pickup_p99_ms": 885.237,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6309148264984227,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 330.803,
+            "peak_runner_rss_bytes": 12988416,
+            "runner_cpu_ms_per_job": 0.483447265625,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 383.9589163959456
+          }
+        }
+      },
+      {
+        "attempt": "01-sparse.1795452995041634000",
+        "group": 1,
+        "order": [
+          "go",
+          "rust",
+          "oban",
+          "mesh"
+        ],
+        "profile": "sparse",
+        "raw_sha256": {
+          "measured-go": "c0f0eadb0ea7185d6a2bacf2fa856ed2554e4e66490aaeea465aabd59a263b46",
+          "measured-mesh": "22f45616b475658de536c80c6fd0a842ca072a6edb245507cb800256de17b336",
+          "measured-oban": "9584871105b7cb780a2e633a6dcb7368cfdcff3e738ab97ed2c064f5dcfbb435",
+          "measured-rust": "2d76a992df83f76f86d89066f939e26aef7945e69ed9778226a5128a18354d81"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 2.0848010187727644,
+            "commit_to_pickup_p99_ms": 4.752,
+            "completed": 24,
+            "cpu_iowait_percent": 0.16927634363097757,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 3.703,
+            "peak_runner_rss_bytes": 14004224,
+            "runner_cpu_ms_per_job": 6.986208333333334,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 2.084130621844659
+          },
+          "mesh": {
+            "commit_jobs_per_s": 2.653524056849099,
+            "commit_to_pickup_p99_ms": 14.929,
+            "completed": 24,
+            "cpu_iowait_percent": 0.16304347826086957,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 8.341,
+            "peak_runner_rss_bytes": 8650752,
+            "runner_cpu_ms_per_job": 17.909666666666666,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 2.6510792046364724
+          },
+          "oban": {
+            "commit_jobs_per_s": 2.035695064754188,
+            "commit_to_pickup_p99_ms": 228.215,
+            "completed": 24,
+            "cpu_iowait_percent": 0.12391573729863693,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 36.123,
+            "peak_runner_rss_bytes": 98177024,
+            "runner_cpu_ms_per_job": 55.94816666666667,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 2.0294767974991434
+          },
+          "rust": {
+            "commit_jobs_per_s": 2.4953303531464295,
+            "commit_to_pickup_p99_ms": 8.044,
+            "completed": 24,
+            "cpu_iowait_percent": 0.10080645161290322,
+            "cpu_steal_percent": 0.05040322580645161,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 6.131,
+            "peak_runner_rss_bytes": 8388608,
+            "runner_cpu_ms_per_job": 3.529458333333333,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 2.4937407108158522
+          }
+        }
+      },
+      {
+        "attempt": "01-short.1795453068478526000",
+        "group": 1,
+        "order": [
+          "rust",
+          "mesh",
+          "go",
+          "oban"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-go": "379923fe73042abc4def024e703dcc6c49c4ce507c9d259defa9bb0f44a3c71e",
+          "measured-mesh": "2aba3470262fea353adaa8aadbe8fe7b3a32f598cfe1f7d3c3c255ef76ed2111",
+          "measured-oban": "6808b6a8bfea02793b8a79f3e94326a389bdd5f766f2a25b891290ee916e49ea",
+          "measured-rust": "59ecc76ed7d13d54654883194ef6664414886fe514f6c6d13fee631d8e8fdd88"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 493.7395369648905,
+            "commit_to_pickup_p99_ms": 155.019,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7692307692307693,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.449,
+            "peak_runner_rss_bytes": 17727488,
+            "runner_cpu_ms_per_job": 0.8981015625000001,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 469.3888776838593
+          },
+          "mesh": {
+            "commit_jobs_per_s": 198.91807217307115,
+            "commit_to_pickup_p99_ms": 629.591,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1560693641618498,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 91.63,
+            "peak_runner_rss_bytes": 28442624,
+            "runner_cpu_ms_per_job": 5.273359375,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 174.1233636824915
+          },
+          "oban": {
+            "commit_jobs_per_s": 303.46998966305347,
+            "commit_to_pickup_p99_ms": 412.005,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 45.604,
+            "peak_runner_rss_bytes": 104599552,
+            "runner_cpu_ms_per_job": 11.0069609375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 273.8600575106121
+          },
+          "rust": {
+            "commit_jobs_per_s": 993.8814175233717,
+            "commit_to_pickup_p99_ms": 122.248,
+            "completed": 128,
+            "cpu_iowait_percent": 2.1739130434782608,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 13.781,
+            "peak_runner_rss_bytes": 8912896,
+            "runner_cpu_ms_per_job": 0.6104609375,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 897.8108845541457
+          }
+        }
+      },
+      {
+        "attempt": "01-large.1795453101025792000",
+        "group": 1,
+        "order": [
+          "mesh",
+          "oban",
+          "rust",
+          "go"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-go": "2aa7773eed8582f014e25d7ee181694d6d454dba0da7cf0ddc9c910bcd3b1761",
+          "measured-mesh": "482aa8cd7bc90c601457f181782589dcecf99aae80949c8a2c6f93667fc1d6ea",
+          "measured-oban": "31d25d520f8db8e86c6fc81e23d5ea181dae3a6e0f6923010f3c10dc8e98e00f",
+          "measured-rust": "a943e53fa62a5a361da134feb9dfde432c0dafffcad3f1d5889daad958b662f3",
+          "warmup-go": "0fba1a4805c3fdb9df7e4696c5dd59ae91700436beaa703490bfaa67d5aab5ff",
+          "warmup-mesh": "374c3ada23c42ad820ce38891e43c0aac14865faf814ef4dd2923016e3cf8480",
+          "warmup-oban": "839bcc5d94d1b2c729d6a454613afba4f626afcfa5002ae740e7ac464adae92a",
+          "warmup-rust": "4ac1d689d0d7663bb443f5ba692daada5cab07974607b4aeddf312ae13be9e7a"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 76.1030482838168,
+            "commit_to_pickup_p99_ms": 548.081,
+            "completed": 64,
+            "cpu_iowait_percent": 0.2962962962962963,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 2251.091,
+            "peak_runner_rss_bytes": 229830656,
+            "runner_cpu_ms_per_job": 14.81159375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 20.698202102419877
+          },
+          "mesh": {
+            "commit_jobs_per_s": 78.71129925298058,
+            "commit_to_pickup_p99_ms": 801.935,
+            "completed": 64,
+            "cpu_iowait_percent": 1.1686143572621035,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1968.917,
+            "peak_runner_rss_bytes": 86781952,
+            "runner_cpu_ms_per_job": 25.801437499999995,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 23.004908312859563
+          },
+          "oban": {
+            "commit_jobs_per_s": 119.68880909634949,
+            "commit_to_pickup_p99_ms": 503.729,
+            "completed": 64,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 2143.333,
+            "peak_runner_rss_bytes": 866136064,
+            "runner_cpu_ms_per_job": 146.92243749999997,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 23.89795870358055
+          },
+          "rust": {
+            "commit_jobs_per_s": 344.2711135018827,
+            "commit_to_pickup_p99_ms": 163.006,
+            "completed": 64,
+            "cpu_iowait_percent": 0.2680965147453083,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 1477.59,
+            "peak_runner_rss_bytes": 112128000,
+            "runner_cpu_ms_per_job": 5.92171875,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 38.47333016729887
+          }
+        }
+      },
+      {
+        "attempt": "02-slow.1795453202134820000",
+        "group": 2,
+        "order": [
+          "go",
+          "rust",
+          "oban",
+          "mesh"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-go": "61f9125f5c0d979953f379711b336bf58b324fea17639b5acd83e7b0faf6fff7",
+          "measured-mesh": "1836142f4c7472d14c9fe3399aaf1e78c5ce1e9558155e0ce467a4632f298b41",
+          "measured-oban": "3ccf966d84e893b1d53a13f884e537898f4917f7bfd3f7b7ebb1d9622ae3bf74",
+          "measured-rust": "3fcb4fb3e22159d91c3e4266fe51b1f9d9847aee2f7beb56108fe10ab962968f",
+          "warmup-go": "1c4494ab4b2b02f6bdfdee97098610bc93293b37d5c79350ce1678f4d3ffabdb",
+          "warmup-mesh": "39b6d7d5c22e95277ad33d82b5edddbb397fe02a691cea8ef5ddcaa7328d150d",
+          "warmup-oban": "139b788c9ac1fd8ea4e33e86648f9bb8f1ad97b1d8517c3f26eb3023a1f7fc82",
+          "warmup-rust": "52deb11bd145411db4719e17b916675ed78f727d5d176be79b7fccf0ccac9ca9"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 337.4312780341465,
+            "commit_to_pickup_p99_ms": 1192.517,
+            "completed": 512,
+            "cpu_iowait_percent": 0.449438202247191,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 504.507,
+            "peak_runner_rss_bytes": 36528128,
+            "runner_cpu_ms_per_job": 0.903638671875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 253.23304908912763
+          },
+          "mesh": {
+            "commit_jobs_per_s": 184.72437643797284,
+            "commit_to_pickup_p99_ms": 2630.203,
+            "completed": 512,
+            "cpu_iowait_percent": 1.7955801104972375,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 639.835,
+            "peak_runner_rss_bytes": 200794112,
+            "runner_cpu_ms_per_job": 5.04782421875,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 150.0792019538436
+          },
+          "oban": {
+            "commit_jobs_per_s": 334.50387913434054,
+            "commit_to_pickup_p99_ms": 1414.681,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6493506493506493,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 516.961,
+            "peak_runner_rss_bytes": 128860160,
+            "runner_cpu_ms_per_job": 3.963353515625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 250.05054732743827
+          },
+          "rust": {
+            "commit_jobs_per_s": 476.80510777471704,
+            "commit_to_pickup_p99_ms": 958.168,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6329113924050633,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 335.392,
+            "peak_runner_rss_bytes": 13197312,
+            "runner_cpu_ms_per_job": 0.47084374999999995,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 363.32516324795665
+          }
+        }
+      },
+      {
+        "attempt": "02-sparse.1795453289959432000",
+        "group": 2,
+        "order": [
+          "rust",
+          "mesh",
+          "go",
+          "oban"
+        ],
+        "profile": "sparse",
+        "raw_sha256": {
+          "measured-go": "b92e977144c736b1ad951f22cdf550868341035882dd59459b95fb250b1ca183",
+          "measured-mesh": "7e814426fd4a194623f28895616a8da84c066abeff53732079faaff18acae9d3",
+          "measured-oban": "45ccad04b51f04345983e9dbc470d5d1980383c11f6a692060f67cf398fd8e2e",
+          "measured-rust": "fea6464c07e6b045e8d2fa234d87987b67991f93135f2cbd41be8016a2557191"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 2.084288813300611,
+            "commit_to_pickup_p99_ms": 5.359,
+            "completed": 24,
+            "cpu_iowait_percent": 0.08470986869970351,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 3.908,
+            "peak_runner_rss_bytes": 14045184,
+            "runner_cpu_ms_per_job": 7.101625000000001,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 2.083581662988132
+          },
+          "mesh": {
+            "commit_jobs_per_s": 2.6397384019243693,
+            "commit_to_pickup_p99_ms": 14.443,
+            "completed": 24,
+            "cpu_iowait_percent": 0.16304347826086957,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 6.518,
+            "peak_runner_rss_bytes": 14942208,
+            "runner_cpu_ms_per_job": 18.578083333333332,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 2.6378473055708698
+          },
+          "oban": {
+            "commit_jobs_per_s": 2.0429080489640796,
+            "commit_to_pickup_p99_ms": 224.853,
+            "completed": 24,
+            "cpu_iowait_percent": 0.12631578947368421,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 32.074,
+            "peak_runner_rss_bytes": 100560896,
+            "runner_cpu_ms_per_job": 54.77645833333333,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 2.0373457357886857
+          },
+          "rust": {
+            "commit_jobs_per_s": 2.4987693560921245,
+            "commit_to_pickup_p99_ms": 5.219,
+            "completed": 24,
+            "cpu_iowait_percent": 0.10070493454179255,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 6.538,
+            "peak_runner_rss_bytes": 8388608,
+            "runner_cpu_ms_per_job": 3.373291666666667,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 2.497069584797674
+          }
+        }
+      },
+      {
+        "attempt": "02-short.1795453364013293000",
+        "group": 2,
+        "order": [
+          "mesh",
+          "oban",
+          "rust",
+          "go"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-go": "91d6478c23d1e96dc74c2ea4934c9de2c8803d4db91029a842bd0bfbacadf428",
+          "measured-mesh": "b8e5c9fd770610f7bbd134ec9f9b50973338bf67730bdb2fa626ba72b278fbf5",
+          "measured-oban": "007f300c9efa89d36c30846f10c48dbc22c02fead47e746d6f04eed59a4c20e8",
+          "measured-rust": "714d976e3395cc749ff190eb9a1ed270ff4e42da03a71472f67f61d6a9e16ae4"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 807.8767987881848,
+            "commit_to_pickup_p99_ms": 143.681,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 14.606,
+            "peak_runner_rss_bytes": 17580032,
+            "runner_cpu_ms_per_job": 0.831609375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 739.6877130936283
+          },
+          "mesh": {
+            "commit_jobs_per_s": 224.90625977375836,
+            "commit_to_pickup_p99_ms": 538.425,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1299435028248588,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 75.075,
+            "peak_runner_rss_bytes": 22806528,
+            "runner_cpu_ms_per_job": 4.690171875,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 198.69574868713337
+          },
+          "oban": {
+            "commit_jobs_per_s": 278.7893572162883,
+            "commit_to_pickup_p99_ms": 452.341,
+            "completed": 128,
+            "cpu_iowait_percent": 0.746268656716418,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 53.473,
+            "peak_runner_rss_bytes": 101736448,
+            "runner_cpu_ms_per_job": 11.2610859375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 249.70688703299447
+          },
+          "rust": {
+            "commit_jobs_per_s": 327.2326598646586,
+            "commit_to_pickup_p99_ms": 155.861,
+            "completed": 128,
+            "cpu_iowait_percent": 1.5037593984962405,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 12.176,
+            "peak_runner_rss_bytes": 9306112,
+            "runner_cpu_ms_per_job": 0.6447656249999999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 317.35406052041105
+          }
+        }
+      },
+      {
+        "attempt": "02-large.1795453397938584000",
+        "group": 2,
+        "order": [
+          "oban",
+          "go",
+          "mesh",
+          "rust"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-go": "f1e7abf3a06b15db2319e4d24b4a53fc3be635cb201d1cfdfe2edbc6fc8bdbdb",
+          "measured-mesh": "a6aae6f64d7f058e24c6d590a3b1513f090981ee3c4f6f1895ba5bc217f8eb8b",
+          "measured-oban": "5ac14b7e931d6365a19df87bc0457c4fa068be85c7d07ed38d2e6023f2cb43f7",
+          "measured-rust": "1eccff5593b030dc9aaa9a479eb1f24f584cfac9048ec0dc10fd2fe1a3c8ec74",
+          "warmup-go": "466c679bf1cf96259ae29f2262b3486b625e5b49f478d885cb0b55f6c0a921de",
+          "warmup-mesh": "5600115d5dd93effda49b48711bdf51ca39af677766c64a95dda608c7553d267",
+          "warmup-oban": "802431ea12c6fe55621539068adcd5cd62af6ff1355937907b655f62467ab67b",
+          "warmup-rust": "d1691d33dd19746456c577ed92ad2adbc6c389aaf09a9570edbb6dac80e0ef2a"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 67.83584573280733,
+            "commit_to_pickup_p99_ms": 597.553,
+            "completed": 64,
+            "cpu_iowait_percent": 0.14814814814814814,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 2258.614,
+            "peak_runner_rss_bytes": 230137856,
+            "runner_cpu_ms_per_job": 15.1381875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 19.98708334738675
+          },
+          "mesh": {
+            "commit_jobs_per_s": 75.54920732355129,
+            "commit_to_pickup_p99_ms": 834.093,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5025125628140703,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1840.913,
+            "peak_runner_rss_bytes": 79732736,
+            "runner_cpu_ms_per_job": 25.69728125,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 23.80914293409741
+          },
+          "oban": {
+            "commit_jobs_per_s": 127.55203724519488,
+            "commit_to_pickup_p99_ms": 473.65,
+            "completed": 64,
+            "cpu_iowait_percent": 0.1773049645390071,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 2082.863,
+            "peak_runner_rss_bytes": 858431488,
+            "runner_cpu_ms_per_job": 143.79765625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 24.761870124765004
+          },
+          "rust": {
+            "commit_jobs_per_s": 2.5258196985442085,
+            "commit_to_pickup_p99_ms": 132.738,
+            "completed": 64,
+            "cpu_iowait_percent": 0.018480872297172428,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 1437.644,
+            "peak_runner_rss_bytes": 114728960,
+            "runner_cpu_ms_per_job": 5.761453125000001,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 2.3902043747985364
+          }
+        }
+      },
+      {
+        "attempt": "02-noop.1795453524822587000",
+        "group": 2,
+        "order": [
+          "oban",
+          "go",
+          "mesh",
+          "rust"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-go": "23959522bf4e6215a916462c1fee138c30b5c8fb7c7b926793273fbcd3c26245",
+          "measured-mesh": "f555d6416e0a7fe4876dec161c205cd34aafd050bbaf3d6a6052ca90d6a5f0b0",
+          "measured-oban": "5442c9863cc72d7fa70b27ca366624a0d3649d96965f79a27ecb6330b276ed83",
+          "measured-rust": "9ff57a4982aafd43f488485a664cbda2f6edc2dc9f1fc02ccf9b85df10f9e3e2",
+          "warmup-go": "40dd1853dd412e1a8cf743b1e3d763434a297c7721f4fe07a9ae7b9f2cc25b31",
+          "warmup-mesh": "506c4888dad202984a9f4b356c7b23eb23f5d000a7aab48963f55c8e23bd9961",
+          "warmup-oban": "8e3ce4f64297621a936e759b112a5623307221b1d55623536d15fbbac9c3be9c",
+          "warmup-rust": "83eb8ed0bb1e6e4447160043c9806b94b76aa1d9ee58e065030b6c44cf168a5b"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 926.4210022536276,
+            "commit_to_pickup_p99_ms": 844.358,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 71.933,
+            "peak_runner_rss_bytes": 128811008,
+            "runner_cpu_ms_per_job": 0.7402763671875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 869.8148755332288
+          },
+          "mesh": {
+            "commit_jobs_per_s": 191.14873107296225,
+            "commit_to_pickup_p99_ms": 5310.721,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.08090614886731391,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 573.046,
+            "peak_runner_rss_bytes": 140115968,
+            "runner_cpu_ms_per_job": 5.8292265625,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 172.6774669901896
+          },
+          "oban": {
+            "commit_jobs_per_s": 719.1097084726433,
+            "commit_to_pickup_p99_ms": 1395.505,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 139.757,
+            "peak_runner_rss_bytes": 801710080,
+            "runner_cpu_ms_per_job": 9.8784814453125,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 654.8403187230614
+          },
+          "rust": {
+            "commit_jobs_per_s": 1148.5318644687536,
+            "commit_to_pickup_p99_ms": 869.251,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.42016806722689076,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 35.795,
+            "peak_runner_rss_bytes": 69861376,
+            "runner_cpu_ms_per_job": 0.6303994140625,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 1104.2002743247556
+          }
+        }
+      },
+      {
+        "attempt": "03-sparse.1795453621399036000",
+        "group": 3,
+        "order": [
+          "mesh",
+          "oban",
+          "rust",
+          "go"
+        ],
+        "profile": "sparse",
+        "raw_sha256": {
+          "measured-go": "423f824728eb2d5036f009a9a5b4dbe9adb75f9e7a7078923b245fab354f69a6",
+          "measured-mesh": "683fcc9546773bc7c48061b67649c1b702b94eb174e695463fcfe3422eb51754",
+          "measured-oban": "34e0d2112f6b1abbeff87516a83ebcd478430523d155da962121cdc3af53b98e",
+          "measured-rust": "1740e95c24d9a160b56be81948b826548d729d8e6b523ca0ab818b4665a96749"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 2.084252249754905,
+            "commit_to_pickup_p99_ms": 4.468,
+            "completed": 24,
+            "cpu_iowait_percent": 0.16899028305872413,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 3.999,
+            "peak_runner_rss_bytes": 13946880,
+            "runner_cpu_ms_per_job": 6.799541666666666,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 2.083528664145597
+          },
+          "mesh": {
+            "commit_jobs_per_s": 2.6552770034756468,
+            "commit_to_pickup_p99_ms": 13.283,
+            "completed": 24,
+            "cpu_iowait_percent": 0.10869565217391304,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 6.138,
+            "peak_runner_rss_bytes": 15204352,
+            "runner_cpu_ms_per_job": 18.319499999999998,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 2.653475062807202
+          },
+          "oban": {
+            "commit_jobs_per_s": 2.0394544357411672,
+            "commit_to_pickup_p99_ms": 225.517,
+            "completed": 24,
+            "cpu_iowait_percent": 0.12427506213753108,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 32.681,
+            "peak_runner_rss_bytes": 96800768,
+            "runner_cpu_ms_per_job": 56.18629166666667,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 2.033806266733353
+          },
+          "rust": {
+            "commit_jobs_per_s": 2.4965773484913028,
+            "commit_to_pickup_p99_ms": 5.719,
+            "completed": 24,
+            "cpu_iowait_percent": 0.10095911155981828,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 5.762,
+            "peak_runner_rss_bytes": 8257536,
+            "runner_cpu_ms_per_job": 3.665791666666667,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 2.495081829847271
+          }
+        }
+      },
+      {
+        "attempt": "03-short.1795453695611118000",
+        "group": 3,
+        "order": [
+          "oban",
+          "go",
+          "mesh",
+          "rust"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-go": "6d4808243365490dbdb2c27db7f0d1e19f836710649a4f94433cd511ce7f9dde",
+          "measured-mesh": "fe0e89f72aabb71c37d8a3ebc5b0ed27c32efb7e00e6004f3eba0b25766b9e38",
+          "measured-oban": "479dcc7bc1a25756acfe5c9c9a1b3c2cc1867d63bf73cbe4f4a966dcfd366825",
+          "measured-rust": "fcaf980d7692888c1d0fb7933277ae302d0373e4719e9d1a12342908e79241e8"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 498.1261893735674,
+            "commit_to_pickup_p99_ms": 162.058,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1235955056179776,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 17.407,
+            "peak_runner_rss_bytes": 17739776,
+            "runner_cpu_ms_per_job": 0.921984375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 466.52330794183035
+          },
+          "mesh": {
+            "commit_jobs_per_s": 225.18639451952612,
+            "commit_to_pickup_p99_ms": 538.023,
+            "completed": 128,
+            "cpu_iowait_percent": 1.4814814814814814,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 68.674,
+            "peak_runner_rss_bytes": 16252928,
+            "runner_cpu_ms_per_job": 4.6726093749999995,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 200.91289798019753
+          },
+          "oban": {
+            "commit_jobs_per_s": 349.46992510968715,
+            "commit_to_pickup_p99_ms": 358.488,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7575757575757576,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 48.263,
+            "peak_runner_rss_bytes": 104046592,
+            "runner_cpu_ms_per_job": 11.080218749999998,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 308.7819516949234
+          },
+          "rust": {
+            "commit_jobs_per_s": 876.3581840215255,
+            "commit_to_pickup_p99_ms": 138.281,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1494252873563218,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 10.243,
+            "peak_runner_rss_bytes": 9175040,
+            "runner_cpu_ms_per_job": 0.6077031249999999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 818.9274609409988
+          }
+        }
+      },
+      {
+        "attempt": "03-large.1795453727615765000",
+        "group": 3,
+        "order": [
+          "go",
+          "rust",
+          "oban",
+          "mesh"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-go": "502733da913966cac4ff062d0883bf48a7dffa3a34734a6efa41402f6ad36dd8",
+          "measured-mesh": "df93dc1891e272421d64e211307dd246543d299c4ffd93dbd8f611c369e3b0ba",
+          "measured-oban": "f23fab6c333d50219673685d5cf85e2d974ba5d2971e0ac60693d981a4e403ad",
+          "measured-rust": "d9cda2e43b6032665c9e4c8a93b1bdc664ef2e4eedfedbef96d7a0495003989d",
+          "warmup-go": "59e53b1bee5338ba5e2505522c6e0309e51157d8436fd0e699458f310a86399d",
+          "warmup-mesh": "e4a39affef037d784ef737640cfa23e51ee361b8d11a35f735f3ceecf8b61aaf",
+          "warmup-oban": "e613a3a6fbbf85853b49566dbbdff5aef0d75f6e02ec4a9948b0d8ecb370e6fe",
+          "warmup-rust": "404c80c2021b016176cf703bb3a538668711540aaabbce13114875a5444e274d"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 68.15935657567393,
+            "commit_to_pickup_p99_ms": 587.711,
+            "completed": 64,
+            "cpu_iowait_percent": 0.13966480446927373,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 2277.99,
+            "peak_runner_rss_bytes": 230023168,
+            "runner_cpu_ms_per_job": 14.738421875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 19.89452173258903
+          },
+          "mesh": {
+            "commit_jobs_per_s": 75.69404938327091,
+            "commit_to_pickup_p99_ms": 835.134,
+            "completed": 64,
+            "cpu_iowait_percent": 0.33613445378151263,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1838.193,
+            "peak_runner_rss_bytes": 75862016,
+            "runner_cpu_ms_per_job": 25.626453125,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 23.847655216562792
+          },
+          "oban": {
+            "commit_jobs_per_s": 120.71963995367383,
+            "commit_to_pickup_p99_ms": 490.015,
+            "completed": 64,
+            "cpu_iowait_percent": 0.16891891891891891,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 2153.929,
+            "peak_runner_rss_bytes": 872218624,
+            "runner_cpu_ms_per_job": 147.27590625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 23.84427009149866
+          },
+          "rust": {
+            "commit_jobs_per_s": 391.46604032100214,
+            "commit_to_pickup_p99_ms": 144.118,
+            "completed": 64,
+            "cpu_iowait_percent": 0.27624309392265195,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 1422.773,
+            "peak_runner_rss_bytes": 113868800,
+            "runner_cpu_ms_per_job": 5.906328125,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 40.34644992217548
+          }
+        }
+      },
+      {
+        "attempt": "03-noop.1795453829468552000",
+        "group": 3,
+        "order": [
+          "go",
+          "rust",
+          "oban",
+          "mesh"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-go": "6112e9fc36a839d0f86d23e87ef031afa40f158bdb75137766a1bbd79f7b8f5a",
+          "measured-mesh": "66b19be29025ca24ffc53fd032d83b4831ad4e4f4b2ad4d8d2bab9ca6aa738c2",
+          "measured-oban": "e4e012c9bcd37881f18ca7e40419f96abe8f5929f27de1868827b237501d305b",
+          "measured-rust": "67ab9469f5d24e22604030900cc21b81b97620dc39b02747ffddea02dd5342aa",
+          "warmup-go": "76e3b2dcfdb85797ca8612dec637adc413a27f67a550e7c723b0cdca8eddc37d",
+          "warmup-mesh": "b70fdd97fb8b134702da58640bcbccbfcc375fe4685421bd2ba7772e4fdbd6ec",
+          "warmup-oban": "9a1b5d17d2e0863123fdf4ab398aee5e895b2059da7424775eaf34c9bcde4dba",
+          "warmup-rust": "a1a9a9f0c40cb107ec425e735faa9fdd4536c04cbb41b31f5d5762b362712869"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 940.4011582362702,
+            "commit_to_pickup_p99_ms": 876.342,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.3546099290780142,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 73.561,
+            "peak_runner_rss_bytes": 128737280,
+            "runner_cpu_ms_per_job": 0.7928203125000001,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 880.8920408307225
+          },
+          "mesh": {
+            "commit_jobs_per_s": 188.53539116766927,
+            "commit_to_pickup_p99_ms": 5353.701,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.08110300081103,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 560.366,
+            "peak_runner_rss_bytes": 107347968,
+            "runner_cpu_ms_per_job": 5.804325195312501,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 170.90288293469624
+          },
+          "oban": {
+            "commit_jobs_per_s": 716.677806434003,
+            "commit_to_pickup_p99_ms": 1382.491,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 150.833,
+            "peak_runner_rss_bytes": 799186944,
+            "runner_cpu_ms_per_job": 9.956967773437501,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 648.2456851146585
+          },
+          "rust": {
+            "commit_jobs_per_s": 1217.249278149781,
+            "commit_to_pickup_p99_ms": 822.122,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 46.175,
+            "peak_runner_rss_bytes": 70385664,
+            "runner_cpu_ms_per_job": 0.5841376953124999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 1153.9120322374174
+          }
+        }
+      },
+      {
+        "attempt": "03-slow.1795453926302385000",
+        "group": 3,
+        "order": [
+          "rust",
+          "mesh",
+          "go",
+          "oban"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-go": "819836ffdf7171d9613c89d5316f2b281dda68c34c0f0646791e70cf3e0a4c6c",
+          "measured-mesh": "588454d57e7a273c3136c7e83e16b150f9c05da747408e91752f199e35395710",
+          "measured-oban": "c90f6107889bf8d34dda8cae3f37a270459e87d1139bcced90ad02ec2dba20f9",
+          "measured-rust": "1607d58a625f44118d1f4fb775f3f737183adc75c02750157a100518820aa2a1",
+          "warmup-go": "d81c7358de436ffffc9d06a0a7e1598d42aac0cd760182561af2efebc6598fe5",
+          "warmup-mesh": "77442fae3a71fd2a9f678c1140d045d34f4181f341352d40e07eca60d5433901",
+          "warmup-oban": "9a9140c84074f61488028c9892dea9269ffee55d042066d0c252a8378f4feb63",
+          "warmup-rust": "ecfd135c279b7e15d4afe6de3dc21d294d62ba922a52b1c1c7991fecaa86d44c"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 390.6109934107282,
+            "commit_to_pickup_p99_ms": 1155.225,
+            "completed": 512,
+            "cpu_iowait_percent": 0.746268656716418,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 475.722,
+            "peak_runner_rss_bytes": 34766848,
+            "runner_cpu_ms_per_job": 0.876021484375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 286.5956633374177
+          },
+          "mesh": {
+            "commit_jobs_per_s": 208.34791497451806,
+            "commit_to_pickup_p99_ms": 2327.556,
+            "completed": 512,
+            "cpu_iowait_percent": 0.9448818897637795,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 680.361,
+            "peak_runner_rss_bytes": 220917760,
+            "runner_cpu_ms_per_job": 4.671482421875,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 163.1722209492098
+          },
+          "oban": {
+            "commit_jobs_per_s": 324.00059737610144,
+            "commit_to_pickup_p99_ms": 1470.268,
+            "completed": 512,
+            "cpu_iowait_percent": 0.44150110375275936,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 474.568,
+            "peak_runner_rss_bytes": 127905792,
+            "runner_cpu_ms_per_job": 3.9472773437499997,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 249.17121371687531
+          },
+          "rust": {
+            "commit_jobs_per_s": 377.49064567858,
+            "commit_to_pickup_p99_ms": 994.788,
+            "completed": 512,
+            "cpu_iowait_percent": 0.4914004914004914,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 334.164,
+            "peak_runner_rss_bytes": 12804096,
+            "runner_cpu_ms_per_job": 0.47866992187499996,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 302.8709444427027
+          }
+        }
+      },
+      {
+        "attempt": "04-short.1795454015202124000",
+        "group": 4,
+        "order": [
+          "go",
+          "rust",
+          "oban",
+          "mesh"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-go": "37fb2e19a2a33c4ffe47a261435273ec2d7f5458d1470d81ef4048b71445a5ee",
+          "measured-mesh": "4540028018e6e77dbc613a6c7053a3b0fcf210ae9845b340028296060761f4fd",
+          "measured-oban": "cce8c859b7634d90390472955f2ed8f2d5b7d84515b767f6aa87490aa896ccd5",
+          "measured-rust": "cafb1d462a7f68a73459ed5044213cb709f3f1663e5f3203f729becfa07131be"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 791.1783612718192,
+            "commit_to_pickup_p99_ms": 147.218,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 14.363,
+            "peak_runner_rss_bytes": 17227776,
+            "runner_cpu_ms_per_job": 0.805859375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 726.6657961815984
+          },
+          "mesh": {
+            "commit_jobs_per_s": 235.22795978336976,
+            "commit_to_pickup_p99_ms": 528.336,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1299435028248588,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 67.675,
+            "peak_runner_rss_bytes": 22675456,
+            "runner_cpu_ms_per_job": 4.66871875,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 209.20912413292623
+          },
+          "oban": {
+            "commit_jobs_per_s": 293.6035709534317,
+            "commit_to_pickup_p99_ms": 425.817,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 51.641,
+            "peak_runner_rss_bytes": 101588992,
+            "runner_cpu_ms_per_job": 11.15728125,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 262.50863920033305
+          },
+          "rust": {
+            "commit_jobs_per_s": 952.2746717256258,
+            "commit_to_pickup_p99_ms": 125.973,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 9.932,
+            "peak_runner_rss_bytes": 8912896,
+            "runner_cpu_ms_per_job": 0.630484375,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 886.7520627377085
+          }
+        }
+      },
+      {
+        "attempt": "04-large.1795454046677081000",
+        "group": 4,
+        "order": [
+          "rust",
+          "mesh",
+          "go",
+          "oban"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-go": "74ea5d45f21304f5702a87f9e3a07bdc8d0fa202f2fdcb96afb6e934ce1a241f",
+          "measured-mesh": "0693943fc28186edbea8ec168a2075dd0c061563c248d84145d54991be436714",
+          "measured-oban": "9cf4570fd811c3eaf82d52bb660700556f588386e89b29d21a8381035963b18b",
+          "measured-rust": "7afdfd6ce2e1ae680edf5a70c67295583aa012229ba68a9da236fb254bb07331",
+          "warmup-go": "56a8854f663108b39b9a927caa069cb3c62d01a75c54ce50e02f79622d69af85",
+          "warmup-mesh": "985e8a3621644bdd3d6270b44ef02bebd455ae9ebaabbc702921bcc948e623a9",
+          "warmup-oban": "c86ba74f5f2d0541dd19d0a5af47dbab97f589d4559b2cdb471dba62ba6e975f",
+          "warmup-rust": "99a607c1eac6e4851049e47c43a95c215fdba757d78c08fc10ea920a7f42aa89"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 66.9118707931775,
+            "commit_to_pickup_p99_ms": 608.784,
+            "completed": 64,
+            "cpu_iowait_percent": 0.14104372355430184,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 2283.182,
+            "peak_runner_rss_bytes": 228519936,
+            "runner_cpu_ms_per_job": 14.839203125,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 19.755135100430167
+          },
+          "mesh": {
+            "commit_jobs_per_s": 79.483062035288,
+            "commit_to_pickup_p99_ms": 795.599,
+            "completed": 64,
+            "cpu_iowait_percent": 0.3367003367003367,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1859.551,
+            "peak_runner_rss_bytes": 72482816,
+            "runner_cpu_ms_per_job": 26.940468749999997,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 24.017226355603558
+          },
+          "oban": {
+            "commit_jobs_per_s": 124.63073277028803,
+            "commit_to_pickup_p99_ms": 473.111,
+            "completed": 64,
+            "cpu_iowait_percent": 0.35842293906810035,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 2068.15,
+            "peak_runner_rss_bytes": 857755648,
+            "runner_cpu_ms_per_job": 147.03128125,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 24.790184016761263
+          },
+          "rust": {
+            "commit_jobs_per_s": 369.03986207135154,
+            "commit_to_pickup_p99_ms": 124.417,
+            "completed": 64,
+            "cpu_iowait_percent": 0.27100271002710025,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 1482.789,
+            "peak_runner_rss_bytes": 111628288,
+            "runner_cpu_ms_per_job": 5.8758125,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 38.64239602176533
+          }
+        }
+      },
+      {
+        "attempt": "04-noop.1795454149417513000",
+        "group": 4,
+        "order": [
+          "rust",
+          "mesh",
+          "go",
+          "oban"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-go": "74d4cd7921a115e3d4bb085cd592992c7b7496e21e398527afc5edfad8f776ac",
+          "measured-mesh": "c979797c73750670a5cd6a9aa336ef90d545d1f345481074feb4d74b867cd6fc",
+          "measured-oban": "a8126f0d485fdc3d4a710ab177955ca25905b67ed9515dc68eb700c4042687a8",
+          "measured-rust": "0a76dea362afb08fabb66915ee2e24e64269f3bb3bc44b0c3cfda40dd99e481a",
+          "warmup-go": "d5f3de4986020e7d7256ac8d6bce5afed3cea9ccc68ffc9228279ab1936d0001",
+          "warmup-mesh": "36509e19f3999026599d4bb82a350cd52a3814c10d6055b3f8f857cbb61b73d6",
+          "warmup-oban": "5c7b1003dcc19aadad200322f90dfb4f437f4ace405d90ee4ec0fdedd39f961e",
+          "warmup-rust": "812f16487a977a8f7fdecb488af28bd05dc56bf2a7b4ba46dde1946a7994e2ab"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 920.5843193204937,
+            "commit_to_pickup_p99_ms": 890.55,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 92.895,
+            "peak_runner_rss_bytes": 128856064,
+            "runner_cpu_ms_per_job": 0.7775781249999999,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 849.6289511065089
+          },
+          "mesh": {
+            "commit_jobs_per_s": 187.6506106891212,
+            "commit_to_pickup_p99_ms": 5364.85,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.16155088852988692,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 608.785,
+            "peak_runner_rss_bytes": 153747456,
+            "runner_cpu_ms_per_job": 5.8052841796875,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 168.81713427968745
+          },
+          "oban": {
+            "commit_jobs_per_s": 707.5996478586128,
+            "commit_to_pickup_p99_ms": 1413.93,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.2958579881656805,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 161.781,
+            "peak_runner_rss_bytes": 791494656,
+            "runner_cpu_ms_per_job": 9.962009765624998,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 636.4490122920431
+          },
+          "rust": {
+            "commit_jobs_per_s": 1214.2974032534632,
+            "commit_to_pickup_p99_ms": 822.793,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.8403361344537815,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 42.201,
+            "peak_runner_rss_bytes": 70254592,
+            "runner_cpu_ms_per_job": 0.5764863281249999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 1156.4257860363846
+          }
+        }
+      },
+      {
+        "attempt": "04-slow.1795454246206136000",
+        "group": 4,
+        "order": [
+          "mesh",
+          "oban",
+          "rust",
+          "go"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-go": "bdf264904c014477dfdb3c1070be692f19922ea05aabcdf48c4f738179828a20",
+          "measured-mesh": "41d15d3e9b0488be9ec9b249fb81ced29e457285ee8cfad0f72e3eb5ddaa5c9b",
+          "measured-oban": "fa0e6fda7c846cc617000d5097e4c3c5d164e85831a47404d1f27b90bd3cfafe",
+          "measured-rust": "3080e42060782b76184a18484e2f57b3556c4bfb2266c7710d25a094d468f93b",
+          "warmup-go": "07640c873de055d7126fc79cc715febe53bfc2151adfd168687127ce3d42302d",
+          "warmup-mesh": "8073b5642c6ddeaa70bcd07ef85a79bc0c70cc9c1962d487ffe63b9fe49e56b9",
+          "warmup-oban": "1ec49f9eed0ef3fcab8ba10e4649ac5045729b76b77217c4031628377d9c9d43",
+          "warmup-rust": "0f137a01bd536b08e6b33ddf31c496daef90d1b639fc8e3c5450de0c055cf8ff"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 333.4060488452885,
+            "commit_to_pickup_p99_ms": 1191.278,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6772009029345373,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 489.754,
+            "peak_runner_rss_bytes": 36597760,
+            "runner_cpu_ms_per_job": 0.895302734375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 252.78720106802592
+          },
+          "mesh": {
+            "commit_jobs_per_s": 210.34278479057335,
+            "commit_to_pickup_p99_ms": 2315.451,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6329113924050633,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 642.558,
+            "peak_runner_rss_bytes": 214020096,
+            "runner_cpu_ms_per_job": 4.741046875,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 166.41314663858444
+          },
+          "oban": {
+            "commit_jobs_per_s": 314.66118304000804,
+            "commit_to_pickup_p99_ms": 1513.089,
+            "completed": 512,
+            "cpu_iowait_percent": 0.21978021978021978,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 459.075,
+            "peak_runner_rss_bytes": 129228800,
+            "runner_cpu_ms_per_job": 3.89740625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 245.41971084572975
+          },
+          "rust": {
+            "commit_jobs_per_s": 427.37040326404144,
+            "commit_to_pickup_p99_ms": 1084.133,
+            "completed": 512,
+            "cpu_iowait_percent": 0.5524861878453039,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 341.075,
+            "peak_runner_rss_bytes": 12320768,
+            "runner_cpu_ms_per_job": 0.46099804687499996,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 332.66216143341006
+          }
+        }
+      },
+      {
+        "attempt": "04-sparse.1795454333774899000",
+        "group": 4,
+        "order": [
+          "oban",
+          "go",
+          "mesh",
+          "rust"
+        ],
+        "profile": "sparse",
+        "raw_sha256": {
+          "measured-go": "ef7c830a0b918936db9df3be61382834ff451d4d06c8adeaa9d840d76ee47581",
+          "measured-mesh": "2fb4fbdc2f5144e227a928105816c37790d0eb4f2a3df62a86d18711359f20a4",
+          "measured-oban": "b3e41fca5560cb97d6914f3bb4fad52984afb12e97910f0a75951c55b8bcbaa8",
+          "measured-rust": "ea3c92b9bd5feab2312d94ad40b1aadc595ee26d63da118ae37883dbb930fcc4"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 2.0842841070297258,
+            "commit_to_pickup_p99_ms": 4.53,
+            "completed": 24,
+            "cpu_iowait_percent": 0.12942191544434858,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 4.664,
+            "peak_runner_rss_bytes": 14008320,
+            "runner_cpu_ms_per_job": 6.962375000000001,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 2.0834402181570253
+          },
+          "mesh": {
+            "commit_jobs_per_s": 2.6477043961601225,
+            "commit_to_pickup_p99_ms": 13.879,
+            "completed": 24,
+            "cpu_iowait_percent": 0.27839643652561247,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 6.762,
+            "peak_runner_rss_bytes": 8781824,
+            "runner_cpu_ms_per_job": 18.891374999999996,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 2.6457307056229937
+          },
+          "oban": {
+            "commit_jobs_per_s": 2.0337069987484226,
+            "commit_to_pickup_p99_ms": 233.716,
+            "completed": 24,
+            "cpu_iowait_percent": 0.12412081092263136,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 40.06,
+            "peak_runner_rss_bytes": 98996224,
+            "runner_cpu_ms_per_job": 64.30016666666667,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 2.0268267409386067
+          },
+          "rust": {
+            "commit_jobs_per_s": 2.4929796653881144,
+            "commit_to_pickup_p99_ms": 6.3,
+            "completed": 24,
+            "cpu_iowait_percent": 0.10314595152140278,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 6.072,
+            "peak_runner_rss_bytes": 8519680,
+            "runner_cpu_ms_per_job": 3.7585416666666664,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 2.4914082747558264
+          }
+        }
+      },
+      {
+        "attempt": "05-large.1795454407828460000",
+        "group": 5,
+        "order": [
+          "mesh",
+          "oban",
+          "rust",
+          "go"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-go": "b48c1ae8f891ba6d4af31c00d51e239a9c2436910f3a75134cf6d65c4b88cef2",
+          "measured-mesh": "d44c4ccf8902c9bd2dd4beaaaa37de597630a20b9a5cfb07e13ac2d23d802024",
+          "measured-oban": "66974a6643a4d5f3071a56774f3575f6ed0592e8f6bcdca43edd15c6f5d9ae59",
+          "measured-rust": "1d7a3242a059752f98b3f2a56cbbe815ae71409d665494272ac13ccdbc7a5773",
+          "warmup-go": "e8a7f23f25423da6a5f89aeed63d3084c0d4e9ea5894cd8b09d77035f7bd32e4",
+          "warmup-mesh": "c0416783d5ed55d3e42fc7ef6b79c3e116406f219b64c83dcc1bb2a448161f49",
+          "warmup-oban": "199337eb753b64212fb04bf9cbac1e8db27daa62aea745c491c606d41422328f",
+          "warmup-rust": "c3a6949638abc13de5db9f7012cd18543a35625144d150e701ae6ce001b260b7"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 72.2279967000834,
+            "commit_to_pickup_p99_ms": 601.479,
+            "completed": 64,
+            "cpu_iowait_percent": 0.1592356687898089,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 2152.479,
+            "peak_runner_rss_bytes": 230944768,
+            "runner_cpu_ms_per_job": 15.087515625000002,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 21.06259474053845
+          },
+          "mesh": {
+            "commit_jobs_per_s": 75.01796328573991,
+            "commit_to_pickup_p99_ms": 831.166,
+            "completed": 64,
+            "cpu_iowait_percent": 0.3395585738539898,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1897.112,
+            "peak_runner_rss_bytes": 77860864,
+            "runner_cpu_ms_per_job": 26.68871875,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 23.27068791425915
+          },
+          "oban": {
+            "commit_jobs_per_s": 127.84173193586341,
+            "commit_to_pickup_p99_ms": 478.472,
+            "completed": 64,
+            "cpu_iowait_percent": 0.17921146953405018,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 2078.308,
+            "peak_runner_rss_bytes": 853983232,
+            "runner_cpu_ms_per_job": 147.052,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 24.81652253049427
+          },
+          "rust": {
+            "commit_jobs_per_s": 362.6925387344297,
+            "commit_to_pickup_p99_ms": 126.978,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5434782608695652,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 1464.272,
+            "peak_runner_rss_bytes": 113315840,
+            "runner_cpu_ms_per_job": 6.1106875,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 39.007027359772785
+          }
+        }
+      },
+      {
+        "attempt": "05-noop.1795454510032876000",
+        "group": 5,
+        "order": [
+          "mesh",
+          "oban",
+          "rust",
+          "go"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-go": "3748206dbba9b43980a7dbbdb07ad1c488ad6ce2721332dbac2a6aee41fff342",
+          "measured-mesh": "46bf0cd0773f0d31428b1f81168ed59c79fb7ba729ded48f593808b679c91231",
+          "measured-oban": "c03d13aad5a3598009a07acc9e5a7a5ae4b2be974b93c1889c35a3b180db7bf0",
+          "measured-rust": "5c15a1d019fe8b7bda9e204cabdb47ca24a0377939752e777dce868833712c91",
+          "warmup-go": "2718bb0ce79ce13a2176a88fffc7adbf8517f0a4cf641fb8fd2abf2d03ae9081",
+          "warmup-mesh": "f0d0dccf1e9ccd23242b0d6d75ae2786063e77f32c649ccbecf779e43f43529e",
+          "warmup-oban": "a933a1925e2d520fea4219a385ca5254e3b0cf96924eb74e24e78c786f222479",
+          "warmup-rust": "e2fc8df91b60b30de5e045ca49cd9776406de62694b2b00ab0623b1180cdd8bd"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 954.111344048451,
+            "commit_to_pickup_p99_ms": 836.662,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.35587188612099646,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 81.542,
+            "peak_runner_rss_bytes": 129110016,
+            "runner_cpu_ms_per_job": 0.763955078125,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 886.7397765138656
+          },
+          "mesh": {
+            "commit_jobs_per_s": 194.81080332441593,
+            "commit_to_pickup_p99_ms": 5163.205,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 564.682,
+            "peak_runner_rss_bytes": 107872256,
+            "runner_cpu_ms_per_job": 5.6998994140625,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 175.9128571683802
+          },
+          "oban": {
+            "commit_jobs_per_s": 698.1188288238538,
+            "commit_to_pickup_p99_ms": 1445.32,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 158.17,
+            "peak_runner_rss_bytes": 784674816,
+            "runner_cpu_ms_per_job": 10.0036259765625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 630.1658677796315
+          },
+          "rust": {
+            "commit_jobs_per_s": 1174.35367541736,
+            "commit_to_pickup_p99_ms": 849.096,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.41841004184100417,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 39.378,
+            "peak_runner_rss_bytes": 69599232,
+            "runner_cpu_ms_per_job": 0.592095703125,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 1123.6115332579138
+          }
+        }
+      },
+      {
+        "attempt": "05-slow.1795454606334539000",
+        "group": 5,
+        "order": [
+          "oban",
+          "go",
+          "mesh",
+          "rust"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-go": "81d850710edc7571fa8cd5e0a0226cb1f0786bbd9004e1f96ea291edd89954a8",
+          "measured-mesh": "4f76ebbff77baaa48d07d5ef49bd7d343e35aeb0858ccae9c3a36d93b3beed2a",
+          "measured-oban": "16eeb9b5249c7777d6cb09051099ed425416755b758f3be9bbc1fcef87cbab7b",
+          "measured-rust": "3e10a35f57645fe6b2049afe3775ff74b1555eb751d18bbb0ab6f6ceff73e29a",
+          "warmup-go": "cb27a9621a003f1ab9fb31b722727a580a6c8e5d061f948d37a3696173b49f3f",
+          "warmup-mesh": "dcd15a69022cdcc351838796f565664b8efbccf44ca0dbfe34da03ab3a7ddc01",
+          "warmup-oban": "38c57c53e886efdbe5517fd495250ddacd2900fbb08cecc422d6c7c7fa4d2d76",
+          "warmup-rust": "9db6dcc25ac560e96c4e285506552781466aee3ba377a2ccf4a647163efc8744"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 393.71955786524023,
+            "commit_to_pickup_p99_ms": 1189.457,
+            "completed": 512,
+            "cpu_iowait_percent": 0.9950248756218906,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 472.998,
+            "peak_runner_rss_bytes": 36835328,
+            "runner_cpu_ms_per_job": 0.894611328125,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 288.7083459267312
+          },
+          "mesh": {
+            "commit_jobs_per_s": 205.63438206868187,
+            "commit_to_pickup_p99_ms": 2357.542,
+            "completed": 512,
+            "cpu_iowait_percent": 0.7861635220125787,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 641.278,
+            "peak_runner_rss_bytes": 200871936,
+            "runner_cpu_ms_per_job": 4.74072265625,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 163.51903176293317
+          },
+          "oban": {
+            "commit_jobs_per_s": 301.79675167668137,
+            "commit_to_pickup_p99_ms": 1567.158,
+            "completed": 512,
+            "cpu_iowait_percent": 2.7559055118110236,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 510.802,
+            "peak_runner_rss_bytes": 128770048,
+            "runner_cpu_ms_per_job": 3.9499882812500005,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 231.95675456257123
+          },
+          "rust": {
+            "commit_jobs_per_s": 471.64032266830515,
+            "commit_to_pickup_p99_ms": 969.793,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6289308176100629,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 322.326,
+            "peak_runner_rss_bytes": 12873728,
+            "runner_cpu_ms_per_job": 0.49311718749999994,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 363.66245021837506
+          }
+        }
+      },
+      {
+        "attempt": "05-sparse.1795454696568080000",
+        "group": 5,
+        "order": [
+          "go",
+          "rust",
+          "oban",
+          "mesh"
+        ],
+        "profile": "sparse",
+        "raw_sha256": {
+          "measured-go": "603cb371de51e3cc720b5eab2c1e37d3585b69d3a7afb05c08f2720ba7ba6877",
+          "measured-mesh": "4878a27bf5f7722ca08dfb7ca5cfd81622415f77ed16be2c94acee509a028ccc",
+          "measured-oban": "add6cc44b8d6803ee49eb6717a011c83097dbd494b59bf444dc27bdb82cea2ac",
+          "measured-rust": "7067761a5bcefbcd92ea057eaba7e75e8e6364aa09259005a467f452d46ff4a1"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 2.0847293057173877,
+            "commit_to_pickup_p99_ms": 2.069,
+            "completed": 24,
+            "cpu_iowait_percent": 0.08449514152936206,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 4.045,
+            "peak_runner_rss_bytes": 14057472,
+            "runner_cpu_ms_per_job": 6.886166666666667,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 2.0839970646901342
+          },
+          "mesh": {
+            "commit_jobs_per_s": 2.645470568588785,
+            "commit_to_pickup_p99_ms": 15.594,
+            "completed": 24,
+            "cpu_iowait_percent": 0.16216216216216217,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 7.775,
+            "peak_runner_rss_bytes": 15204352,
+            "runner_cpu_ms_per_job": 18.383,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 2.643205282886292
+          },
+          "oban": {
+            "commit_jobs_per_s": 2.042901962666988,
+            "commit_to_pickup_p99_ms": 226.004,
+            "completed": 24,
+            "cpu_iowait_percent": 0.1258917331095258,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 31.126,
+            "peak_runner_rss_bytes": 97488896,
+            "runner_cpu_ms_per_job": 53.959666666666664,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 2.037503650527374
+          },
+          "rust": {
+            "commit_jobs_per_s": 2.4972031324916095,
+            "commit_to_pickup_p99_ms": 5.526,
+            "completed": 24,
+            "cpu_iowait_percent": 0.15416238437821173,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 7.389,
+            "peak_runner_rss_bytes": 8388608,
+            "runner_cpu_ms_per_job": 3.5420416666666665,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 2.495284691709136
+          }
+        }
+      },
+      {
+        "attempt": "05-short.1795454770279297000",
+        "group": 5,
+        "order": [
+          "rust",
+          "mesh",
+          "go",
+          "oban"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-go": "25ee6d5ebb51eebbb4a35a504776e46a99963082f1fcc58fe5e2383ad1389719",
+          "measured-mesh": "0f6f9a3cca41abe0117ed66016b1e24a0156ffdda868fa3e03b0355815eddb88",
+          "measured-oban": "5ac0259073158feaf8ea1f8281d56c7818027da766c996228bb949dce3535427",
+          "measured-rust": "7b2f811d720ec35adc9de4464ad8d44ebf0f93bd6d0c84f1855402870a58aa13"
+        },
+        "scores": {
+          "go": {
+            "commit_jobs_per_s": 799.0860453356473,
+            "commit_to_pickup_p99_ms": 150.684,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.164,
+            "peak_runner_rss_bytes": 17371136,
+            "runner_cpu_ms_per_job": 0.83175,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 738.4033181999112
+          },
+          "mesh": {
+            "commit_jobs_per_s": 222.45626475076207,
+            "commit_to_pickup_p99_ms": 560.377,
+            "completed": 128,
+            "cpu_iowait_percent": 0.5780346820809249,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 68.072,
+            "peak_runner_rss_bytes": 22675456,
+            "runner_cpu_ms_per_job": 4.818734375,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 198.92270920297264
+          },
+          "oban": {
+            "commit_jobs_per_s": 321.5272544586787,
+            "commit_to_pickup_p99_ms": 383.054,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 47.729,
+            "peak_runner_rss_bytes": 105160704,
+            "runner_cpu_ms_per_job": 11.036015625000001,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 287.10559429736514
+          },
+          "rust": {
+            "commit_jobs_per_s": 838.4206251473786,
+            "commit_to_pickup_p99_ms": 143.235,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 10.446,
+            "peak_runner_rss_bytes": 9043968,
+            "runner_cpu_ms_per_job": 0.730484375,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 784.7272459752076
+          }
+        }
+      }
+    ],
+    "description": "Protected Mesh and the stock Oban, River and Apalis workers. Each engine uses its original producer and default PostgreSQL storage.",
+    "manifest_sha256": "19ad3ca3556504a28b9cffa15b462afeea65e2f82b07a3fc95c343837f4dd3d6",
+    "title": "Four-engine baseline"
+  },
+  "current": {
+    "blocks": [
+      {
+        "attempt": "01-noop.1795462699541432000",
+        "group": 1,
+        "order": [
+          "current",
+          "historical",
+          "river",
+          "oban"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-current/measured-mesh": "88a8974213b2529fc89b2e131d39ec81109db421682c31009c1ae83c03a2312e",
+          "measured-historical/measured-mesh": "ec3ec004943dd1f15dc91cc07473b4b60e6b255648f65a2c6ccaeecec412d4ae",
+          "measured-oban/measured-oban": "bf12da83c69d8abbc6fb8e44649a9fdd904a3ae89ce19921db0bfb40c46167e9",
+          "measured-river/measured-go": "057dd7e8448d33c4f99810223b765d31f6ce7d3fc9d3148f95b32fb2fca4ff9b",
+          "warmup-current/warmup-mesh": "a20f564ed81cf66edfa4b830248c1d8252107bd3a98e71dbb4ea18a492c08f08",
+          "warmup-historical/warmup-mesh": "0f0906784ed4e0c78ead051553046aa904c9ab47810b12c56e02e5578b79c85d",
+          "warmup-oban/warmup-oban": "3f7820b1b58d8a6b41d56109913e99ae089553da0540bbe937a90e3fa50768a7",
+          "warmup-river/warmup-go": "0509c4b7f5c7fb49676615d3750a46ff9e46c7fd19277b5b9d0b3c8d337b0a99"
+        },
+        "scores": {
+          "current": {
+            "commit_jobs_per_s": 189.91696696668848,
+            "commit_to_pickup_p99_ms": 5319.143,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.08361204013377926,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 545.341,
+            "peak_runner_rss_bytes": 182452224,
+            "runner_cpu_ms_per_job": 5.875322265625,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 172.4727146986334
+          },
+          "historical": {
+            "commit_jobs_per_s": 189.73285835886264,
+            "commit_to_pickup_p99_ms": 5329.811,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 556.318,
+            "peak_runner_rss_bytes": 141295616,
+            "runner_cpu_ms_per_job": 5.781098632812499,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 172.0031309944939
+          },
+          "oban": {
+            "commit_jobs_per_s": 650.2689662311008,
+            "commit_to_pickup_p99_ms": 1539.605,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 180.032,
+            "peak_runner_rss_bytes": 793460736,
+            "runner_cpu_ms_per_job": 10.189138671875,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 583.553923174898
+          },
+          "river": {
+            "commit_jobs_per_s": 1023.0567416841672,
+            "commit_to_pickup_p99_ms": 831.047,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 72.405,
+            "peak_runner_rss_bytes": 129638400,
+            "runner_cpu_ms_per_job": 0.7300107421875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 954.0428965264081
+          }
+        }
+      },
+      {
+        "attempt": "01-short.1795462809435147000",
+        "group": 1,
+        "order": [
+          "current",
+          "historical",
+          "river",
+          "oban"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-current/measured-mesh": "6ab7af358745e11e79ef433ed659b204b760863dd8a4205b65efe05df450b6a6",
+          "measured-historical/measured-mesh": "05a6a04b6b81b4d1435fdfc397470d93ec0d91cc7302a04b933d039b57627b76",
+          "measured-oban/measured-oban": "308993cc2fdc55d312e2b2c44b9c4c2535f987efcd639ff17eb4c6c5614832ae",
+          "measured-river/measured-go": "8fdb98911599a4d9e22fea03b801715f807d73a3f7ef480ffae07c9d0fedef07"
+        },
+        "scores": {
+          "current": {
+            "commit_jobs_per_s": 232.6773528588412,
+            "commit_to_pickup_p99_ms": 522.271,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7633587786259542,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 66.921,
+            "peak_runner_rss_bytes": 22937600,
+            "runner_cpu_ms_per_job": 4.683671875,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 207.44231726033524
+          },
+          "historical": {
+            "commit_jobs_per_s": 235.4313083175306,
+            "commit_to_pickup_p99_ms": 520.72,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1363636363636365,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 74.142,
+            "peak_runner_rss_bytes": 15990784,
+            "runner_cpu_ms_per_job": 4.5549296875,
+            "sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+            "submit_jobs_per_s": 207.1784081252782
+          },
+          "oban": {
+            "commit_jobs_per_s": 312.7542655528054,
+            "commit_to_pickup_p99_ms": 401.522,
+            "completed": 128,
+            "cpu_iowait_percent": 3.007518796992481,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 52.553,
+            "peak_runner_rss_bytes": 104480768,
+            "runner_cpu_ms_per_job": 11.095140624999999,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 277.1642631328223
+          },
+          "river": {
+            "commit_jobs_per_s": 610.1688451601217,
+            "commit_to_pickup_p99_ms": 185.608,
+            "completed": 128,
+            "cpu_iowait_percent": 2.2988505747126435,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 16.665,
+            "peak_runner_rss_bytes": 17784832,
+            "runner_cpu_ms_per_job": 1.0364296875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 565.263664586673
+          }
+        }
+      }
+    ],
+    "description": "Current and archived protected Mesh releases alongside stock River and Oban.",
+    "manifest_sha256": "519ba4a590034aa4b9e5b3605b9909ab9f748967bf48c9ce61eb0a510aaab56f",
+    "title": "Protected Mesh rebuild"
+  },
+  "direct": {
+    "blocks": [
+      {
+        "attempt": "01-large.1795463957064636000",
+        "group": 1,
+        "order": [
+          "mesh-stock-a",
+          "mesh-stock-b",
+          "apalis",
+          "mesh-direct-file",
+          "river",
+          "oban"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "4187caa2eb42fb7df0458c1278344ed97147511507d0d2b4285186878fa6d0d2",
+          "measured-mesh-direct-file/measured-mesh": "1ad5a647efeddd4d974e1967ddbf729ee3c169c16f846cb64438fbb77e1405b3",
+          "measured-mesh-stock-a/measured-mesh": "e25b0e95e5fc660bf8752cd7f88ba505a3310adce2c821d9cb78b958cd93aade",
+          "measured-mesh-stock-b/measured-mesh": "6d8c5ff13a5fad44105c11494124e2b7170dc12bffa4fb09357ec7999a55580f",
+          "measured-oban/measured-oban": "b7dc6e5ebac0a6d71c0bc684db1ab41c14ade9040826a780376932219f39f3bf",
+          "measured-river/measured-go": "7b282c1ff8cb918eefe1235be8efc3b8b8a3c1418e473efbbde9911dc44a0a38",
+          "warmup-apalis/warmup-rust": "c6755eac8ea5dea23b3ad87dc8dc724f3ac8477b008c658171fd3712f7611688",
+          "warmup-mesh-direct-file/warmup-mesh": "1a4f2a6f5dd2ec1b1924955729534ec0c37c09b60ac0289c090a348c67047f44",
+          "warmup-mesh-stock-a/warmup-mesh": "d7a33161922739cef2219458520a493880e037f504c640286043baa11e4b1dfe",
+          "warmup-mesh-stock-b/warmup-mesh": "e4ce390ad13055946253d358f231105e036a477f0b1cf5a7031070c64ba56fef",
+          "warmup-oban/warmup-oban": "0b1d96267f053d57dda9ae2521ddd277c857fdeb95a09c232f7738ee0651a24d",
+          "warmup-river/warmup-go": "b67fe1314270ce545c246f36c2ccf7f18bf2dd2153312621e7b1f6f31258b79a"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 262.63521609953875,
+            "commit_to_pickup_p99_ms": 218.28,
+            "completed": 64,
+            "cpu_iowait_percent": 0.2724795640326976,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 1472.25,
+            "peak_runner_rss_bytes": 107720704,
+            "runner_cpu_ms_per_job": 6.223453125000001,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 37.29747181418399
+          },
+          "mesh-direct-file": {
+            "commit_jobs_per_s": 75.840256719269,
+            "commit_to_pickup_p99_ms": 836.434,
+            "completed": 64,
+            "cpu_iowait_percent": 0.39603960396039606,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1540.487,
+            "peak_runner_rss_bytes": 98283520,
+            "runner_cpu_ms_per_job": 25.847875,
+            "sha256": "2469a1c32dc318c52913d4fde9af1cfb15f0d52b4a6ddd7462d54a8dae72278f",
+            "submit_jobs_per_s": 26.841516780561374
+          },
+          "mesh-stock-a": {
+            "commit_jobs_per_s": 77.91594330641175,
+            "commit_to_pickup_p99_ms": 810.363,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5444646098003629,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1842.255,
+            "peak_runner_rss_bytes": 77299712,
+            "runner_cpu_ms_per_job": 25.594437499999998,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 24.02715368706059
+          },
+          "mesh-stock-b": {
+            "commit_jobs_per_s": 74.12005596064225,
+            "commit_to_pickup_p99_ms": 842.637,
+            "completed": 64,
+            "cpu_iowait_percent": 0.36363636363636365,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1838.788,
+            "peak_runner_rss_bytes": 79712256,
+            "runner_cpu_ms_per_job": 26.824453125,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 23.683949535424528
+          },
+          "oban": {
+            "commit_jobs_per_s": 115.63200115632002,
+            "commit_to_pickup_p99_ms": 516.853,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5385996409335727,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 1993.327,
+            "peak_runner_rss_bytes": 868401152,
+            "runner_cpu_ms_per_job": 149.72885937499996,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 25.129505298202808
+          },
+          "river": {
+            "commit_jobs_per_s": 66.35156584511678,
+            "commit_to_pickup_p99_ms": 556.303,
+            "completed": 64,
+            "cpu_iowait_percent": 0.2949852507374631,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 2279.789,
+            "peak_runner_rss_bytes": 229122048,
+            "runner_cpu_ms_per_job": 15.539515625000002,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 19.726613791122283
+          }
+        }
+      }
+    ],
+    "description": "The compiled Mesh producer reads and decodes the input file after submission. Two stock Mesh controls use the original broker. PostgreSQL uses its default storage for all four engines.",
+    "manifest_sha256": "b983e57ec715c0cb9e626a70863a6a59d1792caa79cc261ed0640d52fa169e3f",
+    "title": "Direct-file producer"
+  },
+  "lean": {
+    "blocks": [
+      {
+        "attempt": "01-noop.1795464823083363000",
+        "group": 1,
+        "order": [
+          "stock",
+          "lean",
+          "combined",
+          "admission"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-admission/measured-mesh": "04506a61965ca2a75ba061b12579f8631a6339bad61eec09903242d5a709e8b6",
+          "measured-combined/measured-mesh": "d168505a4d7b6b2405bee88c4c953bef6570f02fb7f42b84c0ff3719dc444eee",
+          "measured-lean/measured-mesh": "888c57ee17dbde8563cc5450f7455d90a2f97a5d9d1dfb52bba920aa211e900b",
+          "measured-stock/measured-mesh": "29f7f8585556ae6854b9f40af33aff5943f2e0410b0d1651cf0b7e7fe21ab64f",
+          "warmup-admission/warmup-mesh": "f25dbaf68f722c243114ed6a3a830cfb310246969b17c23eb2ae0b8e37c1b6d7",
+          "warmup-combined/warmup-mesh": "b783afb8b39fc6fe3e61e3a69320eec6c5d6ca334049e3c3b41e689807e7e931",
+          "warmup-lean/warmup-mesh": "a888d4e9b868ed57e56bf7c343608d6af2b3c0cec10f2b994f127f66405553ac",
+          "warmup-stock/warmup-mesh": "e1d1ba590d376238c8c5bfe3c11f199d94065aa2f5920c55f8eb7f2bd3648dfc"
+        },
+        "scores": {
+          "admission": {
+            "commit_jobs_per_s": 207.66970457970513,
+            "commit_to_pickup_p99_ms": 4858.838,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.1768346595932803,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 574.867,
+            "peak_runner_rss_bytes": 114032640,
+            "runner_cpu_ms_per_job": 5.7363017578125,
+            "sha256": "891a7faba486e0c7c9c5050e36c240e843a5d6835f602357cd3b419d529aa522",
+            "submit_jobs_per_s": 185.98656610314916
+          },
+          "combined": {
+            "commit_jobs_per_s": 226.6611004839126,
+            "commit_to_pickup_p99_ms": 4464.058,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.4633920296570899,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 623.233,
+            "peak_runner_rss_bytes": 108994560,
+            "runner_cpu_ms_per_job": 4.989314453125,
+            "sha256": "cef4623ff29db24199c4aaded25a21740521b5aa126d45041fb508220eeb766c",
+            "submit_jobs_per_s": 199.1833870162387
+          },
+          "lean": {
+            "commit_jobs_per_s": 204.58735190642847,
+            "commit_to_pickup_p99_ms": 4931.697,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 554.657,
+            "peak_runner_rss_bytes": 120201216,
+            "runner_cpu_ms_per_job": 5.13293359375,
+            "sha256": "87b1843319aa0ee3cd01d141459a717624ba617baa149bb33b4404e9cbc39b3e",
+            "submit_jobs_per_s": 184.17749818610343
+          },
+          "stock": {
+            "commit_jobs_per_s": 187.63689109859018,
+            "commit_to_pickup_p99_ms": 5389.716,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.16142050040355124,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 560.91,
+            "peak_runner_rss_bytes": 115867648,
+            "runner_cpu_ms_per_job": 5.895346679687501,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 170.14887528104057
+          }
+        }
+      },
+      {
+        "attempt": "01-short.1795464937610879000",
+        "group": 1,
+        "order": [
+          "stock",
+          "lean",
+          "combined",
+          "admission"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-admission/measured-mesh": "f7c7f56bb438f2aa6a9febbc5324d588f2cdc468d26bb8ccc6808a4dc4138518",
+          "measured-combined/measured-mesh": "3a7f75c3606ab17ef9020811cfc80bf3f1124ab789944dae2f47637b5fb52b53",
+          "measured-lean/measured-mesh": "9232c5cc2a5378e99f786e474036f51e5fd7b8845967feac8ffd7815c88afc69",
+          "measured-stock/measured-mesh": "64029e47b336f76efa162520e4b7f61b6cee4086770876689892c1b35dfc0de0"
+        },
+        "scores": {
+          "admission": {
+            "commit_jobs_per_s": 238.47450837921173,
+            "commit_to_pickup_p99_ms": 523.676,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1363636363636365,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 69.784,
+            "peak_runner_rss_bytes": 9699328,
+            "runner_cpu_ms_per_job": 4.732046875,
+            "sha256": "891a7faba486e0c7c9c5050e36c240e843a5d6835f602357cd3b419d529aa522",
+            "submit_jobs_per_s": 211.03690013173318
+          },
+          "combined": {
+            "commit_jobs_per_s": 275.978646152254,
+            "commit_to_pickup_p99_ms": 454.167,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1235955056179776,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 80.277,
+            "peak_runner_rss_bytes": 9699328,
+            "runner_cpu_ms_per_job": 3.924859375,
+            "sha256": "cef4623ff29db24199c4aaded25a21740521b5aa126d45041fb508220eeb766c",
+            "submit_jobs_per_s": 235.2590882607553
+          },
+          "lean": {
+            "commit_jobs_per_s": 256.9770266553436,
+            "commit_to_pickup_p99_ms": 473.32,
+            "completed": 128,
+            "cpu_iowait_percent": 1.5267175572519085,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 91.998,
+            "peak_runner_rss_bytes": 16502784,
+            "runner_cpu_ms_per_job": 3.9997734374999996,
+            "sha256": "87b1843319aa0ee3cd01d141459a717624ba617baa149bb33b4404e9cbc39b3e",
+            "submit_jobs_per_s": 216.91349049393574
+          },
+          "stock": {
+            "commit_jobs_per_s": 228.50246979036683,
+            "commit_to_pickup_p99_ms": 552.696,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1428571428571428,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 71.818,
+            "peak_runner_rss_bytes": 35913728,
+            "runner_cpu_ms_per_job": 4.914351562499999,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 202.53581165435364
+          }
+        }
+      }
+    ],
+    "description": "Four Mesh builds isolate the smaller fresh-exec worker, set-based claims, and the two changes together. Every job retains a fresh process and two fenced application commits.",
+    "manifest_sha256": "6ee078ff55bae10ea657e8bba55cc92da4ca27b0d489755dea82ab286f6c2053",
+    "title": "Protected worker and admission"
+  },
+  "ordinary": {
+    "blocks": [
+      {
+        "attempt": "01-short.1795465317466767000",
+        "group": 1,
+        "order": [
+          "apalis",
+          "oban",
+          "river",
+          "ordinary",
+          "protected-mesh"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "7b8391fda7f41a3398259e359a6b85c28f3f34e4d7201e9a43190aaa04379607",
+          "measured-oban/measured-oban": "bf660447a7a73698dd49a580130815b3e843cf59b72774d8e46189cfbc7964a9",
+          "measured-ordinary/measured-mesh": "ef8d51e1c8f1541823112aafa0d8c725f9aa7a635089c9b29569bd4afdcf9f76",
+          "measured-protected-mesh/measured-mesh": "71b8183e6785690542374b3fcfde7a5cf8e4200bacdb82f20961d8a2bfb42e73",
+          "measured-river/measured-go": "02f3464d040cf8b5b6f18bc4317ecca6667e93fe112438472cf38afe6d337a78"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 918.8339423000998,
+            "commit_to_pickup_p99_ms": 132.357,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 12.861,
+            "peak_runner_rss_bytes": 9175040,
+            "runner_cpu_ms_per_job": 0.623359375,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 841.1755428210924
+          },
+          "oban": {
+            "commit_jobs_per_s": 304.50235275645997,
+            "commit_to_pickup_p99_ms": 415.923,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7575757575757576,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 47.783,
+            "peak_runner_rss_bytes": 103469056,
+            "runner_cpu_ms_per_job": 11.424515625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 273.42189639446235
+          },
+          "ordinary": {
+            "commit_jobs_per_s": 626.2782436809504,
+            "commit_to_pickup_p99_ms": 188.214,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1627906976744187,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 70.277,
+            "peak_runner_rss_bytes": 10223616,
+            "runner_cpu_ms_per_job": 1.30375,
+            "sha256": "8306bc3eeeeae1e44959dd08a081898e36c466ff467c0f11fc680cb26c067094",
+            "submit_jobs_per_s": 466.0324256623668
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 224.74080186815792,
+            "commit_to_pickup_p99_ms": 557.286,
+            "completed": 128,
+            "cpu_iowait_percent": 0.5714285714285714,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 75.466,
+            "peak_runner_rss_bytes": 34340864,
+            "runner_cpu_ms_per_job": 4.8503828124999995,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 198.44622804882397
+          },
+          "river": {
+            "commit_jobs_per_s": 496.29138507946476,
+            "commit_to_pickup_p99_ms": 211.09,
+            "completed": 128,
+            "cpu_iowait_percent": 2.34375,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 17.329,
+            "peak_runner_rss_bytes": 17539072,
+            "runner_cpu_ms_per_job": 1.0760546874999999,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 465.0453055856301
+          }
+        }
+      }
+    ],
+    "description": "Ordinary Mesh handlers share a process and credentials and use application-owned PostgreSQL connections. Protected Mesh uses a fresh process and token-fenced writes. All four engines commit both writes independently.",
+    "manifest_sha256": "fd2ef976bb6dc92c575f5f1ed2d3770b59ada50c5e6c9619bfc8bf567698ae46",
+    "title": "Trusted shared-process handlers"
+  },
+  "storage": {
+    "blocks": [
+      {
+        "attempt": "01-large.1795464384943366000",
+        "group": 1,
+        "order": [
+          "apalis",
+          "mesh-direct-external",
+          "river",
+          "mesh-external",
+          "oban",
+          "mesh-stock-a"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "13a59c137412bfc98b2125bbbebf2bbdeea7d00330adf428a877a3c6e0a8a945",
+          "measured-mesh-direct-external/measured-mesh": "c12b381003fc2a0f6b22b8c228d0e428085dea56bcfa5974fbe82d680876bb1f",
+          "measured-mesh-external/measured-mesh": "2e97d1455b341ca4c319bde8ca6152ee9c6ed62b9d8395e7a21d715136e253ef",
+          "measured-mesh-stock-a/measured-mesh": "bd6b61d4b30b4fb17ab8a69a28bb36d508505f16fdae2a16db7514e804bc82e5",
+          "measured-oban/measured-oban": "afa2f4e85f90851183943a591ea9472ac2394fd1ff185d833650cfa679ec4845",
+          "measured-river/measured-go": "f190494914dd177025ea3e5cf7a7d990faa3966097d88f80be942409c5e14618",
+          "warmup-apalis/warmup-rust": "26707c19170171851c2e2dedbce460d4ceb4749d33d2d5e9abd3b3fbc16d4bd9",
+          "warmup-mesh-direct-external/warmup-mesh": "d5888ee2a742fd71cb5faf36447f9d1fd1a2c858500800edb7ede0db6e85c53d",
+          "warmup-mesh-external/warmup-mesh": "601a53c820c36b1dc86658a2858601ec22da01d9d04b61e95fa8dd872b14a31f",
+          "warmup-mesh-stock-a/warmup-mesh": "4a7ce7752afb999303e79ae4f5bd7949517724f6c82fc5244eb55b887172c33b",
+          "warmup-oban/warmup-oban": "c2516e28637f03a0518c34703a10d24fc5d5b2513980d591f437023a5ab3a528",
+          "warmup-river/warmup-go": "0f8564b5ba002b7a1a2e706baa885aeb4bc5f8b247e6f32a90d8277b0f667926"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 321.028897616862,
+            "commit_to_pickup_p99_ms": 159.607,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5405405405405406,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 1423.079,
+            "peak_runner_rss_bytes": 114225152,
+            "runner_cpu_ms_per_job": 5.955765625,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 39.446807828712096
+          },
+          "mesh-direct-external": {
+            "commit_jobs_per_s": 77.43562256425645,
+            "commit_to_pickup_p99_ms": 812.79,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5555555555555556,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 800.791,
+            "peak_runner_rss_bytes": 108019712,
+            "runner_cpu_ms_per_job": 23.66546875,
+            "sha256": "2469a1c32dc318c52913d4fde9af1cfb15f0d52b4a6ddd7462d54a8dae72278f",
+            "submit_jobs_per_s": 39.329336489512585
+          },
+          "mesh-external": {
+            "commit_jobs_per_s": 78.15696115965392,
+            "commit_to_pickup_p99_ms": 806.677,
+            "completed": 64,
+            "cpu_iowait_percent": 0.24271844660194175,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1078.704,
+            "peak_runner_rss_bytes": 77598720,
+            "runner_cpu_ms_per_job": 23.92459375,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 33.727363800736626
+          },
+          "mesh-stock-a": {
+            "commit_jobs_per_s": 76.40112500656572,
+            "commit_to_pickup_p99_ms": 817.731,
+            "completed": 64,
+            "cpu_iowait_percent": 0.36429872495446264,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1882.314,
+            "peak_runner_rss_bytes": 77115392,
+            "runner_cpu_ms_per_job": 26.149546875,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 23.529429065756666
+          },
+          "oban": {
+            "commit_jobs_per_s": 125.14812453802743,
+            "commit_to_pickup_p99_ms": 485.747,
+            "completed": 64,
+            "cpu_iowait_percent": 0.35650623885918004,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 2002.227,
+            "peak_runner_rss_bytes": 865517568,
+            "runner_cpu_ms_per_job": 149.3630625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 25.46127677959406
+          },
+          "river": {
+            "commit_jobs_per_s": 66.95289027258195,
+            "commit_to_pickup_p99_ms": 503.567,
+            "completed": 64,
+            "cpu_iowait_percent": 0.2971768202080238,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 2292.318,
+            "peak_runner_rss_bytes": 229748736,
+            "runner_cpu_ms_per_job": 15.056375000000001,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 19.703135322980568
+          }
+        }
+      },
+      {
+        "attempt": "02-large.1795465366287587000",
+        "group": 2,
+        "order": [
+          "mesh-direct-external",
+          "mesh-external",
+          "apalis",
+          "mesh-stock-a",
+          "river",
+          "oban"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "7afe1f65a4ee9332430e9475cca211911a0a1aa48d794b9f21bf5b2c0275e1ba",
+          "measured-mesh-direct-external/measured-mesh": "e373fec1c7ab049a2ee737091bfd548a34c84db73bf16e7e7a2b68c6b1c6d33a",
+          "measured-mesh-external/measured-mesh": "0d0006d11e131dad43aadf11adaf464cb5d5d7e17f5e48830e5726366d49b781",
+          "measured-mesh-stock-a/measured-mesh": "d02198e6381ca4853bc274aeda665a32d30229cb22ea475853f38a677d25015e",
+          "measured-oban/measured-oban": "3b893ba1b5e0df163659975ebfcd9807bed5a2004b5a0ec6bde3e7c8a1e72f51",
+          "measured-river/measured-go": "abcc9c7da30eec06d6577028bb8897984a547d3ec3157e473c389df827c3180e",
+          "warmup-apalis/warmup-rust": "21d92f289cd13738c42656936047510fbcb35fc05f6b3f83bb19e94765e8b95e",
+          "warmup-mesh-direct-external/warmup-mesh": "af90397235e30b471fe32019254c8486452d297432afdd3c630eafebc98668b5",
+          "warmup-mesh-external/warmup-mesh": "f0f34df22249a7e9c6e2170937c0f08ba6baa43cf7bfc55a832dcbe85afc29f1",
+          "warmup-mesh-stock-a/warmup-mesh": "7ad324b1c6b578a6686b960ad296fb81356f8d185bdf3ea12599343ebba1f75f",
+          "warmup-oban/warmup-oban": "b4f2049ad8d378906d4ecba5e6d15ebf65bdf30c5a32d24bb942be2ed35d5c2a",
+          "warmup-river/warmup-go": "6ac3a24dd7c6c5d5c06c15986abea27eb99b0ef7c9d0c2c650c275498ab357fc"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 345.97399789172096,
+            "commit_to_pickup_p99_ms": 155.184,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5390835579514824,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 1448.988,
+            "peak_runner_rss_bytes": 114335744,
+            "runner_cpu_ms_per_job": 5.841390625,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 39.168333870877916
+          },
+          "mesh-direct-external": {
+            "commit_jobs_per_s": 79.51812019163867,
+            "commit_to_pickup_p99_ms": 793.221,
+            "completed": 64,
+            "cpu_iowait_percent": 0.6172839506172839,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 789.788,
+            "peak_runner_rss_bytes": 92930048,
+            "runner_cpu_ms_per_job": 23.870031249999997,
+            "sha256": "2469a1c32dc318c52913d4fde9af1cfb15f0d52b4a6ddd7462d54a8dae72278f",
+            "submit_jobs_per_s": 40.134551082504096
+          },
+          "mesh-external": {
+            "commit_jobs_per_s": 73.4970710268804,
+            "commit_to_pickup_p99_ms": 859.994,
+            "completed": 64,
+            "cpu_iowait_percent": 0.7281553398058253,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1068.156,
+            "peak_runner_rss_bytes": 91566080,
+            "runner_cpu_ms_per_job": 24.604249999999997,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 33.00774289443866
+          },
+          "mesh-stock-a": {
+            "commit_jobs_per_s": 74.22725369599533,
+            "commit_to_pickup_p99_ms": 847.136,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5084745762711864,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1881.503,
+            "peak_runner_rss_bytes": 84320256,
+            "runner_cpu_ms_per_job": 26.888578125000002,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 23.32599536395842
+          },
+          "oban": {
+            "commit_jobs_per_s": 118.05896307336995,
+            "commit_to_pickup_p99_ms": 504.812,
+            "completed": 64,
+            "cpu_iowait_percent": 0.18050541516245489,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 1993.539,
+            "peak_runner_rss_bytes": 868413440,
+            "runner_cpu_ms_per_job": 148.83010937499998,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 25.240166096068016
+          },
+          "river": {
+            "commit_jobs_per_s": 63.82995699456647,
+            "commit_to_pickup_p99_ms": 640.945,
+            "completed": 64,
+            "cpu_iowait_percent": 0.2805049088359046,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 2237.601,
+            "peak_runner_rss_bytes": 227844096,
+            "runner_cpu_ms_per_job": 15.541890624999999,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 19.75147094450608
+          }
+        }
+      }
+    ],
+    "description": "The two tuned Mesh arms use PostgreSQL EXTERNAL storage for job arguments. The three peers use their default storage. Repeated-character payloads can use substantially more disk with EXTERNAL.",
+    "manifest_sha256": "9372c17312cdeb16f8df858c1931fc208ec34dd8a71d7ee295998449fef46e97",
+    "title": "Large payloads \u00b7 Mesh storage tuning"
+  },
+  "symmetric": {
+    "blocks": [
+      {
+        "attempt": "01-large.1795464975906034000",
+        "group": 1,
+        "order": [
+          "apalis-external",
+          "mesh-direct-external",
+          "river-external",
+          "mesh-external",
+          "oban-external"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis-external/measured-rust": "efc79ad54e24637bdc61f5ede8acc523fae2405096ec038287949b3bf7a3ed7e",
+          "measured-mesh-direct-external/measured-mesh": "9655d34abdc2b754ea5702c1f35e32145b830814226058b577f2fee6ba5eb2f5",
+          "measured-mesh-external/measured-mesh": "92f353dd10a2351b0e5c5f298d9189f4847cf14e8e4287d97a0e88f62ce62d46",
+          "measured-oban-external/measured-oban": "91827410c5d0d403645f697148175d332768336da635ebd47746500e18080c4f",
+          "measured-river-external/measured-go": "a86adff7b71906455f1bb13995b8291fdf64c8a59d719a397a3a10c4e49db19c",
+          "warmup-apalis-external/warmup-rust": "5bde65da8aebe8e8ccec5d6a0e3e19d3cdfa0a2d1e26164065457388e87d6df0",
+          "warmup-mesh-direct-external/warmup-mesh": "0d671d21984d6c5917ed6aa7321188156dfcf45f66640ac39899ddb551d1db7f",
+          "warmup-mesh-external/warmup-mesh": "174876cf5297a83cd1e93d0e9f0f324c3ba83938d7a08b9b4bf31bb75419af99",
+          "warmup-oban-external/warmup-oban": "96e265e5c4dee8a1fab9aca864558228b9269e815f728eee7ed2acf4755c10f2",
+          "warmup-river-external/warmup-go": "23412c1a3e348cb8125843967900ee608e0d4fb4687114435a61e500fb89fcbc"
+        },
+        "scores": {
+          "apalis-external": {
+            "commit_jobs_per_s": 333.517462765902,
+            "commit_to_pickup_p99_ms": 160.029,
+            "completed": 64,
+            "cpu_iowait_percent": 0.4291845493562232,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 663.438,
+            "peak_runner_rss_bytes": 114298880,
+            "runner_cpu_ms_per_job": 5.727046874999999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 74.82474641425786
+          },
+          "mesh-direct-external": {
+            "commit_jobs_per_s": 77.75029520815212,
+            "commit_to_pickup_p99_ms": 809.778,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5602240896358543,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 903.306,
+            "peak_runner_rss_bytes": 77250560,
+            "runner_cpu_ms_per_job": 24.852625,
+            "sha256": "2469a1c32dc318c52913d4fde9af1cfb15f0d52b4a6ddd7462d54a8dae72278f",
+            "submit_jobs_per_s": 37.07020285510069
+          },
+          "mesh-external": {
+            "commit_jobs_per_s": 73.0014429191452,
+            "commit_to_pickup_p99_ms": 859.07,
+            "completed": 64,
+            "cpu_iowait_percent": 0.4878048780487805,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1065.85,
+            "peak_runner_rss_bytes": 79110144,
+            "runner_cpu_ms_per_job": 24.1769375,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 32.94646970855244
+          },
+          "oban-external": {
+            "commit_jobs_per_s": 106.63361024748994,
+            "commit_to_pickup_p99_ms": 562.28,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5347593582887701,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 1217.458,
+            "peak_runner_rss_bytes": 872431616,
+            "runner_cpu_ms_per_job": 146.472640625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 35.21041524082824
+          },
+          "river-external": {
+            "commit_jobs_per_s": 64.05271538476165,
+            "commit_to_pickup_p99_ms": 548.855,
+            "completed": 64,
+            "cpu_iowait_percent": 0.7312614259597806,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 1568.422,
+            "peak_runner_rss_bytes": 230461440,
+            "runner_cpu_ms_per_job": 15.65365625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 24.926010642627606
+          }
+        }
+      },
+      {
+        "attempt": "02-large.1795465785963902000",
+        "group": 2,
+        "order": [
+          "mesh-direct-external",
+          "mesh-external",
+          "apalis-external",
+          "oban-external",
+          "river-external"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis-external/measured-rust": "6e156e56313c9d4b5b245f0e4a57ef9de77ea54bcd1ba1964ecb77c80030e7ff",
+          "measured-mesh-direct-external/measured-mesh": "926690f28698b110a427f708ee99e57fb5db4de14f23d8b2382cd4b18268c278",
+          "measured-mesh-external/measured-mesh": "0aa59357d31f4113cf400a3ee6da35dcdb669d496147e8d10f67a5c66b454cd3",
+          "measured-oban-external/measured-oban": "896b49024962313bb4d77f3cbd5d1bca2a7c76d262a455d5eb5851a106073c53",
+          "measured-river-external/measured-go": "e9e0f68ad4467fe4fc87ea51593fd1e017603f876da266ffddb2bedafa43680b",
+          "warmup-apalis-external/warmup-rust": "ad319ebd4d8f1c29f7f69d4cb62806666129eef34dda3f38fae4d79c82224f66",
+          "warmup-mesh-direct-external/warmup-mesh": "40b89d91477a0a1d590822c7723216314081c98d603d0ef1b0118c98eac3e642",
+          "warmup-mesh-external/warmup-mesh": "4a3b088c0cf6b06fc0b112e7c094dbbba8d9a615d16d4321e6df75ce22320f9f",
+          "warmup-oban-external/warmup-oban": "61329aa0d659de51c03ff201da7b329809bbff0914aa2aefa991c799728a58d9",
+          "warmup-river-external/warmup-go": "d526b5093faa126310d700d930547608ebbc1a9a4fa8cbccfa3e7855929525ce"
+        },
+        "scores": {
+          "apalis-external": {
+            "commit_jobs_per_s": 2.4546260457761675,
+            "commit_to_pickup_p99_ms": 180.453,
+            "completed": 64,
+            "cpu_iowait_percent": 0.018542555164101613,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 688.525,
+            "peak_runner_rss_bytes": 111218688,
+            "runner_cpu_ms_per_job": 6.271296875,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 2.39147352995655
+          },
+          "mesh-direct-external": {
+            "commit_jobs_per_s": 70.35665326592286,
+            "commit_to_pickup_p99_ms": 889.899,
+            "completed": 64,
+            "cpu_iowait_percent": 1.75,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 981.794,
+            "peak_runner_rss_bytes": 76320768,
+            "runner_cpu_ms_per_job": 25.93340625,
+            "sha256": "2469a1c32dc318c52913d4fde9af1cfb15f0d52b4a6ddd7462d54a8dae72278f",
+            "submit_jobs_per_s": 33.83656410839332
+          },
+          "mesh-external": {
+            "commit_jobs_per_s": 71.18625215505256,
+            "commit_to_pickup_p99_ms": 871.331,
+            "completed": 64,
+            "cpu_iowait_percent": 0.48426150121065376,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1053.536,
+            "peak_runner_rss_bytes": 77119488,
+            "runner_cpu_ms_per_job": 24.5163125,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 32.77704541566927
+          },
+          "oban-external": {
+            "commit_jobs_per_s": 126.37182540152673,
+            "commit_to_pickup_p99_ms": 479.059,
+            "completed": 64,
+            "cpu_iowait_percent": 0.27472527472527475,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 1228.961,
+            "peak_runner_rss_bytes": 867807232,
+            "runner_cpu_ms_per_job": 147.51614062500002,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 36.879041928589494
+          },
+          "river-external": {
+            "commit_jobs_per_s": 67.9770662372782,
+            "commit_to_pickup_p99_ms": 551.597,
+            "completed": 64,
+            "cpu_iowait_percent": 0.40160642570281124,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 1529.354,
+            "peak_runner_rss_bytes": 231067648,
+            "runner_cpu_ms_per_job": 14.88784375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 25.902038490429195
+          }
+        }
+      }
+    ],
+    "description": "Every engine stores the full 512 KiB payload with PostgreSQL EXTERNAL storage. Both protected Mesh arms process the same jobs with different producers.",
+    "manifest_sha256": "763e407a6928959d2f259d537200e2c95562074f67437300451a3a2e3d77e018",
+    "title": "Large payloads \u00b7 equal storage tuning"
+  }
+}
