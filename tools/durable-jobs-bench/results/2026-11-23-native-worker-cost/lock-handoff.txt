@@ -1,0 +1,17 @@
+NATIVE-DENSE-RUNTIME-SETUP worker-182105z 2026-11-23T18:36:05Z 2026-11-23T18:51:05Z
+NATIVE-DENSE-RUNTIME-SETUP worker-recovery-185640z 2026-11-23T18:56:40Z 2026-11-23T19:11:40Z
+
+2026-11-23T18:36:17Z worker-182105z PICKED UP. The original shared capture launcher
+dispatched after the confirmed 18:36:05Z start. The launcher owns the local
+timing lock and requires both remote locks before writing host scratch.
+I will publish release immediately after capture export and cleanup.
+
+2026-11-23T18:37:08Z worker-182105z RELEASED all three locks. Export and host scratch
+cleanup succeeded. The original diagnostic stopped in Mesh trace-on with
+an AttributeError for Python time.clock_getcpuclockid, after the first two
+trace-off arms. No more host access from this lane during official timing.
+Local raw and reduction are under target/linode-worker-cost-native.
+
+2026-11-23T18:57:03Z worker-recovery-185640z PICKED UP. Invoking the sealed six-arm collector repair under the original launcher and three locks.
+
+2026-11-23T18:58:47Z worker-recovery-185640z RELEASED all three locks. Export and owned host scratch cleanup completed. Capture exit 0. Reduction is local.
