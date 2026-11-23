@@ -1,0 +1,33 @@
+{
+  "combined_source": "7bdc8f721e65f6c0ab5fb28cb6362506acfcc68e",
+  "strict_source": "bd7851b9398198955b4c8df630310a29b38cddd4",
+  "stock_source": "3828f20d2d6beb683868cce33e6dd1958365914b",
+  "source_archive_sha256": "e3da22cffbc794b29906b627701da9f7a011bb4449f4c8472db1974c279315b7",
+  "compiler_sha256": "e023d5944764878969ca40b7edb59c779498a435b44d308776076f4c7f2e8c19",
+  "stock_runtime_sha256": "5111d214dcea114720c838d438686c79e061bf0b582e44239098cb741247ab95",
+  "measured_lean_runtime_sha256": "d2021c89c86c4563e19930505c3ec551c83c49fd52d56251d210ece87723a7d0",
+  "fingerprint": "e03da7787d8c4083:Main__handle",
+  "build_inputs_sha256": {
+    "lean-runtime-v1.patch": "54b7deec47d9f5b2ae3a924496515a32ea39d3424691e52984315a33d00d98d7",
+    "runner.o": "6f202ea17f0862708280afb1338cdd0e67843179e7baa77253aa65f865154084",
+    "runner.ll": "3b23aef1bc58735bf6a2fb9e324c675a09d730928cd0afef6b3c49439127d908",
+    "mesh-lean-worker": "d863391a9f2b1b1ff7caedb8cd76008d04be7f06561f1bc8686cf8ce944d42e1",
+    "libworker_identity.a": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+    "main.mpl": "0c72aaa2f0f34c49d07fd2f6cad2d39f491c0857897a0ac7a0facb6b85b4464d"
+  },
+  "compiled_selector": {
+    "MESH_JOBS_ADMISSION_V3": "strict",
+    "lean": "exact companion beside mesh",
+    "full": "companion absent"
+  },
+  "link_argv": [
+    "cc",
+    "runner.o",
+    "libworker_identity.a",
+    "COMBINED_RUNTIME.a",
+    "-lm",
+    "-Wl,--gc-sections",
+    "-o",
+    "mesh"
+  ]
+}
