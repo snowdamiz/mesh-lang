@@ -6685,6 +6685,76 @@ fn e2e_bytes_operations() {
 }
 
 #[test]
+fn e2e_utf8_byte_length() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("main.mpl"),
+        r##"
+fn text() -> String do
+  println("text")
+  "é🙂é\0"
+end
+
+fn byte_count() -> Int do
+  Bytes.length(Bytes.from_utf8(text()))
+end
+
+fn main() do
+  println("#{byte_count()} #{String.length("é🙂é\0")}")
+  let from_utf8 = fn(_ :: String) do Bytes.empty() end
+  println("#{Bytes.length(from_utf8("é🙂"))}")
+  let encode = Bytes.from_utf8
+  let measure = Bytes.length
+  println("#{measure(encode("é🙂"))}")
+end
+"##,
+    )
+    .unwrap();
+    let compiler = find_meshc();
+    for level in ["0", "1", "2"] {
+        let binary = project
+            .path()
+            .join(format!("utf8-length-{level}"))
+            .with_extension(std::env::consts::EXE_EXTENSION);
+        let build = Command::new(&compiler)
+            .arg("build")
+            .arg(project.path())
+            .args(["--opt-level", level, "--emit-llvm", "-o"])
+            .arg(&binary)
+            .output()
+            .unwrap();
+        assert!(
+            build.status.success(),
+            "{}",
+            artifacts::command_output_text(&build)
+        );
+        let run = Command::new(&binary).output().unwrap();
+        assert!(
+            run.status.success(),
+            "{}",
+            artifacts::command_output_text(&run)
+        );
+        assert_eq!(String::from_utf8_lossy(&run.stdout), "text\n10 5\n0\n6\n");
+
+        let ir = std::fs::read_to_string(binary.with_extension("ll")).unwrap();
+        let body = ir
+            .split_once(" @Main__byte_count(")
+            .unwrap()
+            .1
+            .split_once("\n}")
+            .unwrap()
+            .0;
+        for symbol in ["@mesh_bytes_from_utf8(", "@mesh_bytes_length("] {
+            assert_eq!(
+                body.contains(symbol),
+                !cfg!(target_pointer_width = "64"),
+                "{body}"
+            );
+        }
+    }
+}
+
+#[test]
 fn e2e_bytes_errors_are_nominal() {
     let error = compile_expect_error(
         r#"

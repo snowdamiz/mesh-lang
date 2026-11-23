@@ -1263,6 +1263,46 @@ impl<'ctx> CodeGen<'ctx> {
         })
     }
 
+    fn direct_utf8_byte_length_input<'mir>(
+        &self,
+        length: &MirExpr,
+        args: &'mir [MirExpr],
+    ) -> Option<&'mir MirExpr> {
+        let [MirExpr::Call {
+            func: convert,
+            args: source,
+            ty: MirType::Ptr,
+            ..
+        }] = args
+        else {
+            return None;
+        };
+        let [text] = source.as_slice() else {
+            return None;
+        };
+        let is_runtime = |callee: &MirExpr, symbol, param, result| {
+            matches!(callee, MirExpr::Var(name, MirType::FnPtr(params, ret))
+                if name == symbol && params.as_slice() == [param] && **ret == result
+                    && !self.locals.contains_key(name) && !self.functions.contains_key(name))
+        };
+        // from_utf8 copies the string's byte slice into a temporary Bytes.
+        // Keep the calls on targets where forming that slice narrows the u64 header to usize.
+        (*text.ty() == MirType::String
+            && is_runtime(length, "mesh_bytes_length", MirType::Ptr, MirType::Int)
+            && is_runtime(
+                convert,
+                "mesh_bytes_from_utf8",
+                MirType::String,
+                MirType::Ptr,
+            )
+            && self
+                .target_machine
+                .get_target_data()
+                .get_pointer_byte_size(None)
+                == 8)
+            .then_some(text)
+    }
+
     fn codegen_call(
         &mut self,
         func: &MirExpr,
@@ -1271,6 +1311,12 @@ impl<'ctx> CodeGen<'ctx> {
         at: Option<MirSourceSpan>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         if let MirExpr::Var(name, _) = func {
+            if name == "mesh_bytes_length" && *ty == MirType::Int {
+                if let Some(text) = self.direct_utf8_byte_length_input(func, args) {
+                    let text = self.codegen_expr(text)?.into_pointer_value();
+                    return Ok(self.codegen_string_byte_length(text)?.into());
+                }
+            }
             if let Some(value) = self.codegen_builtin_call(name, args, ty, at)? {
                 return Ok(value);
             }
@@ -2694,6 +2740,17 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
 
+    /// Load the byte count at offset zero of a MeshString.
+    fn codegen_string_byte_length(
+        &self,
+        string: PointerValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, Diagnostic> {
+        self.builder
+            .build_load(self.context.i64_type(), string, "str_len")
+            .map(|length| length.into_int_value())
+            .map_err(Diagnostic::internal)
+    }
+
     // ── Phase 67: Node distribution codegen helpers ──────────────────────
 
     /// Extract raw (data_ptr, len) from a MeshString pointer.
@@ -2714,12 +2771,7 @@ impl<'ctx> CodeGen<'ctx> {
         let i64_ty = self.context.i64_type();
         let string_ptr = string_val.into_pointer_value();
 
-        // Load len from offset 0 (the MeshString header).
-        let len_val = self
-            .builder
-            .build_load(i64_ty, string_ptr, "str_len")
-            .map_err(Diagnostic::internal)?
-            .into_int_value();
+        let len_val = self.codegen_string_byte_length(string_ptr)?;
 
         // Data pointer is string_ptr + 8 bytes (after the u64 len field).
         let eight = i64_ty.const_int(8, false);
