@@ -1,0 +1,55 @@
+{
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-runner-topology/native-01",
+  "executable_sha256": "faefaf34344958650a0fbdd19556d86d9f5126c5007b9c77225447004a6781e4",
+  "expected_setup_minutes": 12,
+  "id": "ordinary-runner-topology",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "kind": "Exclusive build-free controller-owned SETUP diagnostic",
+  "local_gate": "20 local dense arms passed the frozen workload, both application commits, one distinct terminal XID per job, actual SQL/runner caps, and 32 verified-TLS app backends. Paired runner CPU per job fell 48.9% (two runners) and 56.6% (one). Every first-series one-runner arm used only two app backends. Native two-CPU elapsed effect is unresolved.",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-claim-turns/replay.py": "2c565ef9acad9af3c22ead23e037532030d8af9d56df20c462a30c2fd67303ba",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/arm.py": "7cf3f626f9e242ed176c69e0577ef89fb7439f6b2bf7c1332e0545fdaebfaee5",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/evidence/local-01-summary.json": "88663efc6c8133de2e3bf641c7b54b0b2af32df5912e47e6c45082c2182832f5",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/native-arm.sh": "61dce9328fd67cc4fab5aa55ebb29031cb59fd9ded616f57f73d990c99f18e13",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/native-dispatch.py": "6af15879738c9065041babef6d5d0280a68c8ecf721dbb48f8f35b32dc729a3b",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/native-pins.json": "7df332e62829940b8845939dfac0cd337a3f8517e2b3d94eefdb6cb98fbcda4a",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/replay.py": "0382e2aa0b61d78e7c879d457b5f59102499027acef4895702edb6651e778d0d",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "manifest_sha256": "8306bc3eeeeae1e44959dd08a081898e36c466ff467c0f11fc680cb26c067094",
+  "max_arms": 8,
+  "offline_check": "python3 -B tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/native-dispatch.py check",
+  "operator_id": "ordinary-runner-topology",
+  "orders": [
+    [
+      "stock-a",
+      "tuned-2x32",
+      "tuned-1x64",
+      "stock-b"
+    ],
+    [
+      "stock-b",
+      "tuned-1x64",
+      "tuned-2x32",
+      "stock-a"
+    ]
+  ],
+  "portable_packet": "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology",
+  "prerequisites": "Matrix owner runs only after a new explicit SETUP grant with UTC bounds. Use the existing local timing, matrix active-arm, and native locks, check the pinned host and exact artifacts, and prohibit builds. Use a fresh diagnostic evidence directory and export every raw arm before owner cleanup of any stage. Retain failures, release and report actual exit.",
+  "priority": "After existing priority assignments and queued work. Preserve current queue order and canonical scores.",
+  "ready": true,
+  "replay_command": "python3 -B tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/replay.py native target/ordinary-runner-topology/native-01",
+  "requested_at": "2026-11-23T22:20:33.690659+00:00",
+  "scope": "Two opposite four-arm orders. Duplicate V1 stock 8 runners x 8 slots x 4 app sessions; tuned 2 x 32 x 16 and 1 x 64 x 32. All use the existing ordinary V1 binary and warm broker, two scheduler workers per runner, 64 slots, 32 verified-TLS app sessions and PG 17.11 cap 96. Measure full submit and commit to last durable settlement, runner-tree rusage, SQL calls and hints, grants, warm and used backend counts, and occupancy. Preserve errors and raw archives. These are separately labeled diagnostic deployments.",
+  "setup_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/native-dispatch.py dispatch",
+  "source_sha": "3828f20d2d6beb683868cce33e6dd1958365914b",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology",
+  "state": "ready"
+}

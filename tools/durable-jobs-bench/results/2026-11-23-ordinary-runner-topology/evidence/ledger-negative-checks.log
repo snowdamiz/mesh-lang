@@ -1,0 +1,4 @@
+Rejected cross_job_terminal: work, terminal, or product XIDs overlap
+Rejected cross_job_work: job_000001: reused application transaction XID
+Rejected exceed_sql_queue: SQL admission or role capacity differs
+Rejected missing_backend: physical warm TLS allocations differ

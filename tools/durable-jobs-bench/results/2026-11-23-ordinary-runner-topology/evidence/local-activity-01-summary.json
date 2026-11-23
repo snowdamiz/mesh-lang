@@ -1,0 +1,1079 @@
+{
+  "failures": [],
+  "groups": [
+    {
+      "arms": {
+        "stock-a": {
+          "active_application_backends_observed": 0,
+          "admission_hints": 193,
+          "app_calls": 4096,
+          "app_statement_execution_ms": 35.96443600000003,
+          "arm_wall_s": 8.026830541959498,
+          "attempt_to_effect_commit_p50_ms": 0.231,
+          "attempt_to_effect_commit_p99_ms": 0.64,
+          "broker_calls": 1059,
+          "claim_calls": 402,
+          "claim_to_entry_p50_ms": 1.4945,
+          "claim_to_entry_p99_ms": 3.349,
+          "claim_to_last_settlement_ms": 320.82,
+          "claim_to_terminal_peak_slots": 27,
+          "commit_jobs_per_s": 3170.573118246277,
+          "commit_to_claim_p50_ms": 166.65,
+          "commit_to_claim_p99_ms": 316.15,
+          "commit_to_pickup_p50_ms": 167.85399999999998,
+          "commit_to_pickup_p99_ms": 317.572,
+          "commit_to_settlement_p50_ms": 169.1445,
+          "commit_to_settlement_p99_ms": 318.774,
+          "completed": 1024,
+          "effect_commit_to_settlement_p50_ms": 0.414,
+          "effect_commit_to_settlement_p99_ms": 3.677,
+          "entry_to_attempt_commit_p50_ms": 0.832,
+          "entry_to_attempt_commit_p99_ms": 3.89,
+          "failed": 0,
+          "first_claim_from_commit_ms": 2.15,
+          "first_commit_us": 1795472275121850,
+          "first_submit_to_commit_ms": 412.909,
+          "first_submit_us": 1795472274708941,
+          "grant_jobs_per_claim_call": 2.5472636815920398,
+          "grants_by_runner_index": [
+            72,
+            0,
+            96,
+            213,
+            189,
+            85,
+            243,
+            126
+          ],
+          "hint_percent": 48.00995024875622,
+          "hints_by_runner_index": [
+            20,
+            7,
+            20,
+            36,
+            31,
+            19,
+            30,
+            30
+          ],
+          "host_load_1m": 25.89208984375,
+          "last_settlement_us": 1795472275444820,
+          "layout": [
+            8,
+            8,
+            4
+          ],
+          "max_granting_calls": 217,
+          "max_grants_per_runner": 243,
+          "mean_occupied_slots": 10.959163389788525,
+          "min_granting_calls": 188,
+          "min_grants_per_runner": 0,
+          "minimum_hints_in_sql_window": 185,
+          "ordered_independent_writes": 1024,
+          "peak_connections": 65,
+          "peak_executing": 14,
+          "peak_runner_rss_bytes": 195919872,
+          "peak_slots_by_runner_index": [
+            8,
+            0,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "queue_calls": 2733,
+          "runner_cpu_ms_per_job": 1.4468525390625,
+          "sampled_peak_slots": 14,
+          "submit_jobs_per_s": 1391.5331188959055,
+          "submit_to_pickup_p50_ms": 580.7629999999999,
+          "submit_to_pickup_p99_ms": 730.481,
+          "submit_to_settlement_p50_ms": 582.0535,
+          "submit_to_settlement_p99_ms": 731.683,
+          "unique_product_work_terminal_xids": 3073,
+          "used_application_backend_ids": [
+            85818,
+            85825,
+            85826,
+            85828,
+            85829,
+            85830,
+            85832,
+            85833,
+            85834,
+            85835,
+            85838,
+            85839,
+            85841,
+            85844
+          ],
+          "used_application_backends": 14,
+          "warm_application_sessions": 32,
+          "warm_broker_sessions": 1,
+          "warm_queue_sessions": 32
+        },
+        "stock-b": {
+          "active_application_backends_observed": 0,
+          "admission_hints": 203,
+          "app_calls": 4096,
+          "app_statement_execution_ms": 45.77886600000005,
+          "arm_wall_s": 7.684787459031213,
+          "attempt_to_effect_commit_p50_ms": 0.368,
+          "attempt_to_effect_commit_p99_ms": 3.853,
+          "broker_calls": 1060,
+          "claim_calls": 442,
+          "claim_to_entry_p50_ms": 1.845,
+          "claim_to_entry_p99_ms": 11.154,
+          "claim_to_last_settlement_ms": 539.882,
+          "claim_to_terminal_peak_slots": 33,
+          "commit_jobs_per_s": 1889.3128362570942,
+          "commit_to_claim_p50_ms": 250.114,
+          "commit_to_claim_p99_ms": 531.114,
+          "commit_to_pickup_p50_ms": 251.71,
+          "commit_to_pickup_p99_ms": 532.377,
+          "commit_to_settlement_p50_ms": 253.9885,
+          "commit_to_settlement_p99_ms": 533.153,
+          "completed": 1024,
+          "effect_commit_to_settlement_p50_ms": 0.655,
+          "effect_commit_to_settlement_p99_ms": 6.992,
+          "entry_to_attempt_commit_p50_ms": 1.34,
+          "entry_to_attempt_commit_p99_ms": 18.4,
+          "failed": 0,
+          "first_claim_from_commit_ms": 2.114,
+          "first_commit_us": 1795472297916886,
+          "first_submit_to_commit_ms": 513.62,
+          "first_submit_us": 1795472297403266,
+          "grant_jobs_per_claim_call": 2.316742081447964,
+          "grants_by_runner_index": [
+            8,
+            0,
+            178,
+            291,
+            264,
+            92,
+            175,
+            16
+          ],
+          "hint_percent": 45.92760180995475,
+          "hints_by_runner_index": [
+            10,
+            8,
+            30,
+            45,
+            38,
+            30,
+            31,
+            11
+          ],
+          "host_load_1m": 22.3046875,
+          "last_settlement_us": 1795472298458882,
+          "layout": [
+            8,
+            8,
+            4
+          ],
+          "max_granting_calls": 247,
+          "max_grants_per_runner": 291,
+          "mean_occupied_slots": 12.045919158074968,
+          "min_granting_calls": 212,
+          "min_grants_per_runner": 0,
+          "minimum_hints_in_sql_window": 195,
+          "ordered_independent_writes": 1024,
+          "peak_connections": 65,
+          "peak_executing": 3,
+          "peak_runner_rss_bytes": 195870720,
+          "peak_slots_by_runner_index": [
+            8,
+            0,
+            8,
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "queue_calls": 2917,
+          "runner_cpu_ms_per_job": 1.6568076171874997,
+          "sampled_peak_slots": 3,
+          "submit_jobs_per_s": 970.0497150478963,
+          "submit_to_pickup_p50_ms": 765.3299999999999,
+          "submit_to_pickup_p99_ms": 1045.997,
+          "submit_to_settlement_p50_ms": 767.6085,
+          "submit_to_settlement_p99_ms": 1046.773,
+          "unique_product_work_terminal_xids": 3073,
+          "used_application_backend_ids": [
+            4978,
+            4983,
+            4989,
+            4991,
+            4992,
+            4994,
+            4996,
+            5001,
+            5002,
+            5008,
+            5009,
+            5010,
+            5018,
+            5019
+          ],
+          "used_application_backends": 14,
+          "warm_application_sessions": 32,
+          "warm_broker_sessions": 1,
+          "warm_queue_sessions": 32
+        },
+        "tuned-1x64": {
+          "active_application_backends_observed": 2,
+          "admission_hints": 0,
+          "app_calls": 4096,
+          "app_statement_execution_ms": 32.529355999999964,
+          "arm_wall_s": 7.965188333007973,
+          "attempt_to_effect_commit_p50_ms": 0.258,
+          "attempt_to_effect_commit_p99_ms": 1.927,
+          "broker_calls": 1061,
+          "claim_calls": 80,
+          "claim_to_entry_p50_ms": 6.527,
+          "claim_to_entry_p99_ms": 44.001,
+          "claim_to_last_settlement_ms": 482.211,
+          "claim_to_terminal_peak_slots": 63,
+          "commit_jobs_per_s": 2112.5990538692126,
+          "commit_to_claim_p50_ms": 278.5,
+          "commit_to_claim_p99_ms": 474.5,
+          "commit_to_pickup_p50_ms": 284.562,
+          "commit_to_pickup_p99_ms": 478.518,
+          "commit_to_settlement_p50_ms": 286.6085,
+          "commit_to_settlement_p99_ms": 481.705,
+          "completed": 1024,
+          "effect_commit_to_settlement_p50_ms": 0.855,
+          "effect_commit_to_settlement_p99_ms": 5.76,
+          "entry_to_attempt_commit_p50_ms": 1.041,
+          "entry_to_attempt_commit_p99_ms": 36.973,
+          "failed": 0,
+          "first_claim_from_commit_ms": 2.5,
+          "first_commit_us": 1795472290692500,
+          "first_submit_to_commit_ms": 592.853,
+          "first_submit_us": 1795472290099647,
+          "grant_jobs_per_claim_call": 12.8,
+          "grants_by_runner_index": [
+            1024
+          ],
+          "hint_percent": 0.0,
+          "hints_by_runner_index": [
+            0
+          ],
+          "host_load_1m": 23.2021484375,
+          "last_settlement_us": 1795472291177211,
+          "layout": [
+            1,
+            64,
+            32
+          ],
+          "max_granting_calls": 80,
+          "max_grants_per_runner": 1024,
+          "mean_occupied_slots": 30.57009434487767,
+          "min_granting_calls": 65,
+          "min_grants_per_runner": 1024,
+          "minimum_hints_in_sql_window": 0,
+          "ordered_independent_writes": 1024,
+          "peak_connections": 37,
+          "peak_executing": 34,
+          "peak_runner_rss_bytes": 26951680,
+          "peak_slots_by_runner_index": [
+            63
+          ],
+          "queue_calls": 1361,
+          "runner_cpu_ms_per_job": 0.76365234375,
+          "sampled_peak_slots": 34,
+          "submit_jobs_per_s": 950.291583608955,
+          "submit_to_pickup_p50_ms": 877.415,
+          "submit_to_pickup_p99_ms": 1071.371,
+          "submit_to_settlement_p50_ms": 879.4615,
+          "submit_to_settlement_p99_ms": 1074.558,
+          "unique_product_work_terminal_xids": 3073,
+          "used_application_backend_ids": [
+            97797,
+            97824
+          ],
+          "used_application_backends": 2,
+          "warm_application_sessions": 32,
+          "warm_broker_sessions": 1,
+          "warm_queue_sessions": 4
+        },
+        "tuned-2x32": {
+          "active_application_backends_observed": 1,
+          "admission_hints": 59,
+          "app_calls": 4096,
+          "app_statement_execution_ms": 196.77888700000003,
+          "arm_wall_s": 7.727559624996502,
+          "attempt_to_effect_commit_p50_ms": 0.375,
+          "attempt_to_effect_commit_p99_ms": 1.884,
+          "broker_calls": 1061,
+          "claim_calls": 148,
+          "claim_to_entry_p50_ms": 7.672499999999999,
+          "claim_to_entry_p99_ms": 46.906,
+          "claim_to_last_settlement_ms": 409.827,
+          "claim_to_terminal_peak_slots": 57,
+          "commit_jobs_per_s": 2483.2489820861715,
+          "commit_to_claim_p50_ms": 211.536,
+          "commit_to_claim_p99_ms": 397.536,
+          "commit_to_pickup_p50_ms": 217.417,
+          "commit_to_pickup_p99_ms": 404.295,
+          "commit_to_settlement_p50_ms": 221.3965,
+          "commit_to_settlement_p99_ms": 408.84,
+          "completed": 1024,
+          "effect_commit_to_settlement_p50_ms": 0.859,
+          "effect_commit_to_settlement_p99_ms": 7.417,
+          "entry_to_attempt_commit_p50_ms": 1.6875,
+          "entry_to_attempt_commit_p99_ms": 38.114,
+          "failed": 0,
+          "first_claim_from_commit_ms": 2.536,
+          "first_commit_us": 1795472282431464,
+          "first_submit_to_commit_ms": 553.12,
+          "first_submit_us": 1795472281878344,
+          "grant_jobs_per_claim_call": 6.918918918918919,
+          "grants_by_runner_index": [
+            502,
+            522
+          ],
+          "hint_percent": 39.86486486486486,
+          "hints_by_runner_index": [
+            25,
+            34
+          ],
+          "host_load_1m": 25.33984375,
+          "last_settlement_us": 1795472282843827,
+          "layout": [
+            2,
+            32,
+            16
+          ],
+          "max_granting_calls": 91,
+          "max_grants_per_runner": 522,
+          "mean_occupied_slots": 36.15488538011412,
+          "min_granting_calls": 72,
+          "min_grants_per_runner": 502,
+          "minimum_hints_in_sql_window": 57,
+          "ordered_independent_writes": 1024,
+          "peak_connections": 41,
+          "peak_executing": 32,
+          "peak_runner_rss_bytes": 52183040,
+          "peak_slots_by_runner_index": [
+            32,
+            32
+          ],
+          "queue_calls": 1650,
+          "runner_cpu_ms_per_job": 0.9027548828124999,
+          "sampled_peak_slots": 32,
+          "submit_jobs_per_s": 1060.6090423135363,
+          "submit_to_pickup_p50_ms": 770.537,
+          "submit_to_pickup_p99_ms": 957.415,
+          "submit_to_settlement_p50_ms": 774.5165,
+          "submit_to_settlement_p99_ms": 961.96,
+          "unique_product_work_terminal_xids": 3073,
+          "used_application_backend_ids": [
+            87808,
+            87810,
+            87823,
+            87828
+          ],
+          "used_application_backends": 4,
+          "warm_application_sessions": 32,
+          "warm_broker_sessions": 1,
+          "warm_queue_sessions": 8
+        }
+      },
+      "number": 1,
+      "order": [
+        "stock-a",
+        "tuned-2x32",
+        "tuned-1x64",
+        "stock-b"
+      ]
+    }
+  ],
+  "paired_percent": {
+    "stock-b": {
+      "commit_jobs_per_s": {
+        "by_group": [
+          -40.410999343168584
+        ],
+        "max": -40.410999343168584,
+        "median": -40.410999343168584,
+        "min": -40.410999343168584,
+        "n": 1,
+        "positive": 0
+      },
+      "runner_cpu_ms_per_job": {
+        "by_group": [
+          14.511159392998119
+        ],
+        "max": 14.511159392998119,
+        "median": 14.511159392998119,
+        "min": 14.511159392998119,
+        "n": 1,
+        "positive": 1
+      },
+      "submit_jobs_per_s": {
+        "by_group": [
+          -30.289139232448157
+        ],
+        "max": -30.289139232448157,
+        "median": -30.289139232448157,
+        "min": -30.289139232448157,
+        "n": 1,
+        "positive": 0
+      }
+    },
+    "tuned-1x64": {
+      "commit_jobs_per_s": {
+        "by_group": [
+          -16.496179049689086
+        ],
+        "max": -16.496179049689086,
+        "median": -16.496179049689086,
+        "min": -16.496179049689086,
+        "n": 1,
+        "positive": 0
+      },
+      "runner_cpu_ms_per_job": {
+        "by_group": [
+          -50.790208637231494
+        ],
+        "max": -50.790208637231494,
+        "median": -50.790208637231494,
+        "min": -50.790208637231494,
+        "n": 1,
+        "positive": 0
+      },
+      "submit_jobs_per_s": {
+        "by_group": [
+          -19.5207917376343
+        ],
+        "max": -19.5207917376343,
+        "median": -19.5207917376343,
+        "min": -19.5207917376343,
+        "n": 1,
+        "positive": 0
+      }
+    },
+    "tuned-2x32": {
+      "commit_jobs_per_s": {
+        "by_group": [
+          -1.8456540556593293
+        ],
+        "max": -1.8456540556593293,
+        "median": -1.8456540556593293,
+        "min": -1.8456540556593293,
+        "n": 1,
+        "positive": 0
+      },
+      "runner_cpu_ms_per_job": {
+        "by_group": [
+          -41.826434766411126
+        ],
+        "max": -41.826434766411126,
+        "median": -41.826434766411126,
+        "min": -41.826434766411126,
+        "n": 1,
+        "positive": 0
+      },
+      "submit_jobs_per_s": {
+        "by_group": [
+          -10.178120617320218
+        ],
+        "max": -10.178120617320218,
+        "median": -10.178120617320218,
+        "min": -10.178120617320218,
+        "n": 1,
+        "positive": 0
+      }
+    }
+  },
+  "rollup": {
+    "stock-a": {
+      "active_application_backends_observed": {
+        "max": 0,
+        "median": 0,
+        "min": 0,
+        "n": 1
+      },
+      "admission_hints": {
+        "max": 193,
+        "median": 193,
+        "min": 193,
+        "n": 1
+      },
+      "app_calls": {
+        "max": 4096,
+        "median": 4096,
+        "min": 4096,
+        "n": 1
+      },
+      "attempt_to_effect_commit_p50_ms": {
+        "max": 0.231,
+        "median": 0.231,
+        "min": 0.231,
+        "n": 1
+      },
+      "broker_calls": {
+        "max": 1059,
+        "median": 1059,
+        "min": 1059,
+        "n": 1
+      },
+      "claim_calls": {
+        "max": 402,
+        "median": 402,
+        "min": 402,
+        "n": 1
+      },
+      "claim_to_terminal_peak_slots": {
+        "max": 27,
+        "median": 27,
+        "min": 27,
+        "n": 1
+      },
+      "commit_jobs_per_s": {
+        "max": 3170.573118246277,
+        "median": 3170.573118246277,
+        "min": 3170.573118246277,
+        "n": 1
+      },
+      "effect_commit_to_settlement_p50_ms": {
+        "max": 0.414,
+        "median": 0.414,
+        "min": 0.414,
+        "n": 1
+      },
+      "first_submit_to_commit_ms": {
+        "max": 412.909,
+        "median": 412.909,
+        "min": 412.909,
+        "n": 1
+      },
+      "grant_jobs_per_claim_call": {
+        "max": 2.5472636815920398,
+        "median": 2.5472636815920398,
+        "min": 2.5472636815920398,
+        "n": 1
+      },
+      "hint_percent": {
+        "max": 48.00995024875622,
+        "median": 48.00995024875622,
+        "min": 48.00995024875622,
+        "n": 1
+      },
+      "max_granting_calls": {
+        "max": 217,
+        "median": 217,
+        "min": 217,
+        "n": 1
+      },
+      "max_grants_per_runner": {
+        "max": 243,
+        "median": 243,
+        "min": 243,
+        "n": 1
+      },
+      "mean_occupied_slots": {
+        "max": 10.959163389788525,
+        "median": 10.959163389788525,
+        "min": 10.959163389788525,
+        "n": 1
+      },
+      "min_granting_calls": {
+        "max": 188,
+        "median": 188,
+        "min": 188,
+        "n": 1
+      },
+      "min_grants_per_runner": {
+        "max": 0,
+        "median": 0,
+        "min": 0,
+        "n": 1
+      },
+      "queue_calls": {
+        "max": 2733,
+        "median": 2733,
+        "min": 2733,
+        "n": 1
+      },
+      "runner_cpu_ms_per_job": {
+        "max": 1.4468525390625,
+        "median": 1.4468525390625,
+        "min": 1.4468525390625,
+        "n": 1
+      },
+      "sampled_peak_slots": {
+        "max": 14,
+        "median": 14,
+        "min": 14,
+        "n": 1
+      },
+      "submit_jobs_per_s": {
+        "max": 1391.5331188959055,
+        "median": 1391.5331188959055,
+        "min": 1391.5331188959055,
+        "n": 1
+      },
+      "used_application_backends": {
+        "max": 14,
+        "median": 14,
+        "min": 14,
+        "n": 1
+      },
+      "warm_application_sessions": {
+        "max": 32,
+        "median": 32,
+        "min": 32,
+        "n": 1
+      },
+      "warm_queue_sessions": {
+        "max": 32,
+        "median": 32,
+        "min": 32,
+        "n": 1
+      }
+    },
+    "stock-b": {
+      "active_application_backends_observed": {
+        "max": 0,
+        "median": 0,
+        "min": 0,
+        "n": 1
+      },
+      "admission_hints": {
+        "max": 203,
+        "median": 203,
+        "min": 203,
+        "n": 1
+      },
+      "app_calls": {
+        "max": 4096,
+        "median": 4096,
+        "min": 4096,
+        "n": 1
+      },
+      "attempt_to_effect_commit_p50_ms": {
+        "max": 0.368,
+        "median": 0.368,
+        "min": 0.368,
+        "n": 1
+      },
+      "broker_calls": {
+        "max": 1060,
+        "median": 1060,
+        "min": 1060,
+        "n": 1
+      },
+      "claim_calls": {
+        "max": 442,
+        "median": 442,
+        "min": 442,
+        "n": 1
+      },
+      "claim_to_terminal_peak_slots": {
+        "max": 33,
+        "median": 33,
+        "min": 33,
+        "n": 1
+      },
+      "commit_jobs_per_s": {
+        "max": 1889.3128362570942,
+        "median": 1889.3128362570942,
+        "min": 1889.3128362570942,
+        "n": 1
+      },
+      "effect_commit_to_settlement_p50_ms": {
+        "max": 0.655,
+        "median": 0.655,
+        "min": 0.655,
+        "n": 1
+      },
+      "first_submit_to_commit_ms": {
+        "max": 513.62,
+        "median": 513.62,
+        "min": 513.62,
+        "n": 1
+      },
+      "grant_jobs_per_claim_call": {
+        "max": 2.316742081447964,
+        "median": 2.316742081447964,
+        "min": 2.316742081447964,
+        "n": 1
+      },
+      "hint_percent": {
+        "max": 45.92760180995475,
+        "median": 45.92760180995475,
+        "min": 45.92760180995475,
+        "n": 1
+      },
+      "max_granting_calls": {
+        "max": 247,
+        "median": 247,
+        "min": 247,
+        "n": 1
+      },
+      "max_grants_per_runner": {
+        "max": 291,
+        "median": 291,
+        "min": 291,
+        "n": 1
+      },
+      "mean_occupied_slots": {
+        "max": 12.045919158074968,
+        "median": 12.045919158074968,
+        "min": 12.045919158074968,
+        "n": 1
+      },
+      "min_granting_calls": {
+        "max": 212,
+        "median": 212,
+        "min": 212,
+        "n": 1
+      },
+      "min_grants_per_runner": {
+        "max": 0,
+        "median": 0,
+        "min": 0,
+        "n": 1
+      },
+      "queue_calls": {
+        "max": 2917,
+        "median": 2917,
+        "min": 2917,
+        "n": 1
+      },
+      "runner_cpu_ms_per_job": {
+        "max": 1.6568076171874997,
+        "median": 1.6568076171874997,
+        "min": 1.6568076171874997,
+        "n": 1
+      },
+      "sampled_peak_slots": {
+        "max": 3,
+        "median": 3,
+        "min": 3,
+        "n": 1
+      },
+      "submit_jobs_per_s": {
+        "max": 970.0497150478963,
+        "median": 970.0497150478963,
+        "min": 970.0497150478963,
+        "n": 1
+      },
+      "used_application_backends": {
+        "max": 14,
+        "median": 14,
+        "min": 14,
+        "n": 1
+      },
+      "warm_application_sessions": {
+        "max": 32,
+        "median": 32,
+        "min": 32,
+        "n": 1
+      },
+      "warm_queue_sessions": {
+        "max": 32,
+        "median": 32,
+        "min": 32,
+        "n": 1
+      }
+    },
+    "tuned-1x64": {
+      "active_application_backends_observed": {
+        "max": 2,
+        "median": 2,
+        "min": 2,
+        "n": 1
+      },
+      "admission_hints": {
+        "max": 0,
+        "median": 0,
+        "min": 0,
+        "n": 1
+      },
+      "app_calls": {
+        "max": 4096,
+        "median": 4096,
+        "min": 4096,
+        "n": 1
+      },
+      "attempt_to_effect_commit_p50_ms": {
+        "max": 0.258,
+        "median": 0.258,
+        "min": 0.258,
+        "n": 1
+      },
+      "broker_calls": {
+        "max": 1061,
+        "median": 1061,
+        "min": 1061,
+        "n": 1
+      },
+      "claim_calls": {
+        "max": 80,
+        "median": 80,
+        "min": 80,
+        "n": 1
+      },
+      "claim_to_terminal_peak_slots": {
+        "max": 63,
+        "median": 63,
+        "min": 63,
+        "n": 1
+      },
+      "commit_jobs_per_s": {
+        "max": 2112.5990538692126,
+        "median": 2112.5990538692126,
+        "min": 2112.5990538692126,
+        "n": 1
+      },
+      "effect_commit_to_settlement_p50_ms": {
+        "max": 0.855,
+        "median": 0.855,
+        "min": 0.855,
+        "n": 1
+      },
+      "first_submit_to_commit_ms": {
+        "max": 592.853,
+        "median": 592.853,
+        "min": 592.853,
+        "n": 1
+      },
+      "grant_jobs_per_claim_call": {
+        "max": 12.8,
+        "median": 12.8,
+        "min": 12.8,
+        "n": 1
+      },
+      "hint_percent": {
+        "max": 0.0,
+        "median": 0.0,
+        "min": 0.0,
+        "n": 1
+      },
+      "max_granting_calls": {
+        "max": 80,
+        "median": 80,
+        "min": 80,
+        "n": 1
+      },
+      "max_grants_per_runner": {
+        "max": 1024,
+        "median": 1024,
+        "min": 1024,
+        "n": 1
+      },
+      "mean_occupied_slots": {
+        "max": 30.57009434487767,
+        "median": 30.57009434487767,
+        "min": 30.57009434487767,
+        "n": 1
+      },
+      "min_granting_calls": {
+        "max": 65,
+        "median": 65,
+        "min": 65,
+        "n": 1
+      },
+      "min_grants_per_runner": {
+        "max": 1024,
+        "median": 1024,
+        "min": 1024,
+        "n": 1
+      },
+      "queue_calls": {
+        "max": 1361,
+        "median": 1361,
+        "min": 1361,
+        "n": 1
+      },
+      "runner_cpu_ms_per_job": {
+        "max": 0.76365234375,
+        "median": 0.76365234375,
+        "min": 0.76365234375,
+        "n": 1
+      },
+      "sampled_peak_slots": {
+        "max": 34,
+        "median": 34,
+        "min": 34,
+        "n": 1
+      },
+      "submit_jobs_per_s": {
+        "max": 950.291583608955,
+        "median": 950.291583608955,
+        "min": 950.291583608955,
+        "n": 1
+      },
+      "used_application_backends": {
+        "max": 2,
+        "median": 2,
+        "min": 2,
+        "n": 1
+      },
+      "warm_application_sessions": {
+        "max": 32,
+        "median": 32,
+        "min": 32,
+        "n": 1
+      },
+      "warm_queue_sessions": {
+        "max": 4,
+        "median": 4,
+        "min": 4,
+        "n": 1
+      }
+    },
+    "tuned-2x32": {
+      "active_application_backends_observed": {
+        "max": 1,
+        "median": 1,
+        "min": 1,
+        "n": 1
+      },
+      "admission_hints": {
+        "max": 59,
+        "median": 59,
+        "min": 59,
+        "n": 1
+      },
+      "app_calls": {
+        "max": 4096,
+        "median": 4096,
+        "min": 4096,
+        "n": 1
+      },
+      "attempt_to_effect_commit_p50_ms": {
+        "max": 0.375,
+        "median": 0.375,
+        "min": 0.375,
+        "n": 1
+      },
+      "broker_calls": {
+        "max": 1061,
+        "median": 1061,
+        "min": 1061,
+        "n": 1
+      },
+      "claim_calls": {
+        "max": 148,
+        "median": 148,
+        "min": 148,
+        "n": 1
+      },
+      "claim_to_terminal_peak_slots": {
+        "max": 57,
+        "median": 57,
+        "min": 57,
+        "n": 1
+      },
+      "commit_jobs_per_s": {
+        "max": 2483.2489820861715,
+        "median": 2483.2489820861715,
+        "min": 2483.2489820861715,
+        "n": 1
+      },
+      "effect_commit_to_settlement_p50_ms": {
+        "max": 0.859,
+        "median": 0.859,
+        "min": 0.859,
+        "n": 1
+      },
+      "first_submit_to_commit_ms": {
+        "max": 553.12,
+        "median": 553.12,
+        "min": 553.12,
+        "n": 1
+      },
+      "grant_jobs_per_claim_call": {
+        "max": 6.918918918918919,
+        "median": 6.918918918918919,
+        "min": 6.918918918918919,
+        "n": 1
+      },
+      "hint_percent": {
+        "max": 39.86486486486486,
+        "median": 39.86486486486486,
+        "min": 39.86486486486486,
+        "n": 1
+      },
+      "max_granting_calls": {
+        "max": 91,
+        "median": 91,
+        "min": 91,
+        "n": 1
+      },
+      "max_grants_per_runner": {
+        "max": 522,
+        "median": 522,
+        "min": 522,
+        "n": 1
+      },
+      "mean_occupied_slots": {
+        "max": 36.15488538011412,
+        "median": 36.15488538011412,
+        "min": 36.15488538011412,
+        "n": 1
+      },
+      "min_granting_calls": {
+        "max": 72,
+        "median": 72,
+        "min": 72,
+        "n": 1
+      },
+      "min_grants_per_runner": {
+        "max": 502,
+        "median": 502,
+        "min": 502,
+        "n": 1
+      },
+      "queue_calls": {
+        "max": 1650,
+        "median": 1650,
+        "min": 1650,
+        "n": 1
+      },
+      "runner_cpu_ms_per_job": {
+        "max": 0.9027548828124999,
+        "median": 0.9027548828124999,
+        "min": 0.9027548828124999,
+        "n": 1
+      },
+      "sampled_peak_slots": {
+        "max": 32,
+        "median": 32,
+        "min": 32,
+        "n": 1
+      },
+      "submit_jobs_per_s": {
+        "max": 1060.6090423135363,
+        "median": 1060.6090423135363,
+        "min": 1060.6090423135363,
+        "n": 1
+      },
+      "used_application_backends": {
+        "max": 4,
+        "median": 4,
+        "min": 4,
+        "n": 1
+      },
+      "warm_application_sessions": {
+        "max": 32,
+        "median": 32,
+        "min": 32,
+        "n": 1
+      },
+      "warm_queue_sessions": {
+        "max": 8,
+        "median": 8,
+        "min": 8,
+        "n": 1
+      }
+    }
+  }
+}

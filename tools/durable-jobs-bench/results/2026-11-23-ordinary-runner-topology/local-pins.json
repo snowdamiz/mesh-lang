@@ -1,0 +1,16 @@
+{
+  "source_archive_sha256": "e742644d89b872a41b4d9d241091a2349491f3de6d393fe77c4cbdbc05f6a58c",
+  "harness": {
+    "tools/durable-jobs-bench/native/arm.py": "c2c0375b04c35836ecc685cfe4aad04f313e6fd458e085c58967009f177f6d2c",
+    "tools/durable-jobs-bench/native/ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
+    "proof/jobs-parity/linux-regression/trial.py": "db8e121ab9b1f6aed2293b26c79a4fbfa8ac8aba6ff228be54b360bd32048a8e",
+    "proof/jobs-parity/linux-regression/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+    "proof/jobs-parity/linux-regression/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+    "proof/jobs-parity/linux-regression/trusted-application.sql": "3d318097587c0baef9182d8abb35b3f9d437a00b4f509798e320a4931085ee41",
+    "scripts/jobs-parity.py": "09aad1d1c6cb5c0d46408bf314879812bb24fa504cf26a00e728b5f21ad1c5c8",
+    "scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297"
+  },
+  "manifest_sha256": "8d3a43f0b36b35eae5aed732296a51b531782049f2b730826d65c4692586a84b",
+  "executable_sha256": "16af053cf4aec1d6c8529ec615eb6b243a9caf135b526f4b3aa41c9e370ba06e",
+  "verifier_sha256": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f"
+}
