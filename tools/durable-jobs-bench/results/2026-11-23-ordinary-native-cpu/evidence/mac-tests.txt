@@ -1,0 +1,11 @@
+test_archive_exact_ledger_and_known_drain (__main__.DiagnosticTests.test_archive_exact_ledger_and_known_drain) ... ok
+test_conservative_bounds_and_corruption (__main__.DiagnosticTests.test_conservative_bounds_and_corruption) ... ok
+test_default_clock_binding_through_sampler (__main__.DiagnosticTests.test_default_clock_binding_through_sampler) ... ok
+test_exact_registry_and_connection_replacement (__main__.DiagnosticTests.test_exact_registry_and_connection_replacement) ... ok
+test_pid_changed_between_stat_and_clock (__main__.DiagnosticTests.test_pid_changed_between_stat_and_clock) ... ok
+test_reject_perturbed_controls (__main__.DiagnosticTests.test_reject_perturbed_controls) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 1.041s
+
+OK

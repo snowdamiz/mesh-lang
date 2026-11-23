@@ -1,0 +1,13 @@
+{"canonical_worker": "/clock/canonical_worker.py", "sha256": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b", "python": "3.14.4", "kernel": "6.12.115-0-virt", "machine": "aarch64"}
+Traceback (most recent call last):
+  File [35m"/clock/clock-smoke.py"[0m, line [35m81[0m, in [35m<module>[0m
+    [31mmain[0m[1;31m()[0m
+    [31m~~~~[0m[1;31m^^[0m
+  File [35m"/clock/clock-smoke.py"[0m, line [35m34[0m, in [35mmain[0m
+    assert isinstance([31mcollector.process_clock[0m[1;31m(os.getpid())[0m, int)
+                      [31m~~~~~~~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^[0m
+  File [35m"/clock/worker.py"[0m, line [35m114[0m, in [35mprocess_clock[0m
+    return time.clock_gettime_ns([1;31mtime.clock_getcpuclockid[0m(int(pid)))
+                                 [1;31m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1;35mAttributeError[0m: [35mmodule 'time' has no attribute 'clock_getcpuclockid'. Did you mean: 'pthread_getcpuclockid'?[0m
+CLOCK_SMOKE_EXIT 1
