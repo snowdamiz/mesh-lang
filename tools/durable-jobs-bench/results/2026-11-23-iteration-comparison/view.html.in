@@ -28,13 +28,17 @@ a {color:#175e50} .figure-note {margin:12px 0 0;font-size:14px}
 <label>Workload<select id="profile"></select></label><label>Measure<select id="metric"></select></label></div>
 <section aria-live="polite"><h2 id="title"></h2><p id="scope"></p>
 <div class="chart" id="chart"></div><p class="figure-note dim" id="note"></p>
+<details id="paired"><summary>Head-to-head throughput</summary>
+<label>Compare with<select id="opponent"></select></label>
+<div class="scroller"><table id="pairs"></table></div></details>
 <details><summary>Individual rotations and CPU steal</summary><div class="scroller"><table id="rotations"></table></div></details>
-</section><p class="figure-note"><a href="scores.json">Download scores and raw archive digests</a> · <a href="../2026-11-23-baseline/chart.html">Original five-workload baseline</a></p>
+</section><p class="figure-note"><a id="download" href="scores.json" download="scores.json">Download scores and raw archive digests</a></p>
 </main><script type="application/json" id="data">__REPLAYED_SCORES__</script>
 <script>
 "use strict";
 const db=JSON.parse(document.getElementById("data").textContent);
 const get=id=>document.getElementById(id);
+get("download").href=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)+"\n"],{type:"application/json"}));
 const series=get("series"), profile=get("profile"), metric=get("metric");
 const measures={
  submit_jobs_per_s:["Submit to settlement","jobs/s","Window starts with the producer submission and ends at the last durable settlement."],
@@ -49,6 +53,9 @@ const measures={
 const workloads={noop:"Dense no-op",slow:"Slow · 64 slots",sparse:"Sparse arrivals",short:"Short · 16 slots",large:"Large · 512 KiB"};
 const names={mesh:"Mesh",ordinary:"Mesh · trusted",stock:"Mesh · stock",current:"Mesh · current",historical:"Mesh · archived",
  lean:"Mesh · smaller worker",admission:"Mesh · set-based claims",combined:"Mesh · combined",
+ "mesh-strict":"Mesh · fresh worker","mesh-trusted-persistent":"Mesh · reusable worker",
+ "admission-v3":"Mesh · set-based admission","ordinary-stock":"Mesh · trusted, individual settlements",
+ "ordinary-success-cohort":"Mesh · trusted, grouped settlements",
  "protected-mesh":"Mesh · protected","mesh-stock-a":"Mesh · stock A","mesh-stock-b":"Mesh · stock B",
  "mesh-direct-file":"Mesh · direct producer","mesh-external":"Mesh · stock broker, EXTERNAL","mesh-direct-external":"Mesh · direct broker, EXTERNAL",
  go:"Go River",river:"Go River",oban:"Elixir Oban",rust:"Rust Apalis",apalis:"Rust Apalis",
@@ -79,6 +86,23 @@ function draw() {
    chart.append(row);
  }
  get("note").textContent=blocks.length+" of 5 matched rotations. "+(blocks.length===1?"Single observation. ":"Bars show the median. ")+measures[key][2];
+ get("paired").hidden=!higherIsBetter;
+ if(higherIsBetter) {
+   const opponent=get("opponent"), previous=opponent.value;
+   opponent.replaceChildren(...lanes.map(l=>option(l,names[l]??l)));
+   opponent.value=lanes.includes(previous)?previous:lanes.find(l=>l.startsWith("oban"))??lanes[0];
+   const table=get("pairs"), header=element("tr");
+   for(const label of ["Engine","Rotations faster","Median paired change"])header.append(element("th",label));
+   table.replaceChildren(header);
+   for(const {l} of rows) {
+     if(l===opponent.value)continue;
+     const changes=blocks.map(b=>100*(value(b,l)/value(b,opponent.value)-1));
+     const change=median(changes),line=element("tr");
+     line.append(element("td",names[l]??l),element("td",changes.filter(x=>x>0).length+" / "+changes.length),
+       element("td",(change>0?"+":"")+number.format(change)+"%"));
+     table.append(line);
+   }
+ }
  const t=get("rotations");t.replaceChildren();
  const head=element("tr");for(const item of ["Group · execution order",measures[key][0]+" ("+unit+")","CPU steal (%)"])head.append(element("th",item));t.append(head);
  for(const b of blocks)for(const l of b.order) {
@@ -94,5 +118,5 @@ function chooseSeries() {
 for(const [key,s] of Object.entries(db))if(s.blocks.length)series.add(option(key,s.title));
 for(const [key,m] of Object.entries(measures))metric.add(option(key,m[0]));
 series.value=db.symmetric?.blocks.length?"symmetric":"baseline";
-series.onchange=chooseSeries;profile.onchange=draw;metric.onchange=draw;chooseSeries();
+series.onchange=chooseSeries;profile.onchange=draw;metric.onchange=draw;get("opponent").onchange=draw;chooseSeries();
 </script></body></html>

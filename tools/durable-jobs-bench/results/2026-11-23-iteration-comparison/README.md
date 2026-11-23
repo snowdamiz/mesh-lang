@@ -1,6 +1,6 @@
 # Native durable Jobs comparisons
 
-[Open the interactive results](chart.html). Choose a series and workload to compare the engines within the same rotations. Each row in the expanded table identifies its execution order and CPU steal. The viewer includes the five-group baseline and completed groups from subsequent experiments.
+[Open the interactive results](chart.html). Choose a series and workload to compare the engines within the same rotations. For either throughput measure, expand **Head-to-head throughput** to count paired wins and see the median percentage change against the chosen engine. The individual rotations include execution order and CPU steal. The standalone page includes its own downloadable copy of the score data.
 
 Submit-to-settlement includes producer work and the final durable terminal commit. Commit-to-settlement starts after enqueue. Changing the producer can improve the first measure even when workers drain the queue at the same speed.
 
