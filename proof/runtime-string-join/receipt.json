@@ -1,0 +1,361 @@
+{
+  "release_stock_revision": "ffcb684dc8cb9af4fe778947b0fffc351e81afb0",
+  "gate_base_revision": "446e413c73f33236863e0c7de2151473240f1a79",
+  "gated_runtime_source_sha256": "509b6489f4ce98e2c6f37889bf950b809a00a6e36e2f5e3bc012bae6ba4f04e3",
+  "join_source_sha256": "ff30e58b2d8a19e47415f7a7308851e5cf6075c094d9eac58ad59d96f8570a32",
+  "host": "macOS 27.0.1 arm64",
+  "rustc": "1.99.0 (b940084d7 2026-09-28)",
+  "mesh_llvm": "21.1.8",
+  "workloads": {
+    "ordinary": {
+      "source": "d911639a394fc08a39667f09832003fdec8df8ad032cf2efdb9f9fce18bfa727",
+      "bindings": "8e07d5d3d360e161ab94a2f84745ba3502c9e7db2183d8f4b10e94761b2b8258",
+      "input_sha256": null,
+      "rounds": 250000,
+      "checksum": 2772860293188058304,
+      "joins": 500000,
+      "elements": 4250000,
+      "join_bytes": 81750000,
+      "stock": "fce3daeffcb0d97914b913ba9e425c83e8039f1fd5eb7c8119f3856d7e59fe2e",
+      "candidate": "1371087562a3e373e5556fdf27a2e77f6f84b0363adcb0c6ee863ee504db67b6",
+      "ir": "371d0484d4f03e83cdc077ea9c3ccba3467dc9483e8f9ea02f0153d97b88fde4",
+      "audited_outputs_per_sample": 2,
+      "audit_stdout_sha256": "b1d710ba650e1ab3211d5738563e4aa2a81df18c53bbd4f15289417ad268f505",
+      "timed_interval_thread_cpu_ms": {
+        "stock-a": {
+          "n": 6,
+          "median": 45.386,
+          "min": 40.841,
+          "max": 47.164
+        },
+        "stock-b": {
+          "n": 6,
+          "median": 43.057,
+          "min": 40.504,
+          "max": 46.666
+        },
+        "candidate": {
+          "n": 6,
+          "median": 26.802,
+          "min": 25.362,
+          "max": 27.915
+        }
+      },
+      "raw_samples_sha256": "821fc3bd7ee8ab3c21ef0f03375d65c127e0e590302e5a310ccad5ba1c4323c4",
+      "host_1min_load_range": [
+        18.77490234375,
+        18.77490234375
+      ]
+    },
+    "large": {
+      "source": "95f33f7d4d7100338eec6c7ff542770f59f468761d1e7f4895da430cbb12c8ce",
+      "bindings": "8e07d5d3d360e161ab94a2f84745ba3502c9e7db2183d8f4b10e94761b2b8258",
+      "input_sha256": "30f91354336fab21dbe85f2933f3347ec53ab7634af3805169a892536747fa1c",
+      "rounds": 16,
+      "checksum": 3731649503487384048,
+      "joins": 1024,
+      "elements": 1024,
+      "join_bytes": 537055232,
+      "stock": "ae606907408e3f390a10a1905d7a23dd2bc1f100422f85b2ff0dcd10c003bf56",
+      "candidate": "f40113be86a78bf4521a97370e3c17126d767249cf6b158bbd12a40a2170ed81",
+      "ir": "055340c832220942c0b4ce9401ed8cd1b31ea288ead2692748f972098df8cf8e",
+      "audited_outputs_per_sample": 64,
+      "audit_stdout_sha256": "b1653f9c81b529f5984aad47a7777f50a00ed4974bbc091a936cb40eb3f6d5c7",
+      "timed_interval_thread_cpu_ms": {
+        "stock-a": {
+          "n": 6,
+          "median": 175.856,
+          "min": 169.177,
+          "max": 222.173
+        },
+        "stock-b": {
+          "n": 6,
+          "median": 177.243,
+          "min": 171.652,
+          "max": 181.115
+        },
+        "candidate": {
+          "n": 6,
+          "median": 139.451,
+          "min": 133.111,
+          "max": 163.049
+        }
+      },
+      "raw_samples_sha256": "a1decfc3c70aacfd52eb1befba360fd6d8c61e0d9b98b6030fa8e638ee6b228a",
+      "host_1min_load_range": [
+        18.77490234375,
+        21.23974609375
+      ]
+    },
+    "dense": {
+      "source": "95f33f7d4d7100338eec6c7ff542770f59f468761d1e7f4895da430cbb12c8ce",
+      "bindings": "8e07d5d3d360e161ab94a2f84745ba3502c9e7db2183d8f4b10e94761b2b8258",
+      "input_sha256": "d2489aad78da91976fb249e7ca9182a05e580f16a8815b17e4c1edd8992833c7",
+      "rounds": 2000,
+      "checksum": 4514597404415830272,
+      "joins": 16000,
+      "elements": 2048000,
+      "join_bytes": 2467824000,
+      "stock": "afef6fbc65895cbd0a2b7c6724c75b0ce17736fe9173cdcd2a237430400be5d3",
+      "candidate": "f74109d4b7558e4b93563f174f85407449157732adcdfe9f2e75f8622893e9c8",
+      "ir": "da890ab1cf3cffd01da349df4973ac27098bbe850390a407734fbc1667985bc1",
+      "audited_outputs_per_sample": 8,
+      "audit_stdout_sha256": "6fdb9a283b395cb568b7729c21c0a0eb12733946567c0505738853310f9b2baa",
+      "timed_interval_thread_cpu_ms": {
+        "stock-a": {
+          "n": 6,
+          "median": 406.668,
+          "min": 399.819,
+          "max": 471.119
+        },
+        "stock-b": {
+          "n": 6,
+          "median": 409.767,
+          "min": 393.367,
+          "max": 422.736
+        },
+        "candidate": {
+          "n": 6,
+          "median": 359.612,
+          "min": 337.367,
+          "max": 410.495
+        }
+      },
+      "raw_samples_sha256": "0cbfdd5d7eac18d8bd3beea5a1985364b13a3baf79f834abc4de0b11256d40bf",
+      "host_1min_load_range": [
+        21.23974609375,
+        22.18115234375
+      ]
+    }
+  },
+  "artifacts": {
+    "compiler": "931b5235e4db623c3f8a3dd554a2e9de43d786235057d4148fcdcd2a6254259c",
+    "stock": "dcfa34d0ac8e3e263a3d50d8fdc00b872d87bc2a482b7458bc624c8f62ef0fea",
+    "candidate": "4816e9ce903717013fb47d5eb1fe1035481755ffc169dd2b045626941500834f",
+    "frozen_source": "0c72aaa2f0f34c49d07fd2f6cad2d39f491c0857897a0ac7a0facb6b85b4464d",
+    "native_object": "022587ea6e51857b373e42183c97ab3fb62498fb783b579b3006e39971fe7398",
+    "native_archive": "4946d2be4e982a8cbbe341d777ee1a9f5bf0533ebb1ca3f0467b7c17837ee68e",
+    "target": "aarch64-apple-darwin"
+  },
+  "large_single_pass": {
+    "timed_interval_thread_cpu_ms": {
+      "stock-a": {
+        "n": 6,
+        "median": 10.47,
+        "min": 9.44,
+        "max": 10.863
+      },
+      "stock-b": {
+        "n": 6,
+        "median": 10.275,
+        "min": 9.595,
+        "max": 10.548
+      },
+      "candidate": {
+        "n": 6,
+        "median": 8.22,
+        "min": 7.75,
+        "max": 8.768
+      }
+    },
+    "whole_process_cpu_ms": {
+      "stock-a": {
+        "n": 6,
+        "median": 90.502,
+        "min": 81.432,
+        "max": 96.391
+      },
+      "stock-b": {
+        "n": 6,
+        "median": 88.182,
+        "min": 80.249,
+        "max": 91.138
+      },
+      "candidate": {
+        "n": 6,
+        "median": 85.174,
+        "min": 82.003,
+        "max": 91.27
+      }
+    },
+    "rolling_checksum": 1682491371527130911,
+    "raw_samples_sha256": "6e7da271f08bc46bdc373879d9f7d30f7a6d89a2751b5a7135c903f342eb0d87"
+  },
+  "ordinary_replication": {
+    "stock-a": {
+      "n": 6,
+      "median": 45.9,
+      "min": 43.213,
+      "max": 51.402
+    },
+    "stock-b": {
+      "n": 6,
+      "median": 44.245,
+      "min": 39.762,
+      "max": 46.681
+    },
+    "candidate": {
+      "n": 6,
+      "median": 28.536,
+      "min": 26.801,
+      "max": 32.296
+    }
+  },
+  "allocation_probe": {
+    "ordinary-8": {
+      "shape": {
+        "separator_bytes": 4,
+        "elements": 8,
+        "element_bytes": [
+          19,
+          16,
+          9,
+          13,
+          7,
+          17
+        ]
+      },
+      "stock": {
+        "joined_bytes": 141,
+        "mallocs": 2,
+        "malloc_bytes": 269,
+        "calloc_bytes": 0,
+        "call_memcpy_bytes": 254,
+        "inline_separator_bytes": 28,
+        "total_payload_copy_bytes": 282,
+        "executable_sha256": "faaad24821858188e377d2fe0f9945abf391947483a9dcfe94ef0ef38f2b7560"
+      },
+      "candidate": {
+        "joined_bytes": 141,
+        "mallocs": 0,
+        "malloc_bytes": 0,
+        "calloc_bytes": 0,
+        "call_memcpy_bytes": 141,
+        "inline_separator_bytes": 0,
+        "total_payload_copy_bytes": 141,
+        "executable_sha256": "084ba689072b561f4a9eb1166961cfa9a6d92a1b6c6156c87d79e56d3751fbb1"
+      }
+    },
+    "ordinary-9": {
+      "shape": {
+        "separator_bytes": 4,
+        "elements": 9,
+        "element_bytes": [
+          19,
+          16,
+          9,
+          13,
+          7,
+          17,
+          41
+        ]
+      },
+      "stock": {
+        "joined_bytes": 186,
+        "mallocs": 2,
+        "malloc_bytes": 330,
+        "calloc_bytes": 0,
+        "call_memcpy_bytes": 340,
+        "inline_separator_bytes": 32,
+        "total_payload_copy_bytes": 372,
+        "executable_sha256": "faaad24821858188e377d2fe0f9945abf391947483a9dcfe94ef0ef38f2b7560"
+      },
+      "candidate": {
+        "joined_bytes": 186,
+        "mallocs": 0,
+        "malloc_bytes": 0,
+        "calloc_bytes": 0,
+        "call_memcpy_bytes": 186,
+        "inline_separator_bytes": 0,
+        "total_payload_copy_bytes": 186,
+        "executable_sha256": "084ba689072b561f4a9eb1166961cfa9a6d92a1b6c6156c87d79e56d3751fbb1"
+      }
+    },
+    "large-1": {
+      "shape": {
+        "separator_bytes": 1,
+        "elements": 1,
+        "element_bytes": [
+          524468
+        ]
+      },
+      "stock": {
+        "joined_bytes": 524468,
+        "mallocs": 2,
+        "malloc_bytes": 524484,
+        "calloc_bytes": 524484,
+        "call_memcpy_bytes": 1048936,
+        "inline_separator_bytes": 0,
+        "total_payload_copy_bytes": 1048936,
+        "executable_sha256": "faaad24821858188e377d2fe0f9945abf391947483a9dcfe94ef0ef38f2b7560"
+      },
+      "candidate": {
+        "joined_bytes": 524468,
+        "mallocs": 0,
+        "malloc_bytes": 0,
+        "calloc_bytes": 524484,
+        "call_memcpy_bytes": 524468,
+        "inline_separator_bytes": 0,
+        "total_payload_copy_bytes": 524468,
+        "executable_sha256": "084ba689072b561f4a9eb1166961cfa9a6d92a1b6c6156c87d79e56d3751fbb1"
+      }
+    },
+    "dense-128": {
+      "shape": {
+        "separator_bytes": 1,
+        "elements": 128,
+        "element_bytes": [
+          1204
+        ]
+      },
+      "stock": {
+        "joined_bytes": 154239,
+        "mallocs": 2,
+        "malloc_bytes": 156287,
+        "calloc_bytes": 154255,
+        "call_memcpy_bytes": 308351,
+        "inline_separator_bytes": 127,
+        "total_payload_copy_bytes": 308478,
+        "executable_sha256": "faaad24821858188e377d2fe0f9945abf391947483a9dcfe94ef0ef38f2b7560"
+      },
+      "candidate": {
+        "joined_bytes": 154239,
+        "mallocs": 0,
+        "malloc_bytes": 0,
+        "calloc_bytes": 154255,
+        "call_memcpy_bytes": 154239,
+        "inline_separator_bytes": 0,
+        "total_payload_copy_bytes": 154239,
+        "executable_sha256": "084ba689072b561f4a9eb1166961cfa9a6d92a1b6c6156c87d79e56d3751fbb1"
+      }
+    }
+  },
+  "wasm32_check": {
+    "note": "Extracted production join and size check with list and allocator stubs",
+    "stdout": "32-bit join overflow bounds and raw output passed",
+    "wasm_sha256": "c718e2b0ab51bf37d711dfda1d9c2447dc5eb0cad1cd5be9535973e30cde6d42"
+  },
+  "gate_source_check": "1099 gated product and test files match 446e413c73f33236863e0c7de2151473240f1a79 plus compiler/mesh-rt/src/string.rs",
+  "gates": {
+    "fmt": 0,
+    "join": 0,
+    "workspace-build": 0,
+    "workspace-core": 0,
+    "diagnostics-minimal": 0,
+    "runtime-dependencies": 0,
+    "runtime": 0,
+    "fuzz-build": 0,
+    "lint-examples": 0,
+    "mesh-fmt-examples": 0,
+    "lint-packages": 0,
+    "mesh-fmt-packages": 0,
+    "lint-mesh-slug": 0,
+    "mesh-fmt-mesh-slug": 0,
+    "laws": 0,
+    "z3": 0,
+    "compiled": 0,
+    "postgres-17.11": 0,
+    "effect-fence": 0
+  },
+  "native_transfer": "Unmeasured. Single-pass whole-process CPU overlapped both stock controls."
+}
