@@ -1,0 +1,41 @@
+{
+  "apalis": {
+    "committed_application_writes": 128,
+    "ddl_us": 18212,
+    "engine": "rust",
+    "payload_bytes": 33554432,
+    "payloads": 64,
+    "policy": "EXTERNAL",
+    "raw_sha256": "43bc564b30a94b35e0efb6827fe0175c2174759b556b606c4246f80a47c8adf2",
+    "storage_verification_us": 204737,
+    "stored_column_bytes": 33558528,
+    "terminal_transactions": 20,
+    "toast_heap_bytes": 34471936
+  },
+  "oban": {
+    "committed_application_writes": 128,
+    "ddl_us": 25967,
+    "engine": "oban",
+    "payload_bytes": 33554432,
+    "payloads": 64,
+    "policy": "EXTERNAL",
+    "raw_sha256": "5db49cc97abaa055cb348cbcc157258b54ae9658423e4d1ac75c3643187fd235",
+    "storage_verification_us": 105619,
+    "stored_column_bytes": 33559808,
+    "terminal_transactions": 64,
+    "toast_heap_bytes": 34471936
+  },
+  "river": {
+    "committed_application_writes": 128,
+    "ddl_us": 196,
+    "engine": "go",
+    "payload_bytes": 33554432,
+    "payloads": 64,
+    "policy": "EXTERNAL",
+    "raw_sha256": "04f35ec6dfa9467618bbc8cd660bf48c741c58cc34138c04280817f9148fd972",
+    "storage_verification_us": 65833,
+    "stored_column_bytes": 33559808,
+    "terminal_transactions": 14,
+    "toast_heap_bytes": 34471936
+  }
+}

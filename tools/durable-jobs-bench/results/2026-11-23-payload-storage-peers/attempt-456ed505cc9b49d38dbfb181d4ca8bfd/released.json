@@ -1,0 +1,7 @@
+{
+  "exit_status": 0,
+  "id": "large-toast-peers",
+  "receipt": "tools/durable-jobs-bench/results/2026-11-23-payload-storage-peers/attempt-456ed505cc9b49d38dbfb181d4ca8bfd",
+  "released_at": "2026-11-23T20:09:53.330206+00:00",
+  "symmetric_config": "tools/durable-jobs-bench/results/2026-11-23-payload-storage-peers/large.json"
+}
