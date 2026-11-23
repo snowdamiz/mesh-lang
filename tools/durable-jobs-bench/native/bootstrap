@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# Run from the uploaded source tree during the coordinator's SETUP window.
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd -P)"
+root="$(cd "$here/../../.." && pwd -P)"
+base=/var/lib/durable-jobs-bench/native
+id="${1:?usage: bootstrap NEW_BUILD_ID [oban|mesh|both]}"
+selection="${2:-oban}"
+case "$selection" in oban|mesh|both) ;; *) exit 2 ;; esac
+[[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+[[ "$(id -u)" == 0 && "$(uname -sm)" == 'Linux x86_64' && "$(nproc --all)" == 4 ]]
+# shellcheck source=/dev/null
+. /etc/os-release
+[[ "$ID" == ubuntu ]]
+umask 022
+mkdir -p "$base"/{cache,builds,setup,toolchain,runs}
+attempt="$base/setup/$id"
+mkdir "$attempt"
+exec > >(tee "$attempt/bootstrap.log") 2>&1
+exec 9>"$base/native.lock"
+flock -n 9
+install -d -o nobody -g nogroup -m 0700 "$base/scratch"
+export TMPDIR="$attempt/tmp/"
+mkdir "$TMPDIR"
+cleanup() { rm -rf -- "$TMPDIR"; }
+trap cleanup EXIT
+
+cat /etc/os-release
+uname -srvmo
+uptime
+lscpu
+free -m
+df -h "$base"
+
+export DEBIAN_FRONTEND=noninteractive LC_ALL=C.UTF-8
+apt-get update
+apt-get install --no-install-recommends -y build-essential ca-certificates curl xz-utils unzip \
+    bison flex pkg-config python3 libssl-dev libicu-dev zlib1g-dev libreadline-dev \
+    libncurses-dev libxml2-dev liblzma-dev libzstd-dev libffi-dev perl
+
+download() {
+    local url="$1" checksum="$2" file="$base/cache/${1##*/}"
+    if [[ ! -f "$file" ]]; then
+        curl --proto '=https' --retry 3 --fail --silent --show-error --location "$url" \
+            -o "$TMPDIR/${file##*/}" || return
+        printf '%s  %s\n' "$checksum" "$TMPDIR/${file##*/}" | sha256sum -c >&2 || return
+        mv "$TMPDIR/${file##*/}" "$file" || return
+    fi
+    printf '%s  %s\n' "$checksum" "$file" | sha256sum -c >&2 || return
+    printf '%s\n' "$file"
+}
+
+tool="$base/toolchain"
+pg="$tool/pgsql-17.11"
+llvm="$tool/llvm-21.1.8"
+rust="$tool/rust-1.99.0"
+otp="$tool/otp-29.1.1"
+elixir="$tool/elixir-1.20.4"
+
+if [[ ! -f "$pg/.ready" ]]; then
+    pg_archive="$(download https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2 \
+        dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979)"
+    tar -xf "$pg_archive" -C "$attempt"
+    (
+        cd "$attempt/postgresql-17.11"
+        ./configure --prefix="$pg" --with-openssl
+        make -j4
+        make install
+        make -C contrib/pg_stat_statements -j4
+        make -C contrib/pg_stat_statements install
+    )
+    "$pg/bin/postgres" --version | grep -Fx 'postgres (PostgreSQL) 17.11'
+    touch "$pg/.ready"
+fi
+if [[ "$selection" != oban && ! -f "$llvm/.ready" ]]; then
+    llvm_archive="$(download https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/LLVM-21.1.8-Linux-X64.tar.xz \
+        b3b7f2801d15d50736acea3c73982994d025b01c2f035b91ae3b49d1b575732b)"
+    mkdir -p "$llvm"
+    tar -xf "$llvm_archive" --strip-components=1 -C "$llvm"
+    test "$("$llvm/bin/llvm-config" --version)" = 21.1.8
+    touch "$llvm/.ready"
+fi
+if [[ "$selection" != oban && ! -f "$rust/.ready" ]]; then
+    rust_archive="$(download https://static.rust-lang.org/dist/rust-1.99.0-x86_64-unknown-linux-gnu.tar.xz \
+        891c6366d7100feda0bca4c03ce63f3c9ac827cbebbc283e7433061d42c6a376)"
+    tar -xf "$rust_archive" -C "$TMPDIR"
+    "$TMPDIR/rust-1.99.0-x86_64-unknown-linux-gnu/install.sh" --prefix="$rust" \
+        --components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu --disable-ldconfig
+    "$rust/bin/rustc" --version | grep '^rustc 1\.99\.0 '
+    touch "$rust/.ready"
+fi
+if [[ "$selection" != mesh && ! -f "$otp/.ready" ]]; then
+    otp_archive="$(download https://github.com/erlang/otp/releases/download/OTP-29.1.1/otp_src_29.1.1.tar.gz \
+        054e0143e39c780e091107fc9b345792a9c1a55f6bac1eca1c1101510fc06bf6)"
+    mkdir "$attempt/otp-source"
+    tar -xf "$otp_archive" --strip-components=1 -C "$attempt/otp-source"
+    (
+        cd "$attempt/otp-source"
+        ./configure --prefix="$otp" --with-ssl --without-javac --without-wx --without-odbc
+        make -j4
+        make install
+    )
+    test "$(cat "$otp/lib/erlang/releases/29/OTP_VERSION")" = 29.1.1
+    touch "$otp/.ready"
+fi
+if [[ "$selection" != mesh && ! -f "$elixir/.ready" ]]; then
+    elixir_archive="$(download https://github.com/elixir-lang/elixir/releases/download/v1.20.4/elixir-otp-29.zip \
+        7863c546cda13fecc949e562e326042451dacf8fd8698a36783cb71eeb223b46)"
+    mkdir -p "$elixir"
+    unzip -oq "$elixir_archive" -d "$elixir"
+    touch "$elixir/.ready"
+fi
+export PATH="$rust/bin:$llvm/bin:$otp/bin:$elixir/bin:$PATH"
+export ERL_FLAGS='+S 2:2 +SDcpu 1:1 +SDio 1 +A 2'
+export LLVM_SYS_211_PREFIX="$llvm" CARGO_BUILD_JOBS=4
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$root/scripts/ci-x86_64-linux-gnu-clang"
+export CARGO_HOME="$base/cargo-home" NATIVE_JOBS_STATE="$base"
+mkdir -p "$base"/{mix,hex}
+export MIX_HOME="$base/mix" HEX_HOME="$base/hex"
+if [[ "$selection" != mesh ]]; then
+    test "$(elixir -e 'IO.write(System.version())')" = 1.20.4
+    mix local.hex --force
+    mix local.rebar --force
+fi
+"$here/build" "$base/builds/$id" "$selection"
+sha256sum "$pg/bin/"{postgres,initdb,pg_ctl,psql} > "$attempt/service-sha256.txt"
+if [[ "$selection" != mesh ]]; then
+    sha256sum "$otp/lib/erlang/erts-17.1/bin/"{beam.smp,erl_child_setup,inet_gethost} \
+        >> "$attempt/service-sha256.txt"
+fi
+cat "$attempt/service-sha256.txt"
+printf '%s\n' "Build ready at $base/builds/$id" | tee "$attempt/complete"

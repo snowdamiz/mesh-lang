@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd -P)"
+root="$(cd "$here/../../.." && pwd -P)"
+state="${NATIVE_JOBS_STATE:-$root/target/linode-jobs-native}"
+out="${1:?usage: build NEW_ABSOLUTE_ARTIFACT_DIR [mesh|oban|both]}"
+engine="${2:-both}"
+case "$engine" in mesh|oban|both) ;; *) exit 2 ;; esac
+[[ "$out" == /* ]]
+umask 022
+mkdir "$out"
+mkdir -p "$state"/{tmp,cargo,hex,mix}
+export TMPDIR="$state/tmp/" MIX_HOME=${MIX_HOME:-$state/mix} HEX_HOME=${HEX_HOME:-$state/hex}
+export MIX_ENV=prod CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$state/cargo}"
+
+base_revision=dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17
+if [[ -f "$root/NATIVE_MESH_REVISION" ]]; then
+    revision="$(cat "$root/NATIVE_MESH_REVISION")"
+    [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+else
+    revision="$(git -C "$root" rev-parse HEAD)"
+    git -C "$root" merge-base --is-ancestor "$base_revision" "$revision"
+    git -C "$root" diff --quiet HEAD -- compiler Cargo.toml Cargo.lock tools/skill/mesh
+fi
+
+archive="$root/proof/jobs-parity/linux-warm-replay-20261122.tar.gz"
+proof="$root/proof/jobs-parity/linux-regression"
+fixture="$root/scripts/fixtures/jobs-parity-oban"
+if [[ "$engine" != oban ]]; then
+    mkdir "$out/mesh-source"
+    tar -xOf "$archive" frozen-fixture/main.mpl > "$out/mesh-source/main.mpl"
+    tar -xOf "$archive" frozen-fixture/worker_identity.mpl > "$out/mesh-source/worker_identity.mpl"
+    cat > "$out/mesh-source/worker_identity.c" <<'C'
+#define _POSIX_C_SOURCE 200809L
+#include <stdint.h>
+#include <time.h>
+#include <unistd.h>
+
+int64_t mesh_parity_realtime_us(void) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
+        return -1;
+    }
+    return (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;
+}
+
+int64_t mesh_parity_worker_pid(void) {
+    return getpid();
+}
+C
+    cc -O2 -c "$out/mesh-source/worker_identity.c" -o "$out/mesh-source/worker_identity.o"
+    ar rcs "$out/mesh-source/libworker_identity.a" "$out/mesh-source/worker_identity.o"
+    case "$(uname -sm)" in
+        'Linux x86_64') target=x86_64-unknown-linux-gnu ;;
+        'Darwin arm64') target=aarch64-apple-darwin ;;
+        *) printf 'Unsupported build OS/architecture\n' >&2; exit 1 ;;
+    esac
+    checksum="$(shasum -a 256 "$out/mesh-source/libworker_identity.a" | cut -d' ' -f1)"
+    cat > "$out/mesh-source/mesh.toml" <<EOF
+[package]
+name = "jobs-parity-mesh"
+version = "0.1.0"
+
+[native]
+abi = 1
+bindings = ["worker_identity.mpl"]
+
+[[native.libraries]]
+target = "$target"
+path = "libworker_identity.a"
+sha256 = "$checksum"
+EOF
+    meshc="${NATIVE_JOBS_MESHC:-$CARGO_TARGET_DIR/release/meshc}"
+    packages=(-p meshc -p mesh-rt)
+    if [[ -n "${NATIVE_JOBS_MESHC:-}" ]]; then
+        checksum="${NATIVE_JOBS_MESHC_SHA256:?record the prebuilt compiler SHA-256}"
+        test "$(shasum -a 256 "$meshc" | cut -d' ' -f1)" = "$checksum"
+        test "${NATIVE_JOBS_MESHC_REVISION:?record the prebuilt compiler revision}" = "$revision"
+        packages=(-p mesh-rt)
+    fi
+    if [[ "${NATIVE_JOBS_REUSE_LOCAL_BUILD:-0}" != 1 || "$(uname -s)" != Darwin ]]; then
+        (cd "$root" && cargo build --locked --release "${packages[@]}") > "$out/mesh-build.log" 2>&1
+    fi
+    runtime="$CARGO_TARGET_DIR/release/libmesh_rt.a"
+    MESH_RT_LIB_PATH="$runtime" "$meshc" build "$out/mesh-source" --opt-level 2 --output "$out/mesh" \
+        > "$out/mesh-link.log" 2>&1
+    {
+        rustc --version
+        "$LLVM_SYS_211_PREFIX/bin/llvm-config" --version
+        printf 'compiler_revision=%s\n' "$revision"
+        "$meshc" --version
+        shasum -a 256 "$meshc" "$runtime"
+        file "$out/mesh"
+    } > "$out/mesh-toolchain.txt"
+fi
+
+if [[ "$engine" != mesh ]]; then
+    mkdir -p "$out/oban-source"/{lib,config}
+    cp "$fixture"/{mix.exs,mix.lock} "$out/oban-source/"
+    cp "$fixture/config/config.exs" "$out/oban-source/config/"
+    cp "$fixture/inetrc" "$out/oban.inetrc"
+    tar -xOf "$archive" oban-build/src/worker.ex > "$out/oban-source/lib/worker.ex"
+    python3 -B "$here/prepare-oban.py" "$archive" "$proof" "$out"
+    cat > "$out/oban" <<'OBAN'
+#!/usr/bin/env bash
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd -P)"
+unset ERL_AFLAGS ERL_ZFLAGS ELIXIR_ERL_OPTIONS ERL_LIBS
+export ERL_INETRC="$here/oban.inetrc"
+export ERL_FLAGS='+S 2:2 +SDcpu 1:1 +SDio 1 +A 2'
+beam_paths=()
+for ebin in "$here/oban-source/_build/prod/lib/"*/ebin; do
+    beam_paths+=(-pa "$ebin")
+done
+exec elixir "${beam_paths[@]}" "$here/oban-entry.exs" -- "$@"
+OBAN
+    chmod 0755 "$out/oban"
+    (
+        cd "$out/oban-source"
+        export ERL_FLAGS='+S 2:2 +SDcpu 1:1 +SDio 1 +A 2'
+        mix deps.get --check-locked
+        mix compile
+        "$out/oban" versions
+    ) > "$out/oban-build.log" 2>&1
+fi
+
+python3 -B "$here/manifest.py" "$engine" "$out" "$revision" "$base_revision"

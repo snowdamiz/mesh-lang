@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd -P)"
+base=/var/lib/durable-jobs-bench/native
+artifact="${NATIVE_JOBS_ARTIFACTS:?set NATIVE_JOBS_ARTIFACTS to the prepared native build directory}"
+engine="${1:?usage: run ENGINE PROFILE ABSOLUTE_EVIDENCE_DIR}"
+profile="${2:?missing profile}"
+out="${3:?missing absolute evidence directory}"
+[[ "$#" == 3 && "$out" == /* && ! -L "$out" ]]
+[[ "$artifact" == "$base"/builds/* && -d "$artifact" ]]
+case "$engine" in mesh|oban) ;; *) exit 2 ;; esac
+case "$profile" in dense|noop|slow|sparse|short|large) ;; *) exit 2 ;; esac
+
+# The matrix controller applies CPU affinity to this command. It owns the
+# schedule across engines. This lock also excludes our own host build.
+exec 9>"$base/native.lock"
+flock -n 9
+tool="$base/toolchain"
+env_args=(env -i
+    "PATH=$tool/otp-29.1.1/bin:$tool/elixir-1.20.4/bin:/usr/bin:/bin"
+    LC_ALL=C.UTF-8 "PG_BIN_DIR=$tool/pgsql-17.11/bin"
+    ERL_CRASH_DUMP=/dev/null
+    "DURABLE_JOBS_PHASE=${DURABLE_JOBS_PHASE:-diagnostic}"
+    "NATIVE_JOBS_STATE=$base" "NATIVE_JOBS_ARTIFACTS=$artifact")
+
+# SSH starts in /root, which the producer cannot traverse after dropping UID.
+cd "$here"
+if [[ "$(id -u)" == 0 ]]; then
+    # The controller creates an empty evidence directory. Hand only that
+    # attempt directory to the unprivileged runtime so initdb can run.
+    [[ -d "$out" && -z "$(find "$out" -mindepth 1 -maxdepth 1 -print -quit)" ]]
+    chown nobody:nogroup "$out"
+    chmod 0700 "$out"
+    exec runuser -u nobody -- "${env_args[@]}" python3 -B "$here/arm.py" "$engine" "$profile" "$out"
+fi
+exec "${env_args[@]}" python3 -B "$here/arm.py" "$engine" "$profile" "$out"

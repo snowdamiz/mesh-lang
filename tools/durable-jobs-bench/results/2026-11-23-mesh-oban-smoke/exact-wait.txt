@@ -1,0 +1,4 @@
+Runner wait thread 65653 consumed worker 65659: wait4(65659, [{WIFEXITED(s) && WEXITSTATUS(s) == 171}], WNOHANG, NULL) = 65659
+Thread 65606: exit_group(174)                         = ?
+Thread 65664: exit_group(171)                         = ?
+Thread 65777: exit_group(173)                         = ?
