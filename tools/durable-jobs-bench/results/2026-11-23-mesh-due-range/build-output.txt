@@ -1,0 +1,330 @@
+/var/lib/durable-jobs-bench/native/compiler-artifacts/3f69b150/meshc: OK
+patching file compiler/mesh-rt/src/jobs/store.rs
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.22
+   Compiling quote v1.0.44
+   Compiling libc v0.2.180
+   Compiling cfg-if v1.0.4
+   Compiling version_check v0.9.5
+   Compiling typenum v1.20.1
+   Compiling generic-array v0.14.7
+   Compiling syn v2.0.114
+   Compiling find-msvc-tools v0.1.9
+   Compiling jobserver v0.1.34
+   Compiling shlex v1.3.0
+   Compiling autocfg v1.5.0
+   Compiling crypto-common v0.1.7
+   Compiling cc v1.2.55
+   Compiling subtle v2.6.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling block-buffer v0.10.4
+   Compiling getrandom v0.2.17
+   Compiling digest v0.10.7
+   Compiling cpufeatures v0.2.17
+   Compiling serde_core v1.0.228
+   Compiling memchr v2.8.0
+   Compiling semver v1.0.27
+   Compiling zerocopy v0.8.39
+   Compiling ring v0.17.14
+   Compiling num-traits v0.2.19
+   Compiling writeable v0.6.2
+   Compiling pkg-config v0.3.32
+   Compiling serde v1.0.228
+   Compiling hax-lib v0.3.7
+   Compiling litemap v0.8.1
+   Compiling pin-project-lite v0.2.16
+   Compiling synstructure v0.13.2
+   Compiling once_cell v1.21.3
+   Compiling smallvec v1.15.1
+   Compiling zeroize_derive v1.5.0
+   Compiling zerofrom-derive v0.1.6
+   Compiling zeroize v1.8.2
+   Compiling yoke-derive v0.8.1
+   Compiling zerofrom v0.1.6
+   Compiling zerovec-derive v0.11.2
+   Compiling yoke v0.8.1
+   Compiling displaydoc v0.2.5
+   Compiling zerotrie v0.2.3
+   Compiling hax-lib-macros v0.3.7
+   Compiling zerovec v0.11.5
+   Compiling serde_derive v1.0.228
+   Compiling icu_normalizer_data v2.1.1
+   Compiling tinystr v0.8.2
+   Compiling potential_utf v0.1.4
+   Compiling icu_properties_data v2.1.2
+   Compiling icu_locale_core v2.1.1
+   Compiling icu_collections v2.1.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling icu_provider v2.1.1
+   Compiling rustls-pki-types v1.14.0
+   Compiling rustc_version v0.4.1
+   Compiling utf8parse v0.2.2
+   Compiling futures-sink v0.3.31
+   Compiling getrandom v0.3.4
+   Compiling bytes v1.11.1
+   Compiling futures-core v0.3.31
+   Compiling itoa v1.0.17
+   Compiling crossbeam-utils v0.8.21
+   Compiling futures-channel v0.3.31
+   Compiling anstyle-parse v0.2.7
+   Compiling curve25519-dalek v4.1.3
+   Compiling futures-macro v0.3.31
+   Compiling cmake v0.1.58
+   Compiling rand_core v0.6.4
+   Compiling untrusted v0.9.0
+   Compiling anstyle v1.0.13
+   Compiling pin-utils v0.1.0
+   Compiling log v0.4.29
+   Compiling rust_decimal v1.43.0
+   Compiling dunce v1.0.5
+   Compiling libcrux-intrinsics v0.0.8
+   Compiling zmij v1.0.19
+   Compiling httparse v1.10.1
+   Compiling anstyle-query v1.1.5
+   Compiling rand_core v0.10.1
+   Compiling slab v0.4.12
+   Compiling fs_extra v1.3.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling vcpkg v0.2.15
+   Compiling colorchoice v1.0.4
+   Compiling futures-task v0.3.31
+   Compiling crc32fast v1.5.0
+   Compiling futures-io v0.3.31
+   Compiling futures-util v0.3.31
+   Compiling aws-lc-sys v0.45.0
+   Compiling libsqlite3-sys v0.36.0
+   Compiling anstream v0.6.21
+   Compiling rand v0.10.3
+   Compiling icu_properties v2.1.2
+   Compiling icu_normalizer v2.1.1
+   Compiling libcrux-secrets v0.0.6
+   Compiling pin-project-internal v1.1.10
+   Compiling curve25519-dalek-derive v0.1.1
+   Compiling tracing-attributes v0.1.31
+   Compiling tracing-core v0.1.36
+   Compiling inout v0.1.4
+   Compiling parking_lot_core v0.9.12
+   Compiling adler2 v2.0.1
+   Compiling strsim v0.11.1
+   Compiling crossbeam-epoch v0.9.20
+   Compiling thiserror v1.0.69
+   Compiling arrayvec v0.7.8
+   Compiling libcrux-sha3 v0.0.10
+   Compiling rustls v0.23.45
+   Compiling percent-encoding v2.3.2
+   Compiling simd-adler32 v0.3.8
+   Compiling unicode-xid v0.2.6
+   Compiling iana-time-zone v0.1.65
+   Compiling scopeguard v1.2.0
+   Compiling clap_lex v0.7.7
+   Compiling heck v0.5.0
+   Compiling serde_json v1.0.149
+   Compiling clap_derive v4.5.55
+   Compiling clap_builder v4.5.57
+   Compiling chrono v0.4.44
+   Compiling miniz_oxide v0.8.9
+   Compiling derive_more-impl v1.0.0
+   Compiling tracing v0.1.44
+   Compiling cipher v0.4.4
+   Compiling pin-project v1.1.10
+   Compiling libcrux-traits v0.0.8
+   Compiling rand_core v0.9.5
+   Compiling futures-executor v0.3.31
+   Compiling idna_adapter v1.2.1
+   Compiling rustls-webpki v0.103.15
+   Compiling rand_chacha v0.3.1
+   Compiling http v1.4.0
+   Compiling anyerror v0.1.13
+   Compiling webpki-roots v1.0.6
+   Compiling thiserror-impl v1.0.69
+   Compiling tokio-macros v2.6.0
+   Compiling aho-corasick v1.1.4
+   Compiling corosensei v0.3.2
+   Compiling universal-hash v0.5.1
+   Compiling libcrux-platform v0.0.3
+   Compiling regex-syntax v0.8.10
+   Compiling libcrux-ml-kem v0.0.10
+   Compiling opaque-debug v0.3.1
+   Compiling rustc-hash v2.1.1
+   Compiling redb v4.1.0
+   Compiling cmov v0.5.4
+   Compiling utf8_iter v1.0.4
+   Compiling utf8-width v0.1.9
+   Compiling base64 v0.22.1
+   Compiling signature v2.2.0
+   Compiling ed25519 v2.2.3
+   Compiling ureq-proto v0.5.3
+   Compiling byte-unit v5.2.5
+   Compiling idna v1.1.0
+   Compiling ctutils v0.4.2
+   Compiling mesh-common v0.1.8 (/var/tmp/mesh-durable-jobs-matrix/due-range-ee59322673e9/source/compiler/mesh-common)
+   Compiling poly1305 v0.8.0
+   Compiling regex-automata v0.4.14
+   Compiling tokio v1.49.0
+   Compiling validit v0.2.6
+   Compiling rand v0.8.7
+   Compiling flate2 v1.1.9
+   Compiling futures v0.3.31
+   Compiling rand_chacha v0.9.0
+   Compiling derive_more v1.0.0
+   Compiling tracing-futures v0.2.5
+   Compiling chacha20 v0.9.1
+   Compiling clap v4.5.57
+   Compiling openraft-macros v0.9.24
+   Compiling lock_api v0.4.14
+   Compiling form_urlencoded v1.2.2
+   Compiling blake2 v0.10.6
+   Compiling sha2 v0.10.9
+   Compiling aead v0.5.2
+   Compiling utf-8 v0.7.6
+   Compiling maplit v1.0.2
+   Compiling cpubits v0.1.1
+   Compiling base64ct v1.8.3
+   Compiling mesh-rt v0.1.8 (/var/tmp/mesh-durable-jobs-matrix/due-range-ee59322673e9/source/compiler/mesh-rt)
+   Compiling argon2 v0.5.3
+   Compiling crypto-bigint v0.7.5
+   Compiling openraft v0.9.24
+   Compiling ureq v3.2.0
+   Compiling chacha20poly1305 v0.10.1
+   Compiling ed25519-dalek v2.1.1
+   Compiling url v2.5.8
+   Compiling parking_lot v0.12.5
+   Compiling crossbeam-deque v0.8.6
+   Compiling rand v0.9.4
+   Compiling mesh-diagnostics v0.1.8 (/var/tmp/mesh-durable-jobs-matrix/due-range-ee59322673e9/source/compiler/mesh-diagnostics)
+   Compiling regex v1.12.3
+   Compiling webpki-roots v0.26.11
+   Compiling x25519-dalek v2.0.1
+   Compiling crossbeam-channel v0.5.15
+   Compiling mio v1.1.1
+   Compiling sha1 v0.10.6
+   Compiling hmac v0.12.1
+   Compiling md-5 v0.10.6
+   Compiling socket2 v0.6.2
+   Compiling hostname v0.4.2
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/actor/scheduler.rs:2155:10
+     |
+2155 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |          ^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+     |
+2155 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+2155 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/driver_service.rs:849:22
+    |
+849 |                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |                      ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+849 -                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+849 +                     .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/dist/identity.rs:72:14
+   |
+72 |             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+72 -             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+72 +             .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:1308:10
+     |
+1308 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1308 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+1308 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:5969:14
+     |
+5969 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |              ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+5969 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+5969 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/operator.rs:312:10
+    |
+312 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+312 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+312 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:625:14
+    |
+625 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+625 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+625 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:830:14
+    |
+830 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+830 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+830 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/client.rs:136:14
+    |
+136 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+136 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+136 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/reactor.rs:304:10
+    |
+304 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+304 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+304 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: `mesh-rt` (lib) generated 10 warnings (run `cargo fix --lib -p mesh-rt` to apply 10 suggestions)
+    Finished `release` profile [optimized] target(s) in 3m 10s
+  Compiled: /var/tmp/mesh-durable-jobs-matrix/due-range-ee59322673e9/artifact/mesh
+4862d905de78ea5c21c9d9e117cd3797d28e5bafcc2ff6994b46965c0f7de297  /var/tmp/mesh-durable-jobs-matrix/due-range-ee59322673e9/artifact/mesh.json
+3143cdfc5fcb6f6391c04326db6da22d02d7e456c18274329e1474242149ceaf  /var/tmp/mesh-durable-jobs-matrix/due-range-ee59322673e9/artifact/mesh

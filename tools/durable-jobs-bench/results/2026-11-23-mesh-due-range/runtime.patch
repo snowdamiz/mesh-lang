@@ -1,0 +1,20 @@
+--- a/compiler/mesh-rt/src/jobs/store.rs
++++ b/compiler/mesh-rt/src/jobs/store.rs
+@@ -909,15 +909,14 @@
+         db,
+         "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
+          SELECT coalesce((
+-             SELECT (j.scheduled_at_ms - now_ms)::text
++             SELECT (j.scheduled_at_ms - (SELECT now_ms FROM clock))::text
+              FROM mesh_jobs.queues q JOIN mesh_jobs.jobs j
+                  ON j.namespace = q.namespace AND j.queue = q.name
+-             CROSS JOIN clock
+              WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active' AND q.concurrency > 0
+                  AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                      WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
+                  AND j.state IN ('available', 'scheduled', 'retryable')
+-                 AND j.scheduled_at_ms > now_ms AND j.attempt < j.max_attempts
++                 AND j.scheduled_at_ms > (SELECT now_ms FROM clock) AND j.attempt < j.max_attempts
+                  AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                              WHERE w.worker = j.worker AND w.version = j.version)
+              ORDER BY j.scheduled_at_ms LIMIT 1

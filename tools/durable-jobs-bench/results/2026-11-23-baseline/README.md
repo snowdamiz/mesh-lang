@@ -32,7 +32,7 @@ Jobs/s. The window starts at the first confirmed producer commit and ends at the
 
 Dense no-op is Mesh's largest gap against Oban. Mesh's median first claim was 7.93 ms after commit versus 28.12 ms for Oban. The median interval from first claim to last settlement was 5.38 seconds for Mesh versus 1.41 seconds for Oban. Mesh's median claim-to-handler stage was 66.67 ms versus 20.22 ms, and its effect-to-settlement stage was 38.39 ms versus 7.34 ms. Mesh's two pinned CPUs were busy for a median 93.76% of the submit window, with 39.40% in kernel time and 0.08% in I/O wait. The stage medians are computed independently. [Stage and host evidence](stages.json)
 
-The Apalis large range includes a reconciled slow arm. The Rust and Go short ranges also vary. The archive retains every validated arm. The CSV includes both throughput windows, pickup and settlement p99s, runner CPU, RSS, connection peaks, CPU steal, and I/O wait. [Comparison CSV](comparison.csv)
+In the Apalis large outlier, all 64 effects committed within 171 ms of the enqueue commit. One job, `job_000034`, remained running after its effect committed and reached terminal state 25.34 seconds after enqueue. The other 63 settled within 178 ms. The range includes that run. The Rust and Go short ranges also vary. The archive retains every validated arm. The CSV includes both throughput windows, pickup and settlement p99s, runner CPU, RSS, connection peaks, CPU steal, and I/O wait. [Comparison CSV](comparison.csv)
 
 ```sh
 python3 -B tools/durable-jobs-bench/run.py summarize --series 2026-11-23-baseline
