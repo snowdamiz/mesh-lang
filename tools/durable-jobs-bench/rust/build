@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+rust_dir=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$rust_dir/../../.." && pwd)
+work="$repo/target/linode-apalis"
+export CARGO_HOME="$work/cargo"
+export CARGO_TARGET_DIR="$work/build"
+export TMPDIR="$work/tmp"
+export SQLX_OFFLINE=true
+mkdir -p "$CARGO_HOME" "$CARGO_TARGET_DIR" "$TMPDIR"
+export RUSTC
+if [[ -n "${APALIS_RUST_TOOLCHAIN_BIN:-}" ]]; then
+    RUSTC="$APALIS_RUST_TOOLCHAIN_BIN/rustc"
+    cargo="$APALIS_RUST_TOOLCHAIN_BIN/cargo"
+else
+    RUSTC=$(rustup which --toolchain 1.99.0 rustc)
+    cargo=$(rustup which --toolchain 1.99.0 cargo)
+fi
+if [[ $("$RUSTC" --version) != "rustc 1.99.0 "* || $("$cargo" --version) != "cargo 1.99.0 "* ]]; then
+    echo "Apalis requires rustc and Cargo 1.99.0" >&2
+    exit 1
+fi
+"$cargo" build --release --locked --manifest-path "$rust_dir/Cargo.toml"
+"$cargo" tree --locked --manifest-path "$rust_dir/Cargo.toml" \
+  --prefix none --no-dedupe > "$CARGO_TARGET_DIR/release/dependencies.txt"
+python3 -B - "$rust_dir" "$CARGO_TARGET_DIR/release" "$RUSTC" "$cargo" <<'PY'
+import hashlib
+import json
+from pathlib import Path
+import platform
+import subprocess
+import sys
+
+source, release = map(Path, sys.argv[1:3])
+rustc, cargo = sys.argv[3:]
+binary = release / "durable-jobs-apalis-bench"
+inputs = [source / name for name in ("Cargo.toml", "Cargo.lock", "src/main.rs", "build", "run", "run.py")]
+inputs.extend(sorted(source.glob("*.sql")))
+
+def digest(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+manifest = {
+    "artifact_sha256": digest(binary),
+    "source_sha256": {str(path.relative_to(source)): digest(path) for path in inputs},
+    "cargo_tree_sha256": digest(release / "dependencies.txt"),
+    "rustc": subprocess.check_output([rustc, "-Vv"], text=True),
+    "cargo": subprocess.check_output([cargo, "-V"], text=True).strip(),
+    "build_platform": platform.platform(),
+    "build_mode": "cargo build --release --locked; SQLX_OFFLINE=true",
+    "target": platform.machine(),
+}
+path = release / "build.json"
+staged = path.with_suffix(".new")
+staged.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+staged.replace(path)
+print(json.dumps(manifest, indent=2, sort_keys=True))
+PY

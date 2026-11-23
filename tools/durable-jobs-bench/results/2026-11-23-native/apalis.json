@@ -1,0 +1,82 @@
+{
+  "artifact": {
+    "artifact_sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+    "version": "apalis 1.2.0 / apalis-postgres 1.2.0"
+  },
+  "build": {
+    "artifact_sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+    "build_mode": "cargo build --release --locked; SQLX_OFFLINE=true",
+    "build_platform": "Linux-6.8.0-149-generic-x86_64-with-glibc2.39",
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "cargo_tree_sha256": "fe13d86dc45edd4c7910d0d8589241c4cedd9b636bb800ee4c5b88370f570533",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "source_sha256": {
+      "Cargo.lock": "d8d23b98fd38d3ff01bf0efe5512cc872cf4333171e876e5ebb5afc5aaee9790",
+      "Cargo.toml": "29929d7109e80a627b15dc122a20f6871a137f3612982b12005d3188f7fa6719",
+      "build": "16a6f148aa927a8edd0d39670452cd0f8480f530b35d7f5f91f063e27ccab6e9",
+      "counters.sql": "fbc685d901d6639c8489aa74aebe0cdfbbd7a744606726c27c6ff80d68cb0433",
+      "database.sql": "6ab9824b29e49d9b68084a2c7e387c76bbdc9376e939940d3bf1ad839ddff3df",
+      "jobs.sql": "86fb3c22f322c4eb345131debe36fb995098906a33a62f6ba57cc1daf106efe7",
+      "run": "0a770416fc9433c76d5f5d5cf2ef87e2af4f20a61d0fa4c7e98d5715d781345d",
+      "run.py": "05c94874455c7c48e0ca6e9204b412aa67d41096b6cf314c0d4a9f3a8fdaf0f7",
+      "sample.sql": "7963bd4cc07444e9afcb90b839ea9daa41015630cc86baf3dfb9267f2e0b462c",
+      "sessions.sql": "fa4f97f89c2ae55514a80090f8b45f75acd1511c0eecd35c23155b168c444552",
+      "src/main.rs": "6845249e17e86c266da2ae34e5b144318b23fcf451e9b3c8753de6970c24e8e9",
+      "writes.sql": "b7bd0a07f996b0d66257f86e387160ded09f2a27a4e7ea5dde7f968461087264"
+    },
+    "target": "x86_64"
+  },
+  "build_manifest_sha256": "7a735003a0f4ebfbd6b94eb8d77d8f18c7ec951af6ad9a5cb0a627b8fffcff56",
+  "controller_verifier_sha256": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+  "database": {
+    "database_connection_limit": 5,
+    "fsync": true,
+    "full_page_writes": true,
+    "max_connections": 5,
+    "reserved_connections": 0,
+    "superuser_reserved_connections": 0,
+    "synchronous_commit": true,
+    "tls": true,
+    "track_commit_timestamp": true,
+    "version": "17.11"
+  },
+  "functional": {
+    "completed": 2,
+    "failed": 1,
+    "host_evidence": "/var/lib/durable-jobs-bench/apalis/runs/functional-v1",
+    "raw_evidence_manifest_sha256": "9db9e497b242c69425f8956d3c31e90ddbd35d442f3746dd37f5b45041d088d0",
+    "retried": 1,
+    "rolled_back": 1,
+    "status": {
+      "exit_code": 0,
+      "finished_at": "2026-11-23T16:03:31Z",
+      "scratch_empty": true,
+      "started_at": "2026-11-23T16:03:23Z"
+    },
+    "verified": true
+  },
+  "postgres_manifest_sha256": "2b5057eb976a5061d5be12094d3aae400d03d4d1fa0af7ddbcb2c36d6d9ad149",
+  "schema": 1,
+  "scope": "Linode SETUP correctness",
+  "source_allowlist_manifest_sha256": "95960f9c808e02aac6264db5ffaa1e9d2004a745c2b240389b64b8a09a0e7b84",
+  "trace_off": {
+    "application_write_xids": 48,
+    "completed": 24,
+    "enqueue_calls": 24,
+    "failed": 0,
+    "host_evidence": "/var/lib/durable-jobs-bench/apalis/runs/sparse-trace-off-v1",
+    "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+    "ledger_sha256": "991bf20eec024705c27aa27a2ba3dfef3b5714ad2be79d08d8d3256ffd2f7da5",
+    "ordered_independent_writes": 24,
+    "peak_connections": 4,
+    "profile": "sparse",
+    "raw_evidence_manifest_sha256": "5f199ee6df483949a1fedf4880d15e588347a9f4325edd6d2a483565a78ef57e",
+    "runner_slots": 1,
+    "status": {
+      "exit_code": 0,
+      "finished_at": "2026-11-23T16:03:53Z",
+      "scratch_empty": true,
+      "started_at": "2026-11-23T16:03:35Z"
+    }
+  }
+}
