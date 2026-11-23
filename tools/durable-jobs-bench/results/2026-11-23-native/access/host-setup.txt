@@ -1,0 +1,31 @@
+Mon Nov 23 03:55:57 PM UTC 2026
+Linux 6.8.0-149-generic x86_64 GNU/Linux
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.5 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+CPU CORE SOCKET NODE ONLINE
+  0    0      0    0    yes
+  1    1      0    0    yes
+  2    2      0    0    yes
+  3    3      0    0    yes
+               total        used        free      shared  buff/cache   available
+Mem:            7941         518        6354           0        1330        7422
+Swap:            511           0         511
+SOURCE   TARGET FSTYPE MAJ:MIN
+/dev/sda /      ext4     8:0
+0.36 0.12 0.04 5/163 7805
+cpu  4858 301 3616 439751 233 0 61 16 0 0
+cpu0 1618 187 890 109539 35 0 17 3 0 0
+cpu1 868 0 821 110492 52 0 21 6 0 0
+cpu2 1456 0 1182 109111 105 0 14 4 0 0
+cpu3 915 113 721 110607 40 0 7 2 0 0
