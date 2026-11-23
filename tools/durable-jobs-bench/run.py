@@ -23,8 +23,10 @@ from verify import ENGINES, PROFILES, ROOT, SUITE, expected_inputs, plan, reconc
 RESULTS = SUITE / "results"
 ACCESS = ROOT / "target/linode-jobs-access"
 REMOTE = PurePosixPath("/var/tmp/mesh-durable-jobs-matrix")
-SSH = ["ssh", "-F", "/dev/null", "-o", "ConnectTimeout=5", "-o", "ConnectionAttempts=1",
+RIVER_PREDECODED_SHA256 = "e00cbd00137964ddda85f6eb96835b6b8d0b347ec91e68147c99d28eaf2d7131"
+SSH = ["ssh", "-F", "/dev/null", "-T", "-o", "ConnectTimeout=5", "-o", "ConnectionAttempts=1",
        "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes",
+       "-o", "GlobalKnownHostsFile=/dev/null", "-o", "IdentityAgent=none",
        "-o", f"UserKnownHostsFile={ACCESS / 'known_hosts'}",
        "-i", str(ACCESS / "id_ed25519"), "root@172.234.135.126"]
 
@@ -55,7 +57,8 @@ def check_inventory(config):
             "inventory must pin two distinct CPUs")
     require(set(config["engines"]) == set(ENGINES), "inventory must describe all four engines")
     for engine, spec in config["engines"].items():
-        require(set(spec) - {"run_as"} == {"argv", "postgres_storage", "version", "artifact_sha256", "evidence_globs"},
+        require(set(spec) - {"run_as", "verified_files"}
+                == {"argv", "postgres_storage", "version", "artifact_sha256", "evidence_globs"},
                 f"{engine}: invalid inventory fields")
         if "run_as" in spec:
             require(re.fullmatch(r"[a-z_][a-z_0-9-]*", spec["run_as"]) and spec["run_as"] != "root",
@@ -72,6 +75,9 @@ def check_inventory(config):
         require(all(re.fullmatch(r"[A-Za-z0-9_./*?-]+", name) and not name.startswith("/")
                     and ".." not in Path(name).parts for name in spec["evidence_globs"]),
                 f"{engine}: invalid evidence glob")
+        require(all(re.fullmatch(r"/[A-Za-z0-9_./-]+", path) and re.fullmatch(r"[0-9a-f]{64}", checksum)
+                    for path, checksum in spec.get("verified_files", {}).items()),
+                f"{engine}: invalid wrapper path or checksum")
 
 
 def ssh(args, **kwargs):
@@ -224,6 +230,8 @@ def score_arm(directory, block, phase, engine, config):
         host = file_json(archive, "host.json")
         require(host["affinity"] == config["cpus"], "host sample mask differs from required affinity")
         artifact = {field: config["engines"][engine][field] for field in ("artifact_sha256", "version")}
+        require(host.get("verified_files", {}) == config["engines"][engine].get("verified_files", {}),
+                "native file digests differ from the inventory")
         result = reconcile(file_json(archive, "adapter/ledger.json"), engine, block["profile"], artifact)
         with archive.extractfile("host-samples.jsonl") as stream:
             samples = [json.loads(line) for line in stream]
@@ -363,6 +371,10 @@ def verify_reference(series, config):
 def dispatch(out, args):
     config = read_json(args.inventory)
     check_inventory(config)
+    if args.kind != "diagnostic":
+        river = config["engines"]["go"]
+        require(river["artifact_sha256"] != RIVER_PREDECODED_SHA256 and river.get("verified_files"),
+                "matched timing requires the replacement River binary and pinned wrapper files")
     for profile in PROFILES:
         expected_inputs(profile)
     if not check_host(out / "access"):

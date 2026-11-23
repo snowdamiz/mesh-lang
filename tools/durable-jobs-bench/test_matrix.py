@@ -1,6 +1,7 @@
 """Exercise full offline replay and fail-closed evidence checks with synthetic records."""
 
 from contextlib import redirect_stderr, redirect_stdout
+from argparse import Namespace
 from copy import deepcopy
 import io
 import json
@@ -101,6 +102,18 @@ class MatrixTests(unittest.TestCase):
         self.assertEqual(result["last_settlement_us"], 100_003_500)
         self.assertAlmostEqual(result["commit_jobs_per_s"], 128 / 0.0025)
         self.assertAlmostEqual(result["submit_jobs_per_s"], 128 / 0.0035)
+
+    def test_historical_predecoded_river_cannot_start_matched_controls(self):
+        with tempfile.TemporaryDirectory(dir=SUITE) as temporary:
+            out = Path(temporary)
+            config = deepcopy(CONFIG)
+            config["engines"]["go"].update(artifact_sha256=run.RIVER_PREDECODED_SHA256,
+                                            verified_files={"/some/staged/wrapper.py": "b" * 64})
+            inventory = out / "inventory.json"
+            run.write_json(inventory, config)
+            with patch.object(run, "check_host") as host, self.assertRaisesRegex(ValueError, "replacement River"):
+                run.dispatch(out, Namespace(inventory=inventory, kind="controls"))
+            host.assert_not_called()
 
     def test_rejects_unperformed_or_incomparable_work(self):
         for defect in ("missing job", "duplicate xid", "same commit time", "changed payload", "quiet TLS failure"):

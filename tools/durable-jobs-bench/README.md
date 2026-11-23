@@ -39,9 +39,12 @@ Write `tools/durable-jobs-bench/inventory.local.json` from the adapter handoffs.
 | `run_as` | Optional existing system username for an adapter that needs a non-root caller. Omit it for a wrapper that drops privileges itself. |
 | `version` | Exact version string from the adapter ledger. |
 | `artifact_sha256` | Exact release executable or build manifest hash from the adapter ledger. |
+| `verified_files` | Map from absolute remote paths to SHA-256 digests for wrapper files. Required for the replacement River adapter. |
 | `evidence_globs` | Reviewed relative globs for safe text exports. Include the adapter's build, SQL and process evidence, failure logs, and receipts. The export always includes `ledger.json` when present. |
 
 From the checkout root, run the reversed controls, then the baseline. The dispatcher checks each arm, records failures, and continues with the other arms. The final CSV requires all four engines in each of 25 blocks. It reports the median and range across the five groups for each profile and engine.
+
+Use the River build whose native setup receipt confirms that the submit timer starts before batch file input. The dispatcher rejects the original predecoded River binary for controls, baseline, and repeat runs. Copy the replacement wrapper digests from its superseding `READY.json` into `verified_files`.
 
 ```sh
 bench=tools/durable-jobs-bench

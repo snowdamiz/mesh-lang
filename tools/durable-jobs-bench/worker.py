@@ -1,9 +1,11 @@
 """Run one arm on the native host and export a redacted copy of its evidence."""
 
 import argparse
+from contextlib import nullcontext
 import fcntl
 from fnmatch import fnmatchcase
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -20,6 +22,7 @@ import time
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
+NATIVE_SETUP_LOCK = Path("/var/lib/durable-jobs-bench/native/native.lock")
 BUILDERS = {"cargo", "rustc", "cc1", "cc1plus", "zig", "clang", "gcc", "go", "make", "ninja", "cmake",
             "apt", "apt-get", "dpkg"}
 SAFE_EXTENSIONS = {".json", ".jsonl", ".csv", ".log", ".txt", ".tsv"}
@@ -85,11 +88,19 @@ def run(raw, config, args):
     mount = filesystem(specification["postgres_storage"])
     if mount["fstype"] not in {"ext4", "xfs", "btrfs", "zfs"}:
         raise RuntimeError("PostgreSQL storage is not on the configured native disk filesystem")
+    verified_files = {}
+    for path, expected in specification.get("verified_files", {}).items():
+        with Path(path).open("rb") as stream:
+            actual = hashlib.file_digest(stream, "sha256").hexdigest()
+        if actual != expected:
+            raise RuntimeError(f"staged file digest changed: {path}")
+        verified_files[path] = actual
     write_json(raw / "host.json", {
         "kernel": platform.release(), "architecture": platform.machine(), "processor": platform.processor(),
         "cpuinfo": text_file("/proc/cpuinfo"), "affinity": config["cpus"], "available_cpus": sorted(allowed),
         "pg_mount": mount, "boot_id": text_file("/proc/sys/kernel/random/boot_id"),
         "os_release": text_file("/etc/os-release"), "meminfo": text_file("/proc/meminfo"),
+        "verified_files": verified_files,
     })
     # Keep the recorder on a spare CPU. The complete adapter subtree inherits
     # exactly the same trial mask, including any PostgreSQL it starts.
@@ -108,7 +119,8 @@ def run(raw, config, args):
         raise RuntimeError("setup build still running")
     with (raw / "host-samples.jsonl").open("x", buffering=1) as samples, (raw / "adapter.log").open("xb") as log:
         samples.write(json.dumps(point) + "\n")
-        process = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT,
+        process = subprocess.Popen(cmd, cwd=raw / "adapter", stdin=subprocess.DEVNULL,
+                                   stdout=log, stderr=subprocess.STDOUT,
                                    env=environment, start_new_session=True)
         deadline = time.monotonic() + 900
         try:
@@ -223,7 +235,12 @@ def main():
     try:
         with (ROOT / "active-arm.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            code = run(raw, config, args)
+            # The native wrapper takes this same lock itself for Mesh and Oban.
+            lane_lock = NATIVE_SETUP_LOCK.open() if args.engine in ("go", "rust") else nullcontext()
+            with lane_lock as setup:
+                if setup is not None:
+                    fcntl.flock(setup, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                code = run(raw, config, args)
     except (OSError, RuntimeError, ValueError) as exc:
         write_json(raw / "error.json", {"type": type(exc).__name__, "error": str(exc)})
     finally:

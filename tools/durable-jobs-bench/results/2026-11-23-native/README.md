@@ -17,3 +17,5 @@ PG_BIN_DIR=/opt/homebrew/opt/postgresql@17/bin PYTHONDONTWRITEBYTECODE=1 \
 To retry the authorized endpoint from the checkout root, run `python3 -B tools/durable-jobs-bench/run.py check-host --series 2026-11-23-native`. The command uses the dedicated SSH identity and the native owner's pinned `known_hosts` file. After the native setup and Mesh port are validated, fill `inventory.local.json` from the four adapter handoffs and follow the [controls and baseline commands](../../README.md#run-the-matrix).
 
 The SSH transport test preserved a deliberately rejected invocation on the host and in the local [transport check](../2026-11-23-transport-check/README.md).
+
+The coordinator holds official timing until River's replacement measures batch input inside the submit window and passes a native setup smoke. The older binary and translator receipts remain setup evidence. The AMD64 runtime proof and native runner builds use the shared `native.lock`. Apalis passed its Linux functional and sparse smokes, and Oban passed its Linux short smoke.
