@@ -1,0 +1,17 @@
+{
+  "checkpointed_at": "2026-11-23T22:21:39.438473+00:00",
+  "raw_sha256": {
+    "measured-apalis/measured-rust": "842667758b26171e1f5dfe248adf8586551741ffef57a886dc0af14651c4ed90",
+    "measured-oban/measured-oban": "7e741ce040a1459f2be50d67e13d26fd1b9956ebea08408f0b086acd40aa5244",
+    "measured-ordinary/measured-mesh": "dafaf019126503e4f53dceabb6204acf2185969fbf9cd114f0f1bc71f2ab65ca",
+    "measured-protected-mesh/measured-mesh": "5ad8b2d3d65f6a99e3d7ad17792f5011478f8312b4f2b7a702d4bc949d34005c",
+    "measured-river/measured-go": "6939bbfc01fe7d2220d0bfacc39bb0b9053b136939ef2c77f41395d6f72d6a2e",
+    "warmup-apalis/warmup-rust": "7c040e786df2bc6ba7d82e6128d002a5562ca3ad18e88ff23ff5edac4c30ef47",
+    "warmup-oban/warmup-oban": "64a74953f446e55c5836670c0b8ad438925254d745734bce9c7c190079469f81",
+    "warmup-ordinary/warmup-mesh": "65b2fa39e6a8d6ac3a12757d7a7033405f1fa211ea301f09116750194744cc91",
+    "warmup-protected-mesh/warmup-mesh": "5cc2e5d0a18f1cd7cc6a0e6e10e6962950d137c582d5ed30c54f3e561f5d9cdd",
+    "warmup-river/warmup-go": "88517123a2dc75052a9b1481c29ee0f8616117f4293ee4bfe9658bcc84f3cea8"
+  },
+  "reconciled_sha256": "e8ca8553d977a8aa7ef55a7b062498f9953e516e929bd07ddd32868bd10164d7",
+  "series_sha256": "05c030b8b6fd542fbb18f38981339988d1d7123f7a5d974d45bc736dbda2d569"
+}

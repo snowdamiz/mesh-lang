@@ -1,0 +1,12 @@
+{
+  "checkpointed_at": "2026-11-23T23:27:03.932865+00:00",
+  "raw_sha256": {
+    "measured-apalis/measured-rust": "508d7658e378480b55951f25c9c50969c815a698e6d64d766a94df69d8b881a5",
+    "measured-oban/measured-oban": "459384dce13abe97d7db16ba75fd14de44cb4a7bce75f136e40503867f6d9b5f",
+    "measured-ordinary/measured-mesh": "5911ed396c3bd7e8d8a88e10606019ad66e5db6e9bfada085b4738a4df2b049c",
+    "measured-protected-mesh/measured-mesh": "ebb3975c12a4c6729b8679ebffc5e0d763b0b710807f58b2e83e85529c9d1d13",
+    "measured-river/measured-go": "ec5a012f91a0af2234f49fff50bce8a9df8f86870ebb1313e4c51c44ef916425"
+  },
+  "reconciled_sha256": "93d39307102dae90d677af5ca285014b3681f42a639c30f56d5a35b49985473e",
+  "series_sha256": "547a2ab2fc96c85a15635dabdeb8a266f52366a925400cabd2c0f13c794b57c2"
+}

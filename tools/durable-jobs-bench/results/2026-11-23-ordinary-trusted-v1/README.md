@@ -30,26 +30,29 @@ pins for every lane. [Peer executable hashes](../2026-11-23-payload-storage-symm
 
 The November 23 arms shared CPUs 0 and 1 with PostgreSQL 17.11. Every arm
 reconciled two independently committed application writes per terminal job.
-The short profile used 128 jobs per arm and the slow profile used 512.
-Both ran five matched blocks. The dense checkpoint uses 1,024 tiny jobs
-and one matched block recorded as `noop` in the inventory.
+All four profiles ran five matched blocks. Dense used 1,024 tiny jobs
+and appears as `noop` in the inventory. Short used 128 jobs, slow used
+512, and sparse submitted 24 jobs individually.
 
-| Lane | Dense jobs/s from submit | Short jobs/s from submit | Slow jobs/s from submit | Slow jobs/s from first commit |
+| Lane | Dense jobs/s from submit | Short jobs/s from submit | Slow jobs/s from submit | Sparse submit-to-settlement p99 (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| Ordinary V1 | 358.24 | 442.10 | 243.52 | 364.41 |
-| Protected Mesh | 174.69 | 200.58 | 163.20 | 206.13 |
-| Oban | 641.43 | 280.80 | 245.29 | 321.21 |
-| River | 912.49 | 719.93 | 286.93 | 391.57 |
-| Apalis | 1,139.36 | 843.41 | 344.19 | 445.15 |
+| Ordinary V1 | 358.77 | 442.10 | 243.52 | 23.36 |
+| Protected Mesh | 174.69 | 200.58 | 163.20 | 32.22 |
+| Oban | 648.15 | 280.80 | 245.29 | 232.74 |
+| River | 843.91 | 719.93 | 286.93 | 242.60 |
+| Apalis | 1,139.36 | 843.41 | 344.19 | 16.09 |
 
-Short and slow values are five-block medians. V1's short submit range was
-278.76–466.03 jobs/s. It finished ahead of protected Mesh in five blocks
-and Oban in four. Median CPU on the two pinned CPUs, including PostgreSQL,
-was 4.38 ms/job for V1 and 9.06 ms/job for protected Mesh. On slow, the
-V1 range was 227.33–253.18 jobs/s from submit. The slow lane finished ahead
-of protected Mesh in five blocks and Oban in one. The separate large
-comparison combines the V1 worker with a direct-file producer and tuned
-PostgreSQL storage. [Dense checkpoint](evidence/ordinary-trusted-v1-dense/summary-partial.json) · [Short results](evidence/ordinary-trusted-v1-short/summary.json) · [Slow results](evidence/ordinary-trusted-v1-slow/summary.json)
+The table reports five-block medians. Dense V1 ranged from 355.60 to
+365.64 jobs/s and beat protected Mesh in all five blocks. Short V1 ranged
+from 278.76 to 466.03 jobs/s and beat Oban in four blocks and River in one.
+Median CPU on the two pinned CPUs, including PostgreSQL, was 4.38 ms/job
+for short V1 and 9.06 ms/job for protected Mesh. Slow V1 ranged from
+227.33 to 253.18 jobs/s from submit and reached 364.41 jobs/s from first
+commit. Sparse V1 used one slot and five connections. Its p99 settlement
+latency was lower than Oban and River in all five blocks. [Dense results](evidence/ordinary-trusted-v1-dense/summary.json) · [Short results](evidence/ordinary-trusted-v1-short/summary.json) · [Slow results](evidence/ordinary-trusted-v1-slow/summary.json) · [Sparse results](evidence/ordinary-trusted-v1-sparse/summary.json)
+
+The separate large comparison combines the V1 worker with a direct-file
+producer and tuned PostgreSQL storage. [Large results](../2026-11-23-ordinary-trusted-v1-large/README.md)
 
 ## Rebuild and replay
 

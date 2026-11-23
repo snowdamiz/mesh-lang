@@ -1,0 +1,14 @@
+{
+  "group": 2,
+  "order": [
+    "oban",
+    "ordinary",
+    "apalis",
+    "protected-mesh",
+    "river"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "sparse"
+}
