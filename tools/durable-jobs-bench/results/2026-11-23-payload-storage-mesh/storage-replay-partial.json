@@ -1,0 +1,70 @@
+{
+  "rows": {
+    "01-large.1795464384943366000": {
+      "warmup-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18606838,
+        "raw_sha256": "d5888ee2a742fd71cb5faf36447f9d1fd1a2c858500800edb7ede0db6e85c53d"
+      },
+      "measured-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19815472,
+        "raw_sha256": "c12b381003fc2a0f6b22b8c228d0e428085dea56bcfa5974fbe82d680876bb1f"
+      },
+      "warmup-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18931378,
+        "raw_sha256": "601a53c820c36b1dc86658a2858601ec22da01d9d04b61e95fa8dd872b14a31f"
+      },
+      "measured-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 17373823,
+        "raw_sha256": "2e97d1455b341ca4c319bde8ca6152ee9c6ed62b9d8395e7a21d715136e253ef"
+      }
+    },
+    "02-large.1795465366287587000": {
+      "warmup-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19503262,
+        "raw_sha256": "af90397235e30b471fe32019254c8486452d297432afdd3c630eafebc98668b5"
+      },
+      "measured-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 21045358,
+        "raw_sha256": "e373fec1c7ab049a2ee737091bfd548a34c84db73bf16e7e7a2b68c6b1c6d33a"
+      },
+      "warmup-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18746959,
+        "raw_sha256": "f0f34df22249a7e9c6e2170937c0f08ba6baa43cf7bfc55a832dcbe85afc29f1"
+      },
+      "measured-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18778618,
+        "raw_sha256": "0d0006d11e131dad43aadf11adaf464cb5d5d7e17f5e48830e5726366d49b781"
+      }
+    }
+  },
+  "missing": [
+    "03-large",
+    "04-large",
+    "05-large"
+  ],
+  "issues": {}
+}

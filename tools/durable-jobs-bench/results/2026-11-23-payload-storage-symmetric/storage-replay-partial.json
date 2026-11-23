@@ -1,0 +1,226 @@
+{
+  "rows": {
+    "01-large.1795464975906034000": {
+      "warmup-apalis-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 17939,
+        "engine": "rust",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 206597,
+        "stored_column_bytes": 33558528,
+        "terminal_transactions": 17,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "5bde65da8aebe8e8ccec5d6a0e3e19d3cdfa0a2d1e26164065457388e87d6df0"
+      },
+      "measured-apalis-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 18988,
+        "engine": "rust",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 209746,
+        "stored_column_bytes": 33558528,
+        "terminal_transactions": 16,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "efc79ad54e24637bdc61f5ede8acc523fae2405096ec038287949b3bf7a3ed7e"
+      },
+      "warmup-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 20514718,
+        "raw_sha256": "0d671d21984d6c5917ed6aa7321188156dfcf45f66640ac39899ddb551d1db7f"
+      },
+      "measured-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19198861,
+        "raw_sha256": "9655d34abdc2b754ea5702c1f35e32145b830814226058b577f2fee6ba5eb2f5"
+      },
+      "warmup-river-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 166,
+        "engine": "go",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 63522,
+        "stored_column_bytes": 33559808,
+        "terminal_transactions": 12,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "23412c1a3e348cb8125843967900ee608e0d4fb4687114435a61e500fb89fcbc"
+      },
+      "measured-river-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 177,
+        "engine": "go",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 71963,
+        "stored_column_bytes": 33559808,
+        "terminal_transactions": 14,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "a86adff7b71906455f1bb13995b8291fdf64c8a59d719a397a3a10c4e49db19c"
+      },
+      "warmup-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 20517757,
+        "raw_sha256": "174876cf5297a83cd1e93d0e9f0f324c3ba83938d7a08b9b4bf31bb75419af99"
+      },
+      "measured-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18936011,
+        "raw_sha256": "92f353dd10a2351b0e5c5f298d9189f4847cf14e8e4287d97a0e88f62ce62d46"
+      },
+      "warmup-oban-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 19719,
+        "engine": "oban",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 103317,
+        "stored_column_bytes": 33559808,
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "96e265e5c4dee8a1fab9aca864558228b9269e815f728eee7ed2acf4755c10f2"
+      },
+      "measured-oban-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 19257,
+        "engine": "oban",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 102570,
+        "stored_column_bytes": 33559808,
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "91827410c5d0d403645f697148175d332768336da635ebd47746500e18080c4f"
+      }
+    },
+    "02-large.1795465785963902000": {
+      "warmup-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18487088,
+        "raw_sha256": "40b89d91477a0a1d590822c7723216314081c98d603d0ef1b0118c98eac3e642"
+      },
+      "measured-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 20090053,
+        "raw_sha256": "926690f28698b110a427f708ee99e57fb5db4de14f23d8b2382cd4b18268c278"
+      },
+      "warmup-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 20343844,
+        "raw_sha256": "4a3b088c0cf6b06fc0b112e7c094dbbba8d9a615d16d4321e6df75ce22320f9f"
+      },
+      "measured-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 20319424,
+        "raw_sha256": "0aa59357d31f4113cf400a3ee6da35dcdb669d496147e8d10f67a5c66b454cd3"
+      },
+      "warmup-apalis-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 19136,
+        "engine": "rust",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 211914,
+        "stored_column_bytes": 33558528,
+        "terminal_transactions": 21,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "ad319ebd4d8f1c29f7f69d4cb62806666129eef34dda3f38fae4d79c82224f66"
+      },
+      "measured-apalis-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 19404,
+        "engine": "rust",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 207899,
+        "stored_column_bytes": 33558528,
+        "terminal_transactions": 19,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "6e156e56313c9d4b5b245f0e4a57ef9de77ea54bcd1ba1964ecb77c80030e7ff"
+      },
+      "warmup-oban-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 20789,
+        "engine": "oban",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 106736,
+        "stored_column_bytes": 33559808,
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "61329aa0d659de51c03ff201da7b329809bbff0914aa2aefa991c799728a58d9"
+      },
+      "measured-oban-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 18352,
+        "engine": "oban",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 113957,
+        "stored_column_bytes": 33559808,
+        "terminal_transactions": 64,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "896b49024962313bb4d77f3cbd5d1bca2a7c76d262a455d5eb5851a106073c53"
+      },
+      "warmup-river-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 260,
+        "engine": "go",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 64240,
+        "stored_column_bytes": 33559808,
+        "terminal_transactions": 11,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "d526b5093faa126310d700d930547608ebbc1a9a4fa8cbccfa3e7855929525ce"
+      },
+      "measured-river-external": {
+        "committed_application_writes": 128,
+        "ddl_us": 163,
+        "engine": "go",
+        "payload_bytes": 33554432,
+        "payloads": 64,
+        "policy": "EXTERNAL",
+        "storage_verification_us": 63883,
+        "stored_column_bytes": 33559808,
+        "terminal_transactions": 13,
+        "toast_heap_bytes": 34471936,
+        "raw_sha256": "e9e0f68ad4467fe4fc87ea51593fd1e017603f876da266ffddb2bedafa43680b"
+      }
+    }
+  },
+  "missing": [
+    "03-large",
+    "04-large",
+    "05-large"
+  ],
+  "issues": {}
+}

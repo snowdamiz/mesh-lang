@@ -1,0 +1,156 @@
+{
+  "rows": {
+    "01-large.1795464384943366000": {
+      "warmup-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18606838,
+        "raw_sha256": "d5888ee2a742fd71cb5faf36447f9d1fd1a2c858500800edb7ede0db6e85c53d"
+      },
+      "measured-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19815472,
+        "raw_sha256": "c12b381003fc2a0f6b22b8c228d0e428085dea56bcfa5974fbe82d680876bb1f"
+      },
+      "warmup-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18931378,
+        "raw_sha256": "601a53c820c36b1dc86658a2858601ec22da01d9d04b61e95fa8dd872b14a31f"
+      },
+      "measured-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 17373823,
+        "raw_sha256": "2e97d1455b341ca4c319bde8ca6152ee9c6ed62b9d8395e7a21d715136e253ef"
+      }
+    },
+    "02-large.1795465366287587000": {
+      "warmup-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19503262,
+        "raw_sha256": "af90397235e30b471fe32019254c8486452d297432afdd3c630eafebc98668b5"
+      },
+      "measured-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 21045358,
+        "raw_sha256": "e373fec1c7ab049a2ee737091bfd548a34c84db73bf16e7e7a2b68c6b1c6d33a"
+      },
+      "warmup-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18746959,
+        "raw_sha256": "f0f34df22249a7e9c6e2170937c0f08ba6baa43cf7bfc55a832dcbe85afc29f1"
+      },
+      "measured-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18778618,
+        "raw_sha256": "0d0006d11e131dad43aadf11adaf464cb5d5d7e17f5e48830e5726366d49b781"
+      }
+    },
+    "03-large.1795467717225972000": {
+      "warmup-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19653077,
+        "raw_sha256": "19eaeb8f4775ceaeb0f04d137019b0b8c0ff12aac2a76165129122f89459a1a4"
+      },
+      "measured-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19003743,
+        "raw_sha256": "f7c7dd0dbef3c6bf0159dea64d2443e72538fd2ca3835270955b1fc63acd9da2"
+      },
+      "warmup-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18801023,
+        "raw_sha256": "0c46f644221d75829aee8c49bb037139a3c5402cfb19a9ea10ccc213b7637234"
+      },
+      "measured-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19886987,
+        "raw_sha256": "dc123a4e3860ff1ea7169b6023a84007710fb27bf33ba9aa781e12ffe1d5c1d8"
+      }
+    },
+    "04-large.1795468109074980000": {
+      "warmup-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18657961,
+        "raw_sha256": "e452337c4394c4bd430a7d94398ff31ebf645a8f7e23654654d840ecbb09b02d"
+      },
+      "measured-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18809482,
+        "raw_sha256": "2df7691714b6c0adef2ae286965b18f03fc42356cc1e30ce62882ec7b1eec994"
+      },
+      "warmup-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 18121528,
+        "raw_sha256": "e8d7d5d9ee01f11669725ccc4799458328239bc35edfa802d49638980c9399d0"
+      },
+      "measured-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19656015,
+        "raw_sha256": "6aad631c884ab1a7b1432feba251524bb014ea41243263c119d0c3dc8f66355f"
+      }
+    },
+    "05-large.1795468898678756000": {
+      "warmup-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19123757,
+        "raw_sha256": "62e60bc4d1b3f48bdff23fc4e241460ca603299582d3ab9cf5d621359986cd13"
+      },
+      "measured-mesh-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 19625929,
+        "raw_sha256": "783b44888837d39a8333be648036845d1fa522fd5f115fb9f5fec580359c9f0f"
+      },
+      "warmup-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 22727578,
+        "raw_sha256": "132e7d3c916041070e108472cfb8257638d6dd53e58a3f692a93139d3ed8d6e3"
+      },
+      "measured-mesh-direct-external": {
+        "jobs": 64,
+        "payload_digests": 64,
+        "stored_bytes": 33559808,
+        "ddl_client_ns": 20124261,
+        "raw_sha256": "257484e364b439aa076bbed40a9b38ec337367089de5ee73ec9d94989201b9ac"
+      }
+    }
+  },
+  "missing": [],
+  "issues": {}
+}
