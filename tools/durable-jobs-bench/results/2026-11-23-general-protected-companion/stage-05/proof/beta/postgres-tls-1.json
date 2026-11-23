@@ -1,0 +1,27 @@
+[
+  {
+    "pid": 1787012,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "pid": 1787013,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "pid": 1787014,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "pid": 1787021,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "pid": 1787020,
+    "role": "parity_subject",
+    "tls": true
+  }
+]

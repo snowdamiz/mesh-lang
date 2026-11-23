@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "/var/lib/durable-jobs-bench/native/toolchain/llvm-21.1.8/bin/llc",
+    "-O2",
+    "-mcpu=generic",
+    "-relocation-model=pic",
+    "-filetype=obj",
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/projects/alpha/capture/compiled.ll",
+    "-o",
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/reproduced.o"
+  ],
+  "cwd": null
+}

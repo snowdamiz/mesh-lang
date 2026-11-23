@@ -1,0 +1,93 @@
+{
+  "loads": [
+    "/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/Scrt1.o",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/crti.o",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/crtbeginS.o",
+    "<object>",
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-0.a",
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-1.a",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/libm.so",
+    "/lib/x86_64-linux-gnu/libm.so.6",
+    "/lib/x86_64-linux-gnu/libmvec.so.1",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/libgcc.a",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/libgcc_s.so",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/libgcc_s.so.1",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/libgcc.a",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/libc.so",
+    "/lib/x86_64-linux-gnu/libc.so.6",
+    "/usr/lib/x86_64-linux-gnu/libc_nonshared.a",
+    "/lib64/ld-linux-x86-64.so.2",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/libgcc.a",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/libgcc_s.so",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/libgcc_s.so.1",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/libgcc.a",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/crtendS.o",
+    "/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/crtn.o"
+  ],
+  "native_members": [
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-0.a(first.o)",
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-0.a(second.o)"
+  ],
+  "needed": [
+    "libm.so.6",
+    "libgcc_s.so.1",
+    "libc.so.6",
+    "ld-linux-x86-64.so.2"
+  ],
+  "providers": [
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+    "/usr/lib/x86_64-linux-gnu/libc.so.6",
+    "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+    "/usr/lib/x86_64-linux-gnu/libm.so.6"
+  ],
+  "startup": {
+    ".fini_array": [
+      [
+        ".fini_array",
+        8,
+        "/usr/lib/gcc/x86_64-linux-gnu/13/crtbeginS.o"
+      ],
+      [
+        ".fini_array",
+        16,
+        "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-1.a(f8e4fd781484bd36-bcm.o)"
+      ]
+    ],
+    ".init_array": [
+      [
+        ".init_array.00099",
+        8,
+        "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-1.a(std-44675f186029a4cd.std.c29fa2d9dbea2b0e-cgu.0.rcgu.o)"
+      ],
+      [
+        ".init_array",
+        8,
+        "/usr/lib/gcc/x86_64-linux-gnu/13/crtbeginS.o"
+      ],
+      [
+        ".init_array",
+        8,
+        "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-0.a(first.o)"
+      ],
+      [
+        ".init_array",
+        8,
+        "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-0.a(second.o)"
+      ],
+      [
+        ".init_array",
+        8,
+        "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-1.a(30a9a10d3f98970e-crypto.o)"
+      ]
+    ],
+    ".tbss": [],
+    ".tdata": [
+      [
+        ".tdata",
+        8,
+        "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-0.a(first.o)",
+        "5d01000000000000"
+      ]
+    ]
+  }
+}

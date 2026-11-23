@@ -24,3 +24,35 @@ drain rates, their p99 windows, and CPU costs separate. [Frozen orders](planned-
 
 The shared source archive contains the exact three runtime variants and
 the compiled workload. [Source archive](../2026-11-23-set-based-enqueue/native/bulk-enqueue-ce5e551d079e.tar.gz) · [Native qualification](../2026-11-23-set-based-enqueue/evidence/native-setup-3b09dc3d0e23/README.md)
+
+## Native results
+
+Five reconciled blocks completed on November 23, 2026. The first group-2
+attempt recorded 1.06% CPU steal and failed the 1% gate. It remains in the
+packet. A separate attempt in the same order passed. Observed CPU steal in
+the five selected blocks was zero. [Replay selection and retained failure](evidence/bulk-enqueue-v2-short/summary.json)
+
+| Lane | Jobs/s from submit, median [range] | Jobs/s from first commit | Submit-to-settle p99 (ms) | Runner CPU (ms/job) | Pinned CPU (ms/job) | Pinned idle (%) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| V2 bulk | 596.54 [589.21–603.75] | 714.01 | 213.89 | 1.26 | 3.28 | 48.86 |
+| V2 scalar | 498.16 [449.21–528.19] | 700.18 | 256.94 | 1.28 | 3.75 | 50.56 |
+| Oban | 308.13 [263.69–325.53] | 353.14 | 415.13 | 10.87 | 4.77 | 54.07 |
+| River | 697.01 [557.04–734.09] | 754.41 | 183.64 | 0.86 | 3.44 | 58.89 |
+| Apalis | 742.12 [609.44–879.94] | 790.22 | 172.48 | 0.64 | 3.28 | 52.81 |
+
+Bulk finished ahead of same-image scalar and Oban in every full-submit
+window, and ahead of River in two. Apalis led bulk in all five. Relative
+to scalar, the median paired time to first committed enqueue fell by
+34.07 ms. The paired median p99 fell by 45.56 ms from submit and 6.84 ms
+from first commit. Measured drain was faster in four scalar pairs and two
+River pairs. The bulk lane used a median of 121 terminal XIDs [112–125]
+and scalar used 118 [115–122]. The largest observed terminal cohort was
+six for bulk and five for scalar. Both stayed within the eight-job limit
+and retained two separate app commits per job. [Paired proof, CPU and latency data](evidence/bulk-enqueue-v2-short/paired.json)
+
+```sh
+suite=tools/durable-jobs-bench
+packet="$suite/results/2026-11-23-bulk-enqueue-v2-short"
+PYTHONPATH="$suite" python3 -B "$packet/replay/rotated.py" summarize bulk-enqueue-v2-short
+python3 -B "$packet/replay/paired.py" "$packet/evidence/bulk-enqueue-v2-short"
+```

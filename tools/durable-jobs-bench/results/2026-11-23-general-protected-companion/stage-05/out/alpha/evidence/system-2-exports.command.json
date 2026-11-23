@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/var/lib/durable-jobs-bench/native/toolchain/llvm-21.1.8/bin/llvm-nm",
+    "--dynamic",
+    "--extern-only",
+    "--defined-only",
+    "--format=posix",
+    "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
+  ],
+  "cwd": null
+}

@@ -1,0 +1,10 @@
+{
+  "eligible": [],
+  "reason": "no eligible compiled handlers",
+  "rejected": [
+    {
+      "key": "b05873509ec99527:Main__dispatch_with_actor",
+      "reason": "Main__dispatch_with_actor -> unclassified call mesh_actor_spawn"
+    }
+  ]
+}

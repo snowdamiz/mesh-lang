@@ -1,0 +1,58 @@
+{
+  "eligible": [
+    {
+      "definitions": [
+        "Main__effect_result",
+        "Main__perform",
+        "Main__run_invoice",
+        "Main__wait_mark"
+      ],
+      "key": "6db550aba9c2b3ec:Main__run_invoice"
+    }
+  ],
+  "native": [
+    {
+      "defined": [
+        "invoice_probe_clock",
+        "invoice_probe_pid",
+        "invoice_probe_process",
+        "invoice_probe_stage",
+        "invoice_probe_tls"
+      ],
+      "exports": [
+        "invoice_probe_clock",
+        "invoice_probe_pid"
+      ],
+      "members": [
+        "first.o",
+        "second.o"
+      ],
+      "path": "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/projects/alpha/libidentity.a",
+      "sha256": "c419ce23c02e5c9131ae91fd58aa63d8e666f2e427cb8e19d3ead1e37c5af974",
+      "system_imports": [
+        "_GLOBAL_OFFSET_TABLE_",
+        "__dprintf_chk",
+        "__errno_location",
+        "_exit",
+        "clock_gettime",
+        "fcntl",
+        "getpgrp",
+        "getpid",
+        "getrlimit",
+        "prctl",
+        "pthread_create",
+        "pthread_join",
+        "readlink",
+        "strcmp",
+        "strncmp"
+      ]
+    }
+  ],
+  "rejected": [],
+  "result": "companion",
+  "runner_sha256": "995025e781c3dc26482877c8566f91ddc7adbe5e7079b9219db688a526b43a5e",
+  "runtime_sha256": "f991472f92bb16e609389e9e27a9ff7a5979c3e883115e224798847744f89a09",
+  "stock_sha256": "8168fd8c92c61cbb37c02cdab471ec3925f4220b888246b1bab237ea92b43351",
+  "target": "x86_64-unknown-linux-gnu",
+  "worker_sha256": "e855ec4950efb540e5300481d6a940b998598aae53462086833bb31be1581a47"
+}

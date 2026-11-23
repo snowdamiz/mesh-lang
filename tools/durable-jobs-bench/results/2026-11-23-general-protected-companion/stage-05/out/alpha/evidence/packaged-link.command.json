@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "cc",
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/runner-code.o",
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-0.a",
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/input-1.a",
+    "-lm",
+    "-o",
+    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/packaged",
+    "-Wl,--gc-sections",
+    "-Wl,-Map,/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/alpha/evidence/packaged.map"
+  ],
+  "cwd": "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j"
+}

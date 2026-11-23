@@ -1,0 +1,14 @@
+{
+  "eligible": [
+    {
+      "definitions": [
+        "Main__effect_result",
+        "Main__perform",
+        "Main__run_invoice",
+        "Main__wait_mark"
+      ],
+      "key": "6db550aba9c2b3ec:Main__run_invoice"
+    }
+  ],
+  "rejected": []
+}

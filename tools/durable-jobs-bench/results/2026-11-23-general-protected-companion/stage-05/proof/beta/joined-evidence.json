@@ -1,0 +1,307 @@
+[
+  {
+    "claim": {
+      "id": "6bff7e57-3c6f-43d3-ae1e-102691714069",
+      "attempt": 1,
+      "state": "executing",
+      "xid": "760",
+      "committed_us": 1795473740177025
+    },
+    "effects": [
+      {
+        "step": 1,
+        "worker_pid": 1787031,
+        "backend": 1787013,
+        "xid": "761",
+        "entered_us": 1795473740184705,
+        "committed_us": 1795473740283326
+      },
+      {
+        "step": 2,
+        "worker_pid": null,
+        "backend": 1787013,
+        "xid": "762",
+        "entered_us": null,
+        "committed_us": 1795473740367467
+      }
+    ],
+    "reap": [
+      1787009,
+      1787031,
+      1,
+      0,
+      1560,
+      4680,
+      176,
+      0,
+      13952,
+      1795473740446573
+    ],
+    "settled": {
+      "id": "6bff7e57-3c6f-43d3-ae1e-102691714069",
+      "attempt": 1,
+      "state": "completed",
+      "xid": "763",
+      "committed_us": 1795473740451911
+    },
+    "exec": {
+      "pid": 1787031,
+      "ppid": 1787009,
+      "pgrp": 1787031,
+      "start_ticks": 2551257,
+      "argv0": "/proc/self/exe",
+      "sealed_companion": true
+    },
+    "witness": [
+      "LEAN_CTOR_A 1787031 1787772 0x582715295984 1",
+      "LEAN_CTOR_B 1787031 1787776",
+      "LEAN_THREAD_TLS 1787031 741",
+      "LEAN_HANDLER 1787031 1787776"
+    ],
+    "resets": 3
+  },
+  {
+    "claim": {
+      "id": "0bd7e416-28e5-402e-985a-625d830fd466",
+      "attempt": 1,
+      "state": "executing",
+      "xid": "760",
+      "committed_us": 1795473740177025
+    },
+    "effects": [
+      {
+        "step": 1,
+        "worker_pid": 1787035,
+        "backend": 1787013,
+        "xid": "765",
+        "entered_us": 1795473740186294,
+        "committed_us": 1795473740501289
+      },
+      {
+        "step": 2,
+        "worker_pid": null,
+        "backend": 1787013,
+        "xid": "768",
+        "entered_us": null,
+        "committed_us": 1795473740606120
+      }
+    ],
+    "reap": [
+      1787009,
+      1787035,
+      1,
+      0,
+      3118,
+      4157,
+      178,
+      0,
+      13952,
+      1795473740679236
+    ],
+    "settled": {
+      "id": "0bd7e416-28e5-402e-985a-625d830fd466",
+      "attempt": 1,
+      "state": "completed",
+      "xid": "771",
+      "committed_us": 1795473740680120
+    },
+    "exec": {
+      "pid": 1787035,
+      "ppid": 1787009,
+      "pgrp": 1787035,
+      "start_ticks": 2551257,
+      "argv0": "/proc/self/exe",
+      "sealed_companion": true
+    },
+    "witness": [
+      "LEAN_CTOR_A 1787035 1787776 0x5ca085dfd984 1",
+      "LEAN_CTOR_B 1787035 1787780",
+      "LEAN_THREAD_TLS 1787035 741",
+      "LEAN_HANDLER 1787035 1787780"
+    ],
+    "resets": 5
+  },
+  {
+    "claim": {
+      "id": "d4cab75d-42f1-4ef4-b98f-b11636f6e98b",
+      "attempt": 1,
+      "state": "executing",
+      "xid": "775",
+      "committed_us": 1795473740707526
+    },
+    "effects": [
+      {
+        "step": 1,
+        "worker_pid": 1787081,
+        "backend": 1787013,
+        "xid": "778",
+        "entered_us": 1795473740714307,
+        "committed_us": 1795473740772909
+      },
+      {
+        "step": 2,
+        "worker_pid": null,
+        "backend": 1787013,
+        "xid": "781",
+        "entered_us": null,
+        "committed_us": 1795473740850603
+      }
+    ],
+    "reap": [
+      1787009,
+      1787081,
+      1,
+      0,
+      2668,
+      2668,
+      175,
+      0,
+      13952,
+      1795473740902779
+    ],
+    "settled": {
+      "id": "d4cab75d-42f1-4ef4-b98f-b11636f6e98b",
+      "attempt": 1,
+      "state": "completed",
+      "xid": "783",
+      "committed_us": 1795473740903635
+    },
+    "exec": {
+      "pid": 1787081,
+      "ppid": 1787009,
+      "pgrp": 1787081,
+      "start_ticks": 2551310,
+      "argv0": "/proc/self/exe",
+      "sealed_companion": true
+    },
+    "witness": [
+      "LEAN_CTOR_A 1787081 1787822 0x60a6aeb67984 1",
+      "LEAN_CTOR_B 1787081 1787826",
+      "LEAN_THREAD_TLS 1787081 741",
+      "LEAN_HANDLER 1787081 1787826"
+    ],
+    "resets": 7
+  },
+  {
+    "claim": {
+      "id": "41790008-70d2-4b7c-a185-a0c822c1546b",
+      "attempt": 1,
+      "state": "executing",
+      "xid": "791",
+      "committed_us": 1795473741083406
+    },
+    "effects": [
+      {
+        "step": 1,
+        "worker_pid": 1787126,
+        "backend": 1787107,
+        "xid": "794",
+        "entered_us": 1795473741091437,
+        "committed_us": 1795473741147279
+      },
+      {
+        "step": 2,
+        "worker_pid": null,
+        "backend": 1787107,
+        "xid": "797",
+        "entered_us": null,
+        "committed_us": 1795473741225424
+      }
+    ],
+    "reap": [
+      1787103,
+      1787126,
+      1,
+      0,
+      2136,
+      4273,
+      322,
+      0,
+      8448,
+      1795473741279028
+    ],
+    "settled": {
+      "id": "41790008-70d2-4b7c-a185-a0c822c1546b",
+      "attempt": 1,
+      "state": "completed",
+      "xid": "799",
+      "committed_us": 1795473741283962
+    },
+    "exec": {
+      "pid": 1787126,
+      "ppid": 1787103,
+      "pgrp": 1787126,
+      "start_ticks": 2551347,
+      "argv0": "/proc/self/exe",
+      "sealed_companion": false
+    },
+    "witness": [
+      "LEAN_CTOR_A 1787126 1787867 0x60ee585e0104 0",
+      "LEAN_CTOR_B 1787126 1787871",
+      "LEAN_THREAD_TLS 1787126 741",
+      "LEAN_HANDLER 1787126 1787871"
+    ],
+    "resets": 10
+  },
+  {
+    "claim": {
+      "id": "f5c855fd-afde-4b38-bfcf-d7803c870d98",
+      "attempt": 1,
+      "state": "executing",
+      "xid": "807",
+      "committed_us": 1795473741516739
+    },
+    "effects": [
+      {
+        "step": 1,
+        "worker_pid": 1787171,
+        "backend": 1787152,
+        "xid": "810",
+        "entered_us": 1795473741525158,
+        "committed_us": 1795473741582342
+      },
+      {
+        "step": 2,
+        "worker_pid": null,
+        "backend": 1787152,
+        "xid": "813",
+        "entered_us": null,
+        "committed_us": 1795473741660003
+      }
+    ],
+    "reap": [
+      1787148,
+      1787171,
+      1,
+      0,
+      3184,
+      3391,
+      322,
+      0,
+      14080,
+      1795473741712957
+    ],
+    "settled": {
+      "id": "f5c855fd-afde-4b38-bfcf-d7803c870d98",
+      "attempt": 1,
+      "state": "completed",
+      "xid": "816",
+      "committed_us": 1795473741717629
+    },
+    "exec": {
+      "pid": 1787171,
+      "ppid": 1787148,
+      "pgrp": 1787171,
+      "start_ticks": 2551391,
+      "argv0": "/proc/self/exe",
+      "sealed_companion": false
+    },
+    "witness": [
+      "LEAN_CTOR_A 1787171 1787912 0x58933a19c104 0",
+      "LEAN_CTOR_B 1787171 1787916",
+      "LEAN_THREAD_TLS 1787171 741",
+      "LEAN_HANDLER 1787171 1787916"
+    ],
+    "resets": 13
+  }
+]
