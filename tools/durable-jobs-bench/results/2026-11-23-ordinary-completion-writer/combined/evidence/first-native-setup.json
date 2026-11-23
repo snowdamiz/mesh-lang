@@ -1,0 +1,63 @@
+{
+  "release": {
+    "command_finished_at": "2026-11-23T23:32:36.047175+00:00",
+    "exit_status": 1,
+    "id": "bulk-v2-completion-writer-exit-r2",
+    "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-completion-writer/combined/evidence",
+    "released_at": "2026-11-23T23:32:36.553507+00:00",
+    "started": "2026-11-23T23:28:43.637245+00:00"
+  },
+  "attempt": "bulk-writer-b1dcd34af288",
+  "runner_elf_sha256": "93fef96704ae412cf3c55fae73cc2aac405c8b423670826b4876954a44c8b010",
+  "fault_cases": [
+    "ambiguous-claim",
+    "ambiguous-completion",
+    "cancelled-member",
+    "expired-middle",
+    "held-middle",
+    "renew-priority",
+    "stop"
+  ],
+  "teardown_passed": [
+    "off",
+    "zero"
+  ],
+  "failure": {
+    "message": "[Errno 13] Permission denied: '/proc/1945661/exe'",
+    "stage": [
+      [
+        "arm.py",
+        322,
+        "run_arm"
+      ],
+      [
+        "jobs-parity.py",
+        925,
+        "run_trial"
+      ],
+      [
+        "split_arm.py",
+        60,
+        "capture_runners"
+      ],
+      [
+        "pathlib.py",
+        1242,
+        "resolve"
+      ],
+      [
+        "<frozen posixpath>",
+        432,
+        "realpath"
+      ],
+      [
+        "<frozen posixpath>",
+        499,
+        "_joinrealpath"
+      ]
+    ],
+    "type": "PermissionError"
+  },
+  "raw_sha256": "eb39628d011afa879b0205dc6333ec53fd16fb05eefb8333d3f896f6ac9887ed",
+  "timing_started": false
+}
