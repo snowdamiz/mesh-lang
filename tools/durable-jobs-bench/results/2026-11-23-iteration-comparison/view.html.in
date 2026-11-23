@@ -43,6 +43,9 @@ const series=get("series"), profile=get("profile"), metric=get("metric");
 const measures={
  submit_jobs_per_s:["Submit to settlement","jobs/s","Window starts with the producer submission and ends at the last durable settlement."],
  commit_jobs_per_s:["Enqueue commit to settlement","jobs/s","Window starts at the first durable enqueue commit and ends at the last durable settlement."],
+ submit_to_settlement_p50_ms:["Submission to settlement p50","ms","Median per-job time from its submission to its durable terminal commit."],
+ submit_to_settlement_p99_ms:["Submission to settlement p99","ms","99th percentile of per-job time from its submission to its durable terminal commit."],
+ commit_to_settlement_p99_ms:["Enqueue commit to settlement p99","ms","99th percentile of per-job time from its enqueue commit to its durable terminal commit."],
  first_submit_to_commit_ms:["First submission to commit","ms","Producer latency through the first durable enqueue commit."],
  commit_to_pickup_p99_ms:["Pickup p99 from commit","ms","Each arm contributes its own 99th percentile."],
  runner_cpu_ms_per_job:["Runner CPU per job","ms/job","CPU charged to the runner process trees. PostgreSQL CPU is separate."],
@@ -55,6 +58,7 @@ const names={mesh:"Mesh",ordinary:"Mesh · trusted",stock:"Mesh · stock",curren
  lean:"Mesh · smaller worker",admission:"Mesh · set-based claims",combined:"Mesh · combined",
  "mesh-strict":"Mesh · fresh worker","mesh-trusted-persistent":"Mesh · reusable worker",
  "ordinary-4mb-a":"Mesh · 4 MiB control A","ordinary-4mb-b":"Mesh · 4 MiB control B",
+ product:"Mesh · public trusted mode","frozen-v1":"Mesh · frozen V1",
  "admission-v3":"Mesh · set-based admission","ordinary-stock":"Mesh · trusted, individual settlements",
  "ordinary-success-cohort":"Mesh · trusted, grouped settlements",bulk:"Mesh · batch enqueue",scalar:"Mesh · same binary, scalar enqueue",
  "protected-mesh":"Mesh · protected","mesh-stock-a":"Mesh · stock A","mesh-stock-b":"Mesh · stock B",

@@ -15,9 +15,9 @@ The three counts partition the rotations. The required time saving is the signed
 | Large · EXTERNAL | Oban | 5 | 0 | 0 | 703.7 | -438.9, -456.9, -404.6, -702.0, -354.1 |
 | Large · EXTERNAL | River | 5 | 0 | 0 | 703.7 | -1003.0, -1085.2, -1008.8, -1004.4, -973.1 |
 | Large · EXTERNAL | Apalis | 0 | 5 | 0 | 703.7 | +495.5, +300.4, +502.9, +458.3, +485.5 |
-| Dense | Oban | 0 | 0 | 1 | 613.4 | +1262.0 |
-| Dense | River | 0 | 0 | 1 | 613.4 | +1736.2 |
-| Dense | Apalis | 0 | 0 | 1 | 613.4 | +1959.7 |
+| Dense | Oban | 0 | 0 | 5 | 561.4 | +1262.0, +1220.7, +1257.2, +1307.8, +1202.6 |
+| Dense | River | 0 | 0 | 5 | 561.4 | +1736.2, +1583.4, +1529.0, +1640.8, +1842.9 |
+| Dense | Apalis | 0 | 0 | 5 | 561.4 | +1959.7, +1909.6, +1923.5, +1955.0, +1975.4 |
 | Large · EXTERNAL and 16 MiB work_mem | Oban | 5 | 0 | 0 | 769.0 | -385.3, -413.8, -402.3, -358.0, -420.0 |
 | Large · EXTERNAL and 16 MiB work_mem | River | 5 | 0 | 0 | 769.0 | -935.5, -949.6, -1033.0, -974.3, -1176.8 |
 | Large · EXTERNAL and 16 MiB work_mem | Apalis | 0 | 5 | 0 | 769.0 | +512.0, +507.4, +483.9, +524.3, +470.9 |

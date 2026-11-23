@@ -12,7 +12,9 @@ sys.path.insert(0, str(SUITE))
 import run
 
 
-METRICS = ("submit_jobs_per_s", "commit_jobs_per_s", "first_submit_to_commit_ms",
+RESPONSE_METRICS = ("submit_to_settlement_p50_ms", "submit_to_settlement_p99_ms", "commit_to_settlement_p99_ms")
+
+METRICS = (*RESPONSE_METRICS, "submit_jobs_per_s", "commit_jobs_per_s", "first_submit_to_commit_ms",
            "commit_to_pickup_p99_ms", "runner_cpu_ms_per_job", "peak_runner_rss_bytes",
            "cpu_steal_percent", "cpu_iowait_percent")
 
@@ -157,10 +159,24 @@ def write_scorecard(data):
                      [("ordinary", "Trusted Mesh · 16 MiB"), ("ordinary-4mb-a", "Same binary · 4 MiB A"),
                       ("ordinary-4mb-b", "Same binary · 4 MiB B"), ("oban-external", "Oban"),
                       ("river-external", "River"), ("apalis-external", "Apalis")])
+    product = data.get("trusted-product", {}).get("blocks", [])
+    if product:
+        lines.extend(["## Public trusted execution", "",
+                      "The db5937e7 product build waits for actor teardown before settling. The earlier V2 and initial completion-writer builds could settle before teardown. "
+                      "The product comparison reuses the frozen V1 producer and includes both native executable identities in the arm data. "
+                      "[Teardown witness](../2026-11-23-ordinary-completion-writer/combined/README.md#actor-teardown) · [Native product qualification](../2026-11-23-ordinary-trusted-product-db5937e7/README.md)", "",
+                      "| Workload | Rotations | Product submit jobs/s | V1 submit jobs/s | Product drain jobs/s | V1 drain jobs/s |", "|---|---:|---:|---:|---:|---:|"])
+        for profile, label in (("short", "Short"), ("noop", "Dense")):
+            subset = [b for b in product if b["profile"] == profile]
+            if subset:
+                rates = [median(b["scores"][lane][metric] for b in subset)
+                         for metric in ("submit_jobs_per_s", "commit_jobs_per_s") for lane in ("product", "frozen-v1")]
+                lines.append(f"| {label} | {len(subset)} | " + " | ".join(f"{v:.2f}" for v in rates) + " |")
+        lines.append("")
     lines += [
         "Dense, short, slow and sparse use each engine's standard producer. Large uses the direct-file Mesh producer with both Mesh modes and PostgreSQL EXTERNAL argument storage on every engine. The sparse workload includes the prescribed gaps between arrivals. Every completed job has two independently committed application writes.",
         "",
-        "Protected Mesh executes a fresh process and fences its two application writes. Trusted Mesh runs the handler in the application's process with its database credentials. The five-workload comparison uses the V1 binaries. The short grouped-success comparison uses its own frozen V2 inventory. [Per-rotation chart](chart.html) · [Data, binary identities and raw digests](scores.json) · [Handler entry and the remaining backlog](handler-progress.md) · [Slow-job slot use](slow-slots.md) · [How each engine groups durable completions](../2026-11-23-native-completion-batches/README.md) · [Original four-engine baseline](../2026-11-23-baseline/README.md)", "",
+        "Protected Mesh executes a fresh process and fences its two application writes. Trusted Mesh runs the handler in the application's process with its database credentials. The five-workload comparison uses the V1 binaries. The short grouped-success comparison uses its own frozen V2 inventory. [Per-rotation chart](chart.html) · [Data, binary identities and raw digests](scores.json) · [Handler entry and the remaining backlog](handler-progress.md) · [Sparse per-job response times](sparse-latency.md) · [Slow-job slot use](slow-slots.md) · [How each engine groups durable completions](../2026-11-23-native-completion-batches/README.md) · [Original four-engine baseline](../2026-11-23-baseline/README.md)", "",
     ]
     (HERE / "four-engine-scorecard.md").write_text("\n".join(lines))
 
@@ -210,6 +226,48 @@ def write_producer_budgets(data):
     (HERE / "producer-budgets.md").write_text("\n".join(lines))
 
 
+def same_record(previous, current):
+    if current is None:
+        return False
+    # Earlier exports contained the same transactions and rates with fewer latency columns.
+    copied = dict(current)
+    copied["scores"] = {
+        lane: {k: v for k, v in metrics.items()
+               if k not in RESPONSE_METRICS or k in previous["scores"].get(lane, {})}
+        for lane, metrics in current["scores"].items()
+    }
+    return copied == previous
+
+
+def write_sparse_latency(data):
+    blocks = data.get("ordinary-sparse", {}).get("blocks", [])
+    if not blocks:
+        return
+    metrics = ("submit_to_settlement_p50_ms", "submit_to_settlement_p99_ms",
+               "commit_to_pickup_p99_ms", "commit_to_settlement_p99_ms")
+    lanes = [("ordinary", "Trusted Mesh V1"), ("protected-mesh", "Protected Mesh"), ("oban", "Oban"),
+             ("river", "River"), ("apalis", "Apalis")]
+    lines = ["# Response time for sparse durable jobs", "",
+             f"{len(blocks)} matched rotations of 24 singleton submissions per engine. Each submission followed the "
+             "preceding settlement and a 250 ms pause. Each job committed its two application writes independently. "
+             "The pause falls outside each job’s response time. Times are milliseconds.", "",
+             "| Engine | Submit to settle p50 | Submit to settle p99 | Commit to pickup p99 | Commit to settle p99 | Worst submit to settle |",
+             "|---|---:|---:|---:|---:|---:|"]
+    for lane, label in lanes:
+        values = [[b["scores"][lane][k] for b in blocks] for k in metrics]
+        cells = [median(v) for v in values] + [max(values[1])]
+        lines.append("| " + label + " | " + " | ".join(f"{x:.2f}" for x in cells) + " |")
+    lines.extend(["", "Each percentile column shows the median of the per-rotation percentiles. "
+                  "With 24 jobs, the matrix’s nearest-rank p99 is the slowest job in that arm. The final column is the maximum over all verified rotations.", "",
+                  "| Rotation | Trusted Mesh submit to settle p99 | Protected Mesh | Oban | River | Apalis |",
+                  "|---|---:|---:|---:|---:|---:|"])
+    for block in blocks:
+        cells = [block["scores"][lane]["submit_to_settlement_p99_ms"] for lane, _ in lanes]
+        lines.append(f"| {block['group']} | " + " | ".join(f"{x:.2f}" for x in cells) + " |")
+    lines.extend(["", "[Time spent between submissions](sparse-windows.md) · [Arm identities, orders, and source digests](scores.json) · [All workload scores](four-engine-scorecard.md)", ""])
+    (HERE / "sparse-latency.md").write_text("\n".join(lines))
+
+
 def refresh(collect):
     target = HERE / "scores.json"
     data = run.read_json(target) if target.exists() else {}
@@ -227,7 +285,7 @@ def refresh(collect):
                 old = {b["attempt"]: b for b in previous["blocks"]}
                 new = {b["attempt"]: b for b in current["blocks"]}
                 if (previous["manifest_sha256"] != current["manifest_sha256"]
-                        or any(new.get(key) != value for key, value in old.items())):
+                        or any(not same_record(value, new.get(key)) for key, value in old.items())):
                     raise ValueError(f"previously captured data changed for {name}")
             current.update(title=item["title"], description=item["description"])
             data[name] = current
@@ -236,6 +294,7 @@ def refresh(collect):
         raise ValueError("use --collect to replay the original ledgers")
     write_scorecard(data)
     write_producer_budgets(data)
+    write_sparse_latency(data)
     embedded = json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False)
     template = (HERE / "view.html.in").read_text()
     if template.count("__REPLAYED_SCORES__") != 1:

@@ -12,6 +12,12 @@ Protected Mesh creates a separate process for each attempt. The smaller-worker e
 
 The paired handler-progress tables follow the short and large batches through both application writes. They count how many Mesh jobs were still waiting for each step at the instant the peer finished, relative to each arm’s own enqueue commit. [Handler progress and backlog](handler-progress.md)
 
+In a separate dense native diagnostic, reducing V1 from eight runners to two at 64 total slots and 32 warm application sessions raised submit throughput from 350–353 to 556 jobs/s and drain throughput from 437–442 to 764 jobs/s across two rotations. This measurement compares Mesh deployments. The five-rotation canonical scorecard uses eight runners. [Topology receipts and resources](../2026-11-23-ordinary-runner-topology/README.md)
+
+The sparse response-time replay follows each job from its own submit through durable settlement. A separate ledger decomposition shows how much of each run elapsed before the next submission. Across five rotations the median sums of those intervals range from 7.01 to 9.41 seconds per 24 jobs. [Response times](sparse-latency.md) · [Time between submissions](sparse-windows.md)
+
+The public shared-process build at `db5937e7` has its own native correctness checks and one direct timing pair for each of short and dense. The V1 and V2 throughput series use their archived experimental executables. [Product verification and matched pairs](../2026-11-23-ordinary-trusted-product-db5937e7/README.md)
+
 ## Replay
 
 From the checkout root, rebuild the standalone page from the committed score data.
@@ -19,6 +25,8 @@ From the checkout root, rebuild the standalone page from the committed score dat
 ```sh
 python3 -B tools/durable-jobs-bench/results/2026-11-23-iteration-comparison/refresh.py
 ```
+
+Rebuild the sparse time decomposition from the original 25 arms with `python3 -B tools/durable-jobs-bench/results/2026-11-23-iteration-comparison/sparse-windows.py`.
 
 Add `--collect` to replay all locally available measured and warmup arm archives in [the input list](series-list.json). Acquisition uses the shared matrix ledger verifier, checks the frozen rotation order, two-CPU affinity, independent write counts, the displayed metrics, and the raw archive digests. A partially written block enters the viewer after the matrix owner records its reconciliation. A changed previously captured group stops the refresh. The collector reads archived groups first and can pick up newly reconciled groups from their live directories. When both copies exist, it checks their manifest and receipt digests.
 
