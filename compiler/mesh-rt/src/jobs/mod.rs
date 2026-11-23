@@ -8,6 +8,7 @@ mod events;
 mod runner;
 mod store;
 pub mod testing;
+mod trusted;
 mod worker;
 
 #[cfg(target_os = "linux")]

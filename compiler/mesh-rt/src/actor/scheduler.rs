@@ -55,6 +55,7 @@ use super::stack::{
 /// across worker threads via work-stealing.
 #[allow(dead_code)]
 struct SpawnRequest {
+    owned: Option<OwnedSpawn>,
     step: Option<Box<BoundedStep>>,
     movable: bool,
     pid: ProcessId,
@@ -70,6 +71,7 @@ unsafe impl Send for SpawnRequest {}
 
 enum SpawnMode {
     Shared,
+    Owned(OwnedSpawn),
     Linked {
         parent: ProcessId,
         child: LinkedChild,
@@ -77,6 +79,13 @@ enum SpawnMode {
     Grouped(Option<TerminateCallback>),
     Step(u32),
     MovableStep(u32),
+}
+
+type OwnedExit = Box<dyn FnOnce(ExitReason) + Send>;
+
+struct OwnedSpawn {
+    entry: Box<dyn FnOnce() + Send>,
+    on_exit: OwnedExit,
 }
 
 #[derive(Clone, Copy)]
@@ -754,6 +763,24 @@ impl Scheduler {
         )
     }
 
+    pub(crate) fn spawn_owned(
+        &self,
+        entry: impl FnOnce() + Send + 'static,
+        on_exit: impl FnOnce(ExitReason) + Send + 'static,
+    ) -> ProcessId {
+        self.spawn_process(
+            std::ptr::null(),
+            std::ptr::null(),
+            0,
+            Priority::Normal,
+            std::ptr::null(),
+            SpawnMode::Owned(OwnedSpawn {
+                entry: Box::new(entry),
+                on_exit: Box::new(on_exit),
+            }),
+        )
+    }
+
     pub(super) fn spawn_job(
         &self,
         fn_ptr: *const u8,
@@ -908,7 +935,12 @@ impl Scheduler {
         }
 
         // Enqueue spawn request.
+        let owned = match mode {
+            SpawnMode::Owned(entry) => Some(entry),
+            _ => None,
+        };
         let request = SpawnRequest {
+            owned,
             step,
             movable,
             pid,
@@ -1302,6 +1334,7 @@ impl MovableStep {
 
 enum Execution {
     Stack(CoroutineHandle),
+    Owned(Option<(CoroutineHandle, OwnedExit)>),
     Step(Box<BoundedStep>),
 }
 
@@ -1314,6 +1347,11 @@ impl Execution {
     ) -> Result<bool, String> {
         match self {
             Self::Stack(handle) => handle.resume_catching_panic(),
+            Self::Owned(run) => run
+                .as_mut()
+                .expect("live owned actor")
+                .0
+                .resume_catching_panic(),
             Self::Step(step) => {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     step.run(process, table, shutdown)
@@ -1743,17 +1781,27 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                         &active_count,
                         &sleepers,
                         req.pid,
-                        reason,
+                        reason.clone(),
                     );
+                    if let Some(OwnedSpawn { entry, on_exit }) = req.owned {
+                        drop(entry);
+                        on_exit(reason);
+                    }
                 } else {
                     // Create the coroutine only after confirming the queued actor is live.
                     let mut actor = ScheduledActor {
                         process,
                         handle: match req.step {
                             Some(step) => Execution::Step(step),
-                            None => {
-                                Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr))
-                            }
+                            None => match req.owned {
+                                Some(OwnedSpawn { entry, on_exit }) => Execution::Owned(Some((
+                                    CoroutineHandle::from_entry(entry),
+                                    on_exit,
+                                ))),
+                                None => {
+                                    Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr))
+                                }
+                            },
                         },
                     };
                     let outcome = resume_process(
@@ -1999,7 +2047,7 @@ fn resume_process(
         (reason, process.placement)
     };
     if let Some(reason) = exited_reason {
-        finalize_managed_process(process_table, active_count, sleepers, pid, reason);
+        finish_scheduled_actor(process_table, active_count, sleepers, pid, actor, reason);
         return (Resumed::Finished, None);
     }
 
@@ -2043,7 +2091,7 @@ fn resume_process(
                 }
             };
             if let Some(reason) = exited_reason {
-                finalize_managed_process(process_table, active_count, sleepers, pid, reason);
+                finish_scheduled_actor(process_table, active_count, sleepers, pid, actor, reason);
                 return (Resumed::Finished, next);
             }
             outcome
@@ -2054,11 +2102,43 @@ fn resume_process(
                 Err(message) => ExitReason::Error(message),
                 Ok(true) => unreachable!(),
             };
-            finalize_managed_process(process_table, active_count, sleepers, pid, reason);
+            finish_scheduled_actor(process_table, active_count, sleepers, pid, actor, reason);
             Resumed::Finished
         }
     };
     (outcome, next)
+}
+
+fn finish_scheduled_actor(
+    table: &ProcessTable,
+    active_count: &AtomicU64,
+    sleepers: &[CachePadded<WorkerSleep>],
+    pid: ProcessId,
+    actor: &mut ScheduledActor,
+    reason: ExitReason,
+) {
+    let on_exit = if let Execution::Owned(run) = &mut actor.handle {
+        let (handle, on_exit) = run.take().expect("owned actor exits once");
+        // Forced exit of a suspended actor must unwind its stack before
+        // making the exit visible to the owner.
+        if !handle.done() {
+            set_current_process(pid, &actor.process);
+            drop(handle);
+            clear_current_pid();
+            CURRENT_YIELDER.with(|current| current.yielder.set(None));
+        }
+        Some(on_exit)
+    } else {
+        None
+    };
+    finalize_managed_process(table, active_count, sleepers, pid, reason);
+    if let Some(on_exit) = on_exit {
+        let reason = match &actor.process.lock().state {
+            ProcessState::Exited(reason) => reason.clone(),
+            _ => unreachable!("owned actor has exited"),
+        };
+        on_exit(reason);
+    }
 }
 
 enum StepTurn {
@@ -3156,6 +3236,54 @@ mod tests {
             assert!(seen.insert(pid.as_u64()), "Duplicate PID: {}", pid);
         }
         assert_eq!(seen.len(), 10);
+    }
+
+    #[test]
+    fn owned_actor_reports_exit_after_its_stack_and_registration_are_cleaned_up() {
+        let scheduler = Arc::new(Scheduler::new(1));
+        let (ready, parked) = crossbeam_channel::bounded(1);
+        let (send, completed) = crossbeam_channel::bounded(1);
+        let name = "scheduler-test-owned-exit";
+        let owner = Arc::clone(&scheduler);
+        let pid = scheduler.spawn_owned(
+            move || {
+                let pid = get_current_pid().unwrap();
+                registry::global_registry()
+                    .register(name.into(), pid)
+                    .unwrap();
+                struct NotifyOnUnwind(crossbeam_channel::Sender<()>);
+                impl Drop for NotifyOnUnwind {
+                    fn drop(&mut self) {
+                        let _ = self.0.send(());
+                    }
+                }
+                let (unwound, did_unwind) = crossbeam_channel::bounded(1);
+                let _unwind = NotifyOnUnwind(unwound);
+                crate::actor::current_process()
+                    .unwrap()
+                    .lock()
+                    .set_live_state(ProcessState::Waiting);
+                ready.send((pid, did_unwind)).unwrap();
+                crate::actor::stack::suspend_current();
+                panic!("a cancelled actor resumed its body");
+            },
+            move |reason| {
+                send.send((reason, registry::global_registry().whereis(name)))
+                    .unwrap();
+                owner.signal_shutdown();
+            },
+        );
+        scheduler.start();
+        let (entered, did_unwind) = parked.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(entered, pid);
+        let process = scheduler.get_process(pid).unwrap();
+        scheduler.force_exit(pid, process.lock(), ExitReason::Shutdown);
+        let (reason, registered) = completed.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(reason, ExitReason::Shutdown);
+        assert!(did_unwind.try_recv().is_ok());
+        assert_eq!(registered, None);
+        assert!(scheduler.get_process(pid).is_none());
+        scheduler.wait();
     }
 
     #[test]

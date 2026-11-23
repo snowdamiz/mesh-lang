@@ -22,6 +22,7 @@ use super::store::{
     claim_batch_with_timing, claim_with_timing, drain_work, finish, next_due_ms, prune, recover,
     renew, Claim, ClaimBatch, LeaseStatus, Outcome, OversizedClaim, Settlement, MAX_CLAIM_BATCH,
 };
+use super::trusted::TrustedAttempt;
 use super::with_pool;
 use super::worker::{check_executable, handler_name, host_deadline, WorkerPoll, WorkerProcess};
 
@@ -93,9 +94,18 @@ struct Config {
     listen: bool,
     #[serde(deserialize_with = "effect_session_count")]
     effect_sessions: Option<usize>,
+    execution: WorkerExecution,
     #[cfg(mesh_jobs_effects)]
     #[serde(skip)]
     effects: Option<super::effects::Effects>,
+}
+
+#[derive(Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum WorkerExecution {
+    #[default]
+    FreshProcess,
+    TrustedSharedProcess,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
@@ -128,6 +138,7 @@ impl Default for Config {
             event_log: false,
             listen: false,
             effect_sessions: None,
+            execution: WorkerExecution::FreshProcess,
             #[cfg(mesh_jobs_effects)]
             effects: None,
         }
@@ -153,12 +164,18 @@ impl Config {
         if config.effect_sessions.is_some() {
             return Err("effect_sessions requires Jobs.start_effects".into());
         }
+        if config.drain && config.execution == WorkerExecution::TrustedSharedProcess {
+            return Err("Jobs drain runners require fresh-process execution".into());
+        }
         Ok(config)
     }
 
     #[cfg(any(mesh_jobs_effects, test))]
     fn parse_effects(json: &str) -> Result<Self, String> {
         let mut config = Self::parse_fields(json)?;
+        if config.execution == WorkerExecution::TrustedSharedProcess {
+            return Err("Jobs.start_effects requires fresh-process execution".into());
+        }
         let slots = config.queues.values().sum::<usize>();
         if !config.claim_batch || config.queues.len() != 1 || slots > 64 {
             return Err(
@@ -718,12 +735,22 @@ pub(super) fn start(
         return Err("runner requires a PostgreSQL pool".into());
     }
     let handler = handler_name(fn_ptr, env_ptr)?;
-    start_runner(
-        pool,
-        config_json,
-        check_executable,
-        worker_launcher(handler),
-    )
+    let config = Config::parse(config_json)?;
+    let launch: Box<StartWorker> = if config.execution == WorkerExecution::TrustedSharedProcess {
+        let handler = super::worker::registered_handler(&handler)?;
+        Box::new(move |context, deadline, lease_deadline, reply_wake| {
+            Ok(Box::new(TrustedAttempt::start(
+                handler,
+                context,
+                deadline,
+                lease_deadline,
+                reply_wake,
+            )?))
+        })
+    } else {
+        worker_launcher(handler)
+    };
+    start_configured(pool, config, check_executable, launch, None).map(|runner| runner.id)
 }
 
 #[cfg(mesh_jobs_effects)]
@@ -796,6 +823,9 @@ pub(super) fn drain(
         return Err("Jobs.drain requires a PostgreSQL pool".into());
     }
     let mut config = Config::parse(config_json)?;
+    if config.execution == WorkerExecution::TrustedSharedProcess {
+        return Err("Jobs.drain requires fresh-process execution".into());
+    }
     config.claim_batch = false;
     let wire: serde_json::Value =
         serde_json::from_str(config_json).map_err(|error| error.to_string())?;
@@ -829,6 +859,7 @@ pub(super) fn drain(
         .map_err(|_| "Jobs.drain runner exited without a report")?
 }
 
+#[cfg(test)]
 fn start_runner(
     pool: u64,
     config_json: &str,
@@ -899,7 +930,10 @@ fn start_configured(
         }
     })?;
     let sessions = if config.claim_batch {
-        let shared = config.listen && config.effect_queue().is_some_and(|(_, slots)| slots == 1);
+        let single_slot = config.queues.len() == 1 && config.queues.values().next() == Some(&1);
+        let shared = config.listen
+            && (config.effect_queue().is_some_and(|(_, slots)| slots == 1)
+                || (config.execution == WorkerExecution::TrustedSharedProcess && single_slot));
         let claims = (!shared)
             .then(|| unsafe { JobSession::from_pool(pool) })
             .transpose()?;

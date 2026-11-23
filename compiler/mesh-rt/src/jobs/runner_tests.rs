@@ -33,6 +33,29 @@ fn config_matches_store_names_and_bounds_runner_capacity() {
 }
 
 #[test]
+fn trusted_execution_requires_an_explicit_ordinary_non_drain_runner() {
+    assert!(Config::parse(TEST_CONFIG).unwrap().execution == WorkerExecution::FreshProcess);
+    let mut config: serde_json::Value = serde_json::from_str(TEST_CONFIG).unwrap();
+    config["claim_batch"] = true.into();
+    config["execution"] = "fresh_process".into();
+    assert!(Config::parse(&config.to_string()).unwrap().execution == WorkerExecution::FreshProcess);
+    assert!(Config::parse_effects(&config.to_string()).is_ok());
+    config["execution"] = "trusted_shared_process".into();
+    assert!(
+        Config::parse(&config.to_string()).unwrap().execution
+            == WorkerExecution::TrustedSharedProcess
+    );
+    assert!(Config::parse_effects(&config.to_string()).is_err());
+    config["drain"] = true.into();
+    assert!(Config::parse(&config.to_string()).is_err());
+    config["drain"] = false.into();
+    for value in [json!(null), json!(true), json!("shared")] {
+        config["execution"] = value;
+        assert!(Config::parse(&config.to_string()).is_err());
+    }
+}
+
+#[test]
 fn effect_config_admits_only_one_batch_queue_and_a_bounded_integer_session_count() {
     let mut json = json!({
         "queues": {"default": 1},

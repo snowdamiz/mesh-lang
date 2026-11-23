@@ -35,7 +35,7 @@ const LEASE_LOST: i32 = 172;
 const PARENT_GONE: i32 = 173;
 const BOOTSTRAP_ERROR: i32 = 174;
 
-type Handler = unsafe extern "C-unwind" fn(*const MeshString) -> *const MeshString;
+pub(super) type Handler = unsafe extern "C-unwind" fn(*const MeshString) -> *const MeshString;
 type Reply = Result<String, String>;
 
 static HANDLERS: LazyLock<Mutex<BTreeMap<String, Handler>>> =
@@ -103,6 +103,14 @@ pub(super) fn handler_name(fn_ptr: *const u8, env_ptr: *const u8) -> Result<Stri
         .ok_or("Jobs.start requires a handler in a compiled Mesh executable")?;
     executable()?;
     Ok(name)
+}
+
+pub(super) fn registered_handler(name: &str) -> Result<Handler, String> {
+    HANDLERS
+        .lock()
+        .get(name)
+        .copied()
+        .ok_or_else(|| "job handler is missing from this executable".into())
 }
 
 fn executable() -> Result<&'static Path, String> {
@@ -650,11 +658,7 @@ fn run_worker(_effect_stdin: bool) -> Result<(), String> {
         read_bytes(&mut control, MAX_DB_VALUE_BYTES).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
-    let handler = HANDLERS
-        .lock()
-        .get(&request.handler)
-        .copied()
-        .ok_or("job handler is missing from this executable")?;
+    let handler = registered_handler(&request.handler)?;
 
     let (renew, updates) = crossbeam_channel::bounded(1);
     let (claim_stdin, stdin_claimed) = crossbeam_channel::bounded(0);
@@ -707,25 +711,32 @@ pub(super) fn invoke(
     handler: impl FnOnce(*const MeshString) -> *const MeshString,
 ) -> Reply {
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let input = mesh_str(&context);
-        drop(context);
-        let output = unsafe { handler(input).as_ref() }.ok_or("job handler returned no outcome")?;
-        let bytes = unsafe { output.as_bytes() };
-        if bytes.len() > MAX_OUTCOME {
-            return Err("job handler outcome exceeds 64 KiB");
-        }
-        std::str::from_utf8(bytes)
-            .map(str::to_owned)
-            .map_err(|_| "job handler returned invalid UTF-8")
+        invoke_in_current_context(context, handler)
     }));
     match outcome {
-        Ok(value) => value.map_err(str::to_owned),
+        Ok(value) => value,
         Err(panic) => Err(crate::panic::MeshPanic::of(panic.as_ref())
             .map_or("job handler panicked", crate::panic::MeshPanic::reason)
             .chars()
             .take(1024)
             .collect()),
     }
+}
+
+pub(super) fn invoke_in_current_context(
+    context: String,
+    handler: impl FnOnce(*const MeshString) -> *const MeshString,
+) -> Reply {
+    let input = mesh_str(&context);
+    drop(context);
+    let output = unsafe { handler(input).as_ref() }.ok_or("job handler returned no outcome")?;
+    let bytes = unsafe { output.as_bytes() };
+    if bytes.len() > MAX_OUTCOME {
+        return Err("job handler outcome exceeds 64 KiB".into());
+    }
+    std::str::from_utf8(bytes)
+        .map(str::to_owned)
+        .map_err(|_| "job handler returned invalid UTF-8".into())
 }
 
 fn enforce_deadlines(deadline: u64, lease: &Mutex<u64>, updates: Receiver<u64>) {
@@ -784,7 +795,7 @@ pub(super) fn host_deadline(deadline: Instant) -> Result<u64, String> {
 }
 
 #[cfg(unix)]
-fn boot_millis() -> io::Result<u64> {
+pub(super) fn boot_millis() -> io::Result<u64> {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     let clock = libc::CLOCK_BOOTTIME;
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
@@ -798,7 +809,7 @@ fn boot_millis() -> io::Result<u64> {
 }
 
 #[cfg(windows)]
-fn boot_millis() -> io::Result<u64> {
+pub(super) fn boot_millis() -> io::Result<u64> {
     #[link(name = "kernel32")]
     extern "system" {
         fn GetTickCount64() -> u64;

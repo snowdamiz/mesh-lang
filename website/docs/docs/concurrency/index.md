@@ -564,7 +564,7 @@ This policy applies to every queue sharing that table. Compare enqueue latency a
 
 ### Run workers and handle retries
 
-`Jobs.start` takes a named `fn(String) -> String` handler in a compiled Mesh executable. Each attempt starts in a fresh process. The handler receives a JSON job with `id`, `effect_key`, `worker`, `version`, `queue`, `args`, `metadata`, `attempt`, and `max_attempts`. Open connections and initialize any other dependencies inside the handler. The process inherits the application's environment and has its own actor registry and connection pools. Handler output goes to the runner's standard error. The runner config lists the queues and their concurrency and the worker versions the handler accepts.
+`Jobs.start` takes a named `fn(String) -> String` handler in a compiled Mesh executable. The default `execution: "fresh_process"` starts each attempt in a fresh process. The handler receives a JSON job with `id`, `effect_key`, `worker`, `version`, `queue`, `args`, `metadata`, `attempt`, and `max_attempts`. In fresh-process mode, open connections and initialize any other dependencies inside the handler. The process inherits the application's environment and has its own actor registry and connection pools. Handler output goes to the runner's standard error. The runner config lists the queues and their concurrency and the worker versions the handler accepts.
 
 ```mesh
 fn handle_receipt(job :: String) -> String do
@@ -620,19 +620,78 @@ If a transaction locks a job row, the runner retries that job's renewal or ackno
 
 Jobs retry unacknowledged claims while attempts remain. A claim can use an attempt before the handler starts, for example if PostgreSQL commits the claim and the runner loses the reply. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
 
-The runtime terminates the attempt process at its handler timeout or when it loses its lease or runner. This includes a handler blocked in a native call while the host can still run its watchdog. A suspended host can miss lease renewals and allow another runner to claim the job before the original host resumes. A service may finish a request it accepted before the attempt was terminated. Use the same `effect_key` to deduplicate these requests across retries.
+The runtime terminates a fresh attempt process at its handler timeout or when it loses its lease or runner. This includes a handler blocked in a native call while the host can still run its watchdog. A suspended host can miss lease renewals and allow another runner to claim the job before the original host resumes. A service may finish a request it accepted before the attempt was terminated. Use the same `effect_key` to deduplicate these requests across retries.
 
 Deploy compiled executables at versioned paths so old runners can keep starting handlers while they drain. Stop runners from before process isolation to apply hard timeouts to every new attempt. Existing scheduled and retryable jobs keep their stored arguments and deadlines.
 
-On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. It terminates attempts that are still running when the grace period ends. `Jobs.stop` can return `stopping` if cleanup is still in progress. The `drained` field reports whether the runner still tracks local claims or attempts. A claim with an unknown commit outcome can remain in PostgreSQL until its lease expires.
+On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. When the grace period ends, it terminates running fresh processes and requests cooperative cancellation of running shared-process actors. `Jobs.stop` can return `stopping` if cleanup is still in progress. The `drained` field reports whether the runner still tracks local claims or attempts. A claim with an unknown commit outcome can remain in PostgreSQL until its lease expires.
 
-`Jobs.join` can wait past the grace period. It returns `stopped` after the runner reaps its local attempt processes and finishes its PostgreSQL work, including background maintenance. Before closing the PostgreSQL pool, wait for `Jobs.join` to return for every runner that uses it.
+`Jobs.join` can wait past the grace period. It returns `stopped` after the runner observes all local attempt exits and finishes its PostgreSQL work, including background maintenance. Before closing the PostgreSQL pool, wait for `Jobs.join` to return for every runner that uses it.
 
 `Jobs.status`, `Jobs.join`, and `Jobs.stop` report cumulative settlement counts for that runner in `outcomes`. The fields are `completed`, `cancelled`, `discarded`, `retryable`, `scheduled`, and `released_unstarted`. Each count reflects writes PostgreSQL confirmed to the runner. Their sum is `finished`. The top-level `scheduled` counts cron jobs enqueued. `stale_acks` counts acknowledgements that applied no write, and `recovered` counts expired attempts handled by this runner's recovery loop.
 
 `peak_queued_context_bytes` records the largest total size of confirmed handler contexts awaiting launch in a single claim response for this runner. It measures the job context strings in memory. PostgreSQL response framing and other process memory have separate limits.
 
 Use a writable PostgreSQL primary with durable commits (`synchronous_commit = on` or stronger) and enough pool connections for handlers, application transactions, and runner I/O. Durability during primary failure depends on the database's storage, replication, and failover configuration. Schedules and lease expiration use the primary's clock.
+
+#### Run trusted handlers in the application process
+
+Set `execution: "trusted_shared_process"` in an ordinary long-running `Jobs.start` runner. Each attempt runs as a Mesh actor in the application process. It uses the application's scheduler, environment, credentials, and output streams. Deploy one trust domain per process. Use fresh-process execution for `Jobs.start_effects`, `Jobs.drain`, and `Jobs.start` with `drain: true`.
+
+This example records one receipt per business key in a tenant's application database. Provision a separate application login per tenant. Create `tenant_app.receipts (receipt_key text PRIMARY KEY)` as the application schema owner and grant the handler login schema usage and insert privileges on `receipt_key`. Keep the queue login separate and keep other tenants' credentials out of this process. Set `statement_timeout` and `lock_timeout` on the application login. The business key comes from the producer and stays the same on retries, including an operator retry that changes the Jobs `effect_key`.
+
+```mesh
+fn record_receipt(key :: String) -> Int!String do
+  let params = [key]
+  let app = Pg.connect(Env.get("TENANT_APP_DATABASE_URL", ""))?
+  let written = Pg.execute(app,
+    "INSERT INTO tenant_app.receipts(receipt_key) VALUES ($1) ON CONFLICT DO NOTHING",
+    params)
+  Pg.close(app)
+  written
+end
+
+fn receipt_key(job :: String) -> String!String do
+  let args = Json.object_get(Json.parse(job)?, "args")?
+  let key = Json.as_string(Json.object_get(args, "receipt_key")?)?
+  if key == "" || String.length(key) > 128 do
+    Err("invalid receipt key")
+  else
+    Ok(key)
+  end
+end
+
+fn handle_trusted_receipt(job :: String) -> String do
+  case receipt_key(job) do
+    Err(_) -> Json.encode(json { action: "discard", reason: "invalid receipt key" })
+    Ok(key) ->
+      case record_receipt(key) do
+        Ok(_) -> Json.encode(json { action: "complete" })
+        Err(_) -> Json.encode(json { action: "fail", reason: "receipt write unconfirmed" })
+      end
+  end
+end
+
+fn start_trusted_receipts(queue_pool :: PoolHandle) -> Int!String do
+  let workers = Json.parse("""[{"worker":"record-receipt","version":1}]""")?
+  Jobs.start(queue_pool,
+    json {
+      namespace: "tenant-a",
+      queues: json { default: 1 },
+      workers: workers,
+      execution: "trusted_shared_process"
+    },
+    handle_trusted_receipt)
+end
+```
+
+Run `Jobs.migrate` with the queue schema owner before starting the runner. Enqueue worker `record-receipt` with an argument such as `{"receipt_key":"order-47"}`.
+
+Keep each attempt bounded. Set a job timeout, limit database and network waits, and use cooperative Mesh operations such as `Timer.sleep` between units of work. Keep resources that need explicit shutdown in application-owned code and finish synchronous connection use before yielding. Keep work in the handler actor. Actors or external work started by a handler have their own lifetimes and can outlast the attempt.
+
+Cancellation, timeout, lease loss, and stop can end the actor at a Mesh scheduling boundary. A synchronous database or native call occupies its scheduler thread until it returns. The runner keeps the local attempt slot until actor exit. `Jobs.stop` can report undrained work after its grace period, and `Jobs.join` waits for that work to exit. Wait for `Jobs.join` before closing application and queue pools. A Mesh panic fails the attempt. A native abort or process exit takes down the runner and its in-flight actors. Other runners recover the abandoned leases.
+
+PostgreSQL still checks the Jobs lease token at queue settlement. The example's application write uses a separate transaction with the tenant login's ordinary SQL privileges. It can commit after cancellation or lease expiry, including when a replacement attempt is already running. Reconcile an unknown commit by replaying the same business key. On supported GNU/Linux targets, `Jobs.start_effects` runs a fresh worker process and checks the current lease at the application write through the configured fence.
 
 ### Read runner events
 
