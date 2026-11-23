@@ -1,0 +1,20 @@
+{
+  "fingerprint": "e03da7787d8c4083:Main__handle",
+  "native_imports": [
+    "mesh_parity_realtime_us",
+    "mesh_parity_worker_pid"
+  ],
+  "mesh_functions": [
+    "Main__effect_result",
+    "Main__handle",
+    "Main__perform",
+    "Main__wait_mark"
+  ],
+  "native_sha256": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+  "handler_object_sha256": "ee1bbcffaa017376ecec53868d9d8de5accf3f7c353faf41a4a385b508a60d22",
+  "runtime_sha256": "f208897b978507d4dceaf9d2b0b07a5743bcb49c4a6179f9399bff9c7d697810",
+  "worker_sha256": "51cf88a42254778ae659dd72c88d6ce0ce9b2c7917e929301e71f869f276af26",
+  "runner_sha256": "8caef23b61f9bc8aa3bd9b7c9972b4c41226de749f57af568a898d63bb9c8d3c",
+  "witness_sha256": "73db6b51da42ebaa171a3acc291101154ef5470a9b1ddaae98037f0e5d16e427",
+  "witness_runner_sha256": "8ba00cbb0fd6b39697bcaf6398de994c70eca7be6a94ec4cf4dea636aa4a13a1"
+}
