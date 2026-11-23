@@ -25,6 +25,16 @@ A nonuniform 512 KiB fixture exposed the limit of the sampling rule. Its sampled
 
 The [component archive](adaptive-screen.tar.gz) includes the three 32-arm series, mixed-payload results and diagnostic module sources. Its SHA-256 is `1b4449f464dbcba99604355dfc375ff7efaa141a27d5eb408c141e9eb6ef32af`.
 
+### Claiming the stored jobs
+
+With all 64 original payloads stored EXTERNAL, the stock eight-row claim took **209 and 218 ms of median PostgreSQL CPU per 64 jobs** in duplicate 4 MiB controls. Raising the claimant session's `work_mem` to 16 MiB reduced that median to **117 ms**. The paired savings against the faster control were 71, 77, 87 and 137 ms. Wall time beat both controls in three rotations. One-minute load on the shared Mac ranged from 47 to 62. Each arm verified the same 64 returned contexts, claimed and renewed every job, and settled each at attempt one. This single-client Unix-socket component measures the queue SQL and omits application handlers. [Captured data and plan trees](claim-memory/observations.tar.gz) · [Per-arm reduction](claim-memory/replay.py)
+
+The separate eight-row plan wrote and read 513 temporary blocks at 4 MiB, zero at 5, 6, 8 and 16 MiB, and 513 per direction on returning to 4 MiB. Each probe rolled back before the next. These observations price a particular prefix and payload. Concurrent sessions and multiple operations can each use working memory.
+
+Two narrower checks used the same frozen payloads. A diagnostic PostgreSQL function inspected the JSONB root header for the `args` object constraint. During settlement it reduced TOAST heap hits from 4,256 to 64 and saved 1.2–6.4 ms of backend CPU per 64 jobs. It would require a server module. A separate inlined effect-key function eliminated 17,024 TOAST heap hits across four whole-row SQL scans. Both the original and inlined functions recorded zero TOAST hits when called with a PL/pgSQL row variable, as in the production claim loop.
+
+Run `python3 -B tools/durable-jobs-bench/results/2026-11-23-large-storage-component/claim-memory/replay.py` from a checkout for offline verification. On macOS with the PostgreSQL 17.11 server headers and client libraries, the adjacent `run.py` and `plans.py` each accept a fresh output path under `target/`. The first build attempt omitted the Homebrew gettext include directory. The first plan probe used a diagnostic helper that expected an idle connection inside a transaction. Both failed before producing scored data.
+
 ## Reproduction
 
 The compiled Mesh [transaction proof](transaction-local/main.mpl) enqueues jobs and writes a business row on the same producer connection. On PostgreSQL 17.11, `SET LOCAL` selected LZ4 for the committed job. The connection returned to PGLZ after both commit and rollback. The rolled-back job and business row were absent. A repeat migration preserved both the owner's EXTERNAL policy and the later return to EXTENDED, as well as the three previously committed tuple versions and codecs. [Recorded results](transaction-local/receipt.json)
