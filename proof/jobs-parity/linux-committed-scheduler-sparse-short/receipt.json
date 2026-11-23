@@ -1,0 +1,5668 @@
+{
+  "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+  "freeze": {
+    "wall": 1795406033.111528,
+    "monotonic": 247822.979074375,
+    "sha256": {
+      "plan.json": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "input-receipt.json": "e3b67ab9aa7000502a30c1968e7b943c865ae89b0ce855cc59b3e4c738b4f316",
+      "lane.py": "ca4b8ca56a7a8c5361caa79b80ae5bad7c7ea53dd3f93fbff2bee2846f980535",
+      "series.py": "bee1843eae9e3bf2c25bc15cd595605ffdeacd85937ee8458343355f18c58eff"
+    }
+  },
+  "ledgers_sha256": "a0abbbaa274949de91e2511d860162cd56a0cda02033cce531e037ab793caf5a",
+  "inputs": {
+    "images": {
+      "ordinary": {
+        "path": "target/integrated-uncut-delivery/clean-relink/mesh-stock",
+        "sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070"
+      },
+      "layout": {
+        "path": "target/integrated-uncut-delivery/clean-relink/mesh",
+        "sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4"
+      }
+    },
+    "relink": {
+      "path": "proof/jobs-parity/linux-integrated-uncut/relink-result.json",
+      "sha256": "5123b8a190773665b24641dbf76147e6db9de5e19db8fe5be16ccbd04d7a1dd9"
+    },
+    "source_verification": {
+      "path": "proof/jobs-parity/linux-integrated-uncut/source-verification.json",
+      "sha256": "cf4b9b1655a6c0f373f586a625a4e3b43c8442f0d6e6538a932f91ba9ca96b70"
+    },
+    "layout_trace": {
+      "path": "proof/jobs-parity/linux-integrated-uncut/traced-lifecycle.json",
+      "sha256": "b26e161aaf8cbab20e826a9a9f95e43a13106f343a77e20b5789c153d567e52c"
+    },
+    "component_pins": {
+      "zig": "c65cd34917923f575448cc0603dd7c2326da0af0e5c323043d090662dcdf351c",
+      "crt1.o": "4272fe32051e1a3fe909609fafe1f4c7b79c1d0d2d52695fa6e00ec47f5a00ca",
+      "fixture.o": "30482784e2c50f54d991a3a26e7604d713e281a3a37c584ddbfc4cba15d1e178",
+      "libworker_identity.a": "209c5ecfa8964cd8132d26d90c29154d749a7f666a25395ae53f131b5c29b4d6",
+      "libubsan_rt.a": "d2a690502afd6069802ac49e3d8ed34a32908def2b687793e1a7372552d22b39",
+      "libgcc_s.so.1": "a886d874bfcc27b5b3de47504eb861af8f15cf8c2aea160bd3b973e1a1a95255",
+      "libm.so.6": "c24156abd0a52c0fbb41d1a4832e669e1276cec972dd1b32b446a7a52e6d93c8",
+      "libc.so.6": "a7026802a4120b0200792ccc21408c2b0f09c5de78ad3f6df368ec33826e2069",
+      "libld.so.2": "3871b49c8ef1d4985360171ead5fd2a59bc679a051dd232668ea448fd43dcb9e",
+      "libresolv.so.2": "28cbd054727d9dd00587cf5e08d00f665f5eb9f7fe54a8a403f33df44eed92cd",
+      "libc_nonshared.a": "7d9c14f63bd9fa4b23981216cf9071f266a95f46b4ded1bc703706676357d810",
+      "libcompiler_rt.a": "e2b01958a7614b66f596877cbf2d3077ab0206d3efc8325a65a129ff796c5737",
+      "runtime-candidate.a": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+    },
+    "transfer_and_scorer": [
+      {
+        "path": "target/integrated-runtime-sparse-large/transfer.py",
+        "sha256": "193732f875954225fcbed2172433390a272d458e0512ffa13fce83c20e8f933d"
+      },
+      {
+        "path": "target/integrated-runtime-sparse-large/reduce.py",
+        "sha256": "49c44ed7fb5fcbfca5f5970b043028e6c612b13bc58acc40f80f41aa2679f899"
+      },
+      {
+        "path": "target/integrated-runtime-sparse-large/evidence_adapter.py",
+        "sha256": "1d49fd430f601a92ce36939fb697c7767893781b6119dd02f98a5521a770738d"
+      },
+      {
+        "path": "scripts/jobs-parity.py",
+        "sha256": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24"
+      },
+      {
+        "path": "scripts/jobs-parity-profiles.json",
+        "sha256": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297"
+      },
+      {
+        "path": "proof/jobs-parity/linux-regression/trial.py",
+        "sha256": "da5f0ec52227fb24ec4613a571ec0d201d8a626b9bc7a8986823eb48e1cfb26a"
+      },
+      {
+        "path": "proof/jobs-parity/linux-regression/pack.py",
+        "sha256": "0445b5d91a57d126565989674d1572ed0455bfa7e351256cbf98c96ac4d82a21"
+      },
+      {
+        "path": "proof/jobs-parity/linux-regression/run.py",
+        "sha256": "d12de0fdbaad58588412f0b185144469368c0636b954c0545b6bf37e16b79646"
+      },
+      {
+        "path": "proof/jobs-parity/linux-regression/score.py",
+        "sha256": "43035eb817281e2b6f2310ad3f40779b3f00ade78bea5f68c161d02333e33cda"
+      },
+      {
+        "path": "proof/jobs-parity/linux-regression/summarize.py",
+        "sha256": "9fe8267b39a2181ac99cf77d5a8861cfbe551cf8f7d96007b60ab6fe2d50f707"
+      },
+      {
+        "path": "proof/jobs-parity/linux-regression/proof_transport.py",
+        "sha256": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15"
+      }
+    ]
+  },
+  "dense_prerequisite": {
+    "event": "verified_stop",
+    "stop": {
+      "kind": "stop",
+      "time": 1795406468.485109,
+      "mono": 248258.351995291,
+      "reason": "observation deadline reached",
+      "admitted": {
+        "forward": 1,
+        "reverse": 1
+      },
+      "qualified": {}
+    },
+    "observation_sha256": "9933520bb278de7ea9924c169c46ebbd331838fa9a635b6bb5963c4306566be5",
+    "wall": 1795406468.501437,
+    "monotonic": 248258.368323583
+  },
+  "run_events": [
+    {
+      "event": "launch",
+      "group": "sparse-01-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795406468.5031118,
+      "monotonic": 248258.3699985
+    },
+    {
+      "event": "result",
+      "group": "sparse-01-attempt-01",
+      "exit": 0,
+      "log_sha256": "16ca74132c23b0050d5393768fcf07566b8590d055a1184be8b429c43c67819c",
+      "failure_sha256": null,
+      "wall": 1795406584.219808,
+      "monotonic": 248374.086526583
+    },
+    {
+      "event": "launch",
+      "group": "short-01-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795406584.221807,
+      "monotonic": 248374.088518666
+    },
+    {
+      "event": "result",
+      "group": "short-01-attempt-01",
+      "exit": 0,
+      "log_sha256": "252a6c5747ec3f830c5ea94b5ba46d45fbc7dc3c7f99ad65fa354a4c2239beb8",
+      "failure_sha256": null,
+      "wall": 1795406614.329633,
+      "monotonic": 248404.196301625
+    },
+    {
+      "event": "launch",
+      "group": "sparse-02-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795406614.3305569,
+      "monotonic": 248404.197223208
+    },
+    {
+      "event": "result",
+      "group": "sparse-02-attempt-01",
+      "exit": 0,
+      "log_sha256": "c89c647eaf36814222bab78f81251fb0268c1218d85aaa2fc9cf37f4245b27b2",
+      "failure_sha256": null,
+      "wall": 1795406669.3334951,
+      "monotonic": 248459.200079666
+    },
+    {
+      "event": "launch",
+      "group": "short-02-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795406669.3346848,
+      "monotonic": 248459.201267833
+    },
+    {
+      "event": "result",
+      "group": "short-02-attempt-01",
+      "exit": 0,
+      "log_sha256": "cce444bd28b748e1e013382f1dd6d4d340e935ae6fca5ffc77e99e363f84bfe3",
+      "failure_sha256": null,
+      "wall": 1795406687.2725608,
+      "monotonic": 248477.139116875
+    },
+    {
+      "event": "launch",
+      "group": "sparse-03-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795406687.273083,
+      "monotonic": 248477.139637916
+    },
+    {
+      "event": "result",
+      "group": "sparse-03-attempt-01",
+      "exit": 0,
+      "log_sha256": "5773bfa1956daa9a589a659bfcaee244d0817dc3ff434e131bad10a0140d6109",
+      "failure_sha256": null,
+      "wall": 1795406952.997312,
+      "monotonic": 248742.863467791
+    },
+    {
+      "event": "launch",
+      "group": "short-03-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795406952.9980721,
+      "monotonic": 248742.864224583
+    },
+    {
+      "event": "result",
+      "group": "short-03-attempt-01",
+      "exit": 0,
+      "log_sha256": "73381a72902a6623150ce56a43fd30febb4d8618f4c64aade0a901b47b88a518",
+      "failure_sha256": null,
+      "wall": 1795407129.310303,
+      "monotonic": 248919.1769485
+    },
+    {
+      "event": "launch",
+      "group": "sparse-04-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795407129.311511,
+      "monotonic": 248919.178154375
+    },
+    {
+      "event": "result",
+      "group": "sparse-04-attempt-01",
+      "exit": 0,
+      "log_sha256": "a83293fcce58918c7239c07482806ec93fa6b02163f03e28c104b646d0067867",
+      "failure_sha256": null,
+      "wall": 1795407182.408447,
+      "monotonic": 248972.275027041
+    },
+    {
+      "event": "launch",
+      "group": "short-04-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795407182.4098089,
+      "monotonic": 248972.276387125
+    },
+    {
+      "event": "result",
+      "group": "short-04-attempt-01",
+      "exit": 0,
+      "log_sha256": "3b9cc7cc114be660726388dc5f7db80bd033f82dc68f720aec24265b45836ec8",
+      "failure_sha256": null,
+      "wall": 1795407213.093483,
+      "monotonic": 249002.960024333
+    },
+    {
+      "event": "launch",
+      "group": "sparse-05-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795407213.094029,
+      "monotonic": 249002.960569125
+    },
+    {
+      "event": "result",
+      "group": "sparse-05-attempt-01",
+      "exit": 0,
+      "log_sha256": "81bdb42aae1c76fd7e5378c4458c0b41e4f341b969490aeff4ccf4af0c23211d",
+      "failure_sha256": null,
+      "wall": 1795407328.4864728,
+      "monotonic": 249118.352870375
+    },
+    {
+      "event": "launch",
+      "group": "short-05-attempt-01",
+      "plan_sha256": "9dc3ab7636ca74d40ee47e481efdc8cea12cba0d8e9bb519f97071cc4978502c",
+      "wall": 1795407328.488031,
+      "monotonic": 249118.354427416
+    },
+    {
+      "event": "result",
+      "group": "short-05-attempt-01",
+      "exit": 0,
+      "log_sha256": "d235353e4bceed0aec871c445874bb47e3accb16c6bd23bd17fb9487f6c690e4",
+      "failure_sha256": null,
+      "wall": 1795407428.329959,
+      "monotonic": 249218.196232375
+    }
+  ],
+  "common_guest": {
+    "base_cpio_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+    "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+    "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+    "oban_erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+    "oban_erl_inetrc": "/proof/oban.inetrc",
+    "series": "canonical-oban-flags-inetrc",
+    "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+    "vcpus": 2,
+    "memory_gib": 2
+  },
+  "lifecycle": {
+    "layout": {
+      "archive": "target/integrated-uncut-delivery/trace-01",
+      "serial_sha256": "352d1fbe3168312ec06d2352dcf4d571ccfb461c2126d9ef885bdf0e06d9e250",
+      "guest_sha256": "8d35c1e5a7d798bd46e2d4d924e2870aa185dcbf7ce7eb6c42a386d3e92def8e",
+      "summary_sha256": "4d54b76372f2b7c22d5cb9f19283db28d57a201a8cb962b46c716bd9a32b4c86",
+      "elf": {
+        "sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+        "peak_sampled_tree_mib": 222.73046875,
+        "ordered_distinct_xids": 128,
+        "application_resets": 128,
+        "startup_resets": 8,
+        "consuming_waits": 64,
+        "stages": {
+          "first": {
+            "runner_scheduler_bounds": [
+              2,
+              2
+            ],
+            "fixed_protected_workers": 64,
+            "smaps_mib": {
+              "anon_huge": 30.0,
+              "anonymous": 60.375,
+              "dso": 86.00390625,
+              "main": 88.6171875,
+              "other": 55.55078125
+            }
+          },
+          "second": {
+            "runner_scheduler_bounds": [
+              2,
+              2
+            ],
+            "fixed_protected_workers": 64,
+            "smaps_mib": {
+              "anon_huge": 30.0,
+              "anonymous": 60.37890625,
+              "dso": 86.00390625,
+              "main": 88.6171875,
+              "other": 55.5546875
+            }
+          }
+        }
+      },
+      "lifecycle": {
+        "exact_successful_consuming_waits": [
+          1081,
+          1266,
+          1319,
+          1239,
+          1337,
+          1438,
+          1498,
+          1311,
+          1423,
+          1110,
+          1193,
+          1326,
+          1453,
+          1480,
+          1489,
+          1360,
+          1085,
+          1431,
+          1154,
+          1116,
+          1415,
+          1202,
+          1243,
+          1281,
+          1094,
+          1197,
+          1103,
+          1301,
+          1368,
+          1209,
+          1250,
+          1132,
+          1275,
+          1077,
+          1403,
+          1217,
+          1158,
+          1125,
+          1520,
+          1345,
+          1189,
+          1332,
+          1162,
+          1351,
+          1388,
+          1177,
+          1307,
+          1288,
+          1505,
+          1139,
+          1510,
+          1419,
+          1225,
+          1448,
+          1395,
+          1459,
+          1465,
+          1378,
+          1233,
+          1270,
+          1484,
+          1384,
+          1089,
+          1166
+        ],
+        "exited_zero": [
+          1081,
+          1077,
+          1089,
+          1139,
+          1177,
+          1116,
+          1094,
+          1423,
+          1197,
+          1166,
+          1489,
+          1337,
+          1360,
+          1209,
+          1415,
+          1438,
+          1453,
+          1448,
+          1465,
+          1419,
+          1326,
+          1345,
+          1270,
+          1520,
+          1233,
+          1266,
+          1217,
+          1110,
+          1431,
+          1510,
+          1368,
+          1239,
+          1301,
+          1125,
+          1480,
+          1498,
+          1085,
+          1225,
+          1154,
+          1307,
+          1319,
+          1351,
+          1311,
+          1189,
+          1388,
+          1484,
+          1193,
+          1162,
+          1202,
+          1505,
+          1384,
+          1132,
+          1459,
+          1103,
+          1250,
+          1378,
+          1243,
+          1403,
+          1395,
+          1288,
+          1281,
+          1158,
+          1332,
+          1275
+        ],
+        "successfully_execed": [
+          1077,
+          1081,
+          1085,
+          1089,
+          1094,
+          1103,
+          1110,
+          1116,
+          1125,
+          1132,
+          1139,
+          1154,
+          1158,
+          1162,
+          1166,
+          1177,
+          1189,
+          1193,
+          1197,
+          1202,
+          1209,
+          1217,
+          1225,
+          1233,
+          1239,
+          1243,
+          1250,
+          1266,
+          1270,
+          1275,
+          1281,
+          1288,
+          1301,
+          1307,
+          1311,
+          1319,
+          1326,
+          1332,
+          1337,
+          1345,
+          1351,
+          1360,
+          1368,
+          1378,
+          1384,
+          1388,
+          1395,
+          1403,
+          1415,
+          1419,
+          1423,
+          1431,
+          1438,
+          1448,
+          1453,
+          1459,
+          1465,
+          1480,
+          1484,
+          1489,
+          1498,
+          1505,
+          1510,
+          1520
+        ]
+      },
+      "constructor": {
+        "constructor_pid": 1560,
+        "worker_exit_without_effect_channel": 174
+      },
+      "receipt_sha256": {
+        "lifecycle.json": "e92e3cedcdc98e4e2776cb7574bf701c842f22b6dac65a5559dfa4c17617be8c",
+        "commit-xids.json": "0f070fd7599f90b7b732e3417dcb819a56de9630a943c11b0afd1e6e992a3050",
+        "application-statements.json": "1c6f88f23fffe90414dc4b030b847ad961364db8cd2632c97dba1014a3e5f1cc",
+        "waits.strace": "d364cc272434de874c482bf5c2afcd3b3cab84b598b9a75b4844f952f9eccbe8",
+        "fence.json": "ee494c4f8a225807151587791122eecbce9a9dc8a0d30dc40eee84f8ddf5ca6e"
+      }
+    },
+    "ordinary": {
+      "source": "target/committed-scheduler-sparse-short/ordinary-lifecycle-01",
+      "serial_sha256": "42b3c7cd5002ccc838de8dc53fd60f61e1d9021b07a4517b2209ed9a47f2ce26",
+      "guest_sha256": "e02b9bc54fcc704c20e9db337ec4fbb9b17bbd8b5aec2de17314474fc8cf08df",
+      "summary_sha256": "ac05aaa46dc1b3bde28925d28c4d44246eafacb4be48c201efe4c99c2ebae87d",
+      "elf": {
+        "sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+        "peak_sampled_tree_mib": 332.3203125,
+        "ordered_distinct_xids": 128,
+        "application_resets": 128,
+        "startup_resets": 8,
+        "consuming_waits": 64,
+        "stages": {
+          "first": {
+            "runner_scheduler_bounds": [
+              2,
+              2
+            ],
+            "fixed_protected_workers": 64,
+            "smaps_mib": {
+              "anon_huge": 32.0,
+              "anonymous": 62.28125,
+              "dso": 86.11328125,
+              "main": 196.1796875,
+              "other": 57.45703125
+            }
+          },
+          "second": {
+            "runner_scheduler_bounds": [
+              2,
+              2
+            ],
+            "fixed_protected_workers": 64,
+            "smaps_mib": {
+              "anon_huge": 32.0,
+              "anonymous": 62.2890625,
+              "dso": 86.11328125,
+              "main": 196.1796875,
+              "other": 57.46484375
+            }
+          }
+        }
+      },
+      "lifecycle": {
+        "exact_successful_consuming_waits": [
+          708,
+          766,
+          773,
+          811,
+          626,
+          795,
+          595,
+          873,
+          801,
+          815,
+          754,
+          823,
+          694,
+          502,
+          854,
+          828,
+          861,
+          819,
+          784,
+          722,
+          608,
+          679,
+          660,
+          655,
+          671,
+          909,
+          749,
+          844,
+          568,
+          743,
+          590,
+          523,
+          530,
+          890,
+          665,
+          585,
+          543,
+          615,
+          905,
+          731,
+          642,
+          483,
+          488,
+          899,
+          473,
+          630,
+          703,
+          738,
+          687,
+          880,
+          477,
+          561,
+          496,
+          777,
+          549,
+          554,
+          516,
+          913,
+          622,
+          469,
+          650,
+          581,
+          850,
+          508
+        ],
+        "exited_zero": [
+          516,
+          523,
+          766,
+          731,
+          590,
+          554,
+          722,
+          608,
+          815,
+          811,
+          801,
+          754,
+          795,
+          585,
+          543,
+          530,
+          595,
+          708,
+          703,
+          508,
+          502,
+          496,
+          488,
+          483,
+          913,
+          905,
+          890,
+          880,
+          873,
+          861,
+          823,
+          743,
+          660,
+          549,
+          561,
+          477,
+          469,
+          615,
+          655,
+          909,
+          828,
+          749,
+          738,
+          473,
+          844,
+          777,
+          773,
+          899,
+          854,
+          819,
+          784,
+          622,
+          850,
+          694,
+          687,
+          679,
+          630,
+          626,
+          568,
+          642,
+          581,
+          665,
+          650,
+          671
+        ],
+        "successfully_execed": [
+          469,
+          473,
+          477,
+          483,
+          488,
+          496,
+          502,
+          508,
+          516,
+          523,
+          530,
+          543,
+          549,
+          554,
+          561,
+          568,
+          581,
+          585,
+          590,
+          595,
+          608,
+          615,
+          622,
+          626,
+          630,
+          642,
+          650,
+          655,
+          660,
+          665,
+          671,
+          679,
+          687,
+          694,
+          703,
+          708,
+          722,
+          731,
+          738,
+          743,
+          749,
+          754,
+          766,
+          773,
+          777,
+          784,
+          795,
+          801,
+          811,
+          815,
+          819,
+          823,
+          828,
+          844,
+          850,
+          854,
+          861,
+          873,
+          880,
+          890,
+          899,
+          905,
+          909,
+          913
+        ]
+      },
+      "constructor": {
+        "constructor_pid": 1564,
+        "worker_exit_without_effect_channel": 174
+      },
+      "receipt_sha256": {
+        "lifecycle.json": "59d697f1673ba30e07cdb3cf5571136dd696c37b5083336ad42f6d251781a32d",
+        "commit-xids.json": "fb725841bba471fd73b8550542e344ca6f57054a8bdffec21ec8f5bc83ce33cf",
+        "application-statements.json": "1c6f88f23fffe90414dc4b030b847ad961364db8cd2632c97dba1014a3e5f1cc",
+        "held.json": "632b6fec8733f89e5c043f1e793bb25385c478b82685c72f6990b96920f20305",
+        "waits.strace": "296229bbc94635891c558c2dfe845e00c5de5751c634cc340e2e82fa09bab50d",
+        "fence.json": "ee494c4f8a225807151587791122eecbce9a9dc8a0d30dc40eee84f8ddf5ca6e"
+      }
+    }
+  },
+  "profiles": {
+    "sparse": [
+      {
+        "name": "sparse-01-attempt-01",
+        "index": 1,
+        "order": [
+          "ordinary",
+          "layout",
+          "oban"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "30854040434c4bf13419a1eff9cdae37490c03cafbefab33926d3c617606e03b",
+        "serial_sha256": "51feb7756cf8e54cbc8e427a174ec8857e61e0078a7f37e5c3e4ec4d07404931",
+        "guest_cpio_sha256": "2364a3d3ff9702a5cfca15ccb41717c01cbfed3b3be3cdf8946aa5f04ed67c7a",
+        "config_sha256": "511e8da968c9ff481969379e5eb5735d278e14f54261f532b0461bebfab2da07",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795406514.0977669,
+            "load": [
+              99.14697265625,
+              80.89013671875,
+              71.916015625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+            "time": 1795406528.210476,
+            "load": [
+              97.90771484375,
+              81.48779296875,
+              72.28466796875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured ordinary",
+            "time": 1795406532.3148649,
+            "load": [
+              97.90771484375,
+              81.48779296875,
+              72.28466796875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+            "time": 1795406542.2559948,
+            "load": [
+              102.45361328125,
+              83.00244140625,
+              72.92919921875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured layout",
+            "time": 1795406546.118037,
+            "load": [
+              106.4208984375,
+              84.1474609375,
+              73.39208984375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+            "time": 1795406556.0228758,
+            "load": [
+              112.31640625,
+              86.1357421875,
+              74.22265625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured oban",
+            "time": 1795406570.710094,
+            "load": [
+              128.30908203125,
+              90.86865234375,
+              76.1142578125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795406584.115453,
+            "load": [
+              131.17041015625,
+              93.4296875,
+              77.291015625
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 366,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 2.9583333333333335,
+              "claim_p99_ms": 26.6220703125,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.021065208333333335,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.125,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1684.8300240928313,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.695892794821727,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 1,
+              "peak_host_load_average_1m": 0.60791015625,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 32010240,
+              "peak_threads": 14,
+              "pickup_max_ms": 33.787109375,
+              "pickup_p99_ms": 33.787109375,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 18.375,
+              "settlement_p99_ms": 52.97705078125,
+              "sql_calls_per_job": 34.5
+            },
+            "durably_measured_seconds": 8.90243115234375,
+            "pickup_p50_ms": 10.112548828125,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+              "time": 1795406528.210476,
+              "load": [
+                97.90771484375,
+                81.48779296875,
+                72.28466796875
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured ordinary",
+              "time": 1795406532.3148649,
+              "load": [
+                97.90771484375,
+                81.48779296875,
+                72.28466796875
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "e478c5acf97be83ef2dd715724fbd4049c09b3a0f62bcfc97ed092596312daf1",
+            "xid_ledger_sha256": "05e48c4ce84d74b8be997d17180f7adf116b1c7a941c6db9d515b793263a79d1",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 457,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 2.9166666666666665,
+              "claim_p99_ms": 25.06689453125,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.030932791666666667,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.125,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1510.782151049546,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.6880894944795366,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 0,
+              "peak_host_load_average_1m": 0.78759765625,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 30011392,
+              "peak_threads": 14,
+              "pickup_max_ms": 33.35986328125,
+              "pickup_p99_ms": 33.35986328125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 18.583333333333332,
+              "settlement_p99_ms": 100.3662109375,
+              "sql_calls_per_job": 34.708333333333336
+            },
+            "durably_measured_seconds": 8.928274169921876,
+            "pickup_p50_ms": 10.0699462890625,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+              "time": 1795406542.2559948,
+              "load": [
+                102.45361328125,
+                83.00244140625,
+                72.92919921875
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured layout",
+              "time": 1795406546.118037,
+              "load": [
+                106.4208984375,
+                84.1474609375,
+                73.39208984375
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "980ab9d0261500692e07090dbe2d8449960e324b162f326b0182a6175b74a8ea",
+            "xid_ledger_sha256": "9347d3a4a8258636052f7e8c655d6447067df9463571a74edf2098b7b3acc633",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 679,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 2.0,
+              "claim_p99_ms": 241.010009765625,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.07262541666666666,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 9.333333333333334,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 873.3819601333109,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.009528867649576,
+              "pair": 0,
+              "peak_connections": 4,
+              "peak_executing": 1,
+              "peak_host_load_average_1m": 0.74658203125,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 119242752,
+              "peak_threads": 12,
+              "pickup_max_ms": 242.856201171875,
+              "pickup_p99_ms": 242.856201171875,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 17.0,
+              "settlement_p99_ms": 249.2880859375,
+              "sql_calls_per_job": 26.333333333333332
+            },
+            "durably_measured_seconds": 11.943097900390624,
+            "pickup_p50_ms": 177.6458740234375,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+              "time": 1795406556.0228758,
+              "load": [
+                112.31640625,
+                86.1357421875,
+                74.22265625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured oban",
+              "time": 1795406570.710094,
+              "load": [
+                128.30908203125,
+                90.86865234375,
+                76.1142578125
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "ffc95c2cd756726af05e5c38289b9d100ee0ce94aff1dcf2a729c17698a9a516",
+            "xid_ledger_sha256": "31f69b15b85f10cde3bbb1aef051e2f456f4903c13e1213df0e8dd4307410004",
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 916,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 916,
+                    "ppid": 365
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 921,
+                    "ppid": 916
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 903,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 903,
+                  "ppid": 365
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 908,
+                  "ppid": 903
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          }
+        }
+      },
+      {
+        "name": "sparse-02-attempt-01",
+        "index": 2,
+        "order": [
+          "oban",
+          "layout",
+          "ordinary"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "1411b82817bf2d646ff155b75cb8899afea8e9b224b5ef033565c64f0f5ddf22",
+        "serial_sha256": "e71c047420c74621999c7b77b16ab376b23b6ba236829dcc6cb06955edbb719c",
+        "guest_cpio_sha256": "9d3ab7d4b608c17aec205241e13bdcbb40769e57fd40bebd161ec96f1d394444",
+        "config_sha256": "9db121f03811d91fc9c0cbf25266198f0599695a7d7f8c1b295bdac346ac6029",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795406615.851294,
+            "load": [
+              102.6240234375,
+              90.447265625,
+              76.78857421875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+            "time": 1795406622.821603,
+            "load": [
+              96.08740234375,
+              89.2939453125,
+              76.46142578125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured oban",
+            "time": 1795406632.3134148,
+            "load": [
+              88.6875,
+              87.93359375,
+              76.12841796875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+            "time": 1795406644.6587489,
+            "load": [
+              74.478515625,
+              84.84619140625,
+              75.2333984375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured layout",
+            "time": 1795406648.095785,
+            "load": [
+              68.59423828125,
+              83.4541015625,
+              74.79833984375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+            "time": 1795406656.9704268,
+            "load": [
+              64.30224609375,
+              82.3173828125,
+              74.44775390625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured ordinary",
+            "time": 1795406660.214391,
+            "load": [
+              59.31298828125,
+              80.98388671875,
+              74.02294921875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795406669.287225,
+            "load": [
+              52.47705078125,
+              78.79638671875,
+              73.3271484375
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 364,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 2.0,
+              "claim_p99_ms": 244.359130859375,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.066357875,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 9.416666666666666,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 876.5330433024499,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.015986429497599,
+              "pair": 0,
+              "peak_connections": 4,
+              "peak_executing": 1,
+              "peak_host_load_average_1m": 0.4775390625,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 116346880,
+              "peak_threads": 12,
+              "pickup_max_ms": 246.942138671875,
+              "pickup_p99_ms": 246.942138671875,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 17.0,
+              "settlement_p99_ms": 253.192138671875,
+              "sql_calls_per_job": 26.416666666666668
+            },
+            "durably_measured_seconds": 11.904842041015625,
+            "pickup_p50_ms": 190.45947265625,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+              "time": 1795406622.821603,
+              "load": [
+                96.08740234375,
+                89.2939453125,
+                76.46142578125
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured oban",
+              "time": 1795406632.3134148,
+              "load": [
+                88.6875,
+                87.93359375,
+                76.12841796875
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "93b6b3cc3707347e05eb4b45ac659d32649f13fcd692caf0eb329bbc1718b9fb",
+            "xid_ledger_sha256": "3e18c661ec3621baed4d0e492a5a43184c3bc23c05e2544c0891c6028cf5994e",
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 469,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 469,
+                    "ppid": 363
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 474,
+                    "ppid": 469
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 455,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 455,
+                  "ppid": 363
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 460,
+                  "ppid": 455
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          },
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 3.0416666666666665,
+              "claim_p99_ms": 4.884033203125,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.018429958333333333,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.125,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1693.4817177421783,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.8641938733860464,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 0,
+              "peak_host_load_average_1m": 0.45166015625,
+              "peak_processes": 1,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 25186304,
+              "peak_threads": 10,
+              "pickup_max_ms": 10.0419921875,
+              "pickup_p99_ms": 10.0419921875,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 18.333333333333332,
+              "settlement_p99_ms": 25.8701171875,
+              "sql_calls_per_job": 34.458333333333336
+            },
+            "durably_measured_seconds": 8.379321044921875,
+            "pickup_p50_ms": 4.91650390625,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+              "time": 1795406644.6587489,
+              "load": [
+                74.478515625,
+                84.84619140625,
+                75.2333984375
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured layout",
+              "time": 1795406648.095785,
+              "load": [
+                68.59423828125,
+                83.4541015625,
+                74.79833984375
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "e9933bb154944919cb2ba131144106c323f634a0184f3911d5a37a0f2ac1af28",
+            "xid_ledger_sha256": "ede6eb71de04bd93faf467b435ca88593cfa6cc0667994ebbd26dc93ee5355fa",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 533,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 3.0416666666666665,
+              "claim_p99_ms": 9.8359375,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.015626458333333332,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.125,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1696.413216423938,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.8644523456986972,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 1,
+              "peak_host_load_average_1m": 0.43115234375,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 32161792,
+              "peak_threads": 14,
+              "pickup_max_ms": 18.02587890625,
+              "pickup_p99_ms": 18.02587890625,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 18.333333333333332,
+              "settlement_p99_ms": 27.871826171875,
+              "sql_calls_per_job": 34.458333333333336
+            },
+            "durably_measured_seconds": 8.37856494140625,
+            "pickup_p50_ms": 4.5604248046875,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+              "time": 1795406656.9704268,
+              "load": [
+                64.30224609375,
+                82.3173828125,
+                74.44775390625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured ordinary",
+              "time": 1795406660.214391,
+              "load": [
+                59.31298828125,
+                80.98388671875,
+                74.02294921875
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "ad76ddd5044aa33521be42a7aa063f4c1bdec5eae9d069758d5705d836832c28",
+            "xid_ledger_sha256": "a3dad27a8c924672914a1a773e3f73b3a7f834afe29518596ef210c191c6cdcb",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 755,
+                "tracer_pid": 0
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "sparse-03-attempt-01",
+        "index": 3,
+        "order": [
+          "layout",
+          "oban",
+          "ordinary"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "cb9e03ab83ff9baa0b3cb891f67da940e7e536b033125bbbb1f2022b1c9c018e",
+        "serial_sha256": "048924c2540ee9cd5eabf798f36bfc936ec49e4e2a9bd8cb7b9fceea22d6a21b",
+        "guest_cpio_sha256": "ecec17eeb4c92732fd903014ddf4c3207052afe97e283c43495c2f3728a8ba2d",
+        "config_sha256": "bb506d007353bc75c7386bd556a2c57276ed29198ec8da1a2caf9335f18bc6bf",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795406902.744391,
+            "load": [
+              114.853515625,
+              80.310546875,
+              73.5703125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+            "time": 1795406909.659272,
+            "load": [
+              110.08447265625,
+              80.404296875,
+              73.6806640625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured layout",
+            "time": 1795406913.053313,
+            "load": [
+              110.79833984375,
+              81.044921875,
+              73.94580078125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+            "time": 1795406922.052598,
+            "load": [
+              110.734375,
+              81.525390625,
+              74.15673828125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured oban",
+            "time": 1795406927.8947499,
+            "load": [
+              110.03466796875,
+              81.865234375,
+              74.31982421875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+            "time": 1795406940.159494,
+            "load": [
+              93.09521484375,
+              79.51611328125,
+              73.6142578125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured ordinary",
+            "time": 1795406943.4695349,
+            "load": [
+              86.20068359375,
+              78.31201171875,
+              73.2236328125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795406952.942545,
+            "load": [
+              82.5810546875,
+              77.6923828125,
+              73.03466796875
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 365,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 3.0,
+              "claim_p99_ms": 15.43701171875,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.028017916666666667,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.125,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1771.1108190045973,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.8309908485248836,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 1,
+              "peak_host_load_average_1m": 0.21533203125,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 28237824,
+              "peak_threads": 14,
+              "pickup_max_ms": 19.626953125,
+              "pickup_p99_ms": 19.626953125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 18.166666666666668,
+              "settlement_p99_ms": 66.698974609375,
+              "sql_calls_per_job": 34.291666666666664
+            },
+            "durably_measured_seconds": 8.47759716796875,
+            "pickup_p50_ms": 6.3125,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+              "time": 1795406909.659272,
+              "load": [
+                110.08447265625,
+                80.404296875,
+                73.6806640625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured layout",
+              "time": 1795406913.053313,
+              "load": [
+                110.79833984375,
+                81.044921875,
+                73.94580078125
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "cae11e20ec0ae378dfb564803cec6cc0bfbbeaf87471adf6b73a83497106b7a7",
+            "xid_ledger_sha256": "08689df43d1874e6c678c6c43dfd9779ae555f77596b32d9b63e4ee87656756b",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 455,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 2.0,
+              "claim_p99_ms": 232.795166015625,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.03950725,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 9.375,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 876.4347967570259,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.031686488685496,
+              "pair": 0,
+              "peak_connections": 4,
+              "peak_executing": 1,
+              "peak_host_load_average_1m": 0.2783203125,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 117870592,
+              "peak_threads": 12,
+              "pickup_max_ms": 234.195068359375,
+              "pickup_p99_ms": 234.195068359375,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 17.0,
+              "settlement_p99_ms": 237.1611328125,
+              "sql_calls_per_job": 26.375
+            },
+            "durably_measured_seconds": 11.81284619140625,
+            "pickup_p50_ms": 177.070556640625,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+              "time": 1795406922.052598,
+              "load": [
+                110.734375,
+                81.525390625,
+                74.15673828125
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured oban",
+              "time": 1795406927.8947499,
+              "load": [
+                110.03466796875,
+                81.865234375,
+                74.31982421875
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "1469166499b75ec0a90ed1c6829c25a4bcea83a88ca740335bb504d67a85826a",
+            "xid_ledger_sha256": "4e9ab0fad317b97878293f32c0812428e9374983342f14fd73e446bbd6d67135",
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 693,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 693,
+                    "ppid": 364
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 698,
+                    "ppid": 693
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 680,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 680,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 685,
+                  "ppid": 680
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          },
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 3.0,
+              "claim_p99_ms": 6.035888671875,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.02323420833333333,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.125,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1775.0182137643749,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.79813387150957,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 0,
+              "peak_host_load_average_1m": 0.21630859375,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 30068736,
+              "peak_threads": 14,
+              "pickup_max_ms": 9.768798828125,
+              "pickup_p99_ms": 9.768798828125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 18.166666666666668,
+              "settlement_p99_ms": 24.587890625,
+              "sql_calls_per_job": 34.291666666666664
+            },
+            "durably_measured_seconds": 8.57714501953125,
+            "pickup_p50_ms": 5.1585693359375,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+              "time": 1795406940.159494,
+              "load": [
+                93.09521484375,
+                79.51611328125,
+                73.6142578125
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured ordinary",
+              "time": 1795406943.4695349,
+              "load": [
+                86.20068359375,
+                78.31201171875,
+                73.2236328125
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "80ff91666f803ba46f26d8ec66a6089b68fb19a0bce0d5b6b94a7a98589f7991",
+            "xid_ledger_sha256": "76bae9e4841d18ee8a107621f81425d89a3add7303745ae0752ac78e768aa80d",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 757,
+                "tracer_pid": 0
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "sparse-04-attempt-01",
+        "index": 4,
+        "order": [
+          "ordinary",
+          "oban",
+          "layout"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "cc5dc03f08b6a8a3068a8ec41ec05ba4f89ea762538fc3cb5aae677b72511552",
+        "serial_sha256": "7686f1f51b42a7729406b6ad0ad364bcf9a161e26100cfd612ec9f3220101a29",
+        "guest_cpio_sha256": "b271bdb43c66fc3105e16eb5a35da75ea5d47e61e409c820e45d33b451b4c114",
+        "config_sha256": "4722e1ed212ad2153c9acc377db20ac03ee85a168e26079444cbdd03d7a065c3",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795407131.458817,
+            "load": [
+              24.64404296875,
+              52.89111328125,
+              63.52490234375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+            "time": 1795407137.2165241,
+            "load": [
+              22.99072265625,
+              52.0791015625,
+              63.17578125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured ordinary",
+            "time": 1795407140.720914,
+            "load": [
+              23.2314453125,
+              51.64599609375,
+              62.95751953125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+            "time": 1795407149.9039319,
+            "load": [
+              24.76806640625,
+              51.04638671875,
+              62.61279296875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured oban",
+            "time": 1795407155.956138,
+            "load": [
+              24.86669921875,
+              50.63037109375,
+              62.39794921875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+            "time": 1795407168.265093,
+            "load": [
+              25.22265625,
+              49.44091796875,
+              61.76708984375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured layout",
+            "time": 1795407172.07666,
+            "load": [
+              25.22265625,
+              49.44091796875,
+              61.76708984375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795407182.349942,
+            "load": [
+              28.099609375,
+              49.248046875,
+              61.55322265625
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 365,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 3.0,
+              "claim_p99_ms": 13.537109375,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.03300954166666666,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.125,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1733.564622115651,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.813354999387412,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 0,
+              "peak_host_load_average_1m": 0.2275390625,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 30101504,
+              "peak_threads": 14,
+              "pickup_max_ms": 23.52197265625,
+              "pickup_p99_ms": 23.52197265625,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 18.25,
+              "settlement_p99_ms": 34.291015625,
+              "sql_calls_per_job": 34.375
+            },
+            "durably_measured_seconds": 8.530739990234375,
+            "pickup_p50_ms": 5.449462890625,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+              "time": 1795407137.2165241,
+              "load": [
+                22.99072265625,
+                52.0791015625,
+                63.17578125
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured ordinary",
+              "time": 1795407140.720914,
+              "load": [
+                23.2314453125,
+                51.64599609375,
+                62.95751953125
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "f7d7815d8f3b4293cec1fc96c3851add44fd244ba5b4890ad6a24ccafa0381aa",
+            "xid_ledger_sha256": "b631138bceafdae5a8b8d76bea70d8e1b18800754f4f172fa86f86758c3afb6e",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 455,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 2.0,
+              "claim_p99_ms": 248.09814453125,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.04365895833333333,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 9.375,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 869.5915803948128,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.042822848519711,
+              "pair": 0,
+              "peak_connections": 4,
+              "peak_executing": 1,
+              "peak_host_load_average_1m": 0.28955078125,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 119996416,
+              "peak_threads": 12,
+              "pickup_max_ms": 249.111083984375,
+              "pickup_p99_ms": 249.111083984375,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 17.0,
+              "settlement_p99_ms": 252.512939453125,
+              "sql_calls_per_job": 26.375
+            },
+            "durably_measured_seconds": 11.748448974609374,
+            "pickup_p50_ms": 188.2344970703125,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+              "time": 1795407149.9039319,
+              "load": [
+                24.76806640625,
+                51.04638671875,
+                62.61279296875
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured oban",
+              "time": 1795407155.956138,
+              "load": [
+                24.86669921875,
+                50.63037109375,
+                62.39794921875
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "ca5ef00ba53afe644cb739b782a1f3668e2bfdd5e32f3b8a5ce85bf2cad8bf3d",
+            "xid_ledger_sha256": "404f78855864c8ef7932b9f0e0a460d847b2ad053c422aabe68e74ab32f80760",
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 693,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 693,
+                    "ppid": 364
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 698,
+                    "ppid": 693
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 680,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 680,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 685,
+                  "ppid": 680
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          },
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 3.0416666666666665,
+              "claim_p99_ms": 24.987060546875,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.03206333333333333,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.125,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1534.0043645329768,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.698667442357862,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 0,
+              "peak_host_load_average_1m": 0.2705078125,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 27975680,
+              "peak_threads": 12,
+              "pickup_max_ms": 37.791015625,
+              "pickup_p99_ms": 37.791015625,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 18.791666666666668,
+              "settlement_p99_ms": 53.03515625,
+              "sql_calls_per_job": 34.916666666666664
+            },
+            "durably_measured_seconds": 8.893278076171875,
+            "pickup_p50_ms": 7.01904296875,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+              "time": 1795407168.265093,
+              "load": [
+                25.22265625,
+                49.44091796875,
+                61.76708984375
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured layout",
+              "time": 1795407172.07666,
+              "load": [
+                25.22265625,
+                49.44091796875,
+                61.76708984375
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "4c2181c95cc26d7a908b0f4b1871e4f9537b6e928b7273c3085e1f18e65e4386",
+            "xid_ledger_sha256": "707a082ae315e2fe5d20d646de2bd353f189b28e9cabefda31178c9e8124928f",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 757,
+                "tracer_pid": 0
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "sparse-05-attempt-01",
+        "index": 5,
+        "order": [
+          "oban",
+          "ordinary",
+          "layout"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "9b111266bb27432685d4528d394dc3f12cbd5324a81db5860a931233cf585440",
+        "serial_sha256": "38031760b92ccc3c70afb2eafe64f44febd3662d32dad5a6f67099b731ed4171",
+        "guest_cpio_sha256": "e075c328099218014445bbbeb0ed229ef04df494ea0e43d2ab8977cceef577e0",
+        "config_sha256": "260b9df4158c7f7e20268f5792a95af932e2251bda04abaf3c97467db4c817fe",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795407269.314259,
+            "load": [
+              113.33837890625,
+              66.419921875,
+              66.56494140625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+            "time": 1795407278.110801,
+            "load": [
+              111.5498046875,
+              67.5888671875,
+              66.978515625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured oban",
+            "time": 1795407285.1994739,
+            "load": [
+              108.46240234375,
+              67.67822265625,
+              67.013671875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+            "time": 1795407297.943328,
+            "load": [
+              102.103515625,
+              67.6953125,
+              67.029296875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured ordinary",
+            "time": 1795407301.352988,
+            "load": [
+              100.33349609375,
+              67.8994140625,
+              67.10498046875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+            "time": 1795407310.426625,
+            "load": [
+              97.68408203125,
+              68.41015625,
+              67.29541015625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START sparse measured layout",
+            "time": 1795407314.080527,
+            "load": [
+              99.7109375,
+              69.31640625,
+              67.62158203125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795407328.255583,
+            "load": [
+              106.6767578125,
+              72.37744140625,
+              68.7451171875
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 366,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 2.0,
+              "claim_p99_ms": 276.14501953125,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.05279958333333332,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 9.458333333333334,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 868.0660684348142,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 1.9751623495285902,
+              "pair": 0,
+              "peak_connections": 4,
+              "peak_executing": 1,
+              "peak_host_load_average_1m": 0.15380859375,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 119599104,
+              "peak_threads": 12,
+              "pickup_max_ms": 312.393798828125,
+              "pickup_p99_ms": 312.393798828125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 17.166666666666668,
+              "settlement_p99_ms": 323.2578125,
+              "sql_calls_per_job": 26.625
+            },
+            "durably_measured_seconds": 12.15089990234375,
+            "pickup_p50_ms": 187.406494140625,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+              "time": 1795407278.110801,
+              "load": [
+                111.5498046875,
+                67.5888671875,
+                66.978515625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured oban",
+              "time": 1795407285.1994739,
+              "load": [
+                108.46240234375,
+                67.67822265625,
+                67.013671875
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "8ac51b3b97ef1fb7cf561b2d7b9bd70cfdf8378ede25f294b56bad43939ef914",
+            "xid_ledger_sha256": "b054367c58afc60c910698c72f0cbf31527b38a1b458f777dd413c417a6798d2",
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 470,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 470,
+                    "ppid": 365
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 475,
+                    "ppid": 470
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 456,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 456,
+                  "ppid": 365
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 461,
+                  "ppid": 456
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          },
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 2.9583333333333335,
+              "claim_p99_ms": 30.031982421875,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.027387374999999995,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.125,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1769.8475391981642,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.787449648599983,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 0,
+              "peak_host_load_average_1m": 0.32666015625,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 30232576,
+              "peak_threads": 14,
+              "pickup_max_ms": 33.883056640625,
+              "pickup_p99_ms": 33.883056640625,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 18.0,
+              "settlement_p99_ms": 52.682861328125,
+              "sql_calls_per_job": 34.125
+            },
+            "durably_measured_seconds": 8.61002099609375,
+            "pickup_p50_ms": 4.9329833984375,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured ordinary",
+              "time": 1795407297.943328,
+              "load": [
+                102.103515625,
+                67.6953125,
+                67.029296875
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured ordinary",
+              "time": 1795407301.352988,
+              "load": [
+                100.33349609375,
+                67.8994140625,
+                67.10498046875
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "130e04f92d4af86dc47c28a85de17995d7a28008b6eb1681278b466a3415d0df",
+            "xid_ledger_sha256": "8e673de27a5a4f3d2464198536ba2126aa5f6469069a326380139f7f5c47c0ad",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 534,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 2.9583333333333335,
+              "claim_p99_ms": 49.08203125,
+              "completed": 24,
+              "cpu_seconds_per_job": 0.08425495833333334,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 12.25,
+              "estimated_peak_executing": 1,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1624.7140529366666,
+              "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+              "jobs_per_second": 2.0352063536598353,
+              "pair": 0,
+              "peak_connections": 5,
+              "peak_executing": 1,
+              "peak_host_load_average_1m": 0.380859375,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 1356,
+              "peak_rss_bytes": 28110848,
+              "peak_threads": 14,
+              "pickup_max_ms": 141.451904296875,
+              "pickup_p99_ms": 141.451904296875,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 19.625,
+              "settlement_p99_ms": 233.845947265625,
+              "sql_calls_per_job": 35.875
+            },
+            "durably_measured_seconds": 11.792416015625,
+            "pickup_p50_ms": 26.43310546875,
+            "raw_attempts": 24,
+            "durable_effects": 24,
+            "validated_payload_bytes": 24576,
+            "enqueue_commits": 24,
+            "independent_application_commits": 48,
+            "settlement_commits": 24,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM sparse measured layout",
+              "time": 1795407310.426625,
+              "load": [
+                97.68408203125,
+                68.41015625,
+                67.29541015625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START sparse measured layout",
+              "time": 1795407314.080527,
+              "load": [
+                99.7109375,
+                69.31640625,
+                67.62158203125
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 5,
+              "durable": true,
+              "max_connections": 5,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "a09de29358872c0aea2c57f2901c8a81eb19b8ca01ab9a50d899b9526a03338a",
+            "xid_ledger_sha256": "22db9ecb5a1995f0784f6058f7ee9a798bc9a00da70c0a834ca3bcbfa517e1b9",
+            "application_resets": 48,
+            "startup_resets": 1,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 24,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 756,
+                "tracer_pid": 0
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "short": [
+      {
+        "name": "short-01-attempt-01",
+        "index": 1,
+        "order": [
+          "layout",
+          "ordinary",
+          "oban"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "81bfed83a9f2a46c4870496d66874e20bcc1b73c2c2f582f350ca46ab9a2778e",
+        "serial_sha256": "233e4fb99bc47a7d70498c82c3a1718256472674c3e643226ca230c7bbbbabb9",
+        "guest_cpio_sha256": "dcc4e6985ff0192842a59da9cb11dde234295dce090a257b97652a277fb76749",
+        "config_sha256": "b014db78d83e885eb9ffae35f5c5d449ce8e03926c4b07f4b746a651f99529f2",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795406586.201568,
+            "load": [
+              131.17041015625,
+              93.4296875,
+              77.291015625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+            "time": 1795406595.8734741,
+            "load": [
+              130.16064453125,
+              94.453125,
+              77.84228515625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured layout",
+            "time": 1795406599.5542111,
+            "load": [
+              122.0595703125,
+              93.3662109375,
+              77.5556640625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+            "time": 1795406600.759425,
+            "load": [
+              122.0595703125,
+              93.3662109375,
+              77.5556640625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured ordinary",
+            "time": 1795406604.295431,
+            "load": [
+              114.607421875,
+              92.29736328125,
+              77.27099609375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+            "time": 1795406604.9877708,
+            "load": [
+              114.607421875,
+              92.29736328125,
+              77.27099609375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured oban",
+            "time": 1795406612.762656,
+            "load": [
+              107.03125,
+              91.0966796875,
+              76.93505859375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795406614.276664,
+            "load": [
+              102.6240234375,
+              90.447265625,
+              76.78857421875
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 365,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.15625,
+              "claim_p99_ms": 739.278076171875,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.0052009765625,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.140625,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1571.0384468810964,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 166.69575881054783,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 16,
+              "peak_host_load_average_1m": 0.0732421875,
+              "peak_processes": 11,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 103346176,
+              "peak_threads": 76,
+              "pickup_max_ms": 751.88916015625,
+              "pickup_p99_ms": 751.843994140625,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.671875,
+              "settlement_p99_ms": 766.357177734375,
+              "sql_calls_per_job": 6.8125
+            },
+            "durably_measured_seconds": 0.767865966796875,
+            "pickup_p50_ms": 383.49560546875,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+              "time": 1795406595.8734741,
+              "load": [
+                130.16064453125,
+                94.453125,
+                77.84228515625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured layout",
+              "time": 1795406599.5542111,
+              "load": [
+                122.0595703125,
+                93.3662109375,
+                77.5556640625
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "e25b7d9d9d87a73db9ae8c103528f8a8511896475bdaea9e4c1f8dde08132e79",
+            "xid_ledger_sha256": "bc5d4720fd54c0203e6ca7c3f9e0a382b2866dd4ec641ca3d2c2b4f6726001cf",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 455,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.171875,
+              "claim_p99_ms": 337.260986328125,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.002970234375,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.125,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1691.599586373519,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 358.99490082735736,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 10,
+              "peak_host_load_average_1m": 0.2275390625,
+              "peak_processes": 9,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 77590528,
+              "peak_threads": 64,
+              "pickup_max_ms": 352.9638671875,
+              "pickup_p99_ms": 347.4619140625,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.703125,
+              "settlement_p99_ms": 353.89599609375,
+              "sql_calls_per_job": 6.828125
+            },
+            "durably_measured_seconds": 0.356551025390625,
+            "pickup_p50_ms": 186.237548828125,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+              "time": 1795406600.759425,
+              "load": [
+                122.0595703125,
+                93.3662109375,
+                77.5556640625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured ordinary",
+              "time": 1795406604.295431,
+              "load": [
+                114.607421875,
+                92.29736328125,
+                77.27099609375
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "9c8aad693a6570d1bb0115bfe54260e393d8e7f11c16e03f1a6364b1b14ab366",
+            "xid_ledger_sha256": "e8fea63819ea94891c5848d3f0460f0b6a640ebd749f1a415e710b24b04f92b7",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 1414,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 0.078125,
+              "claim_p99_ms": 207.97509765625,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.0118719375,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 0.0859375,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 874.0751900012586,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 586.2925401708484,
+              "pair": 0,
+              "peak_connections": 19,
+              "peak_executing": 15,
+              "peak_host_load_average_1m": 0.28955078125,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 123191296,
+              "peak_threads": 12,
+              "pickup_max_ms": 211.801025390625,
+              "pickup_p99_ms": 211.656982421875,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 3.265625,
+              "settlement_p99_ms": 218.321044921875,
+              "sql_calls_per_job": 3.3515625
+            },
+            "durably_measured_seconds": 0.218321044921875,
+            "pickup_p50_ms": 157.841064453125,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+              "time": 1795406604.9877708,
+              "load": [
+                114.607421875,
+                92.29736328125,
+                77.27099609375
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured oban",
+              "time": 1795406612.762656,
+              "load": [
+                107.03125,
+                91.0966796875,
+                76.93505859375
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "57499204ec2ea916dcdd9d95d5a0830a9cce664ae2cd947eb4005123013d491a",
+            "xid_ledger_sha256": "ef74a06ad0f25bad6cdfa88deb939dfc8cdba2e8b0389c00611c2bb171921077",
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 2388,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 2388,
+                    "ppid": 363
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 2393,
+                    "ppid": 2388
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 2375,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 2375,
+                  "ppid": 363
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 2380,
+                  "ppid": 2375
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          }
+        }
+      },
+      {
+        "name": "short-02-attempt-01",
+        "index": 2,
+        "order": [
+          "oban",
+          "ordinary",
+          "layout"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "bdaf556f559ab2f22cbb2e37e96fee0587004e09dcc403f52490a8af5578624d",
+        "serial_sha256": "a188ebd3c02e4df41f66d1e496108bc1dea4cd3fbd91aaa66e474507e6fe9f96",
+        "guest_cpio_sha256": "4149b84b7312af2f149014b2d45a8de1355ed7c9e5ddcafd940fdd68533b6774",
+        "config_sha256": "d7b0dc82f2b83afd8bf1ab71934b91de9fc2fced1ad7204eb1e79ec0f2785706",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795406671.094033,
+            "load": [
+              52.47705078125,
+              78.79638671875,
+              73.3271484375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+            "time": 1795406674.28864,
+            "load": [
+              49.5556640625,
+              77.75341796875,
+              72.9912109375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured oban",
+            "time": 1795406678.752825,
+            "load": [
+              46.2275390625,
+              76.59521484375,
+              72.6103515625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+            "time": 1795406679.168858,
+            "load": [
+              46.2275390625,
+              76.59521484375,
+              72.6103515625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured ordinary",
+            "time": 1795406682.5052102,
+            "load": [
+              46.2275390625,
+              76.59521484375,
+              72.6103515625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+            "time": 1795406683.0768151,
+            "load": [
+              43.166015625,
+              75.4560546875,
+              72.2314453125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured layout",
+            "time": 1795406686.468051,
+            "load": [
+              43.166015625,
+              75.4560546875,
+              72.2314453125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795406687.250711,
+            "load": [
+              43.166015625,
+              75.4560546875,
+              72.2314453125
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 365,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 0.0703125,
+              "claim_p99_ms": 123.77294921875,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.0046778046874999995,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 0.0859375,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 877.2223724369542,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 977.964973018144,
+              "pair": 0,
+              "peak_connections": 19,
+              "peak_executing": 0,
+              "peak_host_load_average_1m": 0.0,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 129024000,
+              "peak_threads": 12,
+              "pickup_max_ms": 126.10693359375,
+              "pickup_p99_ms": 126.010986328125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 3.2421875,
+              "settlement_p99_ms": 130.85107421875,
+              "sql_calls_per_job": 3.328125
+            },
+            "durably_measured_seconds": 0.130884033203125,
+            "pickup_p50_ms": 78.46142578125,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+              "time": 1795406674.28864,
+              "load": [
+                49.5556640625,
+                77.75341796875,
+                72.9912109375
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured oban",
+              "time": 1795406678.752825,
+              "load": [
+                46.2275390625,
+                76.59521484375,
+                72.6103515625
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "1e24abf5f4cfcdbb00966f208ef544bfc2c5c996b9b0cbee90c10ee3019face3",
+            "xid_ledger_sha256": "b4ab93f82cd041a65d3d2b3f27e226f38ad2f6f5a413a6de34465a6d93b63750",
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 468,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 468,
+                    "ppid": 364
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 473,
+                    "ppid": 468
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 455,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 455,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 460,
+                  "ppid": 455
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          },
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.15625,
+              "claim_p99_ms": 295.406982421875,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.00301478125,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.1171875,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1654.5631968875246,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 416.9749181022793,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 14,
+              "peak_host_load_average_1m": 0.0,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 44318720,
+              "peak_threads": 18,
+              "pickup_max_ms": 302.27587890625,
+              "pickup_p99_ms": 299.219970703125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.65625,
+              "settlement_p99_ms": 304.171875,
+              "sql_calls_per_job": 6.7734375
+            },
+            "durably_measured_seconds": 0.306972900390625,
+            "pickup_p50_ms": 139.511474609375,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+              "time": 1795406679.168858,
+              "load": [
+                46.2275390625,
+                76.59521484375,
+                72.6103515625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured ordinary",
+              "time": 1795406682.5052102,
+              "load": [
+                46.2275390625,
+                76.59521484375,
+                72.6103515625
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "5dc12d5d4b43ec65d733600683972884380ebc54fda0be602dbbf016c7a83de0",
+            "xid_ledger_sha256": "617ddcd390a65a49ff717c62520c5fe3b76ae6f0dd0b9baf7be07cd48891a568",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 562,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.1484375,
+              "claim_p99_ms": 156.02392578125,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.0016679375,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.1171875,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1696.1441216453813,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 740.3901011687218,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 16,
+              "peak_host_load_average_1m": 0.0,
+              "peak_processes": 4,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 47169536,
+              "peak_threads": 32,
+              "pickup_max_ms": 159.304931640625,
+              "pickup_p99_ms": 158.888916015625,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.609375,
+              "settlement_p99_ms": 172.743896484375,
+              "sql_calls_per_job": 6.7265625
+            },
+            "durably_measured_seconds": 0.1728818359375,
+            "pickup_p50_ms": 107.9229736328125,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+              "time": 1795406683.0768151,
+              "load": [
+                43.166015625,
+                75.4560546875,
+                72.2314453125
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured layout",
+              "time": 1795406686.468051,
+              "load": [
+                43.166015625,
+                75.4560546875,
+                72.2314453125
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "43a500ca6f7458d07d5e072bf5610fc2b49286507bafd8a40835065afd09b951",
+            "xid_ledger_sha256": "9496afd13df761e0ba43455cae5a9bf57bfd7f08f15af765401cc691d57799d7",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 1522,
+                "tracer_pid": 0
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "short-03-attempt-01",
+        "index": 3,
+        "order": [
+          "ordinary",
+          "oban",
+          "layout"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "2c0edc7eb7692c023783a80e544659188b5024d1e50dde8daa791dce3d6d2fbf",
+        "serial_sha256": "80e730d57cbdfb72ac2dc780c5301cd62f1121eabd58e8ec5d3e669b277a0288",
+        "guest_cpio_sha256": "f83f32ea7a8e12607ec909b0e46a2d137f4acf1f1a313c4120ebd99d9610b153",
+        "config_sha256": "0d7ca1ea4c85aaa965f851003c8cdc9119117fa4903857151efb95cb8bbe19a4",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795407107.294409,
+            "load": [
+              28.17919921875,
+              55.96923828125,
+              64.89501953125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+            "time": 1795407112.753151,
+            "load": [
+              26.24267578125,
+              55.1064453125,
+              64.5380859375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured ordinary",
+            "time": 1795407116.0952718,
+            "load": [
+              25.82275390625,
+              54.5400390625,
+              64.28271484375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+            "time": 1795407116.667615,
+            "load": [
+              25.82275390625,
+              54.5400390625,
+              64.28271484375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured oban",
+            "time": 1795407123.726039,
+            "load": [
+              25.65771484375,
+              53.56494140625,
+              63.82275390625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+            "time": 1795407124.462019,
+            "load": [
+              25.65771484375,
+              53.56494140625,
+              63.82275390625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured layout",
+            "time": 1795407127.889505,
+            "load": [
+              25.65771484375,
+              53.56494140625,
+              63.82275390625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795407129.247489,
+            "load": [
+              24.64404296875,
+              52.89111328125,
+              63.52490234375
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 366,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.15625,
+              "claim_p99_ms": 250.55908203125,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.002378796875,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.1171875,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1731.9716371475308,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 467.17534669160466,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 13,
+              "peak_host_load_average_1m": 0.0,
+              "peak_processes": 5,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 57663488,
+              "peak_threads": 40,
+              "pickup_max_ms": 264.966064453125,
+              "pickup_p99_ms": 259.964111328125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.65625,
+              "settlement_p99_ms": 273.7080078125,
+              "sql_calls_per_job": 6.7734375
+            },
+            "durably_measured_seconds": 0.273987060546875,
+            "pickup_p50_ms": 136.113037109375,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+              "time": 1795407112.753151,
+              "load": [
+                26.24267578125,
+                55.1064453125,
+                64.5380859375
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured ordinary",
+              "time": 1795407116.0952718,
+              "load": [
+                25.82275390625,
+                54.5400390625,
+                64.28271484375
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "80d89483b508041e2a0a62020b8c6f29ad6cabb6aac10c8193033c88229ce104",
+            "xid_ledger_sha256": "f25b8cd453f03970499cddb5dff1f699b762eb4df0e2d65589d059ab60f00980",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 456,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 0.078125,
+              "claim_p99_ms": 372.791015625,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.008670421875,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 0.1015625,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 916.3182835342644,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 334.44647936469664,
+              "pair": 0,
+              "peak_connections": 19,
+              "peak_executing": 16,
+              "peak_host_load_average_1m": 0.080078125,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 126025728,
+              "peak_threads": 12,
+              "pickup_max_ms": 375.823974609375,
+              "pickup_p99_ms": 375.796875,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 3.28125,
+              "settlement_p99_ms": 382.362060546875,
+              "sql_calls_per_job": 3.3828125
+            },
+            "durably_measured_seconds": 0.382721923828125,
+            "pickup_p50_ms": 316.055419921875,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+              "time": 1795407116.667615,
+              "load": [
+                25.82275390625,
+                54.5400390625,
+                64.28271484375
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured oban",
+              "time": 1795407123.726039,
+              "load": [
+                25.65771484375,
+                53.56494140625,
+                63.82275390625
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "c2164a341121f4215406fb02a1bedbe62e2042f17ad15fa2f1a838954d62b588",
+            "xid_ledger_sha256": "187535127136323ff1c8d085d4822f2e23955328f9fcab482b0feaa8c3047ed2",
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 1431,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 1431,
+                    "ppid": 365
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 1436,
+                    "ppid": 1431
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 1418,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 1418,
+                  "ppid": 365
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 1423,
+                  "ppid": 1418
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          },
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.15625,
+              "claim_p99_ms": 344.532958984375,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.00329740625,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.125,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1652.923878057953,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 350.4573161560978,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 14,
+              "peak_host_load_average_1m": 0.0732421875,
+              "peak_processes": 5,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 50192384,
+              "peak_threads": 35,
+              "pickup_max_ms": 354.245849609375,
+              "pickup_p99_ms": 353.90185546875,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.671875,
+              "settlement_p99_ms": 359.77001953125,
+              "sql_calls_per_job": 6.796875
+            },
+            "durably_measured_seconds": 0.365237060546875,
+            "pickup_p50_ms": 113.784423828125,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+              "time": 1795407124.462019,
+              "load": [
+                25.65771484375,
+                53.56494140625,
+                63.82275390625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured layout",
+              "time": 1795407127.889505,
+              "load": [
+                25.65771484375,
+                53.56494140625,
+                63.82275390625
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "8594e6188c1b0350abbb8d8a2a01e398acf19bb285f8b5fb33fe995ac72418a6",
+            "xid_ledger_sha256": "3a4ada12e26d77cf01d703262641bf50185c2fcea769b2aa1f9ba21fbff5fd27",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 1525,
+                "tracer_pid": 0
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "short-04-attempt-01",
+        "index": 4,
+        "order": [
+          "layout",
+          "oban",
+          "ordinary"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "0e9b054f5602fd786dd8d79356165b64c2527dbc331475bcaca85da7e74c7d21",
+        "serial_sha256": "fe992d93fa38540206f3b5b3ef16825e18d3840e0627019430aaa187aba04a81",
+        "guest_cpio_sha256": "0ee1a9bf5a2f2b7a702cfee2d9674c5e7a15eb7e1efecf058d578319b8d0c6cf",
+        "config_sha256": "e2415726acdc17d15af5a51692f13a2e2982f345398ef14ec6dd9ae771886f96",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795407184.6808279,
+            "load": [
+              26.81005859375,
+              48.62939453125,
+              61.2626953125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+            "time": 1795407189.170648,
+            "load": [
+              27.1455078125,
+              48.33642578125,
+              61.0849609375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured layout",
+            "time": 1795407192.456198,
+            "load": [
+              27.1455078125,
+              48.33642578125,
+              61.0849609375
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+            "time": 1795407193.763416,
+            "load": [
+              29.2958984375,
+              48.43017578125,
+              61.04296875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured oban",
+            "time": 1795407205.041122,
+            "load": [
+              32.70947265625,
+              48.517578125,
+              60.92578125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+            "time": 1795407206.098581,
+            "load": [
+              32.70947265625,
+              48.517578125,
+              60.92578125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured ordinary",
+            "time": 1795407209.882658,
+            "load": [
+              33.453125,
+              48.4091796875,
+              60.814453125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795407213.05207,
+            "load": [
+              34.77783203125,
+              48.435546875,
+              60.7509765625
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 366,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.1484375,
+              "claim_p99_ms": 517.805908203125,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.0035008828125,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.1328125,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1654.4605203954673,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 227.16708406631022,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 11,
+              "peak_host_load_average_1m": 0.080078125,
+              "peak_processes": 5,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 50245632,
+              "peak_threads": 36,
+              "pickup_max_ms": 559.387939453125,
+              "pickup_p99_ms": 530.969970703125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.640625,
+              "settlement_p99_ms": 558.530029296875,
+              "sql_calls_per_job": 6.7734375
+            },
+            "durably_measured_seconds": 0.5634619140625,
+            "pickup_p50_ms": 131.578857421875,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+              "time": 1795407189.170648,
+              "load": [
+                27.1455078125,
+                48.33642578125,
+                61.0849609375
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured layout",
+              "time": 1795407192.456198,
+              "load": [
+                27.1455078125,
+                48.33642578125,
+                61.0849609375
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "b4255c034c35313ee50db766b77334e716556209378cd3131d441b46b92357be",
+            "xid_ledger_sha256": "da05b03bfd0c2d004327515d8d4728a30112b5c3fef9a43d954323e76a209c21",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 456,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 0.09375,
+              "claim_p99_ms": 432.808837890625,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.0241077890625,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 0.09375,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 862.6791044973287,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 284.8939190085052,
+              "pair": 0,
+              "peak_connections": 19,
+              "peak_executing": 5,
+              "peak_host_load_average_1m": 0.21484375,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 126787584,
+              "peak_threads": 12,
+              "pickup_max_ms": 438.43798828125,
+              "pickup_p99_ms": 438.40087890625,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 3.34375,
+              "settlement_p99_ms": 447.225830078125,
+              "sql_calls_per_job": 3.4375
+            },
+            "durably_measured_seconds": 0.4492900390625,
+            "pickup_p50_ms": 285.1783447265625,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+              "time": 1795407193.763416,
+              "load": [
+                29.2958984375,
+                48.43017578125,
+                61.04296875
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured oban",
+              "time": 1795407205.041122,
+              "load": [
+                32.70947265625,
+                48.517578125,
+                60.92578125
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "7ccae81250818ab0d8858f7ad8c0f0ae5ad57060dbaffa2f908a50393595b78c",
+            "xid_ledger_sha256": "cfafacfabf38d9bb25949d2409fd8d61a3bf1211850b8da704030f3f93627d9c",
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 1431,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 1431,
+                    "ppid": 365
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 1436,
+                    "ppid": 1431
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 1418,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 1418,
+                  "ppid": 365
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 1423,
+                  "ppid": 1418
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          },
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.15625,
+              "claim_p99_ms": 879.05908203125,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.005661734375,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.1484375,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1649.8232478759164,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 143.9060842403723,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 16,
+              "peak_host_load_average_1m": 0.501953125,
+              "peak_processes": 5,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 56471552,
+              "peak_threads": 41,
+              "pickup_max_ms": 883.446044921875,
+              "pickup_p99_ms": 883.380126953125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.7578125,
+              "settlement_p99_ms": 886.489990234375,
+              "sql_calls_per_job": 6.90625
+            },
+            "durably_measured_seconds": 0.889468994140625,
+            "pickup_p50_ms": 525.879638671875,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+              "time": 1795407206.098581,
+              "load": [
+                32.70947265625,
+                48.517578125,
+                60.92578125
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured ordinary",
+              "time": 1795407209.882658,
+              "load": [
+                33.453125,
+                48.4091796875,
+                60.814453125
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "10e52cc58cc6d05dfd8ed276e0528ca58b818eb397cebf04a536fb4dfc08d6d7",
+            "xid_ledger_sha256": "538e5b361c24fa9fa253db3bdba7d7e63004b3b050b2d5a60dbe17a0e2a46c82",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 1525,
+                "tracer_pid": 0
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "short-05-attempt-01",
+        "index": 5,
+        "order": [
+          "oban",
+          "layout",
+          "ordinary"
+        ],
+        "eligible": true,
+        "postgres": "17.11 / aarch64-unknown-linux-gnu",
+        "postgres_log_sha256": "47335c5697a2f31ecf711643ca21642e9a05fd90493b26d70c0c9c7974347060",
+        "serial_sha256": "dea6da4e95823577c59172c60fee1c536b1532606dc4ce7193a796a53c47f088",
+        "guest_cpio_sha256": "4c02c4134c3ad28f3a83da4f0c5d56285edc3c240d2e94191c2d5db7aa447a1f",
+        "config_sha256": "190288005376e413cae478af720ecfded2a0ccfe36e1579e141a5bdbed862d5e",
+        "host_load": [
+          {
+            "event": "boot_start",
+            "time": 1795407408.598151,
+            "load": [
+              49.1279296875,
+              63.5009765625,
+              65.77685546875
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+            "time": 1795407413.4869828,
+            "load": [
+              47.83642578125,
+              62.994140625,
+              65.58447265625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured oban",
+            "time": 1795407419.5130398,
+            "load": [
+              46.08740234375,
+              62.3798828125,
+              65.35205078125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+            "time": 1795407419.8721979,
+            "load": [
+              46.08740234375,
+              62.3798828125,
+              65.35205078125
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured layout",
+            "time": 1795407423.272833,
+            "load": [
+              42.876953125,
+              61.44384765625,
+              65.00390625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+            "time": 1795407423.592154,
+            "load": [
+              42.876953125,
+              61.44384765625,
+              65.00390625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "TRANSFER_TIMING_START short measured ordinary",
+            "time": 1795407426.842923,
+            "load": [
+              42.876953125,
+              61.44384765625,
+              65.00390625
+            ],
+            "cores": 15
+          },
+          {
+            "event": "boot_end",
+            "time": 1795407428.2937229,
+            "load": [
+              41.92578125,
+              60.93798828125,
+              64.80419921875
+            ],
+            "cores": 15
+          }
+        ],
+        "oban_preflight": {
+          "async_threads": 2,
+          "dirty_cpu_schedulers": 1,
+          "dirty_cpu_schedulers_online": 1,
+          "dirty_io_schedulers": 1,
+          "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+          "erl_inetrc": "/proof/oban.inetrc",
+          "flag_argv": {
+            "+A": [
+              "2"
+            ],
+            "+S": [
+              "2:2"
+            ],
+            "+SDcpu": [
+              "1:1"
+            ],
+            "+SDio": [
+              "1"
+            ]
+          },
+          "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+          "lookup": [
+            "file"
+          ],
+          "loopback_addresses": [
+            "127.0.0.1"
+          ],
+          "pid": 367,
+          "role": "preflight",
+          "schedulers": 2,
+          "schedulers_online": 2
+        },
+        "oban_versions": {
+          "erlang": "29.1.1",
+          "elixir": "1.20.4",
+          "oban": "2.24.2"
+        },
+        "measured": {
+          "oban": {
+            "metrics": {
+              "application_sql_calls_per_job": 0.0,
+              "claim_calls_per_job": 0.078125,
+              "claim_p99_ms": 215.324951171875,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.00807678125,
+              "engine": "oban",
+              "enqueue_sql_calls_per_job": 0.0859375,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 875.0780621837828,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 572.9610403803072,
+              "pair": 0,
+              "peak_connections": 19,
+              "peak_executing": 16,
+              "peak_host_load_average_1m": 0.080078125,
+              "peak_processes": 2,
+              "peak_queued_context_bytes": null,
+              "peak_rss_bytes": 121188352,
+              "peak_threads": 12,
+              "pickup_max_ms": 218.3779296875,
+              "pickup_p99_ms": 218.35595703125,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 3.265625,
+              "settlement_p99_ms": 223.322021484375,
+              "sql_calls_per_job": 3.3515625
+            },
+            "durably_measured_seconds": 0.22340087890625,
+            "pickup_p50_ms": 163.3294677734375,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured oban",
+              "time": 1795407413.4869828,
+              "load": [
+                47.83642578125,
+                62.994140625,
+                65.58447265625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured oban",
+              "time": 1795407419.5130398,
+              "load": [
+                46.08740234375,
+                62.3798828125,
+                65.35205078125
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "428e57c4ebf39d4a1ce6c86a8b4d27cff8c0a3c232f31a6f98ba3350ddbfc944",
+            "xid_ledger_sha256": "31691af536d1d7b6eb546b548b3a97887708769c21ee0700d51f9ed02dd348b7",
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "runners": [
+              {
+                "async_threads": 2,
+                "dirty_cpu_schedulers": 1,
+                "dirty_cpu_schedulers_online": 1,
+                "dirty_io_schedulers": 1,
+                "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "erl_inetrc": "/proof/oban.inetrc",
+                "flag_argv": {
+                  "+A": [
+                    "2"
+                  ],
+                  "+S": [
+                    "2:2"
+                  ],
+                  "+SDcpu": [
+                    "1:1"
+                  ],
+                  "+SDio": [
+                    "1"
+                  ]
+                },
+                "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+                "live_environment": {
+                  "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                  "ERL_INETRC": "/proof/oban.inetrc"
+                },
+                "lookup": [
+                  "file"
+                ],
+                "loopback_addresses": [
+                  "127.0.0.1"
+                ],
+                "pid": 471,
+                "processes": [
+                  {
+                    "comm": "beam.smp",
+                    "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                    "pid": 471,
+                    "ppid": 366
+                  },
+                  {
+                    "comm": "erl_child_setup",
+                    "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                    "pid": 476,
+                    "ppid": 471
+                  }
+                ],
+                "role": "run",
+                "schedulers": 2,
+                "schedulers_online": 2
+              }
+            ],
+            "broker": {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 458,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 458,
+                  "ppid": 366
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 463,
+                  "ppid": 458
+                }
+              ],
+              "role": "session",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          },
+          "layout": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.1484375,
+              "claim_p99_ms": 134.39697265625,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.0013420078124999999,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.109375,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1774.0722327217086,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 912.8768554389935,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 4,
+              "peak_host_load_average_1m": 0.0732421875,
+              "peak_processes": 4,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 47058944,
+              "peak_threads": 27,
+              "pickup_max_ms": 137.60302734375,
+              "pickup_p99_ms": 137.587890625,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.59375,
+              "settlement_p99_ms": 140.073974609375,
+              "sql_calls_per_job": 6.703125
+            },
+            "durably_measured_seconds": 0.140216064453125,
+            "pickup_p50_ms": 76.5704345703125,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured layout",
+              "time": 1795407419.8721979,
+              "load": [
+                46.08740234375,
+                62.3798828125,
+                65.35205078125
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured layout",
+              "time": 1795407423.272833,
+              "load": [
+                42.876953125,
+                61.44384765625,
+                65.00390625
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "b010ec688553e3eaa97439e91962ddee9be73a040ebcbb26c93a250cedb21736",
+            "xid_ledger_sha256": "dd70487c6c6b936754d97bc515cf8c6c97bd8149053f3dec74d1794049976988",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-exact-layout",
+                "pid": 565,
+                "tracer_pid": 0
+              }
+            ]
+          },
+          "ordinary": {
+            "metrics": {
+              "application_sql_calls_per_job": 4.0,
+              "claim_calls_per_job": 0.1328125,
+              "claim_p99_ms": 236.166015625,
+              "completed": 128,
+              "cpu_seconds_per_job": 0.002078328125,
+              "engine": "mesh",
+              "enqueue_sql_calls_per_job": 1.1171875,
+              "estimated_peak_executing": 16,
+              "event_buffer_bytes": null,
+              "event_logs_dropped": 0,
+              "events_dropped": 0,
+              "idle_queries_per_minute": 1656.0575011896012,
+              "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+              "jobs_per_second": 501.61260231246507,
+              "pair": 0,
+              "peak_connections": 13,
+              "peak_executing": 16,
+              "peak_host_load_average_1m": 0.0732421875,
+              "peak_processes": 11,
+              "peak_queued_context_bytes": 21696,
+              "peak_rss_bytes": 84611072,
+              "peak_threads": 71,
+              "pickup_max_ms": 242.0458984375,
+              "pickup_p99_ms": 241.989990234375,
+              "poll_ms": 250,
+              "runner_sql_calls_per_job": 1.5625,
+              "settlement_p99_ms": 248.408935546875,
+              "sql_calls_per_job": 6.6796875
+            },
+            "durably_measured_seconds": 0.255177001953125,
+            "pickup_p50_ms": 131.9835205078125,
+            "raw_attempts": 128,
+            "durable_effects": 128,
+            "validated_payload_bytes": 131072,
+            "enqueue_commits": 1,
+            "independent_application_commits": 256,
+            "settlement_commits": 128,
+            "setup_host_load": {
+              "event": "FROZEN_DIAGNOSTIC_ARM short measured ordinary",
+              "time": 1795407423.592154,
+              "load": [
+                42.876953125,
+                61.44384765625,
+                65.00390625
+              ],
+              "cores": 15
+            },
+            "measurement_start_host_load": {
+              "event": "TRANSFER_TIMING_START short measured ordinary",
+              "time": 1795407426.842923,
+              "load": [
+                42.876953125,
+                61.44384765625,
+                65.00390625
+              ],
+              "cores": 15
+            },
+            "database": {
+              "commit_timestamps": true,
+              "database_connection_limit": 20,
+              "durable": true,
+              "max_connections": 20,
+              "reserve": 0,
+              "superuser_reserve": 0,
+              "tls": true,
+              "user": "parity_producer"
+            },
+            "raw_sha256": "ff086853217a7604a4afd31b2c7b737c98c2be1b0701a5a3bb33e772dd76737e",
+            "xid_ledger_sha256": "b8559e270635794eeb1a9549245900b50d2f6ad8ae9d6c97d24f62a6117a5d77",
+            "application_resets": 256,
+            "startup_resets": 8,
+            "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+            "retry_jobs": 0,
+            "first_attempt_jobs": 128,
+            "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+            "runners": [
+              {
+                "argv0": "/proof/mesh-current",
+                "pid": 1524,
+                "tracer_pid": 0
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
