@@ -1,0 +1,107 @@
+{
+  "binary_sha256": "1600369029e039a6f9fccf1cfe6212ffb8fb8c33fb60847412a50df4ec672e38",
+  "committed": [
+    {
+      "bytes": 2396,
+      "characters": 196608,
+      "codec": "pglz",
+      "id": "68a34a4a-c77c-45ef-bbb8-e040e2ee80fe",
+      "job_commit": "2026-11-23T20:58:17.74979+00:00",
+      "job_xid": "747",
+      "key": "default",
+      "product_commit": "2026-11-23T20:58:17.74979+00:00",
+      "product_xid": "746",
+      "sha256": "797189803a73b569daf0b4a2592742422efd8f590ce06508b154d90500b8ea9d"
+    },
+    {
+      "bytes": 2405,
+      "characters": 196608,
+      "codec": "pglz",
+      "id": "5a64d89b-8ef9-4366-8624-00848538140a",
+      "job_commit": "2026-11-23T20:58:17.766334+00:00",
+      "job_xid": "753",
+      "key": "default-again",
+      "product_commit": "2026-11-23T20:58:17.766334+00:00",
+      "product_xid": "752",
+      "sha256": "797189803a73b569daf0b4a2592742422efd8f590ce06508b154d90500b8ea9d"
+    },
+    {
+      "bytes": 896,
+      "characters": 196608,
+      "codec": "lz4",
+      "id": "f76c00f2-9ae7-4a69-ad0b-5b4e722af487",
+      "job_commit": "2026-11-23T20:58:17.759912+00:00",
+      "job_xid": "751",
+      "key": "local-commit",
+      "product_commit": "2026-11-23T20:58:17.759912+00:00",
+      "product_xid": "750",
+      "sha256": "797189803a73b569daf0b4a2592742422efd8f590ce06508b154d90500b8ea9d"
+    }
+  ],
+  "existing_tuple_versions_and_codecs": [
+    [
+      "(0,4)",
+      "753",
+      "pglz"
+    ],
+    [
+      "(0,1)",
+      "747",
+      "pglz"
+    ],
+    [
+      "(0,3)",
+      "751",
+      "lz4"
+    ]
+  ],
+  "fresh": {
+    "available_codecs": [
+      "pglz",
+      "lz4"
+    ],
+    "fsync": "on",
+    "synchronous_commit": "on",
+    "tls": true
+  },
+  "input_utf8_bytes": 200704,
+  "produced": [
+    {
+      "key": "default",
+      "policy": "pglz",
+      "receipt": "{\"id\": \"68a34a4a-c77c-45ef-bbb8-e040e2ee80fe\", \"state\": \"available\", \"conflict\": false, \"inserted\": true, \"effect_key\": \"68a34a4a-c77c-45ef-bbb8-e040e2ee80fe/1\"}",
+      "restored": "pglz",
+      "rollback": false,
+      "xid": "746"
+    },
+    {
+      "key": "local-rollback",
+      "policy": "lz4",
+      "receipt": "{\"id\": \"afd810d2-fbc9-4aa3-8e40-e7d516c46c1c\", \"state\": \"available\", \"conflict\": false, \"inserted\": true, \"effect_key\": \"afd810d2-fbc9-4aa3-8e40-e7d516c46c1c/1\"}",
+      "restored": "pglz",
+      "rollback": true,
+      "xid": "748"
+    },
+    {
+      "key": "local-commit",
+      "policy": "lz4",
+      "receipt": "{\"id\": \"f76c00f2-9ae7-4a69-ad0b-5b4e722af487\", \"state\": \"available\", \"conflict\": false, \"inserted\": true, \"effect_key\": \"f76c00f2-9ae7-4a69-ad0b-5b4e722af487/1\"}",
+      "restored": "pglz",
+      "rollback": false,
+      "xid": "750"
+    },
+    {
+      "key": "default-again",
+      "policy": "pglz",
+      "receipt": "{\"id\": \"5a64d89b-8ef9-4366-8624-00848538140a\", \"state\": \"available\", \"conflict\": false, \"inserted\": true, \"effect_key\": \"5a64d89b-8ef9-4366-8624-00848538140a/1\"}",
+      "restored": "pglz",
+      "rollback": false,
+      "xid": "752"
+    }
+  ],
+  "server_version": "17.11 (Homebrew)",
+  "storage_after_remigration": [
+    "e",
+    "x"
+  ]
+}

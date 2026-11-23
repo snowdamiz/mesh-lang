@@ -538,6 +538,30 @@ Use `delay_ms` or `scheduled_at_ms` to defer a job. Absolute times are Unix epoc
 
 Use `unique` to reuse a matching retained job. A policy can specify `fields` (such as `worker`, `queue`, `args`, or `metadata`), JSON `keys`, `states`, a `period_ms`, and a `timestamp` of `inserted_at` or `scheduled_at`. `replace` can update selected fields of a matching job. Enqueue returns `id`, `effect_key`, `state`, `inserted`, and `conflict`. Request keys preserve the original receipt independently of job retention. Use them for operations whose clients may have to retry an uncertain commit.
 
+### Store large job arguments
+
+PostgreSQL can spend CPU trying to compress a large `args` value even when it ultimately stores the value uncompressed. To try LZ4 for a producer transaction, first check whether the server lists `lz4` in the result of this query.
+
+```sql
+SELECT enumvals FROM pg_settings WHERE name = 'default_toast_compression';
+```
+
+Inside the transaction, before calling `Jobs.enqueue_in`, run the following on the same connection.
+
+```mesh
+let _ = Pg.execute(conn, "SET LOCAL default_toast_compression = 'lz4'", [])?
+```
+
+PostgreSQL uses this setting for new values in columns that use the default compression method. Commit or rollback restores the connection's previous setting. [PostgreSQL compression settings](https://www.postgresql.org/docs/17/runtime-config-client.html#GUC-DEFAULT-TOAST-COMPRESSION)
+
+For a deployment that consistently enqueues large, hard-to-compress arguments, the table owner can disable compression for new argument values after `Jobs.migrate`.
+
+```sql
+ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE EXTERNAL;
+```
+
+This policy applies to every queue sharing that table. Compare enqueue latency and `pg_column_size(args)` on representative payloads. Compressible data can take substantially more disk space under `EXTERNAL`. To restore the original policy for future writes, use `ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE EXTENDED`. PostgreSQL keeps the existing physical representation of stored rows until it rewrites their values. [PostgreSQL column storage](https://www.postgresql.org/docs/17/sql-altertable.html)
+
 ### Run workers and handle retries
 
 `Jobs.start` takes a named `fn(String) -> String` handler in a compiled Mesh executable. Each attempt starts in a fresh process. The handler receives a JSON job with `id`, `effect_key`, `worker`, `version`, `queue`, `args`, `metadata`, `attempt`, and `max_attempts`. Open connections and initialize any other dependencies inside the handler. The process inherits the application's environment and has its own actor registry and connection pools. Handler output goes to the runner's standard error. The runner config lists the queues and their concurrency and the worker versions the handler accepts.

@@ -17,7 +17,30 @@ The second series used the same 64 job specifications and 512 KiB payload length
 
 Each arm used a fresh database, the production Jobs schema, one producer transaction, request keys and the normal per-batch savepoint and namespace admission SQL. Eight successive committed claims returned eight fully reconstructed contexts each. The checker compared each payload against its input, then settled all 64 first attempts. The component excludes TLS, concurrent workers, and application writes. Measured wall time includes client calls over a private Unix socket. Backend CPU uses a separately calibrated Mach clock. Fresh full-queue results use the original native worker and verifier. [Native SETUP receipts](../2026-11-23-payload-storage-mesh-setup/README.md)
 
+### Sampled compression experiment
+
+A PostgreSQL module sampled eight 4 KiB regions before deciding whether to try PGLZ on each large JSONB value. In four rotated blocks with the original frozen payloads, the enqueue path using the module consumed 197 ms median backend CPU per 64 jobs. The stock controls consumed 632 and 634 ms. For the repeated-character input the respective medians were 131, 134 and 135 ms. A version applied by a table trigger gave the same direction on both fixtures. The initial version declared the function immutable and left five of the 64 repeated-character payloads uncompressed.
+
+A nonuniform 512 KiB fixture exposed the limit of the sampling rule. Its sampled regions looked incompressible, while most of its bytes were repeated text. The module stored 524,307 bytes, stock PGLZ stored 54,555 and LZ4 stored 49,185. All four storage methods round-tripped the same input hash. The experiment ended with this counterexample. The native tuning series uses the explicit PostgreSQL column policy.
+
+The [component archive](adaptive-screen.tar.gz) includes the three 32-arm series, mixed-payload results and diagnostic module sources. Its SHA-256 is `1b4449f464dbcba99604355dfc375ff7efaa141a27d5eb408c141e9eb6ef32af`.
+
 ## Reproduction
+
+The compiled Mesh [transaction proof](transaction-local/main.mpl) enqueues jobs and writes a business row on the same producer connection. On PostgreSQL 17.11, `SET LOCAL` selected LZ4 for the committed job. The connection returned to PGLZ after both commit and rollback. The rolled-back job and business row were absent. A repeat migration preserved both the owner's EXTERNAL policy and the later return to EXTENDED, as well as the three previously committed tuple versions and codecs. [Recorded results](transaction-local/receipt.json)
+
+With the repository's release runtime archive, compiler and an LZ4-enabled PostgreSQL 17.11 installation, reproduce this check from the repository root. Use a new output directory for each run.
+
+```sh
+proof=tools/durable-jobs-bench/results/2026-11-23-large-storage-component/transaction-local
+out=$(mktemp -d "$PWD/target/jobs-storage-transaction.XXXXXX")
+mkdir "$out/program"
+cp "$proof/main.mpl" "$out/program/"
+target/debug/meshc build "$out/program" --opt-level 2 --output "$out/producer"
+python3 -B "$proof/prove.py" "$out/producer" "$out/evidence"
+```
+
+Set `MESH_RT_LIB_PATH` to select the runtime archive and `PG_BIN_DIR` to select the PostgreSQL bin directory. The driver creates a disposable TLS cluster under `target/`.
 
 From the repository root, replay both four-block reductions and verify the hashes of the measurements and executed support code.
 
