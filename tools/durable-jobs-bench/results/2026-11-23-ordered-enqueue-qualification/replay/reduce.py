@@ -203,8 +203,12 @@ def main():
         if raw.is_file():
             with tarfile.open(raw) as archive:
                 code = int(archive.extractfile("./exit.txt").read())
+                if step == "wire-test" and code == 0:
+                    log = archive.extractfile("./step.log").read()
+                    if b"ordered_enqueue_reads_a_backpressured_window_and_retires_a_truncated_connection ... ok" not in log:
+                        record["failure"] = "wrapper returned zero without the required test result"
             record.update(archive_sha256=digest(raw), exit=code)
-            if code == 0:
+            if code == 0 and "failure" not in record:
                 successes[(request["build"], step)] = raw
         attempts[record["receipt"]] = record
     builds = [idx for idx, step in successes if step == "build"]

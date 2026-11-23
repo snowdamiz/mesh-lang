@@ -1,0 +1,13 @@
+{
+  "executable_sha256": "33ebb48f27c4e1623b5019400847812deb48ca6a4dba26b594efb0587a301954",
+  "inventory": "inventory.json",
+  "inventory_sha256": "eccd5fbc75d7fbfc911c243210f2917f269f5d6c83b252448d9aa1785d8949ab",
+  "manifest": "mesh.json",
+  "manifest_sha256": "5a7e01516ce2101c88a9e6ef2bac06551ff9c9d10860c50c91bb259f9f749bcc",
+  "official_operator": "follow-through matrix owner",
+  "producer_reservation_released_at": "2026-11-23T18:35:14Z",
+  "proof_status": "native truncated-response unit test pending",
+  "reference_series": "2026-11-23-baseline",
+  "source_revision": "77c447f773a4d0af5c5578873a2410301b3ba069",
+  "state": "admitted_for_exclusive_matched_timing_after_worker_attribution"
+}

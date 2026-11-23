@@ -22,13 +22,12 @@ local replay attempts failed on diagnostic assertions and are retained
 with the passing replay.
 [Local verification](local-verification.json) · [Fault receipts](local-faults.tar.gz)
 
-Native AMD64 qualification is pending an exclusive SETUP window from
-`linode-queue-matrix-and-iterations-v1`. The official Mesh, Oban, River, and
-Apalis baseline sealed all 25 blocks at `069c9c68`. The owner is running
-a separate focused comparison for the scheduled-work query candidate
-`ee593226` after sealing its 25-block repeat. The worker-cost lane owns
-dense attribution and queued its SETUP after ordered enqueue.
-[Native baseline](../2026-11-23-baseline/README.md) · [Run the qualification](REPLAY.md)
+The AMD64 producer qualified for the matrix owner's five-group matched
+repeat after worker attribution. The 1,024-job batch committed in 403.82
+ms at the median, compared with 453.38 and 453.74 ms for stock. The
+Linux truncated-response unit test remains open.
+[Native results](NATIVE.md) · [Inventory handoff](READY.json)
+· [Native baseline](../2026-11-23-baseline/README.md)
 
 An isolated integration check on product base `ba8dab03` passed the
 workspace and PostgreSQL proofs with the ordered-enqueue patch applied.

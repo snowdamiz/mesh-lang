@@ -1,0 +1,20 @@
+{
+  "grant": "NATIVE-ORDERED-ENQUEUE-SETUP ordered-182105z 2026-11-23T18:21:05Z 2026-11-23T18:36:05Z",
+  "reservation": "ordered-182105z",
+  "build": "v1",
+  "stage": "wire-test",
+  "receipt": "wire-test-retry-1894ded3c5504623ad57c80cbaa3a8fe",
+  "candidate_source_sha256": "0c1695ebb875c875095429750731c137656e47b04c59e273d03b813392c5caef",
+  "expected_host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "test_vector_sha256": [
+    "0ac3b9135b3a4b695c926ae4bd0e5cd02139eef1d7e11f6216d4ea14a0a6a3f9  tests/vectors/blind-rsa/rfc9474-a3-pss-deterministic.json",
+    "0c0380968ee9c69a97da496a6ccf45d04b0df41444e49113b9337260fbc24241  tests/vectors/blind-rsa/rfc9578-type2.json",
+    "5ef36138d0159c4d63b127b8cf4a6c6ed5b0cf7046c4be5249f1803afd56ec82  tests/vectors/mlkem/mlkem768-acvp-fips203.json",
+    "0dd06f7cfd3b219fbc9630f265e6576b7e634b562014f367376796cf9612661d  tests/vectors/mlkem/mlkem768-openssl.json",
+    "e7d29772a1c3b09a9e5cda2aaa25b6635dd4329b16bfd9cc3e97d233c0443aa3  tests/vectors/mlkem/mlkem768-keygen-acvp-tc26.json"
+  ]
+}

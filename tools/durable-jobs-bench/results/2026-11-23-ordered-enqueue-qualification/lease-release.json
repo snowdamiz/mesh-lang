@@ -1,0 +1,7 @@
+{
+  "released_utc": "2026-11-23T18:35:14Z",
+  "grant": "ordered-182105z",
+  "native_truncated_response_passed": false,
+  "wire_attempt": "tools/durable-jobs-bench/results/2026-11-23-ordered-enqueue-qualification/replay/native-runs/ordered-182105z-fe3b6c8634c44bf0b727e905a7fd4ec5/wire-test-bounded-57314f3906e74117b5074fd7690886a4",
+  "wire_attempt_exit": 124
+}

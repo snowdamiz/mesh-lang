@@ -23,8 +23,8 @@ NATIVE-ORDERED-ENQUEUE-SETUP <reservation-id> <UTC-start> <UTC-end>
    native lock, in that order.
 
    ```bash
-   status=target/linode-jobs-native/amd64-port-status.md
-   grant="$(rg '^NATIVE-ORDERED-ENQUEUE-SETUP ' "$status" | tail -n 1)"
+   shared_status=target/linode-jobs-native/amd64-port-status.md
+   grant="$(rg '^NATIVE-ORDERED-ENQUEUE-SETUP ' "$shared_status" | tail -n 1)"
    python3 -B "$qualification/replay/slot.py" --grant "$grant"
    ```
 
@@ -42,7 +42,7 @@ NATIVE-ORDERED-ENQUEUE-SETUP <reservation-id> <UTC-start> <UTC-end>
 
    ```bash
    lane=target/linode-ordered-enqueue/native-qualification
-   python3 -B "$qualification/replay/reduce.py" "$lane/native-runs" "$lane/reduced-native-v1"
+   python3 -B "$qualification/replay/reduce.py" "$qualification/replay/native-runs" "$lane/reduced-native-v1"
    ```
 
 The native producer comparison alternates stock and candidate with two
