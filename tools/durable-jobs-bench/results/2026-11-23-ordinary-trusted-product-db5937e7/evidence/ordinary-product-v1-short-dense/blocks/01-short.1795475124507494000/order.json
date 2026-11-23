@@ -1,0 +1,11 @@
+{
+  "group": 1,
+  "order": [
+    "frozen-v1",
+    "product"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}
