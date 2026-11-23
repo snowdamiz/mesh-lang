@@ -116,8 +116,9 @@ env -u MESH_TEST_DATABASE_URL PG_BIN_DIR=/path/to/postgresql/bin \
   bash scripts/verify-postgres-jobs.sh --effect-compiled
 ```
 
-The fixture builds the Mesh program and starts a disposable TLS cluster. The
-database cap is five connections. In polling mode, the runner uses the
+The fixture builds the compiler and runtime from this checkout and links the
+Mesh program with that runtime archive. The disposable TLS cluster caps the
+database at five connections. In polling mode, the runner uses the
 maintenance pool connection and separate claim and lifecycle connections.
 Set `MESH_EFFECT_LISTEN=1` to run the fixture with LISTEN. The dispatcher then
 shares one connection for claims, renewals, and settlement, and the listener

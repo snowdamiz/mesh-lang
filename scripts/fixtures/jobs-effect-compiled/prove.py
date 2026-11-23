@@ -72,7 +72,8 @@ class Proof:
         self.url = urlsplit(os.environ["MESH_TEST_DATABASE_URL"])
         self.passwords = {role: secrets.token_hex(16) for role in ROLES}
         self.ca = scratch / "ca.crt"
-        self.meshc = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "debug/meshc"
+        target = ROOT / os.environ.get("CARGO_TARGET_DIR", "target")
+        self.meshc = target / "debug/meshc"
         self.binary = self.path / "proof"
         self.listen = os.environ.get("MESH_EFFECT_LISTEN") == "1"
         self.env = dict(
@@ -103,11 +104,15 @@ class Proof:
         return result.stdout.strip()
 
     def prepare(self):
-        subprocess.run(["cargo", "build", "--locked", "-p", "meshc"], cwd=ROOT, check=True)
+        subprocess.run(
+            ["cargo", "build", "--locked", "-p", "meshc", "-p", "mesh-rt"],
+            cwd=ROOT, check=True,
+        )
         shutil.copyfile(FIXTURE / "main.mpl", self.path / "main.mpl")
         subprocess.run(
-            [str(self.meshc.resolve()), "build", ".", "--output", str(self.binary)],
+            [str(self.meshc), "build", ".", "--output", str(self.binary)],
             cwd=self.path, check=True,
+            env=dict(os.environ, MESH_RT_LIB_PATH=str(self.meshc.with_name("libmesh_rt.a"))),
         )
         bootstrap = subprocess.run(
             [self.binary, WORKER_ARG], cwd=self.path, env={}, stdin=subprocess.DEVNULL,
