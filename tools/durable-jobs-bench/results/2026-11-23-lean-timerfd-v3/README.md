@@ -14,8 +14,34 @@ and parent SHA-256 `8caef23b61f9bc8aa3bd9b7c9972b4c41226de749f57af568a898d63bb9c
 The diagnostic ELF pair is independently pinned in the closure receipt.
 [Exact artifact hashes](first/closure.json)
 
-The build-free replay reuses those exact images and the original signed
-scripts. It places the signed Python modules in a readable subdirectory and
-checks the import as `nobody` before the watchdog cases. This first attempt
-carries no child system, child total, or runner-tree comparison. See the
-controller queue for the status of the separate replay.
+## Build-free retry
+
+The separately signed retry ran at 22:41:31 UTC and released at 22:41:53
+UTC with exit 0. The original four ELFs were reverified. The preflight
+imported the full chain as `nobody` from the exact Linux directory. Eleven
+watchdog cases passed, including fragmented renewal, EOF, and a suspended
+owner. The strict PostgreSQL proof reconciled four distinct worker PIDs
+and exact consuming waits, ordered fenced effects and resets. PostgreSQL
+recorded 28 admitted claim turns and zero cohort completions. [Actual retry release](retry/release.json) · [Watchdog cases](retry/proof/watchdog.jsonl) · [Strict PG proof](retry/proof/strict-pg/joined-evidence.json)
+
+Five same-boot component rotations measured 256 attempts per arm on
+CPUs 0 and 1. The paired saving is the median of each rotation's mean
+duplicate lean control minus timerfd. Spread is the largest absolute
+control-to-control difference across the five rotations.
+
+| CPU per attempt | Paired saving (ms) | Duplicate spread (ms) |
+| --- | ---: | ---: |
+| Child system | 0.2054 | 0.1048 |
+| Child total | 0.2178 | 0.0718 |
+| Runner tree | 0.1236 | 0.0847 |
+
+The parent used 0.0898 ms more CPU per attempt in the paired median. The
+child-total and tree savings missed the predeclared 0.300 ms component
+gate. The reduced data records the resulting full-workload eligibility
+decision. [Reduced receipt](retry/proof/reduced.json) · [Complete retry export](retry/remote.tar.gz)
+
+```sh
+retry=tools/durable-jobs-bench/results/2026-11-23-lean-timerfd-v3/retry
+python3 -B "$retry/replay/reduce.py" "$retry/proof/timing.jsonl" |
+  cmp - "$retry/proof/reduced.json"
+```

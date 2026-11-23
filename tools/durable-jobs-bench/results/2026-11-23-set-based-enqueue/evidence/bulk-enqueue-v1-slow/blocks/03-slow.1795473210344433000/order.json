@@ -1,0 +1,17 @@
+{
+  "group": 3,
+  "order": [
+    "oban",
+    "ordinary",
+    "bulk",
+    "protected-mesh",
+    "apalis",
+    "river",
+    "scalar"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "slow"
+}
