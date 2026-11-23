@@ -1,0 +1,97 @@
+{
+  "darwin_link_sha256": "daab61c4723a8b58ab57866fe838b442bc7bc503eeb142622be9304a0a6dd5c3",
+  "freeze_sha256": "61bbae628ff6dcfb169e3af278407eb105272414a8cbba811c969b75e26f7a75",
+  "identical_on_resume": true,
+  "matched_controls": [
+    "ordinary-a",
+    "ordinary-b"
+  ],
+  "measured_darwin_sha256": "85c5c65ff8b710b8a46f3bbac038be982c17938133d39959daceeb1da06575b8",
+  "native_schedule": [
+    {
+      "group": 1,
+      "order": [
+        "ordinary-a",
+        "river-external",
+        "oban-external",
+        "ordinary-once",
+        "ordinary-b",
+        "apalis-external"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "large"
+    },
+    {
+      "group": 2,
+      "order": [
+        "river-external",
+        "ordinary-once",
+        "ordinary-a",
+        "apalis-external",
+        "oban-external",
+        "ordinary-b"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "large"
+    },
+    {
+      "group": 3,
+      "order": [
+        "ordinary-once",
+        "apalis-external",
+        "river-external",
+        "ordinary-b",
+        "ordinary-a",
+        "oban-external"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "large"
+    },
+    {
+      "group": 4,
+      "order": [
+        "apalis-external",
+        "ordinary-b",
+        "ordinary-once",
+        "oban-external",
+        "river-external",
+        "ordinary-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "large"
+    },
+    {
+      "group": 5,
+      "order": [
+        "ordinary-b",
+        "oban-external",
+        "apalis-external",
+        "ordinary-a",
+        "ordinary-once",
+        "river-external"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "large"
+    }
+  ],
+  "unchanged_peers": [
+    "river-external",
+    "apalis-external",
+    "oban-external"
+  ]
+}

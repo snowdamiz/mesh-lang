@@ -34,7 +34,13 @@ The control and candidate passed the mixed, exact-limit, count-limit, slow, dens
 
 ## Controller handoff
 
-The sealed request was delivered to the existing Linode controller. It asks for one broker-only link using the stock resident compiler and runtime, a diagnostic SETUP, then five matched native large rotations. Both ordinary controls use the original broker. All six lanes inherit the just-completed 16 MiB EXTERNAL inventory, original ordinary runner, three original peers, CPU caps, data, clocks, and scorer. The controller owns the host grant, logs, and results. [Request and commands](native-request.json) · [Delivery receipt](controller-delivery.json) · [Freeze](native-freeze/freeze.json)
+The existing Linode controller accepted the sealed request into its queue after priority work. It asks for one broker-only link using the stock resident compiler and runtime, a diagnostic SETUP, then five matched native large rotations. Both ordinary controls use the original broker. All six lanes inherit the just-completed 16 MiB EXTERNAL inventory, original ordinary runner, three original peers, CPU caps, data, clocks, and scorer. The controller owns the host grant, logs, and results. [Request and commands](native-request.json) · [Controller queue receipt](verification/controller-ready.txt) · [Freeze](native-freeze/freeze.json)
+
+The sealed link script relinked the same source with the matched Darwin compiler and runtime and returned the same artifact on a second install. The relinked binary passed the TLS producer proof. Offline inventory validation preserved both identical controls, all three original peer definitions, and the warmup and measured phases of all five rotations. [Offline receipt](verification/native-offline.json)
+
+## Workspace gates
+
+The workspace build, formatting, core tests, runtime tests, language proofs, and the PostgreSQL 17.11 compatibility and parity-driver proof all passed. The tests compiled the archived source from `6c802a19`. The PostgreSQL wrapper's checkout banner came from the enclosing live worktree. [Commands](verification/gate-commands.txt) · [Source verification](verification/source-blobs.json) · [Exit status](verification/gate-status.txt) · [Raw logs](verification/gate-raw.tar.gz)
 
 ## Replay
 
