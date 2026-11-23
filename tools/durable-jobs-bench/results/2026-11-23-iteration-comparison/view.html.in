@@ -117,6 +117,8 @@ function chooseSeries() {
 }
 for(const [key,s] of Object.entries(db))if(s.blocks.length)series.add(option(key,s.title));
 for(const [key,m] of Object.entries(measures))metric.add(option(key,m[0]));
-series.value=db.symmetric?.blocks.length?"symmetric":"baseline";
+if(db["ordinary-large"]?.blocks.length===5)series.value="ordinary-large";
+else if(db.symmetric?.blocks.length)series.value="symmetric";
+else series.value="baseline";
 series.onchange=chooseSeries;profile.onchange=draw;metric.onchange=draw;get("opponent").onchange=draw;chooseSeries();
 </script></body></html>
