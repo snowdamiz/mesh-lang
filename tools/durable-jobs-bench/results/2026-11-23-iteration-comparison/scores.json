@@ -1841,6 +1841,1065 @@
     "manifest_sha256": "19ad3ca3556504a28b9cffa15b462afeea65e2f82b07a3fc95c343837f4dd3d6",
     "title": "Four-engine baseline"
   },
+  "bulk-short": {
+    "blocks": [
+      {
+        "attempt": "01-short.1795473772843526000",
+        "group": 1,
+        "order": [
+          "apalis",
+          "bulk",
+          "scalar",
+          "oban",
+          "river"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "9bf997003a26ba0ee735b30274c0434cf4ca0975805742b5e6c32fa9b56c6281",
+          "measured-bulk/measured-mesh": "ba572a16b6598f91c1d9733a36ac897d958ad247ac2540086ec94c4db076bea1",
+          "measured-oban/measured-oban": "3fe108033896de2f51a9a02f61d3959bce9a6a606ac82a7c379f1c01be9b875e",
+          "measured-river/measured-go": "d5da8ad5d37dda1b433fbaaf7590e1abdf085b267ae7285f008392efab0d9b4b",
+          "measured-scalar/measured-mesh": "a90e652ad5c26dfd2407eed22e278ac4781ec4343420154240c5e15ef4bca54f"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 638.4039900249377,
+            "commit_to_pickup_p99_ms": 194.394,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 9.528,
+            "peak_runner_rss_bytes": 9043968,
+            "runner_cpu_ms_per_job": 0.6053828125,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 609.4425505170739
+          },
+          "bulk": {
+            "commit_jobs_per_s": 714.0147711805788,
+            "commit_to_pickup_p99_ms": 167.798,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1494252873563218,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 33.862,
+            "peak_runner_rss_bytes": 10354688,
+            "runner_cpu_ms_per_job": 1.2521640625000001,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 600.5724205883733
+          },
+          "oban": {
+            "commit_jobs_per_s": 370.008498632703,
+            "commit_to_pickup_p99_ms": 338.148,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7407407407407407,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 47.265,
+            "peak_runner_rss_bytes": 104161280,
+            "runner_cpu_ms_per_job": 10.818375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 325.5315956388939
+          },
+          "river": {
+            "commit_jobs_per_s": 754.405610891731,
+            "commit_to_pickup_p99_ms": 145.523,
+            "completed": 128,
+            "cpu_iowait_percent": 3.409090909090909,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.972,
+            "peak_runner_rss_bytes": 17428480,
+            "runner_cpu_ms_per_job": 0.85575,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 697.0083096459416
+          },
+          "scalar": {
+            "commit_jobs_per_s": 691.420978144615,
+            "commit_to_pickup_p99_ms": 170.583,
+            "completed": 128,
+            "cpu_iowait_percent": 0.78125,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 92.546,
+            "peak_runner_rss_bytes": 10706944,
+            "runner_cpu_ms_per_job": 1.2820546875,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 460.97553948543606
+          }
+        }
+      },
+      {
+        "attempt": "02-short.1795473978600006000",
+        "group": 2,
+        "order": [
+          "scalar",
+          "river",
+          "apalis",
+          "oban",
+          "bulk"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "a26dcac29e6b26d03c9aaf3481c62aaddcac3f5cc6bebb2747126e2532996f08",
+          "measured-bulk/measured-mesh": "ffee75557eefc284060624f86d2489736da00586967971b6819d3220f3a31a4b",
+          "measured-oban/measured-oban": "0c39bf7eef9b2e41b861471e94c643196ab21bece36795803210ecd747eaa2a4",
+          "measured-river/measured-go": "67e981378f2ad1cae9a4137d75486330157640c93450b01e7dca748d59524bab",
+          "measured-scalar/measured-mesh": "26fec53cd132dc36981120ccd1e4bdca5952403eb789a6b44ee66b1301592ba5"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 912.9749431173815,
+            "commit_to_pickup_p99_ms": 130.071,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 10.138,
+            "peak_runner_rss_bytes": 9175040,
+            "runner_cpu_ms_per_job": 0.6114843750000001,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 851.4091486573677
+          },
+          "bulk": {
+            "commit_jobs_per_s": 725.7881605806306,
+            "commit_to_pickup_p99_ms": 167.792,
+            "completed": 128,
+            "cpu_iowait_percent": 2.272727272727273,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 35.649,
+            "peak_runner_rss_bytes": 10575872,
+            "runner_cpu_ms_per_job": 1.2556718749999998,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 603.7479540962884
+          },
+          "oban": {
+            "commit_jobs_per_s": 353.14046713862416,
+            "commit_to_pickup_p99_ms": 358.47,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 58.099,
+            "peak_runner_rss_bytes": 104468480,
+            "runner_cpu_ms_per_job": 10.7745234375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 304.35537294233177
+          },
+          "river": {
+            "commit_jobs_per_s": 795.490562871721,
+            "commit_to_pickup_p99_ms": 150.169,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.459,
+            "peak_runner_rss_bytes": 17440768,
+            "runner_cpu_ms_per_job": 0.84590625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 734.0880676278632
+          },
+          "scalar": {
+            "commit_jobs_per_s": 700.1766852104086,
+            "commit_to_pickup_p99_ms": 175.663,
+            "completed": 128,
+            "cpu_iowait_percent": 2.3076923076923075,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 74.133,
+            "peak_runner_rss_bytes": 10321920,
+            "runner_cpu_ms_per_job": 1.3532265625,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 498.16302384955475
+          }
+        }
+      },
+      {
+        "attempt": "03-short.1795473852559501000",
+        "group": 3,
+        "order": [
+          "oban",
+          "river",
+          "bulk",
+          "scalar",
+          "apalis"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "ae196791925c9f1e05df62dc7927c299fc6502ce354bc4ba3dd71f553206606c",
+          "measured-bulk/measured-mesh": "0ee972178bf5669df6956ac0b74a067e8e81f3c60ac27b84a77967b173f23de9",
+          "measured-oban/measured-oban": "d88c144f34b26a640d2910a1a0f238a6cbf3e1ec0029816134f784166f480e8c",
+          "measured-river/measured-go": "d84a0a600e26f3787332765c6b17f08e0cf9b52ff5fc82edeb93a5da66b25a22",
+          "measured-scalar/measured-mesh": "6f438f1a0ef383bfca47791ce788634d6ca483b06ea62cbabb9a5d95dfd8c98a"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 746.1425015593212,
+            "commit_to_pickup_p99_ms": 161.804,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 13.213,
+            "peak_runner_rss_bytes": 9043968,
+            "runner_cpu_ms_per_job": 0.7081640625,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 692.7831480499237
+          },
+          "bulk": {
+            "commit_jobs_per_s": 711.4273010226767,
+            "commit_to_pickup_p99_ms": 170.062,
+            "completed": 128,
+            "cpu_iowait_percent": 3.409090909090909,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 35.073,
+            "peak_runner_rss_bytes": 10485760,
+            "runner_cpu_ms_per_job": 1.297046875,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 595.3682212909257
+          },
+          "oban": {
+            "commit_jobs_per_s": 365.59207350685625,
+            "commit_to_pickup_p99_ms": 341.468,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7575757575757576,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 49.8,
+            "peak_runner_rss_bytes": 102744064,
+            "runner_cpu_ms_per_job": 10.874953125,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 320.06641378085953
+          },
+          "river": {
+            "commit_jobs_per_s": 615.2337647980543,
+            "commit_to_pickup_p99_ms": 181.824,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 16.842,
+            "peak_runner_rss_bytes": 17813504,
+            "runner_cpu_ms_per_job": 1.0366875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 569.159555877684
+          },
+          "scalar": {
+            "commit_jobs_per_s": 593.1363008683886,
+            "commit_to_pickup_p99_ms": 197.835,
+            "completed": 128,
+            "cpu_iowait_percent": 4.545454545454546,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 69.14,
+            "peak_runner_rss_bytes": 10457088,
+            "runner_cpu_ms_per_job": 1.2891093749999998,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 449.2142260530213
+          }
+        }
+      },
+      {
+        "attempt": "04-short.1795473893019818000",
+        "group": 4,
+        "order": [
+          "bulk",
+          "apalis",
+          "oban",
+          "scalar",
+          "river"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "8a8ccd09753e0ef1a0e3ed166d4f5fb3003c0a1b289247c0284e140783b9b7d8",
+          "measured-bulk/measured-mesh": "63d3c904ebd4eb6241cce76f4ff4d9a6b4369b19a7663d3a6531b438480db290",
+          "measured-oban/measured-oban": "bc770896f6358c6d3f021dbec7c4224c4f850b173b167c569a2b22b6bed72609",
+          "measured-river/measured-go": "a189f105034fb7e459a7edba60a8b7180b99fe73858c4141dcbce55a1b280599",
+          "measured-scalar/measured-mesh": "db6403848fab7cf4cac7ebb48a048be6f3dd1c9815521c53e7bbd770b34ab46d"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 790.2161364604491,
+            "commit_to_pickup_p99_ms": 153.436,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1627906976744187,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 10.499,
+            "peak_runner_rss_bytes": 9043968,
+            "runner_cpu_ms_per_job": 0.7180312499999999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 742.1150278293136
+          },
+          "bulk": {
+            "commit_jobs_per_s": 711.779392874421,
+            "commit_to_pickup_p99_ms": 171.337,
+            "completed": 128,
+            "cpu_iowait_percent": 2.3255813953488373,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 37.409,
+            "peak_runner_rss_bytes": 10768384,
+            "runner_cpu_ms_per_job": 1.27409375,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 589.2100902227951
+          },
+          "oban": {
+            "commit_jobs_per_s": 349.1696309713463,
+            "commit_to_pickup_p99_ms": 359.619,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7575757575757576,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 48.822,
+            "peak_runner_rss_bytes": 107073536,
+            "runner_cpu_ms_per_job": 10.9488359375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 308.1322850416219
+          },
+          "river": {
+            "commit_jobs_per_s": 762.8356029679072,
+            "commit_to_pickup_p99_ms": 143.066,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1494252873563218,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.849,
+            "peak_runner_rss_bytes": 17489920,
+            "runner_cpu_ms_per_job": 0.8235625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 704.675078725419
+          },
+          "scalar": {
+            "commit_jobs_per_s": 702.8911891491173,
+            "commit_to_pickup_p99_ms": 163.09,
+            "completed": 128,
+            "cpu_iowait_percent": 2.272727272727273,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 68.101,
+            "peak_runner_rss_bytes": 10223616,
+            "runner_cpu_ms_per_job": 1.2619375,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 511.57845934949603
+          }
+        }
+      },
+      {
+        "attempt": "05-short.1795473932640913000",
+        "group": 5,
+        "order": [
+          "scalar",
+          "apalis",
+          "river",
+          "bulk",
+          "oban"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "50f3f3a9e74cda9e925d67cfcd4c056050f0d44d74d7b0045160d5de56ccb4e4",
+          "measured-bulk/measured-mesh": "e56005d28c076d613caf110d7aab4205320830cd868b0b01801d6f1566520fcc",
+          "measured-oban/measured-oban": "544a06ea8d9f2027cbdad021c323cb720dd9d63dd08853cd56c8f6eba6b5ba51",
+          "measured-river/measured-go": "5fa53096dc0c355bf826d21ea3a4c52279b2d9e970df1ec9afd7e3b3593fb77e",
+          "measured-scalar/measured-mesh": "ccad4a70cac45710d9edeaeaa9e5c98b519d8500640766655936dacdbb20bd83"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 947.1308594472604,
+            "commit_to_pickup_p99_ms": 127.012,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1494252873563218,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 10.319,
+            "peak_runner_rss_bytes": 9175040,
+            "runner_cpu_ms_per_job": 0.6400937499999999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 879.9428037177584
+          },
+          "bulk": {
+            "commit_jobs_per_s": 745.5818450820723,
+            "commit_to_pickup_p99_ms": 162.113,
+            "completed": 128,
+            "cpu_iowait_percent": 2.2988505747126435,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 42.891,
+            "peak_runner_rss_bytes": 10190848,
+            "runner_cpu_ms_per_job": 1.2531328124999999,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 596.5447012382963
+          },
+          "oban": {
+            "commit_jobs_per_s": 296.9031608588852,
+            "commit_to_pickup_p99_ms": 420.632,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7575757575757576,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 54.307,
+            "peak_runner_rss_bytes": 104792064,
+            "runner_cpu_ms_per_job": 10.8656953125,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 263.68700352681367
+          },
+          "river": {
+            "commit_jobs_per_s": 599.9053274405132,
+            "commit_to_pickup_p99_ms": 184.123,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 16.419,
+            "peak_runner_rss_bytes": 17715200,
+            "runner_cpu_ms_per_job": 1.0624296875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 557.0400285483015
+          },
+          "scalar": {
+            "commit_jobs_per_s": 760.6099140748488,
+            "commit_to_pickup_p99_ms": 160.776,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1235955056179776,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 74.05,
+            "peak_runner_rss_bytes": 10485760,
+            "runner_cpu_ms_per_job": 1.2361406249999998,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 528.192261983362
+          }
+        }
+      }
+    ],
+    "description": "Both Mesh lanes run the same V2 grouped-success scheduler. The producer switches between set-based and scalar enqueue for the identical 128-job submission.",
+    "manifest_sha256": "e202e8c762f9e0bb2ee81eb41cd40cc0ccf9e9edf725f6841a27f708135c141d",
+    "title": "Trusted short jobs \u00b7 batch enqueue and grouped settlements"
+  },
+  "bulk-slow": {
+    "blocks": [
+      {
+        "attempt": "01-slow.1795472893087275000",
+        "group": 1,
+        "order": [
+          "apalis",
+          "bulk",
+          "scalar",
+          "oban",
+          "river",
+          "ordinary",
+          "protected-mesh"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "0df0236daa20c7e7499a288985203e3a24616e78eb121d71609964e747c4b978",
+          "measured-bulk/measured-mesh": "fdcbe65a08fc79b79982bae5a8d1dd819e9d892b28449067d02ec4ea0057aad3",
+          "measured-oban/measured-oban": "25e10a4a28c0776065a241c58e604641011503239fc852a88c4860709347598f",
+          "measured-ordinary/measured-mesh": "f88d41a9d5a115d01f514785a73ffad22d3861a81051bf06ab28f9667be60d97",
+          "measured-protected-mesh/measured-mesh": "3ff86355bd92e24b0d48d511f0a85e3ba4771b1b7c1b4f5ad8ae5cb2003560d6",
+          "measured-river/measured-go": "56317ed3d2f284634dd82802878d71ec452d7468a3d3275ffc57b901af23b4f9",
+          "measured-scalar/measured-mesh": "4c7685d5bb7136fea0eb02d5d2157655c4b71a681453caa25a2659245372649f",
+          "warmup-apalis/warmup-rust": "ad65be201cceea7edd4a1261ceddcefdef4e6ae9bd81b3a0a15d151b8ac95a36",
+          "warmup-bulk/warmup-mesh": "6775617445d725f8fe2b5d1496508f67ecc8e1e471cc36fb3edd77ec959f8936",
+          "warmup-oban/warmup-oban": "5146318b964b5aedbf7d2974676b953d65106f505c41d315060a4a92a5f19c53",
+          "warmup-ordinary/warmup-mesh": "ecc4735bf34eb5b050f3a65081022e48a4b113ff7e4106edab646d398e15ef9f",
+          "warmup-protected-mesh/warmup-mesh": "c2713467ad69b1219b4f4c601b11220f31692251eda4fec2d24b812f68ba4ac2",
+          "warmup-river/warmup-go": "bf1ec868f77c8881d069a3e891c99f481b20e540fdfc9f874ed6a8275a6113b7",
+          "warmup-scalar/warmup-mesh": "7f20f12fcc1208a90c473975abc955c8d2190ca15e5c0012e950c84ff3a37a13"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 350.063688344862,
+            "commit_to_pickup_p99_ms": 1314.401,
+            "completed": 512,
+            "cpu_iowait_percent": 5.378973105134475,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 349.677,
+            "peak_runner_rss_bytes": 12320768,
+            "runner_cpu_ms_per_job": 0.47806835937500003,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 282.5189210425831
+          },
+          "bulk": {
+            "commit_jobs_per_s": 351.7561011133905,
+            "commit_to_pickup_p99_ms": 1329.523,
+            "completed": 512,
+            "cpu_iowait_percent": 2.0785219399538106,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 543.869,
+            "peak_runner_rss_bytes": 15192064,
+            "runner_cpu_ms_per_job": 0.7772070312499999,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 256.07387731360495
+          },
+          "oban": {
+            "commit_jobs_per_s": 340.59560325667934,
+            "commit_to_pickup_p99_ms": 1389.722,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6493506493506493,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 493.757,
+            "peak_runner_rss_bytes": 129814528,
+            "runner_cpu_ms_per_job": 4.050525390625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 256.383806558418
+          },
+          "ordinary": {
+            "commit_jobs_per_s": 365.4798564920501,
+            "commit_to_pickup_p99_ms": 1272.167,
+            "completed": 512,
+            "cpu_iowait_percent": 2.2831050228310503,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 637.011,
+            "peak_runner_rss_bytes": 15015936,
+            "runner_cpu_ms_per_job": 0.7501386718749999,
+            "sha256": "8306bc3eeeeae1e44959dd08a081898e36c466ff467c0f11fc680cb26c067094",
+            "submit_jobs_per_s": 251.2379110156538
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 211.6034749258148,
+            "commit_to_pickup_p99_ms": 2301.42,
+            "completed": 512,
+            "cpu_iowait_percent": 0.5943536404160475,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 722.555,
+            "peak_runner_rss_bytes": 224411648,
+            "runner_cpu_ms_per_job": 4.711734375,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 162.9444572628832
+          },
+          "river": {
+            "commit_jobs_per_s": 383.8291000931835,
+            "commit_to_pickup_p99_ms": 1165.268,
+            "completed": 512,
+            "cpu_iowait_percent": 0.9950248756218906,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 463.371,
+            "peak_runner_rss_bytes": 34521088,
+            "runner_cpu_ms_per_job": 0.8601914062499999,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 284.8720690725745
+          },
+          "scalar": {
+            "commit_jobs_per_s": 335.76610742810374,
+            "commit_to_pickup_p99_ms": 1403.273,
+            "completed": 512,
+            "cpu_iowait_percent": 2.5806451612903225,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 677.769,
+            "peak_runner_rss_bytes": 14798848,
+            "runner_cpu_ms_per_job": 0.8106230468749999,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 232.448334725602
+          }
+        }
+      },
+      {
+        "attempt": "02-slow.1795473052961739000",
+        "group": 2,
+        "order": [
+          "bulk",
+          "oban",
+          "apalis",
+          "ordinary",
+          "scalar",
+          "protected-mesh",
+          "river"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "4c88fd9c6361d53d2c9d602b90e5bb0af0f28664873f14e0ef83ce46ba7a6acc",
+          "measured-bulk/measured-mesh": "8a0b863b6c23539bfe6e27d726ad27ce3dde76e668606fc21554f0f96395dfb8",
+          "measured-oban/measured-oban": "9c65afa393d7cae7d2f89fcbe871d5d2cdc5b2a64d05553d1c072b6b7ba3e82b",
+          "measured-ordinary/measured-mesh": "d91b9fcafc234ffaa61dc9930b392b8d3124c384812b85f2329fdc819333a48b",
+          "measured-protected-mesh/measured-mesh": "6685e83acf347914f95e7607951654a4b66d798a9238a2124db69fa08cea2ce9",
+          "measured-river/measured-go": "034009876cd4b27787ac62650a0563ebe99b32a0201bb2bf5fc6df318c8fb281",
+          "measured-scalar/measured-mesh": "cdc2e874d93fa5226b747692bbdf13e2f0deeeb0873a793cc3effc707203f6e7",
+          "warmup-apalis/warmup-rust": "66e03165f91b8c0782ce426ad88dc8882973077ba66aa64ae0e51c8d7b6d946e",
+          "warmup-bulk/warmup-mesh": "5bea6ee29711e4042e4b25d7d4d3f5483861dafa3dfcda9a929c44de2f22c825",
+          "warmup-oban/warmup-oban": "151cf500e4f56cd0dd92eb1fc1ade4b0c3d4099ff406b129ce6c42d019fe61cc",
+          "warmup-ordinary/warmup-mesh": "453fb752ce542d076f28fd77bcc23076ae17eb979b87b3fbe9824f29e9c2eaf5",
+          "warmup-protected-mesh/warmup-mesh": "d6dff28033929fe75439a3e53f8e51c38a05a595404d9df75bb885e96e67775f",
+          "warmup-river/warmup-go": "741aeff909c0e086f7050dffd078116810854a7d6b0076941ca965ad1b7ea566",
+          "warmup-scalar/warmup-mesh": "d796e62a91afa5db15e9e29e51e2983153725f271d02902aa3d901751dab3a62"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 491.3198559434829,
+            "commit_to_pickup_p99_ms": 927.256,
+            "completed": 512,
+            "cpu_iowait_percent": 0.625,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 328.663,
+            "peak_runner_rss_bytes": 13357056,
+            "runner_cpu_ms_per_job": 0.4977558593749999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 373.5170570357628
+          },
+          "bulk": {
+            "commit_jobs_per_s": 359.6798849024368,
+            "commit_to_pickup_p99_ms": 1296.068,
+            "completed": 512,
+            "cpu_iowait_percent": 2.262443438914027,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 507.917,
+            "peak_runner_rss_bytes": 15151104,
+            "runner_cpu_ms_per_job": 0.7240917968749999,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 265.0919926167738
+          },
+          "oban": {
+            "commit_jobs_per_s": 317.78188246042623,
+            "commit_to_pickup_p99_ms": 1497.817,
+            "completed": 512,
+            "cpu_iowait_percent": 0.21978021978021978,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 476.826,
+            "peak_runner_rss_bytes": 134008832,
+            "runner_cpu_ms_per_job": 3.85541015625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 245.2114325999021
+          },
+          "ordinary": {
+            "commit_jobs_per_s": 364.6045856147824,
+            "commit_to_pickup_p99_ms": 1280.121,
+            "completed": 512,
+            "cpu_iowait_percent": 2.288329519450801,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 629.346,
+            "peak_runner_rss_bytes": 14864384,
+            "runner_cpu_ms_per_job": 0.740708984375,
+            "sha256": "8306bc3eeeeae1e44959dd08a081898e36c466ff467c0f11fc680cb26c067094",
+            "submit_jobs_per_s": 251.76939300464642
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 207.23668898913425,
+            "commit_to_pickup_p99_ms": 2348.585,
+            "completed": 512,
+            "cpu_iowait_percent": 0.5882352941176471,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 635.467,
+            "peak_runner_rss_bytes": 222687232,
+            "runner_cpu_ms_per_job": 4.80334375,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 164.83841971467498
+          },
+          "river": {
+            "commit_jobs_per_s": 388.3948822905588,
+            "commit_to_pickup_p99_ms": 1158.249,
+            "completed": 512,
+            "cpu_iowait_percent": 1.75,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 454.09,
+            "peak_runner_rss_bytes": 37289984,
+            "runner_cpu_ms_per_job": 0.90771875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 288.88427476505586
+          },
+          "scalar": {
+            "commit_jobs_per_s": 370.6671937090827,
+            "commit_to_pickup_p99_ms": 1262.823,
+            "completed": 512,
+            "cpu_iowait_percent": 2.0547945205479454,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 636.356,
+            "peak_runner_rss_bytes": 15532032,
+            "runner_cpu_ms_per_job": 0.7377812499999999,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 253.76068880166966
+          }
+        }
+      },
+      {
+        "attempt": "03-slow.1795473210344433000",
+        "group": 3,
+        "order": [
+          "oban",
+          "ordinary",
+          "bulk",
+          "protected-mesh",
+          "apalis",
+          "river",
+          "scalar"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "ab42c887da4d648f96c3684ed3d6ce354a3192c70b1e0fd003ed5968f26064a4",
+          "measured-bulk/measured-mesh": "b99bf659b684cca6cd11de2a7dc156691c830f89e5ec12887317da4cfbc474c2",
+          "measured-oban/measured-oban": "84d7364cddf929b71bfc509465c7df4316236ce2511c534e0e13ebf3e4b3f337",
+          "measured-ordinary/measured-mesh": "cd9562f2160e883320a184ca7d467cf9f9ddc67d50c7acaf13d3c1718f032053",
+          "measured-protected-mesh/measured-mesh": "659e3f13ba9a3f9b5b6a750f919bbaffa07e4751bbb74bd91a593d96c0156731",
+          "measured-river/measured-go": "2b1725a553dccad6c0782253976684bb98f418de1979dcd4fc81b128ae590424",
+          "measured-scalar/measured-mesh": "9d8cc532c20b290d144850125dbacb43d35678e0d0e98ba67db0d3b145b5d63c",
+          "warmup-apalis/warmup-rust": "bb1622046db6db328e7d8b9760ae54042a0f7b0b1a03fc8653507433a6c24cb6",
+          "warmup-bulk/warmup-mesh": "0b7087f09fb6f7d4739a5feb9062410ff84a0976990f5cf080aeaa0d30cee237",
+          "warmup-oban/warmup-oban": "4e1ee957c76d8d84498a8f4aa5a1f9fa51eb88386796705169020a33ceb344fe",
+          "warmup-ordinary/warmup-mesh": "0b04ba880a99056ea8ffd3fca6fde575bd36f8585b5274b1734b4e0a4abcff93",
+          "warmup-protected-mesh/warmup-mesh": "3b7acea3c3483645303c3988587d0c29de1438d37fabf261ea8dce06001ca514",
+          "warmup-river/warmup-go": "27d52e7764ec021b991440c5224af947b7e8dc67349b97382d3e6bdc4f9518e9",
+          "warmup-scalar/warmup-mesh": "8a30f48d8ff2205495116d9dc73b20964d9e79c2ab16d9d950663c0221675293"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 473.85469689958353,
+            "commit_to_pickup_p99_ms": 962.737,
+            "completed": 512,
+            "cpu_iowait_percent": 0.547945205479452,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 342.707,
+            "peak_runner_rss_bytes": 12718080,
+            "runner_cpu_ms_per_job": 0.45657031249999996,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 359.75090060686887
+          },
+          "bulk": {
+            "commit_jobs_per_s": 356.6455535285271,
+            "commit_to_pickup_p99_ms": 1300.946,
+            "completed": 512,
+            "cpu_iowait_percent": 2.525252525252525,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 520.962,
+            "peak_runner_rss_bytes": 15110144,
+            "runner_cpu_ms_per_job": 0.7314882812500001,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 261.68363777055765
+          },
+          "oban": {
+            "commit_jobs_per_s": 318.7280757726199,
+            "commit_to_pickup_p99_ms": 1487.589,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6607929515418502,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 494.911,
+            "peak_runner_rss_bytes": 130772992,
+            "runner_cpu_ms_per_job": 3.964833984375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 243.65915130471862
+          },
+          "ordinary": {
+            "commit_jobs_per_s": 366.6019862381051,
+            "commit_to_pickup_p99_ms": 1267.434,
+            "completed": 512,
+            "cpu_iowait_percent": 2.0618556701030926,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 670.093,
+            "peak_runner_rss_bytes": 15028224,
+            "runner_cpu_ms_per_job": 0.74990234375,
+            "sha256": "8306bc3eeeeae1e44959dd08a081898e36c466ff467c0f11fc680cb26c067094",
+            "submit_jobs_per_s": 247.73758009738216
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 206.95021271005749,
+            "commit_to_pickup_p99_ms": 2356.38,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6259780907668232,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 649.622,
+            "peak_runner_rss_bytes": 224407552,
+            "runner_cpu_ms_per_job": 4.77203515625,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 163.91096689222564
+          },
+          "river": {
+            "commit_jobs_per_s": 393.04223131302973,
+            "commit_to_pickup_p99_ms": 1164.94,
+            "completed": 512,
+            "cpu_iowait_percent": 0.7518796992481203,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 469.218,
+            "peak_runner_rss_bytes": 35098624,
+            "runner_cpu_ms_per_job": 0.91231640625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 288.95910946414455
+          },
+          "scalar": {
+            "commit_jobs_per_s": 369.5558184470427,
+            "commit_to_pickup_p99_ms": 1260.366,
+            "completed": 512,
+            "cpu_iowait_percent": 2.0642201834862384,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 659.365,
+            "peak_runner_rss_bytes": 14802944,
+            "runner_cpu_ms_per_job": 0.7491210937499999,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 250.3897668832147
+          }
+        }
+      },
+      {
+        "attempt": "04-slow.1795473371258974000",
+        "group": 4,
+        "order": [
+          "ordinary",
+          "protected-mesh",
+          "oban",
+          "river",
+          "bulk",
+          "scalar",
+          "apalis"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "13525329e25b141435116778d7ee3d1548232a9600260ffbec6ddbd54d63a784",
+          "measured-bulk/measured-mesh": "06c35dc96eafecfa02798ed6cf5e8b9a3a64078695b3953461ab20f87c3b8697",
+          "measured-oban/measured-oban": "82c6306549ef4faf6a50de3eaa1fe8b1a01a47935982ee5dc0e4253624afd0e2",
+          "measured-ordinary/measured-mesh": "ec94e3bb7dc378d90a42c476cc84a5b0102efa2f9ac815cf94f65a5fb87abd99",
+          "measured-protected-mesh/measured-mesh": "776cf4daac0ad4185a9f26fc7b049f64d6560a472bf2b2870480ed04b2a4cc2f",
+          "measured-river/measured-go": "3cff07b4202bbd064eb3920ff8b367ed1d931cc6eb599cc88d75afe8f13019a6",
+          "measured-scalar/measured-mesh": "6d2bd8beb7262dbcbf8ab167bedf677e6e7dfe499e674c2b7dd4aeb6f6105981",
+          "warmup-apalis/warmup-rust": "d164500380f6773345232759dc5a8fd6518a2bec93be650062880f70d8ad3e11",
+          "warmup-bulk/warmup-mesh": "7669ab6eede23171f84d9031830d783ba5b33fa5ba2f4a2ed216d218608180be",
+          "warmup-oban/warmup-oban": "cf142398edfb764f30935dd47cd5838169dd52d940fbe4003d79784bcfd9b0fc",
+          "warmup-ordinary/warmup-mesh": "710bbe063bbf22cf6269c5afeeb605ab1214d226f10ea966b86a57bed49caea2",
+          "warmup-protected-mesh/warmup-mesh": "e504f2a7cf3454419fd716ab60361892af0872e07f5ea21e12cdf28a2e12e50b",
+          "warmup-river/warmup-go": "df289803b51c5c3569b4643aad34d69336ca523d726544a4d02689e9cd0556d8",
+          "warmup-scalar/warmup-mesh": "55b69ead52b0ca91163b9770f2cad325015c47f353673fa26d6eed2ad8135a8b"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 439.14836095593677,
+            "commit_to_pickup_p99_ms": 1049.195,
+            "completed": 512,
+            "cpu_iowait_percent": 0.5571030640668524,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 364.321,
+            "peak_runner_rss_bytes": 12988416,
+            "runner_cpu_ms_per_job": 0.5503242187499999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 334.5937234922697
+          },
+          "bulk": {
+            "commit_jobs_per_s": 354.35174393657104,
+            "commit_to_pickup_p99_ms": 1328.744,
+            "completed": 512,
+            "cpu_iowait_percent": 1.8433179723502304,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 502.469,
+            "peak_runner_rss_bytes": 14823424,
+            "runner_cpu_ms_per_job": 0.7556601562499999,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 262.9199208569957
+          },
+          "oban": {
+            "commit_jobs_per_s": 331.4823411199312,
+            "commit_to_pickup_p99_ms": 1436.619,
+            "completed": 512,
+            "cpu_iowait_percent": 1.991150442477876,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 526.004,
+            "peak_runner_rss_bytes": 128106496,
+            "runner_cpu_ms_per_job": 4.035021484375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 247.2735913253333
+          },
+          "ordinary": {
+            "commit_jobs_per_s": 375.22462177064983,
+            "commit_to_pickup_p99_ms": 1244.27,
+            "completed": 512,
+            "cpu_iowait_percent": 1.8518518518518519,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 644.751,
+            "peak_runner_rss_bytes": 15597568,
+            "runner_cpu_ms_per_job": 0.724751953125,
+            "sha256": "8306bc3eeeeae1e44959dd08a081898e36c466ff467c0f11fc680cb26c067094",
+            "submit_jobs_per_s": 254.81929479755553
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 213.65524056244743,
+            "commit_to_pickup_p99_ms": 2272.652,
+            "completed": 512,
+            "cpu_iowait_percent": 0.591715976331361,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 711.062,
+            "peak_runner_rss_bytes": 210706432,
+            "runner_cpu_ms_per_job": 4.670529296875,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 164.76553413961176
+          },
+          "river": {
+            "commit_jobs_per_s": 328.78471664793705,
+            "commit_to_pickup_p99_ms": 1208.392,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6711409395973155,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 464.058,
+            "peak_runner_rss_bytes": 36134912,
+            "runner_cpu_ms_per_job": 0.8903496093750001,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 253.3013276551619
+          },
+          "scalar": {
+            "commit_jobs_per_s": 365.8475587535459,
+            "commit_to_pickup_p99_ms": 1280.227,
+            "completed": 512,
+            "cpu_iowait_percent": 1.8648018648018647,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 702.254,
+            "peak_runner_rss_bytes": 15286272,
+            "runner_cpu_ms_per_job": 0.76782421875,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 243.60721381861921
+          }
+        }
+      },
+      {
+        "attempt": "05-slow.1795473531524654000",
+        "group": 5,
+        "order": [
+          "protected-mesh",
+          "river",
+          "ordinary",
+          "scalar",
+          "oban",
+          "apalis",
+          "bulk"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "7b794cd254291ad996e19e8ffbb3889b07553e9005569421a8a554b6727b8c31",
+          "measured-bulk/measured-mesh": "9f4acd266e6aabe64af6f60144b559f0adc13360fb5c715951926e2569df06f6",
+          "measured-oban/measured-oban": "8195d7796f87594b06852015e4ee5a6446b52dc920bcbb80686d36f273f5cb96",
+          "measured-ordinary/measured-mesh": "fa9cacba48fa95e3c0d9b95109cdc1067694730f52f9cd478846a95f9e7a3644",
+          "measured-protected-mesh/measured-mesh": "cf78e88238ac2310d64ae6225d400f98302c7bbccdc5f1f642a2f9f73b7ff84b",
+          "measured-river/measured-go": "458a32fcade9052274e6d47a70964253f4137f639a3d41def3fdecf1a4656bd4",
+          "measured-scalar/measured-mesh": "6b8f82c15836b3266fd23470e2b2cec8cadb7134780f3b18941371241fba454e",
+          "warmup-apalis/warmup-rust": "872fa9515bc3ed6923a681f2b5050ee9b6ac18b555ce20ee3f826965367326f7",
+          "warmup-bulk/warmup-mesh": "0bc0697ff88d66f879e15c410c65a90461182f8a974d89f91f89ac704e7aff3f",
+          "warmup-oban/warmup-oban": "cacf8159695f6b6ee0e397a0865b94996e7b2019b47ca30cea692538526424d1",
+          "warmup-ordinary/warmup-mesh": "460664b884dafc22ab78b53530000fe76005cf5e7c6aaaab097d540de5a6df64",
+          "warmup-protected-mesh/warmup-mesh": "ec4ce77a7e87eee8bb6c4e1d105fb8f5de4a0ae062a13ee3d1ad019eaecd2ada",
+          "warmup-river/warmup-go": "f2ec19b1be04e3a6eb8812bcafea0f7ea2101ff26207dd75fcc8de6216393a5b",
+          "warmup-scalar/warmup-mesh": "f4e7fa02f8f77278c14ad0765577da8f0b15aaa07d6b0a93ed798ff34bc8acae"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 457.83778950192254,
+            "commit_to_pickup_p99_ms": 1001.717,
+            "completed": 512,
+            "cpu_iowait_percent": 0.31746031746031744,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 322.111,
+            "peak_runner_rss_bytes": 13107200,
+            "runner_cpu_ms_per_job": 0.468279296875,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 355.45410303031565
+          },
+          "bulk": {
+            "commit_jobs_per_s": 357.8132578198271,
+            "commit_to_pickup_p99_ms": 1299.892,
+            "completed": 512,
+            "cpu_iowait_percent": 2.304147465437788,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 545.466,
+            "peak_runner_rss_bytes": 15298560,
+            "runner_cpu_ms_per_job": 0.7641425781249999,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 259.0594926076969
+          },
+          "oban": {
+            "commit_jobs_per_s": 332.6950180870426,
+            "commit_to_pickup_p99_ms": 1421.155,
+            "completed": 512,
+            "cpu_iowait_percent": 0.6666666666666666,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 471.954,
+            "peak_runner_rss_bytes": 135917568,
+            "runner_cpu_ms_per_job": 3.9552539062499994,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 254.61223600764035
+          },
+          "ordinary": {
+            "commit_jobs_per_s": 358.62478601587475,
+            "commit_to_pickup_p99_ms": 1280.009,
+            "completed": 512,
+            "cpu_iowait_percent": 2.070393374741201,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 647.766,
+            "peak_runner_rss_bytes": 14979072,
+            "runner_cpu_ms_per_job": 0.7459003906249999,
+            "sha256": "8306bc3eeeeae1e44959dd08a081898e36c466ff467c0f11fc680cb26c067094",
+            "submit_jobs_per_s": 246.69443906406443
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 209.05348584438417,
+            "commit_to_pickup_p99_ms": 2335.085,
+            "completed": 512,
+            "cpu_iowait_percent": 0.7861635220125787,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 621.865,
+            "peak_runner_rss_bytes": 229998592,
+            "runner_cpu_ms_per_job": 4.707720703124999,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 166.7209920941036
+          },
+          "river": {
+            "commit_jobs_per_s": 387.56961302839477,
+            "commit_to_pickup_p99_ms": 1194.41,
+            "completed": 512,
+            "cpu_iowait_percent": 0.7425742574257426,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 452.671,
+            "peak_runner_rss_bytes": 37785600,
+            "runner_cpu_ms_per_job": 0.90394921875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 288.65821288994226
+          },
+          "scalar": {
+            "commit_jobs_per_s": 366.51590836529607,
+            "commit_to_pickup_p99_ms": 1270.845,
+            "completed": 512,
+            "cpu_iowait_percent": 2.0547945205479454,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 635.171,
+            "peak_runner_rss_bytes": 14999552,
+            "runner_cpu_ms_per_job": 0.7365859375,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 251.95498863496005
+          }
+        }
+      }
+    ],
+    "description": "The same ordinary V1 executable switches between the batch and scalar producer. Each 512-job rotation includes the original trusted and protected Mesh builds and all three stock peers.",
+    "manifest_sha256": "b27a47891d3233fa2f892a8f4af0a9bb3a2231ff76217b01a8cd78b93922fce7",
+    "title": "Trusted slow jobs \u00b7 set-based enqueue"
+  },
   "current": {
     "blocks": [
       {
@@ -2798,6 +3857,410 @@
             "runner_cpu_ms_per_job": 0.9181328125,
             "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
             "submit_jobs_per_s": 715.115759363547
+          }
+        }
+      },
+      {
+        "attempt": "02-short.1795472685063894000",
+        "group": 2,
+        "order": [
+          "oban",
+          "ordinary-stock",
+          "apalis",
+          "ordinary-success-cohort",
+          "river",
+          "protected-mesh"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "e1cfefd8cffcbe8da8a3ef76f5de571cb31268f367fc534344d470ea86b466a7",
+          "measured-oban/measured-oban": "b18bb052fc7c4c6aaf9d4e641c059218a86ac65f5567584744c5d0146d3684fb",
+          "measured-ordinary-stock/measured-mesh": "2031734aee53c388b992634d86686316aba99505f67be88a15370a997e2ab450",
+          "measured-ordinary-success-cohort/measured-mesh": "a87e0d361c4f6c5d35d4cb1d7c4c3fb92f0b12d4bb06dcf5f385bdb32ec25ced",
+          "measured-protected-mesh/measured-mesh": "5eecd19df74eb904c75595d12e704f8b2e69738bceeae753bde90ee89ddb0a4f",
+          "measured-river/measured-go": "2defb9450dc3da0c08eab1aae9d3e3a0a010cc4958e0d5a3942c538fabdb259e"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 954.9815718399809,
+            "commit_to_pickup_p99_ms": 125.571,
+            "completed": 128,
+            "cpu_iowait_percent": 2.247191011235955,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 10.479,
+            "peak_runner_rss_bytes": 9043968,
+            "runner_cpu_ms_per_job": 0.625640625,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 885.7334634254357
+          },
+          "oban": {
+            "commit_jobs_per_s": 342.66745194624406,
+            "commit_to_pickup_p99_ms": 368.233,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7575757575757576,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 49.454,
+            "peak_runner_rss_bytes": 103698432,
+            "runner_cpu_ms_per_job": 10.728781249999999,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 302.60476507941013
+          },
+          "ordinary-stock": {
+            "commit_jobs_per_s": 600.6766998446687,
+            "commit_to_pickup_p99_ms": 200.638,
+            "completed": 128,
+            "cpu_iowait_percent": 3.5294117647058822,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 91.696,
+            "peak_runner_rss_bytes": 10223616,
+            "runner_cpu_ms_per_job": 1.2688671874999997,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 419.9626626945198
+          },
+          "ordinary-success-cohort": {
+            "commit_jobs_per_s": 691.0029259655147,
+            "commit_to_pickup_p99_ms": 165.839,
+            "completed": 128,
+            "cpu_iowait_percent": 3.409090909090909,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 69.365,
+            "peak_runner_rss_bytes": 10600448,
+            "runner_cpu_ms_per_job": 1.2538984375,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 502.7434869188501
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 238.8398354990633,
+            "commit_to_pickup_p99_ms": 510.013,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7633587786259542,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 67.417,
+            "peak_runner_rss_bytes": 29753344,
+            "runner_cpu_ms_per_job": 4.629507812499999,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 212.1520002784495
+          },
+          "river": {
+            "commit_jobs_per_s": 782.2813279225542,
+            "commit_to_pickup_p99_ms": 136.946,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.147,
+            "peak_runner_rss_bytes": 17551360,
+            "runner_cpu_ms_per_job": 0.8526640625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 724.1006726216405
+          }
+        }
+      },
+      {
+        "attempt": "03-short.1795472733197437000",
+        "group": 3,
+        "order": [
+          "ordinary-stock",
+          "ordinary-success-cohort",
+          "oban",
+          "protected-mesh",
+          "apalis",
+          "river"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "03cf63d6c30acb76c1de298226d5a162fb4dcd3b99a38a9ab15cb2070042734f",
+          "measured-oban/measured-oban": "a12010f10315006c6d9c159caa0af45146ac3485eb62a721768e48112cf6cf9a",
+          "measured-ordinary-stock/measured-mesh": "097e3b4175ac4f18e636f1780a1bf893058c4bee5809759de02a421e98f49993",
+          "measured-ordinary-success-cohort/measured-mesh": "7e10d31376f35f123ea661116f283899e6e13f47fec6d6c0788bb1d356a6d702",
+          "measured-protected-mesh/measured-mesh": "65ec0255c48eff778c6bb7347172983b1821717050ce1fefa1406ee450d668ec",
+          "measured-river/measured-go": "a45e54520f04131fb8b54de816187df9df700a34dc9a7175aa634d30888a8f30"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 994.6073632026357,
+            "commit_to_pickup_p99_ms": 119.212,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1494252873563218,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 10.578,
+            "peak_runner_rss_bytes": 9043968,
+            "runner_cpu_ms_per_job": 0.6080312499999999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 919.0648515135849
+          },
+          "oban": {
+            "commit_jobs_per_s": 312.95231389117083,
+            "commit_to_pickup_p99_ms": 398.034,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 54.252,
+            "peak_runner_rss_bytes": 105328640,
+            "runner_cpu_ms_per_job": 11.2468515625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 276.3027241721711
+          },
+          "ordinary-stock": {
+            "commit_jobs_per_s": 642.4412768520377,
+            "commit_to_pickup_p99_ms": 187.466,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1627906976744187,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 69.243,
+            "peak_runner_rss_bytes": 10186752,
+            "runner_cpu_ms_per_job": 1.2745625,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 476.7527180491875
+          },
+          "ordinary-success-cohort": {
+            "commit_jobs_per_s": 601.1393469184563,
+            "commit_to_pickup_p99_ms": 199.631,
+            "completed": 128,
+            "cpu_iowait_percent": 2.4096385542168677,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 93.075,
+            "peak_runner_rss_bytes": 10485760,
+            "runner_cpu_ms_per_job": 1.378703125,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 418.29518568384725
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 232.5741966196794,
+            "commit_to_pickup_p99_ms": 519.836,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1299435028248588,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 72.29,
+            "peak_runner_rss_bytes": 16515072,
+            "runner_cpu_ms_per_job": 4.66040625,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 205.57229399407694
+          },
+          "river": {
+            "commit_jobs_per_s": 508.39648570929256,
+            "commit_to_pickup_p99_ms": 198.963,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 17.608,
+            "peak_runner_rss_bytes": 17530880,
+            "runner_cpu_ms_per_job": 1.1579140625000002,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 475.16519414952853
+          }
+        }
+      },
+      {
+        "attempt": "04-short.1795472780290341000",
+        "group": 4,
+        "order": [
+          "ordinary-success-cohort",
+          "protected-mesh",
+          "ordinary-stock",
+          "river",
+          "oban",
+          "apalis"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "a4f08d0655a3f5c8c32ef9a8f7b0279220d9d2690d93e3556c083089853d4ece",
+          "measured-oban/measured-oban": "cdc7c21a996816b2ac5ce264ec55b43c1f6981ff30d0aa2e6e341fc92039350e",
+          "measured-ordinary-stock/measured-mesh": "ece071d30e70dde8b59019b4bc5725256dfaef1bf317902c81ba77273dce0a7c",
+          "measured-ordinary-success-cohort/measured-mesh": "a9ddea423c7abaad7bef9ea7639d46b011bcc1c9c9917f18b15661646143b463",
+          "measured-protected-mesh/measured-mesh": "fb73f36bee29b67a96e265b68f3280116afa18a2848d0a379751e8e7d94d2c05",
+          "measured-river/measured-go": "5fb2f219b0fe5f1ffe06f09529fc20174718a75665cb9a4b84d24653e7b859f0"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 1000.0546904908862,
+            "commit_to_pickup_p99_ms": 118.928,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1235955056179776,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 10.094,
+            "peak_runner_rss_bytes": 9175040,
+            "runner_cpu_ms_per_job": 0.6038125,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 926.951849196521
+          },
+          "oban": {
+            "commit_jobs_per_s": 387.27557682881815,
+            "commit_to_pickup_p99_ms": 323.38,
+            "completed": 128,
+            "cpu_iowait_percent": 0.78125,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 49.051,
+            "peak_runner_rss_bytes": 102162432,
+            "runner_cpu_ms_per_job": 11.2318359375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 337.2281427423498
+          },
+          "ordinary-stock": {
+            "commit_jobs_per_s": 585.9276653986826,
+            "commit_to_pickup_p99_ms": 213.591,
+            "completed": 128,
+            "cpu_iowait_percent": 2.3255813953488373,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 69.081,
+            "peak_runner_rss_bytes": 10223616,
+            "runner_cpu_ms_per_job": 1.2518125,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 445.1585529564788
+          },
+          "ordinary-success-cohort": {
+            "commit_jobs_per_s": 716.9301945233254,
+            "commit_to_pickup_p99_ms": 166.67,
+            "completed": 128,
+            "cpu_iowait_percent": 2.3255813953488373,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 67.984,
+            "peak_runner_rss_bytes": 10616832,
+            "runner_cpu_ms_per_job": 1.3164140625,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 519.2213302612738
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 214.14673401135312,
+            "commit_to_pickup_p99_ms": 583.77,
+            "completed": 128,
+            "cpu_iowait_percent": 0.5747126436781609,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 67.049,
+            "peak_runner_rss_bytes": 35913728,
+            "runner_cpu_ms_per_job": 4.947046875,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 192.54779848669466
+          },
+          "river": {
+            "commit_jobs_per_s": 608.8801362369305,
+            "commit_to_pickup_p99_ms": 177.165,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 17.792,
+            "peak_runner_rss_bytes": 17645568,
+            "runner_cpu_ms_per_job": 1.0111640625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 561.369038743235
+          }
+        }
+      },
+      {
+        "attempt": "05-short.1795472828237073000",
+        "group": 5,
+        "order": [
+          "protected-mesh",
+          "river",
+          "ordinary-success-cohort",
+          "apalis",
+          "ordinary-stock",
+          "oban"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "8ed29d08525bf6ef7dd748556c497703b9b727b30d7ea5ffa1a05cbe9ee541e9",
+          "measured-oban/measured-oban": "94c59ac8a182630e76ce74e14c73c4c13b0088f218eac6a165f9910a8f02df94",
+          "measured-ordinary-stock/measured-mesh": "9c7581b24520bfbfeeb1f9e1d665e70564abd32c0dae2e906fa846cdbd666244",
+          "measured-ordinary-success-cohort/measured-mesh": "123b472a1083bdeda0ded4aa792314c56400f8c2ef4c697904baaeab64cc7d3e",
+          "measured-protected-mesh/measured-mesh": "0627eede9edd407d1b9c1415f35089bff330bd0bc2f9fe01a6a35910108cff2d",
+          "measured-river/measured-go": "c70591377f78ce56d994e6d974c98b0dd0709d25728ad93901e8c1a69387f7bd"
+        },
+        "scores": {
+          "apalis": {
+            "commit_jobs_per_s": 999.8672051368178,
+            "commit_to_pickup_p99_ms": 121.92,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 10.262,
+            "peak_runner_rss_bytes": 9175040,
+            "runner_cpu_ms_per_job": 0.6139843749999999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 925.6647791783279
+          },
+          "oban": {
+            "commit_jobs_per_s": 302.0028926214559,
+            "commit_to_pickup_p99_ms": 416.279,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 53.212,
+            "peak_runner_rss_bytes": 103149568,
+            "runner_cpu_ms_per_job": 11.3164765625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 268.31625262813674
+          },
+          "ordinary-stock": {
+            "commit_jobs_per_s": 572.0516991723127,
+            "commit_to_pickup_p99_ms": 217.356,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1764705882352942,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 68.787,
+            "peak_runner_rss_bytes": 10747904,
+            "runner_cpu_ms_per_job": 1.2695390625,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 437.54251511743576
+          },
+          "ordinary-success-cohort": {
+            "commit_jobs_per_s": 558.3740844628048,
+            "commit_to_pickup_p99_ms": 220.186,
+            "completed": 128,
+            "cpu_iowait_percent": 2.380952380952381,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 88.797,
+            "peak_runner_rss_bytes": 10633216,
+            "runner_cpu_ms_per_job": 1.3836718749999999,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 402.47269159901145
+          },
+          "protected-mesh": {
+            "commit_jobs_per_s": 221.60971758611615,
+            "commit_to_pickup_p99_ms": 570.186,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1363636363636365,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 71.478,
+            "peak_runner_rss_bytes": 42598400,
+            "runner_cpu_ms_per_job": 4.830984375,
+            "sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+            "submit_jobs_per_s": 197.20523210131418
+          },
+          "river": {
+            "commit_jobs_per_s": 778.9441655256352,
+            "commit_to_pickup_p99_ms": 137.405,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1494252873563218,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.816,
+            "peak_runner_rss_bytes": 17682432,
+            "runner_cpu_ms_per_job": 0.8278828125,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 718.53194941086
           }
         }
       }

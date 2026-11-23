@@ -55,7 +55,7 @@ const names={mesh:"Mesh",ordinary:"Mesh · trusted",stock:"Mesh · stock",curren
  lean:"Mesh · smaller worker",admission:"Mesh · set-based claims",combined:"Mesh · combined",
  "mesh-strict":"Mesh · fresh worker","mesh-trusted-persistent":"Mesh · reusable worker",
  "admission-v3":"Mesh · set-based admission","ordinary-stock":"Mesh · trusted, individual settlements",
- "ordinary-success-cohort":"Mesh · trusted, grouped settlements",
+ "ordinary-success-cohort":"Mesh · trusted, grouped settlements",bulk:"Mesh · batch enqueue",scalar:"Mesh · same binary, scalar enqueue",
  "protected-mesh":"Mesh · protected","mesh-stock-a":"Mesh · stock A","mesh-stock-b":"Mesh · stock B",
  "mesh-direct-file":"Mesh · direct producer","mesh-external":"Mesh · stock broker, EXTERNAL","mesh-direct-external":"Mesh · direct broker, EXTERNAL",
  go:"Go River",river:"Go River",oban:"Elixir Oban",rust:"Rust Apalis",apalis:"Rust Apalis",
@@ -117,7 +117,9 @@ function chooseSeries() {
 }
 for(const [key,s] of Object.entries(db))if(s.blocks.length)series.add(option(key,s.title));
 for(const [key,m] of Object.entries(measures))metric.add(option(key,m[0]));
-if(db["ordinary-large"]?.blocks.length===5)series.value="ordinary-large";
+if(db["bulk-short"]?.blocks.length===5)series.value="bulk-short";
+else if(db["bulk-slow"]?.blocks.length===5)series.value="bulk-slow";
+else if(db["ordinary-large"]?.blocks.length===5)series.value="ordinary-large";
 else if(db.symmetric?.blocks.length)series.value="symmetric";
 else series.value="baseline";
 series.onchange=chooseSeries;profile.onchange=draw;metric.onchange=draw;get("opponent").onchange=draw;chooseSeries();

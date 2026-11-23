@@ -18,8 +18,14 @@ The three counts partition the rotations. The required time saving is the signed
 | Dense | Oban | 0 | 0 | 1 | 613.4 | +1262.0 |
 | Dense | River | 0 | 0 | 1 | 613.4 | +1736.2 |
 | Dense | Apalis | 0 | 0 | 1 | 613.4 | +1959.7 |
-| Short · grouped settlements | Oban | 1 | 0 | 0 | 67.0 | -186.8 |
-| Short · grouped settlements | River | 0 | 1 | 0 | 67.0 | +63.7 |
-| Short · grouped settlements | Apalis | 0 | 0 | 1 | 67.0 | +107.1 |
+| Short · grouped settlements | Oban | 5 | 0 | 0 | 69.4 | -186.8, -168.4, -157.3, -133.0, -159.0 |
+| Short · grouped settlements | River | 0 | 3 | 2 | 69.4 | +63.7, +77.8, +36.6, +18.5, +139.9 |
+| Short · grouped settlements | Apalis | 0 | 0 | 5 | 69.4 | +107.1, +110.1, +166.7, +108.4, +179.8 |
+| Slow · batch enqueue | Oban | 4 | 1 | 0 | 521.0 | +2.4, -156.6, -144.7, -123.2, -34.5 |
+| Slow · batch enqueue | River | 1 | 4 | 0 | 521.0 | +202.1, +159.1, +184.7, -73.9, +202.7 |
+| Slow · batch enqueue | Apalis | 0 | 3 | 2 | 521.0 | +187.2, +560.7, +533.4, +417.1, +536.0 |
+| Short · batch enqueue and grouped settlements | Oban | 5 | 0 | 0 | 35.6 | -180.1, -208.6, -184.9, -198.2, -270.9 |
+| Short · batch enqueue and grouped settlements | River | 2 | 2 | 1 | 35.6 | +29.5, +37.6, -9.9, +35.6, -15.2 |
+| Short · batch enqueue and grouped settlements | Apalis | 0 | 2 | 3 | 35.6 | +3.1, +61.7, +30.2, +44.8, +69.1 |
 
 Trusted Mesh runs handlers with application credentials in the shared process. The large series applies the same EXTERNAL payload storage policy on every engine. The grouped-settlement variant can commit up to eight successful terminal transitions together. [Matched runs and executable identities](scores.json) · [Interactive results](chart.html)

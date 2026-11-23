@@ -89,6 +89,25 @@ def text_json(value):
     return json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
+def add_policy_table(lines, series, title, detail, lanes):
+    blocks = series.get("blocks", [])
+    if not blocks:
+        return
+    lines.extend([f"## {title}", "", f"{len(blocks)}/5 matched rotations. {detail}", "",
+                  "| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |",
+                  "|---|---:|---:|---:|---:|"])
+    candidate = lanes[0][0]
+    for key, label in lanes:
+        rates = []
+        wins = []
+        for metric in ("submit_jobs_per_s", "commit_jobs_per_s"):
+            rates.append(f"{median(b['scores'][key][metric] for b in blocks):,.2f}")
+            count = sum(b["scores"][candidate][metric] > b["scores"][key][metric] for b in blocks)
+            wins.append("—" if key == candidate else f"{count}/{len(blocks)}")
+        lines.append("| " + " | ".join([label, *rates, *wins]) + " |")
+    lines.append("")
+
+
 def write_scorecard(data):
     profiles = [("ordinary-dense", "Dense no-op"), ("ordinary", "Short"),
                 ("ordinary-slow", "Slow"), ("ordinary-sparse", "Sparse"),
@@ -118,10 +137,24 @@ def write_scorecard(data):
             wins = " / ".join(str(sum(s["ordinary"][metric] > s[k][metric] for s in scores)) for k in peers)
             lines.append(f"| {label} | {len(blocks)}/5 | {rates} | {wins} |")
         lines.append("")
+    peers = [("oban", "Oban"), ("river", "River"), ("apalis", "Apalis")]
+    add_policy_table(lines, data.get("ordinary-cohort", {}), "Short jobs with set-based claims and grouped successes",
+                     "The candidate uses set-based admission and can settle up to eight successful jobs in one transaction. "
+                     "The ordinary control uses stock admission and one terminal transaction per job.",
+                     [("ordinary-success-cohort", "Trusted Mesh candidate"), ("ordinary-stock", "Trusted Mesh control"),
+                      ("protected-mesh", "Protected Mesh"), *peers])
+    add_policy_table(lines, data.get("bulk-slow", {}), "Slow jobs with set-based enqueue",
+                     "The first two lanes use the same executable with set-based enqueue enabled or disabled. "
+                     "The original V1 trusted runner and its protected control use their standard producer.",
+                     [("bulk", "Trusted Mesh · batch enqueue"), ("scalar", "Same binary · scalar enqueue"),
+                      ("ordinary", "Original trusted Mesh"), ("protected-mesh", "Protected Mesh"), *peers])
+    add_policy_table(lines, data.get("bulk-short", {}), "Short jobs with both producer and runner changes",
+                     "Both Mesh lanes use the V2 grouped-success policy. Only the producer's set-based enqueue switch changes.",
+                     [("bulk", "Trusted Mesh · batch enqueue"), ("scalar", "Same binary · scalar enqueue"), *peers])
     lines += [
         "Dense, short, slow and sparse use each engine's standard producer. Large uses the direct-file Mesh producer with both Mesh modes and PostgreSQL EXTERNAL argument storage on every engine. The sparse workload includes the prescribed gaps between arrivals. Every completed job has two independently committed application writes.",
         "",
-        "Protected Mesh executes a fresh process and fences its two application writes. Trusted Mesh runs the handler in the application's process with its database credentials. These scores belong to the captured V1 binaries. [Per-rotation chart](chart.html) · [Data, binary identities and raw digests](scores.json) · [Original four-engine baseline](../2026-11-23-baseline/README.md)", "",
+        "Protected Mesh executes a fresh process and fences its two application writes. Trusted Mesh runs the handler in the application's process with its database credentials. The five-workload comparison uses the V1 binaries. The short grouped-success comparison uses its own frozen V2 inventory. [Per-rotation chart](chart.html) · [Data, binary identities and raw digests](scores.json) · [Slow-job slot use](slow-slots.md) · [How each engine groups durable completions](../2026-11-23-native-completion-batches/README.md) · [Original four-engine baseline](../2026-11-23-baseline/README.md)", "",
     ]
     (HERE / "four-engine-scorecard.md").write_text("\n".join(lines))
 
@@ -141,8 +174,9 @@ def write_producer_budgets(data):
         ("ordinary", "Short", "ordinary"), ("ordinary-slow", "Slow", "ordinary"),
         ("ordinary-large", "Large · EXTERNAL", "ordinary"), ("ordinary-dense", "Dense", "ordinary"),
         ("ordinary-cohort", "Short · grouped settlements", "ordinary-success-cohort"),
+        ("bulk-slow", "Slow · batch enqueue", "bulk"), ("bulk-short", "Short · batch enqueue and grouped settlements", "bulk"),
     ]:
-        blocks = sorted(data[series]["blocks"], key=lambda b: b["group"])
+        blocks = sorted(data.get(series, {}).get("blocks", []), key=lambda b: b["group"])
         if not blocks:
             continue
         for engine, name in [("oban", "Oban"), ("go", "River"), ("rust", "Apalis")]:
