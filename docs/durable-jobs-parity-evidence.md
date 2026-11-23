@@ -5780,3 +5780,19 @@ The tracked evidence has these SHA-256 digests.
 - `6cfe8fe930fe29e828ca2b36c3e70559b76f25f0ecc28b342964ee9e6c856665` [Score](../proof/jobs-parity/linux-canonical-inetrc-score-20261122.json)
 
 [Replay and verification commands](../proof/jobs-parity/linux-regression/README.md#reproduce-the-resolver-pinned-score)
+
+### Score the integrated default on Linux
+
+The normal `9eda8768` ELF from the `f1e646f0` link handoff includes JSON
+`235a38cc` and PostgreSQL `a00637fe`. It passed five groups each for sparse
+and short against resolver-pinned Oban. Large missed rate and pickup in
+both preselected pilots. Dense passed one of three pilots. Slow retained an
+RSS miss across both portable-layout rotations. The separate `df2c2f3c`
+exact-input layout cleared RSS once at matched 64-worker occupancy and
+missed throughput in both pilots. The checkpoint includes the duplicate
+controls, source hashes, a clean-checkout score replay, and the scratch
+commands for the measurement host. [Integrated default checkpoint](../proof/jobs-parity/linux-integrated-default/README.md)
+
+The workspace fmt, build, and test and PostgreSQL 17.11 proof receipts
+cover the runtime at `a00637fe`. They record 4,809 tests passed and 62
+ignored. The current layout pilots supply the packaging evidence.
