@@ -61,3 +61,13 @@ The measured throughput denominators end at the latest PostgreSQL terminal commi
 Each attempt is written on the Linode under `/var/tmp/mesh-durable-jobs-matrix/`, with an immediate sanitized `raw.tar.gz` copy under the local `results/` series. Re-run `dispatch` with the same series and inventory to retry an incomplete block. If the SSH reply or transfer failed after the adapter started, run `recover --series SERIES` first. A retry keeps the earlier attempts and the scorer uses the first complete valid block in attempt order. Use a fresh series for any build, driver, or inventory change. Add `--group` and `--profile` to narrow a resumption. Use `--kind diagnostic` in a separate series for instrumented runs.
 
 To exercise the scheduler, evidence rules, and archive replay without SSH, run `python3 -B tools/durable-jobs-bench/test_matrix.py -v`. The tests use the five frozen inputs with synthetic timestamps and resource counters.
+
+After changing Mesh, use a fresh inventory and series to repeat the affected profiles. The repeat requires a complete archived baseline and reuses its CPU mask, peer artifacts, and host disk. Each selected profile runs all five rotated groups. Repeat `--profile` for each affected profile. Keep the same profile list if you resume the series.
+
+```sh
+python3 -B "$bench/run.py" dispatch --kind repeat --series 2026-11-23-mesh-repeat \
+    --reference-series 2026-11-23-baseline --inventory "$bench/inventory.local.json" \
+    --profile noop
+python3 -B "$bench/run.py" summarize --series 2026-11-23-mesh-repeat \
+    > "$bench/results/2026-11-23-mesh-repeat/comparison.csv"
+```

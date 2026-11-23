@@ -31,19 +31,20 @@ def plan(kind):
     """Five profile rotations and a balanced four-engine crossover."""
     profiles = tuple(PROFILES)
     blocks = []
-    groups = range(5) if kind == "baseline" else range(2)
+    measured = kind in ("baseline", "repeat")
+    groups = range(5) if measured else range(2)
     for group in groups:
         for position in range(len(profiles)):
             index = (group + position) % len(profiles)
             profile = profiles[index]
-            if kind == "baseline":
+            if measured:
                 order = [ENGINES[(offset + group + index) % 4] for offset in (0, 1, 3, 2)]
             else:
                 order = list(ENGINES) if group == 0 else list(reversed(ENGINES))
             phases = []
             if PROFILES[profile][-1] and kind != "diagnostic":
                 phases.append("warmup")
-            phases.append({"baseline": "measured", "controls": "control", "diagnostic": "diagnostic"}[kind])
+            phases.append("measured" if measured else {"controls": "control", "diagnostic": "diagnostic"}[kind])
             blocks.append({"group": group + 1, "profile": profile,
                            "order": order, "phases": phases})
     return blocks
@@ -132,6 +133,7 @@ def reconcile(ledger, engine, profile, artifact):
                                     "submit_to_settlement", "entry_to_attempt_commit",
                                     "attempt_to_effect_commit", "effect_commit_to_settlement")}
     claims = []
+    claim_latency, claim_to_entry = [], []
     settled = []
     for row in ledger["jobs"]:
         key = row["job_key"]
@@ -166,6 +168,8 @@ def reconcile(ledger, engine, profile, artifact):
             require(committed <= claimed + 5000 and claimed <= entered + 5000,
                     f"{key}: invalid claim ordering")
             claims.append(claimed)
+            claim_latency.append(max(0, claimed - committed) / 1000)
+            claim_to_entry.append(max(0, entered - claimed) / 1000)
         settled.append(settled_us)
         for stage, duration in zip(stages.values(), (entered - committed, entered - submitted,
                 settled_us - committed, settled_us - submitted, first_us - entered,
@@ -182,10 +186,13 @@ def reconcile(ledger, engine, profile, artifact):
             require(current["submitted_us"] - previous_job["settled_us"] >= 249000,
                     "sparse arrival did not wait for settlement and the 250 ms gap")
     require(last_settlement > first_commit, "nonpositive durable window")
+    if len(claims) == len(seen):
+        stages.update(commit_to_claim=claim_latency, claim_to_entry=claim_to_entry)
     return {
         "completed": len(seen), "failed": 0, "ordered_independent_writes": len(seen),
         "first_submit_us": first_submit, "first_commit_us": first_commit,
         "last_settlement_us": last_settlement,
+        "first_submit_to_commit_ms": (first_commit - first_submit) / 1000,
         "submit_jobs_per_s": len(seen) * 1_000_000 / (last_settlement - first_submit),
         "commit_jobs_per_s": len(seen) * 1_000_000 / (last_settlement - first_commit),
         "first_claim_from_commit_ms": (min(claims) - first_commit) / 1000 if len(claims) == len(seen) else None,

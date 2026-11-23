@@ -1,0 +1,56 @@
+{
+  "cpus": [
+    10000,
+    10001
+  ],
+  "engines": {
+    "go": {
+      "argv": [
+        "/bench/go"
+      ],
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidence_globs": [
+        "*.json",
+        "runner-*.log"
+      ],
+      "postgres_storage": "/bench/pgdata",
+      "version": "fixture"
+    },
+    "mesh": {
+      "argv": [
+        "/bench/mesh"
+      ],
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidence_globs": [
+        "*.json",
+        "runner-*.log"
+      ],
+      "postgres_storage": "/bench/pgdata",
+      "version": "fixture"
+    },
+    "oban": {
+      "argv": [
+        "/bench/oban"
+      ],
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidence_globs": [
+        "*.json",
+        "runner-*.log"
+      ],
+      "postgres_storage": "/bench/pgdata",
+      "version": "fixture"
+    },
+    "rust": {
+      "argv": [
+        "/bench/rust"
+      ],
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidence_globs": [
+        "*.json",
+        "runner-*.log"
+      ],
+      "postgres_storage": "/bench/pgdata",
+      "version": "fixture"
+    }
+  }
+}

@@ -129,10 +129,15 @@ def archive_arm(directory, remote, attempt):
             return
     if result.returncode != 0:
         return
-    with tarfile.open(partial, "r:gz") as archive:
-        invocation = file_json(archive, "invocation.json")
-        require(invocation["attempt"] == attempt, "downloaded wrong arm")
-        file_json(archive, "status.json")
+    try:
+        with tarfile.open(partial, "r:gz") as archive:
+            invocation = file_json(archive, "invocation.json")
+            require(invocation["attempt"] == attempt, "downloaded wrong arm")
+            file_json(archive, "status.json")
+    except (OSError, ValueError, KeyError, tarfile.TarError) as exc:
+        with (directory / f"download-{transfer}.txt").open("a") as log:
+            print(f"Downloaded evidence failed validation ({type(exc).__name__})", file=log)
+        return
     partial.rename(directory / "raw.tar.gz")
 
 
@@ -187,12 +192,25 @@ def sample_window(host, samples, result):
     ticks = sum(map(sum, deltas))
     steal_pct = 100 * sum(delta[7] for delta in deltas) / ticks
     require(steal_pct <= 1, f"CPU steal {steal_pct:.2f}% exceeds the 1% comparison limit")
+    mount = host["pg_mount"]
+    major_minor = mount["maj:min"].split(":")
+    disk_rows = []
+    for point in (bounding[0], bounding[-1]):
+        rows = [line.split() for line in point["diskstats"]]
+        disk_rows.append(next((row for row in rows if row[:2] == major_minor), None))
+    disk = {}
+    if all(disk_rows):
+        before, after = disk_rows
+        for name, field, scale in (("disk_read_bytes", 5, 512), ("disk_write_bytes", 9, 512),
+                                   ("disk_busy_ms", 12, 1), ("disk_flushes", 18, 1)):
+            if field < min(len(before), len(after)):
+                disk[name] = (int(after[field]) - int(before[field])) * scale
     return {"host_boot_id": host["boot_id"], "host_kernel": host["kernel"],
-            "pg_mount": host["pg_mount"], "affinity": host["affinity"],
+            "pg_mount": mount, "affinity": host["affinity"],
             "cpu_steal_percent": steal_pct,
             "cpu_iowait_percent": 100 * sum(delta[4] for delta in deltas) / ticks,
             "host_sample_span_ms": (bounding[-1]["epoch_us"] - bounding[0]["epoch_us"]) / 1000,
-            "host_samples": len(bounding)}
+            "host_samples": len(bounding), **disk}
 
 
 def score_arm(directory, block, phase, engine, config):
@@ -257,18 +275,26 @@ def summarize(out):
     identities = {(row["host_boot_id"], row["host_kernel"], row["pg_mount"]["maj:min"])
                   for _, _, arms in scores for row in arms.values()}
     require(len(identities) == 1, "complete candidate series spans different host boots, kernels, or disks")
-    if series["kind"] != "baseline":
+    if series["kind"] not in ("baseline", "repeat"):
         return 0
-    if controls := series["controls"]:
+    if series["kind"] == "baseline":
+        controls = series["controls"]
+        require(controls, "baseline has no retained initial controls")
         require(controls == verify_controls(controls["series"], series["inventory"]),
                 "initial control evidence changed since dispatch")
         require(identities == {tuple(controls["host"])}, "baseline ran on a different boot, kernel, or disk than its controls")
+    else:
+        reference = series["reference"]
+        require(reference, "repeat has no retained reference baseline")
+        require(reference == verify_reference(reference["series"], series["inventory"]),
+                "reference baseline changed since dispatch")
+        require(identities == {tuple(reference["host"])}, "repeat ran on a different boot, kernel, or disk")
     fields = ("commit_jobs_per_s", "submit_jobs_per_s", "commit_to_pickup_p99_ms", "submit_to_pickup_p99_ms",
               "commit_to_settlement_p99_ms", "submit_to_settlement_p99_ms", "runner_cpu_ms_per_job",
               "peak_runner_rss_bytes", "peak_connections", "cpu_steal_percent", "cpu_iowait_percent")
     writer = csv.writer(sys.stdout, lineterminator="\n")
     writer.writerow(["profile", "engine", "metric", "n", "median", "min", "max"])
-    for profile in PROFILES:
+    for profile in dict.fromkeys(block["profile"] for block in blocks):
         for engine in ENGINES:
             for field in fields:
                 data = [arms[engine][field] for block, _, arms in scores if block["profile"] == profile]
@@ -276,8 +302,9 @@ def summarize(out):
     return 0
 
 
-def initialize(out, kind, config, controls=None):
-    identity = {"kind": kind, "inventory": config, "plan": plan(kind), "controls": controls,
+def initialize(out, kind, config, controls=None, reference=None, profiles=None):
+    blocks = [block for block in plan(kind) if not profiles or block["profile"] in profiles]
+    identity = {"kind": kind, "inventory": config, "plan": blocks, "controls": controls, "reference": reference,
                 "worker_sha256": digest(SUITE / "worker.py"),
                 "scorer_sha256": digest(SUITE / "verify.py"),
                 "driver_sha256": digest(SUITE / "run.py")}
@@ -311,6 +338,28 @@ def verify_controls(series, config):
             "validated_blocks": {key: name for key, (name, _) in selected.items()}}
 
 
+def verify_reference(series, config):
+    directory = RESULTS / series
+    baseline = read_json(directory / "series.json")
+    old = baseline["inventory"]
+    blocks = plan("baseline")
+    require(baseline["kind"] == "baseline" and baseline["plan"] == blocks and baseline["controls"],
+            "repeat requires a controlled baseline")
+    require(old["cpus"] == config["cpus"] and all(old["engines"][engine] == config["engines"][engine]
+            for engine in ENGINES if engine != "mesh"), "repeat changed the CPU mask or a peer engine")
+    require(old["engines"]["mesh"]["artifact_sha256"] != config["engines"]["mesh"]["artifact_sha256"],
+            "repeat requires a different Mesh artifact")
+    selected, _ = archive_index(directory, blocks, old)
+    require(len(selected) == len(blocks), "reference baseline is incomplete")
+    control = baseline["controls"]
+    require(control == verify_controls(control["series"], old), "reference control evidence changed")
+    hosts = {(row["host_boot_id"], row["host_kernel"], row["pg_mount"]["maj:min"])
+             for _, arms in selected.values() for row in arms.values()}
+    require(hosts == {tuple(control["host"])}, "reference and controls disagree on host, kernel, or disk")
+    return {"series": series, "host": control["host"], "mesh": old["engines"]["mesh"]["artifact_sha256"],
+            "validated_blocks": {key: name for key, (name, _) in selected.items()}}
+
+
 def dispatch(out, args):
     config = read_json(args.inventory)
     check_inventory(config)
@@ -319,8 +368,9 @@ def dispatch(out, args):
     if not check_host(out / "access"):
         return 1
     controls = verify_controls(args.controls_series, config) if args.kind == "baseline" else None
+    reference = verify_reference(args.reference_series, config) if args.kind == "repeat" else None
     out.mkdir(exist_ok=True)
-    series = initialize(out, args.kind, config, controls)
+    series = initialize(out, args.kind, config, controls, reference, args.profile if reference else None)
     remote = REMOTE / series["host_series"]
     with (out / f"stage-{uuid4().hex}.txt").open("xb") as log:
         stage(SUITE / "worker.py", remote, log)
@@ -360,9 +410,10 @@ def recover(out):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("plan", "check-host", "dispatch", "recover", "summarize"))
-    parser.add_argument("--kind", choices=("controls", "baseline", "diagnostic"), default="baseline")
+    parser.add_argument("--kind", choices=("controls", "baseline", "diagnostic", "repeat"), default="baseline")
     parser.add_argument("--series")
     parser.add_argument("--controls-series")
+    parser.add_argument("--reference-series")
     parser.add_argument("--inventory", type=Path)
     parser.add_argument("--profile", choices=PROFILES, action="append")
     parser.add_argument("--group", type=int, choices=range(1, 6), action="append")
@@ -382,6 +433,9 @@ def main():
     if args.action == "dispatch" and args.kind == "baseline" and (
             not args.controls_series or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,63}", args.controls_series)):
         parser.error("baseline dispatch requires --controls-series with validated reversed controls")
+    if args.action == "dispatch" and args.kind == "repeat" and (
+            not args.reference_series or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]{0,63}", args.reference_series)):
+        parser.error("repeat dispatch requires --reference-series with a validated baseline")
     # A single local owner dispatches and recovers. The host worker also fences
     # concurrent arm starts, including after an SSH disconnect.
     with (SUITE / ".timing.lock").open("a") as lock:

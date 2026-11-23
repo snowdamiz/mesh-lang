@@ -20,12 +20,15 @@ import time
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-BUILDERS = {"cargo", "rustc", "cc1", "cc1plus", "zig", "clang", "gcc", "go", "make", "ninja", "cmake"}
+BUILDERS = {"cargo", "rustc", "cc1", "cc1plus", "zig", "clang", "gcc", "go", "make", "ninja", "cmake",
+            "apt", "apt-get", "dpkg"}
 SAFE_EXTENSIONS = {".json", ".jsonl", ".csv", ".log", ".txt", ".tsv"}
-PRIVATE_NAME = re.compile(r"(?:^|[._-])(?:password|secret|credentials?|pgpass|private|id_ed25519)(?:$|[._-])", re.I)
+PRIVATE_NAME = re.compile(
+    r"(?:^|[._-])(?:password|secret|credentials?|pgpass|private|id_ed25519|token|authorization|api[_-]?key)"
+    r"(?:$|[._-])", re.I)
 PRIVATE_VALUE = re.compile(
     r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|\b(?:postgres(?:ql)?|ecto)://|"
-    r"(?:password|passwd|secret|token|authorization|api[_-]?key)\s*[=: ]\s*[^\s,]+|"
+    r"(?:password|passwd|secret|token|authorization|api[_-]?key)[\"']?\s*[=: ]\s*[^\s,]+|"
     r"SCRAM-SHA-256\$|PGPASSWORD|DATABASE_URL", re.I)
 
 
@@ -139,6 +142,14 @@ def redact_json(value):
     return value
 
 
+def redact_line(line):
+    try:
+        document = json.loads(line)
+    except (ValueError, RecursionError):
+        return "[redacted]\n" if PRIVATE_VALUE.search(line) else line
+    return json.dumps(redact_json(document), separators=(",", ":")) + "\n"
+
+
 def safe_bytes(path):
     value = path.read_text()
     if re.search(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", value):
@@ -150,8 +161,9 @@ def safe_bytes(path):
             pass
         else:
             return (json.dumps(redact_json(document), separators=(",", ":")) + "\n").encode()
-    return "".join("[redacted]\n" if PRIVATE_VALUE.search(line) else line
-                   for line in value.splitlines(keepends=True)).encode()
+    if path.suffix == ".jsonl":
+        return "".join(map(redact_line, value.splitlines(keepends=True))).encode()
+    return "".join("[redacted]\n" if PRIVATE_VALUE.search(line) else line for line in value.splitlines(keepends=True)).encode()
 
 
 def export(raw, config):

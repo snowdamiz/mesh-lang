@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import run
 from verify import ENGINES, PROFILES, SUITE, expected_inputs, plan, reconcile
@@ -66,7 +67,7 @@ def create_block(out, block):
             path.mkdir()
             request = {"attempt": "a" * 32, "phase": phase, "engine": engine, "profile": block["profile"]}
             run.write_json(path / "request.json", request)
-            samples = [{"epoch_us": epoch, "monotonic_ns": epoch * 1000, "builders": [],
+            samples = [{"epoch_us": epoch, "monotonic_ns": epoch * 1000, "builders": [], "diskstats": [],
                         "cpu": {"cpu0": [index] * 7 + [0], "cpu1": [index] * 7 + [0]}}
                        for index, epoch in enumerate(range(99_000_000, 118_000_001, 200_000))]
             with tarfile.open(path / "raw.tar.gz", "w:gz") as archive:
@@ -120,9 +121,14 @@ class MatrixTests(unittest.TestCase):
                     reconcile(example, "rust", "slow", ARTIFACT)
 
     def test_partial_matrix_produces_no_csv_then_full_replay_produces_five_per_cell(self):
-        with tempfile.TemporaryDirectory(dir=SUITE) as temporary:
-            path = Path(temporary)
-            blocks = run.initialize(path, "baseline", CONFIG)["plan"]
+        with tempfile.TemporaryDirectory(dir=SUITE) as temporary, patch.object(run, "RESULTS", Path(temporary)):
+            control = Path(temporary) / "controls"
+            control.mkdir()
+            for block in run.initialize(control, "controls", CONFIG)["plan"]:
+                create_block(control, block)
+            path = Path(temporary) / "baseline"
+            path.mkdir()
+            blocks = run.initialize(path, "baseline", CONFIG, run.verify_controls("controls", CONFIG))["plan"]
             for block in blocks[:-1]:
                 create_block(path, block)
             stdout, stderr = io.StringIO(), io.StringIO()
@@ -136,6 +142,13 @@ class MatrixTests(unittest.TestCase):
             cells = stdout.getvalue().splitlines()
             self.assertEqual(len(cells), 1 + 5 * 4 * 11)
             self.assertTrue(all(row.split(",")[3] == "5" for row in cells[1:]))
+            changed = deepcopy(CONFIG)
+            changed["engines"]["mesh"]["artifact_sha256"] = "b" * 64
+            reference = run.verify_reference("baseline", changed)
+            self.assertEqual(reference["mesh"], ARTIFACT["artifact_sha256"])
+            changed["engines"]["go"]["artifact_sha256"] = "c" * 64
+            with self.assertRaisesRegex(ValueError, "changed the CPU mask or a peer engine"):
+                run.verify_reference("baseline", changed)
 
     def test_busy_host_and_steal_reject_an_arm(self):
         host = {"affinity": [0, 1]}
