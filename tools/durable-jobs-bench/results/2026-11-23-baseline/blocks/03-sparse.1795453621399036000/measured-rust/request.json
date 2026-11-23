@@ -1,0 +1,7 @@
+{
+  "attempt": "e8bd7b5fe1b74aeaa6299a8483a527fe",
+  "created": "2026-11-23T17:07:39.983212+00:00",
+  "engine": "rust",
+  "phase": "measured",
+  "profile": "sparse"
+}
