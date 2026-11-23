@@ -1,0 +1,96 @@
+{
+  "arms": {
+    "default_a": {
+      "backend_cpu_ms": {
+        "difference_to_faster_ms": [
+          0.0,
+          0.0,
+          13.754,
+          10.189
+        ],
+        "faster_than_both": 0,
+        "median": 224.44
+      },
+      "wall_ms": {
+        "difference_to_faster_ms": [
+          0.0,
+          0.0,
+          246.858,
+          182.292
+        ],
+        "faster_than_both": 0,
+        "median": 635.815
+      }
+    },
+    "default_b": {
+      "backend_cpu_ms": {
+        "difference_to_faster_ms": [
+          29.83,
+          1.898,
+          0.0,
+          0.0
+        ],
+        "faster_than_both": 0,
+        "median": 221.788
+      },
+      "wall_ms": {
+        "difference_to_faster_ms": [
+          97.999,
+          261.275,
+          0.0,
+          0.0
+        ],
+        "faster_than_both": 0,
+        "median": 593.669
+      }
+    },
+    "external_batch": {
+      "backend_cpu_ms": {
+        "difference_to_faster_ms": [
+          -135.814,
+          -138.347,
+          -110.984,
+          -127.572
+        ],
+        "faster_than_both": 4,
+        "median": 90.588
+      },
+      "wall_ms": {
+        "difference_to_faster_ms": [
+          -411.505,
+          -264.142,
+          -368.192,
+          -392.391
+        ],
+        "faster_than_both": 4,
+        "median": 145.944
+      }
+    },
+    "external_scalar": {
+      "backend_cpu_ms": {
+        "difference_to_faster_ms": [
+          -19.511,
+          -39.511,
+          0.54,
+          8.004
+        ],
+        "faster_than_both": 2,
+        "median": 204.83
+      },
+      "wall_ms": {
+        "difference_to_faster_ms": [
+          -174.647,
+          -46.902,
+          676.554,
+          461.633
+        ],
+        "faster_than_both": 2,
+        "median": 730.566
+      }
+    }
+  },
+  "one_minute_load_range": [
+    52.9482421875,
+    57.0771484375
+  ]
+}
