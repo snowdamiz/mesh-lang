@@ -1,0 +1,290 @@
+{
+  "dense": [
+    {
+      "archive": "ordinary-trusted-v1-dense/blocks/01-noop.1795466741160792000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 2225080,
+      "claim_statements": 576,
+      "granting_statements_lower": 184,
+      "granting_statements_upper": 223,
+      "jobs": 1024,
+      "lifetime_hints": 361,
+      "max_hints_outside_closing_snapshot": 8,
+      "per_pid_jobs": [
+        19,
+        53,
+        81,
+        129,
+        130,
+        140,
+        199,
+        273
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 11552071,
+        "occupied_job_us": 31708875,
+        "peak_resident_jobs": 30
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 11651971,
+        "occupied_job_us": 30687897,
+        "peak_resident_jobs": 29
+      },
+      "sha256": "dafaf019126503e4f53dceabb6204acf2185969fbf9cd114f0f1bc71f2ab65ca",
+      "width": 8
+    }
+  ],
+  "short": [
+    {
+      "archive": "ordinary-trusted-v1-short/blocks/01-short.1795465317466767000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 183718,
+      "claim_statements": 23,
+      "granting_statements_lower": 17,
+      "granting_statements_upper": 23,
+      "jobs": 128,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        128
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 8334,
+        "occupied_job_us": 1973321,
+        "peak_resident_jobs": 16
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 11331,
+        "occupied_job_us": 1846448,
+        "peak_resident_jobs": 16
+      },
+      "sha256": "ef8d51e1c8f1541823112aafa0d8c725f9aa7a635089c9b29569bd4afdcf9f76",
+      "width": 16
+    },
+    {
+      "archive": "ordinary-trusted-v1-short/blocks/02-short.1795467874215151000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 220996,
+      "claim_statements": 22,
+      "granting_statements_lower": 19,
+      "granting_statements_upper": 22,
+      "jobs": 128,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        128
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 6777,
+        "occupied_job_us": 2466186,
+        "peak_resident_jobs": 16
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 8775,
+        "occupied_job_us": 2340312,
+        "peak_resident_jobs": 16
+      },
+      "sha256": "48150a3f5ad374ef8e48b318c56d43183ed731191155dd67442975983295ae32",
+      "width": 16
+    },
+    {
+      "archive": "ordinary-trusted-v1-short/blocks/03-short.1795468051925147000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 199035,
+      "claim_statements": 25,
+      "granting_statements_lower": 20,
+      "granting_statements_upper": 25,
+      "jobs": 128,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        128
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 4035,
+        "occupied_job_us": 2186993,
+        "peak_resident_jobs": 16
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 5034,
+        "occupied_job_us": 2061119,
+        "peak_resident_jobs": 16
+      },
+      "sha256": "e5a460ed523da540abdb233b3e65fc3f9aa9707c5c7a834d554586c8f7a5e2bf",
+      "width": 16
+    },
+    {
+      "archive": "ordinary-trusted-v1-short/blocks/04-short.1795468264416236000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 185045,
+      "claim_statements": 28,
+      "granting_statements_lower": 19,
+      "granting_statements_upper": 28,
+      "jobs": 128,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        128
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 6534,
+        "occupied_job_us": 2093262,
+        "peak_resident_jobs": 16
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 8532,
+        "occupied_job_us": 1969386,
+        "peak_resident_jobs": 16
+      },
+      "sha256": "2e70de39b83812a67545648f3c7dd0045b40535d66cee77c8d927309488d3625",
+      "width": 16
+    },
+    {
+      "archive": "ordinary-trusted-v1-short/blocks/05-short.1795468438722816000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 337821,
+      "claim_statements": 28,
+      "granting_statements_lower": 20,
+      "granting_statements_upper": 28,
+      "jobs": 128,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        128
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 3821,
+        "occupied_job_us": 3825608,
+        "peak_resident_jobs": 16
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 4820,
+        "occupied_job_us": 3699734,
+        "peak_resident_jobs": 16
+      },
+      "sha256": "b0f3436125f1dbc13d4a01f690ff31dfe83077dd1c87f2bb64cf098c4e6ed28e",
+      "width": 16
+    }
+  ],
+  "slow": [
+    {
+      "archive": "ordinary-trusted-v1-slow/blocks/01-slow.1795468485846202000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 1257927,
+      "claim_statements": 58,
+      "granting_statements_lower": 41,
+      "granting_statements_upper": 58,
+      "jobs": 512,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        512
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 12580,
+        "occupied_job_us": 61158430,
+        "peak_resident_jobs": 64
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 17575,
+        "occupied_job_us": 60649939,
+        "peak_resident_jobs": 64
+      },
+      "sha256": "67b3bcb44609874a724f249013936d8a9cef88434059c767ba58a2aa1b4d70d0",
+      "width": 16
+    },
+    {
+      "archive": "ordinary-trusted-v1-slow/blocks/02-slow.1795469337820333000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 1271559,
+      "claim_statements": 69,
+      "granting_statements_lower": 58,
+      "granting_statements_upper": 69,
+      "jobs": 512,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        512
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 5559,
+        "occupied_job_us": 60444011,
+        "peak_resident_jobs": 64
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 6558,
+        "occupied_job_us": 59933647,
+        "peak_resident_jobs": 64
+      },
+      "sha256": "afca79f8068f3525ef7dd6c8c9b0d20b73ce2737d11dc3332894aad4f295d1ba",
+      "width": 16
+    },
+    {
+      "archive": "ordinary-trusted-v1-slow/blocks/03-slow.1795469587658126000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 1442474,
+      "claim_statements": 60,
+      "granting_statements_lower": 47,
+      "granting_statements_upper": 60,
+      "jobs": 512,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        512
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 6474,
+        "occupied_job_us": 65496894,
+        "peak_resident_jobs": 64
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 7473,
+        "occupied_job_us": 64987404,
+        "peak_resident_jobs": 64
+      },
+      "sha256": "6a2ac17ffde0f3dfe1d02665ab0b912f8594d9a7df1d839959a3861d790b4d43",
+      "width": 16
+    },
+    {
+      "archive": "ordinary-trusted-v1-slow/blocks/04-slow.1795469839815657000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 1309133,
+      "claim_statements": 69,
+      "granting_statements_lower": 57,
+      "granting_statements_upper": 69,
+      "jobs": 512,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        512
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 33133,
+        "occupied_job_us": 63047063,
+        "peak_resident_jobs": 64
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 34132,
+        "occupied_job_us": 62537573,
+        "peak_resident_jobs": 64
+      },
+      "sha256": "1d8902794cc88e3086fb3badb2007daab13b3ec9a411d6acc04d75bcba2fa67d",
+      "width": 16
+    },
+    {
+      "archive": "ordinary-trusted-v1-slow/blocks/05-slow.1795470086747060000/measured-ordinary/measured-mesh/raw.tar.gz",
+      "backlog_window_us": 1249126,
+      "claim_statements": 62,
+      "granting_statements_lower": 48,
+      "granting_statements_upper": 62,
+      "jobs": 512,
+      "lifetime_hints": 0,
+      "max_hints_outside_closing_snapshot": 0,
+      "per_pid_jobs": [
+        512
+      ],
+      "residence_from_earliest_stamps": {
+        "empty_runner_us": 5126,
+        "occupied_job_us": 60265396,
+        "peak_resident_jobs": 64
+      },
+      "residence_from_latest_stamps": {
+        "empty_runner_us": 6125,
+        "occupied_job_us": 59756905,
+        "peak_resident_jobs": 64
+      },
+      "sha256": "9575a7f9eef715984980600ce43eaf56bd05aadfb03f3087407df879c992b7cc",
+      "width": 16
+    }
+  ]
+}
