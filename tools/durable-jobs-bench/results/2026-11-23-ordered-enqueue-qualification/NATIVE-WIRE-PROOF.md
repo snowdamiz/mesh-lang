@@ -14,14 +14,13 @@ attempts ended at missing inputs, a 190-second release test compile limit,
 and a shorter compile limit after changing only the test profile. Allow
 about ten minutes for a separate SETUP slot. An eight-minute command
 budget leaves time to export evidence and release locks. The first
-runtime build took about three minutes. Completing the larger unit-test
-binary took more than the first retry's 190-second budget.
+runtime build took about three minutes. The first retry reached its 190-second limit before Cargo ran the test.
 [Vector checksums](wire-vectors.sha256)
 
 The matrix owner allocates the new reservation. Acquire the local timing
 lock first, then the remote active-arm lock and native lock. With the
-locks held and at least two minutes reserved for evidence and teardown,
-run these commands on the same pinned host. Redirect the complete
+locks held, set `NATIVE_WIRE_GRANT_END` to the published UTC end as a
+Unix timestamp. Run these commands on the same pinned host. Redirect the complete
 output into a fresh receipt. Record the exact command exit and verify
 the executable before and after the command.
 
@@ -44,6 +43,8 @@ printf '%s  vectors.sha256\n' '52c03f05fb23775a16866433bf7aa178398471698d2830df6
 sha256sum -c vectors.sha256
 printf '%s  %s\n' 33ebb48f27c4e1623b5019400847812deb48ca6a4dba26b594efb0587a301954 "$mesh" | sha256sum -c -
 
+: "${NATIVE_WIRE_GRANT_END:?set the published grant end as a Unix timestamp}"
+test "$((NATIVE_WIRE_GRANT_END - $(date +%s)))" -ge 540
 wire_code=0
 timeout --signal=TERM --kill-after=10 480 env -i \
     "PATH=$rust/bin:$llvm/bin:/usr/bin:/bin" LC_ALL=C.UTF-8 \

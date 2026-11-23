@@ -29,7 +29,9 @@ Linux truncated-response unit test remains open.
 [Native results](NATIVE.md) · [Inventory handoff](READY.json)
 · [Native baseline](../2026-11-23-baseline/README.md)
 
-An isolated integration check on product base `ba8dab03` passed the
-workspace and PostgreSQL proofs with the ordered-enqueue patch applied.
-The isolated native build still uses the sealed ordered-enqueue source.
-[Integration verification](integration-verification.json)
+The isolated product candidate `5c128e22` applies the ordered-enqueue
+patch on `446e413c`, including the due-query change and its regression.
+Fresh workspace, PostgreSQL 17.11, wire, and effect proofs passed on
+Darwin arm64. The candidate awaits the matched timing decision in the
+isolated proof checkout. [Product verification](adoption-verification.json)
+· [Fresh local logs](adoption-local-proofs.tar.gz)

@@ -22,9 +22,9 @@ each stock arm and 34 in the candidate. The dense batch sent 1,053 in
 each stock arm and 237 in the candidate. The database executed the same
 number of enqueue statements in every matched arm. The dense median
 PostgreSQL enqueue execution time stayed between 266 and 269 ms across
-arms. No sampled arm recorded CPU steal. [Raw attempts](replay/native-runs/)
+arms. No direct trial recorded CPU steal. [Raw attempts](replay/native-runs/)
 
-The official native stock dense diagnostic and the five candidate
+The native stock dense diagnostic and the five candidate
 semantic profiles reconciled every frozen receipt, payload, and XID.
 The candidate's exact executable also passed the injected SQL error,
 backend disconnect, and same-session rollback controls. The AMD64
