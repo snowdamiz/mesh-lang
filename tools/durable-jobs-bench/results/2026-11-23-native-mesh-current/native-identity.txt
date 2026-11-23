@@ -1,0 +1,9 @@
+both remote locks acquired
+Linux 6.8.0-149-generic x86_64
+90ec1c24-08c8-4bc1-aa28-79b6db1bd13a
+  8:0
+100
+always [madvise] never
+3dc20c730bd269da86c9c98f225d5f85bdc0dd3d3a31908e0eac90aa50d8dfd2  /var/lib/durable-jobs-bench/native/builds/mesh-stock-3828f20d/mesh
+eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915  /var/lib/durable-jobs-bench/native/builds/mesh-stock-3828f20d/mesh.json
+78b17e3bcf5dcf797b16c2c2a9406a8089082356a7bb29f256d773f609e6c2b2  /var/lib/durable-jobs-bench/native/builds/mesh-stock-3828f20d/mesh-toolchain.txt
