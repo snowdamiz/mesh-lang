@@ -1,0 +1,1440 @@
+{
+  "canonical-1-external": {
+    "backend_cpu_ms": 172.744,
+    "backend_ticks": 4145856,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 0,
+      "layout_fallbacks": 8,
+      "scalar_grants": 512
+    },
+    "commit": "2026-11-23 17:40:50.541609-05",
+    "jobs": 512,
+    "layout": false,
+    "load": [
+      19.71044921875,
+      31.1630859375,
+      44.73974609375
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "770",
+    "wall_ms": 329.599
+  },
+  "canonical-1-lz4": {
+    "backend_cpu_ms": 78.30958333333332,
+    "backend_ticks": 1879430,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:50.027637-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      19.71044921875,
+      31.1630859375,
+      44.73974609375
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "lz4",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "lz4": [
+        512,
+        8171728
+      ]
+    },
+    "top_xid": "755",
+    "wall_ms": 111.128708
+  },
+  "canonical-1-pglz_a": {
+    "backend_cpu_ms": 178.552375,
+    "backend_ticks": 4285257,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:49.70749-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      19.71044921875,
+      31.1630859375,
+      44.73974609375
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "741",
+    "wall_ms": 310.664917
+  },
+  "canonical-1-pglz_b": {
+    "backend_cpu_ms": 178.64175,
+    "backend_ticks": 4287402,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:51.055984-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      19.71044921875,
+      31.1630859375,
+      44.73974609375
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "784",
+    "wall_ms": 234.949417
+  },
+  "canonical-2-external": {
+    "backend_cpu_ms": 159.6175,
+    "backend_ticks": 3830820,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 0,
+      "layout_fallbacks": 8,
+      "scalar_grants": 512
+    },
+    "commit": "2026-11-23 17:40:53.043685-05",
+    "jobs": 512,
+    "layout": false,
+    "load": [
+      19.71044921875,
+      31.1630859375,
+      44.73974609375
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "841",
+    "wall_ms": 315.458042
+  },
+  "canonical-2-lz4": {
+    "backend_cpu_ms": 86.46904166666667,
+    "backend_ticks": 2075257,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:51.50665-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      19.71044921875,
+      31.1630859375,
+      44.73974609375
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "lz4",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "lz4": [
+        512,
+        8171728
+      ]
+    },
+    "top_xid": "798",
+    "wall_ms": 236.133125
+  },
+  "canonical-2-pglz_a": {
+    "backend_cpu_ms": 181.68033333333335,
+    "backend_ticks": 4360328,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:52.487035-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      19.71044921875,
+      31.1630859375,
+      44.73974609375
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "826",
+    "wall_ms": 287.240166
+  },
+  "canonical-2-pglz_b": {
+    "backend_cpu_ms": 184.20279166666666,
+    "backend_ticks": 4420867,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:52.002885-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      19.71044921875,
+      31.1630859375,
+      44.73974609375
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "812",
+    "wall_ms": 317.632125
+  },
+  "canonical-3-external": {
+    "backend_cpu_ms": 176.10129166666667,
+    "backend_ticks": 4226431,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 0,
+      "layout_fallbacks": 8,
+      "scalar_grants": 512
+    },
+    "commit": "2026-11-23 17:40:54.40463-05",
+    "jobs": 512,
+    "layout": false,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "870",
+    "wall_ms": 510.173833
+  },
+  "canonical-3-lz4": {
+    "backend_cpu_ms": 85.88429166666667,
+    "backend_ticks": 2061223,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:54.896252-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "lz4",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "lz4": [
+        512,
+        8171728
+      ]
+    },
+    "top_xid": "884",
+    "wall_ms": 266.228125
+  },
+  "canonical-3-pglz_a": {
+    "backend_cpu_ms": 190.05125,
+    "backend_ticks": 4561230,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:55.457068-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "898",
+    "wall_ms": 263.48125
+  },
+  "canonical-3-pglz_b": {
+    "backend_cpu_ms": 183.28691666666666,
+    "backend_ticks": 4398886,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:53.61979-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      19.71044921875,
+      31.1630859375,
+      44.73974609375
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "855",
+    "wall_ms": 324.788333
+  },
+  "canonical-4-external": {
+    "backend_cpu_ms": 180.67758333333333,
+    "backend_ticks": 4336262,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 0,
+      "layout_fallbacks": 8,
+      "scalar_grants": 512
+    },
+    "commit": "2026-11-23 17:40:56.167459-05",
+    "jobs": 512,
+    "layout": false,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "913",
+    "wall_ms": 538.534875
+  },
+  "canonical-4-lz4": {
+    "backend_cpu_ms": 74.025875,
+    "backend_ticks": 1776621,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:57.000743-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "lz4",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "lz4": [
+        512,
+        8171728
+      ]
+    },
+    "top_xid": "955",
+    "wall_ms": 95.558584
+  },
+  "canonical-4-pglz_a": {
+    "backend_cpu_ms": 162.51933333333335,
+    "backend_ticks": 3900464,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:56.480397-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "927",
+    "wall_ms": 182.328291
+  },
+  "canonical-4-pglz_b": {
+    "backend_cpu_ms": 158.20895833333336,
+    "backend_ticks": 3797015,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:56.778768-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "941",
+    "wall_ms": 180.158292
+  },
+  "compressible-1-external": {
+    "backend_cpu_ms": 153.528,
+    "backend_ticks": 3684672,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 0,
+      "layout_fallbacks": 8,
+      "scalar_grants": 512
+    },
+    "commit": "2026-11-23 17:40:57.799827-05",
+    "jobs": 512,
+    "layout": false,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "998",
+    "wall_ms": 213.570958
+  },
+  "compressible-1-lz4": {
+    "backend_cpu_ms": 42.02883333333334,
+    "backend_ticks": 1008692,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:57.44595-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "lz4",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "lz4": [
+        512,
+        82421
+      ]
+    },
+    "top_xid": "983",
+    "wall_ms": 56.462083
+  },
+  "compressible-1-pglz_a": {
+    "backend_cpu_ms": 61.92879166666666,
+    "backend_ticks": 1486291,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:57.253382-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "pglz": [
+        512,
+        143329
+      ]
+    },
+    "top_xid": "969",
+    "wall_ms": 81.034166
+  },
+  "compressible-1-pglz_b": {
+    "backend_cpu_ms": 67.21741666666667,
+    "backend_ticks": 1613218,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:58.036477-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "pglz": [
+        512,
+        143329
+      ]
+    },
+    "top_xid": "1012",
+    "wall_ms": 89.183125
+  },
+  "compressible-2-external": {
+    "backend_cpu_ms": 145.932625,
+    "backend_ticks": 3502383,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 0,
+      "layout_fallbacks": 8,
+      "scalar_grants": 512
+    },
+    "commit": "2026-11-23 17:40:59.018486-05",
+    "jobs": 512,
+    "layout": false,
+    "load": [
+      25.08447265625,
+      31.9453125,
+      44.85888671875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "1069",
+    "wall_ms": 193.975125
+  },
+  "compressible-2-lz4": {
+    "backend_cpu_ms": 43.81695833333334,
+    "backend_ticks": 1051607,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:58.253476-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "lz4",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "lz4": [
+        512,
+        82421
+      ]
+    },
+    "top_xid": "1026",
+    "wall_ms": 63.386042
+  },
+  "compressible-2-pglz_a": {
+    "backend_cpu_ms": 61.27970833333334,
+    "backend_ticks": 1470713,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:58.698477-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "pglz": [
+        512,
+        143329
+      ]
+    },
+    "top_xid": "1054",
+    "wall_ms": 74.823
+  },
+  "compressible-2-pglz_b": {
+    "backend_cpu_ms": 63.529,
+    "backend_ticks": 1524696,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:58.480493-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      23.1767578125,
+      31.69140625,
+      44.8466796875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "pglz": [
+        512,
+        143329
+      ]
+    },
+    "top_xid": "1040",
+    "wall_ms": 81.498291
+  },
+  "compressible-3-external": {
+    "backend_cpu_ms": 157.81054166666667,
+    "backend_ticks": 3787453,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 0,
+      "layout_fallbacks": 8,
+      "scalar_grants": 512
+    },
+    "commit": "2026-11-23 17:40:59.598138-05",
+    "jobs": 512,
+    "layout": false,
+    "load": [
+      25.08447265625,
+      31.9453125,
+      44.85888671875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "1098",
+    "wall_ms": 233.69825
+  },
+  "compressible-3-lz4": {
+    "backend_cpu_ms": 43.94479166666667,
+    "backend_ticks": 1054675,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:59.973572-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      25.08447265625,
+      31.9453125,
+      44.85888671875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "lz4",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "lz4": [
+        512,
+        82421
+      ]
+    },
+    "top_xid": "1112",
+    "wall_ms": 55.438
+  },
+  "compressible-3-pglz_a": {
+    "backend_cpu_ms": 61.607708333333335,
+    "backend_ticks": 1478585,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:41:00.215423-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      25.08447265625,
+      31.9453125,
+      44.85888671875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "pglz": [
+        512,
+        143329
+      ]
+    },
+    "top_xid": "1126",
+    "wall_ms": 98.29975
+  },
+  "compressible-3-pglz_b": {
+    "backend_cpu_ms": 60.658541666666665,
+    "backend_ticks": 1455805,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:40:59.223921-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      25.08447265625,
+      31.9453125,
+      44.85888671875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "pglz": [
+        512,
+        143329
+      ]
+    },
+    "top_xid": "1083",
+    "wall_ms": 73.796459
+  },
+  "compressible-4-external": {
+    "backend_cpu_ms": 167.95991666666666,
+    "backend_ticks": 4031038,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 0,
+      "layout_fallbacks": 8,
+      "scalar_grants": 512
+    },
+    "commit": "2026-11-23 17:41:00.580218-05",
+    "jobs": 512,
+    "layout": false,
+    "load": [
+      25.08447265625,
+      31.9453125,
+      44.85888671875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "none": [
+        512,
+        8431616
+      ]
+    },
+    "top_xid": "1141",
+    "wall_ms": 231.596417
+  },
+  "compressible-4-lz4": {
+    "backend_cpu_ms": 45.264,
+    "backend_ticks": 1086336,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:41:01.32152-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      25.08447265625,
+      31.9453125,
+      44.85888671875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "lz4",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "lz4": [
+        512,
+        82421
+      ]
+    },
+    "top_xid": "1183",
+    "wall_ms": 69.876583
+  },
+  "compressible-4-pglz_a": {
+    "backend_cpu_ms": 62.601333333333336,
+    "backend_ticks": 1502432,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:41:00.831757-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      25.08447265625,
+      31.9453125,
+      44.85888671875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "pglz": [
+        512,
+        143329
+      ]
+    },
+    "top_xid": "1155",
+    "wall_ms": 110.120833
+  },
+  "compressible-4-pglz_b": {
+    "backend_cpu_ms": 63.80895833333334,
+    "backend_ticks": 1531415,
+    "calls": {
+      "bulk_calls": 8,
+      "bulk_grants": 504,
+      "layout_fallbacks": 0,
+      "scalar_grants": 8
+    },
+    "commit": "2026-11-23 17:41:01.085066-05",
+    "jobs": 512,
+    "layout": true,
+    "load": [
+      25.08447265625,
+      31.9453125,
+      44.85888671875
+    ],
+    "receipt_rows": 512,
+    "settings": {
+      "autovacuum": "off",
+      "block_size": "8192",
+      "default_toast_compression": "pglz",
+      "fsync": "on",
+      "full_page_writes": "on",
+      "jit": "on",
+      "max_connections": "100",
+      "server_encoding": "UTF8",
+      "server_version_num": "170011",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "track_commit_timestamp": "on",
+      "track_io_timing": "on",
+      "work_mem": "4096"
+    },
+    "storage": {
+      "pglz": [
+        512,
+        143329
+      ]
+    },
+    "top_xid": "1169",
+    "wall_ms": 84.551167
+  },
+  "manifest": {
+    "archive_sha256": "542925005370032c71db1a2aa488c2d35d16f14f9fdc8f54ee0afbb81f80fc82",
+    "batch_sha256": "d9c91f63e1962cbd1a6c92c0a5f9154d2bec171058e38b997a8987b73ea86f8d",
+    "calibration": {
+      "getrusage_self_ns": 200016001,
+      "mach_ns": 200046958.33333334,
+      "mach_ticks": 4801127,
+      "mach_timebase": [
+        125,
+        3
+      ],
+      "process_cpu_ns": 200003000
+    },
+    "chunks": [
+      63,
+      63,
+      63,
+      63,
+      63,
+      63,
+      63,
+      63,
+      8
+    ],
+    "orders": [
+      [
+        0,
+        1,
+        3,
+        2
+      ],
+      [
+        1,
+        2,
+        0,
+        3
+      ],
+      [
+        2,
+        3,
+        1,
+        0
+      ],
+      [
+        3,
+        0,
+        2,
+        1
+      ]
+    ],
+    "policies": [
+      "pglz_a",
+      "lz4",
+      "pglz_b",
+      "external"
+    ],
+    "schema_sha256": [
+      "6e6c58e9d055d5ceb66139058d42cd05bfef3b70b80beca6cc0b9a4766f2f6f3",
+      "f5e92423e3c151b995bd0d9c393e8bbed89c4ba87224a776040dd9db42465d3d",
+      "a09615a87facc9290b8cd9f9f1910228f85e91b8863f08c417c20c8d6abb2f73"
+    ]
+  }
+}
