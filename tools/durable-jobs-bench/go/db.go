@@ -137,29 +137,34 @@ type batch struct {
 }
 
 type receipt struct {
-	RequestID   string            `json:"request_id"`
-	XID         string            `json:"xid"`
-	IDs         map[string]string `json:"ids"`
-	Commit      *time.Time        `json:"commit"`
-	Rollback    bool              `json:"rollback"`
-	SubmittedUS int64             `json:"submitted_us"`
-	ReturnedUS  int64             `json:"returned_us"`
+	RequestID       string            `json:"request_id"`
+	XID             string            `json:"xid"`
+	IDs             map[string]string `json:"ids"`
+	Commit          *time.Time        `json:"commit"`
+	Rollback        bool              `json:"rollback"`
+	SubmittedUS     int64             `json:"submitted_us"`
+	ReadFinishedUS  int64             `json:"read_finished_us"`
+	DecodedUS       int64             `json:"decoded_us"`
+	EnqueueCalledUS int64             `json:"enqueue_called_us"`
+	InputBytes      int               `json:"input_bytes"`
+	ReturnedUS      int64             `json:"returned_us"`
 }
 
-func enqueue(ctx context.Context, pool *pgxpool.Pool, client *river.Client[pgx.Tx], schema string, input batch) (receipt, error) {
-	r := receipt{RequestID: input.RequestID, IDs: make(map[string]string), Rollback: input.Rollback}
+func enqueue(ctx context.Context, pool *pgxpool.Pool, client *river.Client[pgx.Tx], schema string, input batch, r *receipt) error {
+	r.IDs = make(map[string]string)
+	r.Rollback = input.Rollback
 	tx, err := pool.Begin(ctx)
 	if err != nil {
-		return r, err
+		return err
 	}
 	defer tx.Rollback(context.Background())
 	if err = tx.QueryRow(ctx, "SELECT pg_current_xact_id()::text").Scan(&r.XID); err != nil {
-		return r, err
+		return err
 	}
 	_, err = tx.Exec(ctx, "INSERT INTO "+schema+
 		".mesh_jobs_parity_product VALUES ('river', $1, $2)", schema, input.RequestID)
 	if err != nil {
-		return r, err
+		return err
 	}
 	params := make([]river.InsertManyParams, len(input.Jobs))
 	for i, job := range input.Jobs {
@@ -171,17 +176,17 @@ func enqueue(ctx context.Context, pool *pgxpool.Pool, client *river.Client[pgx.T
 		chunk := params[i:min(i+batchSize, len(params))]
 		results, err := client.InsertManyTx(ctx, tx, chunk)
 		if err != nil {
-			return r, err
+			return err
 		}
 		if len(results) != len(chunk) {
-			return r, fmt.Errorf("insert returned %d rows for %d jobs", len(results), len(chunk))
+			return fmt.Errorf("insert returned %d rows for %d jobs", len(results), len(chunk))
 		}
 		for j, result := range results {
 			var persistedKey struct{ Key string }
 			expectedKey := input.Jobs[i+j].Key
 			if err := json.Unmarshal(result.Job.EncodedArgs, &persistedKey); err != nil ||
 				persistedKey.Key != expectedKey || result.Job.ID <= lastID {
-				return r, fmt.Errorf("insert did not retain frozen queue order at %s", expectedKey)
+				return fmt.Errorf("insert did not retain frozen queue order at %s", expectedKey)
 			}
 			lastID = result.Job.ID
 			r.IDs[expectedKey] = strconv.FormatInt(lastID, 10)
@@ -193,11 +198,11 @@ func enqueue(ctx context.Context, pool *pgxpool.Pool, client *river.Client[pgx.T
 		err = tx.Commit(ctx)
 	}
 	if err != nil {
-		return r, err
+		return err
 	}
 	err = pool.QueryRow(ctx, "SELECT pg_xact_commit_timestamp($1::text::xid8::xid)", r.XID).Scan(&r.Commit)
 	if err == nil && (r.Commit == nil) != input.Rollback {
 		err = errors.New("enqueue transaction has unexpected commit status")
 	}
-	return r, err
+	return err
 }

@@ -12,6 +12,7 @@ from prepare_input import harness
 from verify import PROFILES, database_check, positive_int, require, xid
 
 HERE = Path(__file__).resolve().parent
+SUBMIT_BOUNDARY = "before_batch_read"
 EPOCH = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
 FAULTS = [
     {"request_id": "rollback", "rollback": True,
@@ -48,16 +49,22 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def batch_bytes(batch):
+    return (json.dumps(batch, indent=2, sort_keys=True, allow_nan=False) + "\n").encode()
+
+
 @cache
 def frozen_input(profile):
     _, slots, _, digest, _ = PROFILES[profile]
     settings = read_json(harness["CONFIG"])
     batches = harness["inputs"](settings["workloads"][profile], slots, settings["seed"])
-    hashes = {batch["request_id"] + ".json": sha256(
-        (json.dumps(batch, indent=2, sort_keys=True, allow_nan=False) + "\n").encode())
-        for batch in batches}
+    hashes, sizes = {}, {}
+    for batch in batches:
+        name = batch["request_id"] + ".json"
+        data = batch_bytes(batch)
+        hashes[name], sizes[name] = sha256(data), len(data)
     require(sha256("".join(hashes.values()).encode()) == digest, "frozen River input drifted")
-    return batches, {"input_sha256": digest, "batch_digests": hashes}
+    return batches, {"input_sha256": digest, "batch_digests": hashes, "batch_bytes": sizes}
 
 
 def build_identity(config, binary_hash):
@@ -83,7 +90,7 @@ def index(rows, key, label):
     return indexed
 
 
-def verify_trial(path, profile, batches):
+def verify_trial(path, profile, batches, sizes):
     runners, slots, cap, digest, _ = PROFILES[profile]
     schema = read_json(path / "schema.json")
     require(re.fullmatch(r"parity_[a-f0-9]{16}", schema), "invalid River schema identity")
@@ -129,18 +136,26 @@ def verify_trial(path, profile, batches):
             prior_id = queue_id
         identity = independent(xid(row["xid"], "producer xid") % 2**32)
         submitted = positive_int(row["submitted_us"], "submitted_us")
+        read_finished = positive_int(row["read_finished_us"], "read_finished_us")
+        decoded = positive_int(row["decoded_us"], "decoded_us")
+        enqueue_called = positive_int(row["enqueue_called_us"], "enqueue_called_us")
         returned = positive_int(row["returned_us"], "returned_us")
-        require(prior_return <= submitted <= returned, f"{request}: invalid producer timestamps")
+        size = positive_int(row["input_bytes"], "input_bytes")
+        require(size == sizes[request + ".json"], f"{request}: wrong batch byte count")
+        require(prior_return <= submitted <= read_finished <= decoded <= enqueue_called <= returned,
+                f"{request}: invalid batch read, decode or enqueue timestamps")
         prior_return = returned
         if batch["rollback"]:
             require(row["commit"] is None, f"{request}: rollback has a commit timestamp")
             continue
         commit = epoch_us(row["commit"])
         product = products[request]
-        require(submitted <= commit <= returned and app_identity(product) == identity
+        require(enqueue_called <= commit <= returned and app_identity(product) == identity
                 and epoch_us(product["committed"]) == commit, f"{request}: product did not commit with enqueue")
         transaction = dict(request_id=request, submitted_us=submitted, committed_us=commit,
-                           returned_us=returned, xid=row["xid"], enqueued_ids=row["ids"])
+                           returned_us=returned, xid=row["xid"], enqueued_ids=row["ids"],
+                           read_finished_us=read_finished, decoded_us=decoded, enqueue_called_us=enqueue_called,
+                           input_bytes=size)
         transactions.append(transaction)
         for job in batch["jobs"]:
             owners[job["key"]] = transaction
@@ -246,6 +261,8 @@ def verify_trial(path, profile, batches):
 
 def verify_run(raw, profile, binary_hash, *, smoke, warmup=False):
     config = read_json(raw / "config.json")
+    require(config["format_version"] == 2 and config["submit_boundary"] == SUBMIT_BOUNDARY,
+            "River binary lacks the timed batch read boundary")
     version = build_identity(config, binary_hash)
     runners, slots, cap, digest, full_warm = PROFILES[profile]
     require(config["engine"] == "river" and config["profile"] == profile and config["smoke"] is smoke
@@ -259,14 +276,16 @@ def verify_run(raw, profile, binary_hash, *, smoke, warmup=False):
     database_check(database, cap)
     require(database["other_client_backends"] == 0, "unexpected database clients at preflight")
 
-    batches, _ = frozen_input(profile)
-    jobs, transactions, metrics, measured = verify_trial(raw / "measured", profile, batches)
+    batches, manifest = frozen_input(profile)
+    sizes = manifest["batch_bytes"]
+    jobs, transactions, metrics, measured = verify_trial(raw / "measured", profile, batches, sizes)
     summary = {"measured": measured}
     if smoke:
-        summary["faults"] = verify_trial(raw / "faults", profile, FAULTS)[3]
+        fault_sizes = {batch["request_id"] + ".json": len(batch_bytes(batch)) for batch in FAULTS}
+        summary["faults"] = verify_trial(raw / "faults", profile, FAULTS, fault_sizes)[3]
     if warmup:
         require(full_warm, "unexpected warmup trial")
-        summary["warmup"] = verify_trial(raw / "warmup", profile, batches)[3]
+        summary["warmup"] = verify_trial(raw / "warmup", profile, batches, sizes)[3]
     ledger = dict(engine="go", version=version, profile=profile, artifact_sha256=binary_hash,
                   input_sha256=digest, runners=runners, slots=slots, database=database,
                   runner_cpu_seconds=metrics["runner_cpu_seconds_including_startup_and_idle"],

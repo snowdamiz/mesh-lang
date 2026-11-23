@@ -83,7 +83,9 @@ samples, runner logs, and the ledger when the database is reachable.
 - `config.json` records the binary digest, module versions, and runtime settings.
   `database.json` records the PostgreSQL version, TLS, and connection limits.
 - `measured/enqueue.jsonl` records request IDs, transaction IDs, inserted job
-  IDs, and enqueue commit timestamps.
+  IDs, and batch byte counts. It also records the start and end of the batch
+  read, the end of JSON decode, the enqueue call, the PostgreSQL commit,
+  and the return to the producer.
 - `measured/ledger.json` contains payload hashes, job order and state, attempt
   numbers, and both application write identities and commit timestamps.
   The runner checks that the writes use distinct transactions and commit
@@ -114,9 +116,8 @@ user that can write the output and scratch directories. PostgreSQL needs
 `pg_stat_statements` available for the shared fixture cluster.
 
 ```sh
-build=/var/lib/durable-jobs-bench/river/builds/river-0.51.2-e00cbd00-b
-source=/var/lib/durable-jobs-bench/river/builds/river-0.51.2-e00cbd00-verifier-f208a4ca/source
-"$source/tools/durable-jobs-bench/go/run" \
+build=/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8
+"$build/source/tools/durable-jobs-bench/go/run" \
 	--binary "$build/river-bench" \
 	--pg-bin /var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin \
 	--scratch /var/lib/durable-jobs-bench/river/scratch \
@@ -130,13 +131,9 @@ The ledger includes submit, enqueue commit, pickup, and durable settlement
 timestamps in epoch microseconds. Its `peak_executing` is the sum of per-runner
 handler high-water marks, an upper bound across runner processes.
 
-The SETUP-only Linux x86-64 binary has SHA-256
-`e00cbd00137964ddda85f6eb96835b6b8d0b347ec91e68147c99d28eaf2d7131`.
-Native setup checks passed for both wrappers on short and sparse. The revised
-wrapper verifies raw write counts, transaction identities, versions, and slot
-receipts before it translates results. Short passed matrix ledger
-reconciliation. Sparse verified rollback, retry, and effect deduplication.
-Matched-submit timing is on HOLD. See
-`target/linode-river/READY.json` for the setup handoff. The
-[smoke bundle](../results/2026-11-23-river-smoke/README.md) preserves the
-source, build pins, earlier attempts, raw evidence, and offline replay.
+For matched timing, copy the executable and wrapper file hashes from the
+setup-proven handoff into the matrix inventory. The new River clock starts
+immediately before the current batch file read. The original predecoded
+binary remains available for SETUP and historical replay.
+[Timing boundary, handoff, and replay](../results/2026-11-23-river-submit/README.md)
+[Original setup archive](../results/2026-11-23-river-smoke/README.md)

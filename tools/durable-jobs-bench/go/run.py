@@ -15,7 +15,7 @@ from prepare_input import PROFILES, harness
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from verify import PROFILES as MATRIX_PROFILES, reconcile, require
-from raw_evidence import frozen_input, verify_run
+from raw_evidence import SUBMIT_BOUNDARY, frozen_input, verify_run
 
 VERSION = "river v0.51.2 / pgx v5.13.0 / go1.26.4"
 
@@ -41,7 +41,8 @@ def arm(args):
     batches, manifest = frozen_input(args.profile)
     binary_hash = harness["digest"](binary)
     phase = os.environ.get("DURABLE_JOBS_PHASE", "diagnostic")
-    harness["write_json"](out / "runtime.json", {"phase": phase, "version": VERSION, "artifact_sha256": binary_hash})
+    harness["write_json"](out / "runtime.json", {"phase": phase, "version": VERSION,
+                                                 "artifact_sha256": binary_hash, "submit_boundary": SUBMIT_BOUNDARY})
     with tempfile.TemporaryDirectory(prefix="arm-", dir=scratch) as location:
         work = Path(location)
         inputs = work / "input"

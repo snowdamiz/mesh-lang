@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,6 +18,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -42,6 +44,7 @@ var profiles = map[string]profile{
 }
 
 const (
+	submitBoundary   = "before_batch_read"
 	pollInterval     = 250 * time.Millisecond
 	observerInterval = 100 * time.Millisecond
 	idleInterval     = 3 * time.Second
@@ -95,7 +98,7 @@ func dispatch() error {
 }
 
 func run(ctx context.Context, name string, p profile, input, out string, smoke, single bool) error {
-	batches, err := loadInput(input, p.Digest)
+	paths, err := verifyInput(input, p.Digest)
 	if err != nil {
 		return err
 	}
@@ -110,7 +113,7 @@ func run(ctx context.Context, name string, p profile, input, out string, smoke, 
 	}
 	runtime.GOMAXPROCS(2)
 	if err = writeJSON(filepath.Join(out, "config.json"), map[string]any{
-		"format_version": 1, "engine": "river", "profile": name, "profile_config": p, "smoke": smoke,
+		"format_version": 2, "submit_boundary": submitBoundary, "engine": "river", "profile": name, "profile_config": p, "smoke": smoke,
 		"binary_sha256": fmt.Sprintf("%x", sha256.Sum256(exeBytes)), "build": build,
 		"os": runtime.GOOS, "arch": runtime.GOARCH, "visible_cpus": runtime.NumCPU(), "gomaxprocs": 2,
 		"fetch_cooldown_ms": 5, "poll_ms": pollInterval.Milliseconds(), "poll_only": false,
@@ -130,11 +133,11 @@ func run(ctx context.Context, name string, p profile, input, out string, smoke, 
 		return err
 	}
 	if p.FullWarm && !single {
-		if err := trial(ctx, pool, p, name == "sparse", batches, filepath.Join(out, "warmup")); err != nil {
+		if err := trial(ctx, pool, p, name == "sparse", paths, filepath.Join(out, "warmup")); err != nil {
 			return fmt.Errorf("warmup: %w", err)
 		}
 	}
-	if err := trial(ctx, pool, p, name == "sparse", batches, filepath.Join(out, "measured")); err != nil {
+	if err := trial(ctx, pool, p, name == "sparse", paths, filepath.Join(out, "measured")); err != nil {
 		return fmt.Errorf("frozen trial: %w", err)
 	}
 	if smoke {
@@ -142,42 +145,72 @@ func run(ctx context.Context, name string, p profile, input, out string, smoke, 
 			{RequestID: "rollback", Rollback: true, Jobs: []jobArgs{{Key: "rollback", Payload: "fixture"}}},
 			{RequestID: "retry", Jobs: []jobArgs{{Key: "retry", Payload: "fixture", HoldMS: 1, FailFirst: true}}},
 		}
-		if err := trial(ctx, pool, p, false, witnesses, filepath.Join(out, "faults")); err != nil {
+		fixtureDir := filepath.Join(out, "fault-input")
+		if err := os.Mkdir(fixtureDir, 0700); err != nil {
+			return err
+		}
+		var fixturePaths []string
+		for _, witness := range witnesses {
+			path := filepath.Join(fixtureDir, witness.RequestID+".json")
+			if err := writeJSON(path, witness); err != nil {
+				return err
+			}
+			fixturePaths = append(fixturePaths, path)
+		}
+		if err := trial(ctx, pool, p, false, fixturePaths, filepath.Join(out, "faults")); err != nil {
 			return fmt.Errorf("rollback/retry witnesses: %w", err)
 		}
 	}
 	return nil
 }
 
-func loadInput(dir, frozenDigest string) ([]batch, error) {
+// verifyInput retains only the ordered file paths. Each submission reads and
+// decodes its batch after the runners have reached readiness and idled.
+func verifyInput(dir, frozenDigest string) ([]string, error) {
 	paths, err := filepath.Glob(filepath.Join(dir, "batch_*.json"))
 	if err != nil {
 		return nil, err
 	}
 	combined := sha256.New()
-	batches := make([]batch, 0, len(paths))
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		file, err := os.Open(path)
 		if err != nil {
 			return nil, err
 		}
-		_, _ = fmt.Fprintf(combined, "%x", sha256.Sum256(data))
-		var b batch
-		if err := json.Unmarshal(data, &b); err != nil {
+		hash := sha256.New()
+		_, err = io.Copy(hash, file)
+		if err = errors.Join(err, file.Close()); err != nil {
 			return nil, err
 		}
-		if filepath.Base(path) != b.RequestID+".json" {
-			return nil, fmt.Errorf("batch file does not match request ID %s", b.RequestID)
-		}
-		batches = append(batches, b)
+		_, _ = fmt.Fprintf(combined, "%x", hash.Sum(nil))
 	}
 	if digest := hex.EncodeToString(combined.Sum(nil)); digest != frozenDigest {
 		return nil, fmt.Errorf("frozen input mismatch: %s != %s", digest, frozenDigest)
 	}
-	return batches, nil
+	return paths, nil
 }
 
-func trial(parent context.Context, pool *pgxpool.Pool, p profile, sparse bool, batches []batch, out string) (runErr error) {
+func readBatch(path string, r *receipt) (batch, error) {
+	var b batch
+	r.SubmittedUS = time.Now().UnixMicro()
+	data, err := os.ReadFile(path)
+	r.ReadFinishedUS = time.Now().UnixMicro()
+	if err != nil {
+		return b, err
+	}
+	r.InputBytes = len(data)
+	err = json.Unmarshal(data, &b)
+	r.DecodedUS = time.Now().UnixMicro()
+	if err != nil {
+		return b, err
+	}
+	if b.RequestID != r.RequestID {
+		return b, fmt.Errorf("batch file does not match request ID %s", b.RequestID)
+	}
+	return b, nil
+}
+
+func trial(parent context.Context, pool *pgxpool.Pool, p profile, sparse bool, paths []string, out string) (runErr error) {
 	ctx, cancel := context.WithTimeout(parent, 300*time.Second)
 	defer cancel()
 	if err := os.Mkdir(out, 0700); err != nil {
@@ -255,26 +288,36 @@ func trial(parent context.Context, pool *pgxpool.Pool, p profile, sparse bool, b
 		return err
 	}
 
-	var committed []receipt
+	batches := make([]batch, 0, len(paths))
+	committed := make([]receipt, 0, len(paths))
 	var count int
-	for _, batch := range batches {
-		submitted := time.Now().UnixMicro()
-		r, err := enqueue(ctx, pool, client, schema, batch)
-		r.SubmittedUS, r.ReturnedUS = submitted, time.Now().UnixMicro()
+	for _, path := range paths {
+		r := receipt{RequestID: strings.TrimSuffix(filepath.Base(path), ".json")}
+		b, err := readBatch(path, &r)
+		if err == nil {
+			r.EnqueueCalledUS = time.Now().UnixMicro()
+			err = enqueue(ctx, pool, client, schema, b, &r)
+		}
+		r.ReturnedUS = time.Now().UnixMicro()
+		if err == nil && !(r.SubmittedUS <= r.ReadFinishedUS && r.ReadFinishedUS <= r.DecodedUS &&
+			r.DecodedUS <= r.EnqueueCalledUS && r.EnqueueCalledUS <= r.ReturnedUS) {
+			err = errors.New("batch read, decode, or enqueue timestamps out of order")
+		}
 		if err == nil && r.Commit != nil {
-			if committed := r.Commit.UnixMicro(); committed < submitted || committed > r.ReturnedUS {
+			if stamp := r.Commit.UnixMicro(); stamp < r.EnqueueCalledUS || stamp > r.ReturnedUS {
 				err = errors.New("PostgreSQL enqueue commit outside adapter call window")
 			}
 		}
 		if err != nil {
-			return errors.Join(err, receiptJSON.Encode(r))
+			return errors.Join(fmt.Errorf("submit %s: %w", r.RequestID, err), receiptJSON.Encode(r))
 		}
 		if err := receiptJSON.Encode(r); err != nil {
 			return err
 		}
+		batches = append(batches, b)
 		committed = append(committed, r)
-		if !batch.Rollback {
-			count += len(batch.Jobs)
+		if !b.Rollback {
+			count += len(b.Jobs)
 		}
 		if sparse {
 			if err := sampler.waitTerminal(ctx, count); err != nil {

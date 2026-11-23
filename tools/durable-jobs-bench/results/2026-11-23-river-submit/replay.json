@@ -1,0 +1,67 @@
+{
+  "rejected_controls": [
+    "invalid batch read, decode or enqueue timestamps",
+    "wrong batch byte count",
+    "product did not commit with enqueue"
+  ],
+  "setup_only": true,
+  "smokes": {
+    "local-large": {
+      "completed": 64,
+      "handler_slots": 64,
+      "independent_attempt_rows": 64,
+      "independent_effect_rows": 64,
+      "physical_connection_cap": 96,
+      "retry_jobs": 1,
+      "rollback_receipts": 1,
+      "submitted_batches": 1,
+      "submitted_file_bytes": 33561352,
+      "terminal_transactions": 8,
+      "warmup_completed": 64
+    },
+    "local-short": {
+      "completed": 128,
+      "handler_slots": 16,
+      "independent_attempt_rows": 128,
+      "independent_effect_rows": 128,
+      "physical_connection_cap": 20,
+      "submitted_batches": 1,
+      "submitted_file_bytes": 144840,
+      "terminal_transactions": 2
+    },
+    "local-sparse": {
+      "completed": 24,
+      "handler_slots": 1,
+      "independent_attempt_rows": 24,
+      "independent_effect_rows": 24,
+      "physical_connection_cap": 5,
+      "retry_jobs": 1,
+      "rollback_receipts": 1,
+      "submitted_batches": 24,
+      "submitted_file_bytes": 28872,
+      "terminal_transactions": 24
+    },
+    "native-large": {
+      "completed": 64,
+      "handler_slots": 64,
+      "independent_attempt_rows": 64,
+      "independent_effect_rows": 64,
+      "physical_connection_cap": 96,
+      "submitted_batches": 1,
+      "submitted_file_bytes": 33561352,
+      "terminal_transactions": 15
+    },
+    "native-sparse": {
+      "completed": 24,
+      "handler_slots": 1,
+      "independent_attempt_rows": 24,
+      "independent_effect_rows": 24,
+      "physical_connection_cap": 5,
+      "retry_jobs": 1,
+      "rollback_receipts": 1,
+      "submitted_batches": 24,
+      "submitted_file_bytes": 28872,
+      "terminal_transactions": 24
+    }
+  }
+}
