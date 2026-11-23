@@ -1,0 +1,10 @@
+{
+  "order": [
+    "bulk",
+    "scalar"
+  ],
+  "phases": [
+    "diagnostic"
+  ],
+  "profile": "slow"
+}

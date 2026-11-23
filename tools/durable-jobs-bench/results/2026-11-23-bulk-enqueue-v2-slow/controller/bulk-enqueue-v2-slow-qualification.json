@@ -1,0 +1,31 @@
+{
+  "id": "bulk-enqueue-v2-slow-qualification",
+  "ready": true,
+  "state": "ready",
+  "requested_at": "2026-11-23T22:49:53.635717+00:00",
+  "source_sha": "ce5e551d079e83bfab5e6ba1d52b47892bf35319",
+  "requested_window_minutes": 15,
+  "expected_duration_minutes": 3,
+  "scope": "Existing V2 native ELF, no build or install. Diagnostic bulk on/off using the frozen 512 \u00d716 KiB slow workload, CPU 0,1, default storage, 64 slots, 68 connections, and both independent effects. Verify terminal cohort and batch writer evidence. No timing in this grant.",
+  "command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/prove.py /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/inventory.json /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/native-proof-01",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/native-proof-01",
+  "pins": {
+    "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/prove.py": "11b131f521c4d20c2b4d649913e373795d899840c28e06b6bfdc93cf1e14865d",
+    "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/series.py": "db3032e0e9c9b3f1ef5bc095617232fb1d43f2979a02a3f45ef135dc58a46a55",
+    "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/inventory.json": "f57f612a01e3d94688142352628e34b8beb0df8367f908b4858e5f1c2c2d9f44",
+    "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/native-bulk-enqueue-integration/evidence/native/qualified-from-retained-3b09dc3d0e23/ordinary-v1-slow.json": "b71a9056bc41e1746dc6f1a443ec4902bdc815e42d95140f0b131025195dbd60",
+    "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/inventory.json": "fa6a735f398a207e1c20b905b7e305effcdae57dccfb343a894e12bc9b952291",
+    "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py": "d30834fa1ca18030edd5df0de5d760ea1952d2b84aa05fb3eae9d2af13825c52"
+  },
+  "config": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/inventory.json",
+  "config_sha256": "f57f612a01e3d94688142352628e34b8beb0df8367f908b4858e5f1c2c2d9f44",
+  "timing_id": "bulk-enqueue-v2-slow",
+  "first_measured_groups": [
+    1,
+    2
+  ],
+  "timing_driver": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/series.py",
+  "timing_evidence": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/bulk-v2-slow/evidence",
+  "order": "Group 2 is the strict reverse of group 1. Groups 3\u20135 only if initial pair warrants.",
+  "prerequisites": "After promised product, real dense CPU role and topology work. Require actual native proof and early release before first timing grant."
+}

@@ -1,0 +1,20 @@
+{
+  "extended": false,
+  "historical_target_ms": [
+    100,
+    160
+  ],
+  "rows": [
+    {
+      "group": 1,
+      "v2_ms_behind_river": -57.81899999999996,
+      "v2_saved_ms_vs_v1_bulk": 4.241999999999962
+    },
+    {
+      "group": 2,
+      "v2_ms_behind_river": 221.24,
+      "v2_saved_ms_vs_v1_bulk": -35.843000000000075
+    }
+  ],
+  "window": "first submit through final settlement"
+}

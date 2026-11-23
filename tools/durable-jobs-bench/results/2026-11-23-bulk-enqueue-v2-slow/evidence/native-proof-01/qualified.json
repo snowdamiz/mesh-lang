@@ -1,0 +1,60 @@
+{
+  "bulk": {
+    "jobs": 512,
+    "peak_connections": 13,
+    "peak_executing": 64,
+    "postgres": {
+      "database_connection_limit": 68,
+      "fsync": true,
+      "full_page_writes": true,
+      "max_connections": 68,
+      "reserved_connections": 0,
+      "superuser_reserved_connections": 0,
+      "synchronous_commit": true,
+      "tls": true,
+      "track_commit_timestamp": true,
+      "version": "17.11"
+    },
+    "terminal_xids": 487,
+    "writer": {
+      "bulk": 8,
+      "enabled": true,
+      "scalar": 8,
+      "statements": {
+        "SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt": 8,
+        "SELECT ordinal, receipt FROM mesh_jobs.enqueue_batch_v1($1, $2::jsonb)\n         ORDER BY ordinal::integer": 8
+      }
+    }
+  },
+  "raw_sha256": {
+    "diagnostic-bulk/diagnostic-mesh": "94a2b5124889f305cd20ff1a47622828b6413fff6f0176ee2e11640328bad55b",
+    "diagnostic-scalar/diagnostic-mesh": "20bba70d3cafdff6f398495dd676b146828a0b29c7a71137018096932e61e436"
+  },
+  "scalar": {
+    "jobs": 512,
+    "peak_connections": 13,
+    "peak_executing": 64,
+    "postgres": {
+      "database_connection_limit": 68,
+      "fsync": true,
+      "full_page_writes": true,
+      "max_connections": 68,
+      "reserved_connections": 0,
+      "superuser_reserved_connections": 0,
+      "synchronous_commit": true,
+      "tls": true,
+      "track_commit_timestamp": true,
+      "version": "17.11"
+    },
+    "terminal_xids": 459,
+    "writer": {
+      "bulk": 0,
+      "enabled": false,
+      "scalar": 512,
+      "statements": {
+        "SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt": 512
+      }
+    }
+  },
+  "scores": {}
+}

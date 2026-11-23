@@ -1,0 +1,17 @@
+{
+  "group": 1,
+  "order": [
+    "bulk",
+    "river",
+    "v1-bulk",
+    "v1-scalar",
+    "apalis",
+    "oban",
+    "scalar"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "slow"
+}
