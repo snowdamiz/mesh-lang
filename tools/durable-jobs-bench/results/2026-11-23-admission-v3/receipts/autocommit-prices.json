@@ -1,0 +1,1335 @@
+{
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "cpus": 15,
+  "postgres_sha256": "9d1930da02e11e446b42f9d79cf2e6bce307a6decb6a089591f8726d0f49b6f2",
+  "schema_sha256": {
+    "stock": "6e6c58e9d055d5ceb66139058d42cd05bfef3b70b80beca6cc0b9a4766f2f6f3",
+    "candidate": "aa4c781bcacbd01c818f54a11ab170e07aa75435e2b6d292d9bca8995f8fbe5b"
+  },
+  "application_sha256": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+  "fence_sha256": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+  "tls": "verify-full",
+  "width": 8,
+  "rounds": [
+    {
+      "arm": "stock",
+      "load": [
+        31.2939453125,
+        30.1396484375,
+        22.9296875
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "probe": {
+          "calls": 128,
+          "backend_cpu_ns": 52193952,
+          "client_wall_ns": 95417793
+        },
+        "admit_begin": {
+          "calls": 128,
+          "backend_cpu_ns": 5101710,
+          "client_wall_ns": 43260636
+        },
+        "admit_query": {
+          "calls": 128,
+          "backend_cpu_ns": 197159254,
+          "client_wall_ns": 233700161
+        },
+        "admit_commit": {
+          "calls": 128,
+          "backend_cpu_ns": 18553500,
+          "client_wall_ns": 46728963
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 26700325,
+          "client_wall_ns": 83898671
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 355487623,
+          "client_wall_ns": 465370336
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 94497230,
+          "client_wall_ns": 201616285
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 38987485,
+          "client_wall_ns": 108040948
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 24474792,
+          "client_wall_ns": 83412808
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 315330294,
+          "client_wall_ns": 438419509
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 91227825,
+          "client_wall_ns": 212476162
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 37813134,
+          "client_wall_ns": 104641856
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 278125418,
+          "client_wall_ns": 460002890
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 15311209,
+          "client_wall_ns": 38882213
+        }
+      }
+    },
+    {
+      "arm": "strict",
+      "load": [
+        30.06884765625,
+        29.90478515625,
+        22.888671875
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 132032963,
+          "client_wall_ns": 151018036
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 27585242,
+          "client_wall_ns": 81012945
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 333718062,
+          "client_wall_ns": 419770306
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 87644117,
+          "client_wall_ns": 174104618
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 38346678,
+          "client_wall_ns": 96787674
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 24820871,
+          "client_wall_ns": 74080076
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 291578836,
+          "client_wall_ns": 374906660
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 88026743,
+          "client_wall_ns": 189681619
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 36511283,
+          "client_wall_ns": 95444097
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 267793995,
+          "client_wall_ns": 378899982
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 14084375,
+          "client_wall_ns": 20529876
+        }
+      }
+    },
+    {
+      "arm": "cohort",
+      "load": [
+        30.70361328125,
+        30.0390625,
+        22.97705078125
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 128,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 129741244,
+          "client_wall_ns": 144415952
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 20214796,
+          "client_wall_ns": 48137841
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 324703009,
+          "client_wall_ns": 380395882
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 82894389,
+          "client_wall_ns": 136716366
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 30812882,
+          "client_wall_ns": 59667327
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 17231094,
+          "client_wall_ns": 41746682
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 282428920,
+          "client_wall_ns": 333449899
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 79510715,
+          "client_wall_ns": 133647038
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 29526362,
+          "client_wall_ns": 58433713
+        },
+        "settle_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 86882090,
+          "client_wall_ns": 101650588
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 12039791,
+          "client_wall_ns": 16799959
+        }
+      }
+    },
+    {
+      "arm": "cohort",
+      "load": [
+        29.76611328125,
+        29.85546875,
+        22.95361328125
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 128,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 128927335,
+          "client_wall_ns": 148547795
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 23059564,
+          "client_wall_ns": 72518803
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 316504440,
+          "client_wall_ns": 394375643
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 81005890,
+          "client_wall_ns": 155227573
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 33044365,
+          "client_wall_ns": 78798759
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 20624855,
+          "client_wall_ns": 63771071
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 278684589,
+          "client_wall_ns": 351308605
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 75960014,
+          "client_wall_ns": 152931912
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 31468492,
+          "client_wall_ns": 81749110
+        },
+        "settle_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 82597457,
+          "client_wall_ns": 98396582
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 13965917,
+          "client_wall_ns": 19116454
+        }
+      }
+    },
+    {
+      "arm": "strict",
+      "load": [
+        29.76611328125,
+        29.85546875,
+        22.95361328125
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 94053830,
+          "client_wall_ns": 103587832
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 14796624,
+          "client_wall_ns": 39166500
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 187569522,
+          "client_wall_ns": 219783032
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 36668906,
+          "client_wall_ns": 75553954
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 17128393,
+          "client_wall_ns": 41090718
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 13787561,
+          "client_wall_ns": 37099000
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 161991207,
+          "client_wall_ns": 193071611
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 36015960,
+          "client_wall_ns": 74396535
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 17100995,
+          "client_wall_ns": 40885752
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 155576003,
+          "client_wall_ns": 201211248
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 7477084,
+          "client_wall_ns": 10081335
+        }
+      }
+    },
+    {
+      "arm": "stock",
+      "load": [
+        28.50341796875,
+        29.591796875,
+        22.90087890625
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "probe": {
+          "calls": 128,
+          "backend_cpu_ns": 46705042,
+          "client_wall_ns": 54537920
+        },
+        "admit_begin": {
+          "calls": 128,
+          "backend_cpu_ns": 3859913,
+          "client_wall_ns": 8390089
+        },
+        "admit_query": {
+          "calls": 128,
+          "backend_cpu_ns": 180810795,
+          "client_wall_ns": 195454536
+        },
+        "admit_commit": {
+          "calls": 128,
+          "backend_cpu_ns": 13555834,
+          "client_wall_ns": 22394130
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 20210066,
+          "client_wall_ns": 52756311
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 309156722,
+          "client_wall_ns": 364095875
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 75629453,
+          "client_wall_ns": 133023735
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 30200369,
+          "client_wall_ns": 64941833
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 18092971,
+          "client_wall_ns": 48061012
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 266181424,
+          "client_wall_ns": 317297354
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 75405066,
+          "client_wall_ns": 137829072
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 29088804,
+          "client_wall_ns": 63133198
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 234394457,
+          "client_wall_ns": 310796975
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 11528042,
+          "client_wall_ns": 16388666
+        }
+      }
+    },
+    {
+      "arm": "stock",
+      "load": [
+        27.982421875,
+        29.46533203125,
+        22.8955078125
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "probe": {
+          "calls": 128,
+          "backend_cpu_ns": 50997087,
+          "client_wall_ns": 61749371
+        },
+        "admit_begin": {
+          "calls": 128,
+          "backend_cpu_ns": 3906208,
+          "client_wall_ns": 9877211
+        },
+        "admit_query": {
+          "calls": 128,
+          "backend_cpu_ns": 194359583,
+          "client_wall_ns": 225145628
+        },
+        "admit_commit": {
+          "calls": 128,
+          "backend_cpu_ns": 14594628,
+          "client_wall_ns": 44070582
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 19575932,
+          "client_wall_ns": 58668253
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 332594227,
+          "client_wall_ns": 422176317
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 84583284,
+          "client_wall_ns": 362245327
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 30355704,
+          "client_wall_ns": 79692170
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 16969803,
+          "client_wall_ns": 69259740
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 289997932,
+          "client_wall_ns": 390373206
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 78370865,
+          "client_wall_ns": 445032679
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 29445753,
+          "client_wall_ns": 67794884
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 250237994,
+          "client_wall_ns": 460747664
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 15476958,
+          "client_wall_ns": 26771041
+        }
+      }
+    },
+    {
+      "arm": "strict",
+      "load": [
+        27.8232421875,
+        29.40771484375,
+        22.91357421875
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 138053295,
+          "client_wall_ns": 170548333
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 22414661,
+          "client_wall_ns": 70360304
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 344167574,
+          "client_wall_ns": 438532839
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 83511385,
+          "client_wall_ns": 160108365
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 33600299,
+          "client_wall_ns": 89114036
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 19506159,
+          "client_wall_ns": 71315652
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 301318005,
+          "client_wall_ns": 390860654
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 81020814,
+          "client_wall_ns": 166682828
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 32154603,
+          "client_wall_ns": 86597785
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 262820789,
+          "client_wall_ns": 403243226
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 14090041,
+          "client_wall_ns": 19594083
+        }
+      }
+    },
+    {
+      "arm": "cohort",
+      "load": [
+        26.9560546875,
+        29.20166015625,
+        22.87890625
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 128,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 119542379,
+          "client_wall_ns": 139238541
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 23451783,
+          "client_wall_ns": 68887700
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 290928997,
+          "client_wall_ns": 365325412
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 72764823,
+          "client_wall_ns": 156764236
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 32172595,
+          "client_wall_ns": 82915486
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 21162884,
+          "client_wall_ns": 62713797
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 256872651,
+          "client_wall_ns": 327501379
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 73082783,
+          "client_wall_ns": 174775178
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 31236067,
+          "client_wall_ns": 83922761
+        },
+        "settle_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 77642371,
+          "client_wall_ns": 157257420
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 10176500,
+          "client_wall_ns": 13737882
+        }
+      }
+    },
+    {
+      "arm": "cohort",
+      "load": [
+        25.35791015625,
+        28.8330078125,
+        22.78564453125
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 128,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 102141378,
+          "client_wall_ns": 122801875
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 17855694,
+          "client_wall_ns": 62452300
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 223813281,
+          "client_wall_ns": 275217257
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 50214476,
+          "client_wall_ns": 100647868
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 22431861,
+          "client_wall_ns": 55581248
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 15657556,
+          "client_wall_ns": 47148751
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 196090952,
+          "client_wall_ns": 245336804
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 48764657,
+          "client_wall_ns": 103704596
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 21705440,
+          "client_wall_ns": 58278860
+        },
+        "settle_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 64388956,
+          "client_wall_ns": 73575376
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 10948291,
+          "client_wall_ns": 15321505
+        }
+      }
+    },
+    {
+      "arm": "strict",
+      "load": [
+        25.35791015625,
+        28.8330078125,
+        22.78564453125
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 116214123,
+          "client_wall_ns": 130776669
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 17275050,
+          "client_wall_ns": 48110540
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 247927617,
+          "client_wall_ns": 299746579
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 58835797,
+          "client_wall_ns": 228330513
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 24721663,
+          "client_wall_ns": 63702723
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 14887083,
+          "client_wall_ns": 43130856
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 213757491,
+          "client_wall_ns": 265843217
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 55773461,
+          "client_wall_ns": 181782758
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 23147669,
+          "client_wall_ns": 51069781
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 206992251,
+          "client_wall_ns": 441017335
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 10987042,
+          "client_wall_ns": 15630623
+        }
+      }
+    },
+    {
+      "arm": "stock",
+      "load": [
+        24.2080078125,
+        28.53662109375,
+        22.71630859375
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "probe": {
+          "calls": 128,
+          "backend_cpu_ns": 46049905,
+          "client_wall_ns": 55030585
+        },
+        "admit_begin": {
+          "calls": 128,
+          "backend_cpu_ns": 4327881,
+          "client_wall_ns": 10425379
+        },
+        "admit_query": {
+          "calls": 128,
+          "backend_cpu_ns": 181103459,
+          "client_wall_ns": 206034709
+        },
+        "admit_commit": {
+          "calls": 128,
+          "backend_cpu_ns": 16258377,
+          "client_wall_ns": 42743041
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 24209220,
+          "client_wall_ns": 76410341
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 312529806,
+          "client_wall_ns": 391188419
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 81446035,
+          "client_wall_ns": 171521114
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 34333667,
+          "client_wall_ns": 86426845
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 22293695,
+          "client_wall_ns": 62223291
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 274669544,
+          "client_wall_ns": 349636875
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 78599395,
+          "client_wall_ns": 161412164
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 33055888,
+          "client_wall_ns": 94532746
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 247170711,
+          "client_wall_ns": 344792353
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 13378583,
+          "client_wall_ns": 20032251
+        }
+      }
+    },
+    {
+      "arm": "stock",
+      "load": [
+        22.90966796875,
+        28.1953125,
+        22.6298828125
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "probe": {
+          "calls": 128,
+          "backend_cpu_ns": 41661962,
+          "client_wall_ns": 50877956
+        },
+        "admit_begin": {
+          "calls": 128,
+          "backend_cpu_ns": 3336036,
+          "client_wall_ns": 7173959
+        },
+        "admit_query": {
+          "calls": 128,
+          "backend_cpu_ns": 173164417,
+          "client_wall_ns": 326691458
+        },
+        "admit_commit": {
+          "calls": 128,
+          "backend_cpu_ns": 11987200,
+          "client_wall_ns": 32883204
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 17941360,
+          "client_wall_ns": 49543774
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 260519913,
+          "client_wall_ns": 309487949
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 65124083,
+          "client_wall_ns": 125340955
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 26518283,
+          "client_wall_ns": 59039670
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 15595314,
+          "client_wall_ns": 40252656
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 224453481,
+          "client_wall_ns": 269444465
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 63485211,
+          "client_wall_ns": 123216976
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 24682855,
+          "client_wall_ns": 58819897
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 211093301,
+          "client_wall_ns": 295613778
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 14458167,
+          "client_wall_ns": 24422832
+        }
+      }
+    },
+    {
+      "arm": "strict",
+      "load": [
+        21.79541015625,
+        27.87646484375,
+        22.5498046875
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 1024,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 136483213,
+          "client_wall_ns": 185504330
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 28698773,
+          "client_wall_ns": 137547553
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 352104288,
+          "client_wall_ns": 501481062
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 94081125,
+          "client_wall_ns": 240877159
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 42102075,
+          "client_wall_ns": 151079442
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 25444814,
+          "client_wall_ns": 118078675
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 313804772,
+          "client_wall_ns": 454330596
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 91940956,
+          "client_wall_ns": 237848601
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 40640489,
+          "client_wall_ns": 147189163
+        },
+        "settle_commit_and_query": {
+          "calls": 1024,
+          "backend_cpu_ns": 291555537,
+          "client_wall_ns": 488112974
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 15025833,
+          "client_wall_ns": 25781997
+        }
+      }
+    },
+    {
+      "arm": "cohort",
+      "load": [
+        20.6103515625,
+        27.52978515625,
+        22.45849609375
+      ],
+      "settings": {
+        "server": "17.11 (Homebrew)",
+        "max_connections": "96",
+        "reserved": "0",
+        "superuser_reserved": "0",
+        "fsync": "on",
+        "synchronous_commit": "on",
+        "full_page_writes": "on",
+        "track_commit_timestamp": "on"
+      },
+      "witness": {
+        "rows": 1024,
+        "terminal_xids": 128,
+        "distinct_app_xids": 2048
+      },
+      "operations": {
+        "admit_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 123654457,
+          "client_wall_ns": 152403623
+        },
+        "app_first_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 25327586,
+          "client_wall_ns": 83835551
+        },
+        "app_first_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 318699706,
+          "client_wall_ns": 411916944
+        },
+        "app_first_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 83919031,
+          "client_wall_ns": 194903273
+        },
+        "app_first_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 34512089,
+          "client_wall_ns": 94345870
+        },
+        "app_second_begin": {
+          "calls": 1024,
+          "backend_cpu_ns": 23006757,
+          "client_wall_ns": 72662711
+        },
+        "app_second_write": {
+          "calls": 1024,
+          "backend_cpu_ns": 281489234,
+          "client_wall_ns": 384868802
+        },
+        "app_second_commit": {
+          "calls": 1024,
+          "backend_cpu_ns": 80628600,
+          "client_wall_ns": 202157925
+        },
+        "app_second_reset": {
+          "calls": 1024,
+          "backend_cpu_ns": 33327831,
+          "client_wall_ns": 106340767
+        },
+        "settle_commit_and_query": {
+          "calls": 128,
+          "backend_cpu_ns": 84496376,
+          "client_wall_ns": 201828415
+        },
+        "renew_commit_and_query": {
+          "calls": 64,
+          "backend_cpu_ns": 11707125,
+          "client_wall_ns": 16543752
+        }
+      }
+    }
+  ],
+  "median_backend_ms_per_call": {
+    "stock": {
+      "probe": 0.364883140625,
+      "admit_begin": 0.03051725,
+      "admit_query": 1.4148707734375,
+      "admit_commit": 0.11402053125,
+      "app_first_begin": 0.019736392578125,
+      "app_first_write": 0.305204888671875,
+      "app_first_commit": 0.0795371435546875,
+      "app_first_reset": 0.0296442421875,
+      "app_second_begin": 0.0176689169921875,
+      "app_second_write": 0.2682319765625,
+      "app_second_commit": 0.0765340478515625,
+      "app_second_reset": 0.0287556181640625,
+      "settle_commit_and_query": 0.2413776474609375,
+      "renew_commit_and_query": 0.225908859375
+    },
+    "strict": {
+      "admit_commit_and_query": 1.0315075234375,
+      "app_first_begin": 0.0218893173828125,
+      "app_first_write": 0.325896544921875,
+      "app_first_commit": 0.0815540869140625,
+      "app_first_reset": 0.0328127919921875,
+      "app_second_begin": 0.0190489833984375,
+      "app_second_write": 0.28474495703125,
+      "app_second_commit": 0.079121888671875,
+      "app_second_reset": 0.0314009794921875,
+      "settle_commit_and_query": 0.2566609267578125,
+      "renew_commit_and_query": 0.220068359375
+    },
+    "cohort": {
+      "admit_commit_and_query": 0.9660504453125,
+      "app_first_begin": 0.02251910546875,
+      "app_first_write": 0.3090863671875,
+      "app_first_commit": 0.079107314453125,
+      "app_first_reset": 0.0314185498046875,
+      "app_second_begin": 0.0201414599609375,
+      "app_second_write": 0.2721529189453125,
+      "app_second_commit": 0.074179701171875,
+      "app_second_reset": 0.0305039716796875,
+      "settle_commit_and_query": 0.6452926328125,
+      "renew_commit_and_query": 0.182923828125
+    }
+  }
+}
