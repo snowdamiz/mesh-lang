@@ -1,0 +1,2115 @@
+{
+  "largest_mesh_gap_vs_oban": "noop",
+  "oban_over_mesh_median_ratios": {
+    "large": 1.0400151821216201,
+    "noop": 3.7240390645442587,
+    "short": 1.37671590442284,
+    "slow": 1.5084820563656407,
+    "sparse": 0.7687125006376829
+  },
+  "primary": "submit_jobs_per_s",
+  "profiles": {
+    "large": {
+      "go": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 19.2795,
+          "median": 13.815,
+          "min": 9.215
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 428.1825,
+          "median": 384.2495,
+          "min": 370.60400000000004
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 955.676,
+          "median": 938.054,
+          "min": 840.229
+        },
+        "commit_jobs_per_s": {
+          "max": 76.1030482838168,
+          "median": 68.15935657567393,
+          "min": 66.9118707931775
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 10.2045,
+          "median": 8.994499999999999,
+          "min": 7.842
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 608.784,
+          "median": 597.553,
+          "min": 548.081
+        },
+        "cpu_busy_percent": {
+          "max": 66.51851851851852,
+          "median": 64.01273885350318,
+          "min": 61.7771509167842
+        },
+        "cpu_iowait_percent": {
+          "max": 0.2962962962962963,
+          "median": 0.14814814814814814,
+          "min": 0.13966480446927373
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 23.40740740740741,
+          "median": 22.22222222222222,
+          "min": 20.54140127388535
+        },
+        "disk_flushes": {
+          "max": 131,
+          "median": 108,
+          "min": 104
+        },
+        "disk_write_bytes": {
+          "max": 71704576,
+          "median": 70901760,
+          "min": 70840320
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 255.54500000000002,
+          "median": 231.98000000000002,
+          "min": 177.82
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 127.6705,
+          "median": 94.9135,
+          "min": 78.9965
+        },
+        "first_claim_from_commit_ms": {
+          "max": 0.922,
+          "median": 0.806,
+          "min": 0.736
+        },
+        "first_submit_to_commit_ms": {
+          "max": 2283.182,
+          "median": 2258.614,
+          "min": 2152.479
+        },
+        "peak_executing": {
+          "max": 63,
+          "median": 63,
+          "min": 59
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 15.1381875,
+          "median": 14.839203125,
+          "min": 14.738421875
+        },
+        "submit_jobs_per_s": {
+          "max": 21.06259474053845,
+          "median": 19.98708334738675,
+          "min": 19.755135100430167
+        }
+      },
+      "mesh": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 9.068999999999999,
+          "median": 7.5365,
+          "min": 6.3255
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 74.5675,
+          "median": 72.5885,
+          "min": 68.1035
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 826.747,
+          "median": 815.568,
+          "min": 776.982
+        },
+        "commit_jobs_per_s": {
+          "max": 79.483062035288,
+          "median": 75.69404938327091,
+          "min": 75.01796328573991
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 428.062,
+          "median": 409.882,
+          "min": 394.37
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 835.134,
+          "median": 831.166,
+          "min": 795.599
+        },
+        "cpu_busy_percent": {
+          "max": 72.95492487479132,
+          "median": 72.43697478991596,
+          "min": 69.84924623115577
+        },
+        "cpu_iowait_percent": {
+          "max": 1.1686143572621035,
+          "median": 0.3395585738539898,
+          "min": 0.33613445378151263
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 28.235294117647058,
+          "median": 27.60942760942761,
+          "min": 26.46566164154104
+        },
+        "disk_flushes": {
+          "max": 249,
+          "median": 245,
+          "min": 228
+        },
+        "disk_write_bytes": {
+          "max": 72159232,
+          "median": 72073216,
+          "min": 71925760
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 19.5135,
+          "median": 18.068,
+          "min": 15.738500000000002
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 4.947,
+          "median": 3.6055,
+          "min": 2.8495
+        },
+        "first_claim_from_commit_ms": {
+          "max": 33.07,
+          "median": 28.221,
+          "min": 20.87
+        },
+        "first_submit_to_commit_ms": {
+          "max": 1968.917,
+          "median": 1859.551,
+          "min": 1838.193
+        },
+        "peak_executing": {
+          "max": 8,
+          "median": 8,
+          "min": 8
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 4.0,
+          "median": 4.0,
+          "min": 4.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 2.5,
+          "median": 2.359375,
+          "min": 2.296875
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 4.25,
+          "median": 4.234375,
+          "min": 4.234375
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 15.25,
+          "median": 14.84375,
+          "min": 14.734375
+        },
+        "raw_sql_calls_per_job": {
+          "max": 23.484375,
+          "median": 23.09375,
+          "min": 22.96875
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 26.940468749999997,
+          "median": 25.801437499999995,
+          "min": 25.626453125
+        },
+        "submit_jobs_per_s": {
+          "max": 24.017226355603558,
+          "median": 23.80914293409741,
+          "min": 23.004908312859563
+        }
+      },
+      "oban": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 12.0855,
+          "median": 7.9155,
+          "min": 6.2615
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 221.8295,
+          "median": 195.3605,
+          "min": 146.285
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 496.781,
+          "median": 487.378,
+          "min": 484.131
+        },
+        "commit_jobs_per_s": {
+          "max": 127.84173193586341,
+          "median": 124.63073277028803,
+          "min": 119.68880909634949
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 216.549,
+          "median": 168.4595,
+          "min": 115.492
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 503.729,
+          "median": 478.472,
+          "min": 473.111
+        },
+        "cpu_busy_percent": {
+          "max": 67.20430107526882,
+          "median": 64.35810810810811,
+          "min": 63.061564059900164
+        },
+        "cpu_iowait_percent": {
+          "max": 0.35842293906810035,
+          "median": 0.1773049645390071,
+          "min": 0.0
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 20.133111480865225,
+          "median": 19.892473118279568,
+          "min": 18.97163120567376
+        },
+        "disk_flushes": {
+          "max": 111,
+          "median": 104,
+          "min": 77
+        },
+        "disk_write_bytes": {
+          "max": 71639040,
+          "median": 70799360,
+          "min": 70684672
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 12.229,
+          "median": 9.938,
+          "min": 8.751
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 7.9755,
+          "median": 5.367,
+          "min": 5.049
+        },
+        "first_claim_from_commit_ms": {
+          "max": 50.589,
+          "median": 22.201,
+          "min": 14.378
+        },
+        "first_submit_to_commit_ms": {
+          "max": 2153.929,
+          "median": 2082.863,
+          "min": 2068.15
+        },
+        "peak_executing": {
+          "max": 16,
+          "median": 8,
+          "min": 3
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 0.390625,
+          "median": 0.359375,
+          "min": 0.296875
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 0.203125,
+          "median": 0.1875,
+          "min": 0.1875
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 9.671875,
+          "median": 9.328125,
+          "min": 9.015625
+        },
+        "raw_sql_calls_per_job": {
+          "max": 9.875,
+          "median": 9.515625,
+          "min": 9.203125
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 147.27590625,
+          "median": 147.03128125,
+          "min": 143.79765625
+        },
+        "submit_jobs_per_s": {
+          "max": 24.81652253049427,
+          "median": 24.761870124765004,
+          "min": 23.84427009149866
+        }
+      },
+      "rust": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 13.881,
+          "median": 11.827,
+          "min": 8.4275
+        },
+        "commit_jobs_per_s": {
+          "max": 391.46604032100214,
+          "median": 362.6925387344297,
+          "min": 2.5258196985442085
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 163.006,
+          "median": 132.738,
+          "min": 124.417
+        },
+        "cpu_busy_percent": {
+          "max": 67.828418230563,
+          "median": 66.02209944751381,
+          "min": 20.661615228238773
+        },
+        "cpu_iowait_percent": {
+          "max": 0.5434782608695652,
+          "median": 0.27100271002710025,
+          "min": 0.018480872297172428
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 27.345844504021446,
+          "median": 25.69060773480663,
+          "min": 9.850304934392904
+        },
+        "disk_flushes": {
+          "max": 77,
+          "median": 60,
+          "min": 57
+        },
+        "disk_write_bytes": {
+          "max": 73383936,
+          "median": 70504448,
+          "min": 70393856
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 20.509999999999998,
+          "median": 19.645,
+          "min": 14.8895
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 20.122999999999998,
+          "median": 16.3355,
+          "min": 9.5165
+        },
+        "first_submit_to_commit_ms": {
+          "max": 1482.789,
+          "median": 1464.272,
+          "min": 1422.773
+        },
+        "peak_executing": {
+          "max": 28,
+          "median": 0,
+          "min": 0
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 6.1106875,
+          "median": 5.906328125,
+          "min": 5.761453125000001
+        },
+        "submit_jobs_per_s": {
+          "max": 40.34644992217548,
+          "median": 38.64239602176533,
+          "min": 2.3902043747985364
+        }
+      }
+    },
+    "noop": {
+      "go": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 6.788,
+          "median": 5.7515,
+          "min": 5.627
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 10.114999999999998,
+          "median": 9.5085,
+          "min": 8.645
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 1112.461,
+          "median": 1102.676,
+          "min": 1071.242
+        },
+        "commit_jobs_per_s": {
+          "max": 954.111344048451,
+          "median": 926.4210022536276,
+          "min": 918.0768799731032
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 612.2049999999999,
+          "median": 602.8050000000001,
+          "min": 582.452
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 890.55,
+          "median": 859.576,
+          "min": 836.662
+        },
+        "cpu_busy_percent": {
+          "max": 82.07885304659499,
+          "median": 73.85159010600707,
+          "min": 67.97153024911032
+        },
+        "cpu_iowait_percent": {
+          "max": 0.35587188612099646,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 32.61648745519713,
+          "median": 29.681978798586574,
+          "min": 23.487544483985765
+        },
+        "disk_flushes": {
+          "max": 411,
+          "median": 396,
+          "min": 375
+        },
+        "disk_write_bytes": {
+          "max": 28213248,
+          "median": 27443200,
+          "min": 27299840
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 169.614,
+          "median": 147.3515,
+          "min": 137.7715
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 0.69,
+          "median": 0.6625000000000001,
+          "min": 0.6054999999999999
+        },
+        "first_claim_from_commit_ms": {
+          "max": 2.914,
+          "median": 2.509,
+          "min": 1.194
+        },
+        "first_submit_to_commit_ms": {
+          "max": 92.895,
+          "median": 73.561,
+          "min": 71.337
+        },
+        "peak_executing": {
+          "max": 64,
+          "median": 64,
+          "min": 64
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 0.7928203125000001,
+          "median": 0.763955078125,
+          "min": 0.7402763671875
+        },
+        "submit_jobs_per_s": {
+          "max": 886.7397765138656,
+          "median": 869.8148755332288,
+          "min": 849.6289511065089
+        }
+      },
+      "mesh": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 12.6025,
+          "median": 11.423,
+          "min": 10.870000000000001
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 71.72999999999999,
+          "median": 66.6665,
+          "min": 65.9065
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 5444.863,
+          "median": 5376.376,
+          "min": 5251.224
+        },
+        "commit_jobs_per_s": {
+          "max": 194.81080332441593,
+          "median": 190.3378980971043,
+          "min": 187.6506106891212
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 2801.087,
+          "median": 2669.03,
+          "min": 2654.025
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 5364.85,
+          "median": 5310.721,
+          "min": 5163.205
+        },
+        "cpu_busy_percent": {
+          "max": 94.33656957928802,
+          "median": 93.75506893755069,
+          "min": 92.40710823909531
+        },
+        "cpu_iowait_percent": {
+          "max": 0.16155088852988692,
+          "median": 0.08090614886731391,
+          "min": 0.0
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 39.66074313408724,
+          "median": 39.40129449838188,
+          "min": 38.83495145631068
+        },
+        "disk_flushes": {
+          "max": 1254,
+          "median": 1200,
+          "min": 1138
+        },
+        "disk_write_bytes": {
+          "max": 35811328,
+          "median": 34922496,
+          "min": 33738752
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 42.933499999999995,
+          "median": 38.388999999999996,
+          "min": 36.2975
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 1.776,
+          "median": 1.6335,
+          "min": 1.569
+        },
+        "first_claim_from_commit_ms": {
+          "max": 12.087,
+          "median": 7.933,
+          "min": 3.53
+        },
+        "first_submit_to_commit_ms": {
+          "max": 626.362,
+          "median": 573.046,
+          "min": 560.366
+        },
+        "peak_executing": {
+          "max": 43,
+          "median": 36,
+          "min": 32
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 4.0,
+          "median": 4.0,
+          "min": 4.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 0.56640625,
+          "median": 0.552734375,
+          "min": 0.5400390625
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 1.0546875,
+          "median": 1.052734375,
+          "min": 1.05078125
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 3.9140625,
+          "median": 3.849609375,
+          "min": 3.75390625
+        },
+        "raw_sql_calls_per_job": {
+          "max": 8.966796875,
+          "median": 8.904296875,
+          "min": 8.8046875
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 5.8292265625,
+          "median": 5.8052841796875,
+          "min": 5.6998994140625
+        },
+        "submit_jobs_per_s": {
+          "max": 175.9128571683802,
+          "median": 170.90288293469624,
+          "min": 168.81713427968745
+        }
+      },
+      "oban": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 10.986,
+          "median": 10.5915,
+          "min": 9.9205
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 21.309,
+          "median": 20.2195,
+          "min": 19.188
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 1424.419,
+          "median": 1414.032,
+          "min": 1375.598
+        },
+        "commit_jobs_per_s": {
+          "max": 719.1097084726433,
+          "median": 707.5996478586128,
+          "min": 698.1188288238538
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 791.57,
+          "median": 771.397,
+          "min": 733.558
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 1445.32,
+          "median": 1408.183,
+          "min": 1382.491
+        },
+        "cpu_busy_percent": {
+          "max": 91.69139465875371,
+          "median": 87.56613756613757,
+          "min": 81.60621761658031
+        },
+        "cpu_iowait_percent": {
+          "max": 0.2958579881656805,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 22.8486646884273,
+          "median": 21.428571428571427,
+          "min": 18.7012987012987
+        },
+        "disk_flushes": {
+          "max": 907,
+          "median": 864,
+          "min": 770
+        },
+        "disk_write_bytes": {
+          "max": 32702464,
+          "median": 31739904,
+          "min": 31408128
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 7.677,
+          "median": 7.342499999999999,
+          "min": 6.9905
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 5.577999999999999,
+          "median": 5.269,
+          "min": 4.996
+        },
+        "first_claim_from_commit_ms": {
+          "max": 71.548,
+          "median": 28.123,
+          "min": 13.013
+        },
+        "first_submit_to_commit_ms": {
+          "max": 169.616,
+          "median": 158.17,
+          "min": 139.757
+        },
+        "peak_executing": {
+          "max": 44,
+          "median": 37,
+          "min": 27
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 0.2744140625,
+          "median": 0.267578125,
+          "min": 0.2646484375
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 0.021484375,
+          "median": 0.021484375,
+          "min": 0.021484375
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 4.0341796875,
+          "median": 4.0087890625,
+          "min": 3.9931640625
+        },
+        "raw_sql_calls_per_job": {
+          "max": 4.0556640625,
+          "median": 4.0302734375,
+          "min": 4.0146484375
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 10.172770507812498,
+          "median": 9.962009765624998,
+          "min": 9.8784814453125
+        },
+        "submit_jobs_per_s": {
+          "max": 654.8403187230614,
+          "median": 636.4490122920431,
+          "min": 630.1658677796315
+        }
+      },
+      "rust": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 4.711,
+          "median": 4.497,
+          "min": 4.2565
+        },
+        "commit_jobs_per_s": {
+          "max": 1217.249278149781,
+          "median": 1187.1926950549482,
+          "min": 1148.5318644687536
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 869.251,
+          "median": 840.106,
+          "min": 822.122
+        },
+        "cpu_busy_percent": {
+          "max": 77.40585774058577,
+          "median": 76.66666666666667,
+          "min": 75.0
+        },
+        "cpu_iowait_percent": {
+          "max": 0.8403361344537815,
+          "median": 0.41841004184100417,
+          "min": 0.0
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 29.288702928870293,
+          "median": 27.73109243697479,
+          "min": 26.271186440677965
+        },
+        "disk_flushes": {
+          "max": 612,
+          "median": 559,
+          "min": 554
+        },
+        "disk_write_bytes": {
+          "max": 32636928,
+          "median": 29827072,
+          "min": 29773824
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 21.4825,
+          "median": 20.3555,
+          "min": 19.862499999999997
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 3.1029999999999998,
+          "median": 2.717,
+          "min": 2.6639999999999997
+        },
+        "first_submit_to_commit_ms": {
+          "max": 46.175,
+          "median": 39.378,
+          "min": 35.795
+        },
+        "peak_executing": {
+          "max": 43,
+          "median": 39,
+          "min": 18
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 0.6303994140625,
+          "median": 0.592095703125,
+          "min": 0.5764863281249999
+        },
+        "submit_jobs_per_s": {
+          "max": 1156.4257860363846,
+          "median": 1138.6558079229983,
+          "min": 1104.2002743247556
+        }
+      }
+    },
+    "short": {
+      "go": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 3.2835,
+          "median": 2.668,
+          "min": 2.592
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 3.0225,
+          "median": 2.4125,
+          "min": 1.9835
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 258.115,
+          "median": 160.62,
+          "min": 157.797
+        },
+        "commit_jobs_per_s": {
+          "max": 807.8767987881848,
+          "median": 791.1783612718192,
+          "min": 493.7395369648905
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 111.594,
+          "median": 98.869,
+          "min": 96.445
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 162.058,
+          "median": 150.684,
+          "min": 143.681
+        },
+        "cpu_busy_percent": {
+          "max": 59.523809523809526,
+          "median": 44.827586206896555,
+          "min": 33.84615384615385
+        },
+        "cpu_iowait_percent": {
+          "max": 1.1235955056179776,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 26.19047619047619,
+          "median": 16.091954022988507,
+          "min": 14.615384615384615
+        },
+        "disk_flushes": {
+          "max": 134,
+          "median": 119,
+          "min": 106
+        },
+        "disk_write_bytes": {
+          "max": 10485760,
+          "median": 1925120,
+          "min": 1802240
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 59.3935,
+          "median": 55.811499999999995,
+          "min": 55.103
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 0.7264999999999999,
+          "median": 0.5085,
+          "min": 0.361
+        },
+        "first_claim_from_commit_ms": {
+          "max": 1.398,
+          "median": 1.131,
+          "min": 0.643
+        },
+        "first_submit_to_commit_ms": {
+          "max": 17.407,
+          "median": 14.363,
+          "min": 13.164
+        },
+        "peak_executing": {
+          "max": 16,
+          "median": 16,
+          "min": 16
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 0.921984375,
+          "median": 0.83175,
+          "min": 0.805859375
+        },
+        "submit_jobs_per_s": {
+          "max": 739.6877130936283,
+          "median": 726.6657961815984,
+          "min": 466.52330794183035
+        }
+      },
+      "mesh": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 4.154,
+          "median": 3.758,
+          "min": 3.327
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 34.643,
+          "median": 26.311500000000002,
+          "min": 22.781
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 639.998,
+          "median": 565.71,
+          "min": 540.371
+        },
+        "commit_jobs_per_s": {
+          "max": 235.22795978336976,
+          "median": 224.90625977375836,
+          "min": 198.91807217307115
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 332.983,
+          "median": 281.416,
+          "min": 269.782
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 629.591,
+          "median": 538.425,
+          "min": 528.336
+        },
+        "cpu_busy_percent": {
+          "max": 78.51851851851852,
+          "median": 70.52023121387283,
+          "min": 62.14689265536723
+        },
+        "cpu_iowait_percent": {
+          "max": 1.4814814814814814,
+          "median": 1.1299435028248588,
+          "min": 0.5780346820809249
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 40.0,
+          "median": 35.26011560693642,
+          "min": 29.37853107344633
+        },
+        "disk_flushes": {
+          "max": 349,
+          "median": 342,
+          "min": 322
+        },
+        "disk_write_bytes": {
+          "max": 4587520,
+          "median": 3563520,
+          "min": 3399680
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 26.866,
+          "median": 25.713500000000003,
+          "min": 20.9765
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 1.101,
+          "median": 0.8674999999999999,
+          "min": 0.7905
+        },
+        "first_claim_from_commit_ms": {
+          "max": 3.815,
+          "median": 3.483,
+          "min": 3.081
+        },
+        "first_submit_to_commit_ms": {
+          "max": 91.63,
+          "median": 68.674,
+          "min": 67.675
+        },
+        "peak_executing": {
+          "max": 16,
+          "median": 16,
+          "min": 16
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 4.0,
+          "median": 4.0,
+          "min": 4.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 0.140625,
+          "median": 0.1015625,
+          "min": 0.078125
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 1.1328125,
+          "median": 1.1328125,
+          "min": 1.1328125
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 1.6640625,
+          "median": 1.4375,
+          "min": 1.40625
+        },
+        "raw_sql_calls_per_job": {
+          "max": 6.796875,
+          "median": 6.5703125,
+          "min": 6.5390625
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 5.273359375,
+          "median": 4.690171875,
+          "min": 4.66871875
+        },
+        "submit_jobs_per_s": {
+          "max": 209.20912413292623,
+          "median": 198.92270920297264,
+          "min": 174.1233636824915
+        }
+      },
+      "oban": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 4.810499999999999,
+          "median": 4.4665,
+          "min": 4.131
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 5.0415,
+          "median": 4.508,
+          "min": 3.842
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 223.316,
+          "median": 201.678,
+          "min": 192.802
+        },
+        "commit_jobs_per_s": {
+          "max": 349.46992510968715,
+          "median": 303.46998966305347,
+          "min": 278.7893572162883
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 365.45550000000003,
+          "median": 328.998,
+          "min": 263.124
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 452.341,
+          "median": 412.005,
+          "min": 358.488
+        },
+        "cpu_busy_percent": {
+          "max": 51.515151515151516,
+          "median": 39.849624060150376,
+          "min": 37.3134328358209
+        },
+        "cpu_iowait_percent": {
+          "max": 0.7575757575757576,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 16.666666666666668,
+          "median": 11.278195488721805,
+          "min": 10.606060606060606
+        },
+        "disk_flushes": {
+          "max": 222,
+          "median": 197,
+          "min": 163
+        },
+        "disk_write_bytes": {
+          "max": 3387392,
+          "median": 2686976,
+          "min": 2367488
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 3.0895,
+          "median": 2.6660000000000004,
+          "min": 2.5695
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 2.645,
+          "median": 1.8744999999999998,
+          "min": 1.4929999999999999
+        },
+        "first_claim_from_commit_ms": {
+          "max": 235.812,
+          "median": 222.468,
+          "min": 166.999
+        },
+        "first_submit_to_commit_ms": {
+          "max": 53.473,
+          "median": 48.263,
+          "min": 45.604
+        },
+        "peak_executing": {
+          "max": 16,
+          "median": 16,
+          "min": 9
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 0.125,
+          "median": 0.09375,
+          "min": 0.078125
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 0.1015625,
+          "median": 0.1015625,
+          "min": 0.09375
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 3.453125,
+          "median": 3.375,
+          "min": 3.3125
+        },
+        "raw_sql_calls_per_job": {
+          "max": 3.5546875,
+          "median": 3.4765625,
+          "min": 3.40625
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 11.2610859375,
+          "median": 11.080218749999998,
+          "min": 11.0069609375
+        },
+        "submit_jobs_per_s": {
+          "max": 308.7819516949234,
+          "median": 273.8600575106121,
+          "min": 249.70688703299447
+        }
+      },
+      "rust": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 4.3055,
+          "median": 3.9245,
+          "min": 3.5585
+        },
+        "commit_jobs_per_s": {
+          "max": 993.8814175233717,
+          "median": 876.3581840215255,
+          "min": 327.2326598646586
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 155.861,
+          "median": 138.281,
+          "min": 122.248
+        },
+        "cpu_busy_percent": {
+          "max": 65.21739130434783,
+          "median": 40.476190476190474,
+          "min": 34.58646616541353
+        },
+        "cpu_iowait_percent": {
+          "max": 2.1739130434782608,
+          "median": 1.1494252873563218,
+          "min": 0.0
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 23.91304347826087,
+          "median": 18.39080459770115,
+          "min": 15.789473684210526
+        },
+        "disk_flushes": {
+          "max": 121,
+          "median": 113,
+          "min": 91
+        },
+        "disk_write_bytes": {
+          "max": 1974272,
+          "median": 1916928,
+          "min": 1736704
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 5.3285,
+          "median": 4.705,
+          "min": 4.221
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 1.767,
+          "median": 1.2255,
+          "min": 0.9395
+        },
+        "first_submit_to_commit_ms": {
+          "max": 13.781,
+          "median": 10.446,
+          "min": 9.932
+        },
+        "peak_executing": {
+          "max": 16,
+          "median": 0,
+          "min": 0
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 0.730484375,
+          "median": 0.630484375,
+          "min": 0.6077031249999999
+        },
+        "submit_jobs_per_s": {
+          "max": 897.8108845541457,
+          "median": 818.9274609409988,
+          "min": 317.35406052041105
+        }
+      }
+    },
+    "slow": {
+      "go": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 102.81700000000001,
+          "median": 102.51650000000001,
+          "min": 102.25450000000001
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 6.5355,
+          "median": 5.8774999999999995,
+          "min": 5.183
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 1511.866,
+          "median": 1286.659,
+          "min": 1236.963
+        },
+        "commit_jobs_per_s": {
+          "max": 405.821638219521,
+          "median": 390.6109934107282,
+          "min": 333.4060488452885
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 710.531,
+          "median": 683.356,
+          "min": 653.946
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 1192.517,
+          "median": 1189.457,
+          "min": 1136.613
+        },
+        "cpu_busy_percent": {
+          "max": 51.260504201680675,
+          "median": 47.51243781094527,
+          "min": 42.88939051918736
+        },
+        "cpu_iowait_percent": {
+          "max": 1.1204481792717087,
+          "median": 0.746268656716418,
+          "min": 0.449438202247191
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 17.412935323383085,
+          "median": 15.966386554621849,
+          "min": 13.318284424379232
+        },
+        "disk_flushes": {
+          "max": 547,
+          "median": 536,
+          "min": 499
+        },
+        "disk_write_bytes": {
+          "max": 33673216,
+          "median": 32428032,
+          "min": 32161792
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 158.94,
+          "median": 120.113,
+          "min": 103.11500000000001
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 0.607,
+          "median": 0.4985,
+          "min": 0.4375
+        },
+        "first_claim_from_commit_ms": {
+          "max": 24.675,
+          "median": 24.31,
+          "min": 23.799
+        },
+        "first_submit_to_commit_ms": {
+          "max": 504.507,
+          "median": 475.722,
+          "min": 472.661
+        },
+        "peak_executing": {
+          "max": 64,
+          "median": 64,
+          "min": 64
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 0.903638671875,
+          "median": 0.894611328125,
+          "min": 0.876021484375
+        },
+        "submit_jobs_per_s": {
+          "max": 295.22014370071133,
+          "median": 286.5956633374177,
+          "min": 252.78720106802592
+        }
+      },
+      "mesh": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 104.62049999999999,
+          "median": 103.6155,
+          "min": 103.19999999999999
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 47.0865,
+          "median": 44.2195,
+          "min": 43.805
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 2767.554,
+          "median": 2477.344,
+          "min": 2429.115
+        },
+        "commit_jobs_per_s": {
+          "max": 210.34278479057335,
+          "median": 205.63438206868187,
+          "min": 184.72437643797284
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 1273.069,
+          "median": 1192.012,
+          "min": 1148.507
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 2630.203,
+          "median": 2357.542,
+          "min": 2315.451
+        },
+        "cpu_busy_percent": {
+          "max": 80.5379746835443,
+          "median": 80.15748031496064,
+          "min": 76.65745856353591
+        },
+        "cpu_iowait_percent": {
+          "max": 1.7955801104972375,
+          "median": 0.7861635220125787,
+          "min": 0.5908419497784343
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 37.106918238993714,
+          "median": 36.1890694239291,
+          "min": 34.94475138121547
+        },
+        "disk_flushes": {
+          "max": 1322,
+          "median": 1303,
+          "min": 1198
+        },
+        "disk_write_bytes": {
+          "max": 39010304,
+          "median": 38858752,
+          "min": 38559744
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 27.353499999999997,
+          "median": 24.167,
+          "min": 21.2215
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 0.939,
+          "median": 0.8755,
+          "min": 0.838
+        },
+        "first_claim_from_commit_ms": {
+          "max": 32.069,
+          "median": 5.23,
+          "min": 4.143
+        },
+        "first_submit_to_commit_ms": {
+          "max": 680.361,
+          "median": 642.558,
+          "min": 639.835
+        },
+        "peak_executing": {
+          "max": 49,
+          "median": 44,
+          "min": 40
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 4.0,
+          "median": 4.0,
+          "min": 4.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 0.09765625,
+          "median": 0.087890625,
+          "min": 0.083984375
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 1.111328125,
+          "median": 1.107421875,
+          "min": 1.10546875
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 1.482421875,
+          "median": 1.44921875,
+          "min": 1.439453125
+        },
+        "raw_sql_calls_per_job": {
+          "max": 6.58984375,
+          "median": 6.556640625,
+          "min": 6.546875
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 5.04782421875,
+          "median": 4.741046875,
+          "min": 4.671482421875
+        },
+        "submit_jobs_per_s": {
+          "max": 166.41314663858444,
+          "median": 163.1722209492098,
+          "min": 150.0792019538436
+        }
+      },
+      "oban": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 111.4055,
+          "median": 106.7775,
+          "min": 105.14850000000001
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 18.2365,
+          "median": 12.211,
+          "min": 11.493
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 1477.497,
+          "median": 1317.71,
+          "min": 1292.452
+        },
+        "commit_jobs_per_s": {
+          "max": 334.50387913434054,
+          "median": 323.9552916388531,
+          "min": 301.79675167668137
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 905.377,
+          "median": 875.337,
+          "min": 824.389
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 1567.158,
+          "median": 1470.268,
+          "min": 1414.681
+        },
+        "cpu_busy_percent": {
+          "max": 54.3046357615894,
+          "median": 53.14533622559653,
+          "min": 48.22834645669291
+        },
+        "cpu_iowait_percent": {
+          "max": 2.7559055118110236,
+          "median": 0.6493506493506493,
+          "min": 0.21978021978021978
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 16.017316017316016,
+          "median": 15.184381778741866,
+          "min": 12.795275590551181
+        },
+        "disk_flushes": {
+          "max": 688,
+          "median": 614,
+          "min": 358
+        },
+        "disk_write_bytes": {
+          "max": 35381248,
+          "median": 34226176,
+          "min": 31936512
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 9.7635,
+          "median": 5.4165,
+          "min": 3.746
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 4.116,
+          "median": 3.7279999999999998,
+          "min": 2.7165
+        },
+        "first_claim_from_commit_ms": {
+          "max": 287.792,
+          "median": 262.755,
+          "min": 219.009
+        },
+        "first_submit_to_commit_ms": {
+          "max": 516.961,
+          "median": 499.632,
+          "min": 459.075
+        },
+        "peak_executing": {
+          "max": 64,
+          "median": 64,
+          "min": 64
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 0.09375,
+          "median": 0.078125,
+          "min": 0.06640625
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 0.048828125,
+          "median": 0.046875,
+          "min": 0.044921875
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 3.34375,
+          "median": 3.3046875,
+          "min": 3.26953125
+        },
+        "raw_sql_calls_per_job": {
+          "max": 3.388671875,
+          "median": 3.3515625,
+          "min": 3.318359375
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 4.08643359375,
+          "median": 3.9499882812500005,
+          "min": 3.89740625
+        },
+        "submit_jobs_per_s": {
+          "max": 250.05054732743827,
+          "median": 246.14236739921265,
+          "min": 231.95675456257123
+        }
+      },
+      "rust": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 106.906,
+          "median": 105.38550000000001,
+          "min": 104.301
+        },
+        "commit_jobs_per_s": {
+          "max": 510.6350724513376,
+          "median": 471.64032266830515,
+          "min": 377.49064567858
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 1084.133,
+          "median": 969.793,
+          "min": 885.237
+        },
+        "cpu_busy_percent": {
+          "max": 47.94952681388013,
+          "median": 44.936708860759495,
+          "min": 39.8034398034398
+        },
+        "cpu_iowait_percent": {
+          "max": 0.6329113924050633,
+          "median": 0.6289308176100629,
+          "min": 0.4914004914004914
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 19.242902208201894,
+          "median": 18.354430379746834,
+          "min": 15.724815724815725
+        },
+        "disk_flushes": {
+          "max": 372,
+          "median": 302,
+          "min": 292
+        },
+        "disk_write_bytes": {
+          "max": 32616448,
+          "median": 31182848,
+          "min": 30572544
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 21.863999999999997,
+          "median": 14.206,
+          "min": 10.524
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 3.7030000000000003,
+          "median": 2.9480000000000004,
+          "min": 1.5785
+        },
+        "first_submit_to_commit_ms": {
+          "max": 341.075,
+          "median": 334.164,
+          "min": 322.326
+        },
+        "peak_executing": {
+          "max": 64,
+          "median": 64,
+          "min": 64
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 0.49311718749999994,
+          "median": 0.47866992187499996,
+          "min": 0.46099804687499996
+        },
+        "submit_jobs_per_s": {
+          "max": 383.9589163959456,
+          "median": 363.32516324795665,
+          "min": 302.8709444427027
+        }
+      }
+    },
+    "sparse": {
+      "go": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 1.5465,
+          "median": 1.5165,
+          "min": 1.511
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 0.9355,
+          "median": 0.8365,
+          "min": 0.812
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 11514.163,
+          "median": 11513.76,
+          "min": 11511.106
+        },
+        "commit_jobs_per_s": {
+          "max": 2.0848010187727644,
+          "median": 2.084288813300611,
+          "min": 2.084252249754905
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 0.873,
+          "median": 0.84,
+          "min": 0.813
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 5.359,
+          "median": 4.53,
+          "min": 2.069
+        },
+        "cpu_busy_percent": {
+          "max": 1.520912547528517,
+          "median": 1.3977128335451081,
+          "min": 1.3542107490478206
+        },
+        "cpu_iowait_percent": {
+          "max": 0.16927634363097757,
+          "median": 0.12942191544434858,
+          "min": 0.08449514152936206
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 0.5069708491761724,
+          "median": 0.46472327841149136,
+          "min": 0.4235493434985176
+        },
+        "disk_flushes": {
+          "max": 153,
+          "median": 152,
+          "min": 151
+        },
+        "disk_write_bytes": {
+          "max": 3452928,
+          "median": 2899968,
+          "min": 2674688
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 193.54149999999998,
+          "median": 191.5875,
+          "min": 187.644
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 0.154,
+          "median": 0.14100000000000001,
+          "min": 0.132
+        },
+        "first_claim_from_commit_ms": {
+          "max": 0.96,
+          "median": 0.906,
+          "min": 0.758
+        },
+        "first_submit_to_commit_ms": {
+          "max": 4.664,
+          "median": 3.999,
+          "min": 3.703
+        },
+        "peak_executing": {
+          "max": 1,
+          "median": 1,
+          "min": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 7.101625000000001,
+          "median": 6.962375000000001,
+          "min": 6.799541666666666
+        },
+        "submit_jobs_per_s": {
+          "max": 2.084130621844659,
+          "median": 2.083581662988132,
+          "min": 2.0834402181570253
+        }
+      },
+      "mesh": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 2.4765,
+          "median": 2.2265,
+          "min": 2.1705
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 6.541,
+          "median": 6.1235,
+          "min": 5.5455000000000005
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 9089.461,
+          "median": 9060.821,
+          "min": 9035.533
+        },
+        "commit_jobs_per_s": {
+          "max": 2.6552770034756468,
+          "median": 2.6477043961601225,
+          "min": 2.6397384019243693
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 3.5985,
+          "median": 3.1365,
+          "min": 3.032
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 15.594,
+          "median": 14.443,
+          "min": 13.283
+        },
+        "cpu_busy_percent": {
+          "max": 10.108695652173912,
+          "median": 9.688195991091314,
+          "min": 9.565217391304348
+        },
+        "cpu_iowait_percent": {
+          "max": 0.27839643652561247,
+          "median": 0.16304347826086957,
+          "min": 0.10869565217391304
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 3.858695652173913,
+          "median": 3.6216216216216215,
+          "min": 3.4521158129175946
+        },
+        "disk_flushes": {
+          "max": 181,
+          "median": 180,
+          "min": 179
+        },
+        "disk_write_bytes": {
+          "max": 3706880,
+          "median": 2969600,
+          "min": 2383872
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 6.2485,
+          "median": 5.044499999999999,
+          "min": 3.4000000000000004
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 1.2269999999999999,
+          "median": 0.997,
+          "min": 0.8545
+        },
+        "first_claim_from_commit_ms": {
+          "max": 3.967,
+          "median": 3.454,
+          "min": 2.349
+        },
+        "first_submit_to_commit_ms": {
+          "max": 8.341,
+          "median": 6.762,
+          "min": 6.138
+        },
+        "peak_executing": {
+          "max": 1,
+          "median": 1,
+          "min": 1
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 4.0,
+          "median": 4.0,
+          "min": 4.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 3.0,
+          "median": 3.0,
+          "min": 3.0
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 12.125,
+          "median": 12.125,
+          "min": 12.125
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 18.708333333333332,
+          "median": 18.708333333333332,
+          "min": 18.708333333333332
+        },
+        "raw_sql_calls_per_job": {
+          "max": 34.833333333333336,
+          "median": 34.833333333333336,
+          "min": 34.833333333333336
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 18.891374999999996,
+          "median": 18.383,
+          "min": 17.909666666666666
+        },
+        "submit_jobs_per_s": {
+          "max": 2.653475062807202,
+          "median": 2.6457307056229937,
+          "min": 2.6378473055708698
+        }
+      },
+      "oban": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 2.4035,
+          "median": 2.2835,
+          "min": 2.2270000000000003
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 1.729,
+          "median": 1.6235,
+          "min": 1.5875
+        },
+        "claim_to_last_settlement_ms": {
+          "max": 11600.184,
+          "median": 11596.926,
+          "min": 11595.022
+        },
+        "commit_jobs_per_s": {
+          "max": 2.0429080489640796,
+          "median": 2.0394544357411672,
+          "min": 2.0337069987484226
+        },
+        "commit_to_claim_p50_ms": {
+          "max": 171.088,
+          "median": 159.33800000000002,
+          "min": 146.541
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 233.716,
+          "median": 226.004,
+          "min": 224.853
+        },
+        "cpu_busy_percent": {
+          "max": 8.150599917252793,
+          "median": 7.51755472945064,
+          "min": 7.00082850041425
+        },
+        "cpu_iowait_percent": {
+          "max": 0.12631578947368421,
+          "median": 0.12427506213753108,
+          "min": 0.12391573729863693
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 2.854778651220521,
+          "median": 2.560925237505163,
+          "min": 2.36122618061309
+        },
+        "disk_flushes": {
+          "max": 140,
+          "median": 139,
+          "min": 137
+        },
+        "disk_write_bytes": {
+          "max": 4964352,
+          "median": 3022848,
+          "min": 2146304
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 0.792,
+          "median": 0.6865,
+          "min": 0.652
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 0.569,
+          "median": 0.4655,
+          "min": 0.4495
+        },
+        "first_claim_from_commit_ms": {
+          "max": 200.926,
+          "median": 168.052,
+          "min": 151.033
+        },
+        "first_submit_to_commit_ms": {
+          "max": 40.06,
+          "median": 32.681,
+          "min": 31.126
+        },
+        "peak_executing": {
+          "max": 1,
+          "median": 1,
+          "min": 0
+        },
+        "raw_application_sql_calls_per_job": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "raw_claim_calls_per_job": {
+          "max": 2.0,
+          "median": 2.0,
+          "min": 2.0
+        },
+        "raw_enqueue_sql_calls_per_job": {
+          "max": 9.083333333333334,
+          "median": 9.083333333333334,
+          "min": 9.083333333333334
+        },
+        "raw_runner_sql_calls_per_job": {
+          "max": 17.0,
+          "median": 17.0,
+          "min": 17.0
+        },
+        "raw_sql_calls_per_job": {
+          "max": 26.083333333333332,
+          "median": 26.083333333333332,
+          "min": 26.083333333333332
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 64.30016666666667,
+          "median": 55.94816666666667,
+          "min": 53.959666666666664
+        },
+        "submit_jobs_per_s": {
+          "max": 2.037503650527374,
+          "median": 2.033806266733353,
+          "min": 2.0268267409386067
+        }
+      },
+      "rust": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 2.654,
+          "median": 2.5715,
+          "min": 2.5155000000000003
+        },
+        "commit_jobs_per_s": {
+          "max": 2.4987693560921245,
+          "median": 2.4965773484913028,
+          "min": 2.4929796653881144
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 8.044,
+          "median": 5.719,
+          "min": 5.219
+        },
+        "cpu_busy_percent": {
+          "max": 9.386281588447654,
+          "median": 9.136799596163554,
+          "min": 8.971774193548388
+        },
+        "cpu_iowait_percent": {
+          "max": 0.15416238437821173,
+          "median": 0.10095911155981828,
+          "min": 0.10070493454179255
+        },
+        "cpu_steal_percent": {
+          "max": 0.05040322580645161,
+          "median": 0.0,
+          "min": 0.0
+        },
+        "cpu_system_percent": {
+          "max": 4.543160020191823,
+          "median": 4.332129963898917,
+          "min": 4.279959718026183
+        },
+        "disk_flushes": {
+          "max": 155,
+          "median": 154,
+          "min": 154
+        },
+        "disk_write_bytes": {
+          "max": 4161536,
+          "median": 3747840,
+          "min": 2850816
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 1.2315,
+          "median": 1.096,
+          "min": 0.9884999999999999
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 0.558,
+          "median": 0.46399999999999997,
+          "min": 0.3725
+        },
+        "first_submit_to_commit_ms": {
+          "max": 7.389,
+          "median": 6.131,
+          "min": 5.762
+        },
+        "peak_executing": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 3.7585416666666664,
+          "median": 3.5420416666666665,
+          "min": 3.373291666666667
+        },
+        "submit_jobs_per_s": {
+          "max": 2.497069584797674,
+          "median": 2.495081829847271,
+          "min": 2.4914082747558264
+        }
+      }
+    }
+  },
+  "scope": "five complete measured rotations",
+  "series": "2026-11-23-baseline"
+}
