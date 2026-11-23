@@ -1,0 +1,144 @@
+{
+  "compressible": {
+    "arms": {
+      "control_a": {
+        "claims_backend_cpu_ms": 120.19489583333333,
+        "claims_wall_ms": 162.438125,
+        "insert_backend_cpu_ms": 128.48158333333333,
+        "insert_wall_ms": 157.9127085,
+        "settlements_backend_cpu_ms": 16.054770833333333,
+        "settlements_wall_ms": 19.1522705,
+        "stored_bytes": 389739.0
+      },
+      "control_b": {
+        "claims_backend_cpu_ms": 118.286875,
+        "claims_wall_ms": 154.3785,
+        "insert_backend_cpu_ms": 126.4935625,
+        "insert_wall_ms": 162.060125,
+        "settlements_backend_cpu_ms": 17.94027083333333,
+        "settlements_wall_ms": 23.802042,
+        "stored_bytes": 389739.0
+      },
+      "external": {
+        "claims_backend_cpu_ms": 125.76908333333333,
+        "claims_wall_ms": 179.6398125,
+        "insert_backend_cpu_ms": 179.6850625,
+        "insert_wall_ms": 322.3930625,
+        "settlements_backend_cpu_ms": 16.59108333333333,
+        "settlements_wall_ms": 19.733021,
+        "stored_bytes": 33559808.0
+      },
+      "lz4": {
+        "claims_backend_cpu_ms": 127.67227083333333,
+        "claims_wall_ms": 191.00158349999998,
+        "insert_backend_cpu_ms": 57.91972916666667,
+        "insert_wall_ms": 103.6383125,
+        "settlements_backend_cpu_ms": 18.921208333333333,
+        "settlements_wall_ms": 24.1951465,
+        "stored_bytes": 137726.0
+      }
+    },
+    "groups": 4,
+    "paired": {
+      "external": {
+        "backend_cpu_ms": [
+          -72.68716666666666,
+          -51.296958333333336,
+          -50.81941666666668,
+          -47.398208333333315
+        ],
+        "wall_ms": [
+          -266.931833,
+          -167.795916,
+          -171.82187499999998,
+          -107.947542
+        ]
+      },
+      "lz4": {
+        "backend_cpu_ms": [
+          64.84633333333332,
+          54.099041666666665,
+          74.24458333333331,
+          75.41883333333334
+        ],
+        "wall_ms": [
+          47.09766699999999,
+          27.634041999999994,
+          59.826542,
+          88.70791600000001
+        ]
+      }
+    }
+  },
+  "frozen": {
+    "arms": {
+      "control_a": {
+        "claims_backend_cpu_ms": 131.23206249999998,
+        "claims_wall_ms": 203.367167,
+        "insert_backend_cpu_ms": 614.9126458333333,
+        "insert_wall_ms": 744.2365625,
+        "settlements_backend_cpu_ms": 16.992479166666666,
+        "settlements_wall_ms": 28.574104,
+        "stored_bytes": 33559808.0
+      },
+      "control_b": {
+        "claims_backend_cpu_ms": 112.74639583333334,
+        "claims_wall_ms": 148.1121875,
+        "insert_backend_cpu_ms": 600.0192291666667,
+        "insert_wall_ms": 703.2993335000001,
+        "settlements_backend_cpu_ms": 16.803208333333334,
+        "settlements_wall_ms": 20.2968535,
+        "stored_bytes": 33559808.0
+      },
+      "external": {
+        "claims_backend_cpu_ms": 113.6084375,
+        "claims_wall_ms": 144.29918700000002,
+        "insert_backend_cpu_ms": 156.12622916666666,
+        "insert_wall_ms": 255.5277915,
+        "settlements_backend_cpu_ms": 14.541562499999998,
+        "settlements_wall_ms": 17.721229,
+        "stored_bytes": 33559808.0
+      },
+      "lz4": {
+        "claims_backend_cpu_ms": 121.95472916666667,
+        "claims_wall_ms": 179.44275,
+        "insert_backend_cpu_ms": 187.54674999999997,
+        "insert_wall_ms": 295.74452099999996,
+        "settlements_backend_cpu_ms": 16.4494375,
+        "settlements_wall_ms": 19.9156245,
+        "stored_bytes": 33559808.0
+      }
+    },
+    "groups": 4,
+    "paired": {
+      "external": {
+        "backend_cpu_ms": [
+          448.0485416666667,
+          442.9223749999999,
+          407.28437499999995,
+          439.7374583333333
+        ],
+        "wall_ms": [
+          468.49808400000006,
+          436.799582,
+          396.92191700000006,
+          427.045
+        ]
+      },
+      "lz4": {
+        "backend_cpu_ms": [
+          422.70741666666675,
+          437.64066666666656,
+          362.6414583333333,
+          386.88683333333324
+        ],
+        "wall_ms": [
+          427.47904200000005,
+          421.451124,
+          330.23079100000007,
+          166.81425000000002
+        ]
+      }
+    }
+  }
+}
