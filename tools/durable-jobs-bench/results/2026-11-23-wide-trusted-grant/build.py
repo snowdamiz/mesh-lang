@@ -22,23 +22,33 @@ def sha(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def build(dest):
-    dest.mkdir(parents=True)
+def build(dest, resume=False):
+    if not resume:
+        dest.mkdir(parents=True)
     pins = json.loads(PARENT.read_text())
     assert sha(SOURCE) == pins["source_archive_sha256"]
     tree = dest / "src"
-    tree.mkdir()
+    if not resume:
+        tree.mkdir()
+    relative = "compiler/mesh-rt/src/jobs/store.rs"
     with tarfile.open(SOURCE) as archive:
-        archive.extractall(tree, filter="data")
+        if not resume:
+            archive.extractall(tree, filter="data")
+        member, = [m for m in archive if Path(m.name).as_posix() == relative]
+        raw = archive.extractfile(member).read()
     code = tree / "compiler/mesh-rt/src/jobs/store.rs"
-    s = code.read_text()
+    s = raw.decode()
     assert s.count(BASE) == 1 and s.count("MAX_CLAIM_BATCH") == 4
-    original = sha(code)
+    original = hashlib.sha256(raw).hexdigest()
     ordered = "[Option<Vec<_>>; MAX_CLAIM_BATCH + MAX_OVERSIZED_PER_BATCH] =\n        Default::default();"
     assert s.count(ordered) == 1
-    code.write_text(s.replace(BASE, WIDE).replace(ordered, ordered.replace("Default::default()", "std::array::from_fn(|_| None)")))
+    widened = s.replace(BASE, WIDE).replace(ordered, ordered.replace("Default::default()", "std::array::from_fn(|_| None)"))
+    if resume:
+        assert code.read_text() == widened
+    else:
+        code.write_text(widened)
     temp = dest / "tmp"
-    temp.mkdir()
+    temp.mkdir(exist_ok=resume)
     env = dict(os.environ, TMPDIR=str(temp), CARGO_NET_OFFLINE="true")
     target = AREA / "cargo"
     toolchain_bin = Path("/opt/homebrew/opt/rustup/bin")
@@ -47,7 +57,9 @@ def build(dest):
     subprocess.run([cargo, "+1.99.0", "build", "--offline", "--locked", "-j", "4", "-p", "mesh-rt",
                     "--target-dir", target], cwd=tree, env=env, check=True)
     runtime = target / "debug/libmesh_rt.a"
-    compiler = ROOT / "target/debug/meshc"
+    compiler = AREA / "meshc"
+    if not compiler.exists():
+        shutil.copy2(ROOT / "target/debug/meshc", compiler)
     stock = ROOT / "target/ordinary-runner-topology/local-artifacts"
     stock_manifest = json.loads((stock/"mesh.json").read_text())
     assert sha(compiler) == stock_manifest["compiler_sha256"] and sha(stock/"mesh") == pins["executable_sha256"]
@@ -77,6 +89,7 @@ def build(dest):
 
 if __name__ == "__main__":
     dest = Path(sys.argv[1]).resolve()
-    if not dest.is_relative_to(AREA) or dest == AREA or dest.exists():
+    resume = sys.argv[2:] == ["--resume-link"]
+    if not dest.is_relative_to(AREA) or dest == AREA or dest.exists() != resume or (dest / "built.json").exists():
         raise ValueError("use a fresh build directory under target/wide-trusted-grant")
-    build(dest)
+    build(dest, resume)
