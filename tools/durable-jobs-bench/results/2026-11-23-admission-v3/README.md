@@ -1,6 +1,6 @@
 # Protected Jobs admission and settlement experiment
 
-The explicit-transaction candidate implements queue-ordered capacity grants, set-based claims, and an optional cohort of already-reaped successes. Five matched Linux guest runs confirm the lower SQL call count. Cohorts are the stronger throughput candidate. Host load and wide paired ranges prevent a throughput qualification from these runs. Strict mode preserves a separate terminal XID for every job.
+The explicit-transaction candidate implements queue-ordered capacity grants, set-based claims, and an optional cohort of already-reaped successes. Five matched Linux guest runs confirm the lower SQL call count. Host load and wide paired ranges kept the guest throughput result inconclusive. The first independent AMD64 rotation shows a smaller gain for strict admission and leaves a substantial peer gap. Strict mode preserves a separate terminal XID for every job.
 
 The isolated source starts at [BASE](BASE). The complete patch is [admission-v3.patch](admission-v3.patch), with the local commit recorded in [CANDIDATE](CANDIDATE). The released dispatcher and SQL are selectable as `stock`. Candidate selectors are `MESH_JOBS_ADMISSION_V3=strict` and `MESH_JOBS_ADMISSION_V3=cohort` for existing batch runners. The protected application sessions, handler entry, both independent writes, fenced reset acknowledgement, fresh process execution, process ownership, and consuming wait are exercised through the existing fixture.
 
@@ -88,12 +88,23 @@ The controller built commit `bd7851b9` with the pinned stock compiler. The exact
 | Short strict | 247.20 | 216.93 | 4.794 | 13 / 20 | 128 |
 | Short cohort | 275.15 | 239.99 | 4.487 | 13 / 20 | 65 |
 
-Each no-op smoke retained 1,024 distinct worker PIDs, 2,048 independent application commits, and 2,080 full resets including startup. Each short smoke retained 128 distinct worker PIDs, 256 independent application commits, and 264 resets. These are single setup runs. The controller's separate matched strict comparison determines the performance verdict. [Reduced smokes](receipts/native-smokes.json) · [Raw native archive](../2026-11-23-admission-v3-setup-bd7851b9/raw.tar.gz) · [Executable pins](receipts/native-artifact.json)
+Each no-op smoke retained 1,024 distinct worker PIDs, 2,048 independent application commits, and 2,080 full resets including startup. Each short smoke retained 128 distinct worker PIDs, 256 independent application commits, and 264 resets. These are single setup runs. The first independent matched strict rotation follows below. [Reduced smokes](receipts/native-smokes.json) · [Raw native archive](../2026-11-23-admission-v3-setup-bd7851b9/raw.tar.gz) · [Executable pins](receipts/native-artifact.json)
 
 The full isolated workspace test command exited zero with 4,817 passed test entries and 64 ignored across 123 test binaries and doc-test groups. The separately enabled wire and PostgreSQL compatibility checks supplement the default workspace test entry points. [Workspace log](receipts/workspace.log.gz)
 
 Five additional fresh scripted arms per mode at each width priced strict admission, probing and settlement at 0.514 versus stock 0.906 CPU-ms/job for single-job turns, and 0.373 versus 0.595 at width four. These component prices exclude the concurrent dispatcher and do not predict native throughput. [Width one](receipts/price-width-1.json) · [Width four](receipts/price-width-4.json)
 
-The PostgreSQL changes are isolated as candidate commits. No integration merge or push occurred.
+## Independent Linode rotation
+
+The controller released the first matched no-op and short blocks at 20:45:34 UTC. Each block compared the exact strict binary with current stock Mesh and the three pinned peers on the same host boot and CPU mask. The table uses committed-enqueue to last-terminal rates.
+
+| Profile | Stock Mesh | Strict admission | Oban | River | Apalis |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| No-op, jobs/s | 197.67 | 214.23 | 664.84 | 885.97 | 1,237.14 |
+| Short, jobs/s | 221.71 | 241.25 | 274.62 | 513.99 | 958.51 |
+
+Strict recorded 188.53 versus 178.37 submit-to-terminal jobs/s for no-op and 211.16 versus 196.55 for short. Runner CPU changed from 5.710 to 5.594 CPU-ms/job for no-op and from 4.787 to 4.668 for short. The measured differences were +8.4% and +8.8% in commit-to-terminal throughput. The strict ledgers again recorded 1,024 and 128 distinct terminal XIDs, the exact protected app commits and resets, and zero cohort calls. The host scorer recorded zero steal in both strict arms. This is one matched pair per profile. The controller rotated to another lane and the remaining rotations are pending. [Independent rotation](receipts/independent-first-rotation.json) · [Series with open blocks](receipts/independent-series-summary.json) · [Controller archive](../2026-11-23-admission-v3-strict/)
+
+The isolated candidate and diagnostic commits are local. Integration and a repeatable throughput verdict remain pending.
 
 The [combined lean-worker source and pins](combined/README.md) are staged independently of admission qualification.
