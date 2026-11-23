@@ -1,0 +1,163 @@
+{
+  "source_revision": "db5937e7e8988f935e9be16b68a2561c2250cc27",
+  "scope": "production-source correctness replays, without paired performance",
+  "native_host": "Darwin arm64",
+  "frozen_v1": {
+    "source_base": "3828f20d2d6beb683868cce33e6dd1958365914b",
+    "source_archive_sha256": "e742644d89b872a41b4d9d241091a2349491f3de6d393fe77c4cbdbc05f6a58c",
+    "timed_elf_sha256": "faefaf34344958650a0fbdd19556d86d9f5126c5007b9c77225447004a6781e4",
+    "local_profile_binary_sha256": "16af053cf4aec1d6c8529ec615eb6b243a9caf135b526f4b3aa41c9e370ba06e",
+    "fault_receipt_sha256": "bc0c246c7fcba3eecdd948dc1ebd5c0756c193ffeac14366a8fbde9138775229"
+  },
+  "local_release": {
+    "runtime_sha256": "8b0e8053f398e0c4b7720c3745c31c800a8a0ee5fa64fc73d3fed9fc8f009fd6",
+    "compiler_sha256": "0547646c506a203c26524ca453e6511afd0e33e7c5990a138408752e1c5c09ac",
+    "replay_binary_sha256": "fe5841ccc30b356e9b6f8a4bc24528228bfea73daa5223ca29e7d73fd03f84fa",
+    "fault_binary_sha256": "cd6ce5c993b5bff9abe5b56768cbbba6823df08a81c2146c3248362dcc4d4038",
+    "fault_receipt_sha256": "d8d20835b223e1fe3c167e555d0e8245d7ce6ad6691085bf059d3636af118a5c",
+    "fault_cases": [
+      "business-retry",
+      "cancel",
+      "crash",
+      "crash-after-effect",
+      "cross-tenant",
+      "disconnect",
+      "fence-replacement",
+      "late-effect",
+      "panic",
+      "queue-table",
+      "renew",
+      "return-hold",
+      "rewrite",
+      "stale-token-replay",
+      "stop",
+      "timeout"
+    ],
+    "frozen_profile_replays": {
+      "short": {
+        "jobs": 128,
+        "enqueue_commits": 1,
+        "application_commits": 256,
+        "frozen_ledger_sha256": "bebe3c05f7a0c06a44c47a9389d727064bc5fbae6b994a3e14765b5b39e5f58b",
+        "product_ledger_sha256": "39ecea03cc1fa42ce01d31faa1fe5a30232e17d76152e6c0341bd578b49f33f2"
+      },
+      "slow": {
+        "jobs": 512,
+        "enqueue_commits": 1,
+        "application_commits": 1024,
+        "frozen_ledger_sha256": "584e1b0b61b6a78e712351d4b8548ecb5e4da3486fc81479d2fdcf03ab430f73",
+        "product_ledger_sha256": "ba7ab8871f48ce76a8b0f4ea99b8f3aa4062b6fe58596a863b290ed15610bd77"
+      },
+      "sparse": {
+        "jobs": 24,
+        "enqueue_commits": 24,
+        "application_commits": 48,
+        "frozen_ledger_sha256": "4f13462ea6c1697430d156dbd822e05d3005b1613eddc9d87d669446f73ca360",
+        "product_ledger_sha256": "9fb7ee4ee8a832a5b6cb4633acff062b7196a47a68f431489830a0f0c91e4459"
+      },
+      "noop": {
+        "jobs": 1024,
+        "enqueue_commits": 1,
+        "application_commits": 2048,
+        "frozen_ledger_sha256": "c15f2652cf26007f39a55ecc4c425cd380de2494f1d289f2215f4795fa5a9c2b",
+        "product_ledger_sha256": "f2107afaeb220165dcc70fe45e91a558bca0317ab5aad2393a4cf161010ea643"
+      },
+      "large": {
+        "jobs": 64,
+        "enqueue_commits": 1,
+        "application_commits": 128,
+        "frozen_ledger_sha256": "237c14a6463ea9d9080f8e7797f4616ddfe7d0abca95a7b16f647e8bd4bc4493",
+        "product_ledger_sha256": "93e4199f8a6e2bf47a3e4515ac4fc0bb1453d29cbecd34e18c4e21a84d77a2b1"
+      }
+    }
+  },
+  "gates": {
+    "format": {
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build_workspace": {
+      "exit": 0,
+      "log_sha256": "be9a60d0f190b9e6493556515a22580518752c7cf4ae9fe86ed5dba85a1a3459"
+    },
+    "release_runtime": {
+      "exit": 0,
+      "log_sha256": "be08fc9054b61945aab0e9acbb9d6cd1c33828b0fbbce23166a05224d5ceb166"
+    },
+    "workspace_tests": {
+      "exit": 0,
+      "log_sha256": "5811ce61bc96740b18411716e2df01408c0d965f5c2a24ea1b598a7e3c608056",
+      "passed": 4820,
+      "failed": 0,
+      "ignored": 63
+    },
+    "pinned_z3": {
+      "exit": 0,
+      "log_sha256": "6e990d13ce48a971d86e28ab667575dc551804eb5766d292b00ecb391a64c1a4"
+    },
+    "linux_arm64_release_cross_build": {
+      "exit": 0,
+      "log_sha256": "141c486c8689a84f5151c4ca29991c7ae90190c784b1ba563501c30b9af71e2d",
+      "archive_sha256": "67a2650f4e2b14cc3078a6a21143075e2fffe33973065d3d6a4f5e1afd7dfefa"
+    },
+    "postgresql": {
+      "17.11": {
+        "repository_gate": {
+          "exit": 0,
+          "log_sha256": "ffc9801d56f05d5c3e031925a72b5d4b053c56b69a4722d16c8a7e80dd20237a"
+        },
+        "effect_fence": {
+          "exit": 0,
+          "log_sha256": "9523bd3824e94cf9e5d5563f40d815e485fa9eeecd641bc296b7e3aecdc56ac2"
+        },
+        "public_release_lifecycle": {
+          "exit": 0,
+          "log_sha256": "9d449885cd3d451b989536c6ccb79ed1d994142b41137ef57cc2a716681c056a"
+        }
+      },
+      "18.7": {
+        "repository_gate": {
+          "exit": 0,
+          "log_sha256": "b81df3010317a44884556c91e9584b1e8999e0790888edc92449fd0c0a155645"
+        },
+        "effect_fence": {
+          "exit": 0,
+          "log_sha256": "77d6138aa5f0d8a36f754cd3f66282c87ce9913b68cd67cd3f825098f5c87587"
+        },
+        "public_release_lifecycle": {
+          "exit": 0,
+          "log_sha256": "9d449885cd3d451b989536c6ccb79ed1d994142b41137ef57cc2a716681c056a"
+        }
+      },
+      "19.0": {
+        "repository_gate": {
+          "exit": 0,
+          "log_sha256": "b01d848057444f9c1fa311dba5c2949cda80ba2176cf896cc1773492486ceb88"
+        },
+        "effect_fence": {
+          "exit": 0,
+          "log_sha256": "30a6c0a247bda659617d6685a194dae3c2b67168f26542b1b99c877a8708741f"
+        },
+        "public_release_lifecycle": {
+          "exit": 0,
+          "log_sha256": "9d449885cd3d451b989536c6ccb79ed1d994142b41137ef57cc2a716681c056a"
+        }
+      }
+    }
+  },
+  "native_controller_request": {
+    "id": "ordinary-trusted-product-db5937e7",
+    "request_sha256": "7db062f8276b3380a401be2c717528e96aef675da0f11ebbc624c7b707abdc54",
+    "source_bundle_sha256": "5520b50b8a16535dd413c1135860f46264f768ab2b9f372a5313567555944c94",
+    "control_elf_sha256": "faefaf34344958650a0fbdd19556d86d9f5126c5007b9c77225447004a6781e4",
+    "cpus": [
+      0,
+      1
+    ],
+    "profiles": [
+      "short",
+      "noop"
+    ],
+    "verification_at_handoff": "local pin and assignment checks"
+  }
+}
