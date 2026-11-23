@@ -68,7 +68,8 @@
     }
   },
   "integration_parent": "446e413c73f33236863e0c7de2151473240f1a79",
-  "integration_state": "isolated_candidate_awaiting_matched_decision",
+  "integration_state": "isolated_candidate_held_after_matched_decision",
+  "matched_decision": "READY.json",
   "native_producer_inventory": "admitted_after_worker_attribution",
   "native_truncated_response": "open",
   "postgresql": "17.11",

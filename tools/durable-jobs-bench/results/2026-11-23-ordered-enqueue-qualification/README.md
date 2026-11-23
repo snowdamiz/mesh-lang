@@ -1,5 +1,17 @@
 # Ordered enqueue native qualification
 
+**Adoption HOLD.** The matrix owner confirmed the result after ten direct
+pairs. In the five short pairs, submit-to-settlement throughput fell in
+four pairs, with a median paired change of −9.85%. Commit-to-settlement
+throughput fell by 8.66% at the median, and commit-to-settlement p99
+rose by 9.48%. Dense producer commit was 15.57% faster at the median
+across its five pairs. The short regression blocks adoption of the
+six-file patch. [Decision and replay digest](READY.json) · [Matched repeat](../2026-11-23-ordered-enqueue-repeat/README.md)
+
+The native truncated-response test remains unresolved. The matrix owner
+withdrew the wire-only reservation and retained the proof recipe for
+reference. [Native proof recipe](NATIVE-WIRE-PROOF.md)
+
 Candidate `77c447f773a4d0af5c5578873a2410301b3ba069` batches PostgreSQL
 writes for Jobs enqueue while retaining a separate SQL statement and Sync
 for each admission. Its source is sealed against Mesh stock
@@ -32,6 +44,5 @@ Linux truncated-response unit test remains open.
 The isolated product candidate `5c128e22` applies the ordered-enqueue
 patch on `446e413c`, including the due-query change and its regression.
 Fresh workspace, PostgreSQL 17.11, wire, and effect proofs passed on
-Darwin arm64. The candidate awaits the matched timing decision in the
-isolated proof checkout. [Product verification](adoption-verification.json)
+Darwin arm64. The candidate remains in the isolated proof checkout. [Product verification](adoption-verification.json)
 · [Fresh local logs](adoption-local-proofs.tar.gz)
