@@ -1,0 +1,96 @@
+{
+  "architecture": "macOS ARM64",
+  "binary_sha256": "dc2e8c5c8fec38dd586d198ab8aa038c023cc8e6f462c862accbf830a10b4a8d",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "store_source_sha256": "024a38917f66849f31710f4656da403ab105e309b08043e0f0340a1f96f848aa",
+  "summary": {
+    "large": {
+      "both": {
+        "beats_both": 1,
+        "median_ms": 80.69466666666658
+      },
+      "direct": {
+        "beats_both": 2,
+        "median_ms": 79.20733333333334
+      },
+      "duplicate": {
+        "beats_both": 0,
+        "median_ms": 81.55833333333347
+      },
+      "owned": {
+        "beats_both": 1,
+        "median_ms": 83.99966666666654
+      },
+      "stock": {
+        "beats_both": 0,
+        "median_ms": 79.17599999999992
+      }
+    },
+    "noop": {
+      "both": {
+        "beats_both": 5,
+        "median_ms": 6.084800000000001
+      },
+      "direct": {
+        "beats_both": 4,
+        "median_ms": 6.266299999999969
+      },
+      "duplicate": {
+        "beats_both": 0,
+        "median_ms": 6.4905999999999695
+      },
+      "owned": {
+        "beats_both": 2,
+        "median_ms": 6.363099999999999
+      },
+      "stock": {
+        "beats_both": 0,
+        "median_ms": 6.77600000000007
+      }
+    },
+    "short": {
+      "both": {
+        "beats_both": 5,
+        "median_ms": 0.7876333333333374
+      },
+      "direct": {
+        "beats_both": 4,
+        "median_ms": 0.8445333333333416
+      },
+      "duplicate": {
+        "beats_both": 0,
+        "median_ms": 0.8788999999999974
+      },
+      "owned": {
+        "beats_both": 3,
+        "median_ms": 0.8015666666666643
+      },
+      "stock": {
+        "beats_both": 0,
+        "median_ms": 0.8663333333333356
+      }
+    },
+    "sparse": {
+      "both": {
+        "beats_both": 3,
+        "median_ms": 0.20292500000000935
+      },
+      "direct": {
+        "beats_both": 3,
+        "median_ms": 0.2047249999999945
+      },
+      "duplicate": {
+        "beats_both": 0,
+        "median_ms": 0.2123750000000424
+      },
+      "owned": {
+        "beats_both": 2,
+        "median_ms": 0.21207499999998936
+      },
+      "stock": {
+        "beats_both": 0,
+        "median_ms": 0.2030249999999345
+      }
+    }
+  }
+}
