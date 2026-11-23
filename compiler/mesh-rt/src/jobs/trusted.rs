@@ -20,18 +20,38 @@ struct Authority {
 }
 
 impl Authority {
+    fn expired_at(&self, now: u64) -> Option<WorkerPoll> {
+        if now < self.deadline.min(self.lease) {
+            None
+        } else if self.deadline <= self.lease {
+            Some(WorkerPoll::TimedOut)
+        } else {
+            Some(WorkerPoll::LeaseExpired)
+        }
+    }
+
     fn check(&self) -> Result<(), WorkerPoll> {
         if self.stopped {
             return Err(WorkerPoll::Exited(Err("trusted job was stopped".into())));
         }
         let now = boot_millis().map_err(|error| WorkerPoll::Exited(Err(error.to_string())))?;
-        if now < self.deadline.min(self.lease) {
-            Ok(())
-        } else if self.deadline <= self.lease {
-            Err(WorkerPoll::TimedOut)
-        } else {
-            Err(WorkerPoll::LeaseExpired)
+        self.expired_at(now).map_or(Ok(()), Err)
+    }
+
+    fn renew_at(&mut self, lease: u64, now: u64) -> Result<(), String> {
+        if self.stopped {
+            return Ok(());
         }
+        match self.expired_at(now) {
+            None => self.lease = self.lease.max(lease),
+            Some(WorkerPoll::LeaseExpired) => {
+                return Err("trusted job could not accept renewal after its lease expired".into())
+            }
+            // The attempt already timed out. Leave the deadline in force and
+            // let the supervisor report the timeout when the actor exits.
+            Some(_) => {}
+        }
+        Ok(())
     }
 
     fn exited(&mut self, reason: ExitReason) -> WorkerPoll {
@@ -112,11 +132,8 @@ impl JobProcess for TrustedAttempt {
 
     fn renew(&mut self, lease: u64) -> Result<(), String> {
         let mut state = self.authority.lock();
-        state
-            .check()
-            .map_err(|_| "trusted job could not accept renewal after its deadline")?;
-        state.lease = state.lease.max(lease);
-        Ok(())
+        let now = boot_millis().map_err(|error| error.to_string())?;
+        state.renew_at(lease, now)
     }
 
     fn kill(&mut self) -> Result<(), String> {
@@ -126,6 +143,37 @@ impl JobProcess for TrustedAttempt {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renewal_cannot_revive_an_expired_or_stopped_attempt() {
+        let mut authority = Authority {
+            deadline: 200,
+            lease: 100,
+            stopped: false,
+            reply: None,
+        };
+        assert!(authority.renew_at(300, 100).is_err());
+        assert!(matches!(
+            authority.expired_at(100),
+            Some(WorkerPoll::LeaseExpired)
+        ));
+        assert!(authority.renew_at(250, 99).is_ok());
+        assert!(authority.renew_at(300, 200).is_ok());
+        assert!(matches!(
+            authority.expired_at(200),
+            Some(WorkerPoll::TimedOut)
+        ));
+        assert_eq!(authority.lease, 250);
+
+        authority.stopped = true;
+        assert!(authority.renew_at(300, 190).is_ok());
+        assert_eq!(authority.lease, 250);
     }
 }
 
