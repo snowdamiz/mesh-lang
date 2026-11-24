@@ -1,0 +1,8 @@
+{
+  "commit": "75f539c3",
+  "all_four_setup_arms_replayed": true,
+  "all_64_warmup_and_measured_arms_replayed": true,
+  "paired_scorecard_byte_identical": true,
+  "setup_and_timing_directories_renamed": true,
+  "build_tree_present": false
+}

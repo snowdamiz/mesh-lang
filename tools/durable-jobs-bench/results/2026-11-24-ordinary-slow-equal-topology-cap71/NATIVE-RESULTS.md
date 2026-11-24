@@ -53,4 +53,4 @@ replay = api["replay_native"](raw_series)
 scores = api["scorecard"](replay)
 ```
 
-The callable needs the sealed source files in the checkout and the raw series directory. It starts no workload, requires no staged binary, and works outside the original raw archive path.
+The callable needs the sealed source files in the checkout and the raw series directory. It starts no workload and requires no staged binary. A clean Git export replayed all 68 arms from renamed raw directories and reproduced the scorecard byte for byte. [Clean replay receipt](evidence/native-analysis/clean-git-replay.json)
