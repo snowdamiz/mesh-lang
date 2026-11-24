@@ -1,0 +1,16 @@
+{
+  "group": 3,
+  "order": [
+    "river-warm",
+    "r2-d2",
+    "apalis",
+    "oban",
+    "river-cold",
+    "r2-off",
+    "river"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}
