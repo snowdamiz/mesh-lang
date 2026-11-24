@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "/relay-regression/original/replay/staged-relay-check.py", line 88, in <module>
+    print(json.dumps(check(), sort_keys=True))
+                     ~~~~~^^
+  File "/relay-regression/original/replay/staged-relay-check.py", line 73, in check
+    assert relay.requests == [(port, "SELECT 1")]
+           ^^^^^^^^^^^^^^
+AttributeError: 'Relay' object has no attribute 'requests'
+RELAY_LAYOUT_REGRESSION {"old_error": "Relay.requests missing", "old_exit": 1, "old_overwrites": ["replay/combined-run", "replay/split_arm.py", "replay/wire.py"], "old_transfer_sha256": "864acaa16fbd58c6e28d49880a618557348c02045bb2236b6331688e7709652a", "recovery_transfer_sha256": "9e3570fb81f94d294fa291511134b4a15ed9932cc9a86792cdbd7e97e1b308e0", "repaired": {"bytecode_disabled": true, "cache_absent": true, "capabilities": 0, "cpu_mask": [0, 1], "gid": 65534, "queries": ["SELECT 1", "INSERT INTO proof VALUES (1)"], "receipt_dropped": true, "uid": 65534}, "repaired_shipped": {"replay/combined-run": "9d582498cf3fd7b52e2fc6395308eacce739dfcfc7e9a9e6b50db45c97b4e6cc", "replay/faults.py": "e616db36897240b8d51a20e7a329d53836a82285f772622c5fc50d78bc09a59d", "replay/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f", "replay/link-candidate.sh": "a8ee300e2a5e850e498f52eb700e508f832f5b16b55197480329d58485c5041f", "replay/split_arm.py": "e9c37431cd6807357f0590890c7633851b45276278ab9d7036701cddeedfd8ab", "replay/staged-relay-check.py": "8a12285c542de1640fedd925e8782fa9ff0d52aac71f88db47cbe3f4c266015a", "replay/wire.py": "81b8513cea8649d8e4ba440cbd9bd6405840fde3a5aed16a66d8bd30e30e9a44"}, "tampered_wire": "refused"}

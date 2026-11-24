@@ -1,0 +1,48 @@
+{
+  "cases": {
+    "product-bulk": {
+      "app_checkout_probes": 2,
+      "executable_sha256": "d8ddca66f6cc884e0419d0a33b647f62703595c500ef243e703f490aa2532527",
+      "handler": {
+        "attempt": 1,
+        "attempts": [
+          "760"
+        ],
+        "effect": "761",
+        "expiry": null,
+        "key": "probe",
+        "state": "completed",
+        "token": null,
+        "xid": "762"
+      },
+      "independently_committed_application_writes": 2,
+      "mode": "product-bulk"
+    },
+    "product-group": {
+      "app_checkout_probes": 2,
+      "executable_sha256": "d8ddca66f6cc884e0419d0a33b647f62703595c500ef243e703f490aa2532527",
+      "handler": {
+        "attempt": 1,
+        "attempts": [
+          "760"
+        ],
+        "effect": "761",
+        "expiry": null,
+        "key": "probe",
+        "state": "completed",
+        "token": null,
+        "xid": "762"
+      },
+      "independently_committed_application_writes": 2,
+      "mode": "product-group"
+    }
+  },
+  "mode": "untimed compiled-handler correctness",
+  "r2_failure": "Archive extraction shadowed the staged TLS observer. No timing result.",
+  "r2_next_authority": "sole Linode controller",
+  "r2_release": {
+    "target/linode-jobs-stepchange/requests/2026-11-24-exit-confirmed-bulk-d2.released.json": "40a129dff9c82d8ea79f8a5590cab4c302b22244a6981191d6fa65f79002195b",
+    "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/evidence/exit-bulk-d2-c7c50e726ca0/raw.tar.gz": "6456252306fa0531d1de8dd878a6d328750bd7e77e555e5f12ff150f2f55d741"
+  },
+  "source_commit": "b3557273d72be3802bf189b284e7caaf5f3caa0f"
+}

@@ -1,0 +1,86 @@
+{
+  "attempt": "trusted-jobs-product-623c46b92cc5",
+  "bind_recipe": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/intake.py bind <plan> trusted-jobs-product-623c46b92cc5 <exported-mesh.json> --selection <selected-mode>",
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native",
+  "expected_setup_minutes": 15,
+  "id": "2026-11-24-trusted-jobs-product-composition",
+  "isolated_source": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/2026-11-24-trusted-jobs-product-composition/source",
+  "kind": "Controller-owned native product SETUP and separately granted comparative TIMING",
+  "local_gate": "Untimed macOS proof: workspace, PG17 roles and durability, scoped claims, producer wire, checkout unit and the compiled handler/fault suite passed. Offline comparison binding passed all nine plans using a synthetic manifest identity only.",
+  "local_sha256": {
+    "target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/controller-timing.py": "a86fd3ed80c4ed49505a175cbeb2ed907992247e0559e81796cf16b1ad031962",
+    "target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/intake.py": "ffbb99463b1ada73f9fd4e442171d4065865da3632fa297944f3ee2be536dba3",
+    "target/linode-jobs-stepchange/requests/2026-11-24-exit-confirmed-bulk-d2.json": "1d2d2e72986e955354ec2dad4d0d28b3af310ce818e908efa85ce9726add3f93",
+    "tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py": "d30834fa1ca18030edd5df0de5d760ea1952d2b84aa05fb3eae9d2af13825c52",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/equal.json": "0694806a3ddb1a056c9acbb4f4414e21a64b48fb4ad0de8a19d76263bbf7aaae",
+    "tools/durable-jobs-bench/results/2026-11-23-payload-storage-symmetric/series.json": "763e407a6928959d2f259d537200e2c95562074f67437300451a3a2e3d77e018",
+    "tools/durable-jobs-bench/results/2026-11-24-bulk-d2-short-peers/short.json": "be33d238748dd544e21f13857ac8aaa99e95f7b37c51572dcc20e6123ca51041",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/README.md": "599a6e65ff284cae5cd2a1b85f97087918c39b53796f2df9fd97a4da108e3566",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/all-profile-plans.json": "9450a964ccb6b53498997a05e59570ca1bd1702dcbe07a4e8b7047b14cac70b3",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/local-evidence.json": "cf54e2dc2cfbfe316c15c12c7e2ba10a7cc2d9d5e3b3fbad86606007be28b392",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/native-setup.sh": "e1342b6c27928b0bda58516a8dfad8c6e4f085b5df805f89e213f41e4630461b",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/source.tar.gz": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "metrics": [
+    "submit_jobs_per_s",
+    "commit_jobs_per_s",
+    "submit_to_settlement_p99_ms",
+    "commit_to_settlement_p99_ms",
+    "peak_executing",
+    "peak_connections"
+  ],
+  "per_series_timing_grant": "2026-11-24-trusted-jobs-product-composition-<plan>",
+  "prerequisites": "Finish independent 2026-11-24-exit-confirmed-bulk-d2 and reconcile its native semantic and short timing evidence first. Preserve failures. If r2 fails semantic or throughput transfer, record a smaller decision and qualify product-bulk and product-group without D2. Retain existing assignments.",
+  "r2_decision_filename": "2026-11-24-trusted-jobs-product-composition.r2-decision.json",
+  "r2_decision_schema": {
+    "decision": "full or smaller",
+    "dependency": "2026-11-24-exit-confirmed-bulk-d2",
+    "receipts": {
+      "absolute path": "SHA-256 of controller-owned r2 result"
+    }
+  },
+  "ready": true,
+  "ready_at": "2026-11-24T02:50:44.059032+00:00",
+  "requested_at": "2026-11-24T02:50:44.059032+00:00",
+  "scope": "One Linux product release ELF for migrate, producer and ordinary Jobs.start runner. Real TLS fault proof and separate same-runtime teardown witness. Short first. Then matched dense, sparse, slow and large against River, Oban, and Apalis using the selected same ELF and mode.",
+  "setup_argv": [
+    "bash",
+    "native-setup.sh",
+    "trusted-jobs-product-623c46b92cc5",
+    "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+    "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02"
+  ],
+  "setup_host": "Existing pinned GNU/Linux AMD64 Linode, only under the sole controller's SETUP and locks",
+  "setup_output": {
+    "artifact": "/var/lib/durable-jobs-bench/native/builds/trusted-jobs-product-623c46b92cc5/mesh",
+    "manifest": "/var/lib/durable-jobs-bench/native/runs/trusted-jobs-product-623c46b92cc5/mesh.json",
+    "raw": "/var/lib/durable-jobs-bench/native/runs/trusted-jobs-product-623c46b92cc5"
+  },
+  "setup_script": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/native-setup.sh",
+  "setup_stdin": "source.tar.gz",
+  "shared_product_base": "734416cdbce2e557cb7dd7c4e2833ad7a4b5703d",
+  "short_selection_filename": "2026-11-24-trusted-jobs-product-composition.short-selection.json",
+  "short_selection_schema": {
+    "manifest_sha256": "exact release mesh.json SHA-256",
+    "mode": "selected product-bulk, product-group or product-d2",
+    "short_receipts": {
+      "absolute path": "SHA-256 of raw reconciled short evidence"
+    }
+  },
+  "smaller_recipe": "For short-smaller use bind short --smaller, then dispatch the short-smaller grant.",
+  "source_archive": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/source.tar.gz",
+  "source_archive_sha256": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+  "source_sha": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition",
+  "state": "sealed_waiting_for_r2",
+  "timing_followup": "After both opposite-order groups reconcile, run groups 3 4 5. Fresh native setup and storage/topology evidence for each dimensional contrast. Select a short mode before any follow-through. Keep raw partials and refetch rather than reuse a mixed old variant.",
+  "timing_recipe": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/controller-timing.py /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/requests <plan> <bound-inventory.json> <new-output-directory> 1 2"
+}

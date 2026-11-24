@@ -1,0 +1,124 @@
+{
+  "archived": {
+    "archive": "d954080060c878b95fb589c2fc7da72a82904a4435e3b4f9da957179f76b24d7",
+    "first_archive": "eb39628d011afa879b0205dc6333ec53fd16fb05eefb8333d3f896f6ac9887ed",
+    "host": {
+      "clock_ticks": 100,
+      "host": [
+        "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+        "6.8.0-149-generic",
+        "8:0"
+      ]
+    },
+    "smoke": {
+      "checkout_probes": 256,
+      "commit_jobs_per_s": 725.5125349294609,
+      "complete": 128,
+      "errors": 0,
+      "submit_jobs_per_s": 573.3765157521759,
+      "terminal_groups_by_size": {
+        "1": 119,
+        "2": 1,
+        "3": 1,
+        "4": 1
+      },
+      "terminal_xids": 122,
+      "warmed_application_sessions": 8
+    }
+  },
+  "candidate_elf_sha256": "972514efac688fd029821152c3bb70a7e62bf1c6227ab8b2d061dc69c47a2dc7",
+  "candidate_manifest_sha256": "ab09bc77affff4496350202150dc6eb0b90d5c252f0a7552767e0070d615fe31",
+  "failed": "exit-bulk-d2-c7c50e726ca0",
+  "failed_raw_sha256": "6456252306fa0531d1de8dd878a6d328750bd7e77e555e5f12ff150f2f55d741",
+  "group_plan": [
+    {
+      "group": 1,
+      "order": [
+        "r2-off",
+        "river",
+        "r2-d2",
+        "protected-mesh",
+        "apalis",
+        "oban"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 2,
+      "order": [
+        "oban",
+        "apalis",
+        "protected-mesh",
+        "r2-d2",
+        "river",
+        "r2-off"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 3,
+      "order": [
+        "r2-d2",
+        "apalis",
+        "protected-mesh",
+        "oban",
+        "r2-off",
+        "river"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 4,
+      "order": [
+        "river",
+        "r2-off",
+        "oban",
+        "protected-mesh",
+        "apalis",
+        "r2-d2"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 5,
+      "order": [
+        "r2-off",
+        "oban",
+        "apalis",
+        "r2-d2",
+        "river",
+        "protected-mesh"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    }
+  ],
+  "local": {
+    "fault_receipts": 7,
+    "groups": 5,
+    "refusal_controls": 4,
+    "teardown_witnesses": 3,
+    "valid_arms": 11
+  },
+  "new_stage_files": 7,
+  "old_overwrites": [
+    "replay/combined-run",
+    "replay/split_arm.py",
+    "replay/wire.py"
+  ],
+  "timing_series": "2026-11-24-exit-confirmed-bulk-d2"
+}
