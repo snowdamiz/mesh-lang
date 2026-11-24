@@ -215,6 +215,19 @@ If Mesh kept each first application commit at its observed time and finished eac
 | River | 273.80 | 368.18 | 1/2 | 1/2 |
 | Apalis | 342.64 | 450.95 | 0/2 | 0/2 |
 
+## Dense jobs with hot PostgreSQL checkout
+
+6/6 matched rotations. All engines use two 32-slot runners. Each Mesh lane runs the same executable with grouped successes.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh hot checkout | 757.42 | 859.78 | — | — |
+| Checked A | 693.10 | 780.50 | 6/6 | 6/6 |
+| Checked B | 691.05 | 776.14 | 6/6 | 6/6 |
+| Oban | 762.02 | 854.02 | 2/6 | 3/6 |
+| River | 1,001.10 | 1,083.72 | 0/6 | 0/6 |
+| Apalis | 1,360.67 | 1,437.05 | 0/6 | 0/6 |
+
 ## Short jobs with combined settlement and refill
 
 2/5 matched rotations. The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.

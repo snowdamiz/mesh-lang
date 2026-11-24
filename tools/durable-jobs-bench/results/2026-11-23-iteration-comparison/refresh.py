@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import runpy
 from pathlib import Path
 from statistics import median
 import subprocess
@@ -138,6 +139,18 @@ def collect_topology_blocks(directory, lanes, identities, replayed):
         blocks.append(dict(group=block["group"], profile=block["profile"], attempt=attempt,
                            order=block["order"], scores=scores, raw_sha256=archives))
     return dict(manifest_sha256=run.digest(directory / "series.json"), blocks=blocks)
+
+
+def capture_public_dense_checkout(directory):
+    replay = runpy.run_path(str(directory.parents[1] / "native_report.py"))["replay"]
+    _, report = replay()
+    config = run.read_json(directory / "series.json")["config"]
+    identities = {}
+    for label, lane in config["lanes"].items():
+        inventory = run.read_json(directory / "staging" / label / "inventory.json")
+        identities[label] = inventory["engines"][lane["engine"]]["artifact_sha256"]
+    return collect_topology_blocks(directory, config["lanes"], identities,
+                                   {group["attempt"]: group["scores"] for group in report["blocks"].values()})
 
 
 def capture_slow_storage(packet):
@@ -535,6 +548,10 @@ def write_scorecard(data):
                      "input and 100 ms hold. [Extension decision](../2026-11-23-bulk-enqueue-v2-slow/README.md)",
                      [("bulk", "V2 · batch enqueue"), ("scalar", "V2 · scalar enqueue"),
                       ("v1-bulk", "V1 · batch enqueue"), ("v1-scalar", "V1 · scalar enqueue"), *peers])
+    add_policy_table(lines, data.get("public-dense-hot-checkout", {}), "Dense jobs with hot PostgreSQL checkout",
+                     "All engines use two 32-slot runners. Each Mesh lane runs the same executable with grouped successes.",
+                     [("hot", "Mesh hot checkout"), ("checked-a", "Checked A"), ("checked-b", "Checked B"),
+                      ("oban-2x32", "Oban"), ("river-2x32", "River"), ("apalis-2x32", "Apalis")], planned=6)
     add_policy_table(lines, data.get("short-fused-refill", {}), "Short jobs with combined settlement and refill",
                      "The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.",
                      [("fused-a", "Fused A"), ("fused-b", "Fused B"), ("group-a", "Grouped control A"),
@@ -733,6 +750,8 @@ def refresh(collect, selected=()):
                 current = capture_public_product(archived)
             elif name == "slow-storage":
                 current = capture_slow_storage(archived)
+            elif name == "public-dense-hot-checkout":
+                current = capture_public_dense_checkout(archived)
             elif name == "dense-exit-confirmed":
                 current = capture_dense_checkout(archived)
             elif name == "slow-equal-cap71":
