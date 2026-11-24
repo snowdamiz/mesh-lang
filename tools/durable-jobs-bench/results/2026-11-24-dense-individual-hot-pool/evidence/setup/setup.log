@@ -1,0 +1,11 @@
+native-run: OK
+adapter.py: OK
+identity.py: OK
+/var/lib/durable-jobs-bench/native/source-trusted-1e70f18d-jobs-78468180f0c0/artifacts/jobs/mesh: OK
+/var/lib/durable-jobs-bench/native/source-trusted-1e70f18d-jobs-78468180f0c0/artifacts/jobs/mesh.json: OK
+/var/lib/durable-jobs-bench/native/source-trusted-1e70f18d-jobs-78468180f0c0/overlay/replay/backend.py: OK
+/var/lib/durable-jobs-bench/native/source-trusted-1e70f18d-jobs-78468180f0c0/source/scripts/fixtures/jobs-role-grants.sql: OK
+/var/lib/durable-jobs-bench/native/source-trusted-1e70f18d-jobs-78468180f0c0/overlay/frozen-harness.sha256: OK
+/var/lib/durable-jobs-bench/native/source-trusted-1e70f18d-jobs-78468180f0c0/source.tar.gz: OK
+/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres: OK
+FixtureError: see /var/lib/durable-jobs-bench/native/runs/dense-individual-hot-pool-1e70f18d/0/failure.json

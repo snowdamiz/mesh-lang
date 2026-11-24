@@ -1,0 +1,33 @@
+{
+  "event_buffer_bytes": {
+    "logger": {
+      "sampled_peak_bytes": 4104,
+      "upper_bound_bytes": 29184
+    },
+    "reader": null
+  },
+  "failure": {
+    "message": "invalid event buffer report in /var/lib/durable-jobs-bench/native/runs/dense-individual-hot-pool-1e70f18d/0/runner-0.log",
+    "stage": [
+      [
+        "arm.py",
+        78,
+        "run_arm"
+      ],
+      [
+        "jobs-parity.py",
+        1016,
+        "run_trial"
+      ],
+      [
+        "jobs-parity.py",
+        1096,
+        "mesh_event_buffer_report"
+      ]
+    ],
+    "type": "FixtureError"
+  },
+  "raw_sha256": "5119e92d826653c9dcd6687e3c597ef66ea3f8ac3e06b22a9ba5307a169fb466",
+  "release_exit_code": 1,
+  "runner_log_lines": 1008
+}
