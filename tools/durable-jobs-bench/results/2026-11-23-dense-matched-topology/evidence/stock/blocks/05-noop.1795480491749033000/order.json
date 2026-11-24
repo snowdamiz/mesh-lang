@@ -1,0 +1,15 @@
+{
+  "group": 5,
+  "order": [
+    "apalis-8x8",
+    "mesh-v1-8x8",
+    "oban-8x8",
+    "river-8x8",
+    "mesh-v1-2x32"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}

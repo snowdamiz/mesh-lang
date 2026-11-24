@@ -1,0 +1,18 @@
+{
+  "attempts": [
+    0
+  ],
+  "exit_status": 0,
+  "group_command": "dispatch",
+  "groups": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "id": "dense-matched-topology-stock",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/native-dense-matched-topology/stock",
+  "released_at": "2026-11-24T00:36:48.199507+00:00",
+  "started": "2026-11-24T00:27:05.576663+00:00"
+}

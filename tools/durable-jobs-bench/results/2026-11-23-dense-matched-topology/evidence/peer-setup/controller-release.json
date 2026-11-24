@@ -1,0 +1,8 @@
+{
+  "command_finished_at": "2026-11-24T00:36:53.663795+00:00",
+  "exit_status": 0,
+  "id": "dense-matched-topology-peer-setup",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/native-dense-matched-topology/peer-setup",
+  "released_at": "2026-11-24T00:36:54.114042+00:00",
+  "started": "2026-11-24T00:36:48.967730+00:00"
+}

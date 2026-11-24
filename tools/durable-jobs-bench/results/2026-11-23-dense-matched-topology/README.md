@@ -48,6 +48,28 @@ with errors, incomplete evidence, builders, or more than 1% measured CPU
 steal are excluded as whole blocks. Their receipts remain available.
 [Dispatcher and replay](matrix.py) · [Qualification](qualification.py)
 
+## Native stock-peer comparison
+
+All five rotations qualified. The medians for Mesh V1 2 × 32 were
+547.01 jobs/s from submit and 751.82 jobs/s from the first enqueue commit.
+Mesh V1 8 × 8 reached 362.63 and 452.45 jobs/s. The paired median increase
+was 50.8% from submit and 66.2% from commit. Mesh 2 × 32 beat Oban 8 × 8
+on drain in all five rotations, with a paired median lead of 8.1%. Oban
+led from submit in all five, and River and Apalis led in both windows in
+every rotation. The scorecard reports each lane's median and full range,
+observed connections, runner CPU, and terminal transaction count.
+[Stock-peer scorecard](evidence/stock/scorecard.md) ·
+[Qualification replay](evidence/stock/replay.json) ·
+[Controller release](evidence/stock/controller-release.json)
+
+The two-runner layout warmed the same 32 Mesh application sessions and
+used four distinct backends for those writes in each measured arm. The
+eight-runner layout used 14–16. Two-runner median runner CPU fell from
+1.615 to 0.637 ms/job. The serial settlement contract continued to use
+1,024 terminal XIDs per Mesh arm. River and Apalis used their stock
+settlement batching, whose transaction counts are shown separately.
+[Stock-peer scorecard](evidence/stock/scorecard.md)
+
 ## Producer-only composition
 
 The bounded follow-up swaps only the broker executable for the pinned
@@ -75,6 +97,7 @@ python3 -B "$packet/replay-local.py"
 python3 -B "$packet/matrix.py" check stock
 python3 -B "$packet/matrix.py" check equal
 python3 -B "$packet/bulk.py" check
+python3 -B "$packet/matrix.py" replay stock --directory "$packet/evidence/stock"
 ```
 
 The existing native controller owns SETUP and TIMING. Request SHA-256 pins
