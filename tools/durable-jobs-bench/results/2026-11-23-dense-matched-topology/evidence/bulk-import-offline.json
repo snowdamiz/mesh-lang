@@ -1,0 +1,29 @@
+{
+  "completion": {
+    "control_sha256": "8a5b8ece64d96ea296940c291c48e0e8c84c509e47935b40742497400edec4ec",
+    "mutated_completed": 1023,
+    "positive_completed": 1024,
+    "rejection": "missing durable jobs"
+  },
+  "linux_import_sha256": "8088665891ad72e9676ef7e8f63210a75dabdb92ce81a812dafb1995c540a977",
+  "orders": [
+    [
+      "scalar",
+      "bulk"
+    ],
+    [
+      "bulk",
+      "scalar"
+    ]
+  ],
+  "original_failed_raw_sha256": {
+    "01/measured-bulk/measured-mesh/raw.tar.gz": "a7684be33b93ee59eac1387fb822919c2fbb38e2d95eeecf64d62ebeddb6295f",
+    "01/measured-scalar/measured-mesh/raw.tar.gz": "862b79b43d4ec38825c28158bb0719788f48a89507e44a2344cc61ca4a863f15",
+    "01/warmup-bulk/warmup-mesh/raw.tar.gz": "53379a9dd8ad97a66844ad3d9504be57bf1e6ce819cb675abf1a354aff50aa66",
+    "01/warmup-scalar/warmup-mesh/raw.tar.gz": "a282037be000a1bf1af23288fa109a3950374b05a0886c7962b9bc8f0b6e9b84",
+    "02/measured-bulk/measured-mesh/raw.tar.gz": "287a60e107a3a2716da03279419fa3c7d7dd1d7520f29f5d531af9d0102d0423",
+    "02/measured-scalar/measured-mesh/raw.tar.gz": "8078c3cade6001913ce4bd25a390cd38adc9276cd9fcd6c3249036b00e96dc6d",
+    "02/warmup-bulk/warmup-mesh/raw.tar.gz": "b380b1057e97dc3667c787eaeb02f4f3caeda229fc6d779c8fdcc85a308e7c79",
+    "02/warmup-scalar/warmup-mesh/raw.tar.gz": "7a459a5b3f2d45109fbba900293f4753bfb797bf463f209e5c2932735ff9c8ed"
+  }
+}

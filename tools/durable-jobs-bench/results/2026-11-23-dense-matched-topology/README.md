@@ -122,6 +122,34 @@ pairs require their own controller grant and do not delay either five-block
 series. [Local checks and historical envelope](offline-bulk.json) ·
 [Producer-only request](request-bulk.json)
 
+### Native import recovery
+
+All eight commands in the original native attempt exited during startup
+with `ModuleNotFoundError: No module named 'arm'`. The run produced zero
+workload ledgers and zero qualified timings. Its original request, per-arm
+inventories, release, and raw exports remain archived under commit `356d58a4`.
+[Original release](evidence/bulk-pair-first-failed/controller-release.json) ·
+[Original raw archive hashes](evidence/bulk-pair-first-failed/SHA256SUMS)
+
+The private staging directory is mode 0711. The benchmark user can read a
+known file path, while Python's normal sibling import lookup needs to list
+the directory. The retry launcher explicitly loads the pinned `arm.py` path
+before entering the original `bulk-arm.py`. A local Linux probe ran both
+entry points as UID/GID 65534 with no capabilities. The original import
+failed and the retry reached the real adapter's `--help` path. The offline
+scorer accepted an archived 1,024-job arm and rejected a copy with 1,023
+completed jobs. Both checks ran without a benchmark workload.
+[Linux import regression](bulk-import-probe.py) ·
+[Linux receipt](evidence/bulk-import-linux.json) ·
+[Offline receipt](evidence/bulk-import-offline.json)
+
+The controller owns the separate build-free retry after the booked
+enqueue-preparation, cap-71, and public product sequence. The retry keeps
+the engine pins, 1,024-job fixture, timing fences, and original two groups
+in scalar–bulk and bulk–scalar order. Both warmup and measured arms are
+required. Evidence goes to `target/native-dense-matched-topology/bulk-import-retry`.
+[Sealed retry](request-bulk-import-retry.json)
+
 ## Replay
 
 Run from the checkout root. The historical checks use archived receipts and
@@ -134,6 +162,7 @@ python3 -B "$packet/replay-local.py"
 python3 -B "$packet/matrix.py" check stock
 python3 -B "$packet/matrix.py" check equal
 python3 -B "$packet/bulk.py" check
+python3 -B "$packet/bulk-import-retry.py" check
 python3 -B "$packet/matrix.py" replay stock --directory "$packet/evidence/stock"
 ```
 
