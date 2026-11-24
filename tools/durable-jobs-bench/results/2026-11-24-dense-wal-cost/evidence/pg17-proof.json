@@ -1,0 +1,30 @@
+{
+  "before_recorded_before_writes": true,
+  "capture_sha256": "5d0a211f2aee749778ac2d20fca921ea5ab42e07fb0672885d95796d1bce2ca8",
+  "clean_restart_retained_stats": true,
+  "client_socket_guard": true,
+  "delayed_syncs_published": 2,
+  "frozen_config": {
+    "commit_delay": "0",
+    "fsync": "on",
+    "full_page_writes": "on",
+    "max_connections": "96",
+    "pg_stat_statements.track": "top",
+    "reserved_connections": "0",
+    "server_version_num": "170011",
+    "ssl": "on",
+    "superuser_reserved_connections": "0",
+    "synchronous_commit": "on",
+    "track_commit_timestamp": "on",
+    "track_wal_io_timing": "on",
+    "wal_sync_method": "fdatasync"
+  },
+  "independent_commits": 2,
+  "invalid_evidence_rejections": 4,
+  "machine": "arm64",
+  "postgres": "postgres (PostgreSQL) 17.11 (Homebrew)",
+  "purpose": "untimed native PostgreSQL behavior proof; two fixture rows",
+  "scorer_sha256": "9354bc1d8cbd76e43f263305ee878a71c65ecd38770f09a6ae27cd177e5bfa95",
+  "system": "Darwin",
+  "whole_workload_fallback": true
+}
