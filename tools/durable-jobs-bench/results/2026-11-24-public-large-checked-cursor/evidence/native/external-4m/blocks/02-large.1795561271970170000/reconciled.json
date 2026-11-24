@@ -1,0 +1,1748 @@
+{
+  "arms": {
+    "measured-stock-a": {
+      "app_xids": 128,
+      "archive": "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/native/external-4m/blocks/02-large.1795561271970170000/measured-stock-a/measured-mesh/raw.tar.gz",
+      "claims_between_observer_snapshots": 172,
+      "cursor_contention_hints": 57,
+      "cursor_grant_rows": 64,
+      "drain_ms": 673.32,
+      "durable_enqueue_transactions": 1,
+      "empty_markers": 147,
+      "enqueue_ms": 1020.614,
+      "fallback_markers": 66,
+      "jobs": 64,
+      "last_grant_ms": 642.875,
+      "set_grant_rows": 0,
+      "set_lock_timeouts": 0,
+      "sha256": "2a76ca472a9793093c8113573918dbd57e014052adb4def9a61faa3c795dfba8",
+      "sql": {
+        "begin": {
+          "calls": 279,
+          "execution_ms": 2.279110999999998,
+          "rows": 0
+        },
+        "commit": {
+          "calls": 279,
+          "execution_ms": 0.14677100000000004,
+          "rows": 0
+        },
+        "cursor": {
+          "calls": 66,
+          "execution_ms": 421.5082509999999,
+          "rows": 121
+        },
+        "due_since": {
+          "calls": 147,
+          "execution_ms": 5.545000999999999,
+          "rows": 147
+        },
+        "probe_due": {
+          "calls": 66,
+          "execution_ms": 18.89437699999999,
+          "rows": 66
+        },
+        "set": {
+          "calls": 213,
+          "execution_ms": 2740.3339900000005,
+          "rows": 213
+        }
+      },
+      "storage": {
+        "args_compression": "",
+        "args_storage": "e",
+        "default_toast_compression": "pglz",
+        "max_connections": 96,
+        "shared_buffers": "128MB",
+        "storage": "external-4m",
+        "topology": "stock",
+        "wal_compression": "off",
+        "work_mem": "4MB"
+      },
+      "submit_ms": 1693.934,
+      "terminal_xids": 64,
+      "writer": {
+        "bulk": 0,
+        "scalar": 64
+      }
+    },
+    "measured-stock-b": {
+      "app_xids": 128,
+      "archive": "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/native/external-4m/blocks/02-large.1795561271970170000/measured-stock-b/measured-mesh/raw.tar.gz",
+      "claims_between_observer_snapshots": 186,
+      "cursor_contention_hints": 63,
+      "cursor_grant_rows": 64,
+      "drain_ms": 702.765,
+      "durable_enqueue_transactions": 1,
+      "empty_markers": 146,
+      "enqueue_ms": 1007.721,
+      "fallback_markers": 73,
+      "jobs": 64,
+      "last_grant_ms": 672.211,
+      "set_grant_rows": 0,
+      "set_lock_timeouts": 0,
+      "sha256": "91d68c5857afaef133c21f8aa57574fdb60e5b47a9ca38a4ffb9a111a8f89f27",
+      "sql": {
+        "begin": {
+          "calls": 292,
+          "execution_ms": 2.4547829999999995,
+          "rows": 0
+        },
+        "commit": {
+          "calls": 292,
+          "execution_ms": 0.17257200000000011,
+          "rows": 0
+        },
+        "cursor": {
+          "calls": 73,
+          "execution_ms": 408.561638,
+          "rows": 127
+        },
+        "due_since": {
+          "calls": 146,
+          "execution_ms": 5.402881000000001,
+          "rows": 146
+        },
+        "probe_due": {
+          "calls": 73,
+          "execution_ms": 18.993654,
+          "rows": 73
+        },
+        "set": {
+          "calls": 219,
+          "execution_ms": 2294.6402699999994,
+          "rows": 219
+        }
+      },
+      "storage": {
+        "args_compression": "",
+        "args_storage": "e",
+        "default_toast_compression": "pglz",
+        "max_connections": 96,
+        "shared_buffers": "128MB",
+        "storage": "external-4m",
+        "topology": "stock",
+        "wal_compression": "off",
+        "work_mem": "4MB"
+      },
+      "submit_ms": 1710.486,
+      "terminal_xids": 64,
+      "writer": {
+        "bulk": 0,
+        "scalar": 64
+      }
+    },
+    "measured-thin": {
+      "app_xids": 128,
+      "archive": "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/native/external-4m/blocks/02-large.1795561271970170000/measured-thin/measured-mesh/raw.tar.gz",
+      "claims_between_observer_snapshots": 250,
+      "cursor_contention_hints": 78,
+      "cursor_grant_rows": 64,
+      "diagnostic": {
+        "cursor": "1cdf6580d7ba89ed9234241677adf4b5078f22c8564691bdf71b6a1b31546f3d",
+        "mode": "thin",
+        "namespace": "parity_08ee67eded04ab28",
+        "set_after": "5120bf9108f6515739937ba7a7973eabdf7911a147f408138e8a02235e4169a6",
+        "set_before": "ee084417fdfb20faaf45a18b52a79abd37f4847838e0ef8c1bd5f1e8d5f3b319"
+      },
+      "drain_ms": 637.624,
+      "durable_enqueue_transactions": 1,
+      "empty_markers": 0,
+      "enqueue_ms": 1040.788,
+      "fallback_markers": 230,
+      "jobs": 64,
+      "last_grant_ms": 588.45,
+      "physical": {
+        "both": 0,
+        "compression_only": 0,
+        "size_only": 64
+      },
+      "set_grant_rows": 0,
+      "set_lock_timeouts": 0,
+      "sha256": "a13fd6bf170a375a2b37586e04cc5473afd093fc2c13607e9c277ad21c33d904",
+      "sql": {
+        "begin": {
+          "calls": 460,
+          "execution_ms": 3.0574590000000024,
+          "rows": 0
+        },
+        "commit": {
+          "calls": 460,
+          "execution_ms": 0.2416010000000001,
+          "rows": 0
+        },
+        "cursor": {
+          "calls": 230,
+          "execution_ms": 609.320318,
+          "rows": 142
+        },
+        "probe_due": {
+          "calls": 230,
+          "execution_ms": 27.340962000000005,
+          "rows": 230
+        },
+        "set": {
+          "calls": 230,
+          "execution_ms": 46.31660999999998,
+          "rows": 230
+        }
+      },
+      "storage": {
+        "args_compression": "",
+        "args_storage": "e",
+        "default_toast_compression": "pglz",
+        "max_connections": 96,
+        "shared_buffers": "128MB",
+        "storage": "external-4m",
+        "topology": "stock",
+        "wal_compression": "off",
+        "work_mem": "4MB"
+      },
+      "submit_ms": 1678.412,
+      "terminal_xids": 64,
+      "writer": {
+        "bulk": 0,
+        "scalar": 64
+      }
+    },
+    "measured-trace": {
+      "app_xids": 128,
+      "archive": "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/native/external-4m/blocks/02-large.1795561271970170000/measured-trace/measured-mesh/raw.tar.gz",
+      "claims_between_observer_snapshots": 164,
+      "cursor_contention_hints": 54,
+      "cursor_grant_rows": 64,
+      "diagnostic": {
+        "mode": "trace",
+        "settings": {
+          "log_min_duration_statement": "0",
+          "log_parameter_max_length": "0",
+          "log_parameter_max_length_on_error": "0"
+        }
+      },
+      "drain_ms": 673.559,
+      "durable_enqueue_transactions": 1,
+      "empty_markers": 147,
+      "enqueue_ms": 1103.273,
+      "fallback_markers": 62,
+      "jobs": 64,
+      "last_grant_ms": 641.182,
+      "physical": {
+        "both": 0,
+        "compression_only": 0,
+        "size_only": 64
+      },
+      "set_grant_rows": 0,
+      "set_lock_timeouts": 1,
+      "sha256": "32940892404d28efa52745dabfeeea25dc8b7623254c3784f807da848dbacdb8",
+      "sql": {
+        "begin": {
+          "calls": 272,
+          "execution_ms": 2.501418999999999,
+          "rows": 0
+        },
+        "commit": {
+          "calls": 271,
+          "execution_ms": 0.16802000000000006,
+          "rows": 0
+        },
+        "cursor": {
+          "calls": 62,
+          "execution_ms": 422.6649570000001,
+          "rows": 118
+        },
+        "due_since": {
+          "calls": 147,
+          "execution_ms": 5.8440210000000015,
+          "rows": 147
+        },
+        "probe_due": {
+          "calls": 62,
+          "execution_ms": 10.409680999999999,
+          "rows": 62
+        },
+        "rollback": {
+          "calls": 1,
+          "execution_ms": 0.0013,
+          "rows": 0
+        },
+        "set": {
+          "calls": 209,
+          "execution_ms": 2518.177751000002,
+          "rows": 209
+        }
+      },
+      "storage": {
+        "args_compression": "",
+        "args_storage": "e",
+        "default_toast_compression": "pglz",
+        "max_connections": 96,
+        "shared_buffers": "128MB",
+        "storage": "external-4m",
+        "topology": "stock",
+        "wal_compression": "off",
+        "work_mem": "4MB"
+      },
+      "submit_ms": 1776.832,
+      "terminal_xids": 64,
+      "trace": {
+        "before_final_grant_set_coverage_ms": 567.247,
+        "before_terminal_set_coverage_ms": 567.247,
+        "cross_enqueue": 0,
+        "sequences": [
+          {
+            "cursor_execute_end_us": 1795561336939000,
+            "pid": "2586249",
+            "probe_begin_us": 1795561336923779,
+            "set_begin_us": 1795561336914963,
+            "set_commit_end_us": 1795561336919000,
+            "set_select_begin_us": 1795561336915683,
+            "set_select_end_us": 1795561336918000
+          },
+          {
+            "cursor_execute_end_us": 1795561337011000,
+            "pid": "2586249",
+            "probe_begin_us": 1795561337008901,
+            "set_begin_us": 1795561336945980,
+            "set_commit_end_us": 1795561337008000,
+            "set_select_begin_us": 1795561336946698,
+            "set_select_end_us": 1795561337006000
+          },
+          {
+            "cursor_execute_end_us": 1795561337103000,
+            "pid": "2586249",
+            "probe_begin_us": 1795561337100878,
+            "set_begin_us": 1795561337026980,
+            "set_commit_end_us": 1795561337100000,
+            "set_select_begin_us": 1795561337027554,
+            "set_select_end_us": 1795561337094000
+          },
+          {
+            "cursor_execute_end_us": 1795561337138000,
+            "pid": "2586249",
+            "probe_begin_us": 1795561337131904,
+            "set_begin_us": 1795561337118955,
+            "set_commit_end_us": 1795561337131000,
+            "set_select_begin_us": 1795561337119894,
+            "set_select_end_us": 1795561337128000
+          },
+          {
+            "cursor_execute_end_us": 1795561337233000,
+            "pid": "2586249",
+            "probe_begin_us": 1795561337227902,
+            "set_begin_us": 1795561337167967,
+            "set_commit_end_us": 1795561337226000,
+            "set_select_begin_us": 1795561337168058,
+            "set_select_end_us": 1795561337221000
+          },
+          {
+            "cursor_execute_end_us": 1795561337320000,
+            "pid": "2586249",
+            "probe_begin_us": 1795561337317905,
+            "set_begin_us": 1795561337297976,
+            "set_commit_end_us": 1795561337317000,
+            "set_select_begin_us": 1795561337297911,
+            "set_select_end_us": 1795561337316000
+          },
+          {
+            "cursor_execute_end_us": 1795561337453000,
+            "pid": "2586249",
+            "probe_begin_us": 1795561337448890,
+            "set_begin_us": 1795561337431970,
+            "set_commit_end_us": 1795561337447000,
+            "set_select_begin_us": 1795561337433274,
+            "set_select_end_us": 1795561337446000
+          },
+          {
+            "cursor_execute_end_us": 1795561336954000,
+            "pid": "2586264",
+            "probe_begin_us": 1795561336947880,
+            "set_begin_us": 1795561336916972,
+            "set_commit_end_us": 1795561336947000,
+            "set_select_begin_us": 1795561336916804,
+            "set_select_end_us": 1795561336946000
+          },
+          {
+            "cursor_execute_end_us": 1795561337100000,
+            "pid": "2586264",
+            "probe_begin_us": 1795561337091444,
+            "set_begin_us": 1795561336957983,
+            "set_commit_end_us": 1795561337089000,
+            "set_select_begin_us": 1795561336958581,
+            "set_select_end_us": 1795561337083000
+          },
+          {
+            "cursor_execute_end_us": 1795561337121000,
+            "pid": "2586264",
+            "probe_begin_us": 1795561337115908,
+            "set_begin_us": 1795561337109968,
+            "set_commit_end_us": 1795561337115000,
+            "set_select_begin_us": 1795561337111313,
+            "set_select_end_us": 1795561337112000
+          },
+          {
+            "cursor_execute_end_us": 1795561337145000,
+            "pid": "2586264",
+            "probe_begin_us": 1795561337140905,
+            "set_begin_us": 1795561337132972,
+            "set_commit_end_us": 1795561337139000,
+            "set_select_begin_us": 1795561337133438,
+            "set_select_end_us": 1795561337137000
+          },
+          {
+            "cursor_execute_end_us": 1795561337243000,
+            "pid": "2586264",
+            "probe_begin_us": 1795561337238863,
+            "set_begin_us": 1795561337172970,
+            "set_commit_end_us": 1795561337236000,
+            "set_select_begin_us": 1795561337173437,
+            "set_select_end_us": 1795561337234000
+          },
+          {
+            "cursor_execute_end_us": 1795561337315000,
+            "pid": "2586264",
+            "probe_begin_us": 1795561337311906,
+            "set_begin_us": 1795561337284968,
+            "set_commit_end_us": 1795561337311000,
+            "set_select_begin_us": 1795561337285708,
+            "set_select_end_us": 1795561337310000
+          },
+          {
+            "cursor_execute_end_us": 1795561337454000,
+            "pid": "2586264",
+            "probe_begin_us": 1795561337442856,
+            "set_begin_us": 1795561337400939,
+            "set_commit_end_us": 1795561337442000,
+            "set_select_begin_us": 1795561337402208,
+            "set_select_end_us": 1795561337440000
+          },
+          {
+            "cursor_execute_end_us": 1795561336940000,
+            "pid": "2586286",
+            "probe_begin_us": 1795561336924781,
+            "set_begin_us": 1795561336913943,
+            "set_commit_end_us": 1795561336922000,
+            "set_select_begin_us": 1795561336916015,
+            "set_select_end_us": 1795561336921000
+          },
+          {
+            "cursor_execute_end_us": 1795561337018000,
+            "pid": "2586286",
+            "probe_begin_us": 1795561337014901,
+            "set_begin_us": 1795561336950979,
+            "set_commit_end_us": 1795561337012000,
+            "set_select_begin_us": 1795561336952961,
+            "set_select_end_us": 1795561337009000
+          },
+          {
+            "cursor_execute_end_us": 1795561337099000,
+            "pid": "2586286",
+            "probe_begin_us": 1795561337094905,
+            "set_begin_us": 1795561337025981,
+            "set_commit_end_us": 1795561337092000,
+            "set_select_begin_us": 1795561337025898,
+            "set_select_end_us": 1795561337091000
+          },
+          {
+            "cursor_execute_end_us": 1795561337136000,
+            "pid": "2586286",
+            "probe_begin_us": 1795561337128908,
+            "set_begin_us": 1795561337117977,
+            "set_commit_end_us": 1795561337127000,
+            "set_select_begin_us": 1795561337120176,
+            "set_select_end_us": 1795561337126000
+          },
+          {
+            "cursor_execute_end_us": 1795561337236000,
+            "pid": "2586286",
+            "probe_begin_us": 1795561337230890,
+            "set_begin_us": 1795561337168975,
+            "set_commit_end_us": 1795561337230000,
+            "set_select_begin_us": 1795561337168906,
+            "set_select_end_us": 1795561337228000
+          },
+          {
+            "cursor_execute_end_us": 1795561337304000,
+            "pid": "2586286",
+            "probe_begin_us": 1795561337299901,
+            "set_begin_us": 1795561337271970,
+            "set_commit_end_us": 1795561337299000,
+            "set_select_begin_us": 1795561337272324,
+            "set_select_end_us": 1795561337297000
+          },
+          {
+            "cursor_execute_end_us": 1795561337438000,
+            "pid": "2586286",
+            "probe_begin_us": 1795561337435897,
+            "set_begin_us": 1795561337390961,
+            "set_commit_end_us": 1795561337435000,
+            "set_select_begin_us": 1795561337391680,
+            "set_select_end_us": 1795561337433000
+          },
+          {
+            "cursor_execute_end_us": 1795561336953000,
+            "pid": "2586302",
+            "probe_begin_us": 1795561336947799,
+            "set_begin_us": 1795561336916964,
+            "set_commit_end_us": 1795561336946000,
+            "set_select_begin_us": 1795561336917373,
+            "set_select_end_us": 1795561336938000
+          },
+          {
+            "cursor_execute_end_us": 1795561337113000,
+            "pid": "2586302",
+            "probe_begin_us": 1795561337110907,
+            "set_begin_us": 1795561337063973,
+            "set_commit_end_us": 1795561337110000,
+            "set_select_begin_us": 1795561337064203,
+            "set_select_end_us": 1795561337107000
+          },
+          {
+            "cursor_execute_end_us": 1795561337144000,
+            "pid": "2586302",
+            "probe_begin_us": 1795561337139897,
+            "set_begin_us": 1795561337121976,
+            "set_commit_end_us": 1795561337138000,
+            "set_select_begin_us": 1795561337122324,
+            "set_select_end_us": 1795561337131000
+          },
+          {
+            "cursor_execute_end_us": 1795561337227000,
+            "pid": "2586302",
+            "probe_begin_us": 1795561337220898,
+            "set_begin_us": 1795561337163854,
+            "set_commit_end_us": 1795561337219000,
+            "set_select_begin_us": 1795561337164142,
+            "set_select_end_us": 1795561337216000
+          },
+          {
+            "cursor_execute_end_us": 1795561337308000,
+            "pid": "2586302",
+            "probe_begin_us": 1795561337305881,
+            "set_begin_us": 1795561337278969,
+            "set_commit_end_us": 1795561337305000,
+            "set_select_begin_us": 1795561337279237,
+            "set_select_end_us": 1795561337302000
+          },
+          {
+            "cursor_execute_end_us": 1795561337437000,
+            "pid": "2586302",
+            "probe_begin_us": 1795561337432846,
+            "set_begin_us": 1795561337381973,
+            "set_commit_end_us": 1795561337432000,
+            "set_select_begin_us": 1795561337382607,
+            "set_select_end_us": 1795561337431000
+          },
+          {
+            "cursor_execute_end_us": 1795561336994000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561336935482,
+            "set_begin_us": 1795561336915971,
+            "set_commit_end_us": 1795561336934000,
+            "set_select_begin_us": 1795561336916903,
+            "set_select_end_us": 1795561336932000
+          },
+          {
+            "cursor_execute_end_us": 1795561337113000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561337108997,
+            "set_begin_us": 1795561337038974,
+            "set_commit_end_us": 1795561337106000,
+            "set_select_begin_us": 1795561337038412,
+            "set_select_end_us": 1795561337101000
+          },
+          {
+            "cursor_execute_end_us": 1795561337125000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561337122908,
+            "set_begin_us": 1795561337116989,
+            "set_commit_end_us": 1795561337122000,
+            "set_select_begin_us": 1795561337117353,
+            "set_select_end_us": 1795561337118000
+          },
+          {
+            "cursor_execute_end_us": 1795561337140000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561337135907,
+            "set_begin_us": 1795561337128981,
+            "set_commit_end_us": 1795561337135000,
+            "set_select_begin_us": 1795561337129802,
+            "set_select_end_us": 1795561337134000
+          },
+          {
+            "cursor_execute_end_us": 1795561337211000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561337208881,
+            "set_begin_us": 1795561337150976,
+            "set_commit_end_us": 1795561337209000,
+            "set_select_begin_us": 1795561337150642,
+            "set_select_end_us": 1795561337207000
+          },
+          {
+            "cursor_execute_end_us": 1795561337288000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561337246903,
+            "set_begin_us": 1795561337241880,
+            "set_commit_end_us": 1795561337246000,
+            "set_select_begin_us": 1795561337243828,
+            "set_select_end_us": 1795561337245000
+          },
+          {
+            "cursor_execute_end_us": 1795561337378000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561337374898,
+            "set_begin_us": 1795561337323955,
+            "set_commit_end_us": 1795561337371000,
+            "set_select_begin_us": 1795561337324723,
+            "set_select_end_us": 1795561337370000
+          },
+          {
+            "cursor_execute_end_us": 1795561337441000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561337433899,
+            "set_begin_us": 1795561337381984,
+            "set_commit_end_us": 1795561337431000,
+            "set_select_begin_us": 1795561337382429,
+            "set_select_end_us": 1795561337430000
+          },
+          {
+            "cursor_execute_end_us": 1795561337458000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561337455898,
+            "set_begin_us": 1795561337448972,
+            "set_commit_end_us": 1795561337455000,
+            "set_select_begin_us": 1795561337450375,
+            "set_select_end_us": 1795561337451000
+          },
+          {
+            "cursor_execute_end_us": 1795561337519000,
+            "pid": "2586324",
+            "probe_begin_us": 1795561337517906,
+            "set_begin_us": 1795561337471960,
+            "set_commit_end_us": 1795561337517000,
+            "set_select_begin_us": 1795561337472484,
+            "set_select_end_us": 1795561337517000
+          },
+          {
+            "cursor_execute_end_us": 1795561337010000,
+            "pid": "2586326",
+            "probe_begin_us": 1795561337006877,
+            "set_begin_us": 1795561336917968,
+            "set_commit_end_us": 1795561337005000,
+            "set_select_begin_us": 1795561336919066,
+            "set_select_end_us": 1795561337003000
+          },
+          {
+            "cursor_execute_end_us": 1795561337098000,
+            "pid": "2586326",
+            "probe_begin_us": 1795561337093741,
+            "set_begin_us": 1795561337012984,
+            "set_commit_end_us": 1795561337092000,
+            "set_select_begin_us": 1795561337012822,
+            "set_select_end_us": 1795561337089000
+          },
+          {
+            "cursor_execute_end_us": 1795561337120000,
+            "pid": "2586326",
+            "probe_begin_us": 1795561337116799,
+            "set_begin_us": 1795561337114958,
+            "set_commit_end_us": 1795561337116000,
+            "set_select_begin_us": 1795561337115256,
+            "set_select_end_us": 1795561337116000
+          },
+          {
+            "cursor_execute_end_us": 1795561337197000,
+            "pid": "2586326",
+            "probe_begin_us": 1795561337144906,
+            "set_begin_us": 1795561337136974,
+            "set_commit_end_us": 1795561337142000,
+            "set_select_begin_us": 1795561337136620,
+            "set_select_end_us": 1795561337139000
+          },
+          {
+            "cursor_execute_end_us": 1795561337297000,
+            "pid": "2586326",
+            "probe_begin_us": 1795561337295899,
+            "set_begin_us": 1795561337251973,
+            "set_commit_end_us": 1795561337295000,
+            "set_select_begin_us": 1795561337252580,
+            "set_select_end_us": 1795561337293000
+          },
+          {
+            "cursor_execute_end_us": 1795561337363000,
+            "pid": "2586326",
+            "probe_begin_us": 1795561337315796,
+            "set_begin_us": 1795561337297983,
+            "set_commit_end_us": 1795561337315000,
+            "set_select_begin_us": 1795561337298017,
+            "set_select_end_us": 1795561337312000
+          },
+          {
+            "cursor_execute_end_us": 1795561337442000,
+            "pid": "2586326",
+            "probe_begin_us": 1795561337439860,
+            "set_begin_us": 1795561337391973,
+            "set_commit_end_us": 1795561337439000,
+            "set_select_begin_us": 1795561337392383,
+            "set_select_end_us": 1795561337435000
+          },
+          {
+            "cursor_execute_end_us": 1795561337447000,
+            "pid": "2586326",
+            "probe_begin_us": 1795561337444851,
+            "set_begin_us": 1795561337441986,
+            "set_commit_end_us": 1795561337444000,
+            "set_select_begin_us": 1795561337442250,
+            "set_select_end_us": 1795561337443000
+          },
+          {
+            "cursor_execute_end_us": 1795561337510000,
+            "pid": "2586326",
+            "probe_begin_us": 1795561337460906,
+            "set_begin_us": 1795561337454972,
+            "set_commit_end_us": 1795561337460000,
+            "set_select_begin_us": 1795561337455550,
+            "set_select_end_us": 1795561337459000
+          },
+          {
+            "cursor_execute_end_us": 1795561336955000,
+            "pid": "2586336",
+            "probe_begin_us": 1795561336950879,
+            "set_begin_us": 1795561336917965,
+            "set_commit_end_us": 1795561336949000,
+            "set_select_begin_us": 1795561336918903,
+            "set_select_end_us": 1795561336949000
+          },
+          {
+            "cursor_execute_end_us": 1795561337026000,
+            "pid": "2586336",
+            "probe_begin_us": 1795561337019884,
+            "set_begin_us": 1795561336956983,
+            "set_commit_end_us": 1795561337017000,
+            "set_select_begin_us": 1795561336957932,
+            "set_select_end_us": 1795561337016000
+          },
+          {
+            "cursor_execute_end_us": 1795561337106000,
+            "pid": "2586336",
+            "probe_begin_us": 1795561337101879,
+            "set_begin_us": 1795561337036979,
+            "set_commit_end_us": 1795561337101000,
+            "set_select_begin_us": 1795561337037484,
+            "set_select_end_us": 1795561337096000
+          },
+          {
+            "cursor_execute_end_us": 1795561337133000,
+            "pid": "2586336",
+            "probe_begin_us": 1795561337125907,
+            "set_begin_us": 1795561337117960,
+            "set_commit_end_us": 1795561337125000,
+            "set_select_begin_us": 1795561337119209,
+            "set_select_end_us": 1795561337122000
+          },
+          {
+            "cursor_execute_end_us": 1795561337218000,
+            "pid": "2586336",
+            "probe_begin_us": 1795561337213907,
+            "set_begin_us": 1795561337161934,
+            "set_commit_end_us": 1795561337213000,
+            "set_select_begin_us": 1795561337162801,
+            "set_select_end_us": 1795561337212000
+          },
+          {
+            "cursor_execute_end_us": 1795561337313000,
+            "pid": "2586336",
+            "probe_begin_us": 1795561337309879,
+            "set_begin_us": 1795561337278977,
+            "set_commit_end_us": 1795561337309000,
+            "set_select_begin_us": 1795561337279573,
+            "set_select_end_us": 1795561337306000
+          },
+          {
+            "cursor_execute_end_us": 1795561337453000,
+            "pid": "2586336",
+            "probe_begin_us": 1795561337450902,
+            "set_begin_us": 1795561337435977,
+            "set_commit_end_us": 1795561337450000,
+            "set_select_begin_us": 1795561337437221,
+            "set_select_end_us": 1795561337448000
+          },
+          {
+            "cursor_execute_end_us": 1795561336945000,
+            "pid": "2586343",
+            "probe_begin_us": 1795561336930809,
+            "set_begin_us": 1795561336915972,
+            "set_commit_end_us": 1795561336929000,
+            "set_select_begin_us": 1795561336915947,
+            "set_select_end_us": 1795561336924000
+          },
+          {
+            "cursor_execute_end_us": 1795561337070000,
+            "pid": "2586343",
+            "probe_begin_us": 1795561337015881,
+            "set_begin_us": 1795561336952982,
+            "set_commit_end_us": 1795561337015000,
+            "set_select_begin_us": 1795561336956090,
+            "set_select_end_us": 1795561337012000
+          },
+          {
+            "cursor_execute_end_us": 1795561337151000,
+            "pid": "2586343",
+            "probe_begin_us": 1795561337146900,
+            "set_begin_us": 1795561337142959,
+            "set_commit_end_us": 1795561337146000,
+            "set_select_begin_us": 1795561337143405,
+            "set_select_end_us": 1795561337144000
+          },
+          {
+            "cursor_execute_end_us": 1795561337222000,
+            "pid": "2586343",
+            "probe_begin_us": 1795561337212900,
+            "set_begin_us": 1795561337150986,
+            "set_commit_end_us": 1795561337211000,
+            "set_select_begin_us": 1795561337151313,
+            "set_select_end_us": 1795561337209000
+          },
+          {
+            "cursor_execute_end_us": 1795561337244000,
+            "pid": "2586343",
+            "probe_begin_us": 1795561337241896,
+            "set_begin_us": 1795561337231977,
+            "set_commit_end_us": 1795561337242000,
+            "set_select_begin_us": 1795561337233500,
+            "set_select_end_us": 1795561337238000
+          },
+          {
+            "cursor_execute_end_us": 1795561337304000,
+            "pid": "2586343",
+            "probe_begin_us": 1795561337297655,
+            "set_begin_us": 1795561337260964,
+            "set_commit_end_us": 1795561337295000,
+            "set_select_begin_us": 1795561337262149,
+            "set_select_end_us": 1795561337295000
+          },
+          {
+            "cursor_execute_end_us": 1795561337425000,
+            "pid": "2586343",
+            "probe_begin_us": 1795561337371725,
+            "set_begin_us": 1795561337324972,
+            "set_commit_end_us": 1795561337371000,
+            "set_select_begin_us": 1795561337325689,
+            "set_select_end_us": 1795561337371000
+          },
+          {
+            "cursor_execute_end_us": 1795561337464000,
+            "pid": "2586343",
+            "probe_begin_us": 1795561337459900,
+            "set_begin_us": 1795561337445973,
+            "set_commit_end_us": 1795561337458000,
+            "set_select_begin_us": 1795561337447147,
+            "set_select_end_us": 1795561337456000
+          },
+          {
+            "cursor_execute_end_us": 1795561337560000,
+            "pid": "2586343",
+            "probe_begin_us": 1795561337516893,
+            "set_begin_us": 1795561337464985,
+            "set_commit_end_us": 1795561337516000,
+            "set_select_begin_us": 1795561337464569,
+            "set_select_end_us": 1795561337515000
+          }
+        ]
+      },
+      "writer": {
+        "bulk": 0,
+        "scalar": 64
+      }
+    },
+    "warmup-stock-a": {
+      "app_xids": 128,
+      "archive": "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/native/external-4m/blocks/02-large.1795561271970170000/warmup-stock-a/warmup-mesh/raw.tar.gz",
+      "claims_between_observer_snapshots": 161,
+      "cursor_contention_hints": 52,
+      "cursor_grant_rows": 64,
+      "drain_ms": 663.653,
+      "durable_enqueue_transactions": 1,
+      "empty_markers": 148,
+      "enqueue_ms": 1038.767,
+      "fallback_markers": 60,
+      "jobs": 64,
+      "last_grant_ms": 616.074,
+      "set_grant_rows": 0,
+      "set_lock_timeouts": 3,
+      "sha256": "c9448afc54faca1a843d53ce31a39d369fe58f75c7e6ead0b9789efa079cef52",
+      "sql": {
+        "begin": {
+          "calls": 271,
+          "execution_ms": 2.382008000000001,
+          "rows": 0
+        },
+        "commit": {
+          "calls": 268,
+          "execution_ms": 0.17370000000000002,
+          "rows": 0
+        },
+        "cursor": {
+          "calls": 60,
+          "execution_ms": 399.3435220000001,
+          "rows": 116
+        },
+        "due_since": {
+          "calls": 148,
+          "execution_ms": 5.922606999999997,
+          "rows": 148
+        },
+        "probe_due": {
+          "calls": 60,
+          "execution_ms": 16.794052,
+          "rows": 60
+        },
+        "rollback": {
+          "calls": 3,
+          "execution_ms": 0.0033,
+          "rows": 0
+        },
+        "set": {
+          "calls": 208,
+          "execution_ms": 2568.5271969999985,
+          "rows": 208
+        }
+      },
+      "storage": {
+        "args_compression": "",
+        "args_storage": "e",
+        "default_toast_compression": "pglz",
+        "max_connections": 96,
+        "shared_buffers": "128MB",
+        "storage": "external-4m",
+        "topology": "stock",
+        "wal_compression": "off",
+        "work_mem": "4MB"
+      },
+      "submit_ms": 1702.42,
+      "terminal_xids": 64,
+      "writer": {
+        "bulk": 0,
+        "scalar": 64
+      }
+    },
+    "warmup-stock-b": {
+      "app_xids": 128,
+      "archive": "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/native/external-4m/blocks/02-large.1795561271970170000/warmup-stock-b/warmup-mesh/raw.tar.gz",
+      "claims_between_observer_snapshots": 168,
+      "cursor_contention_hints": 57,
+      "cursor_grant_rows": 64,
+      "drain_ms": 671.235,
+      "durable_enqueue_transactions": 1,
+      "empty_markers": 142,
+      "enqueue_ms": 1006.483,
+      "fallback_markers": 66,
+      "jobs": 64,
+      "last_grant_ms": 650.327,
+      "set_grant_rows": 0,
+      "set_lock_timeouts": 2,
+      "sha256": "cc5caa3936ed1b0d9d91278db68f5ed215ec91cdd8f8637f334fe1549bcba075",
+      "sql": {
+        "begin": {
+          "calls": 276,
+          "execution_ms": 2.2127459999999988,
+          "rows": 0
+        },
+        "commit": {
+          "calls": 274,
+          "execution_ms": 0.19185000000000005,
+          "rows": 0
+        },
+        "cursor": {
+          "calls": 66,
+          "execution_ms": 401.23372399999994,
+          "rows": 121
+        },
+        "due_since": {
+          "calls": 142,
+          "execution_ms": 5.171668,
+          "rows": 142
+        },
+        "probe_due": {
+          "calls": 66,
+          "execution_ms": 12.344749999999998,
+          "rows": 66
+        },
+        "rollback": {
+          "calls": 2,
+          "execution_ms": 0.00273,
+          "rows": 0
+        },
+        "set": {
+          "calls": 208,
+          "execution_ms": 2618.0846449999985,
+          "rows": 208
+        }
+      },
+      "storage": {
+        "args_compression": "",
+        "args_storage": "e",
+        "default_toast_compression": "pglz",
+        "max_connections": 96,
+        "shared_buffers": "128MB",
+        "storage": "external-4m",
+        "topology": "stock",
+        "wal_compression": "off",
+        "work_mem": "4MB"
+      },
+      "submit_ms": 1677.718,
+      "terminal_xids": 64,
+      "writer": {
+        "bulk": 0,
+        "scalar": 64
+      }
+    },
+    "warmup-thin": {
+      "app_xids": 128,
+      "archive": "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/native/external-4m/blocks/02-large.1795561271970170000/warmup-thin/warmup-mesh/raw.tar.gz",
+      "claims_between_observer_snapshots": 232,
+      "cursor_contention_hints": 70,
+      "cursor_grant_rows": 64,
+      "diagnostic": {
+        "cursor": "1cdf6580d7ba89ed9234241677adf4b5078f22c8564691bdf71b6a1b31546f3d",
+        "mode": "thin",
+        "namespace": "parity_4142c5f7213f5ac9",
+        "set_after": "ce798b1cc48264c23849ecad301402f6e99786215f039f1885432795c5fb170a",
+        "set_before": "ee084417fdfb20faaf45a18b52a79abd37f4847838e0ef8c1bd5f1e8d5f3b319"
+      },
+      "drain_ms": 575.633,
+      "durable_enqueue_transactions": 1,
+      "empty_markers": 0,
+      "enqueue_ms": 1046.499,
+      "fallback_markers": 224,
+      "jobs": 64,
+      "last_grant_ms": 558.025,
+      "physical": {
+        "both": 0,
+        "compression_only": 0,
+        "size_only": 64
+      },
+      "set_grant_rows": 0,
+      "set_lock_timeouts": 0,
+      "sha256": "bfd322e76ce50edffa61c0d551ed5b5e43f57cc7436d00c70018ef252d5cd342",
+      "sql": {
+        "begin": {
+          "calls": 448,
+          "execution_ms": 3.192021,
+          "rows": 0
+        },
+        "commit": {
+          "calls": 448,
+          "execution_ms": 0.2795710000000003,
+          "rows": 0
+        },
+        "cursor": {
+          "calls": 224,
+          "execution_ms": 583.271696,
+          "rows": 134
+        },
+        "probe_due": {
+          "calls": 224,
+          "execution_ms": 23.711368999999998,
+          "rows": 224
+        },
+        "set": {
+          "calls": 224,
+          "execution_ms": 60.856257999999976,
+          "rows": 224
+        }
+      },
+      "storage": {
+        "args_compression": "",
+        "args_storage": "e",
+        "default_toast_compression": "pglz",
+        "max_connections": 96,
+        "shared_buffers": "128MB",
+        "storage": "external-4m",
+        "topology": "stock",
+        "wal_compression": "off",
+        "work_mem": "4MB"
+      },
+      "submit_ms": 1622.132,
+      "terminal_xids": 64,
+      "writer": {
+        "bulk": 0,
+        "scalar": 64
+      }
+    },
+    "warmup-trace": {
+      "app_xids": 128,
+      "archive": "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/native/external-4m/blocks/02-large.1795561271970170000/warmup-trace/warmup-mesh/raw.tar.gz",
+      "claims_between_observer_snapshots": 171,
+      "cursor_contention_hints": 54,
+      "cursor_grant_rows": 64,
+      "diagnostic": {
+        "mode": "trace",
+        "settings": {
+          "log_min_duration_statement": "0",
+          "log_parameter_max_length": "0",
+          "log_parameter_max_length_on_error": "0"
+        }
+      },
+      "drain_ms": 726.797,
+      "durable_enqueue_transactions": 1,
+      "empty_markers": 154,
+      "enqueue_ms": 1189.83,
+      "fallback_markers": 63,
+      "jobs": 64,
+      "last_grant_ms": 700.578,
+      "physical": {
+        "both": 0,
+        "compression_only": 0,
+        "size_only": 64
+      },
+      "set_grant_rows": 0,
+      "set_lock_timeouts": 2,
+      "sha256": "ed489a59c375d50d424d9e3a23ec0379ee08df38cb3a970aff96ec105d866b4a",
+      "sql": {
+        "begin": {
+          "calls": 282,
+          "execution_ms": 4.223496000000002,
+          "rows": 0
+        },
+        "commit": {
+          "calls": 280,
+          "execution_ms": 0.17619299999999996,
+          "rows": 0
+        },
+        "cursor": {
+          "calls": 63,
+          "execution_ms": 436.050254,
+          "rows": 118
+        },
+        "due_since": {
+          "calls": 154,
+          "execution_ms": 5.947382000000002,
+          "rows": 154
+        },
+        "probe_due": {
+          "calls": 63,
+          "execution_ms": 14.27532,
+          "rows": 63
+        },
+        "rollback": {
+          "calls": 2,
+          "execution_ms": 0.00319,
+          "rows": 0
+        },
+        "set": {
+          "calls": 217,
+          "execution_ms": 2584.3783789999998,
+          "rows": 217
+        }
+      },
+      "storage": {
+        "args_compression": "",
+        "args_storage": "e",
+        "default_toast_compression": "pglz",
+        "max_connections": 96,
+        "shared_buffers": "128MB",
+        "storage": "external-4m",
+        "topology": "stock",
+        "wal_compression": "off",
+        "work_mem": "4MB"
+      },
+      "submit_ms": 1916.627,
+      "terminal_xids": 64,
+      "trace": {
+        "before_final_grant_set_coverage_ms": 646.188,
+        "before_terminal_set_coverage_ms": 646.188,
+        "cross_enqueue": 0,
+        "sequences": [
+          {
+            "cursor_execute_end_us": 1795561290928000,
+            "pid": "2584839",
+            "probe_begin_us": 1795561290924890,
+            "set_begin_us": 1795561290889965,
+            "set_commit_end_us": 1795561290922000,
+            "set_select_begin_us": 1795561290891884,
+            "set_select_end_us": 1795561290920000
+          },
+          {
+            "cursor_execute_end_us": 1795561290940000,
+            "pid": "2584839",
+            "probe_begin_us": 1795561290934900,
+            "set_begin_us": 1795561290930983,
+            "set_commit_end_us": 1795561290934000,
+            "set_select_begin_us": 1795561290930410,
+            "set_select_end_us": 1795561290932000
+          },
+          {
+            "cursor_execute_end_us": 1795561291016000,
+            "pid": "2584839",
+            "probe_begin_us": 1795561291012876,
+            "set_begin_us": 1795561290945979,
+            "set_commit_end_us": 1795561291012000,
+            "set_select_begin_us": 1795561290946614,
+            "set_select_end_us": 1795561291010000
+          },
+          {
+            "cursor_execute_end_us": 1795561291096000,
+            "pid": "2584839",
+            "probe_begin_us": 1795561291088871,
+            "set_begin_us": 1795561291030974,
+            "set_commit_end_us": 1795561291088000,
+            "set_select_begin_us": 1795561291031340,
+            "set_select_end_us": 1795561291087000
+          },
+          {
+            "cursor_execute_end_us": 1795561291177000,
+            "pid": "2584839",
+            "probe_begin_us": 1795561291174898,
+            "set_begin_us": 1795561291128927,
+            "set_commit_end_us": 1795561291174000,
+            "set_select_begin_us": 1795561291129009,
+            "set_select_end_us": 1795561291172000
+          },
+          {
+            "cursor_execute_end_us": 1795561291350000,
+            "pid": "2584839",
+            "probe_begin_us": 1795561291294906,
+            "set_begin_us": 1795561291235956,
+            "set_commit_end_us": 1795561291294000,
+            "set_select_begin_us": 1795561291236650,
+            "set_select_end_us": 1795561291293000
+          },
+          {
+            "cursor_execute_end_us": 1795561291462000,
+            "pid": "2584839",
+            "probe_begin_us": 1795561291457843,
+            "set_begin_us": 1795561291400968,
+            "set_commit_end_us": 1795561291452000,
+            "set_select_begin_us": 1795561291401299,
+            "set_select_end_us": 1795561291449000
+          },
+          {
+            "cursor_execute_end_us": 1795561291544000,
+            "pid": "2584839",
+            "probe_begin_us": 1795561291483809,
+            "set_begin_us": 1795561291467979,
+            "set_commit_end_us": 1795561291481000,
+            "set_select_begin_us": 1795561291468155,
+            "set_select_end_us": 1795561291476000
+          },
+          {
+            "cursor_execute_end_us": 1795561291567000,
+            "pid": "2584839",
+            "probe_begin_us": 1795561291563873,
+            "set_begin_us": 1795561291561972,
+            "set_commit_end_us": 1795561291564000,
+            "set_select_begin_us": 1795561291561999,
+            "set_select_end_us": 1795561291563000
+          },
+          {
+            "cursor_execute_end_us": 1795561290915000,
+            "pid": "2584851",
+            "probe_begin_us": 1795561290904879,
+            "set_begin_us": 1795561290885944,
+            "set_commit_end_us": 1795561290902000,
+            "set_select_begin_us": 1795561290889051,
+            "set_select_end_us": 1795561290900000
+          },
+          {
+            "cursor_execute_end_us": 1795561290999000,
+            "pid": "2584851",
+            "probe_begin_us": 1795561290995896,
+            "set_begin_us": 1795561290923981,
+            "set_commit_end_us": 1795561290993000,
+            "set_select_begin_us": 1795561290923534,
+            "set_select_end_us": 1795561290990000
+          },
+          {
+            "cursor_execute_end_us": 1795561291080000,
+            "pid": "2584851",
+            "probe_begin_us": 1795561291022906,
+            "set_begin_us": 1795561291003981,
+            "set_commit_end_us": 1795561291020000,
+            "set_select_begin_us": 1795561291004324,
+            "set_select_end_us": 1795561291018000
+          },
+          {
+            "cursor_execute_end_us": 1795561291172000,
+            "pid": "2584851",
+            "probe_begin_us": 1795561291168895,
+            "set_begin_us": 1795561291119961,
+            "set_commit_end_us": 1795561291167000,
+            "set_select_begin_us": 1795561291120762,
+            "set_select_end_us": 1795561291165000
+          },
+          {
+            "cursor_execute_end_us": 1795561291190000,
+            "pid": "2584851",
+            "probe_begin_us": 1795561291185903,
+            "set_begin_us": 1795561291172985,
+            "set_commit_end_us": 1795561291185000,
+            "set_select_begin_us": 1795561291172613,
+            "set_select_end_us": 1795561291182000
+          },
+          {
+            "cursor_execute_end_us": 1795561291214000,
+            "pid": "2584851",
+            "probe_begin_us": 1795561291211904,
+            "set_begin_us": 1795561291199974,
+            "set_commit_end_us": 1795561291211000,
+            "set_select_begin_us": 1795561291201267,
+            "set_select_end_us": 1795561291209000
+          },
+          {
+            "cursor_execute_end_us": 1795561291294000,
+            "pid": "2584851",
+            "probe_begin_us": 1795561291291877,
+            "set_begin_us": 1795561291229978,
+            "set_commit_end_us": 1795561291290000,
+            "set_select_begin_us": 1795561291230004,
+            "set_select_end_us": 1795561291286000
+          },
+          {
+            "cursor_execute_end_us": 1795561291385000,
+            "pid": "2584851",
+            "probe_begin_us": 1795561291380771,
+            "set_begin_us": 1795561291312970,
+            "set_commit_end_us": 1795561291379000,
+            "set_select_begin_us": 1795561291313969,
+            "set_select_end_us": 1795561291376000
+          },
+          {
+            "cursor_execute_end_us": 1795561291479000,
+            "pid": "2584851",
+            "probe_begin_us": 1795561291471997,
+            "set_begin_us": 1795561291424962,
+            "set_commit_end_us": 1795561291470000,
+            "set_select_begin_us": 1795561291424724,
+            "set_select_end_us": 1795561291464000
+          },
+          {
+            "cursor_execute_end_us": 1795561290908000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561290898880,
+            "set_begin_us": 1795561290887973,
+            "set_commit_end_us": 1795561290896000,
+            "set_select_begin_us": 1795561290888415,
+            "set_select_end_us": 1795561290895000
+          },
+          {
+            "cursor_execute_end_us": 1795561290937000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561290931906,
+            "set_begin_us": 1795561290919987,
+            "set_commit_end_us": 1795561290931000,
+            "set_select_begin_us": 1795561290920788,
+            "set_select_end_us": 1795561290929000
+          },
+          {
+            "cursor_execute_end_us": 1795561291018000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561291013461,
+            "set_begin_us": 1795561290945977,
+            "set_commit_end_us": 1795561291009000,
+            "set_select_begin_us": 1795561290946525,
+            "set_select_end_us": 1795561291008000
+          },
+          {
+            "cursor_execute_end_us": 1795561291105000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561291099902,
+            "set_begin_us": 1795561291034977,
+            "set_commit_end_us": 1795561291099000,
+            "set_select_begin_us": 1795561291035067,
+            "set_select_end_us": 1795561291094000
+          },
+          {
+            "cursor_execute_end_us": 1795561291180000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561291177878,
+            "set_begin_us": 1795561291137962,
+            "set_commit_end_us": 1795561291177000,
+            "set_select_begin_us": 1795561291137930,
+            "set_select_end_us": 1795561291174000
+          },
+          {
+            "cursor_execute_end_us": 1795561291267000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561291223885,
+            "set_begin_us": 1795561291218979,
+            "set_commit_end_us": 1795561291223000,
+            "set_select_begin_us": 1795561291218699,
+            "set_select_end_us": 1795561291222000
+          },
+          {
+            "cursor_execute_end_us": 1795561291382000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561291376835,
+            "set_begin_us": 1795561291309967,
+            "set_commit_end_us": 1795561291373000,
+            "set_select_begin_us": 1795561291310476,
+            "set_select_end_us": 1795561291362000
+          },
+          {
+            "cursor_execute_end_us": 1795561291462000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561291453844,
+            "set_begin_us": 1795561291390968,
+            "set_commit_end_us": 1795561291450000,
+            "set_select_begin_us": 1795561291391023,
+            "set_select_end_us": 1795561291447000
+          },
+          {
+            "cursor_execute_end_us": 1795561291492000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561291486854,
+            "set_begin_us": 1795561291471967,
+            "set_commit_end_us": 1795561291485000,
+            "set_select_begin_us": 1795561291472637,
+            "set_select_end_us": 1795561291482000
+          },
+          {
+            "cursor_execute_end_us": 1795561291559000,
+            "pid": "2584885",
+            "probe_begin_us": 1795561291557864,
+            "set_begin_us": 1795561291506956,
+            "set_commit_end_us": 1795561291556000,
+            "set_select_begin_us": 1795561291506954,
+            "set_select_end_us": 1795561291552000
+          },
+          {
+            "cursor_execute_end_us": 1795561290914000,
+            "pid": "2584912",
+            "probe_begin_us": 1795561290896874,
+            "set_begin_us": 1795561290887973,
+            "set_commit_end_us": 1795561290895000,
+            "set_select_begin_us": 1795561290887907,
+            "set_select_end_us": 1795561290889000
+          },
+          {
+            "cursor_execute_end_us": 1795561290937000,
+            "pid": "2584912",
+            "probe_begin_us": 1795561290929905,
+            "set_begin_us": 1795561290916971,
+            "set_commit_end_us": 1795561290928000,
+            "set_select_begin_us": 1795561290918051,
+            "set_select_end_us": 1795561290925000
+          },
+          {
+            "cursor_execute_end_us": 1795561291014000,
+            "pid": "2584912",
+            "probe_begin_us": 1795561291009567,
+            "set_begin_us": 1795561290941979,
+            "set_commit_end_us": 1795561291005000,
+            "set_select_begin_us": 1795561290941535,
+            "set_select_end_us": 1795561291000000
+          },
+          {
+            "cursor_execute_end_us": 1795561291098000,
+            "pid": "2584912",
+            "probe_begin_us": 1795561291091901,
+            "set_begin_us": 1795561291029973,
+            "set_commit_end_us": 1795561291090000,
+            "set_select_begin_us": 1795561291031381,
+            "set_select_end_us": 1795561291088000
+          },
+          {
+            "cursor_execute_end_us": 1795561291177000,
+            "pid": "2584912",
+            "probe_begin_us": 1795561291172778,
+            "set_begin_us": 1795561291127945,
+            "set_commit_end_us": 1795561291170000,
+            "set_select_begin_us": 1795561291128759,
+            "set_select_end_us": 1795561291168000
+          },
+          {
+            "cursor_execute_end_us": 1795561291288000,
+            "pid": "2584912",
+            "probe_begin_us": 1795561291284831,
+            "set_begin_us": 1795561291227973,
+            "set_commit_end_us": 1795561291283000,
+            "set_select_begin_us": 1795561291228507,
+            "set_select_end_us": 1795561291281000
+          },
+          {
+            "cursor_execute_end_us": 1795561291392000,
+            "pid": "2584912",
+            "probe_begin_us": 1795561291387842,
+            "set_begin_us": 1795561291377968,
+            "set_commit_end_us": 1795561291386000,
+            "set_select_begin_us": 1795561291378921,
+            "set_select_end_us": 1795561291384000
+          },
+          {
+            "cursor_execute_end_us": 1795561290918000,
+            "pid": "2584909",
+            "probe_begin_us": 1795561290912721,
+            "set_begin_us": 1795561290889969,
+            "set_commit_end_us": 1795561290912000,
+            "set_select_begin_us": 1795561290890132,
+            "set_select_end_us": 1795561290905000
+          },
+          {
+            "cursor_execute_end_us": 1795561290995000,
+            "pid": "2584909",
+            "probe_begin_us": 1795561290990900,
+            "set_begin_us": 1795561290922982,
+            "set_commit_end_us": 1795561290989000,
+            "set_select_begin_us": 1795561290923645,
+            "set_select_end_us": 1795561290989000
+          },
+          {
+            "cursor_execute_end_us": 1795561291023000,
+            "pid": "2584909",
+            "probe_begin_us": 1795561291019898,
+            "set_begin_us": 1795561291001977,
+            "set_commit_end_us": 1795561291017000,
+            "set_select_begin_us": 1795561291001490,
+            "set_select_end_us": 1795561291012000
+          },
+          {
+            "cursor_execute_end_us": 1795561291187000,
+            "pid": "2584909",
+            "probe_begin_us": 1795561291181896,
+            "set_begin_us": 1795561291165974,
+            "set_commit_end_us": 1795561291180000,
+            "set_select_begin_us": 1795561291166659,
+            "set_select_end_us": 1795561291178000
+          },
+          {
+            "cursor_execute_end_us": 1795561291301000,
+            "pid": "2584909",
+            "probe_begin_us": 1795561291298897,
+            "set_begin_us": 1795561291244931,
+            "set_commit_end_us": 1795561291298000,
+            "set_select_begin_us": 1795561291245941,
+            "set_select_end_us": 1795561291296000
+          },
+          {
+            "cursor_execute_end_us": 1795561291471000,
+            "pid": "2584909",
+            "probe_begin_us": 1795561291465834,
+            "set_begin_us": 1795561291419945,
+            "set_commit_end_us": 1795561291463000,
+            "set_select_begin_us": 1795561291420910,
+            "set_select_end_us": 1795561291456000
+          },
+          {
+            "cursor_execute_end_us": 1795561290926000,
+            "pid": "2584921",
+            "probe_begin_us": 1795561290919873,
+            "set_begin_us": 1795561290889967,
+            "set_commit_end_us": 1795561290917000,
+            "set_select_begin_us": 1795561290891018,
+            "set_select_end_us": 1795561290915000
+          },
+          {
+            "cursor_execute_end_us": 1795561291004000,
+            "pid": "2584921",
+            "probe_begin_us": 1795561291000894,
+            "set_begin_us": 1795561290929981,
+            "set_commit_end_us": 1795561290999000,
+            "set_select_begin_us": 1795561290930504,
+            "set_select_end_us": 1795561290994000
+          },
+          {
+            "cursor_execute_end_us": 1795561291026000,
+            "pid": "2584921",
+            "probe_begin_us": 1795561291022694,
+            "set_begin_us": 1795561291007978,
+            "set_commit_end_us": 1795561291022000,
+            "set_select_begin_us": 1795561291008541,
+            "set_select_end_us": 1795561291021000
+          },
+          {
+            "cursor_execute_end_us": 1795561291166000,
+            "pid": "2584921",
+            "probe_begin_us": 1795561291162879,
+            "set_begin_us": 1795561291039959,
+            "set_commit_end_us": 1795561291162000,
+            "set_select_begin_us": 1795561291039904,
+            "set_select_end_us": 1795561291160000
+          },
+          {
+            "cursor_execute_end_us": 1795561291213000,
+            "pid": "2584921",
+            "probe_begin_us": 1795561291209902,
+            "set_begin_us": 1795561291195973,
+            "set_commit_end_us": 1795561291208000,
+            "set_select_begin_us": 1795561291199551,
+            "set_select_end_us": 1795561291206000
+          },
+          {
+            "cursor_execute_end_us": 1795561291370000,
+            "pid": "2584921",
+            "probe_begin_us": 1795561291359813,
+            "set_begin_us": 1795561291262949,
+            "set_commit_end_us": 1795561291359000,
+            "set_select_begin_us": 1795561291262508,
+            "set_select_end_us": 1795561291355000
+          },
+          {
+            "cursor_execute_end_us": 1795561291480000,
+            "pid": "2584921",
+            "probe_begin_us": 1795561291475221,
+            "set_begin_us": 1795561291434925,
+            "set_commit_end_us": 1795561291473000,
+            "set_select_begin_us": 1795561291435923,
+            "set_select_end_us": 1795561291471000
+          },
+          {
+            "cursor_execute_end_us": 1795561290893000,
+            "pid": "2584929",
+            "probe_begin_us": 1795561290889863,
+            "set_begin_us": 1795561290885959,
+            "set_commit_end_us": 1795561290888000,
+            "set_select_begin_us": 1795561290886139,
+            "set_select_end_us": 1795561290887000
+          },
+          {
+            "cursor_execute_end_us": 1795561290914000,
+            "pid": "2584929",
+            "probe_begin_us": 1795561290900876,
+            "set_begin_us": 1795561290895966,
+            "set_commit_end_us": 1795561290900000,
+            "set_select_begin_us": 1795561290897383,
+            "set_select_end_us": 1795561290898000
+          },
+          {
+            "cursor_execute_end_us": 1795561290997000,
+            "pid": "2584929",
+            "probe_begin_us": 1795561290992894,
+            "set_begin_us": 1795561290921964,
+            "set_commit_end_us": 1795561290989000,
+            "set_select_begin_us": 1795561290921793,
+            "set_select_end_us": 1795561290987000
+          },
+          {
+            "cursor_execute_end_us": 1795561291032000,
+            "pid": "2584929",
+            "probe_begin_us": 1795561291026906,
+            "set_begin_us": 1795561291015969,
+            "set_commit_end_us": 1795561291024000,
+            "set_select_begin_us": 1795561291016389,
+            "set_select_end_us": 1795561291022000
+          },
+          {
+            "cursor_execute_end_us": 1795561291218000,
+            "pid": "2584929",
+            "probe_begin_us": 1795561291215890,
+            "set_begin_us": 1795561291204971,
+            "set_commit_end_us": 1795561291215000,
+            "set_select_begin_us": 1795561291206625,
+            "set_select_end_us": 1795561291213000
+          },
+          {
+            "cursor_execute_end_us": 1795561291438000,
+            "pid": "2584929",
+            "probe_begin_us": 1795561291384838,
+            "set_begin_us": 1795561291341945,
+            "set_commit_end_us": 1795561291384000,
+            "set_select_begin_us": 1795561291344476,
+            "set_select_end_us": 1795561291380000
+          },
+          {
+            "cursor_execute_end_us": 1795561291587000,
+            "pid": "2584929",
+            "probe_begin_us": 1795561291561884,
+            "set_begin_us": 1795561291529969,
+            "set_commit_end_us": 1795561291561000,
+            "set_select_begin_us": 1795561291530991,
+            "set_select_end_us": 1795561291557000
+          },
+          {
+            "cursor_execute_end_us": 1795561290980000,
+            "pid": "2584937",
+            "probe_begin_us": 1795561290925883,
+            "set_begin_us": 1795561290891965,
+            "set_commit_end_us": 1795561290925000,
+            "set_select_begin_us": 1795561290892642,
+            "set_select_end_us": 1795561290923000
+          },
+          {
+            "cursor_execute_end_us": 1795561291154000,
+            "pid": "2584937",
+            "probe_begin_us": 1795561291097886,
+            "set_begin_us": 1795561291033952,
+            "set_commit_end_us": 1795561291094000,
+            "set_select_begin_us": 1795561291034304,
+            "set_select_end_us": 1795561291091000
+          },
+          {
+            "cursor_execute_end_us": 1795561291203000,
+            "pid": "2584937",
+            "probe_begin_us": 1795561291182901,
+            "set_begin_us": 1795561291169956,
+            "set_commit_end_us": 1795561291182000,
+            "set_select_begin_us": 1795561291171068,
+            "set_select_end_us": 1795561291181000
+          },
+          {
+            "cursor_execute_end_us": 1795561291223000,
+            "pid": "2584937",
+            "probe_begin_us": 1795561291219904,
+            "set_begin_us": 1795561291206983,
+            "set_commit_end_us": 1795561291220000,
+            "set_select_begin_us": 1795561291207299,
+            "set_select_end_us": 1795561291217000
+          },
+          {
+            "cursor_execute_end_us": 1795561291283000,
+            "pid": "2584937",
+            "probe_begin_us": 1795561291279356,
+            "set_begin_us": 1795561291224982,
+            "set_commit_end_us": 1795561291279000,
+            "set_select_begin_us": 1795561291225644,
+            "set_select_end_us": 1795561291276000
+          },
+          {
+            "cursor_execute_end_us": 1795561291371000,
+            "pid": "2584937",
+            "probe_begin_us": 1795561291362819,
+            "set_begin_us": 1795561291290974,
+            "set_commit_end_us": 1795561291361000,
+            "set_select_begin_us": 1795561291292485,
+            "set_select_end_us": 1795561291359000
+          },
+          {
+            "cursor_execute_end_us": 1795561291460000,
+            "pid": "2584937",
+            "probe_begin_us": 1795561291451237,
+            "set_begin_us": 1795561291383969,
+            "set_commit_end_us": 1795561291448000,
+            "set_select_begin_us": 1795561291384183,
+            "set_select_end_us": 1795561291446000
+          },
+          {
+            "cursor_execute_end_us": 1795561291559000,
+            "pid": "2584937",
+            "probe_begin_us": 1795561291552893,
+            "set_begin_us": 1795561291496968,
+            "set_commit_end_us": 1795561291551000,
+            "set_select_begin_us": 1795561291497430,
+            "set_select_end_us": 1795561291551000
+          }
+        ]
+      },
+      "writer": {
+        "bulk": 0,
+        "scalar": 64
+      }
+    }
+  },
+  "changes": {
+    "drain_ms": {
+      "duplicate_spread_ms": 29.444999999999936,
+      "thin_gain_over_faster_stock_ms": 35.696000000000026,
+      "trace_delta_from_stock_midpoint_ms": -14.48350000000005
+    },
+    "last_grant_ms": {
+      "duplicate_spread_ms": 29.336000000000013,
+      "thin_gain_over_faster_stock_ms": 54.424999999999955,
+      "trace_delta_from_stock_midpoint_ms": -16.36099999999999
+    },
+    "submit_ms": {
+      "duplicate_spread_ms": 16.552000000000135,
+      "thin_gain_over_faster_stock_ms": 15.521999999999935,
+      "trace_delta_from_stock_midpoint_ms": 74.62200000000007
+    }
+  }
+}

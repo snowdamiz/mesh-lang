@@ -1,0 +1,14 @@
+{
+  "group": 2,
+  "order": [
+    "stock-b",
+    "trace",
+    "thin",
+    "stock-a"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "large"
+}
