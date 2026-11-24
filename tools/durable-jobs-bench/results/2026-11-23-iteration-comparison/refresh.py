@@ -180,6 +180,12 @@ def write_scorecard(data):
                      [("ordinary", "Trusted Mesh · 16 MiB"), ("ordinary-4mb-a", "Same binary · 4 MiB A"),
                       ("ordinary-4mb-b", "Same binary · 4 MiB B"), ("oban-external", "Oban"),
                       ("river-external", "River"), ("apalis-external", "Apalis")])
+    add_policy_table(lines, data.get("broker-once-large", {}), "Large jobs with one JSON encode per specification",
+                     "The three Mesh lanes use the same V1 runner. The candidate producer retains each encoded "
+                     "specification across batch boundaries. All six lanes use EXTERNAL storage and 16 MiB work_mem.",
+                     [("ordinary-once", "Mesh · encode once"), ("ordinary-a", "Stock producer A"),
+                      ("ordinary-b", "Stock producer B"), ("oban-external", "Oban"),
+                      ("river-external", "River"), ("apalis-external", "Apalis")])
     product = data.get("trusted-product", {}).get("blocks", [])
     if product:
         lines.extend(["## Public trusted execution", "",

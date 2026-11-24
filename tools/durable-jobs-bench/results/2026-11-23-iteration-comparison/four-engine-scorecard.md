@@ -122,6 +122,19 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | River | 27.33 | 72.61 | 5/5 | 5/5 |
 | Apalis | 75.52 | 321.68 | 0/5 | 0/5 |
 
+## Large jobs with one JSON encode per specification
+
+5/5 matched rotations. The three Mesh lanes use the same V1 runner. The candidate producer retains each encoded specification across batch boundaries. All six lanes use EXTERNAL storage and 16 MiB work_mem.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh · encode once | 47.63 | 110.96 | — | — |
+| Stock producer A | 47.79 | 115.93 | 3/5 | 3/5 |
+| Stock producer B | 47.53 | 110.01 | 3/5 | 3/5 |
+| Oban | 34.98 | 104.22 | 5/5 | 4/5 |
+| River | 25.29 | 67.12 | 5/5 | 5/5 |
+| Apalis | 76.19 | 334.72 | 0/5 | 0/5 |
+
 ## Public trusted execution
 
 The db5937e7 product build waits for actor teardown before settling. The earlier V2 and initial completion-writer builds could settle before teardown. The product comparison reuses the frozen V1 producer and includes both native executable identities in the arm data. [Teardown witness](../2026-11-23-ordinary-completion-writer/combined/README.md#actor-teardown) · [Native product qualification](../2026-11-23-ordinary-trusted-product-db5937e7/README.md)
