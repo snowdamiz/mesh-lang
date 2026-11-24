@@ -9,3 +9,5 @@ From the checkout root, run the following to verify the archived smoke.
 ```sh
 python3 -B tools/durable-jobs-bench/results/2026-11-24-r2-d2-producer-boundary/recover_savepoint.py verify
 ```
+
+All five native rotations reconciled, covering 20 arms, 2,560 completed short jobs and 5,120 independent application writes. Both observer modes missed the frozen perturbation test. The instrumented client recorded a median 33.69 ms inside the bulk wire exchange. The nested observer recorded median inclusive times of 8.36 ms for layout verification and 11.36 ms for the writable SQL statement. These timings describe the instrumented runs. No component qualified as a removable cost under the original rule. The next booked comparison measures cold and prewarmed River.
