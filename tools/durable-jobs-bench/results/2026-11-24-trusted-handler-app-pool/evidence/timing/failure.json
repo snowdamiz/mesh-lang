@@ -1,0 +1,1 @@
+{"message":"[Errno 13] Permission denied: '/proc/2596540/exe'","stage":[["arm.py",282,"run_arm"],["jobs-parity.py",925,"run_trial"],["native-arm.py",92,"capture_runners"],["pathlib.py",1000,"samefile"],["pathlib.py",842,"stat"]],"type":"PermissionError"}
