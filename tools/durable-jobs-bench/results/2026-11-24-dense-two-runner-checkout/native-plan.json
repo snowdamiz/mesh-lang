@@ -1,0 +1,125 @@
+{
+  "advancement": {
+    "mechanism": {
+      "d2": "Every D2-on arm must issue fewer than the 2048 cold application probes; report actual counts and affected SQL execution time.",
+      "writer": "Report independent terminal XID reduction versus both r2-off controls and their spread; retain the original cohort maximum eight and application/enqueue independence."
+    },
+    "minimum_each_clock_percent": 5,
+    "minimum_qualified_rotations": 4,
+    "rule": "For each contrast, on both primary elapsed clocks require faster control minus candidate greater than max(abs(control A minus control B), 5% of faster control), and last effect earlier than both. Report all six rotations, paired medians and ranges; quality alone does not select a candidate.",
+    "total_rotations": 6
+  },
+  "effect_guard": "Enqueue commit through the last application effect must improve against both controls.",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "orders": [
+    [
+      "d2-off-a",
+      "river-2x32",
+      "r2-zero",
+      "d2-on",
+      "apalis-2x32",
+      "r2-off-a",
+      "mesh-v1-2x32",
+      "d2-off-b",
+      "oban-2x32",
+      "r2-off-b"
+    ],
+    [
+      "r2-zero",
+      "mesh-v1-2x32",
+      "d2-off-a",
+      "r2-off-b",
+      "river-2x32",
+      "d2-off-b",
+      "r2-off-a",
+      "oban-2x32",
+      "d2-on",
+      "apalis-2x32"
+    ],
+    [
+      "d2-on",
+      "apalis-2x32",
+      "r2-off-b",
+      "d2-off-a",
+      "oban-2x32",
+      "r2-off-a",
+      "mesh-v1-2x32",
+      "d2-off-b",
+      "river-2x32",
+      "r2-zero"
+    ],
+    [
+      "r2-off-b",
+      "mesh-v1-2x32",
+      "d2-on",
+      "r2-zero",
+      "apalis-2x32",
+      "d2-off-b",
+      "r2-off-a",
+      "river-2x32",
+      "d2-off-a",
+      "oban-2x32"
+    ],
+    [
+      "d2-off-b",
+      "oban-2x32",
+      "r2-off-a",
+      "d2-off-a",
+      "apalis-2x32",
+      "r2-zero",
+      "mesh-v1-2x32",
+      "d2-on",
+      "river-2x32",
+      "r2-off-b"
+    ],
+    [
+      "r2-off-a",
+      "mesh-v1-2x32",
+      "d2-off-b",
+      "r2-off-b",
+      "oban-2x32",
+      "d2-on",
+      "r2-zero",
+      "river-2x32",
+      "d2-off-a",
+      "apalis-2x32"
+    ]
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "primary": [
+    "submit_ms",
+    "drain_ms"
+  ],
+  "profile": "noop",
+  "recovery": "Run rotations 1 and 2 first. Continue 3 through 6 only after fully reconciled warmup and measured receipts. Retain and export all partial, failed and successful raw attempts. After an ambiguous transport exit, controller verifies the three fences and original host identity, reconciles the transferred receipts, and repeats only still-incomplete rotations from their start.",
+  "separate": {
+    "bridge": "Native V1 scalar stock versus native bulk V2, plus r2-off versus same-binary D2-off baseline. Bridge estimates measure combined deployment or artifact movement.",
+    "d2": [
+      "d2-off-a",
+      "d2-on",
+      "d2-off-b"
+    ],
+    "peers": "Only 2x32 equal-topology peers within the new rotations. Their queue/producer semantics and per-engine connections remain their frozen adapter defaults. Keep the existing stock and equal series independent.",
+    "writer": [
+      "r2-off-a",
+      "r2-zero",
+      "r2-off-b"
+    ]
+  },
+  "topology": {
+    "cpus": [
+      0,
+      1
+    ],
+    "jobs": 1024,
+    "mesh_app_tls_sessions_per_runner": 16,
+    "mesh_scheduler_workers_per_runner": 2,
+    "postgres_physical_cap": 96,
+    "postgres_version": "17.11",
+    "runners": 2,
+    "slots_per_runner": 32
+  }
+}

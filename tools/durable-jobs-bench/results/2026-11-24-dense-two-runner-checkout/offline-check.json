@@ -1,0 +1,130 @@
+{
+  "request": "2026-11-24-dense-two-runner-checkout",
+  "rotations": [
+    {
+      "group": 1,
+      "profile": "noop",
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "order": [
+        "d2-off-a",
+        "river-2x32",
+        "r2-zero",
+        "d2-on",
+        "apalis-2x32",
+        "r2-off-a",
+        "mesh-v1-2x32",
+        "d2-off-b",
+        "oban-2x32",
+        "r2-off-b"
+      ]
+    },
+    {
+      "group": 2,
+      "profile": "noop",
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "order": [
+        "r2-zero",
+        "mesh-v1-2x32",
+        "d2-off-a",
+        "r2-off-b",
+        "river-2x32",
+        "d2-off-b",
+        "r2-off-a",
+        "oban-2x32",
+        "d2-on",
+        "apalis-2x32"
+      ]
+    },
+    {
+      "group": 3,
+      "profile": "noop",
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "order": [
+        "d2-on",
+        "apalis-2x32",
+        "r2-off-b",
+        "d2-off-a",
+        "oban-2x32",
+        "r2-off-a",
+        "mesh-v1-2x32",
+        "d2-off-b",
+        "river-2x32",
+        "r2-zero"
+      ]
+    },
+    {
+      "group": 4,
+      "profile": "noop",
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "order": [
+        "r2-off-b",
+        "mesh-v1-2x32",
+        "d2-on",
+        "r2-zero",
+        "apalis-2x32",
+        "d2-off-b",
+        "r2-off-a",
+        "river-2x32",
+        "d2-off-a",
+        "oban-2x32"
+      ]
+    },
+    {
+      "group": 5,
+      "profile": "noop",
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "order": [
+        "d2-off-b",
+        "oban-2x32",
+        "r2-off-a",
+        "d2-off-a",
+        "apalis-2x32",
+        "r2-zero",
+        "mesh-v1-2x32",
+        "d2-on",
+        "river-2x32",
+        "r2-off-b"
+      ]
+    },
+    {
+      "group": 6,
+      "profile": "noop",
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "order": [
+        "r2-off-a",
+        "mesh-v1-2x32",
+        "d2-off-b",
+        "r2-off-b",
+        "oban-2x32",
+        "d2-on",
+        "r2-zero",
+        "river-2x32",
+        "d2-off-a",
+        "apalis-2x32"
+      ]
+    }
+  ],
+  "lanes": 10,
+  "warmup_and_measured_arms": 120,
+  "archived_r2_proof": "eb39628d011afa879b0205dc6333ec53fd16fb05eefb8333d3f896f6ac9887ed",
+  "d2_source_sha256": "76d7862e2b89c85698cb5d8f684eb52aa0fb06a6ba802c3fba7eeab4a62e36cd",
+  "needs_native_d2_setup": true
+}
