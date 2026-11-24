@@ -1,0 +1,644 @@
+{
+  "1": {
+    "checked-a": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1252058,
+          "later_grant_only_us": 1067851,
+          "lower_percent": 61.29786838214415,
+          "possible_upper_us": 1992102,
+          "runner_us": 2042580,
+          "upper_percent": 97.52871368563288
+        },
+        "2": {
+          "confirmed_lower_us": 1159365,
+          "later_grant_only_us": 987153,
+          "lower_percent": 56.75983315218988,
+          "possible_upper_us": 1977634,
+          "runner_us": 2042580,
+          "upper_percent": 96.8203938156645
+        },
+        "4": {
+          "confirmed_lower_us": 954632,
+          "later_grant_only_us": 808158,
+          "lower_percent": 46.73657824907715,
+          "possible_upper_us": 1939627,
+          "runner_us": 2042580,
+          "upper_percent": 94.95965886281076
+        }
+      },
+      "calls": 105,
+      "groups_at_16": 18,
+      "groups_at_16_with_room": 14,
+      "max_split_groups": 10,
+      "possible_extra_seats": 107,
+      "raw_sha256": "4c9b333822102f41fd6b3b11335513feccbf068fbf8f1c42bc569b09e9020c61",
+      "stamp_groups": 95
+    },
+    "checked-b": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1001576,
+          "later_grant_only_us": 837723,
+          "lower_percent": 47.831850968885625,
+          "possible_upper_us": 1962446,
+          "runner_us": 2093952,
+          "upper_percent": 93.71972232410295
+        },
+        "2": {
+          "confirmed_lower_us": 897249,
+          "later_grant_only_us": 736668,
+          "lower_percent": 42.8495495598753,
+          "possible_upper_us": 1948663,
+          "runner_us": 2093952,
+          "upper_percent": 93.06149329115472
+        },
+        "4": {
+          "confirmed_lower_us": 716024,
+          "later_grant_only_us": 584341,
+          "lower_percent": 34.19486215538847,
+          "possible_upper_us": 1893858,
+          "runner_us": 2093952,
+          "upper_percent": 90.44419356317623
+        }
+      },
+      "calls": 107,
+      "groups_at_16": 26,
+      "groups_at_16_with_room": 24,
+      "max_split_groups": 15,
+      "possible_extra_seats": 127,
+      "raw_sha256": "d7af4a86585e7c0f33d5a473500a55da2dd01b97f7eaa04bfea321573bf0a91d",
+      "stamp_groups": 92
+    },
+    "hot": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 914508,
+          "later_grant_only_us": 715000,
+          "lower_percent": 48.635971051612714,
+          "possible_upper_us": 1802883,
+          "runner_us": 1880312,
+          "upper_percent": 95.88211956313633
+        },
+        "2": {
+          "confirmed_lower_us": 844772,
+          "later_grant_only_us": 652357,
+          "lower_percent": 44.92722484353661,
+          "possible_upper_us": 1791603,
+          "runner_us": 1880312,
+          "upper_percent": 95.28221912108204
+        },
+        "4": {
+          "confirmed_lower_us": 669235,
+          "later_grant_only_us": 508914,
+          "lower_percent": 35.59169967537302,
+          "possible_upper_us": 1756852,
+          "runner_us": 1880312,
+          "upper_percent": 93.43406838865039
+        }
+      },
+      "calls": 94,
+      "groups_at_16": 34,
+      "groups_at_16_with_room": 31,
+      "max_split_groups": 11,
+      "possible_extra_seats": 183,
+      "raw_sha256": "0c3272ce74bb778a66da443b500482c40db7a8671e260174a85a48e01f8c85df",
+      "stamp_groups": 83
+    }
+  },
+  "2": {
+    "checked-a": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1348219,
+          "later_grant_only_us": 1149029,
+          "lower_percent": 66.07038195022983,
+          "possible_upper_us": 1996389,
+          "runner_us": 2040580,
+          "upper_percent": 97.83439022238775
+        },
+        "2": {
+          "confirmed_lower_us": 1251423,
+          "later_grant_only_us": 1055092,
+          "lower_percent": 61.32682864675729,
+          "possible_upper_us": 1991345,
+          "runner_us": 2040580,
+          "upper_percent": 97.58720559840829
+        },
+        "4": {
+          "confirmed_lower_us": 1050504,
+          "later_grant_only_us": 881699,
+          "lower_percent": 51.480657460133884,
+          "possible_upper_us": 1934444,
+          "runner_us": 2040580,
+          "upper_percent": 94.7987336933617
+        }
+      },
+      "calls": 108,
+      "groups_at_16": 18,
+      "groups_at_16_with_room": 16,
+      "max_split_groups": 9,
+      "possible_extra_seats": 118,
+      "raw_sha256": "c1c9f24e44e7cee97b86b5b0ea2c529f3f404f0a0c40ce2253212d2c98a6136f",
+      "stamp_groups": 99
+    },
+    "checked-b": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1288954,
+          "later_grant_only_us": 1153793,
+          "lower_percent": 63.495833953207466,
+          "possible_upper_us": 1959988,
+          "runner_us": 2029982,
+          "upper_percent": 96.55198913093811
+        },
+        "2": {
+          "confirmed_lower_us": 1215108,
+          "later_grant_only_us": 1084509,
+          "lower_percent": 59.858067707004295,
+          "possible_upper_us": 1951008,
+          "runner_us": 2029982,
+          "upper_percent": 96.10962067643949
+        },
+        "4": {
+          "confirmed_lower_us": 999375,
+          "later_grant_only_us": 901083,
+          "lower_percent": 49.230732095161436,
+          "possible_upper_us": 1915872,
+          "runner_us": 2029982,
+          "upper_percent": 94.37876789055272
+        }
+      },
+      "calls": 124,
+      "groups_at_16": 11,
+      "groups_at_16_with_room": 8,
+      "max_split_groups": 16,
+      "possible_extra_seats": 65,
+      "raw_sha256": "a4d77a8b3fe9811116c9ba87fb5c0f810f8d5eded14569d4dbba5745bac672a7",
+      "stamp_groups": 108
+    },
+    "hot": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 857817,
+          "later_grant_only_us": 579559,
+          "lower_percent": 46.590357323252896,
+          "possible_upper_us": 1755362,
+          "runner_us": 1841190,
+          "upper_percent": 95.33844958966755
+        },
+        "2": {
+          "confirmed_lower_us": 780360,
+          "later_grant_only_us": 512910,
+          "lower_percent": 42.38345852410669,
+          "possible_upper_us": 1738659,
+          "runner_us": 1841190,
+          "upper_percent": 94.43126456259267
+        },
+        "4": {
+          "confirmed_lower_us": 622749,
+          "later_grant_only_us": 388747,
+          "lower_percent": 33.82317957407981,
+          "possible_upper_us": 1703894,
+          "runner_us": 1841190,
+          "upper_percent": 92.54308354922631
+        }
+      },
+      "calls": 87,
+      "groups_at_16": 37,
+      "groups_at_16_with_room": 32,
+      "max_split_groups": 8,
+      "possible_extra_seats": 249,
+      "raw_sha256": "7a0a0421e51e4d070c8dda55dcb1cdb80fe8909016ae1704239fc5becb2f2aa9",
+      "stamp_groups": 79
+    }
+  },
+  "3": {
+    "checked-a": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 2371373,
+          "later_grant_only_us": 2318160,
+          "lower_percent": 69.41929980380642,
+          "possible_upper_us": 3324784,
+          "runner_us": 3416014,
+          "upper_percent": 97.32934349800674
+        },
+        "2": {
+          "confirmed_lower_us": 2228305,
+          "later_grant_only_us": 2195601,
+          "lower_percent": 65.23114366627303,
+          "possible_upper_us": 3291113,
+          "runner_us": 3416014,
+          "upper_percent": 96.34366252597326
+        },
+        "4": {
+          "confirmed_lower_us": 2037225,
+          "later_grant_only_us": 2015781,
+          "lower_percent": 59.63748977609576,
+          "possible_upper_us": 3065138,
+          "runner_us": 3416014,
+          "upper_percent": 89.7284964288788
+        }
+      },
+      "calls": 162,
+      "groups_at_16": 17,
+      "groups_at_16_with_room": 14,
+      "max_split_groups": 23,
+      "possible_extra_seats": 101,
+      "raw_sha256": "26e0ebfecd8c8e88b6a500a1731b2f51f8d412f9a171ad0a8137f44584805aa4",
+      "stamp_groups": 139
+    },
+    "checked-b": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1298616,
+          "later_grant_only_us": 1111710,
+          "lower_percent": 63.03251284321377,
+          "possible_upper_us": 2024906,
+          "runner_us": 2060232,
+          "upper_percent": 98.28533873854984
+        },
+        "2": {
+          "confirmed_lower_us": 1216092,
+          "later_grant_only_us": 1039051,
+          "lower_percent": 59.02694453828501,
+          "possible_upper_us": 2014402,
+          "runner_us": 2060232,
+          "upper_percent": 97.7754932454209
+        },
+        "4": {
+          "confirmed_lower_us": 1038291,
+          "later_grant_only_us": 882477,
+          "lower_percent": 50.39679997204198,
+          "possible_upper_us": 1996838,
+          "runner_us": 2060232,
+          "upper_percent": 96.92296789876092
+        }
+      },
+      "calls": 104,
+      "groups_at_16": 24,
+      "groups_at_16_with_room": 21,
+      "max_split_groups": 10,
+      "possible_extra_seats": 143,
+      "raw_sha256": "19d8284e9aaa583fe52ad8fe2b2fa51a61a016800303415bdd010f07a3b276f1",
+      "stamp_groups": 94
+    },
+    "hot": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 774089,
+          "later_grant_only_us": 588582,
+          "lower_percent": 41.294833618025095,
+          "possible_upper_us": 1798629,
+          "runner_us": 1874542,
+          "upper_percent": 95.95031746421259
+        },
+        "2": {
+          "confirmed_lower_us": 709639,
+          "later_grant_only_us": 535615,
+          "lower_percent": 37.85666045359346,
+          "possible_upper_us": 1784498,
+          "runner_us": 1874542,
+          "upper_percent": 95.19647999351308
+        },
+        "4": {
+          "confirmed_lower_us": 575412,
+          "later_grant_only_us": 431366,
+          "lower_percent": 30.696138043319383,
+          "possible_upper_us": 1713021,
+          "runner_us": 1874542,
+          "upper_percent": 91.38344192874847
+        }
+      },
+      "calls": 97,
+      "groups_at_16": 35,
+      "groups_at_16_with_room": 27,
+      "max_split_groups": 12,
+      "possible_extra_seats": 189,
+      "raw_sha256": "c2f8e96f90aaffb02d937fd5a4ab7030b7348a8112e3f69e510152634a051e8d",
+      "stamp_groups": 85
+    }
+  },
+  "4": {
+    "checked-a": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1223875,
+          "later_grant_only_us": 1086235,
+          "lower_percent": 60.95140720495311,
+          "possible_upper_us": 1954576,
+          "runner_us": 2007952,
+          "upper_percent": 97.3417691259552
+        },
+        "2": {
+          "confirmed_lower_us": 1149356,
+          "later_grant_only_us": 1016743,
+          "lower_percent": 57.2402129134561,
+          "possible_upper_us": 1946015,
+          "runner_us": 2007952,
+          "upper_percent": 96.91541431269273
+        },
+        "4": {
+          "confirmed_lower_us": 988418,
+          "later_grant_only_us": 877022,
+          "lower_percent": 49.22518068160992,
+          "possible_upper_us": 1915376,
+          "runner_us": 2007952,
+          "upper_percent": 95.38953122385395
+        }
+      },
+      "calls": 117,
+      "groups_at_16": 20,
+      "groups_at_16_with_room": 19,
+      "max_split_groups": 14,
+      "possible_extra_seats": 111,
+      "raw_sha256": "825b8a2cfcd19a83fade69f27c1d64ccfa20c2258ecf55558c4054e303ee1cf1",
+      "stamp_groups": 103
+    },
+    "checked-b": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1157678,
+          "later_grant_only_us": 996078,
+          "lower_percent": 56.875218008617175,
+          "possible_upper_us": 1965848,
+          "runner_us": 2035470,
+          "upper_percent": 96.57956147720182
+        },
+        "2": {
+          "confirmed_lower_us": 1099665,
+          "later_grant_only_us": 940021,
+          "lower_percent": 54.02511459269849,
+          "possible_upper_us": 1963129,
+          "runner_us": 2035470,
+          "upper_percent": 96.44598053520808
+        },
+        "4": {
+          "confirmed_lower_us": 931989,
+          "later_grant_only_us": 785437,
+          "lower_percent": 45.78741027870713,
+          "possible_upper_us": 1944241,
+          "runner_us": 2035470,
+          "upper_percent": 95.51803760310887
+        }
+      },
+      "calls": 103,
+      "groups_at_16": 26,
+      "groups_at_16_with_room": 20,
+      "max_split_groups": 12,
+      "possible_extra_seats": 134,
+      "raw_sha256": "a4d42fe0fe96354ff75fc8d7688176803e8373b35d59b4d089f28641e47c3522",
+      "stamp_groups": 91
+    },
+    "hot": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 865643,
+          "later_grant_only_us": 685341,
+          "lower_percent": 47.58303806124143,
+          "possible_upper_us": 1775437,
+          "runner_us": 1819226,
+          "upper_percent": 97.5929873473664
+        },
+        "2": {
+          "confirmed_lower_us": 815719,
+          "later_grant_only_us": 641415,
+          "lower_percent": 44.83879408055954,
+          "possible_upper_us": 1762575,
+          "runner_us": 1819226,
+          "upper_percent": 96.88598337974501
+        },
+        "4": {
+          "confirmed_lower_us": 671851,
+          "later_grant_only_us": 514466,
+          "lower_percent": 36.93059575885569,
+          "possible_upper_us": 1739344,
+          "runner_us": 1819226,
+          "upper_percent": 95.6090117445551
+        }
+      },
+      "calls": 95,
+      "groups_at_16": 29,
+      "groups_at_16_with_room": 23,
+      "max_split_groups": 10,
+      "possible_extra_seats": 155,
+      "raw_sha256": "e9db317c150020f9e64e5262c21bbf9f7ee419a9a8779d555234de040fb8519a",
+      "stamp_groups": 85
+    }
+  },
+  "5": {
+    "checked-a": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1295152,
+          "later_grant_only_us": 1135333,
+          "lower_percent": 61.71357777618945,
+          "possible_upper_us": 2042276,
+          "runner_us": 2098650,
+          "upper_percent": 97.31379696471541
+        },
+        "2": {
+          "confirmed_lower_us": 1196730,
+          "later_grant_only_us": 1044147,
+          "lower_percent": 57.02380101493817,
+          "possible_upper_us": 2029622,
+          "runner_us": 2098650,
+          "upper_percent": 96.71083791961499
+        },
+        "4": {
+          "confirmed_lower_us": 977184,
+          "later_grant_only_us": 851243,
+          "lower_percent": 46.56250446715746,
+          "possible_upper_us": 1987596,
+          "runner_us": 2098650,
+          "upper_percent": 94.70831248659853
+        }
+      },
+      "calls": 115,
+      "groups_at_16": 22,
+      "groups_at_16_with_room": 20,
+      "max_split_groups": 12,
+      "possible_extra_seats": 122,
+      "raw_sha256": "a64d35046c604c4f30884c5100e8052f1b70716ae2827f39f984fcd52d2fe68d",
+      "stamp_groups": 103
+    },
+    "checked-b": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1080290,
+          "later_grant_only_us": 875786,
+          "lower_percent": 53.31811213737376,
+          "possible_upper_us": 1910951,
+          "runner_us": 2026122,
+          "upper_percent": 94.31569273715995
+        },
+        "2": {
+          "confirmed_lower_us": 1005451,
+          "later_grant_only_us": 816816,
+          "lower_percent": 49.62440563796257,
+          "possible_upper_us": 1895096,
+          "runner_us": 2026122,
+          "upper_percent": 93.53316335344071
+        },
+        "4": {
+          "confirmed_lower_us": 802854,
+          "later_grant_only_us": 638839,
+          "lower_percent": 39.62515583957926,
+          "possible_upper_us": 1852264,
+          "runner_us": 2026122,
+          "upper_percent": 91.41917416621507
+        }
+      },
+      "calls": 102,
+      "groups_at_16": 21,
+      "groups_at_16_with_room": 17,
+      "max_split_groups": 10,
+      "possible_extra_seats": 112,
+      "raw_sha256": "ca3d9d5ce4dc6b50cd537c487362bbe0e63c52251493cfea3a0cae97297078e3",
+      "stamp_groups": 92
+    },
+    "hot": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 821282,
+          "later_grant_only_us": 599803,
+          "lower_percent": 43.32382751959453,
+          "possible_upper_us": 1800105,
+          "runner_us": 1895682,
+          "upper_percent": 94.95817336452
+        },
+        "2": {
+          "confirmed_lower_us": 765062,
+          "later_grant_only_us": 550214,
+          "lower_percent": 40.35814023660087,
+          "possible_upper_us": 1793067,
+          "runner_us": 1895682,
+          "upper_percent": 94.5869085637781
+        },
+        "4": {
+          "confirmed_lower_us": 630198,
+          "later_grant_only_us": 439149,
+          "lower_percent": 33.243866851085784,
+          "possible_upper_us": 1763638,
+          "runner_us": 1895682,
+          "upper_percent": 93.0344857418069
+        }
+      },
+      "calls": 92,
+      "groups_at_16": 36,
+      "groups_at_16_with_room": 30,
+      "max_split_groups": 11,
+      "possible_extra_seats": 179,
+      "raw_sha256": "df256373b0853a4d649e0459e5665721eb552d8aef28bdd2f47b922289aa9582",
+      "stamp_groups": 81
+    }
+  },
+  "6": {
+    "checked-a": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1311455,
+          "later_grant_only_us": 1140152,
+          "lower_percent": 64.05947306772123,
+          "possible_upper_us": 1941023,
+          "runner_us": 2047246,
+          "upper_percent": 94.81141982937078
+        },
+        "2": {
+          "confirmed_lower_us": 1223645,
+          "later_grant_only_us": 1068892,
+          "lower_percent": 59.770296290724225,
+          "possible_upper_us": 1923274,
+          "runner_us": 2047246,
+          "upper_percent": 93.944450251704
+        },
+        "4": {
+          "confirmed_lower_us": 1011678,
+          "later_grant_only_us": 878678,
+          "lower_percent": 49.416533235380605,
+          "possible_upper_us": 1873713,
+          "runner_us": 2047246,
+          "upper_percent": 91.5235882741986
+        }
+      },
+      "calls": 108,
+      "groups_at_16": 22,
+      "groups_at_16_with_room": 20,
+      "max_split_groups": 9,
+      "possible_extra_seats": 135,
+      "raw_sha256": "7d1547c7fa380fcbc2b17a30b9e8e1d4f05ddc46541f29cdd5d63b57ed35fa60",
+      "stamp_groups": 99
+    },
+    "checked-b": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 1267252,
+          "later_grant_only_us": 1127773,
+          "lower_percent": 61.82971764026261,
+          "possible_upper_us": 1989211,
+          "runner_us": 2049584,
+          "upper_percent": 97.05437786399581
+        },
+        "2": {
+          "confirmed_lower_us": 1152361,
+          "later_grant_only_us": 1027879,
+          "lower_percent": 56.22414109399761,
+          "possible_upper_us": 1968681,
+          "runner_us": 2049584,
+          "upper_percent": 96.05271118431838
+        },
+        "4": {
+          "confirmed_lower_us": 942814,
+          "later_grant_only_us": 836908,
+          "lower_percent": 46.00026151648334,
+          "possible_upper_us": 1928840,
+          "runner_us": 2049584,
+          "upper_percent": 94.108853308769
+        }
+      },
+      "calls": 115,
+      "groups_at_16": 17,
+      "groups_at_16_with_room": 15,
+      "max_split_groups": 12,
+      "possible_extra_seats": 95,
+      "raw_sha256": "b89a0cc3310a6a69dc361b43aa0e6e24a10a09aa7aa03f4f434599c57db26be4",
+      "stamp_groups": 103
+    },
+    "hot": {
+      "bounds": {
+        "1": {
+          "confirmed_lower_us": 860731,
+          "later_grant_only_us": 562457,
+          "lower_percent": 46.1703634169237,
+          "possible_upper_us": 1780850,
+          "runner_us": 1864250,
+          "upper_percent": 95.5263510795226
+        },
+        "2": {
+          "confirmed_lower_us": 764791,
+          "later_grant_only_us": 478287,
+          "lower_percent": 41.024057932144295,
+          "possible_upper_us": 1768894,
+          "runner_us": 1864250,
+          "upper_percent": 94.8850207858388
+        },
+        "4": {
+          "confirmed_lower_us": 616607,
+          "later_grant_only_us": 376346,
+          "lower_percent": 33.07533860801931,
+          "possible_upper_us": 1725021,
+          "runner_us": 1864250,
+          "upper_percent": 92.5316347056457
+        }
+      },
+      "calls": 87,
+      "groups_at_16": 38,
+      "groups_at_16_with_room": 35,
+      "max_split_groups": 7,
+      "possible_extra_seats": 211,
+      "raw_sha256": "1a2b69d43a83d91d454ff46c8c5bd657a4d963ff5576325fbb366d96b00278d2",
+      "stamp_groups": 80
+    }
+  }
+}
