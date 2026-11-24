@@ -1,0 +1,181 @@
+{
+  "archive_sha256": "928686d1e2025de8fcebdd4541ffce03ab80be3097834801081959e25783c19e",
+  "groups": [
+    {
+      "direct": {
+        "cpu_ms": 274.39437499999997,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995344,
+        "wall_ms": 1651.166125
+      },
+      "fields": {
+        "cpu_ms": 302.9618333333333,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995560,
+        "wall_ms": 852.744291
+      },
+      "stock_a": {
+        "cpu_ms": 325.5113333333333,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995384,
+        "wall_ms": 1547.67525
+      },
+      "stock_b": {
+        "cpu_ms": 288.44279166666666,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995344,
+        "wall_ms": 1549.256875
+      }
+    },
+    {
+      "direct": {
+        "cpu_ms": 330.15258333333327,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995344,
+        "wall_ms": 1583.346792
+      },
+      "fields": {
+        "cpu_ms": 366.98591666666664,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995344,
+        "wall_ms": 2194.806833
+      },
+      "stock_a": {
+        "cpu_ms": 398.458125,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995384,
+        "wall_ms": 2119.684958
+      },
+      "stock_b": {
+        "cpu_ms": 307.2244583333333,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995344,
+        "wall_ms": 992.45175
+      }
+    },
+    {
+      "direct": {
+        "cpu_ms": 332.68575,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995360,
+        "wall_ms": 1130.869667
+      },
+      "fields": {
+        "cpu_ms": 357.87795833333325,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995384,
+        "wall_ms": 1442.803417
+      },
+      "stock_a": {
+        "cpu_ms": 322.0159583333333,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995344,
+        "wall_ms": 886.847542
+      },
+      "stock_b": {
+        "cpu_ms": 248.96841666666666,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995520,
+        "wall_ms": 3499.52575
+      }
+    },
+    {
+      "direct": {
+        "cpu_ms": 318.10091666666665,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995384,
+        "wall_ms": 1659.088875
+      },
+      "fields": {
+        "cpu_ms": 350.4622083333333,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995344,
+        "wall_ms": 2437.587708
+      },
+      "stock_a": {
+        "cpu_ms": 292.1387916666667,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995448,
+        "wall_ms": 1678.606917
+      },
+      "stock_b": {
+        "cpu_ms": 281.5781666666667,
+        "heap_hits": 25243,
+        "index_hits": 33431,
+        "wal_bytes": 35995344,
+        "wall_ms": 1169.8105
+      }
+    }
+  ],
+  "load_range": [
+    33.7568359375,
+    42.1171875
+  ],
+  "medians": {
+    "direct": {
+      "cpu_ms": 324.12674999999996,
+      "heap_hits": 25243.0,
+      "index_hits": 33431.0,
+      "wal_bytes": 35995352.0,
+      "wall_ms": 1617.2564585
+    },
+    "fields": {
+      "cpu_ms": 354.1700833333333,
+      "heap_hits": 25243.0,
+      "index_hits": 33431.0,
+      "wal_bytes": 35995364.0,
+      "wall_ms": 1818.805125
+    },
+    "stock_a": {
+      "cpu_ms": 323.76364583333327,
+      "heap_hits": 25243.0,
+      "index_hits": 33431.0,
+      "wal_bytes": 35995384.0,
+      "wall_ms": 1613.1410835000001
+    },
+    "stock_b": {
+      "cpu_ms": 285.01047916666664,
+      "heap_hits": 25243.0,
+      "index_hits": 33431.0,
+      "wal_bytes": 35995344.0,
+      "wall_ms": 1359.5336875
+    }
+  },
+  "paired": {
+    "direct": {
+      "cpu_ms": {
+        "faster_than_both": 1,
+        "median_ms": 29.72543749999997
+      },
+      "wall_ms": {
+        "faster_than_both": 0,
+        "median_ms": 366.6502499999999
+      }
+    },
+    "fields": {
+      "cpu_ms": {
+        "faster_than_both": 0,
+        "median_ms": 64.32274999999998
+      },
+      "wall_ms": {
+        "faster_than_both": 1,
+        "median_ms": 879.1554790000001
+      }
+    }
+  }
+}
