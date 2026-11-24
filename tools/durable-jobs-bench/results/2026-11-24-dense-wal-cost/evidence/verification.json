@@ -1,0 +1,8 @@
+{
+  "benchmark_suite": {"test_count": 16, "state": "pass"},
+  "fixture_driver_self_check": {"test_count": 19, "state": "pass"},
+  "fixture_driver_fault_tests": {"test_count": 12, "state": "pass"},
+  "postgres_effect_fence": {"postgres": "17.11", "state": "pass"},
+  "workspace": {"command": "cargo check --workspace --locked --offline", "state": "pass"},
+  "ungranted_dispatch": {"state": "rejected before any remote action", "error": "no active sole-controller TIMING grant"}
+}
