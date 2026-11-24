@@ -270,6 +270,7 @@ def write_producer_budgets(data):
         ("workmem-large", "Large · EXTERNAL and 16 MiB work_mem", "ordinary"),
         ("ordinary-cohort", "Short · grouped settlements", "ordinary-success-cohort"),
         ("bulk-slow", "Slow · batch enqueue", "bulk"), ("bulk-short", "Short · batch enqueue and grouped settlements", "bulk"),
+        ("bulk-hot-short-peers", "Short · batch enqueue, grouped settlements and hot checkout", "bulk-d2"),
     ]:
         blocks = sorted(data.get(series, {}).get("blocks", []), key=lambda b: b["group"])
         if not blocks:

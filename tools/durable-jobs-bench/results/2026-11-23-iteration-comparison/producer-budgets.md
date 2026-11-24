@@ -30,5 +30,8 @@ The three counts partition the rotations. The required time saving is the signed
 | Short · batch enqueue and grouped settlements | Oban | 5 | 0 | 0 | 35.6 | -180.1, -208.6, -184.9, -198.2, -270.9 |
 | Short · batch enqueue and grouped settlements | River | 2 | 2 | 1 | 35.6 | +29.5, +37.6, -9.9, +35.6, -15.2 |
 | Short · batch enqueue and grouped settlements | Apalis | 0 | 2 | 3 | 35.6 | +3.1, +61.7, +30.2, +44.8, +69.1 |
+| Short · batch enqueue, grouped settlements and hot checkout | Oban | 5 | 0 | 0 | 36.2 | -195.7, -212.5, -187.5, -297.5, -222.9 |
+| Short · batch enqueue, grouped settlements and hot checkout | River | 5 | 0 | 0 | 36.2 | -68.6, -65.9, -4.7, -77.4, -54.2 |
+| Short · batch enqueue, grouped settlements and hot checkout | Apalis | 0 | 0 | 5 | 36.2 | +60.0, +58.0, +63.1, +53.1, +74.8 |
 
 Trusted Mesh runs handlers with application credentials in the shared process. The large series applies the same EXTERNAL payload storage policy on every engine. The grouped-settlement variant can commit up to eight successful terminal transitions together. [Matched runs and executable identities](scores.json) · [Interactive results](chart.html)
