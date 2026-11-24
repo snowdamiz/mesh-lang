@@ -7,7 +7,7 @@
 -mio = { version = "1.1", features = ["net", "os-poll"] }
 +mio = { version = "1.1", features = ["net", "os-poll", "os-ext"] }
  socket2 = "0.6"
-
+ 
  # Blind RSA signing, key generation and PKCS#8 import (profile BR1) run only
 --- a/compiler/mesh-rt/src/actor/mod.rs
 +++ b/compiler/mesh-rt/src/actor/mod.rs
@@ -52,11 +52,11 @@
 +        stack::suspend_current();
      }
  }
-
+ 
 --- a/compiler/mesh-rt/src/actor/process.rs
 +++ b/compiler/mesh-rt/src/actor/process.rs
 @@ -325,6 +325,7 @@
-
+ 
      /// Embedded calls have no coroutine GC and release their heap on return.
      pub(crate) library_call: bool,
 +    pub(crate) blocking_pool_calls: usize,
@@ -321,14 +321,14 @@
 -//! and execute the generated DDL via `mesh_pool_execute`. SQL identifiers are
 +//! and execute the generated DDL via `blocking_execute`. SQL identifiers are
  //! double-quoted per PostgreSQL convention.
-
+ 
  use super::{execute_ddl, quote_ident, quote_name};
  use crate::collections::list::list_strings;
  use crate::collections::list::mesh_list_new;
 -use crate::db::pool::mesh_pool_execute;
 +use crate::db::pool::blocking_execute;
  use crate::string::{text_of, MeshString};
-
+ 
  // ── Pure Rust SQL builders (testable without GC) ─────────────────────
 @@ -391,7 +391,7 @@
  /// Execute raw SQL (escape hatch for operations not covered by the DSL).
@@ -337,7 +337,7 @@
 -    mesh_pool_execute(pool, sql, mesh_list_new())
 +    blocking_execute(pool, sql, mesh_list_new())
  }
-
+ 
  // ── Unit tests ───────────────────────────────────────────────────────
 --- a/compiler/mesh-rt/src/db/mod.rs
 +++ b/compiler/mesh-rt/src/db/mod.rs
@@ -372,12 +372,12 @@
  use std::sync::Arc;
 -use std::time::Duration;
 +use std::time::{Duration, Instant};
-
+ 
  use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
  use hmac::{Hmac, Mac};
 @@ -69,7 +69,7 @@
  // ── Stream Abstraction ─────────────────────────────────────────────────
-
+ 
  /// A PostgreSQL connection stream that may be plain TCP or TLS-wrapped.
 -enum PgStream<T: Read + Write = TcpStream> {
 +enum PgStream<T: Read + Write = PgSocket> {
@@ -386,7 +386,7 @@
  }
 @@ -84,10 +84,17 @@
  }
-
+ 
  impl PgStream {
 +    fn socket(&mut self) -> &mut PgSocket {
 +        match self {
@@ -474,10 +474,10 @@
 +        self.tcp.flush()
      }
  }
-
+ 
 @@ -118,6 +189,24 @@
  }
-
+ 
  impl PgConn {
 +    pub(super) fn begin_cooperative(&mut self) -> std::io::Result<()> {
 +        let socket = self.stream.socket();
@@ -521,7 +521,7 @@
 @@ -1561,7 +1650,7 @@
      let _ = stream.set_read_timeout(Some(ANSWER_TIMEOUT));
      let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
-
+ 
 -    let (stream, txn_status) = finish_startup(stream, &pg_url, None)?;
 +    let (stream, txn_status) = finish_startup(PgSocket::new(stream), &pg_url, None)?;
      let conn = PgConn {
@@ -530,7 +530,7 @@
 @@ -1717,6 +1806,11 @@
      close(*unsafe { Box::from_raw(conn_handle as *mut PgConn) });
  }
-
+ 
 +/// Drop an interrupted exchange without writing Terminate.
 +pub(super) unsafe fn abort(handle: u64) {
 +    drop(Box::from_raw(handle as *mut PgConn));
@@ -541,7 +541,7 @@
      let params = match values {
 @@ -1727,7 +1821,7 @@
  }
-
+ 
  /// `Pg.execute` and `Pg.execute_values`: `Ok(rows affected)`.
 -unsafe fn mesh_execute(
 +pub(super) unsafe fn mesh_execute(
@@ -550,7 +550,7 @@
      params: *mut u8,
 @@ -1741,7 +1835,7 @@
  }
-
+ 
  /// `Pg.query` and `Pg.query_values`: `Ok(rows)`.
 -unsafe fn mesh_query(
 +pub(super) unsafe fn mesh_query(
@@ -558,7 +558,7 @@
      sql: *const MeshString,
      params: *mut u8,
 @@ -1925,7 +2019,9 @@
-
+ 
          // 2. Call the closure with catch_unwind for panic safety
          let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
 -            invoke_transaction_callback(fn_ptr, env_ptr, conn_handle)
@@ -566,7 +566,7 @@
 +                invoke_transaction_callback(fn_ptr, env_ptr, conn_handle)
 +            })
          }));
-
+ 
          match result {
 @@ -1973,7 +2069,9 @@
      let mut decoded = mesh_list_new();
@@ -597,9 +597,9 @@
 +use crate::db::pool::blocking_query;
  use crate::io::{alloc_result, err_result, MeshResult};
  use crate::string::{mesh_str, text_of, MeshString};
-
+ 
 @@ -289,7 +289,7 @@
-
+ 
          let sql = build_list_daily_partitions_before_sql();
          let params = string_list(&[parent_table.to_string(), max_days.to_string()]);
 -        let query_result = mesh_pool_query(pool, mesh_str(sql), params);
@@ -612,14 +612,14 @@
 @@ -15,15 +15,18 @@
  //! Pool handles are opaque u64 values (Box::into_raw), same pattern as
  //! PgConn/SqliteConn handles.
-
+ 
 -use std::collections::HashSet;
 +use std::collections::{HashMap, HashSet};
 +use std::sync::Arc;
  use std::time::{Duration, Instant};
-
+ 
  use parking_lot::{Condvar, Mutex};
-
+ 
 +use super::actor_permits::{Gate, Observation};
  use super::pg::{
 -    mesh_pg_close, mesh_pg_execute, mesh_pg_execute_values, mesh_pg_query, mesh_pg_query_values,
@@ -637,7 +637,7 @@
      closed: bool,
 +    actor_waiters: HashMap<ProcessId, CooperativeSender<()>>,
  }
-
+ 
  struct PgPool {
      inner: Mutex<PoolInner>,
      available: Condvar,
@@ -661,7 +661,7 @@
 +        self.notify_actor_waiters();
 +    }
  }
-
+ 
  // ── Helpers ──────────────────────────────────────────────────────────────
 @@ -112,7 +135,7 @@
                      inner.total_created -= 1;
@@ -861,7 +861,7 @@
 +    lease.finish();
 +    Some(result)
  }
-
+ 
  pub(super) struct NativeLease {
 @@ -206,9 +413,27 @@
      timeout_ms: i64,
@@ -889,7 +889,7 @@
 +    };
 +    let observe_inflight = (cooperative && std::env::var_os("MESH_PG_PERMIT_DIAGNOSTIC").is_some())
 +        .then(|| Mutex::new(0));
-
+ 
      // Pre-create min_conns connections
      let mut idle = Vec::with_capacity(min);
 @@ -234,8 +459,12 @@
@@ -912,7 +912,7 @@
 -    pool.available.notify_one();
 +    pool.notify_slot();
  }
-
+ 
  /// Execute a read query (SELECT) with automatic checkout-use-checkin.
 @@ -300,11 +529,20 @@
  /// `mesh_pool_query(pool_handle: u64, sql: *const MeshString, params: *mut u8)
@@ -935,7 +935,7 @@
 +pub(crate) fn blocking_query(pool_handle: u64, sql: *const MeshString, params: *mut u8) -> *mut u8 {
      with_connection(pool_handle, |conn| mesh_pg_query(conn, sql, params))
  }
-
+ 
 @@ -315,7 +553,20 @@
  /// `mesh_pool_execute(pool_handle: u64, sql: *const MeshString, params: *mut u8)
  ///     -> *mut u8 (MeshResult<Int, String>)`
@@ -960,7 +960,7 @@
      params: *mut u8,
 @@ -324,20 +575,30 @@
  }
-
+ 
  #[no_mangle]
 -pub extern "C" fn mesh_pool_query_values(
 +pub extern "C-unwind" fn mesh_pool_query_values(
@@ -975,7 +975,7 @@
 +    }
      with_connection(pool_handle, |conn| mesh_pg_query_values(conn, sql, params))
  }
-
+ 
  #[no_mangle]
 -pub extern "C" fn mesh_pool_execute_values(
 +pub extern "C-unwind" fn mesh_pool_execute_values(
@@ -999,7 +999,7 @@
 +    let query_result = blocking_query(pool_handle, sql as *const MeshString, params);
      unsafe { crate::db::pg::decode_rows(query_result, fn_ptr, env_ptr) }
  }
-
+ 
 @@ -384,12 +645,16 @@
          inner.total_created -= inner.idle.len();
          std::mem::take(&mut inner.idle)
@@ -1015,7 +1015,7 @@
      pool.available.notify_all();
 +    pool.notify_actor_waiters();
  }
-
+ 
  #[cfg(test)]
 @@ -426,8 +691,12 @@
                  max_conns,
@@ -1029,7 +1029,7 @@
 +            observe_inflight: None,
          })) as u64
      }
-
+ 
 --- /dev/null
 +++ b/compiler/mesh-rt/src/db/readiness.rs
 @@ -0,0 +1,178 @@
@@ -1232,13 +1232,13 @@
  use crate::db::query::{query_parts, QueryParts};
  use crate::io::{alloc_result, err_result, MeshResult};
 @@ -273,7 +273,7 @@
-
+ 
  /// `sql` run on the pool with `params`: `Pool.query`'s result.
  fn run_query(pool: u64, sql: &str, params: &[String]) -> *mut u8 {
 -    mesh_pool_query(pool, mesh_str(sql), string_list(params))
 +    blocking_query(pool, mesh_str(sql), string_list(params))
  }
-
+ 
  // ── Extern C functions ───────────────────────────────────────────────
 @@ -321,7 +321,7 @@
      let sql = "SELECT a.attname FROM pg_index i \
@@ -1264,7 +1264,7 @@
          let params = mesh_list_append(mesh_list_new(), value as u64);
 -        let result = mesh_pool_query(pool, mesh_str(&sql), params);
 +        let result = blocking_query(pool, mesh_str(&sql), params);
-
+ 
          first_row(result, "not found")
      }
 @@ -745,7 +745,7 @@
@@ -1273,18 +1273,18 @@
          let params = mesh_list_append(mesh_list_new(), id as u64);
 -        let result = mesh_pool_query(pool, mesh_str(&sql), params);
 +        let result = blocking_query(pool, mesh_str(&sql), params);
-
+ 
          first_row(result, "delete: no row returned (id not found)")
      }
 @@ -1403,7 +1403,7 @@
          let (conditions, where_param_values, _next_idx) = where_sql(&query, 1);
          sql.push_str(&format!(" WHERE {}", conditions));
-
+ 
 -        mesh_pool_execute(pool, mesh_str(&sql), string_list(&where_param_values))
 +        blocking_execute(pool, mesh_str(&sql), string_list(&where_param_values))
      }
  }
-
+ 
 @@ -1517,7 +1517,7 @@
  #[no_mangle]
  pub extern "C" fn mesh_repo_query_raw(pool: u64, sql: *mut u8, params: *mut u8) -> *mut u8 {
@@ -1292,7 +1292,7 @@
 -    mesh_pool_query(pool, sql_ptr, params)
 +    blocking_query(pool, sql_ptr, params)
  }
-
+ 
  /// Execute raw SQL and return affected row count.
 @@ -1525,7 +1525,7 @@
  #[no_mangle]
@@ -1301,7 +1301,7 @@
 -    mesh_pool_execute(pool, sql_ptr, params)
 +    blocking_execute(pool, sql_ptr, params)
  }
-
+ 
  // ── Unit tests ───────────────────────────────────────────────────────
 @@ -3155,7 +3155,7 @@
              .map(String::as_str)
