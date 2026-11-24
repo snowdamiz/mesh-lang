@@ -82,6 +82,43 @@ def capture_dense_checkout(directory):
     return series
 
 
+def capture_slow_cap71(directory):
+    packet = directory.parents[2]
+    result = json.loads(subprocess.check_output([
+        sys.executable, "-B", packet / "sql-audit-retry.py", "replay",
+        "--mode", "timing", "--directory", directory,
+    ]))
+    manifest = run.read_json(directory / "series.json")
+    lanes = {engine: {"engine": engine} for engine in manifest["remotes"]}
+    design = manifest["design"]
+    identities = {engine: spec["artifact_sha256"] for engine, spec in design["stock_engines"].items()}
+    identities["go"] = design["river_sha"]
+    captured = {}
+    for receipt in sorted((directory / "blocks").glob("*/reconciled.json")):
+        attempt = receipt.parent.name
+        if attempt not in result["qualified"]:
+            raise ValueError(f"{receipt}: recorded slow rotation failed replay")
+        captured[attempt] = result["qualified"][attempt]
+    series = collect_topology_blocks(directory, lanes, identities, captured)
+    fixed_first_writes = {}
+    for block in series["blocks"]:
+        rows = captured[block["attempt"]]
+        for engine, score in block["scores"].items():
+            raw = rows["measured-" + engine]
+            score["committed_hold_peak"] = raw["committed_hold_peak"]
+            score["physical_session_peak"] = raw["physical"]["peak"]
+        path = directory / "blocks" / block["attempt"] / "measured-mesh/measured-mesh/raw.tar.gz"
+        if run.digest(path) != rows["measured-mesh"]["raw_sha256"]:
+            raise ValueError(f"{path}: archive changed after replay")
+        with tarfile.open(path) as archive:
+            jobs = run.file_json(archive, "adapter/ledger.json")["jobs"]
+        earliest_finish = max(j["attempt_committed_us"] + 1000 * j["hold_ms"] for j in jobs)
+        mesh_ms = (earliest_finish - rows["measured-mesh"]["first_commit_us"]) / 1000
+        fixed_first_writes[block["group"]] = mesh_ms - rows["measured-rust"]["drain_ms"]
+    series["fixed_first_write_finish_minus_apalis_ms"] = fixed_first_writes
+    return series
+
+
 def collect_topology_blocks(directory, lanes, identities, replayed):
     blocks = []
     for attempt, rows in sorted(replayed.items()):
@@ -279,6 +316,30 @@ def write_scorecard(data):
                       f"zero-hold writer in {writer}/6. Advancement required four. Each qualifying rotation "
                       "needed an earlier final application write and savings on each durable clock above both "
                       "5% of the faster control's elapsed time and the time difference between the two controls.", ""])
+    equal_slow = data.get("slow-equal-cap71", {})
+    add_policy_table(lines, equal_slow, "Slow jobs with equal runner topology and a 71-session cap",
+                     "All four engines run 512 jobs with two 32-slot runners and a 100 ms hold between independent "
+                     "application commits. Every engine shares two CPUs with PostgreSQL.",
+                     [("mesh", "Trusted Mesh V1"), ("oban", "Oban"), ("go", "River"), ("rust", "Apalis")], planned=8)
+    if equal_slow.get("blocks"):
+        lines.extend(["| Engine | Peak overlapping committed holds, range | Peak physical PostgreSQL sessions, range |",
+                      "|---|---:|---:|"])
+        for engine, label in [("mesh", "Mesh"), ("oban", "Oban"), ("go", "River"), ("rust", "Apalis")]:
+            rows = [b["scores"][engine] for b in equal_slow["blocks"]]
+            cells = []
+            for metric in ("committed_hold_peak", "physical_session_peak"):
+                low, high = min(row[metric] for row in rows), max(row[metric] for row in rows)
+                cells.append(str(low) if low == high else f"{low}–{high}")
+            lines.append("| " + " | ".join([label, *cells]) + " |")
+        lines.extend(["", "Mesh returns its application connection during the hold. The three peer handlers "
+                      "retain theirs until the second write. Session counts cover the timed interval from submit "
+                      "through settlement. [Connection accounting and execution policy]"
+                      "(../2026-11-24-ordinary-slow-equal-topology-cap71/README.md)", ""])
+        remaining = equal_slow["fixed_first_write_finish_minus_apalis_ms"].values()
+        lines.extend([f"If Mesh kept each first application commit at its observed time and finished each job "
+                      f"exactly 100 ms later, its finish time minus Apalis’s actual finish would range from "
+                      f"{min(remaining):+.1f} to {max(remaining):+.1f} ms, measured from each engine’s enqueue "
+                      "commit. A positive value requires earlier first writes to match Apalis on drain.", ""])
     add_policy_table(lines, data.get("slow-stock-topology", {}), "Slow jobs with two Mesh runners against stock peers",
                      "Each Mesh arm uses the same V1 bulk executable. The control copies give one runner 64 slots. "
                      "The candidate gives two runners 32 slots each. All three peers use one 64-slot runner. "
@@ -396,6 +457,7 @@ def write_producer_budgets(data):
         ("bulk-slow", "Slow · batch enqueue", "bulk"), ("bulk-short", "Short · batch enqueue and grouped settlements", "bulk"),
         ("bulk-hot-short-peers", "Short · batch enqueue, grouped settlements and hot checkout", "bulk-d2"),
         ("exit-confirmed-hot-short", "Short · batch enqueue, hot checkout and confirmed teardown", "r2-d2"),
+        ("slow-equal-cap71", "Slow · two 32-slot runners per engine and 71 sessions", "mesh"),
     ]:
         blocks = sorted(data.get(series, {}).get("blocks", []), key=lambda b: b["group"])
         if not blocks:
@@ -481,6 +543,8 @@ def refresh(collect):
                 current = capture_slow_storage(archived)
             elif name == "dense-exit-confirmed":
                 current = capture_dense_checkout(archived)
+            elif name == "slow-equal-cap71":
+                current = capture_slow_cap71(archived)
             elif name == "slow-stock-topology":
                 current = capture_slow_topology(archived)
             elif "topology" in item:

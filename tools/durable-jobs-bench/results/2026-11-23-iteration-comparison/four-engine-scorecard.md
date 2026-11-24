@@ -48,6 +48,28 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 
 Hot checkout cleared the prespecified threshold in 4/6 rotations and the zero-hold writer in 0/6. Advancement required four. Each qualifying rotation needed an earlier final application write and savings on each durable clock above both 5% of the faster control's elapsed time and the time difference between the two controls.
 
+## Slow jobs with equal runner topology and a 71-session cap
+
+8/8 matched rotations. All four engines run 512 jobs with two 32-slot runners and a 100 ms hold between independent application commits. Every engine shares two CPUs with PostgreSQL.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Trusted Mesh V1 | 283.98 | 408.03 | — | — |
+| Oban | 267.49 | 362.07 | 8/8 | 8/8 |
+| River | 255.57 | 337.72 | 6/8 | 7/8 |
+| Apalis | 353.32 | 461.60 | 0/8 | 0/8 |
+
+| Engine | Peak overlapping committed holds, range | Peak physical PostgreSQL sessions, range |
+|---|---:|---:|
+| Mesh | 64 | 17 |
+| Oban | 64 | 69 |
+| River | 64 | 68–69 |
+| Apalis | 64 | 69 |
+
+Mesh returns its application connection during the hold. The three peer handlers retain theirs until the second write. Session counts cover the timed interval from submit through settlement. [Connection accounting and execution policy](../2026-11-24-ordinary-slow-equal-topology-cap71/README.md)
+
+If Mesh kept each first application commit at its observed time and finished each job exactly 100 ms later, its finish time minus Apalis’s actual finish would range from +80.0 to +270.3 ms, measured from each engine’s enqueue commit. A positive value requires earlier first writes to match Apalis on drain.
+
 ## Slow jobs with two Mesh runners against stock peers
 
 6/6 matched rotations. Each Mesh arm uses the same V1 bulk executable. The control copies give one runner 64 slots. The candidate gives two runners 32 slots each. All three peers use one 64-slot runner. Every arm shares two CPUs with PostgreSQL and has a 68-connection cap.

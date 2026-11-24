@@ -6,6 +6,8 @@
 
 Submit-to-settlement includes producer work and the final durable terminal commit. Commit-to-settlement starts after enqueue. Changing the producer can improve the first measure even when workers drain the queue at the same speed.
 
+The equal-topology slow comparison gives every engine two 32-slot runners and permits 71 PostgreSQL sessions. Its scorecard includes how many sessions each engine actually used and how many jobs overlapped during their 100 ms holds. The original slow comparison used a cap of 68. [Equal-topology design and receipts](../2026-11-24-ordinary-slow-equal-topology-cap71/README.md)
+
 For each trusted Mesh rotation, the paired time budget shows how much end-to-end time Mesh would have to save to match the peer, and whether the gap fits inside the observed producer interval. [Producer time budgets](producer-budgets.md)
 
 Protected Mesh creates a separate process for each attempt. The smaller-worker experiment preserves fresh exec and fenced writes for its eligible handler. The trusted shared-process experiment runs ordinary application SQL in the runner's trust domain. Both write transactions must commit independently in every scored job. The symmetric storage series configures PostgreSQL EXTERNAL payload storage on all four engines. The separate Mesh-only storage series retains the default storage on its peers.
