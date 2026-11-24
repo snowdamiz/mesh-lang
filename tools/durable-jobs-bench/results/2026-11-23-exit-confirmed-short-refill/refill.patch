@@ -1,0 +1,163 @@
+--- a/compiler/mesh-rt/src/jobs/runner.rs
++++ b/compiler/mesh-rt/src/jobs/runner.rs
+@@ -378,6 +378,32 @@
+     next_claim: Instant,
+     source: ClaimWake,
+     batch_retry_ms: u64,
++    refill: Option<RefillWait>,
++}
++
++#[derive(Default)]
++struct RefillWait {
++    full_grant: bool,
++    deadline: std::cell::Cell<Option<Instant>>,
++}
++
++impl RefillWait {
++    fn observe_reply(&mut self, full_grant: bool) {
++        self.full_grant = full_grant;
++        self.deadline.set(None);
++    }
++
++    fn until(&self, now: Instant, free: usize, other_work: impl FnOnce() -> bool) -> Option<Instant> {
++        const WIDTH: usize = 3;
++        const WAIT: Duration = Duration::from_micros(500);
++        if !self.full_grant || free >= WIDTH || !other_work() {
++            return None;
++        }
++        // Keep the first deadline through later releases and spurious wakeups.
++        let until = self.deadline.get().unwrap_or(now + WAIT);
++        self.deadline.set(Some(until));
++        (now < until).then_some(until)
++    }
+ }
+
+ #[derive(Clone, Copy)]
+@@ -407,6 +433,7 @@
+             next_claim: Instant::now(),
+             source: ClaimWake::Ready,
+             batch_retry_ms: 0,
++            refill: None,
+         }
+     }
+ }
+@@ -1737,6 +1764,9 @@
+     }
+
+     fn backoff(&mut self, runner: &Runner, next_due: Option<Instant>) {
++        if let Some(refill) = &mut self.refill {
++            refill.observe_reply(false);
++        }
+         self.batch_retry_ms = 0;
+         let poll_ms = runner.config.poll_ms;
+         let jitter = if runner.wakeups.is_some() {
+@@ -1749,6 +1779,9 @@
+     }
+
+     fn retry_batch_claim(&mut self, now: Instant, poll_ms: u64, next_due: Option<Instant>) {
++        if let Some(refill) = &mut self.refill {
++            refill.observe_reply(false);
++        }
+         self.batch_retry_ms = (2 * self.batch_retry_ms).max(4).min(poll_ms);
+         let delay_ms = rand::random_range(self.batch_retry_ms.div_ceil(2)..=self.batch_retry_ms);
+         self.schedule_claim(
+@@ -2080,11 +2113,12 @@
+                 }
+             } else {
+                 let mut state = runner.state.lock();
+-                state
+-                    .queues
+-                    .get_mut(queue)
+-                    .expect("known queue")
+-                    .batch_retry_ms = 0;
++                let reserved = state.pending_for(queue);
++                let local = state.queues.get_mut(queue).expect("known queue");
++                local.batch_retry_ms = 0;
++                if let Some(refill) = &mut local.refill {
++                    refill.observe_reply(batch.claims.len() == reserved);
++                }
+                 state.pending.as_mut().expect("reserved batch").slots = batch.claims.len();
+                 state.counts.observe_queued_context_bytes(
+                     batch.claims.iter().map(|claim| claim.context.len()).sum(),
+@@ -2349,6 +2383,18 @@
+         pool,
+         session: lifecycle,
+     };
++    // Private experiment. The regular runner keeps its original dispatch policy.
++    if batch.is_some()
++        && config.admission == Admission::SuccessCohort
++        && config.completion_writer_ms == Some(0)
++        && config.queues.len() == 1
++        && std::env::var_os("MESH_SHORT_REFILL").as_deref() == Some(std::ffi::OsStr::new("1"))
++    {
++        for queue in runner.state.lock().queues.values_mut() {
++            queue.refill = Some(RefillWait::default());
++        }
++        eprintln!("short refill enabled");
++    }
+     let mut last_queue = String::new();
+     let mut attempts = Vec::<Attempt>::new();
+     let drain_queues = config
+@@ -2501,18 +2547,31 @@
+                             return None;
+                         }
+                         let active = attempts.iter().filter(|attempt| &attempt.queue == name);
+-                        if active.clone().any(Attempt::blocks_claims)
+-                            || active.count() >= queue.limit
+-                        {
++                        if active.clone().any(Attempt::blocks_claims) {
+                             return None;
+                         }
+-                        if queue.next_claim <= now {
+-                            return Some(name.clone());
++                        let free = queue.limit.saturating_sub(active.count());
++                        if free == 0 {
++                            return None;
+                         }
++                        let next = if queue.next_claim > now {
++                            queue.next_claim
++                        } else if let Some(until) = queue.refill.as_ref()
++                            .filter(|_| matches!(queue.source, ClaimWake::Ready))
++                            .and_then(|refill| refill.until(now, free, || {
++                                state.jobs.values().any(|job| {
++                                    &job.queue == name && matches!(&job.execution,
++                                        Execution::Running(work) if work.stop.is_none()
++                                            && !work.reaped && !work.process.reply_pending())
++                                })
++                            }))
++                        {
++                            until
++                        } else {
++                            return Some(name.clone());
++                        };
+                         // Only an admissible queue can shorten the lifecycle tick.
+-                        batch_retry_at = Some(
+-                            batch_retry_at.map_or(queue.next_claim, |at| at.min(queue.next_claim)),
+-                        );
++                        batch_retry_at = Some(batch_retry_at.map_or(next, |at| at.min(next)));
+                         None
+                     })
+             };
+@@ -2940,3 +2999,22 @@
+ #[cfg(test)]
+ #[path = "runner_tests.rs"]
+ mod tests;
++
++#[cfg(test)]
++#[test]
++fn refill_wait_is_bounded_and_only_aggregates_under_live_demand() {
++    let now = Instant::now();
++    let mut refill = RefillWait::default();
++    assert_eq!(refill.until(now, 1, || true), None);
++    refill.observe_reply(true);
++    assert_eq!(refill.until(now, 1, || false), None);
++    let deadline = now + Duration::from_micros(500);
++    assert_eq!(refill.until(now, 1, || true), Some(deadline));
++    assert_eq!(refill.until(now + Duration::from_micros(300), 2, || true), Some(deadline));
++    assert_eq!(refill.until(now + Duration::from_micros(300), 3, || true), None);
++    assert_eq!(refill.until(deadline, 1, || true), None);
++    refill.observe_reply(false);
++    assert_eq!(refill.until(deadline, 2, || true), None);
++    refill.observe_reply(true);
++    assert_eq!(refill.until(deadline, 2, || true), Some(deadline + Duration::from_micros(500)));
++}

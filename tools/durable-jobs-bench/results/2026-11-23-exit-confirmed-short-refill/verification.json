@@ -1,0 +1,109 @@
+{
+  "archive_sha256": "a84debb77612ef1bef578dbbf03020c304fdd7714f8e0ecee9fc1bb5eceb3e55",
+  "initial_held_receipt_us": 3025826,
+  "initial_proofs": {
+    "sparse": {
+      "returncode": 0
+    },
+    "split-faults": {
+      "returncode": 1
+    },
+    "teardown": {
+      "returncode": 0
+    },
+    "witness-link": {
+      "returncode": 0
+    },
+    "witness-source": {
+      "returncode": 0
+    }
+  },
+  "native_request_qualified": false,
+  "sparse_pickup_us": [
+    4252,
+    7806,
+    2058
+  ],
+  "split_fault_retry": {
+    "ambiguous-claim": {
+      "refill_enabled": true,
+      "returncode": 0
+    },
+    "ambiguous-completion": {
+      "refill_enabled": true,
+      "returncode": 0
+    },
+    "cancelled-member": {
+      "refill_enabled": true,
+      "returncode": 0
+    },
+    "expired-middle": {
+      "refill_enabled": true,
+      "returncode": 0
+    },
+    "held-middle": {
+      "refill_enabled": true,
+      "returncode": 0
+    },
+    "held-middle-control": {
+      "refill_enabled": false,
+      "returncode": 0
+    },
+    "renew-priority": {
+      "refill_enabled": true,
+      "returncode": 0
+    },
+    "stop": {
+      "refill_enabled": true,
+      "returncode": 0
+    }
+  },
+  "teardown": {
+    "after_callback_state": {
+      "attempt": 1,
+      "attempt_xid": "760",
+      "effect_xid": "761",
+      "job_xid": "779",
+      "state": "completed"
+    },
+    "broker_sha256": "25f1f9bb0bee23a14e93d0090a01f394f49ccea6515eb791ccd143dfd7942ba8",
+    "callback_held_witness": "entered present and finished absent before release",
+    "held_callback_state": {
+      "attempt": 1,
+      "attempt_xid": "760",
+      "effect_xid": "761",
+      "job_xid": "758",
+      "state": "executing"
+    },
+    "mode": "zero",
+    "normal_exit": true,
+    "runner_sha256": "cd9b6dc33b94bfaad7995f9f4d514b41666750932949fc06966ab7950d6ea0f0"
+  },
+  "timed_runner_sha256": "ff1e16405bde186dd6702a8ca09865bcc89f4bb44b46bad282f3d1ad088ce2ac",
+  "timed_runtime_sha256": "9473cf1696ebeb4129d8d39c626f18a2aad390f3462b3ad12c33197f6bd54f70",
+  "workspace_and_postgres_gates": {
+    "postgres-jobs": {
+      "passed_by_suite": [
+        38,
+        73,
+        3
+      ],
+      "returncode": 0
+    },
+    "refill-wait": {
+      "passed_by_suite": [
+        1
+      ],
+      "returncode": 0
+    },
+    "scheduler-drop": {
+      "passed_by_suite": [
+        1
+      ],
+      "returncode": 0
+    },
+    "workspace-build": {
+      "returncode": 0
+    }
+  }
+}
