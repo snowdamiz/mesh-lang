@@ -27,12 +27,22 @@ require a further 97–193 ms of drain savings per 1,024 jobs at these observed
 drain times. [Dense budgets by rotation](dense-stock-budgets.md) ·
 [Deployment, ledgers and native evidence](../2026-11-23-dense-matched-topology/README.md)
 
+With two 32-slot runners per engine, trusted Mesh finished ahead of its
+eight-runner control in all five dense Linode rotations. Oban, River and
+Apalis each beat two-runner Mesh in all five rotations on both throughput
+measures. Mesh used four of its 32 warmed application connections in each
+rotation. Even if enqueue took zero time and drain stayed fixed, Mesh would
+still need a median 312 ms off the 1,024-job drain to match River from submit.
+[Equal-topology scorecard](../2026-11-23-dense-matched-topology/evidence/equal/scorecard.md) ·
+[Time budgets by rotation](dense-equal-budgets.md)
+
 In these five dense rotations, the last application write committed 373–489 ms later on Mesh than on River. A local six-rotation experiment reduced terminal transaction counts in every rotation and failed to advance drain time beyond the identical controls. [Native stage chart and local completion experiment](../2026-11-24-dense-two-runner-completion/README.md)
 
 ## Replay
 
-Reproduce the fixed-drain calculation across the five rotations with
-`python3 -B tools/durable-jobs-bench/results/2026-11-23-iteration-comparison/dense-topology-budgets.py stock`.
+Reproduce the fixed-drain calculation with
+`python3 -B tools/durable-jobs-bench/results/2026-11-23-iteration-comparison/dense-topology-budgets.py equal`.
+Use `stock` for the series with eight-runner peers.
 
 From the checkout root, rebuild the standalone page from the committed score data.
 

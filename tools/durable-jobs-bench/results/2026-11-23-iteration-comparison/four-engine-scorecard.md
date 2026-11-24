@@ -22,6 +22,30 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | Sparse | 5/5 | 2.64 | 2.66 | 2.04 | 2.08 | 2.49 | 5 / 5 / 5 |
 | Large · EXTERNAL | 5/5 | 76.80 | 106.61 | 116.07 | 70.62 | 331.07 | 1 / 5 / 0 |
 
+## Dense jobs against peers using eight 8-slot runners
+
+5/5 matched rotations. Both Mesh lanes use the same V1 runner and 64 total slots. The peer engines share the same CPU and PostgreSQL limits.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh V1 · 2 × 32 | 547.01 | 751.82 | — | — |
+| Mesh V1 · 8 × 8 | 362.63 | 452.45 | 5/5 | 5/5 |
+| Oban | 633.50 | 695.27 | 0/5 | 5/5 |
+| River | 821.00 | 895.20 | 0/5 | 0/5 |
+| Apalis | 1,113.61 | 1,161.49 | 0/5 | 0/5 |
+
+## Dense jobs against peers using two 32-slot runners
+
+5/5 matched rotations. Both Mesh lanes use the same V1 runner and 64 total slots. The peer engines share the same CPU and PostgreSQL limits.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh V1 · 2 × 32 | 545.94 | 766.91 | — | — |
+| Mesh V1 · 8 × 8 | 359.43 | 446.38 | 5/5 | 5/5 |
+| Oban | 780.50 | 880.61 | 0/5 | 0/5 |
+| River | 1,002.35 | 1,091.82 | 0/5 | 0/5 |
+| Apalis | 1,352.34 | 1,425.24 | 0/5 | 0/5 |
+
 ## Short jobs with set-based claims and grouped successes
 
 5/5 matched rotations. The candidate uses set-based admission and can settle up to eight successful jobs in one transaction. The ordinary control uses stock admission and one terminal transaction per job.

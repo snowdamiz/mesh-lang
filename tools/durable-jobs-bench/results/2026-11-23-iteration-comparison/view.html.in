@@ -55,6 +55,10 @@ const measures={
 };
 const workloads={noop:"Dense no-op",slow:"Slow · 64 slots",sparse:"Sparse arrivals",short:"Short · 16 slots",large:"Large · 512 KiB"};
 const names={mesh:"Mesh",ordinary:"Mesh · trusted",stock:"Mesh · stock",current:"Mesh · current",historical:"Mesh · archived",
+ "mesh-v1-2x32":"Mesh V1 · 2 × 32","mesh-v1-8x8":"Mesh V1 · 8 × 8",
+ "river-2x32":"Go River · 2 × 32","river-8x8":"Go River · 8 × 8",
+ "oban-2x32":"Elixir Oban · 2 × 32","oban-8x8":"Elixir Oban · 8 × 8",
+ "apalis-2x32":"Rust Apalis · 2 × 32","apalis-8x8":"Rust Apalis · 8 × 8",
  lean:"Mesh · smaller worker",admission:"Mesh · set-based claims",combined:"Mesh · combined",
  "mesh-strict":"Mesh · fresh worker","mesh-trusted-persistent":"Mesh · reusable worker",
  "ordinary-4mb-a":"Mesh · 4 MiB control A","ordinary-4mb-b":"Mesh · 4 MiB control B",
@@ -122,7 +126,8 @@ function chooseSeries() {
 }
 for(const [key,s] of Object.entries(db))if(s.blocks.length)series.add(option(key,s.title));
 for(const [key,m] of Object.entries(measures))metric.add(option(key,m[0]));
-if(db["bulk-short"]?.blocks.length===5)series.value="bulk-short";
+if(db["dense-equal-topology"]?.blocks.length===5)series.value="dense-equal-topology";
+else if(db["bulk-short"]?.blocks.length===5)series.value="bulk-short";
 else if(db["bulk-slow"]?.blocks.length===5)series.value="bulk-slow";
 else if(db["ordinary-large"]?.blocks.length===5)series.value="ordinary-large";
 else if(db.symmetric?.blocks.length)series.value="symmetric";

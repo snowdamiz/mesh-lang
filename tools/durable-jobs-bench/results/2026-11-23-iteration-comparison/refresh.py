@@ -19,6 +19,38 @@ METRICS = (*RESPONSE_METRICS, "submit_jobs_per_s", "commit_jobs_per_s", "first_s
            "cpu_steal_percent", "cpu_iowait_percent")
 
 
+def capture_topology(directory, kind):
+    sys.path.insert(0, str(HERE.parent / "2026-11-23-dense-matched-topology"))
+    import matrix
+
+    config, schedule, pins = matrix.inputs(kind)
+    summary = matrix.summarize(directory, config, schedule, pins)
+    if summary["missing"]:
+        raise ValueError(f"{directory}: missing native rotations {summary['missing']}")
+    manifest = run.read_json(directory / "series.json")
+    identities = {}
+    for lane, definition in config["lanes"].items():
+        _, inventory = matrix.stages(config, lane, run.REMOTE / manifest["remotes"][lane])
+        identities[lane] = inventory["engines"][definition["engine"]]["artifact_sha256"]
+    blocks = []
+    for attempt, rows in sorted(summary["blocks"].items()):
+        path = directory / "blocks" / attempt
+        if rows != run.read_json(path / "reconciled.json"):
+            raise ValueError(f"{path}: replay differs from controller receipt")
+        block = run.read_json(path / "order.json")
+        scores, archives = {}, {}
+        for phase, lane, definition, folder in matrix.paths(path, config, block):
+            row = rows[f"{phase}-{lane}"]
+            archives[str(folder.relative_to(path))] = row["raw_sha256"]
+            if phase == "measured":
+                scores[lane] = {metric: row[metric] for metric in METRICS}
+                scores[lane].update(engine=definition["engine"], completed=row["completed"],
+                                    sha256=identities[lane])
+        blocks.append(dict(group=block["group"], profile=block["profile"], attempt=attempt,
+                           order=block["order"], scores=scores, raw_sha256=archives))
+    return dict(manifest_sha256=run.digest(directory / "series.json"), blocks=blocks)
+
+
 def capture(directory, live=None):
     directories = [path for path in (directory, live) if path and (path / "series.json").is_file()]
     if not directories:
@@ -140,6 +172,14 @@ def write_scorecard(data):
             lines.append(f"| {label} | {len(blocks)}/5 | {rates} | {wins} |")
         lines.append("")
     peers = [("oban", "Oban"), ("river", "River"), ("apalis", "Apalis")]
+    for kind, topology in (("stock", "8x8"), ("equal", "2x32")):
+        layout = "eight 8-slot runners" if kind == "stock" else "two 32-slot runners"
+        add_policy_table(lines, data.get(f"dense-{kind}-topology", {}),
+                         f"Dense jobs against peers using {layout}",
+                         "Both Mesh lanes use the same V1 runner and 64 total slots. "
+                         "The peer engines share the same CPU and PostgreSQL limits.",
+                         [("mesh-v1-2x32", "Mesh V1 · 2 × 32"), ("mesh-v1-8x8", "Mesh V1 · 8 × 8"),
+                          *((f"{key}-{topology}", label) for key, label in peers)])
     add_policy_table(lines, data.get("ordinary-cohort", {}), "Short jobs with set-based claims and grouped successes",
                      "The candidate uses set-based admission and can settle up to eight successful jobs in one transaction. "
                      "The ordinary control uses stock admission and one terminal transaction per job.",
@@ -306,7 +346,8 @@ def refresh(collect):
             if (item.get("pending") and name not in data
                     and not any(path and (path / "series.json").is_file() for path in (archived, live))):
                 continue
-            current = capture(archived, live)
+            current = (capture_topology(archived, item["topology"]) if "topology" in item
+                       else capture(archived, live))
             previous = data.get(name)
             if previous:
                 old = {b["attempt"]: b for b in previous["blocks"]}
