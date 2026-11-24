@@ -24,6 +24,8 @@ In a separate dense native diagnostic, reducing V1 from eight runners to two at 
 
 The sparse response-time replay follows each job from its own submit through durable settlement. A separate ledger decomposition shows how much of each run elapsed before the next submission. Across five rotations the median sums of those intervals range from 7.01 to 9.41 seconds per 24 jobs. [Response times](sparse-latency.md) · [Time between submissions](sparse-windows.md)
 
+On the selected public build, median sparse submit-to-settlement p99 was 16.43 ms for Mesh, 236.98 ms for Oban, 241.47 ms for River, and 15.98 ms for Apalis. Mesh finished the complete sparse run sooner than each peer in all five rotations. The 24 Mesh jobs took a median 261 ms of combined response time versus 238 ms for Apalis. The 23 intervals between settlement and the next submit totaled 8.755 s for Mesh and 9.443 s for Apalis. [Public sparse response times](sparse-latency.md#selected-public-build) · [Public sparse intervals](sparse-windows.md#selected-public-build)
+
 The public shared-process build at `db5937e7` has its own native correctness checks and one direct timing pair for each of short and dense. The V1 and V2 throughput series use their archived experimental executables. [Product verification and matched pairs](../2026-11-23-ordinary-trusted-product-db5937e7/README.md)
 
 The five dense rotations with stock peer deployments put trusted Mesh at

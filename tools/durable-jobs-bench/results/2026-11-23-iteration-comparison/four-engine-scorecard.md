@@ -10,6 +10,8 @@ Each row gives the median jobs/s and matched wins over five Linode rotations. Al
 | [Short, 1 × 16](chart.html#public-short-selection) | Drain | 713.61 | 613.50 | 313.31 | 924.81 | 3 / 5 / 0 |
 | [Dense, 8 × 8](chart.html#public-dense-stock) | Submit | 470.19 | 841.96 | 634.18 | 1,112.67 | 0 / 0 / 1 |
 | [Dense, 8 × 8](chart.html#public-dense-stock) | Drain | 512.48 | 904.54 | 698.45 | 1,162.19 | 0 / 0 / 1 |
+| [Sparse, 1 slot](chart.html#public-sparse) | Submit | 2.66 | 2.08 | 2.04 | 2.48 | 5 / 5 / 5 |
+| [Sparse, 1 slot](chart.html#public-sparse) | Drain | 2.66 | 2.08 | 2.04 | 2.48 | 5 / 5 / 5 |
 | [Dense, Mesh 2 × 32 and peers 8 × 8](chart.html#public-dense-mixed) | Submit | 682.04 | 843.03 | 621.83 | 1,119.75 | 0 / 5 / 0 |
 | [Dense, Mesh 2 × 32 and peers 8 × 8](chart.html#public-dense-mixed) | Drain | 770.33 | 900.16 | 684.68 | 1,165.95 | 0 / 5 / 0 |
 | [Dense, all engines 2 × 32](chart.html#public-dense-equal) | Submit | 688.41 | 997.17 | 762.22 | 1,407.67 | 0 / 0 / 0 |

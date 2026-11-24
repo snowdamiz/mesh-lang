@@ -33,11 +33,8 @@ def windows(ledger, score):
     return [total / 1e6, sum(times) / 1e6, sum(waits) / 1e6, median(tails) / 1000]
 
 
-def render():
-    name = "ordinary-sparse"
-    config = next(s for s in json.loads((HERE / "series-list.json").read_text()) if s["name"] == name)
+def series_samples(config, groups):
     root = HERE.parents[1] / config["path"] / "blocks"
-    groups = json.loads((HERE / "scores.json").read_text())[name]["blocks"]
     samples = {}
     for block in groups:
         for lane, score in block["scores"].items():
@@ -48,15 +45,31 @@ def render():
             with tarfile.open(path) as archive:
                 sample = windows(json.load(archive.extractfile("adapter/ledger.json")), score)
             samples.setdefault(lane, []).append(sample)
+    return samples
+
+
+def render():
+    configs = {s["name"]: s for s in json.loads((HERE / "series-list.json").read_text())}
+    data = json.loads((HERE / "scores.json").read_text())
+    peers = [("oban", "Oban"), ("river", "River"), ("apalis", "Apalis")]
     lines = ["# Time between sparse submissions", "",
-             f"Each of the {len(groups)} rotations submitted 24 jobs individually and waited for each to settle. Each arm’s full duration equals its 24 job response times plus the 23 intervals between a settlement and the next submit. Those intervals include a prescribed 250 ms pause, or 5.75 seconds per arm. The table gives the median of each measure across rotations.", "",
-             "| Engine | Full arm (s) | Sum of 24 response times (s) | Sum of 23 intervals (s) | Median second application commit to settlement (ms) |",
-             "|---|---:|---:|---:|---:|"]
-    for lane, label in (("ordinary", "Trusted Mesh V1"), ("protected-mesh", "Protected Mesh"), ("oban", "Oban"),
-                        ("river", "River"), ("apalis", "Apalis")):
-        cells = [median(col) for col in zip(*samples[lane], strict=True)]
-        lines.append("| " + label + " | " + " | ".join(f"{v:.3f}" for v in cells) + " |")
-    lines += ["", "Apalis finished individual jobs fastest at the median. Its longer intervals between submissions affected the whole-arm rate. River picked jobs up quickly and spent most of each response waiting for the terminal commit after its second application write. Independently reported column medians can come from different rotations. [Per-job response percentiles](sparse-latency.md) · [Archive digests and whole-arm rates](scores.json)", ""]
+             "Each arm’s full duration equals its 24 individual job response times plus the 23 intervals between a settlement and the next submit. Those intervals include 23 prescribed 250 ms pauses, totaling 5.75 seconds. The tables give the median of each measure across matched Linode rotations. Column medians can come from different rotations.", ""]
+    for name, title, lanes in [
+        ("public-sparse", "Selected public build", [("product", "Public trusted Mesh"), *peers]),
+        ("ordinary-sparse", "Original runners", [("ordinary", "Trusted Mesh V1"), ("protected-mesh", "Protected Mesh"), *peers]),
+    ]:
+        if name not in data:
+            continue
+        groups = data[name]["blocks"]
+        samples = series_samples(configs[name], groups)
+        lines.extend([f"## {title}", "", f"{len(groups)} matched rotations.", "",
+                      "| Engine | Full arm (s) | Sum of 24 response times (s) | Sum of 23 intervals (s) | Median second application commit to settlement (ms) |",
+                      "|---|---:|---:|---:|---:|"])
+        for lane, label in lanes:
+            cells = [median(col) for col in zip(*samples[lane], strict=True)]
+            lines.append("| " + label + " | " + " | ".join(f"{v:.3f}" for v in cells) + " |")
+        lines.append("")
+    lines += ["[Per-job response percentiles](sparse-latency.md) · [Archive digests and whole-arm rates](scores.json)", ""]
     return "\n".join(lines)
 
 

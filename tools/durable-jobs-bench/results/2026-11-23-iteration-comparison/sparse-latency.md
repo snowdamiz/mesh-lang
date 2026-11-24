@@ -4,6 +4,27 @@ Each arm submits 24 jobs individually. After each settlement the producer waits 
 
 Each percentile column shows the median of the per-rotation percentiles. With 24 jobs, the matrix’s nearest-rank p99 is the slowest job in that arm. The final column shows the slowest response across all rotations.
 
+## Selected public build
+
+5 matched Linode rotations.
+
+| Engine | Submit to settle p50 | Submit to settle p99 | Commit to pickup p99 | Commit to settle p99 | Worst submit to settle |
+|---|---:|---:|---:|---:|---:|
+| Public trusted Mesh | 10.53 | 16.43 | 6.06 | 11.19 | 47.73 |
+| Oban | 190.86 | 236.98 | 228.14 | 231.44 | 239.97 |
+| River | 194.52 | 241.47 | 2.33 | 239.61 | 248.76 |
+| Apalis | 9.21 | 15.98 | 6.20 | 12.75 | 16.22 |
+
+Submit to settlement p99 in each rotation, in milliseconds.
+
+| Rotation | Public trusted Mesh | Oban | River | Apalis |
+|---|---:|---:|---:|---:|
+| 1 | 15.22 | 239.97 | 248.76 | 16.13 |
+| 2 | 16.16 | 237.09 | 248.26 | 16.22 |
+| 3 | 18.36 | 233.86 | 241.47 | 15.42 |
+| 4 | 16.43 | 234.02 | 238.75 | 13.48 |
+| 5 | 47.73 | 236.98 | 240.13 | 15.98 |
+
 ## Original runners
 
 5 matched Linode rotations.
