@@ -1,0 +1,475 @@
+{
+  "administrator": {
+    "before_and_after": 1,
+    "while_timed": 0
+  },
+  "archived_slow_cap68": {
+    "01-slow.1795486035331275000/apalis-stock-1x64": {
+      "archive": "blocks/01-slow.1795486035331275000/measured-apalis-stock-1x64/measured-rust/raw.tar.gz",
+      "cap": 68,
+      "committed_hold_peak": 64,
+      "jobs": 512,
+      "peak_connections": 67,
+      "pool_max": null,
+      "runners": 1,
+      "sha256": "94c487a960bb1bbd704fe0c7424db013ed85e9fd34ff541bd0acc61d70ed5551",
+      "slots": 64,
+      "warm_roles": {
+        "apalis:producer_observer": 1,
+        "apalis:runner-0": 66
+      }
+    },
+    "01-slow.1795486035331275000/oban-stock-1x64": {
+      "archive": "blocks/01-slow.1795486035331275000/measured-oban-stock-1x64/measured-oban/raw.tar.gz",
+      "cap": 68,
+      "committed_hold_peak": 64,
+      "jobs": 512,
+      "peak_connections": 67,
+      "pool_max": null,
+      "runners": 1,
+      "sha256": "594e69066d28479f33397767cbfbef9f24ed98f3323d37fce026d1384075ee9f",
+      "slots": 64,
+      "warm_roles": {
+        "parity_producer": 1,
+        "parity_subject": 66
+      }
+    },
+    "01-slow.1795486035331275000/river-stock-1x64": {
+      "archive": "blocks/01-slow.1795486035331275000/measured-river-stock-1x64/measured-go/raw.tar.gz",
+      "cap": 68,
+      "committed_hold_peak": 64,
+      "jobs": 512,
+      "peak_connections": 67,
+      "pool_max": 66,
+      "runners": 1,
+      "sha256": "ad7c9d36526e5a3fb21bc9fa13b7a28cb904ebdca8f7932a48920c00044a9e3a",
+      "slots": 64,
+      "warm_roles": null
+    },
+    "01-slow.1795486035331275000/two": {
+      "archive": "blocks/01-slow.1795486035331275000/measured-two/measured-mesh/raw.tar.gz",
+      "cap": 68,
+      "committed_hold_peak": 64,
+      "jobs": 512,
+      "peak_connections": 17,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "28e6eee370bbeea0e9e67abbbe0e058fc7bbde8da7dc82ed8b55742d94bce69f",
+      "slots": 64,
+      "warm_roles": null
+    },
+    "02-slow.1795486170815500000/apalis-stock-1x64": {
+      "archive": "blocks/02-slow.1795486170815500000/measured-apalis-stock-1x64/measured-rust/raw.tar.gz",
+      "cap": 68,
+      "committed_hold_peak": 64,
+      "jobs": 512,
+      "peak_connections": 67,
+      "pool_max": null,
+      "runners": 1,
+      "sha256": "5bdc0be8db3c0b3c4d271b257524e1406fb2c10b4e2efc047ed84e7500608387",
+      "slots": 64,
+      "warm_roles": {
+        "apalis:producer_observer": 1,
+        "apalis:runner-0": 66
+      }
+    },
+    "02-slow.1795486170815500000/oban-stock-1x64": {
+      "archive": "blocks/02-slow.1795486170815500000/measured-oban-stock-1x64/measured-oban/raw.tar.gz",
+      "cap": 68,
+      "committed_hold_peak": 64,
+      "jobs": 512,
+      "peak_connections": 67,
+      "pool_max": null,
+      "runners": 1,
+      "sha256": "7ba82ea56291d9e0414079e6e8460ce5e533d1c8925d6a5ef262f2097e9772d3",
+      "slots": 64,
+      "warm_roles": {
+        "parity_producer": 1,
+        "parity_subject": 66
+      }
+    },
+    "02-slow.1795486170815500000/river-stock-1x64": {
+      "archive": "blocks/02-slow.1795486170815500000/measured-river-stock-1x64/measured-go/raw.tar.gz",
+      "cap": 68,
+      "committed_hold_peak": 64,
+      "jobs": 512,
+      "peak_connections": 67,
+      "pool_max": 66,
+      "runners": 1,
+      "sha256": "f8afbf211c846f165d70d8119a4e57e1e39d8faa3ccd5ce83fa4b793f45f70fa",
+      "slots": 64,
+      "warm_roles": null
+    },
+    "02-slow.1795486170815500000/two": {
+      "archive": "blocks/02-slow.1795486170815500000/measured-two/measured-mesh/raw.tar.gz",
+      "cap": 68,
+      "committed_hold_peak": 64,
+      "jobs": 512,
+      "peak_connections": 17,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "32f2968e042fe8a0a4cb13d4170491e1f728fd8645592dee809f5632e3518097",
+      "slots": 64,
+      "warm_roles": null
+    }
+  },
+  "common_sensitivity_cap": 71,
+  "dense_peaks": {
+    "apalis": [
+      69,
+      69,
+      69,
+      69,
+      69
+    ],
+    "oban": [
+      69,
+      69,
+      69,
+      69,
+      69
+    ],
+    "river": [
+      67,
+      67,
+      68,
+      68,
+      70
+    ]
+  },
+  "max_simultaneous_physical": {
+    "apalis": 69,
+    "mesh": 17,
+    "oban": 69,
+    "river": 71
+  },
+  "native_equal_dense": {
+    "01-noop.1795484900916778000/apalis": {
+      "archive": "blocks/01-noop.1795484900916778000/measured-apalis-2x32/measured-rust/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 48,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "92442e09813dd0246d9ea0f779b51f310b1cdb63f329ffce7c8bf2ead905ff6a",
+      "slots": 64,
+      "warm_roles": {
+        "apalis:producer_observer": 1,
+        "apalis:runner-0": 34,
+        "apalis:runner-1": 34
+      }
+    },
+    "01-noop.1795484900916778000/oban": {
+      "archive": "blocks/01-noop.1795484900916778000/measured-oban-2x32/measured-oban/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 46,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "37c9da5772139113083383b89e8b26d6f9f23f5fdb169c1e7b6c7596381e561c",
+      "slots": 64,
+      "warm_roles": {
+        "parity_producer": 1,
+        "parity_subject": 68
+      }
+    },
+    "01-noop.1795484900916778000/river": {
+      "archive": "blocks/01-noop.1795484900916778000/measured-river-2x32/measured-go/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 37,
+      "jobs": 1024,
+      "peak_connections": 68,
+      "pool_max": 68,
+      "runners": 2,
+      "sha256": "51a5a840517393b5a76b9b150f45899136e32b0a12bff79aaecc1655b598d92e",
+      "slots": 64,
+      "warm_roles": null
+    },
+    "02-noop.1795485002548285000/apalis": {
+      "archive": "blocks/02-noop.1795485002548285000/measured-apalis-2x32/measured-rust/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 45,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "8fd4b99fb873462f473814ce2ca6f031285e96d45bed5d911657a2214fe4da40",
+      "slots": 64,
+      "warm_roles": {
+        "apalis:producer_observer": 1,
+        "apalis:runner-0": 34,
+        "apalis:runner-1": 34
+      }
+    },
+    "02-noop.1795485002548285000/oban": {
+      "archive": "blocks/02-noop.1795485002548285000/measured-oban-2x32/measured-oban/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 58,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "2123089ee74bb82cf66b1f31a11dbf5dae924da0edcad1e4099e2cb53812d6e9",
+      "slots": 64,
+      "warm_roles": {
+        "parity_producer": 1,
+        "parity_subject": 68
+      }
+    },
+    "02-noop.1795485002548285000/river": {
+      "archive": "blocks/02-noop.1795485002548285000/measured-river-2x32/measured-go/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 40,
+      "jobs": 1024,
+      "peak_connections": 67,
+      "pool_max": 68,
+      "runners": 2,
+      "sha256": "bbc71959dc25fd284a0211bba1876b3e74de5e73766be9800ad0c8c26200a08c",
+      "slots": 64,
+      "warm_roles": null
+    },
+    "03-noop.1795485104776304000/apalis": {
+      "archive": "blocks/03-noop.1795485104776304000/measured-apalis-2x32/measured-rust/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 53,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "07e885ef8207eebe08046e098c56300a619dff3e858ee8c31ae31fe20dfb538d",
+      "slots": 64,
+      "warm_roles": {
+        "apalis:producer_observer": 1,
+        "apalis:runner-0": 34,
+        "apalis:runner-1": 34
+      }
+    },
+    "03-noop.1795485104776304000/oban": {
+      "archive": "blocks/03-noop.1795485104776304000/measured-oban-2x32/measured-oban/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 52,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "41aa0c80d916ef13165c99c33799a9e98572a6861ca9a1d577ae6718fa6c37eb",
+      "slots": 64,
+      "warm_roles": {
+        "parity_producer": 1,
+        "parity_subject": 68
+      }
+    },
+    "03-noop.1795485104776304000/river": {
+      "archive": "blocks/03-noop.1795485104776304000/measured-river-2x32/measured-go/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 33,
+      "jobs": 1024,
+      "peak_connections": 68,
+      "pool_max": 68,
+      "runners": 2,
+      "sha256": "8423c444baba544e3599703e5e0efbb75e7198cc0aff5400ff7af633be8b0351",
+      "slots": 64,
+      "warm_roles": null
+    },
+    "04-noop.1795485206523207000/apalis": {
+      "archive": "blocks/04-noop.1795485206523207000/measured-apalis-2x32/measured-rust/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 53,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "1f33fd082f3cd46f01dde9c4c95dc9dad2f0e7dab22bb31f3fc0f8bbdcd3783f",
+      "slots": 64,
+      "warm_roles": {
+        "apalis:producer_observer": 1,
+        "apalis:runner-0": 34,
+        "apalis:runner-1": 34
+      }
+    },
+    "04-noop.1795485206523207000/oban": {
+      "archive": "blocks/04-noop.1795485206523207000/measured-oban-2x32/measured-oban/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 63,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "fd04be9f3d76820c40bec45ca53b3634ac860c230621db9520e2122974d34691",
+      "slots": 64,
+      "warm_roles": {
+        "parity_producer": 1,
+        "parity_subject": 68
+      }
+    },
+    "04-noop.1795485206523207000/river": {
+      "archive": "blocks/04-noop.1795485206523207000/measured-river-2x32/measured-go/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 42,
+      "jobs": 1024,
+      "peak_connections": 67,
+      "pool_max": 68,
+      "runners": 2,
+      "sha256": "e1894c8396edd69025665f6906ccf3a8cf8276b7382547cd515638ae50b9e311",
+      "slots": 64,
+      "warm_roles": null
+    },
+    "05-noop.1795485308777179000/apalis": {
+      "archive": "blocks/05-noop.1795485308777179000/measured-apalis-2x32/measured-rust/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 61,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "23fbcf23f35f06146bdc5413fd0c28b4c2e70db7e1b0f2c0828507e3da38eaf9",
+      "slots": 64,
+      "warm_roles": {
+        "apalis:producer_observer": 1,
+        "apalis:runner-0": 34,
+        "apalis:runner-1": 34
+      }
+    },
+    "05-noop.1795485308777179000/oban": {
+      "archive": "blocks/05-noop.1795485308777179000/measured-oban-2x32/measured-oban/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 64,
+      "jobs": 1024,
+      "peak_connections": 69,
+      "pool_max": null,
+      "runners": 2,
+      "sha256": "ce07546af585ef7f2955c449a2f2277618aa9cd77f00a9853e4167f6e1a1952a",
+      "slots": 64,
+      "warm_roles": {
+        "parity_producer": 1,
+        "parity_subject": 68
+      }
+    },
+    "05-noop.1795485308777179000/river": {
+      "archive": "blocks/05-noop.1795485308777179000/measured-river-2x32/measured-go/raw.tar.gz",
+      "cap": 96,
+      "committed_hold_peak": 53,
+      "jobs": 1024,
+      "peak_connections": 70,
+      "pool_max": 68,
+      "runners": 2,
+      "sha256": "2eb8e953926437aa10f42d93dbaaf653be2eacc88cf580ba4a4ea4d17c110aa4",
+      "slots": 64,
+      "warm_roles": null
+    }
+  },
+  "per_engine": {
+    "apalis": {
+      "application_pool": 64,
+      "detached": 0,
+      "producer_observer": 1,
+      "queue_and_listen": 4
+    },
+    "mesh": {
+      "application_pool": 8,
+      "detached": 0,
+      "producer_observer": 1,
+      "queue_and_listen": 8
+    },
+    "oban": {
+      "application_pool": 64,
+      "detached": 0,
+      "producer_observer": 1,
+      "queue_and_listen": 4
+    },
+    "river": {
+      "application_pool": 64,
+      "detached": 2,
+      "producer_observer": 1,
+      "queue_and_listen": 4
+    }
+  },
+  "protocol_source": {
+    "scripts/fixtures/jobs-parity-oban/lib/jobs_parity_oban.ex": {
+      "anchors": [
+        "pool_size = if slots, do: slots + 2",
+        "notifier: Oban.Notifiers.Isolated"
+      ],
+      "sha256": "3f1d3df9937e8eb4528e474c328881a1308b70a108b59dd52ae473624e655e10"
+    },
+    "scripts/fixtures/jobs-parity-oban/lib/worker.ex": {
+      "anchors": [
+        "Repo.checkout(fn ->",
+        "Process.sleep(hold_ms)"
+      ],
+      "sha256": "a5d1a51c17662bd5dff379d1152c0eef5a23045859abec02ea396adb3b51c49e"
+    },
+    "target/linode-apalis/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-postgres-0.9.1/src/listener.rs": {
+      "anchors": [
+        "let mut connection = pool.acquire().await?;"
+      ],
+      "sha256": "a3a7c4ed622160f6fb9c61a83d199d499ab63d0c5e7e2422b91f657cfd8a0bbc"
+    },
+    "target/linode-apalis/crates/apalis-postgres-1.2.0/src/pubsub.rs": {
+      "anchors": [
+        "PgListener::connect_with(&pool)"
+      ],
+      "sha256": "437dc999e682ee1a46727043a0929686fae63be7c4d65133f9de5f06dbfbe38c"
+    },
+    "target/linode-jobs-native/bundles/v5/source/proof/jobs-parity/linux-regression/oban-session.ex.in": {
+      "anchors": [
+        "pool_size: 1",
+        "jobs_parity_oban:producer_observer"
+      ],
+      "sha256": "88cc0cddd415ae44410f850d75d0117297fa7b40af7993501d7c5ab9aac76926"
+    },
+    "target/linode-river/cache/mod/github.com/jackc/pgx/v5@v5.13.0/pgxpool/conn.go": {
+      "anchors": [
+        "res.Hijack()"
+      ],
+      "sha256": "7fb7d0df3b7d11ea560f0a33507e2eccf9e034127803f017b28a0a5b336bd0cb"
+    },
+    "target/linode-river/cache/mod/github.com/jackc/puddle/v2@v2.2.3/pool.go": {
+      "anchors": [
+        "func (p *Pool[T]) hijackAcquiredResource",
+        "p.allResources.remove(res)",
+        "defer p.acquireSem.Release(1)"
+      ],
+      "sha256": "807b54705485e1cf9c285fb6832bcd6d72ee42d13b5f214d81f57ec8d5aae2ec"
+    },
+    "target/linode-river/cache/mod/github.com/riverqueue/river/riverdriver/riverpgxv5@v0.51.2/river_pgx_v5_driver.go": {
+      "anchors": [
+        "poolConn, err := l.dbPool.Acquire(ctx)",
+        "l.conn = poolConn.Hijack()"
+      ],
+      "sha256": "b5f34db3ef7a6cc2cd3df88e2823f6cc4b1c9ec02c4b4226df8fe06ec051c613"
+    },
+    "tools/durable-jobs-bench/go/db.go": {
+      "anchors": [
+        "cfg.MaxConns, cfg.MinConns, cfg.MinIdleConns = cap, 0, 0"
+      ],
+      "sha256": "5b46edba58b4bbf318759cef2b5fc5540aae4f5f15b2df9083b875525c89ba85"
+    },
+    "tools/durable-jobs-bench/go/main.go": {
+      "anchors": [
+        "\"river:producer_observer\", 1"
+      ],
+      "sha256": "0e9c26aed160e6313e30c7ee8562a14d14cde94f89f1bf0756fad68e26128da0"
+    },
+    "tools/durable-jobs-bench/go/worker.go": {
+      "anchors": [
+        "w.pool.Acquire(ctx)",
+        "int32(slots+2)",
+        "defer conn.Release()"
+      ],
+      "sha256": "6c0f7b8e817a5cd05e98a72af57e48f0c9b5f4bcf283c057e246a9f8fa1e6d69"
+    },
+    "tools/durable-jobs-bench/rust/src/main.rs": {
+      "anchors": [
+        ".min_connections(connections)",
+        ".max_connections(connections)",
+        "let connections = u32::try_from(slots + 2)?",
+        "sleep(Duration::from_millis(job.hold_ms)).await",
+        "drop(conn);"
+      ],
+      "sha256": "6845249e17e86c266da2ae34e5b144318b23fcf451e9b3c8753de6970c24e8e9"
+    }
+  }
+}

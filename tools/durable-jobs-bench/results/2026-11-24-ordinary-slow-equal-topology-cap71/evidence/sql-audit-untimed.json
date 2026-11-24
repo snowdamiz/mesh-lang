@@ -1,0 +1,230 @@
+{
+  "archive_sha256": "43a32ab749e61ea5f2563669b77b24ce661bbd713118c6d1db420316771b2820",
+  "attempt": "1791d0161a744c2199224c7bff6e5a33",
+  "failed_before_submit": true,
+  "failure": {
+    "message": "parity error: 42703\t\t\t\tcolumn \"current_database\" does not exist\n",
+    "stage": [
+      [
+        "arm.py",
+        284,
+        "run_arm"
+      ],
+      [
+        "jobs-parity.py",
+        933,
+        "run_trial"
+      ],
+      [
+        "adapter.py",
+        131,
+        "calls"
+      ],
+      [
+        "trial.py",
+        65,
+        "sql"
+      ],
+      [
+        "trial.py",
+        177,
+        "request"
+      ],
+      [
+        "trial.py",
+        170,
+        "reply"
+      ],
+      [
+        "jobs-parity.py",
+        585,
+        "wait_for"
+      ],
+      [
+        "trial.py",
+        166,
+        "poll_line"
+      ]
+    ],
+    "type": "RuntimeError"
+  },
+  "native_warm_roles": {
+    "compiled_caller": 8,
+    "parity_producer": 1,
+    "parity_subject": 8
+  },
+  "post_arm": {
+    "cap": 71,
+    "dealloc": 0,
+    "sessions": {
+      "parity_owner": 1
+    }
+  },
+  "preserved_native_plan": {
+    "setup": [
+      {
+        "group": 1,
+        "order": [
+          "mesh",
+          "go",
+          "rust",
+          "oban"
+        ],
+        "phases": [
+          "warmup"
+        ],
+        "profile": "slow"
+      }
+    ],
+    "timing": [
+      {
+        "group": 1,
+        "order": [
+          "mesh",
+          "go",
+          "rust",
+          "oban"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow"
+      },
+      {
+        "group": 2,
+        "order": [
+          "oban",
+          "rust",
+          "go",
+          "mesh"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow"
+      },
+      {
+        "group": 3,
+        "order": [
+          "go",
+          "rust",
+          "oban",
+          "mesh"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow"
+      },
+      {
+        "group": 4,
+        "order": [
+          "mesh",
+          "oban",
+          "rust",
+          "go"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow"
+      },
+      {
+        "group": 5,
+        "order": [
+          "rust",
+          "oban",
+          "mesh",
+          "go"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow"
+      },
+      {
+        "group": 6,
+        "order": [
+          "go",
+          "mesh",
+          "oban",
+          "rust"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow"
+      },
+      {
+        "group": 7,
+        "order": [
+          "oban",
+          "mesh",
+          "go",
+          "rust"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow"
+      },
+      {
+        "group": 8,
+        "order": [
+          "rust",
+          "go",
+          "mesh",
+          "oban"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow"
+      }
+    ]
+  },
+  "retry_request_sha256": {
+    "setup": "7fbe99b1c6e8c5ea38029ca8635f10c698b76d021f9226c57dc6e728bf7f892c",
+    "timing": "7941df7ee3102380067e19183acb4d1e76d224d785c2759aea3e76ee362cd9bc"
+  },
+  "server_error_position": 282,
+  "server_sqlstate": "42703",
+  "untimed_regression": {
+    "corrected_broker_witnesses": {
+      "audit_application_mesh": [
+        "compiled_caller",
+        1,
+        1
+      ],
+      "audit_runner_mesh": [
+        "parity_subject",
+        1,
+        1
+      ]
+    },
+    "corrected_teardown_witnesses": {
+      "audit_application_mesh": [
+        "compiled_caller",
+        1,
+        1
+      ],
+      "audit_runner_mesh": [
+        "parity_subject",
+        1,
+        1
+      ]
+    },
+    "mode": "untimed SQL correctness only",
+    "old_statement_sqlstate": "42703",
+    "other_database_and_admin_excluded": true,
+    "postgres_version": "postgres (PostgreSQL) 17.11 (Homebrew)"
+  }
+}

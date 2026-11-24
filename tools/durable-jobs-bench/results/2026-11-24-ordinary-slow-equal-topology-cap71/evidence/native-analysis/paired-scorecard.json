@@ -1,0 +1,1208 @@
+{
+  "common_cap": 71,
+  "engines": {
+    "go": {
+      "attempt_to_effect_commit_p50_ms": {
+        "maximum": 103.146,
+        "median": 102.36725,
+        "minimum": 101.966,
+        "n": 8
+      },
+      "commit_jobs_per_s": {
+        "maximum": 396.7915681791762,
+        "median": 337.71940586956515,
+        "minimum": 327.75236772279317,
+        "n": 8
+      },
+      "committed_hold_peak": {
+        "maximum": 64,
+        "median": 64.0,
+        "minimum": 64,
+        "n": 8
+      },
+      "cpu_iowait_percent": {
+        "maximum": 2.6607538802660753,
+        "median": 0.894872500688171,
+        "minimum": 0.5012531328320802,
+        "n": 8
+      },
+      "cpu_steal_percent": {
+        "maximum": 0.0,
+        "median": 0.0,
+        "minimum": 0.0,
+        "n": 8
+      },
+      "drain_ms": {
+        "maximum": 1562.155,
+        "median": 1516.0535,
+        "minimum": 1290.35,
+        "n": 8
+      },
+      "effect_commit_to_settlement_p50_ms": {
+        "maximum": 147.18650000000002,
+        "median": 138.74225,
+        "minimum": 134.7175,
+        "n": 8
+      },
+      "entry_to_attempt_commit_p50_ms": {
+        "maximum": 0.547,
+        "median": 0.406,
+        "minimum": 0.3055,
+        "n": 8
+      },
+      "first_hold_start_ms": {
+        "maximum": 54.559,
+        "median": 47.494,
+        "minimum": 41.452,
+        "n": 8
+      },
+      "first_submit_to_commit_ms": {
+        "maximum": 514.746,
+        "median": 473.35749999999996,
+        "minimum": 462.001,
+        "n": 8
+      },
+      "last_hold_end_ms": {
+        "maximum": 1390.801,
+        "median": 1305.0845,
+        "minimum": 1209.126,
+        "n": 8
+      },
+      "min_hold_ms": {
+        "maximum": 100.579,
+        "median": 100.48949999999999,
+        "minimum": 100.425,
+        "n": 8
+      },
+      "observed_physical_peak": {
+        "maximum": 69,
+        "median": 69.0,
+        "minimum": 68,
+        "n": 8
+      },
+      "peak_executing": {
+        "maximum": 64,
+        "median": 64.0,
+        "minimum": 64,
+        "n": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": {
+        "maximum": 1.73828125,
+        "median": 1.533203125,
+        "minimum": 1.34765625,
+        "n": 8
+      },
+      "pinned_user_cpu_ms_per_job": {
+        "maximum": 2.7734375,
+        "median": 2.578125,
+        "minimum": 2.4609375,
+        "n": 8
+      },
+      "runner_cpu_ms_per_job": {
+        "maximum": 1.1482675781249998,
+        "median": 1.0605419921875,
+        "minimum": 1.0170156250000002,
+        "n": 8
+      },
+      "sql": {
+        "attempt": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 67.95163800000002,
+            "median": 43.21423550000001,
+            "minimum": 33.718137000000006,
+            "n": 8
+          }
+        },
+        "claim": {
+          "calls": {
+            "maximum": 163,
+            "median": 147.5,
+            "minimum": 135,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 94.24460300000001,
+            "median": 75.4816615,
+            "minimum": 70.52016899999997,
+            "n": 8
+          }
+        },
+        "effect": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 105.20788599999995,
+            "median": 59.819067999999966,
+            "minimum": 47.185802000000024,
+            "n": 8
+          }
+        },
+        "lease_or_maintenance": {
+          "calls": {
+            "maximum": 18,
+            "median": 17.0,
+            "minimum": 16,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 3,
+            "median": 3.0,
+            "minimum": 2,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 10.532551,
+            "median": 6.48202,
+            "minimum": 6.310056,
+            "n": 8
+          }
+        },
+        "settlement": {
+          "calls": {
+            "maximum": 12,
+            "median": 10.5,
+            "minimum": 10,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 81.56877499999999,
+            "median": 47.756799,
+            "minimum": 37.951938,
+            "n": 8
+          }
+        }
+      },
+      "submit_jobs_per_s": {
+        "maximum": 289.3278157614718,
+        "median": 255.57255560399798,
+        "minimum": 252.33570703035863,
+        "n": 8
+      },
+      "submit_ms": {
+        "maximum": 2029.043,
+        "median": 2003.345,
+        "minimum": 1769.619,
+        "n": 8
+      },
+      "terminal_xids": {
+        "maximum": 12,
+        "median": 10.5,
+        "minimum": 10,
+        "n": 8
+      },
+      "whole_cluster_peak": {
+        "maximum": 69,
+        "median": 69.0,
+        "minimum": 68,
+        "n": 8
+      },
+      "write_xids": {
+        "maximum": 1024,
+        "median": 1024.0,
+        "minimum": 1024,
+        "n": 8
+      }
+    },
+    "mesh": {
+      "attempt_to_effect_commit_p50_ms": {
+        "maximum": 103.6095,
+        "median": 102.71275,
+        "minimum": 101.799,
+        "n": 8
+      },
+      "commit_jobs_per_s": {
+        "maximum": 430.1375179889055,
+        "median": 408.03111278844403,
+        "minimum": 376.35740428062445,
+        "n": 8
+      },
+      "committed_hold_peak": {
+        "maximum": 64,
+        "median": 64.0,
+        "minimum": 64,
+        "n": 8
+      },
+      "cpu_iowait_percent": {
+        "maximum": 2.0725388601036268,
+        "median": 1.8829189652132297,
+        "minimum": 1.3824884792626728,
+        "n": 8
+      },
+      "cpu_steal_percent": {
+        "maximum": 0.0,
+        "median": 0.0,
+        "minimum": 0.0,
+        "n": 8
+      },
+      "drain_ms": {
+        "maximum": 1360.409,
+        "median": 1254.9825,
+        "minimum": 1190.317,
+        "n": 8
+      },
+      "effect_commit_to_settlement_p50_ms": {
+        "maximum": 7.4515,
+        "median": 5.547499999999999,
+        "minimum": 4.541,
+        "n": 8
+      },
+      "entry_to_attempt_commit_p50_ms": {
+        "maximum": 2.5795,
+        "median": 2.0455,
+        "minimum": 1.8319999999999999,
+        "n": 8
+      },
+      "first_hold_start_ms": {
+        "maximum": 46.595,
+        "median": 30.195999999999998,
+        "minimum": 19.653,
+        "n": 8
+      },
+      "first_submit_to_commit_ms": {
+        "maximum": 595.832,
+        "median": 566.0835,
+        "minimum": 509.119,
+        "n": 8
+      },
+      "last_hold_end_ms": {
+        "maximum": 1353.923,
+        "median": 1253.431,
+        "minimum": 1188.621,
+        "n": 8
+      },
+      "min_hold_ms": {
+        "maximum": 100.596,
+        "median": 100.5805,
+        "minimum": 100.53,
+        "n": 8
+      },
+      "observed_physical_peak": {
+        "maximum": 17,
+        "median": 17.0,
+        "minimum": 17,
+        "n": 8
+      },
+      "peak_executing": {
+        "maximum": 64,
+        "median": 64.0,
+        "minimum": 63,
+        "n": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": {
+        "maximum": 1.66015625,
+        "median": 1.5234375,
+        "minimum": 1.40625,
+        "n": 8
+      },
+      "pinned_user_cpu_ms_per_job": {
+        "maximum": 4.0234375,
+        "median": 3.41796875,
+        "minimum": 3.203125,
+        "n": 8
+      },
+      "runner_cpu_ms_per_job": {
+        "maximum": 1.118552734375,
+        "median": 1.0224775390624998,
+        "minimum": 0.9936621093749999,
+        "n": 8
+      },
+      "sql": {
+        "attempt": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 26.54551499999998,
+            "median": 19.262349499999992,
+            "minimum": 16.92422900000002,
+            "n": 8
+          }
+        },
+        "claim": {
+          "calls": {
+            "maximum": 159,
+            "median": 133.0,
+            "minimum": 121,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 554,
+            "median": 527.0,
+            "minimum": 520,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 429.9560660000002,
+            "median": 347.41950550000007,
+            "minimum": 295.6589230000001,
+            "n": 8
+          }
+        },
+        "effect": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 17.758437000000015,
+            "median": 15.561090499999999,
+            "minimum": 13.679942999999987,
+            "n": 8
+          }
+        },
+        "lease_or_maintenance": {
+          "calls": {
+            "maximum": 42,
+            "median": 40.0,
+            "minimum": 40,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 42,
+            "median": 40.0,
+            "minimum": 40,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 31.566744000000003,
+            "median": 26.548502000000006,
+            "minimum": 19.571356,
+            "n": 8
+          }
+        },
+        "settlement": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 369.47366500000027,
+            "median": 290.903367,
+            "minimum": 277.2332100000002,
+            "n": 8
+          }
+        }
+      },
+      "submit_jobs_per_s": {
+        "maximum": 293.0642789559814,
+        "median": 283.9797755416653,
+        "minimum": 261.7264437254919,
+        "n": 8
+      },
+      "submit_ms": {
+        "maximum": 1956.241,
+        "median": 1803.189,
+        "minimum": 1747.057,
+        "n": 8
+      },
+      "terminal_xids": {
+        "maximum": 512,
+        "median": 512.0,
+        "minimum": 512,
+        "n": 8
+      },
+      "whole_cluster_peak": {
+        "maximum": 17,
+        "median": 17.0,
+        "minimum": 17,
+        "n": 8
+      },
+      "write_xids": {
+        "maximum": 1024,
+        "median": 1024.0,
+        "minimum": 1024,
+        "n": 8
+      }
+    },
+    "oban": {
+      "attempt_to_effect_commit_p50_ms": {
+        "maximum": 108.12700000000001,
+        "median": 106.124,
+        "minimum": 105.045,
+        "n": 8
+      },
+      "commit_jobs_per_s": {
+        "maximum": 384.8970024642429,
+        "median": 362.0684712776185,
+        "minimum": 332.6405487529553,
+        "n": 8
+      },
+      "committed_hold_peak": {
+        "maximum": 64,
+        "median": 64.0,
+        "minimum": 64,
+        "n": 8
+      },
+      "cpu_iowait_percent": {
+        "maximum": 2.6143790849673203,
+        "median": 0.4807942350922004,
+        "minimum": 0.24691358024691357,
+        "n": 8
+      },
+      "cpu_steal_percent": {
+        "maximum": 0.24213075060532688,
+        "median": 0.0,
+        "minimum": 0.0,
+        "n": 8
+      },
+      "drain_ms": {
+        "maximum": 1539.199,
+        "median": 1414.23,
+        "minimum": 1330.226,
+        "n": 8
+      },
+      "effect_commit_to_settlement_p50_ms": {
+        "maximum": 7.2195,
+        "median": 4.687250000000001,
+        "minimum": 3.2569999999999997,
+        "n": 8
+      },
+      "entry_to_attempt_commit_p50_ms": {
+        "maximum": 3.7255000000000003,
+        "median": 2.9505,
+        "minimum": 2.4895,
+        "n": 8
+      },
+      "first_hold_start_ms": {
+        "maximum": 247.14,
+        "median": 201.2995,
+        "minimum": 95.972,
+        "n": 8
+      },
+      "first_submit_to_commit_ms": {
+        "maximum": 543.82,
+        "median": 505.23699999999997,
+        "minimum": 477.009,
+        "n": 8
+      },
+      "last_hold_end_ms": {
+        "maximum": 1537.38,
+        "median": 1413.2534999999998,
+        "minimum": 1328.789,
+        "n": 8
+      },
+      "min_hold_ms": {
+        "maximum": 101.398,
+        "median": 101.113,
+        "minimum": 100.737,
+        "n": 8
+      },
+      "observed_physical_peak": {
+        "maximum": 69,
+        "median": 69.0,
+        "minimum": 69,
+        "n": 8
+      },
+      "peak_executing": {
+        "maximum": 64,
+        "median": 64.0,
+        "minimum": 63,
+        "n": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": {
+        "maximum": 1.85546875,
+        "median": 1.5625,
+        "minimum": 1.40625,
+        "n": 8
+      },
+      "pinned_user_cpu_ms_per_job": {
+        "maximum": 3.7109375,
+        "median": 3.447265625,
+        "minimum": 3.30078125,
+        "n": 8
+      },
+      "runner_cpu_ms_per_job": {
+        "maximum": 6.077349609374999,
+        "median": 5.911460937499999,
+        "minimum": 5.759802734375,
+        "n": 8
+      },
+      "sql": {
+        "attempt": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 129.98982800000007,
+            "median": 48.323194500000014,
+            "minimum": 35.287262999999975,
+            "n": 8
+          }
+        },
+        "claim": {
+          "calls": {
+            "maximum": 82,
+            "median": 74.5,
+            "minimum": 64,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 72.777427,
+            "median": 62.21053899999998,
+            "minimum": 40.178852,
+            "n": 8
+          }
+        },
+        "effect": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 72.48878900000001,
+            "median": 47.340829000000014,
+            "minimum": 35.49833299999999,
+            "n": 8
+          }
+        },
+        "lease_or_maintenance": {
+          "calls": {
+            "maximum": 0,
+            "median": 0.0,
+            "minimum": 0,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 0,
+            "median": 0.0,
+            "minimum": 0,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 0,
+            "median": 0.0,
+            "minimum": 0,
+            "n": 8
+          }
+        },
+        "settlement": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 380.2585799999996,
+            "median": 158.7038540000001,
+            "minimum": 122.19687799999996,
+            "n": 8
+          }
+        }
+      },
+      "submit_jobs_per_s": {
+        "maximum": 283.3057128707667,
+        "median": 267.485964238011,
+        "minimum": 245.79708586431522,
+        "n": 8
+      },
+      "submit_ms": {
+        "maximum": 2083.019,
+        "median": 1914.142,
+        "minimum": 1807.235,
+        "n": 8
+      },
+      "terminal_xids": {
+        "maximum": 512,
+        "median": 512.0,
+        "minimum": 512,
+        "n": 8
+      },
+      "whole_cluster_peak": {
+        "maximum": 69,
+        "median": 69.0,
+        "minimum": 69,
+        "n": 8
+      },
+      "write_xids": {
+        "maximum": 1024,
+        "median": 1024.0,
+        "minimum": 1024,
+        "n": 8
+      }
+    },
+    "rust": {
+      "attempt_to_effect_commit_p50_ms": {
+        "maximum": 106.613,
+        "median": 104.5275,
+        "minimum": 104.107,
+        "n": 8
+      },
+      "commit_jobs_per_s": {
+        "maximum": 481.25502286431333,
+        "median": 461.5964535024474,
+        "minimum": 419.3644826131649,
+        "n": 8
+      },
+      "committed_hold_peak": {
+        "maximum": 64,
+        "median": 64.0,
+        "minimum": 64,
+        "n": 8
+      },
+      "cpu_iowait_percent": {
+        "maximum": 0.9404388714733543,
+        "median": 0.5895408517131364,
+        "minimum": 0.27932960893854747,
+        "n": 8
+      },
+      "cpu_steal_percent": {
+        "maximum": 0.0,
+        "median": 0.0,
+        "minimum": 0.0,
+        "n": 8
+      },
+      "drain_ms": {
+        "maximum": 1220.895,
+        "median": 1109.194,
+        "minimum": 1063.885,
+        "n": 8
+      },
+      "effect_commit_to_settlement_p50_ms": {
+        "maximum": 16.573999999999998,
+        "median": 8.689,
+        "minimum": 7.631,
+        "n": 8
+      },
+      "entry_to_attempt_commit_p50_ms": {
+        "maximum": 3.357,
+        "median": 2.28325,
+        "minimum": 1.7280000000000002,
+        "n": 8
+      },
+      "first_hold_start_ms": {
+        "maximum": 70.878,
+        "median": 58.6595,
+        "minimum": 42.861,
+        "n": 8
+      },
+      "first_submit_to_commit_ms": {
+        "maximum": 365.644,
+        "median": 340.33950000000004,
+        "minimum": 325.282,
+        "n": 8
+      },
+      "last_hold_end_ms": {
+        "maximum": 1214.325,
+        "median": 1103.3975,
+        "minimum": 1057.057,
+        "n": 8
+      },
+      "min_hold_ms": {
+        "maximum": 101.834,
+        "median": 101.226,
+        "minimum": 100.869,
+        "n": 8
+      },
+      "observed_physical_peak": {
+        "maximum": 69,
+        "median": 69.0,
+        "minimum": 69,
+        "n": 8
+      },
+      "peak_executing": {
+        "maximum": 64,
+        "median": 64.0,
+        "minimum": 64,
+        "n": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": {
+        "maximum": 1.50390625,
+        "median": 1.416015625,
+        "minimum": 1.26953125,
+        "n": 8
+      },
+      "pinned_user_cpu_ms_per_job": {
+        "maximum": 2.109375,
+        "median": 1.9140625,
+        "minimum": 1.73828125,
+        "n": 8
+      },
+      "runner_cpu_ms_per_job": {
+        "maximum": 0.6346386718749999,
+        "median": 0.5524541015625,
+        "minimum": 0.531896484375,
+        "n": 8
+      },
+      "sql": {
+        "attempt": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 449.0002559999996,
+            "median": 134.21434949999986,
+            "minimum": 49.93852500000003,
+            "n": 8
+          }
+        },
+        "claim": {
+          "calls": {
+            "maximum": 50,
+            "median": 48.0,
+            "minimum": 47,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 197.356786,
+            "median": 134.78522799999996,
+            "minimum": 113.740415,
+            "n": 8
+          }
+        },
+        "effect": {
+          "calls": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 407.6530799999997,
+            "median": 74.78058950000002,
+            "minimum": 45.978613999999986,
+            "n": 8
+          }
+        },
+        "lease_or_maintenance": {
+          "calls": {
+            "maximum": 20,
+            "median": 20.0,
+            "minimum": 20,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 514,
+            "median": 514.0,
+            "minimum": 514,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 24.146538000000007,
+            "median": 15.420669,
+            "minimum": 12.997891999999998,
+            "n": 8
+          }
+        },
+        "settlement": {
+          "calls": {
+            "maximum": 42,
+            "median": 40.0,
+            "minimum": 36,
+            "n": 8
+          },
+          "rows": {
+            "maximum": 512,
+            "median": 512.0,
+            "minimum": 512,
+            "n": 8
+          },
+          "total_exec_time": {
+            "maximum": 60.98918600000001,
+            "median": 32.727629500000006,
+            "minimum": 27.57002,
+            "n": 8
+          }
+        }
+      },
+      "submit_jobs_per_s": {
+        "maximum": 366.9135689224207,
+        "median": 353.3173723213573,
+        "minimum": 326.618307594067,
+        "n": 8
+      },
+      "submit_ms": {
+        "maximum": 1567.579,
+        "median": 1449.1374999999998,
+        "minimum": 1395.424,
+        "n": 8
+      },
+      "terminal_xids": {
+        "maximum": 42,
+        "median": 40.0,
+        "minimum": 36,
+        "n": 8
+      },
+      "whole_cluster_peak": {
+        "maximum": 69,
+        "median": 69.0,
+        "minimum": 69,
+        "n": 8
+      },
+      "write_xids": {
+        "maximum": 1024,
+        "median": 1024.0,
+        "minimum": 1024,
+        "n": 8
+      }
+    }
+  },
+  "excluded_attempts": {},
+  "measured_blocks": 8,
+  "missing": [],
+  "paired": {
+    "go": {
+      "drain_ms": {
+        "by_block": [
+          188.0469999999998,
+          -19.251999999999953,
+          209.18000000000006,
+          293.58399999999983,
+          247.9559999999999,
+          337.3319999999999,
+          50.238999999999805,
+          116.54500000000007
+        ],
+        "maximum": 337.3319999999999,
+        "median": 198.61349999999993,
+        "mesh_wins": 7,
+        "minimum": -19.251999999999953
+      },
+      "submit_ms": {
+        "by_block": [
+          67.00199999999995,
+          -107.33000000000015,
+          137.4509999999998,
+          256.39300000000003,
+          221.0139999999999,
+          267.83500000000004,
+          -42.15000000000009,
+          5.326000000000022
+        ],
+        "maximum": 267.83500000000004,
+        "median": 102.22649999999987,
+        "mesh_wins": 6,
+        "minimum": -107.33000000000015
+      }
+    },
+    "oban": {
+      "drain_ms": {
+        "by_block": [
+          178.78999999999996,
+          50.899000000000115,
+          207.38800000000015,
+          92.28800000000001,
+          130.66999999999985,
+          160.03199999999993,
+          297.49599999999987,
+          237.61899999999991
+        ],
+        "maximum": 297.49599999999987,
+        "median": 169.41099999999994,
+        "mesh_wins": 8,
+        "minimum": 50.899000000000115
+      },
+      "submit_ms": {
+        "by_block": [
+          126.77799999999979,
+          43.809999999999945,
+          127.82999999999993,
+          60.177999999999884,
+          121.85499999999979,
+          119.65100000000007,
+          245.25099999999975,
+          135.12000000000012
+        ],
+        "maximum": 245.25099999999975,
+        "median": 124.31649999999979,
+        "mesh_wins": 8,
+        "minimum": 43.809999999999945
+      }
+    },
+    "rust": {
+      "drain_ms": {
+        "by_block": [
+          -277.86900000000014,
+          -217.47599999999989,
+          -84.22199999999998,
+          -174.0530000000001,
+          -156.68700000000013,
+          -115.82900000000018,
+          -90.13400000000001,
+          -105.44200000000001
+        ],
+        "maximum": -84.22199999999998,
+        "median": -136.25800000000015,
+        "mesh_wins": 0,
+        "minimum": -277.86900000000014
+      },
+      "submit_ms": {
+        "by_block": [
+          -548.4190000000001,
+          -423.0820000000001,
+          -324.01300000000015,
+          -351.63300000000004,
+          -337.8180000000002,
+          -281.855,
+          -337.96900000000005,
+          -335.202
+        ],
+        "maximum": -281.855,
+        "median": -337.89350000000013,
+        "mesh_wins": 0,
+        "minimum": -548.4190000000001
+      }
+    }
+  },
+  "paired_phase_ms": {
+    "go": {
+      "commit_to_last_hold_end": {
+        "by_block": [
+          -19.92599999999993,
+          -35.17900000000009,
+          88.17899999999986,
+          51.94600000000014,
+          66.86200000000008,
+          105.65200000000004,
+          12.246999999999844,
+          20.50499999999988
+        ],
+        "maximum": 105.65200000000004,
+        "median": 36.22550000000001,
+        "minimum": -35.17900000000009,
+        "n": 8
+      },
+      "last_hold_end_to_terminal": {
+        "by_block": [
+          207.97299999999973,
+          15.927000000000135,
+          121.0010000000002,
+          241.6379999999997,
+          181.09399999999982,
+          231.67999999999984,
+          37.99199999999996,
+          96.04000000000019
+        ],
+        "maximum": 241.6379999999997,
+        "median": 151.0475,
+        "minimum": 15.927000000000135,
+        "n": 8
+      },
+      "submit_to_commit": {
+        "by_block": [
+          -121.04500000000002,
+          -88.07799999999997,
+          -71.72900000000004,
+          -37.19100000000003,
+          -26.94199999999995,
+          -69.49699999999996,
+          -92.38900000000007,
+          -111.21899999999994
+        ],
+        "maximum": -26.94199999999995,
+        "median": -79.90350000000001,
+        "minimum": -121.04500000000002,
+        "n": 8
+      }
+    },
+    "oban": {
+      "commit_to_last_hold_end": {
+        "by_block": [
+          183.4570000000001,
+          54.58899999999994,
+          206.11899999999991,
+          92.43200000000002,
+          130.8309999999999,
+          166.71600000000012,
+          297.48699999999985,
+          238.3059999999998
+        ],
+        "maximum": 297.48699999999985,
+        "median": 175.08650000000011,
+        "minimum": 54.58899999999994,
+        "n": 8
+      },
+      "last_hold_end_to_terminal": {
+        "by_block": [
+          -4.667000000000144,
+          -3.689999999999827,
+          1.2690000000002328,
+          -0.14400000000000546,
+          -0.1610000000000582,
+          -6.6840000000001965,
+          0.009000000000014552,
+          -0.6869999999998981
+        ],
+        "maximum": 1.2690000000002328,
+        "median": -0.42399999999997817,
+        "minimum": -6.6840000000001965,
+        "n": 8
+      },
+      "submit_to_commit": {
+        "by_block": [
+          -52.011999999999944,
+          -7.088999999999942,
+          -79.55800000000005,
+          -32.110000000000014,
+          -8.81499999999994,
+          -40.38099999999997,
+          -52.245000000000005,
+          -102.49899999999997
+        ],
+        "maximum": -7.088999999999942,
+        "median": -46.19649999999996,
+        "minimum": -102.49899999999997,
+        "n": 8
+      }
+    },
+    "rust": {
+      "commit_to_last_hold_end": {
+        "by_block": [
+          -278.15200000000004,
+          -217.45299999999997,
+          -88.29700000000003,
+          -179.29999999999995,
+          -163.34899999999993,
+          -113.63799999999992,
+          -92.92600000000016,
+          -109.17500000000018
+        ],
+        "maximum": -88.29700000000003,
+        "median": -138.49349999999993,
+        "minimum": -278.15200000000004,
+        "n": 8
+      },
+      "last_hold_end_to_terminal": {
+        "by_block": [
+          0.2829999999999018,
+          -0.02299999999991087,
+          4.0750000000000455,
+          5.246999999999844,
+          6.661999999999807,
+          -2.1910000000002583,
+          2.7920000000001437,
+          3.7330000000001746
+        ],
+        "maximum": 6.661999999999807,
+        "median": 3.262500000000159,
+        "minimum": -2.1910000000002583,
+        "n": 8
+      },
+      "submit_to_commit": {
+        "by_block": [
+          -270.55,
+          -205.60599999999994,
+          -239.791,
+          -177.58000000000004,
+          -181.13099999999997,
+          -166.02599999999995,
+          -247.83500000000004,
+          -229.76
+        ],
+        "maximum": -166.02599999999995,
+        "median": -217.68299999999996,
+        "minimum": -270.55,
+        "n": 8
+      }
+    }
+  }
+}
