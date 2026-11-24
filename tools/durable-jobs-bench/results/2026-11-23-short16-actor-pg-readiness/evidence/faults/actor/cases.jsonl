@@ -1,0 +1,9 @@
+{"mode": "plain-wire", "read_waits": 102, "write_waits": 9, "fragments": 106, "stall_count": 1, "initial_backend": 82258, "tls": false}
+{"mode": "tls-wire", "read_waits": 87, "write_waits": 8, "fragments": 110, "stall_count": 1, "initial_backend": 82326, "tls": true}
+{"mode": "queued", "initial_backend": 82371, "tls": true}
+{"mode": "kill", "server_still_active_at_exit": true, "late_commits": 1, "replacement_backend": 82573, "initial_backend": 82444, "tls": true}
+{"mode": "lost-answer", "replacement_backend": 82601, "initial_backend": 82581, "tls": true}
+{"mode": "checkout", "initial_backend": 82640, "tls": true}
+{"mode": "close", "initial_backend": 82724, "tls": true}
+{"mode": "eof", "replacement_backend": 82826, "initial_backend": 82804, "tls": true}
+{"mode": "timeout", "elapsed_timeout_s": 30.009267167013604, "server_still_active_at_timeout": true, "replacement_backend": 85653, "initial_backend": 82848, "tls": true}

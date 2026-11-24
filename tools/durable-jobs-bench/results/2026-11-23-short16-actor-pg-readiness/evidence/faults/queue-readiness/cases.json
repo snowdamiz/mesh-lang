@@ -1,0 +1,159 @@
+{
+  "cases": {
+    "business-retry": {
+      "attempt": 2,
+      "attempts": [
+        1,
+        2
+      ],
+      "effects": 1,
+      "id": "4698584b-6d8d-4299-a5b3-6f62bb0f1d1e",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "completed"
+    },
+    "cancel": {
+      "attempt": 1,
+      "attempts": [
+        1
+      ],
+      "effects": 0,
+      "id": "65a9bf02-4639-49c5-94cd-58569e54fa22",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "cancelled"
+    },
+    "crash": {
+      "attempt": 2,
+      "attempts": [
+        1,
+        2
+      ],
+      "effects": 1,
+      "id": "1fb72457-57a8-4fd2-b6cc-8fcaf7dc8b83",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "completed"
+    },
+    "crash-after-effect": {
+      "attempt": 2,
+      "attempts": [
+        1,
+        2
+      ],
+      "effects": 1,
+      "id": "bdbedd69-9a45-4478-9226-ab9c8ca0eef4",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "completed"
+    },
+    "cross-tenant": "denied",
+    "disconnect": {
+      "attempt": 2,
+      "attempts": [
+        1,
+        2
+      ],
+      "effects": 1,
+      "id": "5b924faf-bff7-4798-a4d4-acf7cef7567d",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "completed"
+    },
+    "fence-replacement": {
+      "attempt": 2,
+      "attempts": [
+        1,
+        2
+      ],
+      "effects": 1,
+      "id": "439c7de7-b247-408c-be3e-08a504540417",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "completed"
+    },
+    "late-effect": {
+      "attempt": 1,
+      "attempts": [
+        1
+      ],
+      "backend_pid_while_blocked": 61101,
+      "effect_committed_after_terminal": true,
+      "effect_us": 1795476019022170,
+      "effect_xid": "992",
+      "effects": 1,
+      "id": "947562fa-2253-45f1-a391-29f76a373aab",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "settled_us": 1795476018865711,
+      "settled_xid": "988",
+      "state": "cancelled",
+      "state_while_sql_blocked": "cancelled"
+    },
+    "panic": {
+      "attempt": 2,
+      "attempts": [
+        1,
+        2
+      ],
+      "effects": 1,
+      "id": "75be1fed-2a12-4070-b62a-7bf352cc9464",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "completed"
+    },
+    "queue-table": "denied",
+    "renew": {
+      "attempt": 1,
+      "attempts": [
+        1,
+        1
+      ],
+      "effects": 1,
+      "id": "dbc7ef0b-487f-4b45-8ad5-e165d8e26fe7",
+      "lease_expires_at_ms": null,
+      "run": 2,
+      "state": "completed"
+    },
+    "return-hold": {
+      "attempt": 1,
+      "attempts": [
+        1
+      ],
+      "effects": 1,
+      "id": "4b76712c-afc0-495e-9fec-979e9b41114a",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "completed"
+    },
+    "rewrite": "denied",
+    "stale-token-replay": "rejected while replacement token was live",
+    "stop": {
+      "attempt": 2,
+      "attempts": [
+        1,
+        2
+      ],
+      "effects": 1,
+      "id": "2d91fff7-7265-4a25-a9b6-9059e6b2e261",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "completed"
+    },
+    "timeout": {
+      "attempt": 2,
+      "attempts": [
+        1,
+        2
+      ],
+      "effects": 1,
+      "error": "job handler timed out",
+      "id": "9f015a54-0564-464e-977a-a9ca82a71ac8",
+      "lease_expires_at_ms": null,
+      "run": 1,
+      "state": "completed"
+    }
+  },
+  "clean": true,
+  "readiness": true
+}

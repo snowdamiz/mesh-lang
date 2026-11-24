@@ -1,0 +1,62 @@
+{
+  "adapter_sha256": "de1e1edb3f7947e3577ff46fff77f21884f74d1f4e5cd03a391166a2def7aadd",
+  "campaign_sha256": "e4beb9901020b3cc92c9c3c2955bdc40a1a5780280e26a4ce6d87336174c716f",
+  "diagnostic": false,
+  "host": [
+    "Darwin",
+    "Andreys-MBP.lan",
+    "27.0.0",
+    "Darwin Kernel Version 27.0.0: Tue Aug 11 21:06:40 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6050",
+    "arm64"
+  ],
+  "load": [
+    25.880859375,
+    33.81103515625,
+    43.6123046875
+  ],
+  "logical_cpus": 15,
+  "orders": [
+    [
+      "off-a",
+      "off-b",
+      "readiness"
+    ],
+    [
+      "off-a",
+      "readiness",
+      "off-b"
+    ],
+    [
+      "off-b",
+      "off-a",
+      "readiness"
+    ],
+    [
+      "off-b",
+      "readiness",
+      "off-a"
+    ],
+    [
+      "readiness",
+      "off-a",
+      "off-b"
+    ],
+    [
+      "readiness",
+      "off-b",
+      "off-a"
+    ]
+  ],
+  "pins": {
+    "libworker_identity.a": "851ec3fcd93d233f262b70a50ed0098b3c6c38c67150d32df88057fb07d09bcf",
+    "main.mpl": "89c37190755ec407ae6d1b0f447cef26c43201b0117f3f7e7df0c9f7679cf167",
+    "mesh": "674d10dbb17d015f23e2316c47963baad2d076cdcc48fdeb2daabd855acd670c",
+    "mesh.json": "b7a293186ec895f2f9bd359a737ef13ab41c67081d7ae617bd995dccfaa5eb35",
+    "mesh.toml": "299704da01bc6ef6a9ef920221e31667ed0cdf6ef8e50fa84d3a77d0a2d669e5",
+    "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+    "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+    "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+  },
+  "postgres_sha256": "9d1930da02e11e446b42f9d79cf2e6bce307a6decb6a089591f8726d0f49b6f2",
+  "started_us": 1795475739531317
+}

@@ -1,0 +1,48 @@
+{
+  "fault_exit_codes": {
+    "actor": 0,
+    "queue-off": 0,
+    "queue-readiness": 0
+  },
+  "final": {
+    "live_pool": 0,
+    "postgres_proof": 0,
+    "scheduler": 0,
+    "workspace_build": 0
+  },
+  "format_exit_codes": {
+    "candidate": 1,
+    "changed-files": 0,
+    "off-source": 1
+  },
+  "original_proof_exit_codes": {
+    "pool": 101,
+    "postgres": 101,
+    "scheduler": 101,
+    "workspace": 0
+  },
+  "passing_cases_by_log": {
+    "gates/pool-with-postgres.log": [
+      12
+    ],
+    "gates/scheduler.log": [
+      43
+    ],
+    "postgres-retry/postgres.log": [
+      1,
+      4,
+      2,
+      1,
+      38,
+      71,
+      3
+    ]
+  },
+  "proof_after_restoring_vectors_exit_codes": {
+    "pool": 0,
+    "postgres": 101,
+    "scheduler": 0,
+    "workspace": 0
+  },
+  "test_only_adapter_source": "ce5e551d079e83bfab5e6ba1d52b47892bf35319"
+}

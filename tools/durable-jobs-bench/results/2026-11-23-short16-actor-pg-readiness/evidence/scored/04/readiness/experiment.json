@@ -1,0 +1,10 @@
+{
+  "execution_contract": "ordinary-trusted-shared-process-v2-cooperative-app-pg",
+  "label": "readiness",
+  "producer_mode": "one warm shared producer/observer process",
+  "readiness": true,
+  "runner_pid": 17559,
+  "sampler": false,
+  "scheduler_max": 2,
+  "scheduler_min": 2
+}

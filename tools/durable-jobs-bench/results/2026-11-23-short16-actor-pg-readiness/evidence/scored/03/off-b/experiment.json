@@ -1,0 +1,10 @@
+{
+  "execution_contract": "ordinary-trusted-shared-process-v2",
+  "label": "off-b",
+  "producer_mode": "one warm shared producer/observer process",
+  "readiness": false,
+  "runner_pid": 10462,
+  "sampler": false,
+  "scheduler_max": 2,
+  "scheduler_min": 2
+}
