@@ -1,0 +1,64 @@
+{
+  "clock_ticks": 100,
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "dependency": {
+    "controller_setup_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/replay/controller.py setup",
+    "controller_verify_setup_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/replay/controller.py verify-setup",
+    "d2_patch_sha256": "47f58a12e14f6a30a699a669226ceb00b0b7545783501962b3255cdb812503d3",
+    "id": "2026-11-24-exit-confirmed-bulk-d2",
+    "native_source_sha256": "76d7862e2b89c85698cb5d8f684eb52aa0fb06a6ba802c3fba7eeab4a62e36cd",
+    "packet": "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/controller-packet.json",
+    "qualification": "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/evidence/native-qualification.json",
+    "scope": "SETUP qualification only for this request. Use an existing exact qualified native artifact if available. The controller owns any required separate build/setup grant."
+  },
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/evidence/native-import-retry",
+  "expected_timing_minutes": 42,
+  "id": "2026-11-24-dense-two-runner-checkout-import-retry",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "kind": "Controller-owned build-free native TIMING with separate D2 SETUP prerequisite",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/import-retry.py": "84561852fa192620f9a4c313ec599d4217ebd5f787cadaacc452f8e849fae352",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/native-dense-import-retry.sh": "16b92927c535964a4a6197b50b7ee91c08f5e172066deeee7d392210b69a7758"
+  },
+  "native_host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "offline_check": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/import-retry.py check",
+  "operator_id": "native-dense-d2-and-r2-zero-2x32-v1",
+  "original_failed_raw_sha256": "cb31d68460ad2d66e4b4b48459d8198a2ad3fb0a86eba137d6f6d853b1f7bc5f",
+  "original_series_sha256": "3b1611e742d60caaba65ca86bb86d8d46354ed200d34d8c2511ba9908f947fd3",
+  "prerequisites": "Exact successful archived r2 fault/teardown receipts (both modes), earlier peer SETUP release, prior qualified Linux exit-confirmed D2 SETUP, same native boot/device and artifact pins, and fresh controller grant with all three timing fences clear. No native builds or profilers during TIMING.",
+  "priority": "After the active equal-topology series and existing bookings. Controller owns booking, grants and transport. Preserve existing priorities.",
+  "ready": true,
+  "remaining_timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/import-retry.py timing 3 4 5 6",
+  "replay_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/import-retry.py replay",
+  "requested_at": "2026-11-24T01:56:30.114101+00:00",
+  "requested_timing_windows_minutes": [
+    18,
+    30
+  ],
+  "resource_bounds": {
+    "arms": 120,
+    "fresh_database_each_arm": true,
+    "mesh_fixed_scheduler_workers_each": 2,
+    "mesh_peak_sessions": 41,
+    "mesh_tls_app_sessions_each": 16,
+    "native_architecture": "x86_64",
+    "one_arm_at_a_time": true,
+    "postgres_physical_cap": 96,
+    "postgres_version": "17.11",
+    "runners_per_lane": 2,
+    "slots_each": 32
+  },
+  "scope": "Six full native 1024-job rotations, ten lanes, separate per-lane warmup and measured phases. Same-D2-ELF off/on/off, cold-r2 writer-off/zero/off, V1 stock scalar at 2x32, and exact equal-topology 2x32 River/Oban/Apalis. Writer remains off in D2; zero hold is a separate comparator only.",
+  "source_sha": "76d7862e2b89c85698cb5d8f684eb52aa0fb06a6",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout",
+  "state": "ready-for-controller-with-qualified-D2-setup-dependency",
+  "timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/import-retry.py timing 1 2"
+}
