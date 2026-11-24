@@ -70,6 +70,19 @@ eight-runner layout used 14–16. Two-runner median runner CPU fell from
 settlement batching, whose transaction counts are shown separately.
 [Stock-peer scorecard](evidence/stock/scorecard.md)
 
+## Native equal-topology interruption
+
+The peer setup released successfully with pinned launcher and binary hashes.
+All five first-block warmup commands exited 0. Four raw warmup archives
+reconciled and confirm native Mesh, River, and Apalis launch topology. The
+Oban warmup export timed out. The measured dispatches then failed to connect
+to SSH on port 22. The controller placed the series on hold pending
+recovery of the existing route and verification of the host and locks.
+Zero equal-topology blocks qualified. The original block and all receipts
+are retained. [Peer setup receipt](evidence/peer-setup/setup.json) ·
+[Raw warmup replay](evidence/equal/warmup-only-replay.json) ·
+[Interrupted block receipt](evidence/equal/interrupted-01.json)
+
 ## Producer-only composition
 
 The bounded follow-up swaps only the broker executable for the pinned

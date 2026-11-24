@@ -1,6 +1,7 @@
 """Copy completed native blocks and their hashes into the portable result packet."""
 
 import argparse
+import gzip
 import json
 from pathlib import Path
 import shutil
@@ -15,6 +16,17 @@ RELEASE_IDS = {**SERIES, "bulk": "dense-matched-topology-bulk-pair", "peer-setup
 
 
 def copy(source, dest, checksum=None):
+    if source.suffix in {".log", ".txt"}:
+        data = source.read_bytes()
+        if b"\r\n" in data:
+            gz = dest.with_suffix(dest.suffix + ".gz")
+            gz.parent.mkdir(parents=True, exist_ok=True)
+            if gz.exists():
+                require(gzip.decompress(gz.read_bytes()) == data, f"compressed archive differs: {gz}")
+            else:
+                with gz.open("xb") as stream:
+                    stream.write(gzip.compress(data, mtime=0))
+            return
     expected = checksum or run.digest(source)
     if dest.exists():
         require(run.digest(dest) == expected, f"archive differs from source: {dest}")
