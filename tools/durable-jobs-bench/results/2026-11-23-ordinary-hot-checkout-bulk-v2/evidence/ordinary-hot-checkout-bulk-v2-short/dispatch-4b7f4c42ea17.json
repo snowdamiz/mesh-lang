@@ -1,0 +1,20 @@
+{
+  "exit_status": 0,
+  "freeze_sha256": "7b4d1e9831ff46f63ee1a955232989fb505899245804841ead8c8ea4f2a95cc5",
+  "groups": {
+    "3": [
+      0
+    ],
+    "4": [
+      0
+    ],
+    "5": [
+      0
+    ]
+  },
+  "id": "ordinary-hot-checkout-bulk-v2-short",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/bulk-v2/native-evidence/ordinary-hot-checkout-bulk-v2-short",
+  "released_at": "2026-11-24T00:04:33.040633+00:00",
+  "started": "2026-11-24T00:03:15.152755+00:00",
+  "summary_exit_status": 0
+}

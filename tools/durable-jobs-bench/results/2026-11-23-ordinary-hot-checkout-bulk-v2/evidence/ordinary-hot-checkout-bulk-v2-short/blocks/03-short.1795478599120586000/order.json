@@ -1,0 +1,12 @@
+{
+  "group": 3,
+  "order": [
+    "bulk-d2",
+    "river",
+    "bulk"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}

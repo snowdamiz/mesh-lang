@@ -1,0 +1,10 @@
+{
+  "checkpointed_at": "2026-11-24T00:03:45.946716+00:00",
+  "raw_sha256": {
+    "measured-bulk-d2/measured-mesh": "8530ad1ba367e3d56384b7ec7ff7a3cf9fa22b9f567810c3ee2ee363e8d34d44",
+    "measured-bulk/measured-mesh": "b4c1be4a74a8eddcf7be08f525aa1feaa2ab5f2e40aa8ece48125b8819722085",
+    "measured-river/measured-go": "d7a6e7ec6acb8861663187a109595f49525282374c7134822760ce5a2d736c02"
+  },
+  "reconciled_sha256": "872a0fcb432fdf9b07e3285b5bda9f1cc27bee8eb6b6e1c3f3ebdce2971e0646",
+  "series_sha256": "9e1f55c44143a52e00165fed4d86d1f155bb9f94359d21d5ff37e348733a4793"
+}
