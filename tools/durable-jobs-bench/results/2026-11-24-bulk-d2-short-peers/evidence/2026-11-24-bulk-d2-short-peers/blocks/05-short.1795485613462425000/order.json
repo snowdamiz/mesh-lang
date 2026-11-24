@@ -1,0 +1,15 @@
+{
+  "group": 5,
+  "order": [
+    "river",
+    "apalis",
+    "oban",
+    "bulk",
+    "protected-mesh",
+    "bulk-d2"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}
