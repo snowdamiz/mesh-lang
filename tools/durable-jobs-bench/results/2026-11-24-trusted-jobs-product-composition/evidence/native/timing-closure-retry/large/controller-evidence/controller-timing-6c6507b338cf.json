@@ -1,0 +1,16 @@
+{
+  "attempts": [
+    0
+  ],
+  "exit_status": 0,
+  "group_command": "dispatch",
+  "groups": [
+    3,
+    4,
+    5
+  ],
+  "id": "2026-11-24-trusted-jobs-product-composition-large-closure-retry",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/large",
+  "released_at": "2026-11-24T05:41:39.589202+00:00",
+  "started": "2026-11-24T05:36:25.390081+00:00"
+}
