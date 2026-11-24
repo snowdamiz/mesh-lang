@@ -1,0 +1,8 @@
+b46abbf86c0773d272795b5cc5f8a5059f988069a0f0c8a7bed190f3cfb2148e  compiler/mesh-rt/src/jobs/store.rs
+1d54702275ffb1deb7f655d70981cdbfa059756a7f91940a40c2e08744fdf840  compiler/mesh-rt/src/jobs/store_tests.rs
+6b7c5cef45efd0caabb5eabccda0ba9e19ae7ea586c2da7f61b8f2910ade89c6  compiler/mesh-rt/src/jobs/enqueue_schema.sql
+1f61755af4a38a6eaff6ae049d5b6c314983dc29ee9d2f774d6cf65d2a5b4af0  compiler/mesh-rt/src/jobs/schema.sql
+a166e3fd2c34ffc39de74b17af612b582cb6f0b034d0c3b1423a537fbbc53582  scripts/verify-jobs-roles.sh
+b79066adfea0b13b5c90d0780455b67eedd70a1fbfee5e16daed4184da9ac65a  scripts/verify-postgres-jobs.sh
+4360c6c637d1f2180b3422cef1ed83e32dc4ce4222710a655cf51c09f00965e7  scripts/fixtures/jobs-set-based-enqueue/prove.py
+13e37b51731637d032d6831ee6abc3fa80a1b1ad3b49c2a81c70d4c1f924b062  scripts/fixtures/jobs-role-grants.sql

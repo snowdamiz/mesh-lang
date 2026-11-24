@@ -1,0 +1,35 @@
+{
+  "id": "set-based-enqueue-product",
+  "controller": "linode-native-stepchange-controller-v1",
+  "operator_id": "native-set-based-batch-enqueue-v2",
+  "state": "ready",
+  "ready": true,
+  "requested_at": "2026-11-24T00:10:22.327285+00:00",
+  "kind": "Exclusive SETUP: native correctness only, no timing",
+  "scope": "Linux x86_64 correctness of the integrated opt-in set-based Jobs enqueue product at 84e1cec9 (based on 030b45e6). Offline fetch, release libmesh_rt.a and meshc build identity, prebuilt tests as root, then as nobody: verify-postgres-jobs.sh --compatibility 17.11 --parity-driver-check (all Jobs tests, claim and enqueue relay proofs, 7 enqueue relay cases required) and --effect-compiled (no-regression). No benchmark arms, no timing, no ELF match claim.",
+  "source_sha": "84e1cec9284b3c3193160a0ff9f3b56562eef075",
+  "base_sha": "030b45e6f2e2e46964d83a7cc60f16f95ae3f29f",
+  "source_branch": "t3/set-based-enqueue-product (local commit, not pushed)",
+  "source_archive": "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/native/set-based-enqueue-product-84e1cec9.tar.gz",
+  "source_archive_sha256": "8fce2d3d0e90d51dd19a332914ac5728be0b8af7d9da7f546db98e8663e082f7",
+  "setup_command": "python3 -B tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/replay/correctness.py",
+  "setup_script_usage": "After the controller posts 'SETUP set-based-enqueue-product <start> <end>' in STATUS.md, run setup_command from the checkout root. It takes the local timing lock, confirms the grant, verifies pins, streams the archive over pinned SSH to replay/native-correctness.sh (which takes the remote active-arm and native locks for the whole run), and exports raw.tar.gz to tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/evidence/native/<attempt>/. Post the .released.json with the actual exit.",
+  "expected_setup_minutes": 60,
+  "expected_duration_minutes": 60,
+  "evidence_destination": "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/evidence/native",
+  "requires": "Controller SETUP grant with UTC bounds and all three existing locks. Host crate cache must cover Cargo.lock offline; the script fails at cargo fetch before building otherwise.",
+  "local_gate": "Committed source gated on macOS ARM64: PostgreSQL 17.11/18.7/19.0 compatibility with roles, rustfmt, workspace build and tests (4,821 passed, 0 failed), diagnostics-minimal, effect-transaction 17.11, effect-fence 17.11/18.7/19.0, all exit 0. See README.md and evidence/local.",
+  "native_references": {
+    "setup_qualification": "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue/evidence/native-setup-3b09dc3d0e23 (03dfb958)",
+    "v1_slow": "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue/evidence/bulk-enqueue-v1-slow (bad1a384)",
+    "v2_short_pins": "tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short (119493e5)",
+    "v2_short_raw": "tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/evidence/bulk-enqueue-v2-short (uncommitted; failed dispatch 29083af379b0 and retry 8eef0f9b8239)",
+    "external_hunk": "tools/durable-jobs-bench/results/2026-11-23-slow-external-compat/frozen/ce5e551d-external-layout.patch 5fcfa7ae460c473555d398c3953d43edce09845f71be191a8996babb84ab75a4"
+  },
+  "pins": {
+    "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/native/set-based-enqueue-product-84e1cec9.tar.gz": "8fce2d3d0e90d51dd19a332914ac5728be0b8af7d9da7f546db98e8663e082f7",
+    "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/replay/native-correctness.sh": "7a25bc033580aee4bc7c5e593e01a21ecdfc7af2069df95912df867bb057e165",
+    "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/replay/correctness.py": "7bda2ae09976610fd49a2c60993073c10b7d8921efb15d64745c1163d861aeee",
+    "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/README.md": "3e9a94b476fd25caf419b7330aec8f3a0c8890166e092f30ac49db96f5279044"
+  }
+}
