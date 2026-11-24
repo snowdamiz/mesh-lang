@@ -1,0 +1,296 @@
+[
+  {
+    "group": 1,
+    "peer_delta_ms": {
+      "apalis": {
+        "commit_to_settlement_ms": [
+          12.191000000000003,
+          4.002999999999986
+        ],
+        "submit_to_settlement_ms": [
+          33.666,
+          25.47800000000001
+        ]
+      },
+      "oban": {
+        "commit_to_settlement_ms": [
+          -307.51099999999997,
+          -315.69899999999996
+        ],
+        "submit_to_settlement_ms": [
+          -339.0350000000001,
+          -347.22300000000007
+        ]
+      },
+      "river": {
+        "commit_to_settlement_ms": [
+          -98.702,
+          -106.89000000000001
+        ],
+        "submit_to_settlement_ms": [
+          -81.506,
+          -89.69399999999999
+        ]
+      },
+      "river-warm": {
+        "commit_to_settlement_ms": [
+          31.193000000000012,
+          23.004999999999995
+        ],
+        "submit_to_settlement_ms": [
+          49.27199999999999,
+          41.084
+        ]
+      }
+    },
+    "savings_ms": [
+      13.821,
+      22.009
+    ]
+  },
+  {
+    "group": 2,
+    "peer_delta_ms": {
+      "apalis": {
+        "commit_to_settlement_ms": [
+          -56.09299999999999,
+          -64.08500000000001
+        ],
+        "submit_to_settlement_ms": [
+          -30.397999999999996,
+          -38.390000000000015
+        ]
+      },
+      "oban": {
+        "commit_to_settlement_ms": [
+          -195.01500000000001,
+          -203.00700000000003
+        ],
+        "submit_to_settlement_ms": [
+          -212.621,
+          -220.61300000000003
+        ]
+      },
+      "river": {
+        "commit_to_settlement_ms": [
+          -5.61699999999999,
+          -13.609000000000009
+        ],
+        "submit_to_settlement_ms": [
+          17.160000000000025,
+          9.168000000000006
+        ]
+      },
+      "river-warm": {
+        "commit_to_settlement_ms": [
+          24.497000000000014,
+          16.504999999999995
+        ],
+        "submit_to_settlement_ms": [
+          47.19200000000001,
+          39.19999999999999
+        ]
+      }
+    },
+    "savings_ms": [
+      10.409,
+      18.401
+    ]
+  },
+  {
+    "group": 3,
+    "peer_delta_ms": {
+      "apalis": {
+        "commit_to_settlement_ms": [
+          51.78800000000001,
+          43.79599999999999
+        ],
+        "submit_to_settlement_ms": [
+          85.024,
+          77.03199999999998
+        ]
+      },
+      "oban": {
+        "commit_to_settlement_ms": [
+          -329.99199999999996,
+          -337.98400000000004
+        ],
+        "submit_to_settlement_ms": [
+          -332.606,
+          -340.59799999999996
+        ]
+      },
+      "river": {
+        "commit_to_settlement_ms": [
+          -27.12699999999998,
+          -35.119
+        ],
+        "submit_to_settlement_ms": [
+          4.0800000000000125,
+          -3.912000000000006
+        ]
+      },
+      "river-warm": {
+        "commit_to_settlement_ms": [
+          62.59,
+          54.597999999999985
+        ],
+        "submit_to_settlement_ms": [
+          98.30100000000002,
+          90.309
+        ]
+      }
+    },
+    "savings_ms": [
+      11.887,
+      19.879
+    ]
+  },
+  {
+    "group": 4,
+    "peer_delta_ms": {
+      "apalis": {
+        "commit_to_settlement_ms": [
+          65.19,
+          56.19900000000001
+        ],
+        "submit_to_settlement_ms": [
+          102.953,
+          93.96199999999999
+        ]
+      },
+      "oban": {
+        "commit_to_settlement_ms": [
+          -244.74099999999999,
+          -253.73199999999997
+        ],
+        "submit_to_settlement_ms": [
+          -251.79999999999998,
+          -260.791
+        ]
+      },
+      "river": {
+        "commit_to_settlement_ms": [
+          -66.22000000000003,
+          -75.21100000000001
+        ],
+        "submit_to_settlement_ms": [
+          -32.162000000000006,
+          -41.15300000000002
+        ]
+      },
+      "river-warm": {
+        "commit_to_settlement_ms": [
+          -67.00400000000002,
+          -75.995
+        ],
+        "submit_to_settlement_ms": [
+          -34.98799999999997,
+          -43.978999999999985
+        ]
+      }
+    },
+    "savings_ms": [
+      12.773,
+      21.764
+    ]
+  },
+  {
+    "group": 5,
+    "peer_delta_ms": {
+      "apalis": {
+        "commit_to_settlement_ms": [
+          28.843999999999994,
+          20.301000000000016
+        ],
+        "submit_to_settlement_ms": [
+          62.41399999999999,
+          53.87100000000001
+        ]
+      },
+      "oban": {
+        "commit_to_settlement_ms": [
+          -196.53000000000003,
+          -205.073
+        ],
+        "submit_to_settlement_ms": [
+          -204.37900000000002,
+          -212.922
+        ]
+      },
+      "river": {
+        "commit_to_settlement_ms": [
+          -82.262,
+          -90.80499999999998
+        ],
+        "submit_to_settlement_ms": [
+          -53.23400000000004,
+          -61.777000000000015
+        ]
+      },
+      "river-warm": {
+        "commit_to_settlement_ms": [
+          43.268,
+          34.72500000000002
+        ],
+        "submit_to_settlement_ms": [
+          71.697,
+          63.154000000000025
+        ]
+      }
+    },
+    "savings_ms": [
+      8.203,
+      16.746
+    ]
+  },
+  {
+    "group": 6,
+    "peer_delta_ms": {
+      "apalis": {
+        "commit_to_settlement_ms": [
+          13.632000000000005,
+          4.52200000000002
+        ],
+        "submit_to_settlement_ms": [
+          43.53,
+          34.41999999999999
+        ]
+      },
+      "oban": {
+        "commit_to_settlement_ms": [
+          -218.757,
+          -227.867
+        ],
+        "submit_to_settlement_ms": [
+          -230.68800000000002,
+          -239.79800000000003
+        ]
+      },
+      "river": {
+        "commit_to_settlement_ms": [
+          -95.68299999999999,
+          -104.79299999999998
+        ],
+        "submit_to_settlement_ms": [
+          -71.838,
+          -80.94800000000001
+        ]
+      },
+      "river-warm": {
+        "commit_to_settlement_ms": [
+          -19.068000000000012,
+          -28.177999999999997
+        ],
+        "submit_to_settlement_ms": [
+          5.251000000000005,
+          -3.859000000000009
+        ]
+      }
+    },
+    "savings_ms": [
+      9.649,
+      18.759
+    ]
+  }
+]
