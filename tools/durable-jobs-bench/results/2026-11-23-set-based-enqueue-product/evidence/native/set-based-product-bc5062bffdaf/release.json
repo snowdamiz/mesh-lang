@@ -1,0 +1,8 @@
+{
+  "command_finished_at": "2026-11-24T02:19:41.460010+00:00",
+  "exit_status": 1,
+  "id": "set-based-enqueue-product-linux-cache",
+  "receipt": "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/evidence/native",
+  "released_at": "2026-11-24T02:19:41.865164+00:00",
+  "started": "2026-11-24T02:11:55.205933+00:00"
+}
