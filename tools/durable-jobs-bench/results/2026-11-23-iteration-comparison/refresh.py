@@ -205,6 +205,11 @@ def write_scorecard(data):
                      "Both Mesh lanes share the V2 bulk producer. This experimental runner can report success before "
                      "actor teardown. The comparison below it measures the separate exit-confirmed runner.",
                      [("bulk-d2", "Mesh · bulk and hot checkout"), ("bulk", "Mesh · bulk"), ("river", "River")])
+    add_policy_table(lines, data.get("bulk-hot-short-peers", {}), "Short jobs with bulk enqueue and all four engines",
+                     "This run reuses the two experimental V2 builds and the stock River binary from the "
+                     "three-lane series above. Both V2 runners can settle before actor teardown.",
+                     [("bulk-d2", "Mesh · bulk and hot checkout"), ("bulk", "Mesh · bulk"),
+                      ("protected-mesh", "Protected Mesh"), *peers])
     add_policy_table(lines, data.get("exit-confirmed-short", {}), "Short jobs with confirmed actor teardown",
                      "Zero hold sends ready completions to a writer as soon as they are available. The writer-off "
                      "control runs the same executable and also waits for actor teardown. The earlier bulk V2 "

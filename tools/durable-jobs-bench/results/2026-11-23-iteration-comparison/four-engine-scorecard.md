@@ -108,6 +108,19 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | Mesh · bulk | 552.38 | 646.56 | 4/5 | 4/5 |
 | River | 712.77 | 769.02 | 2/5 | 4/5 |
 
+## Short jobs with bulk enqueue and all four engines
+
+5/5 matched rotations. This run reuses the two experimental V2 builds and the stock River binary from the three-lane series above. Both V2 runners can settle before actor teardown.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh · bulk and hot checkout | 634.90 | 763.67 | — | — |
+| Mesh · bulk | 600.04 | 716.20 | 3/5 | 4/5 |
+| Protected Mesh | 208.39 | 234.67 | 5/5 | 5/5 |
+| Oban | 309.54 | 352.13 | 5/5 | 5/5 |
+| River | 473.74 | 504.50 | 5/5 | 5/5 |
+| Apalis | 894.70 | 976.44 | 0/5 | 0/5 |
+
 ## Short jobs with confirmed actor teardown
 
 5/5 matched rotations. Zero hold sends ready completions to a writer as soon as they are available. The writer-off control runs the same executable and also waits for actor teardown. The earlier bulk V2 runner could settle while teardown was still running.

@@ -36,6 +36,18 @@ still need a median 312 ms off the 1,024-job drain to match River from submit.
 [Equal-topology scorecard](../2026-11-23-dense-matched-topology/evidence/equal/scorecard.md) ·
 [Time budgets by rotation](dense-equal-budgets.md)
 
+On short jobs, experimental V2 Mesh with bulk enqueue and hot pool checkout
+finished ahead of Go River and Elixir Oban in all five six-lane rotations
+on both clocks. Rust Apalis finished ahead of Mesh in all five. The earlier
+three-lane series used the same Mesh and River executables. Mesh won two of
+five submit comparisons there. Across the ten rotations, Mesh enqueued
+later than River every time and reached its last application commit sooner
+from enqueue commit twice. River's interval from last application commit
+to final settlement ranged from 11 to 102 ms. Both Mesh series used the
+experimental runner that can settle before actor teardown.
+[Per-rotation application and settlement intervals](application-intervals.md) ·
+[Six-lane score and executable identities](../2026-11-24-bulk-d2-short-peers/README.md)
+
 In these five dense rotations, the last application write committed 373–489 ms later on Mesh than on River. A local six-rotation experiment reduced terminal transaction counts in every rotation and failed to advance drain time beyond the identical controls. [Native stage chart and local completion experiment](../2026-11-24-dense-two-runner-completion/README.md)
 
 ## Replay
@@ -43,6 +55,9 @@ In these five dense rotations, the last application write committed 373–489 ms
 Reproduce the fixed-drain calculation with
 `python3 -B tools/durable-jobs-bench/results/2026-11-23-iteration-comparison/dense-topology-budgets.py equal`.
 Use `stock` for the series with eight-runner peers.
+
+Reproduce the short and dense application intervals with
+`python3 -B tools/durable-jobs-bench/results/2026-11-23-iteration-comparison/application-intervals.py`.
 
 From the checkout root, rebuild the standalone page from the committed score data.
 
