@@ -1,0 +1,16 @@
+{
+  "group": 5,
+  "order": [
+    "two",
+    "river-stock-1x64",
+    "one-b",
+    "oban-stock-1x64",
+    "one-a",
+    "apalis-stock-1x64"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "slow"
+}
