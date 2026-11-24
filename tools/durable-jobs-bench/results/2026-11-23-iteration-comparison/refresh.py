@@ -241,6 +241,18 @@ def capture_public_product(directory):
             if engine == "mesh":
                 for key in ("checkout_probes", "terminal_xids", "largest_terminal_cohort"):
                     scores[label][key] = row[key]
+            if engine == "rust":
+                with tarfile.open(path / f"measured-{label}/measured-rust/raw.tar.gz") as archive:
+                    jobs = run.file_json(archive, "adapter/ledger.json")["jobs"]
+                    last = max(jobs, key=lambda j: j["settled_us"])
+                    tail = last["settled_us"] - max(j["effect_committed_us"] for j in jobs)
+                    if tail >= 10_000_000:
+                        samples = run.file_json(archive, "adapter/samples.json")["timed"]
+                        stamps = [s["offset_s"] for s in samples
+                                  if s.get("terminal") == len(jobs) - 1 and s.get("executing") == 1]
+                        series.setdefault("late_apalis_settlements", []).append(dict(
+                            group=block["group"], job=last["job_key"], tail_ms=tail / 1000, samples=len(stamps),
+                            sampled_span_ms=1000 * (max(stamps) - min(stamps)) if stamps else None))
         series["blocks"].append(dict(group=block["group"], profile=block["profile"], order=block["order"],
                                      attempt=path.name, scores=scores, raw_sha256=archives))
     return series
@@ -381,6 +393,13 @@ def write_scorecard(data):
             if key.startswith("public-") and key != "public-short-selection":
                 add_policy_table(lines, series, series["title"],
                                  series["description"], [("product", "Public Mesh · " + policies[chosen].lower()), *peers])
+                for late in series.get("late_apalis_settlements", []):
+                    note = (f"Apalis group {late['group']} settled its final job, `{late['job']}`, "
+                            f"{late['tail_ms'] / 1000:.2f} s after the last application write committed.")
+                    if late["samples"]:
+                        note += (f" The observer recorded one job executing and all others terminal in {late['samples']} "
+                                 f"samples spanning {late['sampled_span_ms'] / 1000:.2f} s.")
+                    lines.extend([note + " The reported rates and paired wins include this run.", ""])
     dense = data.get("dense-exit-confirmed", {})
     if dense:
         add_policy_table(lines, dense, "Dense jobs with confirmed teardown and hot checkout",

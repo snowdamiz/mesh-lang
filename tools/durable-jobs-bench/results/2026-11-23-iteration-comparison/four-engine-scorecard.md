@@ -34,6 +34,30 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | River | 561.11 | 613.50 | 3/5 | 3/5 |
 | Apalis | 854.46 | 924.81 | 0/5 | 0/5 |
 
+## Public Mesh · dense, two Mesh runners and eight peer runners
+
+5/5 matched rotations. Mesh uses two 32-slot runners. Oban, River and Apalis each use eight eight-slot runners. Every engine handles the same 1,024 jobs.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Public Mesh · individual terminal commits | 682.04 | 770.33 | — | — |
+| Oban | 621.83 | 684.68 | 5/5 | 5/5 |
+| River | 843.03 | 900.16 | 0/5 | 0/5 |
+| Apalis | 1,119.75 | 1,165.95 | 0/5 | 0/5 |
+
+## Public Mesh · dense, eight runners per engine
+
+5/5 matched rotations. Each engine uses eight runners and 64 slots for 1,024 jobs. Mesh uses the policy selected on short jobs.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Public Mesh · individual terminal commits | 470.19 | 512.48 | — | — |
+| Oban | 634.18 | 698.45 | 0/5 | 0/5 |
+| River | 841.96 | 904.54 | 0/5 | 0/5 |
+| Apalis | 1,112.67 | 1,162.19 | 1/5 | 1/5 |
+
+Apalis group 2 settled its final job, `job_001009`, 25.92 s after the last application write committed. The observer recorded one job executing and all others terminal in 169 samples spanning 25.67 s. The reported rates and paired wins include this run.
+
 ## Dense jobs with confirmed teardown and hot checkout
 
 6/6 matched rotations. All ten arms use two 32-slot runners on the same two CPUs. The hot and checked checkout arms use the same Mesh executable and bulk producer. The separate writer comparison uses checked checkout throughout.
