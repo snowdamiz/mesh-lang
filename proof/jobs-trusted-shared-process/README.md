@@ -21,6 +21,8 @@ The native controller request uses the sealed V1 compiler, fixtures, and broker 
 
 ## Verification scope
 
+The Darwin ARM64 verification for `e4156740` exercised the set-based claim configuration and the compiled guide. The workspace recorded 4,820 passed, 71 ignored, and one compiler timing test reserved for Linode. PostgreSQL 17.11, 18.7, and 19.0 passed compatibility, scoped role, and effect-fence checks. The receipt identifies the product source and the checkout at the start of each PostgreSQL run. [Verification commands and log digests](set-based-verification.json) · [Parked Linux proof](../../tools/durable-jobs-bench/results/2026-11-24-e4156740-trusted-jobs-native/README.md)
+
 The correctness runs use the product runtime at `db5937e7e8988f935e9be16b68a2561c2250cc27`. The local release fixture uses the five frozen benchmark inputs and handlers to check durable outcomes. The executable from the timed V1 archive retains its own identity and measurements. The receipt records the production runtime, fixture executable, and fault executable hashes separately. [Verification receipt](verification.json)
 
 The four-engine comparison of trusted set-based claims and individual terminal commits used the Linux executable built from `b3557273`. It records that executable’s digest, all peer builds, and both durable timing windows. [Linode scorecard](../../tools/durable-jobs-bench/results/2026-11-23-iteration-comparison/four-engine-scorecard.md)

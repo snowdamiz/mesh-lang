@@ -1,0 +1,121 @@
+{
+  "source_commit": "e4156740c7409156409cd2f792f4875153d71040",
+  "platform": "Darwin arm64",
+  "toolchain": {
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)"
+  },
+  "git_input_objects": {
+    "compiler": "3dc8a17bbced120f2b445c56a2edb6d0a2de19a8",
+    "Cargo.toml": "8ed57668e6206c65fd453e0b82398df1a77a0726",
+    "Cargo.lock": "aac9cc7e318f5262f5e98e484a84da84c5992843",
+    "scripts/verify-postgres-jobs.sh": "f99793ea5472f51f1799961f1b98662863b90e22",
+    "scripts/verify-jobs-roles.sh": "bba74165a8b6c24d07f0391b12c51de82717e760",
+    "proof/jobs-trusted-shared-process/prove.py": "5a0e0e01fa59a66b9ed5a8de728770db26ce37a1"
+  },
+  "gates": [
+    {
+      "command": "cargo fmt --all -- --check",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "cargo test --locked -p mesh-rt --lib set_based_batch_claims_require_explicit_batch_config",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/config-test.log",
+      "sha256": "cc9520e84513158b8c57497ce3ad546d9948ff7dda47d09ca867650efc547f4f"
+    },
+    {
+      "command": "cargo build --locked -p meshc -p mesh-rt",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/build.log",
+      "sha256": "a933e956b204a52d1bb3d379ad8c01e4007f34bd1012568c68421190af2de6e0"
+    },
+    {
+      "command": "python3 -B proof/jobs-trusted-shared-process/prove.py target/debug/meshc --runtime target/debug/libmesh_rt.a",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/guide-proof.log",
+      "sha256": "9d449885cd3d451b989536c6ccb79ed1d994142b41137ef57cc2a716681c056a",
+      "result": "Trusted Jobs guide, strict execution, GC, panic, timeout, cancel, late SQL, and owner loss passed."
+    },
+    {
+      "command": "cargo test --workspace --locked -- --skip the_performance_gate_measures_and_reports",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/workspace.log",
+      "sha256": "c8cf6e31b343e6a5f9f4b0bc7c86640df8b89b931da5dd0c3e4e2c477b330840",
+      "workspace_totals": {
+        "passed": 4820,
+        "failed": 0,
+        "ignored": 71,
+        "measured": 0,
+        "filtered_out": 1
+      }
+    },
+    {
+      "command": "bash scripts/verify-postgres-jobs.sh --compatibility 17.11 --j6-roles",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/pg-17.11.log",
+      "sha256": "317575ec83676aa65f6ab6dcbc3666a5312ec58b5b996e1def33ab2686db0462",
+      "postgresql": "17.11",
+      "checkout_at_start": "e4156740c7409156409cd2f792f4875153d71040",
+      "results": [
+        "Compiled scoped logins passed on both fresh and upgraded schemas.",
+        "Jobs set-based enqueue wire commit_reply_lost passed"
+      ]
+    },
+    {
+      "command": "bash scripts/verify-postgres-jobs.sh --effect-fence",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/fence-17.11.log",
+      "sha256": "a995f148e1a0b878592a71baf8daa22fccacf14132694b00c65b8662a4b47186",
+      "postgresql": "17.11",
+      "checkout_at_start": "5074b78d7958fcda3557ed964f5ca7f1030123ae",
+      "result": "Jobs effect fence proof passed. Two independent commits, owner replay, cancellation, and expiry verified."
+    },
+    {
+      "command": "bash scripts/verify-postgres-jobs.sh --compatibility 18.7 --j6-roles",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/pg-18.7.log",
+      "sha256": "76cb7136bd8418c22577fdab47ea73ad95d3d515f6bcefc77a1f8dc4dbb7d33b",
+      "postgresql": "18.7",
+      "checkout_at_start": "1fbcc0aa0bd46d628af57a3bd7e88b04ed68fcee",
+      "results": [
+        "Compiled scoped logins passed on both fresh and upgraded schemas.",
+        "Jobs set-based enqueue wire proof skipped: the writer installs on PostgreSQL 17 only"
+      ]
+    },
+    {
+      "command": "bash scripts/verify-postgres-jobs.sh --effect-fence",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/fence-18.7.log",
+      "sha256": "2640dd8edbb0663b29d50eec3cd156ebee90cd705df1cda60f70a8f20882d236",
+      "postgresql": "18.7",
+      "checkout_at_start": "61669908643628ab012ae63f1b29d41ada487774",
+      "result": "Jobs effect fence proof passed. Two independent commits, owner replay, cancellation, and expiry verified."
+    },
+    {
+      "command": "bash scripts/verify-postgres-jobs.sh --compatibility 19.0 --j6-roles",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/pg-19.0.log",
+      "sha256": "26d61427cc60ecd0c61f66520620beec1a15cf94f4f6d569898c4e32ace3ac73",
+      "postgresql": "19.0",
+      "checkout_at_start": "61669908643628ab012ae63f1b29d41ada487774",
+      "results": [
+        "Compiled scoped logins passed on both fresh and upgraded schemas.",
+        "Jobs set-based enqueue wire proof skipped: the writer installs on PostgreSQL 17 only"
+      ]
+    },
+    {
+      "command": "bash scripts/verify-postgres-jobs.sh --effect-fence",
+      "exit_status": 0,
+      "local_log": "target/selected-trusted-claims/fence-19.0.log",
+      "sha256": "6fd1870c8196aaffcc5f28d50272ed6d8fdf1e4f248bd09fc3a8d847a301ff16",
+      "postgresql": "19.0",
+      "checkout_at_start": "414f5e826e1a9c00df2648d71a5ceb950aded252",
+      "result": "Jobs effect fence proof passed. Two independent commits, owner replay, cancellation, and expiry verified."
+    }
+  ],
+  "workload_scope": "Workstation correctness only. The compiler timing test and verification of the exact native Jobs artifact remain pending on Linode.",
+  "scored_native_source": "b3557273d72be3802bf189b284e7caaf5f3caa0f"
+}
