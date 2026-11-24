@@ -1,0 +1,21 @@
+{
+  "architecture": "aarch64",
+  "effective_caps": 0,
+  "explicit_import_reached_cpu_guard": [
+    2,
+    4
+  ],
+  "failed_plain_import": true,
+  "file_mode": "0644",
+  "gid": 65534,
+  "kernel": "6.12.115-0-virt",
+  "off_clock": true,
+  "proc_cpu_nobody_child": true,
+  "sha256": {
+    "identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "native-arm.py": "dd067a6a5cbb42f4439116534cdfb1598ea87e6b7c4fa31f7b1e46635c964f52",
+    "stage-arm.py": "948d125017b74d1bcd85d26996211800eb1f50c26f67ca5598dfce0699fba9cb"
+  },
+  "stage_mode": "0711",
+  "uid": 65534
+}

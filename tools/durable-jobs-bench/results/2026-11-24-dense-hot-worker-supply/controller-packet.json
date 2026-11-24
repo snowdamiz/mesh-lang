@@ -1,0 +1,176 @@
+{
+  "broker": {
+    "elf": "55d7000d562a6ad395f5e64e33e0e973fac0084ed05ad6c30a33db2a3fc6303a",
+    "manifest": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+    "path": "/var/lib/durable-jobs-bench/native/builds/bulk-enqueue-3b09dc3d0e23-ordinary-v2"
+  },
+  "clock_ticks": 100,
+  "conditional_extension": "Four balanced rotations only if both fully qualified pilot blocks pass the frozen wall and write gate. Requires a separate fresh controller grant. Requests no extension booking in advance.",
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/evidence/native",
+  "expected_timing_minutes": 15,
+  "id": "2026-11-24-dense-hot-worker-supply",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "kind": "Controller-owned build-free native TIMING",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/README.md": "cf7e7671ab2e7ded5b73d1d294352d050c2ba953595248d04a862b5512c55bf6",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/controller.py": "99088f4b82268efff96f1f4630642d01d0b9c0c9a4b4a12e251106b23a947840",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/evidence/checkout-gate.json": "dda9b34986e4bb54c1035750c7fcf66cbc94b46771fa8fa3ffa2c831e5419f8b",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/evidence/first-linux-guest-failure.txt": "701a54e831ef2f266e9ab2ad030897d3e1d478ef3a9623c73a511a41a07372d7",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/evidence/linux-stage.json": "8ff6ce2b36c1bbadfc30ce6a61a7911286e80ab0fd3faf5e2d84ee35b1827d09",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/linux-stage-test.py": "22be428510b2cbe57169d60b8b967784a07a3788bbe75cb2db3474d1ce66dc7a",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/local-linux-stage.py": "d97a15c4cec6d2fe72cd2169f2bee889b52cb608796dd7c3db4c6f06cf8401bc",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/native-supply.sh": "805a8e3c5e77a11883a08b7b5d86c15db192dd56a0d09012335580f99772ab3f",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/stage-arm.py": "948d125017b74d1bcd85d26996211800eb1f50c26f67ca5598dfce0699fba9cb",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/test_offline.py": "1f4e90136ca2a97679eb82a4839eefb6840332b1cba2b32e0e14f50197cfa384"
+  },
+  "native_host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "no_build": true,
+  "offline_check": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/controller.py check",
+  "prerequisite": {
+    "gate": "original six measured blocks, 4/6 advancement",
+    "passed_groups": [
+      1,
+      2,
+      4,
+      6
+    ],
+    "seal": "6d3e5210a6b51ea62da9cdfcf37e73a4eafe9090efa51c963535d04f48dd6d70",
+    "series": "2026-11-24-dense-two-runner-checkout-import-retry"
+  },
+  "priority": "After all currently booked series. Preserve product and cold cooperative permit bookings.",
+  "ready": true,
+  "remaining_timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/controller.py timing 3 4 5 6",
+  "replay_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/controller.py replay",
+  "requested_timing_windows_minutes": [
+    15
+  ],
+  "resource_bounds": {
+    "conditional_extension_arms": 48,
+    "fresh_database_each_arm": true,
+    "mesh_app_pool_max_each": 16,
+    "mesh_app_pool_min_each": 16,
+    "mesh_warm_clients": 41,
+    "one_arm_at_a_time": true,
+    "pg_cap": 96,
+    "pg_version": "17.11",
+    "pilot_arms": 24,
+    "runners_each": 2,
+    "slots_each": 32
+  },
+  "runner": {
+    "elf": "972514efac688fd029821152c3bb70a7e62bf1c6227ab8b2d061dc69c47a2dc7",
+    "manifest": "ab09bc77affff4496350202150dc6eb0b90d5c252f0a7552767e0070d615fe31",
+    "path": "/var/lib/durable-jobs-bench/native/builds/exit-bulk-d2-c7c50e726ca0"
+  },
+  "schedule": [
+    {
+      "group": 1,
+      "order": [
+        "fixed2-a",
+        "river-2x32",
+        "fixed4",
+        "oban-2x32",
+        "fixed2-b",
+        "apalis-2x32"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 2,
+      "order": [
+        "apalis-2x32",
+        "fixed2-b",
+        "oban-2x32",
+        "fixed4",
+        "river-2x32",
+        "fixed2-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 3,
+      "order": [
+        "fixed4",
+        "oban-2x32",
+        "fixed2-b",
+        "apalis-2x32",
+        "fixed2-a",
+        "river-2x32"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 4,
+      "order": [
+        "river-2x32",
+        "fixed2-a",
+        "apalis-2x32",
+        "fixed2-b",
+        "oban-2x32",
+        "fixed4"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 5,
+      "order": [
+        "fixed2-b",
+        "apalis-2x32",
+        "fixed2-a",
+        "river-2x32",
+        "fixed4",
+        "oban-2x32"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 6,
+      "order": [
+        "oban-2x32",
+        "fixed4",
+        "river-2x32",
+        "fixed2-a",
+        "apalis-2x32",
+        "fixed2-b"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "scope": "Two reverse-order blocks of the original dense input: hot fixed2-a, hot fixed2-b, hot fixed4, and exact stock equal-2x32 River, Oban, Apalis. Every lane has the canonical warmup and measured phase.",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply",
+  "state": "ready-for-sole-controller-intake",
+  "timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-hot-worker-supply/controller.py timing 1 2"
+}
