@@ -1,0 +1,563 @@
+{
+  "components": {
+    "large": {
+      "advance_to_broker_trial": false,
+      "arms_cpu_ms_per_submission": {
+        "candidate": {
+          "max": 99.0923795,
+          "median": 93.8439125,
+          "min": 91.272231875
+        },
+        "stock-a": {
+          "max": 130.92985925,
+          "median": 129.5881385625,
+          "min": 126.910424625
+        },
+        "stock-b": {
+          "max": 134.49135975,
+          "median": 127.63475125,
+          "min": 125.926664125
+        }
+      },
+      "arms_wall_ms_per_submission": {
+        "candidate": {
+          "max": 99.097064875,
+          "median": 93.85277562499999,
+          "min": 91.2811945
+        },
+        "stock-a": {
+          "max": 130.940871625,
+          "median": 129.5965090625,
+          "min": 126.914271875
+        },
+        "stock-b": {
+          "max": 134.498173,
+          "median": 127.6394911875,
+          "min": 125.929168875
+        }
+      },
+      "cpu_saving_ms_per_submission": {
+        "max": 35.125934,
+        "median": 34.541633,
+        "min": 31.644745
+      },
+      "diagnostic_stage_wall_ms_per_submission": {
+        "serialization": {
+          "max": 49.463287875,
+          "median": 48.911017,
+          "min": 48.2702145
+        },
+        "sha256": {
+          "max": 22.99663025,
+          "median": 22.7398003125,
+          "min": 22.27113575
+        },
+        "to_value": {
+          "max": 25.0491635,
+          "median": 24.6693714375,
+          "min": 24.184394625
+        },
+        "untagged_decode": {
+          "max": 24.746552125,
+          "median": 24.44357575,
+          "min": 23.907582875
+        },
+        "validation_and_policies": {
+          "max": 0.020450125,
+          "median": 0.0169963125,
+          "min": 0.014638875
+        }
+      },
+      "duplicate_cpu_spread_ms": {
+        "max": 5.003195,
+        "median": 1.953387,
+        "min": 0.264141
+      },
+      "promotion_cpu_ms": 40.0,
+      "raw_rows": 24,
+      "repetitions_per_arm": 8,
+      "scored_rotations": 6,
+      "wall_saving_ms_per_submission": {
+        "max": 35.126978,
+        "median": 34.536262,
+        "min": 31.655136
+      },
+      "wins_over_jitter": 6
+    },
+    "short": {
+      "advance_to_broker_trial": false,
+      "arms_cpu_ms_per_submission": {
+        "candidate": {
+          "max": 0.8475332395833334,
+          "median": 0.8210758333333334,
+          "min": 0.8177115520833333
+        },
+        "stock-a": {
+          "max": 1.0457075,
+          "median": 1.0100047812500001,
+          "min": 0.9920568541666667
+        },
+        "stock-b": {
+          "max": 1.0633044895833332,
+          "median": 1.00546728125,
+          "min": 1.001943
+        }
+      },
+      "arms_wall_ms_per_submission": {
+        "candidate": {
+          "max": 0.8479485416666667,
+          "median": 0.8212659635416666,
+          "min": 0.8183249583333334
+        },
+        "stock-a": {
+          "max": 1.0457197916666667,
+          "median": 1.0101128802083332,
+          "min": 0.9939166458333334
+        },
+        "stock-b": {
+          "max": 1.0633197604166666,
+          "median": 1.0055726458333334,
+          "min": 1.0019653229166667
+        }
+      },
+      "cpu_saving_ms_per_submission": {
+        "max": 0.184375,
+        "median": 0.177224,
+        "min": 0.165191
+      },
+      "diagnostic_stage_wall_ms_per_submission": {
+        "serialization": {
+          "max": 0.3862547083333333,
+          "median": 0.3827124947916667,
+          "min": 0.38039773958333334
+        },
+        "sha256": {
+          "max": 0.14201836458333333,
+          "median": 0.14015659375,
+          "min": 0.1394823125
+        },
+        "to_value": {
+          "max": 0.2157425625,
+          "median": 0.20410440104166666,
+          "min": 0.19836653125
+        },
+        "untagged_decode": {
+          "max": 0.20404909375,
+          "median": 0.20140097395833334,
+          "min": 0.19735357291666666
+        },
+        "validation_and_policies": {
+          "max": 0.010967583333333334,
+          "median": 0.010390046875,
+          "min": 0.010038072916666666
+        }
+      },
+      "duplicate_cpu_spread_ms": {
+        "max": 0.062998,
+        "median": 0.030025,
+        "min": 0.003963
+      },
+      "promotion_cpu_ms": 5.0,
+      "raw_rows": 24,
+      "repetitions_per_arm": 96,
+      "scored_rotations": 6,
+      "wall_saving_ms_per_submission": {
+        "max": 0.185007,
+        "median": 0.17807,
+        "min": 0.164023
+      },
+      "wins_over_jitter": 6
+    }
+  },
+  "frozen_scorer_sha256": "8ba96a909e394b40884b0b7a414e1fe005583599113681629a57244629972a3e",
+  "historical_pricing": {
+    "earlier_bulk_d2": {
+      "profile": "short",
+      "rotations": [
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.521481,
+          "group": 1,
+          "peer_gaps": {
+            "river": {
+              "full_submit_gap_ms": 18.126,
+              "share_of_positive_full_submit_gap_pct": 0.982401,
+              "share_of_positive_submit_to_commit_gap_pct": 0.862534,
+              "submit_to_commit_gap_ms": 20.645
+            }
+          },
+          "stock_submit_to_commit_ms": 34.147
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.517134,
+          "group": 2,
+          "peer_gaps": {
+            "river": {
+              "full_submit_gap_ms": -73.623,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": 0.914164,
+              "submit_to_commit_gap_ms": 19.479
+            }
+          },
+          "stock_submit_to_commit_ms": 34.434
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.478606,
+          "group": 3,
+          "peer_gaps": {
+            "river": {
+              "full_submit_gap_ms": 29.81,
+              "share_of_positive_full_submit_gap_pct": 0.59735,
+              "share_of_positive_submit_to_commit_gap_pct": 0.73977,
+              "submit_to_commit_gap_ms": 24.071
+            }
+          },
+          "stock_submit_to_commit_ms": 37.206
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.503265,
+          "group": 4,
+          "peer_gaps": {
+            "river": {
+              "full_submit_gap_ms": 19.091,
+              "share_of_positive_full_submit_gap_pct": 0.932744,
+              "share_of_positive_submit_to_commit_gap_pct": 0.831093,
+              "submit_to_commit_gap_ms": 21.426
+            }
+          },
+          "stock_submit_to_commit_ms": 35.383
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.543825,
+          "group": 5,
+          "peer_gaps": {
+            "river": {
+              "full_submit_gap_ms": -68.981,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": 0.908753,
+              "submit_to_commit_gap_ms": 19.595
+            }
+          },
+          "stock_submit_to_commit_ms": 32.744
+        }
+      ],
+      "source_sha256": "78722a2cf0c8e976a9212224a07d71e790548ae708919cec25aa0f04d982ba1e",
+      "wall_saving_proxy_ms_per_submission": 0.17807
+    },
+    "large_broker_once": {
+      "profile": "large",
+      "rotations": [
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 4.571378,
+          "group": 1,
+          "peer_gaps": {
+            "apalis-external": {
+              "full_submit_gap_ms": 505.2235,
+              "share_of_positive_full_submit_gap_pct": 6.835838,
+              "share_of_positive_submit_to_commit_gap_pct": 29.54216,
+              "submit_to_commit_gap_ms": 116.905
+            },
+            "oban-external": {
+              "full_submit_gap_ms": -373.6055,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -396.498
+            },
+            "river-external": {
+              "full_submit_gap_ms": -1229.2495,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -827.502
+            }
+          },
+          "stock_submit_to_commit_ms": 755.489
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 4.500399,
+          "group": 2,
+          "peer_gaps": {
+            "apalis-external": {
+              "full_submit_gap_ms": 528.067,
+              "share_of_positive_full_submit_gap_pct": 6.540129,
+              "share_of_positive_submit_to_commit_gap_pct": 27.098847,
+              "submit_to_commit_gap_ms": 127.4455
+            },
+            "oban-external": {
+              "full_submit_gap_ms": -568.021,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -433.3115
+            },
+            "river-external": {
+              "full_submit_gap_ms": -979.852,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -655.1185
+            }
+          },
+          "stock_submit_to_commit_ms": 767.4045000000001
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 4.427709,
+          "group": 3,
+          "peer_gaps": {
+            "apalis-external": {
+              "full_submit_gap_ms": 474.262,
+              "share_of_positive_full_submit_gap_pct": 7.282106,
+              "share_of_positive_submit_to_commit_gap_pct": 28.517854,
+              "submit_to_commit_gap_ms": 121.104
+            },
+            "oban-external": {
+              "full_submit_gap_ms": -954.642,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -832.667
+            },
+            "river-external": {
+              "full_submit_gap_ms": -1184.59,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -797.368
+            }
+          },
+          "stock_submit_to_commit_ms": 780.003
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 4.640044,
+          "group": 4,
+          "peer_gaps": {
+            "apalis-external": {
+              "full_submit_gap_ms": 502.838,
+              "share_of_positive_full_submit_gap_pct": 6.868268,
+              "share_of_positive_submit_to_commit_gap_pct": 36.173094,
+              "submit_to_commit_gap_ms": 95.475
+            },
+            "oban-external": {
+              "full_submit_gap_ms": -486.856,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -471.331
+            },
+            "river-external": {
+              "full_submit_gap_ms": -964.717,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -717.432
+            }
+          },
+          "stock_submit_to_commit_ms": 744.309
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 4.67048,
+          "group": 5,
+          "peer_gaps": {
+            "apalis-external": {
+              "full_submit_gap_ms": 439.6035,
+              "share_of_positive_full_submit_gap_pct": 7.85623,
+              "share_of_positive_submit_to_commit_gap_pct": 36.820024,
+              "submit_to_commit_gap_ms": 93.7975
+            },
+            "oban-external": {
+              "full_submit_gap_ms": -490.2805,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -461.6505
+            },
+            "river-external": {
+              "full_submit_gap_ms": -1244.7795,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -810.5245
+            }
+          },
+          "stock_submit_to_commit_ms": 739.4585
+        }
+      ],
+      "source_sha256": "794a5bc58c753943eafe8abcfe020c05801f51e9b4f1930a3a494ba8f2384101",
+      "wall_saving_proxy_ms_per_submission": 34.536262
+    },
+    "six_lane_bulk_d2": {
+      "profile": "short",
+      "rotations": [
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.523797,
+          "group": 1,
+          "peer_gaps": {
+            "apalis": {
+              "full_submit_gap_ms": 60.032,
+              "share_of_positive_full_submit_gap_pct": 0.296625,
+              "share_of_positive_submit_to_commit_gap_pct": 0.775668,
+              "submit_to_commit_gap_ms": 22.957
+            },
+            "oban": {
+              "full_submit_gap_ms": -195.693,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -11.803
+            },
+            "river": {
+              "full_submit_gap_ms": -68.58,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": 1.015976,
+              "submit_to_commit_gap_ms": 17.527
+            }
+          },
+          "stock_submit_to_commit_ms": 33.996
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.511975,
+          "group": 2,
+          "peer_gaps": {
+            "apalis": {
+              "full_submit_gap_ms": 57.995,
+              "share_of_positive_full_submit_gap_pct": 0.307044,
+              "share_of_positive_submit_to_commit_gap_pct": 0.760366,
+              "submit_to_commit_gap_ms": 23.419
+            },
+            "oban": {
+              "full_submit_gap_ms": -212.455,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -15.383
+            },
+            "river": {
+              "full_submit_gap_ms": -65.932,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": 0.855571,
+              "submit_to_commit_gap_ms": 20.813
+            }
+          },
+          "stock_submit_to_commit_ms": 34.781
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.361821,
+          "group": 3,
+          "peer_gaps": {
+            "apalis": {
+              "full_submit_gap_ms": 63.144,
+              "share_of_positive_full_submit_gap_pct": 0.282006,
+              "share_of_positive_submit_to_commit_gap_pct": 0.460808,
+              "submit_to_commit_gap_ms": 38.643
+            },
+            "oban": {
+              "full_submit_gap_ms": -187.503,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": 3.411958,
+              "submit_to_commit_gap_ms": 5.219
+            },
+            "river": {
+              "full_submit_gap_ms": -4.675,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": 0.557637,
+              "submit_to_commit_gap_ms": 31.933
+            }
+          },
+          "stock_submit_to_commit_ms": 49.215
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.491567,
+          "group": 4,
+          "peer_gaps": {
+            "apalis": {
+              "full_submit_gap_ms": 53.128,
+              "share_of_positive_full_submit_gap_pct": 0.335172,
+              "share_of_positive_submit_to_commit_gap_pct": 0.689286,
+              "submit_to_commit_gap_ms": 25.834
+            },
+            "oban": {
+              "full_submit_gap_ms": -297.494,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -17.276
+            },
+            "river": {
+              "full_submit_gap_ms": -77.399,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": 0.919309,
+              "submit_to_commit_gap_ms": 19.37
+            }
+          },
+          "stock_submit_to_commit_ms": 36.225
+        },
+        {
+          "estimated_share_of_stock_submit_to_commit_pct": 0.463266,
+          "group": 5,
+          "peer_gaps": {
+            "apalis": {
+              "full_submit_gap_ms": 74.824,
+              "share_of_positive_full_submit_gap_pct": 0.237985,
+              "share_of_positive_submit_to_commit_gap_pct": 0.679812,
+              "submit_to_commit_gap_ms": 26.194
+            },
+            "oban": {
+              "full_submit_gap_ms": -222.918,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": null,
+              "submit_to_commit_gap_ms": -14.451
+            },
+            "river": {
+              "full_submit_gap_ms": -54.151,
+              "share_of_positive_full_submit_gap_pct": null,
+              "share_of_positive_submit_to_commit_gap_pct": 0.789703,
+              "submit_to_commit_gap_ms": 22.549
+            }
+          },
+          "stock_submit_to_commit_ms": 38.438
+        }
+      ],
+      "source_sha256": "2bd3c8b8ccf1e8efccb92380fed250e48b78e356fdd753a5ef99de324f8b6b97",
+      "wall_saving_proxy_ms_per_submission": 0.17807
+    }
+  },
+  "original_summary_sha256": "aacdeb8204b1d9d717fde024d9def2db24a6983d93fafffdefc19af8af937685",
+  "release_receipts": {
+    "setup-b0c245fbec03": {
+      "exit_status": 0,
+      "raw_sha256": "0ee3e1357ef38b50eb00efdaa9e33d337bef3bdbc4a3388c1b877717a0f18ac9",
+      "released_at": "2026-11-24T04:24:12.941738+00:00"
+    },
+    "setup-de98a0588ecd": {
+      "exit_status": 1,
+      "raw_sha256": "59869db34853933b239f1e2219cf7d431da006aa919635478511fabbfc8849d2",
+      "released_at": "2026-11-24T04:14:28.793312+00:00"
+    },
+    "timing-be34d253e19e": {
+      "exit_status": 0,
+      "raw_sha256": "efb88f8f883ed1357c67ce24c82e3904e446e9ea81542da961bd1539ca51ea99",
+      "released_at": "2026-11-24T04:24:44.896856+00:00"
+    }
+  },
+  "workloads": {
+    "large": {
+      "bytes_per_frame": 524470,
+      "frame_bytes_per_submission": 33566080,
+      "frames": 64,
+      "jobs": 64,
+      "native_component_sha256": "422f493a23ffcf8ee520e44dcb2baf87f27695eb935a3b06832516df856e0c08",
+      "payload_bytes_per_job": 524288,
+      "payload_bytes_per_submission": 33554432,
+      "wire_proof": {
+        "accepted_cross_version_replays": 32,
+        "bulk_calls": 0,
+        "outer_rollback": true,
+        "postgres": "17.11",
+        "savepoint_recovery": true
+      }
+    },
+    "short": {
+      "bytes_per_frame": 154241,
+      "frame_bytes_per_submission": 154241,
+      "frames": 1,
+      "jobs": 128,
+      "native_component_sha256": "ccd5eaeebf6024edf440d66d31e500e033d23de35043f3f959b21a6dd6ba873a",
+      "payload_bytes_per_job": 1024,
+      "payload_bytes_per_submission": 131072,
+      "wire_proof": {
+        "accepted_cross_version_replays": 32,
+        "bulk_calls": 7,
+        "outer_rollback": true,
+        "postgres": "17.11",
+        "savepoint_recovery": true
+      }
+    }
+  }
+}
