@@ -215,6 +215,20 @@ If Mesh kept each first application commit at its observed time and finished eac
 | River | 273.80 | 368.18 | 1/2 | 1/2 |
 | Apalis | 342.64 | 450.95 | 0/2 | 0/2 |
 
+## Short jobs with stock and prewarmed River
+
+6/6 matched rotations. Prewarmed River opened its PostgreSQL connections before submit. Cold and prewarmed River used the same executable.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh hot checkout | 591.59 | 728.85 | — | — |
+| Mesh checked checkout | 577.07 | 684.50 | 4/6 | 4/6 |
+| Stock River | 473.94 | 503.08 | 4/6 | 5/6 |
+| River cold control | 472.13 | 501.32 | 4/6 | 4/6 |
+| River prewarmed | 881.94 | 978.10 | 1/6 | 2/6 |
+| Stock Oban | 278.86 | 316.04 | 6/6 | 6/6 |
+| Stock Apalis | 827.62 | 887.74 | 1/6 | 1/6 |
+
 ## Short jobs with hot checkout and confirmed actor teardown
 
 5/5 matched rotations. Both trusted runners use the same bulk producer and wait for teardown before submitting successes for settlement. Recent pooled connections skip the checkout probe in the candidate. Each job makes two independently committed application writes.

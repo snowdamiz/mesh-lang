@@ -530,6 +530,11 @@ def write_scorecard(data):
                      "input and 100 ms hold. [Extension decision](../2026-11-23-bulk-enqueue-v2-slow/README.md)",
                      [("bulk", "V2 · batch enqueue"), ("scalar", "V2 · scalar enqueue"),
                       ("v1-bulk", "V1 · batch enqueue"), ("v1-scalar", "V1 · scalar enqueue"), *peers])
+    add_policy_table(lines, data.get("short-river-readiness", {}), "Short jobs with stock and prewarmed River",
+                     "Prewarmed River opened its PostgreSQL connections before submit. Cold and prewarmed River used the same executable.",
+                     [("r2-d2", "Mesh hot checkout"), ("r2-off", "Mesh checked checkout"),
+                      ("river", "Stock River"), ("river-cold", "River cold control"), ("river-warm", "River prewarmed"),
+                      ("oban", "Stock Oban"), ("apalis", "Stock Apalis")], planned=6)
     add_policy_table(lines, data.get("exit-confirmed-hot-short", {}), "Short jobs with hot checkout and confirmed actor teardown",
                      "Both trusted runners use the same bulk producer and wait for teardown before submitting "
                      "successes for settlement. Recent pooled connections skip the checkout probe in the candidate. "
