@@ -1,0 +1,26 @@
+{
+  "system": "Darwin",
+  "architecture": "arm64",
+  "version": "fe4aadde246b5b3069c1ee235ba2693d9c59c131",
+  "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+  "execution_contract": "ordinary-trusted-shared-process",
+  "compiler_sha256": "e0335a24050689a78be19928a649dccbe93ace82aaa8308a86a2cc44433f6201",
+  "runtime_sha256": "c43fb1979175d9c43c4cda71e0c0b99252318f3cb8d37979c826d9a88da3de5e",
+  "files": {
+    "mesh": "a16227e61292b334a7f61b91ac1b8b282a61f3357d12c5f6b17a2c80b5a3ab8b",
+    "main.mpl": "06ac61eb204d1ebe0d45fff1d6694ff76536210b6a56613ac43b9aea94598efd",
+    "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0",
+    "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+    "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+    "libworker_identity.a": "8953594907346f43f0f09b667d2e30f447ee86a66224482b6fe9e245eb54d61f",
+    "mesh.toml": "77bc469a858b530c7fee4d6901f5a4af256ba16db618be2b7ea9bc2aab48c6f0"
+  },
+  "experiment": {
+    "source_archive_sha256": "e742644d89b872a41b4d9d241091a2349491f3de6d393fe77c4cbdbc05f6a58c",
+    "store_before_sha256": "024a38917f66849f31710f4656da403ab105e309b08043e0f0340a1f96f848aa",
+    "store_after_sha256": "3db7e401351e7e7bc609361d5afde97082a648ea901cc427cfa70bebc64d344f",
+    "recipe_commit": "fe4aadde246b5b3069c1ee235ba2693d9c59c131",
+    "validated_claim_cap": 32,
+    "installed_default_sql_limit": 16
+  }
+}
