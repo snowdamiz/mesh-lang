@@ -1,0 +1,98 @@
+{
+  "attempt": "app-pool-39e79f4abb76",
+  "fixtures": {
+    "direct": {
+      "build": {
+        "architecture": "x86_64",
+        "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+        "compiler_sha256": "7fb3823e4e2294e5dffb024543388c199aafde179f4218d2f7f1fcfd2765c51e",
+        "execution_contract": "ordinary-trusted-shared-process",
+        "files": {
+          "libworker_identity.a": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+          "main.mpl": "98432cceca8861409c4a92e04b2e2ac0bb5dcc021ee67b18a7d6430c4c5c2727",
+          "mesh": "533627849c4fde32dc7c32d27681287e0c350171dfe053bc4abfb52df1d9acde",
+          "mesh.toml": "64bbe65a533a942753a2bfe8fa5fd4e025a1fa9f4a8dbf25d82ad22ad4137325",
+          "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+          "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+          "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+        },
+        "mode": "direct",
+        "runtime_sha256": "5ffa1a3d84b55d41b80e801d8e4cbcf72fbb108ae50c4ebc1a24fb0aff313f54",
+        "source_archive_sha256": "f10e6683a29f16f1e7e646e6d7e30e6b4011c83200274fc5410a017e7ac6cdda",
+        "system": "Linux",
+        "version": "db5937e7e8988f935e9be16b68a2561c2250cc27"
+      },
+      "manifest_sha256": "ae045f9ad1f1f32e9a68ea12e21f8a29941084a86108c9828e4f9148c153d9e5"
+    },
+    "direct-observed": {
+      "build": {
+        "architecture": "x86_64",
+        "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+        "compiler_sha256": "7fb3823e4e2294e5dffb024543388c199aafde179f4218d2f7f1fcfd2765c51e",
+        "execution_contract": "ordinary-trusted-shared-process",
+        "files": {
+          "libworker_identity.a": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+          "main.mpl": "399d0c2dd61d4efb7e7e9d55eaafe95eee2000bc97e45399c90e587bef6714d7",
+          "mesh": "7c5c37db9fbfc1e9123e175a97096f5d0b7a52a4b7a64f8a2bc3ab68cd57d205",
+          "mesh.toml": "64bbe65a533a942753a2bfe8fa5fd4e025a1fa9f4a8dbf25d82ad22ad4137325",
+          "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+          "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+          "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+        },
+        "mode": "direct-observed",
+        "runtime_sha256": "5ffa1a3d84b55d41b80e801d8e4cbcf72fbb108ae50c4ebc1a24fb0aff313f54",
+        "source_archive_sha256": "f10e6683a29f16f1e7e646e6d7e30e6b4011c83200274fc5410a017e7ac6cdda",
+        "system": "Linux",
+        "version": "db5937e7e8988f935e9be16b68a2561c2250cc27"
+      },
+      "manifest_sha256": "3c5e56d72f9eaa9c51849f2c9fc4cfba3084a1df5a372f7b47f97dd3f69e06d5"
+    },
+    "service": {
+      "build": {
+        "architecture": "x86_64",
+        "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+        "compiler_sha256": "7fb3823e4e2294e5dffb024543388c199aafde179f4218d2f7f1fcfd2765c51e",
+        "execution_contract": "ordinary-trusted-shared-process",
+        "files": {
+          "libworker_identity.a": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+          "main.mpl": "06ac61eb204d1ebe0d45fff1d6694ff76536210b6a56613ac43b9aea94598efd",
+          "mesh": "1cca5be0b4e9699da7bdeb268c4ecd57b013fa4a1de2bcf7103924ae59289be5",
+          "mesh.toml": "64bbe65a533a942753a2bfe8fa5fd4e025a1fa9f4a8dbf25d82ad22ad4137325",
+          "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+          "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+          "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+        },
+        "mode": "service",
+        "runtime_sha256": "5ffa1a3d84b55d41b80e801d8e4cbcf72fbb108ae50c4ebc1a24fb0aff313f54",
+        "source_archive_sha256": "f10e6683a29f16f1e7e646e6d7e30e6b4011c83200274fc5410a017e7ac6cdda",
+        "system": "Linux",
+        "version": "db5937e7e8988f935e9be16b68a2561c2250cc27"
+      },
+      "manifest_sha256": "f7fad8d28e9126cc1a0e98dbbaea34b3438b685060234c4d19545fc02a1d6c76"
+    },
+    "service-observed": {
+      "build": {
+        "architecture": "x86_64",
+        "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+        "compiler_sha256": "7fb3823e4e2294e5dffb024543388c199aafde179f4218d2f7f1fcfd2765c51e",
+        "execution_contract": "ordinary-trusted-shared-process",
+        "files": {
+          "libworker_identity.a": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+          "main.mpl": "0546fad2b1d20e00fda82ddab720814ddffe6944ed04d5dae4a169e6da7395e6",
+          "mesh": "c4ea65b63b1501cf6634c0db152616758eedcdcc340dfe2618cb4db42091c502",
+          "mesh.toml": "64bbe65a533a942753a2bfe8fa5fd4e025a1fa9f4a8dbf25d82ad22ad4137325",
+          "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+          "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+          "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+        },
+        "mode": "service-observed",
+        "runtime_sha256": "5ffa1a3d84b55d41b80e801d8e4cbcf72fbb108ae50c4ebc1a24fb0aff313f54",
+        "source_archive_sha256": "f10e6683a29f16f1e7e646e6d7e30e6b4011c83200274fc5410a017e7ac6cdda",
+        "system": "Linux",
+        "version": "db5937e7e8988f935e9be16b68a2561c2250cc27"
+      },
+      "manifest_sha256": "af0ebdbe3a515293aa60c4f23446ec23bdf33077f7257f17c526f4d952eb21a3"
+    }
+  },
+  "raw_sha256": "f96da8758e645e11b00858c48757376465a2c4ae08a9fce4fbb64b7788b62764"
+}
