@@ -1,5 +1,7 @@
 # Native durable Jobs comparison
 
+For the current pause point, the next Linode booking, and the fresh-session prompt, open [Resume the comparison](RESUME.md).
+
 Compare Mesh, Oban, River, and Apalis across all five workloads. The scorecard reports both submission through final settlement and enqueue commit through final settlement. [Four-engine scorecard](results/2026-11-23-iteration-comparison/four-engine-scorecard.md) · [Interactive chart and per-rotation results](results/2026-11-23-iteration-comparison/chart.html)
 
 ## Adapter handoff
