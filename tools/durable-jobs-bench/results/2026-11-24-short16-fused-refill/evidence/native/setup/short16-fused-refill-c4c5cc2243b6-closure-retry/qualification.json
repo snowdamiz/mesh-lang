@@ -1,0 +1,28 @@
+{
+  "arms": {
+    "product-fused": {
+      "application_xids": 256,
+      "completion_refill": {
+        "commits": 9,
+        "completions": 9,
+        "grants": 9
+      },
+      "jobs": 128,
+      "terminal_xids": 124
+    },
+    "product-group": {
+      "application_xids": 256,
+      "completion_refill": null,
+      "jobs": 128,
+      "terminal_xids": 117
+    }
+  },
+  "files": {
+    "/var/lib/durable-jobs-bench/native/source-short16-fused-refill-c4c5cc2243b6/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay-closure-retry/backend.py": "2a45023ad705cf94ad0e545cc72f5b3bf34c898368e5e0b525803efe3fd96166",
+    "/var/lib/durable-jobs-bench/native/source-short16-fused-refill-c4c5cc2243b6/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay-closure-retry/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "/var/lib/durable-jobs-bench/native/source-short16-fused-refill-c4c5cc2243b6/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay-closure-retry/native-run": "32807783aaa893b0c5b4a6742e9117cd7a1ef1f3b1f1d9a4abce482089b9a47e",
+    "/var/lib/durable-jobs-bench/native/source-short16-fused-refill-c4c5cc2243b6/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay-closure-retry/product_arm.py": "b7253e622051a033050b3e79afab73cd11c4c61cb0bf1dedd06303b8facdce24"
+  },
+  "manifest_sha256": "26fb9ee3aeea2750624024f78a1f5d5c7fb0de4a8a77452ddfd54d9bb990b634",
+  "raw_sha256": "cd87c866d8a157ef3cb4c47e73a7b7ae8019425df292386fd743f6d6b28d2e01"
+}
