@@ -1,8 +1,34 @@
 {
-  "benchmark_suite": {"test_count": 16, "state": "pass"},
-  "fixture_driver_self_check": {"test_count": 19, "state": "pass"},
-  "fixture_driver_fault_tests": {"test_count": 12, "state": "pass"},
-  "postgres_effect_fence": {"postgres": "17.11", "state": "pass"},
-  "workspace": {"command": "cargo check --workspace --locked --offline", "state": "pass"},
-  "ungranted_dispatch": {"state": "rejected before any remote action", "error": "no active sole-controller TIMING grant"}
+  "benchmark_suite": {
+    "state": "pass",
+    "test_count": 16
+  },
+  "fixture_driver_fault_tests": {
+    "state": "pass",
+    "test_count": 12
+  },
+  "fixture_driver_self_check": {
+    "state": "pass",
+    "test_count": 19
+  },
+  "postgres_effect_fence": {
+    "postgres": "17.11",
+    "state": "pass"
+  },
+  "ungranted_dispatch": {
+    "error": "no active sole-controller TIMING grant",
+    "state": "rejected before any remote action"
+  },
+  "workspace": {
+    "command": "cargo check --workspace --locked --offline",
+    "state": "pass"
+  },
+  "workspace_lib_tests": {
+    "command": "cargo test --workspace --locked --offline --lib",
+    "failed": 0,
+    "ignored": 58,
+    "passed": 2682,
+    "state": "pass",
+    "suites": 14
+  }
 }
