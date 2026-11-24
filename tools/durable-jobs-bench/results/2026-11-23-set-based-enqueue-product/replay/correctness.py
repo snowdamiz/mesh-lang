@@ -35,7 +35,7 @@ def main():
     for name, digest in binding["pins"].items():
         run.require(run.digest(ROOT / name) == digest, f"input digest changed: {name}")
     archive = ROOT / binding["source_archive"]
-    attempt = f"{NAME}-{uuid4().hex[:12]}"
+    attempt = f"set-based-product-{uuid4().hex[:12]}"
     out = PACKET / "evidence/native" / attempt
     with (SUITE / ".timing.lock").open("r") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

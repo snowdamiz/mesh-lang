@@ -29,7 +29,7 @@
   "pins": {
     "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/native/set-based-enqueue-product-84e1cec9.tar.gz": "8fce2d3d0e90d51dd19a332914ac5728be0b8af7d9da7f546db98e8663e082f7",
     "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/replay/native-correctness.sh": "7a25bc033580aee4bc7c5e593e01a21ecdfc7af2069df95912df867bb057e165",
-    "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/replay/correctness.py": "7bda2ae09976610fd49a2c60993073c10b7d8921efb15d64745c1163d861aeee",
+    "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/replay/correctness.py": "8a1af54142de2d9fd80e1d72830fb77661f5099dbda444cdd8065241087ca01e",
     "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/README.md": "3e9a94b476fd25caf419b7330aec8f3a0c8890166e092f30ac49db96f5279044"
   }
 }
