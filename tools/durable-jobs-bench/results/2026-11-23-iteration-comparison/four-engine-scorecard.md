@@ -20,6 +20,8 @@ Each row gives the median jobs/s and matched wins over five Linode rotations. Al
 | [Dense, Mesh 2 × 32 and peers 8 × 8](chart.html#public-dense-mixed) | Drain | 770.33 | 900.16 | 684.68 | 1,165.95 | 0 / 5 / 0 |
 | [Dense, all engines 2 × 32](chart.html#public-dense-equal) | Submit | 688.41 | 997.17 | 762.22 | 1,407.67 | 0 / 0 / 0 |
 | [Dense, all engines 2 × 32](chart.html#public-dense-equal) | Drain | 772.65 | 1,079.96 | 855.47 | 1,493.00 | 0 / 0 / 0 |
+| [Large, all engines EXTERNAL](chart.html#public-large-external) | Submit | 36.24 | 27.13 | 36.76 | 72.61 | 5 / 3 / 0 |
+| [Large, all engines EXTERNAL](chart.html#public-large-external) | Drain | 89.70 | 72.92 | 119.88 | 301.41 | 5 / 0 / 0 |
 
 Stock profiles use the original runner counts and default storage. The additional dense and large comparisons identify the changed runner counts or PostgreSQL argument storage.
 
