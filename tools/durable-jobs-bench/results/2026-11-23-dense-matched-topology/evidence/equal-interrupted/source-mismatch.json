@@ -1,0 +1,11 @@
+{
+  "verified_at": "2026-11-24T01:24:04.729278+00:00",
+  "interface": "en0",
+  "egress_matches_operator_observation": true,
+  "configured_firewall_source_matches_current_egress": false,
+  "configured_source_provenance": "Manual Cloud Manager rule reported by the matrix parent",
+  "external_action": "User-side allow rule update pending",
+  "qualified_equal_groups": 0,
+  "original_raw_commit": "e6b4f86f",
+  "stock_archive_commit": "4f33954c"
+}
