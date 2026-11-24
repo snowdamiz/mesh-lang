@@ -1,0 +1,12 @@
+{
+  "archive_sha256": "f10e6683a29f16f1e7e646e6d7e30e6b4011c83200274fc5410a017e7ac6cdda",
+  "id": "2026-11-24-trusted-handler-app-pool-setup-mount-retry",
+  "original_raw_sha256": "e13d1243e6c291f5e5c3cb1cb27643781a61f25a5dc73e3dfcc8274eeec57336",
+  "original_release_sha256": "65ebed3421d24d3d88cce2382f4da56213c3a03393a5e71ab10ee04faf87b545",
+  "original_request_sha256": "4c739166fafaef829a807308b4cd9d48b349176fc7fb0d0e98bd45875623c831",
+  "original_script_sha256": "439ae848ff10e16f35a432979af087c1520195e5065c4a41589481f05658c6cc",
+  "requested_window_minutes": 28,
+  "retry_controller_sha256": "e4cc6c54c0be17bce68dabeac8c86a2993d9d1ae418e032de3cabd525eae1004",
+  "script_sha256": "52c9bec541973384aff567d10e1e4799b6fdf46e97bc6ce901ce3ebb70eba470",
+  "source_sha": "db5937e7e8988f935e9be16b68a2561c2250cc27"
+}
