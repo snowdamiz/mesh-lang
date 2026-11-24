@@ -81,7 +81,8 @@ recovery of the existing route and verification of the host and locks.
 Zero equal-topology blocks qualified. The original block and all receipts
 are retained. [Peer setup receipt](evidence/peer-setup/setup.json) ·
 [Raw warmup replay](evidence/equal/warmup-only-replay.json) ·
-[Interrupted block receipt](evidence/equal/interrupted-01.json)
+[Interrupted block receipt](evidence/equal/interrupted-01.json) ·
+[Controller hold and retained staging](evidence/controller-hold.json)
 
 ## Producer-only composition
 
