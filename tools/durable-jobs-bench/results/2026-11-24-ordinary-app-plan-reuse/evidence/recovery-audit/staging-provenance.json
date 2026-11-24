@@ -1,0 +1,16 @@
+{
+  "native-01": {
+    "input_tar_sha256": "91c389005142c32bb83af5a1900ed477f7450fedef92f82af703b2b37c85c623",
+    "original_staged_archive": "target/app-plan-reuse/native-01/input.tar",
+    "request": "request.json",
+    "source_sha": "87c34b747a38c94024dbb09ac32ecaa322f44085",
+    "verified_input_members": 26
+  },
+  "native-02-sampler-retry": {
+    "input_tar_sha256": "f037cc25d82bd448f9dd1d902a33e57e09815330328cd948a0f1c0b29a76dd9b",
+    "original_staged_archive": "target/app-plan-reuse/native-02-sampler-retry/input.tar",
+    "request": "request-sampler-retry.json",
+    "source_sha": "87c34b747a38c94024dbb09ac32ecaa322f44085",
+    "verified_input_members": 26
+  }
+}
