@@ -1,0 +1,22 @@
+{
+  "db/pg.rs": [
+    "7a19c3752e92a086e101a4596f9ee8223d54c5c3c37d0fb19df2ab12014749aa",
+    "66f6991a37c87b9fc016e6e3952f3d9ce60088eb67440eff176efb7d5aac71f4"
+  ],
+  "io.rs": [
+    "7218653f17bb69ee7a188586c3c9284b708594e4dbe8fc03d7d5c20940be6275",
+    "49c5b2c48175b687379cab28df1bb4d8c7351914053664e4e063156b40d11593"
+  ],
+  "lib.rs": [
+    "b121995baed36c620bbeb49ff2189a43a9cbb176a7eba985e26bdee71bef5c52",
+    "012ec24a039c9de4e38cb7469ef6728290cecea450c4fd046966839b8dc85ac7"
+  ],
+  "r2_producer_probe.rs": [
+    null,
+    "d23a046ce3d93af75e38c20abaf2fed7e4c8f53bc38f2bf6ffef28d47c98f2a0"
+  ],
+  "string.rs": [
+    "509b6489f4ce98e2c6f37889bf950b809a00a6e36e2f5e3bc012bae6ba4f04e3",
+    "566a179d0acfa86852dbe6bde6f7bf78e86efa95d341ab9108e1c4d3d1a7b977"
+  ]
+}

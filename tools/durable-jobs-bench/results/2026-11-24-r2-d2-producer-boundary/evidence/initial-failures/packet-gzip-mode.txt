@@ -1,0 +1,3 @@
+Initial offline payload assembly failed at tarfile.addfile with OSError:
+[Errno 9] write() on read-only GzipFile object. The BytesIO gzip wrapper
+now uses explicit binary write mode. No host dispatch occurred.

@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "checks": [
+    "frozen runtime and Popen anchors",
+    "disjoint stage sum",
+    "commit before send return",
+    "invalid trace rejection",
+    "inclusive SQL accounting"
+  ],
+  "relative_clock": "synthetic",
+  "setup_payload_sha256": "d01ebad23d22b42c9146b05f6a7b99c8f3f4234879c70aead9468b6d97ec5af4"
+}
