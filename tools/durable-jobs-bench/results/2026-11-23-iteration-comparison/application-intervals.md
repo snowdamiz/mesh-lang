@@ -48,6 +48,20 @@ Each 2×32 Mesh run recorded 2,048 pool checkout probes, 1,024 attempt inserts a
 
 The residual subtracts the entire PostgreSQL execution total from Mesh’s observed enqueue-commit-to-final-settlement time and compares it with the peer in the same rotation. Positive means Mesh would still finish later. This credits every millisecond to the critical path even when backends overlapped and holds all other work fixed. The counters leave client scheduling, protocol exchanges, planning and transaction commit time unpriced. They cannot predict the effect of changing concurrency. [Per-arm archive digests](scores.json) · [Raw equal-topology series](../2026-11-23-dense-matched-topology/evidence/equal/)
 
+### Dense jobs already claimed by each Mesh runner
+
+The ledger links each job to one of the two runner PIDs. Over the 103rd to 922nd second writes, the table counts jobs with a database claim stamp that have yet to enter their handler. The percentages use elapsed time across both runners. Each runner has two scheduler workers.
+
+| Rotation | Mean stamped jobs awaiting entry per runner | Backlog with 0–1 handlers between entry and second write | Backlog with 2+ handlers between entry and second write |
+|---:|---:|---:|---:|
+| 1 | 10.85–11.24 | 7.4–7.7% | 78.7–79.2% |
+| 2 | 9.88–10.26 | 8.5–8.8% | 75.5–76.3% |
+| 3 | 10.79–11.19 | 5.6–6.0% | 79.1–79.7% |
+| 4 | 10.92–11.32 | 6.6–6.8% | 81.6–82.4% |
+| 5 | 10.98–11.37 | 6.6–6.9% | 81.9–82.5% |
+
+The ranges allow for millisecond claim stamps. A stamp precedes the client’s COMMIT acknowledgement. The handler interval includes decoding, scheduling and database waits. It measures overlap, while actual scheduler occupancy and the number of in-flight SQL requests require separate observations.
+
 ## Exit-confirmed short jobs against stock peers
 
 The Mesh runner uses the bulk producer, skips checkout probes for recently used connections and waits for actor teardown before settlement. Each signed difference is Mesh elapsed time minus the paired peer time. The three intervals partition the full submit-to-settlement clock. Positive values mean Mesh took longer.

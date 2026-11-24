@@ -73,6 +73,41 @@ def application_statement_times(statements, jobs):
     return times
 
 
+def dense_runner_backlog(ledger, topology):
+    jobs = ledger["jobs"]
+    pids = set(topology["runner_pids_by_index"])
+    if (len(jobs) != 1024 or len(pids) != 2 or topology["slots_per_runner"] != 32
+            or topology["scheduler_min"] != 2 or topology["scheduler_max"] != 2
+            or {j["worker_pid"] for j in jobs} != pids):
+        raise ValueError("unexpected two-runner dense roster")
+    if any(j["claimed_us"] % 1000 or j["claimed_us"] > j["entered_us"] for j in jobs):
+        raise ValueError("unexpected dense claim stamp")
+    effects = sorted(j["effect_committed_us"] for j in jobs)
+    lo, hi = effects[102], effects[921]
+    elapsed = (hi - lo) * len(pids)
+    bounds = []
+    for rounding in (0, 999):
+        queued_time = fewer_than_two = two_or_more = 0
+        for pid in pids:
+            owned = [j for j in jobs if j["worker_pid"] == pid]
+            entered = sorted(j["entered_us"] for j in owned)
+            written = sorted(j["effect_committed_us"] for j in owned)
+            claimed = sorted(min(j["claimed_us"] + rounding, j["entered_us"]) for j in owned)
+            edges = sorted({lo, hi, *(t for t in claimed + entered + written if lo < t < hi)})
+            for begin, end in zip(edges, edges[1:]):
+                started = bisect_right(entered, begin)
+                pending = bisect_right(claimed, begin) - started
+                if pending:
+                    duration = end - begin
+                    queued_time += duration * pending
+                    if started - bisect_right(written, begin) >= 2:
+                        two_or_more += duration
+                    else:
+                        fewer_than_two += duration
+        bounds.append((queued_time / elapsed, 100 * fewer_than_two / elapsed, 100 * two_or_more / elapsed))
+    return [(min(pair), max(pair)) for pair in zip(*bounds)]
+
+
 def short_connections(archive, engine, completed):
     if engine == "go":
         samples = [json.loads(line) for line in archive.extractfile("adapter/river/measured/samples.jsonl")]
@@ -154,6 +189,7 @@ def read_series(series, lanes):
                 if series == "dense-equal-topology" and lane == "mesh-v1-2x32":
                     statements = run.file_json(archive, "adapter/trusted-application-statements.json")
                     rows[lane]["statements"] = application_statement_times(statements, score["completed"])
+                    rows[lane]["backlog"] = dense_runner_backlog(ledger, run.file_json(archive, "adapter/topology.json"))
                 if series == "exit-confirmed-hot-short":
                     rows[lane]["connections"] = short_connections(archive, score["engine"], score["completed"])
                     rows[lane]["slots"] = short_slot_times(ledger)
@@ -228,6 +264,19 @@ def report():
           "commit time unpriced. They cannot predict the effect of changing concurrency. "
           "[Per-arm archive digests](scores.json) · "
           "[Raw equal-topology series](../2026-11-23-dense-matched-topology/evidence/equal/)")
+    print("\n### Dense jobs already claimed by each Mesh runner\n")
+    print("The ledger links each job to one of the two runner PIDs. Over the 103rd to 922nd second writes, "
+          "the table counts jobs with a database claim stamp that have yet to enter their handler. "
+          "The percentages use elapsed time across both runners. Each runner has two scheduler workers.\n")
+    print("| Rotation | Mean stamped jobs awaiting entry per runner | Backlog with 0–1 handlers between entry and second write | Backlog with 2+ handlers between entry and second write |")
+    print("|---:|---:|---:|---:|")
+    for number, group in enumerate(groups, 1):
+        pending, fewer, more = group["mesh-v1-2x32"]["backlog"]
+        print(f"| {number} | {pending[0]:.2f}–{pending[1]:.2f} | "
+              f"{fewer[0]:.1f}–{fewer[1]:.1f}% | {more[0]:.1f}–{more[1]:.1f}% |")
+    print("\nThe ranges allow for millisecond claim stamps. A stamp precedes the client’s COMMIT acknowledgement. "
+          "The handler interval includes decoding, scheduling and database waits. It measures overlap, "
+          "while actual scheduler occupancy and the number of in-flight SQL requests require separate observations.")
     print("\n## Exit-confirmed short jobs against stock peers\n")
     print("The Mesh runner uses the bulk producer, skips checkout probes for recently used "
           "connections and waits for actor teardown before settlement. Each signed difference "
