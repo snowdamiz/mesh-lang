@@ -52,7 +52,9 @@ experimental runner that can settle before actor teardown.
 
 In the fresh short series that waits for actor teardown, Mesh with hot checkout finished ahead of Oban in five of five rotations and River in three of five, on both clocks. Apalis led in every rotation. Against its own exit-confirmed control, Mesh gained a paired median 3.58% from submit and 1.14% from enqueue commit, with two losses on both clocks. Mesh spent 19–33 ms longer than River from submit to enqueue commit in every pair. In the three Mesh wins, River spent 39–90 ms longer between its last application write and its last durable settlement. [Matched short scores](four-engine-scorecard.md#short-jobs-with-hot-checkout-and-confirmed-actor-teardown) · [All five interval comparisons](application-intervals.md#exit-confirmed-short-jobs-against-stock-peers)
 
-In these five dense rotations, the last application write committed 373–489 ms later on Mesh than on River. A local six-rotation experiment reduced terminal transaction counts in every rotation and failed to advance drain time beyond the identical controls. [Native stage chart and local completion experiment](../2026-11-24-dense-two-runner-completion/README.md)
+In the exit-confirmed short series, River started with four physical database connections and reached 18 during every measured run. Mesh stayed at 13. Mesh reached the 16th second write in 21 ms at the median, compared with River's 76 ms. The next 112 second writes took Mesh 146 ms and River 79 ms. River completed those later writes faster in every rotation. They leave the contribution of opening River's connections unresolved. [Sample counts and application-write intervals](application-intervals.md#short-job-database-connections-and-write-progress)
+
+In the five equal-topology dense rotations, the last application write committed 373–489 ms later on Mesh than on River. A local six-rotation experiment reduced terminal transaction counts in every rotation and failed to advance drain time beyond the identical controls. [Native stage chart and local completion experiment](../2026-11-24-dense-two-runner-completion/README.md)
 
 ## Slow-job storage and refill
 

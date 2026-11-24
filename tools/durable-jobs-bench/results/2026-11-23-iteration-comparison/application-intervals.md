@@ -71,3 +71,16 @@ The Mesh runner uses the bulk producer, skips checkout probes for recently used 
 | 5 | Apalis | +36.36 | +72.24 | -2.13 | +106.47 |
 
 All four engines committed two independent application transactions per job. A queue can group terminal acknowledgements and can have an earlier job still waiting to settle when the last application write commits. [Raw matched short runs](../2026-11-24-exit-confirmed-bulk-d2/evidence/native-timing/2026-11-24-exit-confirmed-bulk-d2/)
+
+### Short-job database connections and write progress
+
+The connection columns span all five rotations. Each count covers the queue stack's database connections, including listeners and the producer. The last two columns split each 128-job drain at the 16th committed second application write and show the paired runs’ medians.
+
+| Engine | Last idle sample (connections) | Highest measured sample (connections) | Enqueue commit to 16th second write (ms) | 16th to 128th second write (ms) |
+|---|---:|---:|---:|---:|
+| Trusted Mesh · hot checkout | 13 | 13 | 20.62 | 145.53 |
+| River | 4 | 18 | 76.11 | 79.47 |
+| Oban | 19 | 19 | 225.37 | 168.98 |
+| Apalis | 19 | 19 | 36.31 | 105.73 |
+
+These snapshots show when connections were present. A separate matched run with River’s connections open before submission can measure how much pool startup changes its early writes and final settlement.

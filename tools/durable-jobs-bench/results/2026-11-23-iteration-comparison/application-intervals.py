@@ -3,6 +3,7 @@
 from math import isfinite
 from pathlib import Path
 from statistics import median
+import json
 import sys
 import tarfile
 
@@ -43,6 +44,7 @@ def stage_times(ledger, score):
     return dict(enqueue=(tx["committed_us"] - tx["submitted_us"]) / 1000,
                 entry=(last[0] - tx["committed_us"]) / 1000,
                 write=(last[2] - tx["committed_us"]) / 1000,
+                sixteenth_write=(effects[15] - tx["committed_us"]) / 1000,
                 tail=(last[3] - last[2]) / 1000,
                 submit=(last[3] - tx["submitted_us"]) / 1000,
                 waiting_first=mean_outstanding(fields[0], fields[1]),
@@ -70,6 +72,24 @@ def application_statement_times(statements, jobs):
     return times
 
 
+def short_connections(archive, engine, completed):
+    if engine == "go":
+        samples = [json.loads(line) for line in archive.extractfile("adapter/river/measured/samples.jsonl")]
+        idle = [row for row in samples if row["idle"]]
+        timed = [row for row in samples if not row["idle"]]
+    elif engine == "rust":
+        samples = run.file_json(archive, "adapter/samples.json")
+        idle, timed = samples["idle"], samples["timed"]
+    else:
+        samples = run.file_json(archive, "adapter/raw.json")
+        idle, timed = samples["idle_samples"], samples["samples"]
+    if not idle or not timed or any(row["terminal"] != 0 for row in idle) or timed[-1]["terminal"] != completed:
+        raise ValueError(f"{engine} connection samples do not bracket the short run")
+    if any(not 1 <= row["connections"] <= 20 for row in idle + timed):
+        raise ValueError(f"{engine} short connection count outside the physical cap")
+    return idle[-1]["connections"], max(row["connections"] for row in timed)
+
+
 def read_series(series, lanes):
     inputs = run.read_json(HERE / "series-list.json")
     root = SUITE / next(item["path"] for item in inputs if item["name"] == series)
@@ -90,6 +110,8 @@ def read_series(series, lanes):
                 if series == "dense-equal-topology" and lane == "mesh-v1-2x32":
                     statements = run.file_json(archive, "adapter/trusted-application-statements.json")
                     rows[lane]["statements"] = application_statement_times(statements, score["completed"])
+                if series == "exit-confirmed-hot-short":
+                    rows[lane]["connections"] = short_connections(archive, score["engine"], score["completed"])
         groups.append(rows)
     return groups
 
@@ -180,6 +202,24 @@ def report():
           "A queue can group terminal acknowledgements and can have an earlier job still waiting "
           "to settle when the last application write commits. [Raw matched short runs]"
           "(../2026-11-24-exit-confirmed-bulk-d2/evidence/native-timing/2026-11-24-exit-confirmed-bulk-d2/)")
+    print("\n### Short-job database connections and write progress\n")
+    print("The connection columns span all five rotations. Each count covers the queue stack's database "
+          "connections, including listeners and the producer. The last two columns split each 128-job "
+          "drain at the 16th committed second application write and show the paired runs’ medians.\n")
+    print("| Engine | Last idle sample (connections) | Highest measured sample (connections) | "
+          "Enqueue commit to 16th second write (ms) | 16th to 128th second write (ms) |")
+    print("|---|---:|---:|---:|---:|")
+    for key, label in (("r2-d2", "Trusted Mesh · hot checkout"), ("river", "River"),
+                       ("oban", "Oban"), ("apalis", "Apalis")):
+        rows = [group[key] for group in groups]
+        counts = [sorted({row["connections"][i] for row in rows}) for i in (0, 1)]
+        spans = [str(v[0]) if v[0] == v[-1] else f"{v[0]}–{v[-1]}" for v in counts]
+        first = median(row["sixteenth_write"] for row in rows)
+        rest = median(row["write"] - row["sixteenth_write"] for row in rows)
+        print(f"| {label} | {spans[0]} | {spans[1]} | {first:.2f} | {rest:.2f} |")
+    print("\nThese snapshots show when connections were present. A separate matched run with "
+          "River’s connections open before submission can measure how much pool startup changes "
+          "its early writes and final settlement.")
 
 
 if __name__ == "__main__":
