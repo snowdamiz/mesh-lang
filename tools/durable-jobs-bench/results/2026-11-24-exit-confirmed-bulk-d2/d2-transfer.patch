@@ -1,0 +1,518 @@
+--- a/compiler/mesh-rt/src/db/pg.rs
++++ b/compiler/mesh-rt/src/db/pg.rs
+@@ -19,7 +19,7 @@
+ use std::io::{BufReader, ErrorKind, Read, Write};
+ use std::net::{TcpStream, ToSocketAddrs};
+ use std::num::NonZeroU32;
+-use std::sync::Arc;
++use std::sync::{Arc, OnceLock};
+ use std::time::Duration;
+ 
+ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+@@ -115,6 +115,7 @@
+     /// b'E' = in a failed transaction block. Updated on every ReadyForQuery.
+     pub(super) txn_status: u8,
+     broken: bool,
++    pub(super) hot_checkout: bool,
+ }
+ 
+ impl PgConn {
+@@ -178,6 +179,7 @@
+             stream: PgStream::Plain(BufReader::new(stream)),
+             txn_status: b'I',
+             broken: false,
++            hot_checkout: false,
+         }
+     }
+ }
+@@ -1214,6 +1216,7 @@
+ /// connection failing, a reply the driver cannot decode, a limit).
+ enum Failure {
+     Server(PgError),
++    IncompleteServer(PgError),
+     Other(String),
+ }
+ 
+@@ -1228,7 +1231,9 @@
+     /// structured form Repo maps constraint violations from.
+     fn structured(self) -> String {
+         match self {
+-            Failure::Server(error) => format_pg_error_string(&error),
++            Failure::Server(error) | Failure::IncompleteServer(error) => {
++                format_pg_error_string(&error)
++            }
+             Failure::Other(message) => message,
+         }
+     }
+@@ -1236,7 +1241,7 @@
+     /// Only the message.
+     fn message(self) -> String {
+         match self {
+-            Failure::Server(error) => error.message,
++            Failure::Server(error) | Failure::IncompleteServer(error) => error.message,
+             Failure::Other(message) => message,
+         }
+     }
+@@ -1259,9 +1264,17 @@
+     let mut failure = None;
+     let mut buffer = MessageBuffer::new();
+     loop {
+-        let (tag, body) = conn
+-            .read_wire_message(&mut buffer)
+-            .map_err(|error| format!("read {what}: {error}"))?;
++        let (tag, body) = match conn.read_wire_message(&mut buffer) {
++            Ok(message) => message,
++            Err(error) => {
++                return Err(match failure {
++                    Some(Failure::Server(server)) if conn.hot_checkout => {
++                        Failure::IncompleteServer(server)
++                    }
++                    _ => Failure::Other(format!("read {what}: {error}")),
++                });
++            }
++        };
+         match tag {
+             b'C' => {
+                 count = parse_command_tag(String::from_utf8_lossy(body).trim_end_matches('\0'));
+@@ -1562,10 +1575,13 @@
+     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
+ 
+     let (stream, txn_status) = finish_startup(stream, &pg_url, None)?;
++    static HOT_CHECKOUT: OnceLock<bool> = OnceLock::new();
+     let conn = PgConn {
+         stream,
+         txn_status,
+         broken: false,
++        hot_checkout: *HOT_CHECKOUT
++            .get_or_init(|| std::env::var("MESH_PG_HOT_CHECKOUT").as_deref() == Ok("1")),
+     };
+     // Connected: statements take as long as they take.
+     conn.set_read_timeout(None);
+@@ -2075,7 +2091,7 @@
+     params: &[&str],
+ ) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
+     let rows = text_query(conn, sql, params).map_err(|failure| match failure {
+-        // request() returns a server error only after reading ReadyForQuery.
++        // Only a complete exchange confirms that the server rejected it.
+         Failure::Server(error)
+             if error.sqlstate.len() == 5
+                 && !error.sqlstate.starts_with("08")
+@@ -3056,12 +3072,15 @@
+         .concat();
+         let rejected = message(b'E', b"SERROR\0C55P03\0Mrow locked\0\0");
+         let unknown = message(b'E', b"SERROR\0C40003\0Mcompletion unknown\0\0");
++        let fatal = message(b'E', b"SFATAL\0C57P01\0Mserver terminated before Ready\0\0");
+         for (reply, expected) in [
+             ([success.clone(), ready(b'I')].concat(), "confirmed"),
+             (success.clone(), "uncertain"),
+             ([success, ready(b'T')].concat(), "uncertain"),
+             ([rejected.clone(), ready(b'I')].concat(), "rejected"),
+             (rejected, "uncertain"),
++            (fatal.clone(), "fatal"),
++            (fatal, "fatal-default"),
+             ([unknown, ready(b'I')].concat(), "uncertain"),
+         ] {
+             let (url, peer) = wire_peer("sslmode=disable", move |mut socket| {
+@@ -3075,6 +3094,7 @@
+             });
+             let mut conn = connect(&url).unwrap();
+             conn.set_read_timeout(Some(Duration::from_secs(5)));
++            conn.hot_checkout = expected != "fatal-default";
+             let result = pg_jobs_ack(&mut conn, "SELECT mesh_jobs.settle_state()", &[]);
+             peer.join().unwrap();
+             match (result, expected) {
+@@ -3083,6 +3103,14 @@
+                     assert_eq!(message, "row locked");
+                 }
+                 (Err(JobsAckError::Unconfirmed(_)), "uncertain") => {}
++                (Err(JobsAckError::Unconfirmed(message)), "fatal") => {
++                    assert_eq!(message, "server terminated before Ready");
++                    assert!(conn.is_broken());
++                }
++                (Err(JobsAckError::Unconfirmed(message)), "fatal-default") => {
++                    assert!(message.starts_with("read "), "{message}");
++                    assert!(conn.is_broken());
++                }
+                 (result, _) => panic!("expected {expected}, got {result:?}"),
+             }
+         }
+--- a/compiler/mesh-rt/src/db/pool.rs
++++ b/compiler/mesh-rt/src/db/pool.rs
+@@ -28,12 +28,28 @@
+ use crate::string::text_of;
+ use crate::string::MeshString;
+ 
++const HEALTH_CHECK_IDLE: Duration = Duration::from_millis(500);
++
+ // ── Data Structures ──────────────────────────────────────────────────────
++
++struct IdleConnection {
++    handle: u64,
++    checked_in: Instant,
++}
++
++impl IdleConnection {
++    fn new(handle: u64) -> Self {
++        Self {
++            handle,
++            checked_in: Instant::now(),
++        }
++    }
++}
+ 
+ struct PoolInner {
+     url: String,
+     /// Connections ready to lend.
+-    idle: Vec<u64>,
++    idle: Vec<IdleConnection>,
+     /// Handles currently checked out by this exact pool.
+     leased: HashSet<u64>,
+     /// Connections open or being opened, idle or lent: at most `max_conns`.
+@@ -56,8 +72,11 @@
+ 
+ /// Whether an idle connection still answers `SELECT 1`, within a bounded
+ /// time: a connection whose server went silent is dead too.
+-fn health_check(handle: u64) -> bool {
++fn checkout_healthy(handle: u64, checked_in: Instant) -> bool {
+     let conn = unsafe { &mut *(handle as *mut PgConn) };
++    if conn.hot_checkout && checked_in.elapsed() < HEALTH_CHECK_IDLE {
++        return true;
++    }
+     conn.set_read_timeout(Some(ANSWER_TIMEOUT));
+     let healthy = pg_simple_command(conn, "SELECT 1").is_ok();
+     conn.set_read_timeout(None);
+@@ -76,12 +95,12 @@
+         if inner.closed {
+             return Err("pool is closed".to_string());
+         }
+-        if let Some(handle) = inner.idle.pop() {
++        if let Some(IdleConnection { handle, checked_in }) = inner.idle.pop() {
+             inner.leased.insert(handle);
+             // Checked without the lock: a connection slow to answer holds up
+             // only this checkout, not every other checkout and checkin.
+             drop(inner);
+-            if health_check(handle) {
++            if checkout_healthy(handle, checked_in) {
+                 return Ok(handle);
+             }
+             mesh_pg_close(handle);
+@@ -214,11 +233,11 @@
+     let mut idle = Vec::with_capacity(min);
+     for _ in 0..min {
+         match open(url) {
+-            Ok(handle) => idle.push(handle),
++            Ok(handle) => idle.push(IdleConnection::new(handle)),
+             Err(error) => {
+                 // Close all already-created connections
+-                for handle in idle {
+-                    mesh_pg_close(handle);
++                for conn in idle {
++                    mesh_pg_close(conn.handle);
+                 }
+                 return err_result(&format!("pool open: {error}"));
+             }
+@@ -247,8 +266,8 @@
+ /// `mesh_pool_checkout(pool_handle: u64) -> *mut u8 (MeshResult<u64, String>)`
+ ///
+ /// Returns an idle connection, creates a new one if under max, or blocks
+-/// with timeout if pool is exhausted. Performs health check on idle
+-/// connections before returning them.
++/// with timeout if pool is exhausted. Normally probes every idle checkout.
++/// With hot checkout enabled it probes connections idle for at least 500 ms.
+ pub(crate) fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
+     match checkout(unsafe { &*(pool_handle as *const PgPool) }) {
+         Ok(handle) => alloc_result(0, box_scalar(handle)) as *mut u8,
+@@ -281,7 +300,7 @@
+         let mut inner = pool.inner.lock();
+         let kept = usable && !inner.closed;
+         if kept {
+-            inner.idle.push(conn_handle);
++            inner.idle.push(IdleConnection::new(conn_handle));
+         } else {
+             inner.total_created -= 1;
+         }
+@@ -385,8 +404,8 @@
+         std::mem::take(&mut inner.idle)
+     };
+     // Close idle connections outside the lock
+-    for handle in idle {
+-        mesh_pg_close(handle);
++    for conn in idle {
++        mesh_pg_close(conn.handle);
+     }
+     // Wake all blocked checkouts so they see closed=true
+     pool.available.notify_all();
+@@ -421,7 +440,7 @@
+             inner: Mutex::new(PoolInner {
+                 url: url.to_string(),
+                 total_created: idle.len() + leased.len(),
+-                idle,
++                idle: idle.into_iter().map(IdleConnection::new).collect(),
+                 leased: leased.iter().copied().collect(),
+                 max_conns,
+                 checkout_timeout_ms: timeout_ms,
+@@ -435,6 +454,17 @@
+         unsafe { &*(handle as *const PgPool) }
+     }
+ 
++    fn enable_hot_checkout(connection: u64) -> u64 {
++        unsafe { (*(connection as *mut PgConn)).hot_checkout = true };
++        connection
++    }
++
++    fn age_idle_connections(handle: u64) {
++        for conn in &mut pool(handle).inner.lock().idle {
++            conn.checked_in -= HEALTH_CHECK_IDLE;
++        }
++    }
++
+     /// AuthenticationOk and ReadyForQuery: a finished handshake.
+     const AUTHENTICATED: &[u8] = b"R\0\0\0\x08\0\0\0\0Z\0\0\0\x05I";
+     /// The reply to `SELECT 1` (the health check).
+@@ -447,6 +477,11 @@
+         let length = u32::from_be_bytes(header[1..].try_into().unwrap()) as usize;
+         socket.read_exact(&mut vec![0; length - 4]).ok()?;
+         Some(header[0])
++    }
++
++    fn read_extended_request(socket: &mut TcpStream) {
++        assert_eq!(next_request(socket), Some(b'P'));
++        while next_request(socket).expect("statement ended before Sync") != b'S' {}
+     }
+ 
+     /// A PostgreSQL stand-in: `session` gets each connection it accepts,
+@@ -601,7 +636,7 @@
+     /// An idle connection slow to answer its health check holds up only
+     /// the checkout that took it.
+     #[test]
+-    fn an_idle_connection_is_checked_without_holding_the_pool() {
++    fn a_stale_idle_connection_is_checked_without_holding_the_pool() {
+         let (asked, asked_signal) = mpsc::channel::<()>();
+         let (answer, answered) = mpsc::channel::<()>();
+         let answered = parking_lot::Mutex::new(answered);
+@@ -613,7 +648,14 @@
+             socket.write_all(SELECTED).unwrap();
+             while next_request(&mut socket).is_some() {}
+         });
+-        let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
++        let handle = pool_of(
++            &url,
++            vec![enable_hot_checkout(open(&url).unwrap())],
++            &[],
++            1,
++            5000,
++        );
++        age_idle_connections(handle);
+         let taker = thread::spawn(move || checkout(pool(handle)));
+         asked_signal.recv().unwrap();
+ 
+@@ -635,19 +677,193 @@
+     /// An idle connection whose server went away is closed at checkout and
+     /// a new one opened in its place.
+     #[test]
+-    fn an_idle_connection_that_died_is_replaced() {
++    fn a_stale_idle_connection_that_died_is_replaced_before_use() {
+         let url = fake_server(|index, mut socket| {
+             socket.write_all(AUTHENTICATED).unwrap();
+             if index > 0 {
+                 serve_queries(socket);
+             }
+         });
+-        let handle = pool_of(&url, vec![open(&url).unwrap()], &[], 1, 5000);
++        let handle = pool_of(
++            &url,
++            vec![enable_hot_checkout(open(&url).unwrap())],
++            &[],
++            1,
++            5000,
++        );
++        age_idle_connections(handle);
+ 
+         let conn = checkout(pool(handle)).unwrap();
+ 
+         assert_eq!(pool(handle).inner.lock().total_created, 1);
+         mesh_pool_checkin(handle, conn);
++        mesh_pool_close(handle);
++    }
++
++    #[test]
++    fn a_recently_checked_in_connection_goes_straight_to_the_statement() {
++        mesh_rt_init();
++        let url = fake_server(|_, mut socket| {
++            socket.write_all(AUTHENTICATED).unwrap();
++            read_extended_request(&mut socket);
++            socket.write_all(SELECTED).unwrap();
++        });
++        let conn = enable_hot_checkout(open(&url).unwrap());
++        let handle = pool_of(&url, Vec::new(), &[conn], 1, 5000);
++        mesh_pool_checkin(handle, conn);
++
++        assert_eq!(
++            result(mesh_pool_execute(
++                handle,
++                mk_str(b"SELECT 1"),
++                mesh_list_new()
++            ))
++            .0,
++            0
++        );
++        mesh_pool_close(handle);
++    }
++
++    #[test]
++    fn a_recent_connection_reports_the_server_error_and_is_replaced() {
++        mesh_rt_init();
++        let url = fake_server(|index, mut socket| {
++            socket.write_all(AUTHENTICATED).unwrap();
++            read_extended_request(&mut socket);
++            if index == 0 {
++                let error =
++                    b"SFATAL\0C57P01\0Mterminating connection due to administrator command\0\0";
++                socket.write_all(b"E").unwrap();
++                socket
++                    .write_all(&(error.len() as u32 + 4).to_be_bytes())
++                    .unwrap();
++                socket.write_all(error).unwrap();
++            } else {
++                socket.write_all(SELECTED).unwrap();
++            }
++        });
++        let handle = pool_of(
++            &url,
++            vec![enable_hot_checkout(open(&url).unwrap())],
++            &[],
++            1,
++            5000,
++        );
++        let statement = mk_str(b"SELECT 1");
++        let failure = error_text(mesh_pool_execute(handle, statement, mesh_list_new()));
++        assert!(failure.contains("57P01"), "{failure}");
++        assert!(
++            failure.contains("terminating connection due to administrator command"),
++            "{failure}"
++        );
++        assert_eq!(pool(handle).inner.lock().total_created, 0);
++        assert_eq!(
++            result(mesh_pool_execute(handle, statement, mesh_list_new())).0,
++            0
++        );
++        assert_eq!(pool(handle).inner.lock().total_created, 1);
++        mesh_pool_close(handle);
++    }
++
++    #[test]
++    fn cold_connection_sends_only_the_statement() {
++        mesh_rt_init();
++        let url = fake_server(|_, mut socket| {
++            socket.write_all(AUTHENTICATED).unwrap();
++            read_extended_request(&mut socket);
++            socket.write_all(SELECTED).unwrap();
++        });
++        let handle = pool_of(&url, Vec::new(), &[], 1, 5000);
++        assert_eq!(
++            result(mesh_pool_execute(
++                handle,
++                mk_str(b"SELECT 1"),
++                mesh_list_new()
++            ))
++            .0,
++            0
++        );
++        mesh_pool_close(handle);
++    }
++
++    #[test]
++    fn partially_submitted_or_unacknowledged_write_is_never_retransmitted() {
++        mesh_rt_init();
++        for complete_request in [false, true] {
++            let sessions = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
++            let observations = sessions.clone();
++            let url = fake_server(move |index, mut socket| {
++                use std::sync::atomic::Ordering;
++                observations.fetch_add(1, Ordering::SeqCst);
++                socket.write_all(AUTHENTICATED).unwrap();
++                if index != 0 || complete_request {
++                    read_extended_request(&mut socket);
++                    if index != 0 {
++                        socket
++                            .write_all(b"C\0\0\0\x0fINSERT 0 1\0Z\0\0\0\x05I")
++                            .unwrap();
++                    } else {
++                        socket.write_all(b"C\0\0\0\x0fINSERT 0 1\0").unwrap();
++                    }
++                } else {
++                    assert_eq!(next_request(&mut socket), Some(b'P'));
++                    // The remainder may already be in flight. Stop reading it.
++                }
++            });
++            let handle = pool_of(
++                &url,
++                vec![enable_hot_checkout(open(&url).unwrap())],
++                &[],
++                1,
++                5000,
++            );
++            let stmt = mk_str(b"INSERT INTO t VALUES (1)");
++            let _ = error_text(mesh_pool_execute(handle, stmt, mesh_list_new()));
++            assert_eq!(sessions.load(std::sync::atomic::Ordering::SeqCst), 1);
++            assert_eq!(pool(handle).inner.lock().total_created, 0);
++
++            let second =
++                mesh_pool_execute(handle, mk_str(b"INSERT INTO t VALUES (2)"), mesh_list_new());
++            assert_eq!(result(second).0, 0);
++            assert_eq!(sessions.load(std::sync::atomic::Ordering::SeqCst), 2);
++            mesh_pool_close(handle);
++        }
++    }
++
++    #[test]
++    fn a_silent_expired_backend_is_replaced_without_sending_it_the_write() {
++        mesh_rt_init();
++        let (probe, observed_probe) = mpsc::channel();
++        let url = fake_server(move |index, mut socket| {
++            socket.write_all(AUTHENTICATED).unwrap();
++            if index == 0 {
++                assert_eq!(next_request(&mut socket), Some(b'Q'));
++                probe.send(()).unwrap();
++                socket
++                    .set_read_timeout(Some(ANSWER_TIMEOUT + Duration::from_secs(5)))
++                    .unwrap();
++                assert!(matches!(next_request(&mut socket), None | Some(b'X')));
++            } else {
++                read_extended_request(&mut socket);
++                socket
++                    .write_all(b"C\0\0\0\x0fINSERT 0 1\0Z\0\0\0\x05I")
++                    .unwrap();
++            }
++        });
++        let handle = pool_of(
++            &url,
++            vec![enable_hot_checkout(open(&url).unwrap())],
++            &[],
++            1,
++            5000,
++        );
++        age_idle_connections(handle);
++        let started = Instant::now();
++        let result_ptr =
++            mesh_pool_execute(handle, mk_str(b"INSERT INTO t VALUES (1)"), mesh_list_new());
++        observed_probe.try_recv().unwrap();
++        assert_eq!(result(result_ptr).0, 0);
++        assert!(started.elapsed() >= ANSWER_TIMEOUT - Duration::from_secs(1));
+         mesh_pool_close(handle);
+     }
+ 
+@@ -843,10 +1059,9 @@
+         mesh_pool_checkin(handle, refused);
+ 
+         let inner = pool(handle).inner.lock();
+-        assert_eq!(
+-            (inner.idle.as_slice(), inner.total_created),
+-            (&[kept][..], 1)
+-        );
++        assert_eq!(inner.idle.len(), 1);
++        assert_eq!(inner.idle[0].handle, kept);
++        assert_eq!(inner.total_created, 1);
+         assert_eq!(unsafe { (*(kept as *const PgConn)).txn_status }, b'I');
+     }
+ 

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd -P)"
+base=/var/lib/durable-jobs-bench/native
+bulk_source="$base/source-bulk-enqueue-3b09dc3d0e23/ordinary-v2"
+broker="$base/builds/bulk-enqueue-3b09dc3d0e23-ordinary-v2"
+runner="${COMBINED_RUNNER_ARTIFACTS:?set the sealed runner directory}"
+mode="${EXIT_BULK_CHECKOUT:?select off or d2}"
+engine="${1:?engine}"
+profile="${2:?profile}"
+out="${3:?empty absolute evidence directory}"
+[[ $# == 3 && "$engine" == mesh && "$profile" == short && "$out" == /* && ! -L "$out" ]]
+case "$mode" in
+    off) [[ "$runner" == "$base/builds/bulk-writer-b1dcd34af288" ]] ;;
+    d2) [[ "$runner" =~ ^"$base"/builds/exit-bulk-d2-[a-f0-9]{12}$ ]] ;;
+    *) exit 2 ;;
+esac
+[[ -d "$runner" ]]
+
+exec 9<"$base/native.lock"
+flock -n 9
+tool="$base/toolchain"
+env_args=(env -i
+    "PATH=$tool/otp-29.1.1/bin:$tool/elixir-1.20.4/bin:/usr/sbin:/usr/bin:/bin"
+    LC_ALL=C.UTF-8 "PG_BIN_DIR=$tool/pgsql-17.11/bin"
+    ERL_CRASH_DUMP=/dev/null
+    "TRUSTED_ADMISSION_POLICY=success_cohort" "MESH_JOBS_SET_BASED_ENQUEUE=1"
+    "DURABLE_JOBS_PHASE=${DURABLE_JOBS_PHASE:-diagnostic}"
+    "NATIVE_JOBS_STATE=$base" "NATIVE_JOBS_ARTIFACTS=$broker"
+    "COMBINED_BULK_SOURCE=$bulk_source" "COMBINED_RUNNER_ARTIFACTS=$runner"
+    "EXIT_BULK_CHECKOUT=$mode")
+if [[ "$mode" == d2 ]]; then
+    env_args+=("EXIT_BULK_RUNNER_ELF=${EXIT_BULK_RUNNER_ELF:?candidate ELF pin}"
+               "EXIT_BULK_RUNNER_MANIFEST=${EXIT_BULK_RUNNER_MANIFEST:?candidate manifest pin}")
+fi
+cd "$here"
+if [[ "$(id -u)" == 0 ]]; then
+    [[ -d "$out" && -z "$(find "$out" -mindepth 1 -maxdepth 1 -print -quit)" ]]
+    chown nobody:nogroup "$out"
+    chmod 0700 "$out"
+    exec runuser -u nobody -- "${env_args[@]}" python3 -B "$here/split_arm.py" "$engine" "$profile" "$out"
+fi
+exec "${env_args[@]}" python3 -B "$here/split_arm.py" "$engine" "$profile" "$out"

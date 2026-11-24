@@ -1,0 +1,125 @@
+{
+  "id": "2026-11-24-exit-confirmed-bulk-d2",
+  "changed_source": [
+    "source/compiler/mesh-rt/src/db/pg.rs",
+    "source/compiler/mesh-rt/src/db/pool.rs"
+  ],
+  "archived_native_r2": {
+    "host": {
+      "host": [
+        "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+        "6.8.0-149-generic",
+        "8:0"
+      ],
+      "clock_ticks": 100
+    },
+    "smoke": {
+      "terminal_groups_by_size": {
+        "1": 119,
+        "4": 1,
+        "2": 1,
+        "3": 1
+      },
+      "terminal_xids": 122,
+      "warmed_application_sessions": 8,
+      "checkout_probes": 256,
+      "complete": 128,
+      "errors": 0,
+      "submit_jobs_per_s": 573.3765157521759,
+      "commit_jobs_per_s": 725.5125349294609
+    },
+    "archive": "d954080060c878b95fb589c2fc7da72a82904a4435e3b4f9da957179f76b24d7",
+    "first_archive": "eb39628d011afa879b0205dc6333ec53fd16fb05eefb8333d3f896f6ac9887ed"
+  },
+  "local": {
+    "groups": 5,
+    "valid_arms": 11,
+    "fault_receipts": 7,
+    "teardown_witnesses": 3,
+    "refusal_controls": 4
+  },
+  "cold_stock_peers": [
+    "protected-mesh",
+    "river",
+    "oban",
+    "apalis"
+  ],
+  "pinned_native_files": 60,
+  "plan": [
+    {
+      "group": 1,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "r2-off",
+        "river",
+        "r2-d2",
+        "protected-mesh",
+        "apalis",
+        "oban"
+      ]
+    },
+    {
+      "group": 2,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "oban",
+        "apalis",
+        "protected-mesh",
+        "r2-d2",
+        "river",
+        "r2-off"
+      ]
+    },
+    {
+      "group": 3,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "r2-d2",
+        "apalis",
+        "protected-mesh",
+        "oban",
+        "r2-off",
+        "river"
+      ]
+    },
+    {
+      "group": 4,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "river",
+        "r2-off",
+        "oban",
+        "protected-mesh",
+        "apalis",
+        "r2-d2"
+      ]
+    },
+    {
+      "group": 5,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "r2-off",
+        "oban",
+        "apalis",
+        "r2-d2",
+        "river",
+        "protected-mesh"
+      ]
+    }
+  ]
+}
