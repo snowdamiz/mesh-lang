@@ -1,0 +1,11 @@
+{
+  "checkpointed_at": "2026-11-23T23:55:19.090353+00:00",
+  "raw_sha256": {
+    "measured-ordinary-base-a/measured-mesh": "34d71a7a4e2097a809fefd23a9fa9516429848442f26bd2c6236d5b03848e1f4",
+    "measured-ordinary-base-b/measured-mesh": "b1757fbc696837f5d7bad9f2444b60255254b7597b165b813de1db4ed3a15371",
+    "measured-ordinary-d2/measured-mesh": "9524663e759867685722874e31ea3b16d6cf647bf6980ee4d4084a1dcfc6b147",
+    "measured-river/measured-go": "c570c8f4d2a41927536cb68cab2799cfcf7c78f7c9064970bec2287a834c8b81"
+  },
+  "reconciled_sha256": "ba982d66816b7b2e15c2e225ef68d91ba30f0da0828315d0752bafe003e2d9cf",
+  "series_sha256": "ffe0ab2a57f3140fb936575ffa01ff5c650a0109172ede0795f5da882362bc9c"
+}

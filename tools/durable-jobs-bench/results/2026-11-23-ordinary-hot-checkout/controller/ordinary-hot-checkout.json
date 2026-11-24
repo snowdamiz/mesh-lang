@@ -1,0 +1,214 @@
+{
+  "clock_ticks": 100,
+  "compatibility": "Recent dead session: first write can fail and is not retried. An unresponsive hot session inherits the existing statement wait semantics. Expired silent, FATAL before Ready, real PG terminate/restart, rollback, cap and close exercised locally.",
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/evidence",
+  "expected_setup_minutes": 15,
+  "freeze_sha256": "41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67",
+  "frozen_input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+  "host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "id": "ordinary-hot-checkout",
+  "kind": "Controller-owned native SETUP proof after priority work. Separate TIMING only after successful release of the exact proof.",
+  "local_check_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/native/dispatch.py check 41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67",
+  "local_gate": "Release real write pairs: 2,048 to zero probes and lower client plus backend CPU against both controls in six groups. V2 queue: all six short and six dense duplicate-control groups passed canonical ledgers; short drops 256 probes to two; ordinary-clock throughput inconclusive on macOS.",
+  "local_sha256": {
+    "target/ordinary-hot-checkout/arm-entry.py": "b79f9656897b3523321cf9200d7b31c6d515851da1b0519acdc443d4bae283e1",
+    "target/ordinary-hot-checkout/commit.sha": "7f7ae9e4235a4c8a0c9253fd40fa3b1182732ae145b608d333a352841e925362",
+    "target/ordinary-hot-checkout/db-focused-retry.log": "4c2b38eaec8fdeba747a066ae9777774d25d162fb5115271a31b65af737e814b",
+    "target/ordinary-hot-checkout/fault-results/real-faults.json": "3c17b55a7fbcd1bf73c2b3242dc001939097935ff5e172d96015f9adcbfcc580",
+    "target/ordinary-hot-checkout/inputs/runtime-v2.patch": "2ad5869349774921b92521e705b7ba03f8edf57c3f6592189bde006087641c25",
+    "target/ordinary-hot-checkout/native/build.remote.sh": "6d656a38e048318c885c3f290c5c24075baa96b022acccb760e34afe35d1786a",
+    "target/ordinary-hot-checkout/native/dispatch.py": "553fea32b633e74c8d4ef52061642c53def3aaedf546df643519ee2df43a92c6",
+    "target/ordinary-hot-checkout/native/freeze.py": "f189b45439e42ca4048b1b8fc116e8a694a40ef7817706b5fc429b1f36952910",
+    "target/ordinary-hot-checkout/native/interleave.py": "2b7c860ee3d81a36c70ea46dc86403d0e4e2131ee0c1fd2852425cc8077da0df",
+    "target/ordinary-hot-checkout/native/local-v2-evidence.json": "3c0dba5b51978b98369519b13d59ba4c51387c57d3990daad212d554dc8cce50",
+    "target/ordinary-hot-checkout/native/native-arm.sh": "13c0284ff785996333801068eff11a99b97c25c4d8cb42eafc2c2ded1b629cd1",
+    "target/ordinary-hot-checkout/native/original-mesh-build.json": "bb2269620bd8332e401ff4231eb685302ee54fc95a894a85ca17be9230a91939",
+    "target/ordinary-hot-checkout/native/original-short-series.json": "52f9a074da32a4b4f83563055b55b5ed0366c9d39b923e19c86b9d50a2b24bfd",
+    "target/ordinary-hot-checkout/native/payload.tar": "a09d1667c35fc7095d299fa01127dc1f310e677026dc9ed652332dda2ffcdf7a",
+    "target/ordinary-hot-checkout/ordinary.py": "592f4aeebbb3ada997d061e45f7a3bf6c21a17ffda84c00f59fe19fa4d6fecba",
+    "target/ordinary-hot-checkout/silent-hot.json": "16d396da332053855daa6629af90c7689123bb44a62ad98978a85e2185a89088",
+    "target/ordinary-hot-checkout/source-inventory.json": "348df85494bb7821e2629de448eabb9a97d22a707d412361db5d57ef60e22ae1",
+    "target/ordinary-hot-checkout/v2-d2/compiler/mesh-rt/src/db/pg.rs": "d8346286fca8f28d972c2b07e60a3ee33d4cae870e5e26ba460ab412870f6031",
+    "target/ordinary-hot-checkout/v2-d2/compiler/mesh-rt/src/db/pool.rs": "01daf5b47a506e544244890d66efa82b5f8c1e15b2121d6eeacf27020f781533",
+    "target/ordinary-hot-checkout/v2-d2/replay/link.sh": "a851c48212d264987301bb7bf2266e352efcab652a3dcb77aa9b35bb1503472b",
+    "target/ordinary-hot-checkout/v2-d2/replay/manifest.py": "be3d12489928ba937f14d7fd620cfed741e59c44ea5c7cb5b2dd15fddda14fde",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "native_control_inventory": {
+    "ordinary-success-cohort": {
+      "argv": [
+        "/usr/bin/env",
+        "TRUSTED_ADMISSION_POLICY=success_cohort",
+        "NATIVE_JOBS_ARTIFACTS=/var/lib/durable-jobs-bench/native/builds/ordinary-trusted-v2-ee34be76504b",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/tools/durable-jobs-bench/native/run",
+        "mesh"
+      ],
+      "artifact_sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+      "evidence_globs": [
+        "*.json",
+        "*.log"
+      ],
+      "postgres_storage": "/var/lib/durable-jobs-bench/native/scratch",
+      "verified_files": {
+        "/var/lib/durable-jobs-bench/native/builds/ordinary-trusted-v2-ee34be76504b/mesh": "cbd23c92eba11f9237c11ae6a5fc60128e1852956f4be21913f8e7f716b25a5f",
+        "/var/lib/durable-jobs-bench/native/builds/ordinary-trusted-v2-ee34be76504b/mesh.json": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/proof/jobs-parity/linux-regression/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/proof/jobs-parity/linux-regression/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/proof/jobs-parity/linux-regression/trial.py": "db8e121ab9b1f6aed2293b26c79a4fbfa8ac8aba6ff228be54b360bd32048a8e",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/proof/jobs-parity/linux-regression/trusted-application.sql": "3d318097587c0baef9182d8abb35b3f9d437a00b4f509798e320a4931085ee41",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/scripts/jobs-parity.py": "09aad1d1c6cb5c0d46408bf314879812bb24fa504cf26a00e728b5f21ad1c5c8",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/scripts/lib/jobs_parity_fault.py": "f77ff946f67b255b4a037bf5a3e28dc7ad0a3588e4efb438ce73cf5abead594b",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/tools/durable-jobs-bench/native/arm.py": "7e30789a4714e59f04e7f752478d09973d194f003225a82d526c961f8ae08a54",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/tools/durable-jobs-bench/native/ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
+        "/var/lib/durable-jobs-bench/native/source-ordinary-trusted-v2-ee34be76504b/tools/durable-jobs-bench/native/run": "ab01fdf670c1544b03259e317e7bb266b87861e766d7feb51747a4c8a9ddbc1d"
+      },
+      "version": "3828f20d2d6beb683868cce33e6dd1958365914b"
+    },
+    "river": {
+      "argv": [
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run",
+        "--binary",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/river-bench",
+        "--pg-bin",
+        "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin",
+        "--scratch",
+        "/var/lib/durable-jobs-bench/river/scratch"
+      ],
+      "artifact_sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+      "evidence_globs": [
+        "input.json",
+        "runtime.json",
+        "counters.json",
+        "metrics.json",
+        "river/*",
+        "river/*/*"
+      ],
+      "postgres_storage": "/var/lib/durable-jobs-bench/river/scratch",
+      "run_as": "nobody",
+      "verified_files": {
+        "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres": "b70863988c4762b6b914ac54d194fa5a1723201100d8155caf7781edba29faa1",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/river-bench": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/SHA256SUMS": "20ac691e53f71586c4904fc4455ff83d8b2140a3ba263e63f7ab6228cbb581f1",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/scripts/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/db.go": "5b46edba58b4bbf318759cef2b5fc5540aae4f5f15b2df9083b875525c89ba85",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/evidence.go": "9dc4522dd46ff8787d10d1413528284986d419a091271f0cc8cc0d660f754621",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/go.mod": "b50f560f8a406715b0796e6729837fa21b14595a897a33560afd7c590ca840da",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/go.sum": "d0b5ac110be4112c71271ad2d3f126667f185f41cff7db605e99a5eb4b3d8f4b",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/main.go": "0e9c26aed160e6313e30c7ee8562a14d14cde94f89f1bf0756fad68e26128da0",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/prepare_input.py": "3536fefd1492b22389ab083422739fd30549d33c75f76bc4deb8629ef1d73a7f",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/raw_evidence.py": "94ad94c58e3f8faf63b3c4b06030a53bbd552254f2e87947f65cc1821974bf7e",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run": "0a770416fc9433c76d5f5d5cf2ef87e2af4f20a61d0fa4c7e98d5715d781345d",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run.py": "e97ede452fb9df9c62fc9b12c914dbb2b5c92b2cd64165b7d11ac5e2dcc5d030",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/worker.go": "6c0f7b8e817a5cd05e98a72af57e48f0c9b5f4bcf283c057e246a9f8fa1e6d69",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/wrapper-source.tar.gz": "140547e8e8202bdf446c7eaffa575991b3220cbfeef31192b990c91e646e2f8a"
+      },
+      "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4"
+    }
+  },
+  "operator_id": "ordinary-hot-checkout",
+  "patch_sha256": "2ad5869349774921b92521e705b7ba03f8edf57c3f6592189bde006087641c25",
+  "producer_sha256": "cbd23c92eba11f9237c11ae6a5fc60128e1852956f4be21913f8e7f716b25a5f",
+  "proof_scope": "Build one V2 runner with only D2, retaining the existing V2 ELF for the broker and both controls. Reconcile one real 128-job short arm per lane against the exact native worker and PostgreSQL 17.11 TLS at CPUs 0,1. Two ordered independent application commits per job, role/cap audits, terminal cohorts and checkout counts separately.",
+  "ready": true,
+  "requested_at": "2026-11-23T22:24:23.990315+00:00",
+  "setup_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/native/dispatch.py proof 41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67",
+  "setup_output": "Native D2 ELF, manifest and runtime hashes have to be measured by SETUP. Canonical fixture and worker pins are enforced before any trials.",
+  "source_archive_sha256": "d87114a2332d8e3dd56da8615367ffb7b68c16945a5879c101191a09c15377b6",
+  "source_sha": "ea39b732538b98328c1e4b127f75d03b20e2332b",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/native",
+  "state": "ready",
+  "timing": {
+    "exact_group_commands": [
+      "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/native/dispatch.py timing 41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67 --group 1",
+      "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/native/dispatch.py timing 41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67 --group 2",
+      "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/native/dispatch.py timing 41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67 --group 3",
+      "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/native/dispatch.py timing 41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67 --group 4",
+      "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/native/dispatch.py timing 41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67 --group 5"
+    ],
+    "expected_timing_minutes": 15,
+    "id": "ordinary-hot-checkout-matched",
+    "order": [
+      {
+        "group": 1,
+        "order": [
+          "ordinary-base-a",
+          "ordinary-d2",
+          "ordinary-base-b",
+          "river"
+        ],
+        "phases": [
+          "measured"
+        ],
+        "profile": "short"
+      },
+      {
+        "group": 2,
+        "order": [
+          "river",
+          "ordinary-base-b",
+          "ordinary-d2",
+          "ordinary-base-a"
+        ],
+        "phases": [
+          "measured"
+        ],
+        "profile": "short"
+      },
+      {
+        "group": 3,
+        "order": [
+          "ordinary-base-b",
+          "river",
+          "ordinary-base-a",
+          "ordinary-d2"
+        ],
+        "phases": [
+          "measured"
+        ],
+        "profile": "short"
+      },
+      {
+        "group": 4,
+        "order": [
+          "ordinary-d2",
+          "ordinary-base-a",
+          "river",
+          "ordinary-base-b"
+        ],
+        "phases": [
+          "measured"
+        ],
+        "profile": "short"
+      },
+      {
+        "group": 5,
+        "order": [
+          "ordinary-d2",
+          "ordinary-base-b",
+          "ordinary-base-a",
+          "river"
+        ],
+        "phases": [
+          "measured"
+        ],
+        "profile": "short"
+      }
+    ],
+    "scope": "Five controller-started short blocks. A/B are byte-identical stock V2 and R is pinned River. First two blocks run in opposite order. Compare first-submit and first-durable-commit throughput and the two stock controls; do not infer a River crossover from historical rates.",
+    "summarize_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/native/dispatch.py summarize 41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67"
+  }
+}

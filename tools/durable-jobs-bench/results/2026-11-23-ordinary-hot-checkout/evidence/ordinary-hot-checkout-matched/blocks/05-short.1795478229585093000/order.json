@@ -1,0 +1,13 @@
+{
+  "group": 5,
+  "order": [
+    "ordinary-d2",
+    "ordinary-base-b",
+    "ordinary-base-a",
+    "river"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}

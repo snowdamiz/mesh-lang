@@ -1,0 +1,31 @@
+{
+  "id": "ordinary-hot-checkout-buildfree",
+  "ready": true,
+  "source_sha": "ea39b732538b98328c1e4b127f75d03b20e2332b",
+  "requested_window_minutes": 9,
+  "freeze_sha256": "41cc580d7da06d106f24e7da8eaa8ba71d44f95589fc8725a83ef694114b9e67",
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/evidence",
+  "scope": "Reverify the original native build and its host using both fences. Trim only display whitespace from the block device field. No compilation, relink, artifact change or timing from SETUP. Run all four original proof arms.",
+  "local_check_command": "python3 -B target/linode-jobs-stepchange/d2-native-recovery.py check",
+  "setup_command": "python3 -B target/linode-jobs-stepchange/d2-native-recovery.py setup",
+  "pins": {
+    "target/linode-jobs-stepchange/requests/ordinary-hot-checkout.json": "27f90b45f305567794c79d49b61e67e28af520169e96e2e4e0d56d65839afeea",
+    "target/linode-jobs-stepchange/d2-native-recovery.py": "ef08b874053108d94ee08f7445404f17d6fcd62059a56481e0438927b6058f6e",
+    "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/evidence/ordinary-hot-checkout-1393b4a009b8/native-identity.txt": "0af1c1104644b740e30ced0f97c950c42764fd928be2a80efe68ad7369349ff9"
+  },
+  "timing": {
+    "id": "ordinary-hot-checkout-matched",
+    "exact_group_commands": [
+      "python3 -B target/linode-jobs-stepchange/d2-native-recovery.py timing --group 1",
+      "python3 -B target/linode-jobs-stepchange/d2-native-recovery.py timing --group 2",
+      "python3 -B target/linode-jobs-stepchange/d2-native-recovery.py timing --group 3",
+      "python3 -B target/linode-jobs-stepchange/d2-native-recovery.py timing --group 4",
+      "python3 -B target/linode-jobs-stepchange/d2-native-recovery.py timing --group 5"
+    ],
+    "summarize_command": "python3 -B target/linode-jobs-stepchange/d2-native-recovery.py summarize"
+  }
+}
