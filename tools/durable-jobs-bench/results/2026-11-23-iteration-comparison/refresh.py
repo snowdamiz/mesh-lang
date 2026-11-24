@@ -156,6 +156,15 @@ def write_scorecard(data):
                      "input and 100 ms hold. [Extension decision](../2026-11-23-bulk-enqueue-v2-slow/README.md)",
                      [("bulk", "V2 · batch enqueue"), ("scalar", "V2 · scalar enqueue"),
                       ("v1-bulk", "V1 · batch enqueue"), ("v1-scalar", "V1 · scalar enqueue"), *peers])
+    add_policy_table(lines, data.get("hot-short", {}), "Short jobs with fewer PostgreSQL checkout probes",
+                     "V2 runners use the original producer. Hot checkout sent two probes across 256 writes, versus 256 "
+                     "probes in each identical control. All writes used their own committed transactions.",
+                     [("ordinary-d2", "Mesh · hot checkout"), ("ordinary-base-a", "V2 control A"),
+                      ("ordinary-base-b", "V2 control B"), ("river", "River")])
+    add_policy_table(lines, data.get("bulk-hot-short", {}), "Short jobs with bulk enqueue and fewer checkout probes",
+                     "Both Mesh lanes share the V2 bulk producer. This experimental runner can report success before "
+                     "actor teardown. The comparison below it measures the separate exit-confirmed runner.",
+                     [("bulk-d2", "Mesh · bulk and hot checkout"), ("bulk", "Mesh · bulk"), ("river", "River")])
     add_policy_table(lines, data.get("exit-confirmed-short", {}), "Short jobs with confirmed actor teardown",
                      "Zero hold sends ready completions to a writer as soon as they are available. The writer-off "
                      "control runs the same executable and also waits for actor teardown. The earlier bulk V2 "

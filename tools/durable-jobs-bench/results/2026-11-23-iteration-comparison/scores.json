@@ -2141,6 +2141,338 @@
     "manifest_sha256": "19ad3ca3556504a28b9cffa15b462afeea65e2f82b07a3fc95c343837f4dd3d6",
     "title": "Four-engine baseline"
   },
+  "bulk-hot-short": {
+    "blocks": [
+      {
+        "attempt": "01-short.1795478513300304000",
+        "group": 1,
+        "order": [
+          "bulk",
+          "bulk-d2",
+          "river"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "ea1b628d9884aa2c94032f757d087e6fcb895e2d24f0f0d9ed273c6343709888",
+          "measured-bulk/measured-mesh": "50ef0ed85711cf21f31d64db9caeaed304705d5376ecee0834558d13c686b07d",
+          "measured-river/measured-go": "6b1c4af98fcb665d69e8484019ef004988ac63cf1a94323e9b4b38158e1b8dc3"
+        },
+        "scores": {
+          "bulk": {
+            "commit_jobs_per_s": 583.156791726463,
+            "commit_to_pickup_p99_ms": 209.986,
+            "commit_to_settlement_p99_ms": 218.246,
+            "completed": 128,
+            "cpu_iowait_percent": 2.4096385542168677,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 46.932,
+            "peak_runner_rss_bytes": 10616832,
+            "runner_cpu_ms_per_job": 1.394609375,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 480.4317880695275,
+            "submit_to_settlement_p50_ms": 177.82,
+            "submit_to_settlement_p99_ms": 265.178
+          },
+          "bulk-d2": {
+            "commit_jobs_per_s": 804.4647795263713,
+            "commit_to_pickup_p99_ms": 154.881,
+            "commit_to_settlement_p99_ms": 158.567,
+            "completed": 128,
+            "cpu_iowait_percent": 2.272727272727273,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 34.147,
+            "peak_runner_rss_bytes": 10092544,
+            "runner_cpu_ms_per_job": 1.1967656249999998,
+            "sha256": "41d86710cdd57f93e8fd6311f9f6b3b50ab64d0e835cc8f53ae71393f26e08bb",
+            "submit_jobs_per_s": 662.3236175288085,
+            "submit_to_settlement_p50_ms": 116.468,
+            "submit_to_settlement_p99_ms": 192.714
+          },
+          "river": {
+            "commit_jobs_per_s": 791.927291175579,
+            "commit_to_pickup_p99_ms": 133.278,
+            "commit_to_settlement_p99_ms": 161.631,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1235955056179776,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.502,
+            "peak_runner_rss_bytes": 17461248,
+            "runner_cpu_ms_per_job": 0.8538281249999999,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 730.8731078665928,
+            "submit_to_settlement_p50_ms": 175.133,
+            "submit_to_settlement_p99_ms": 175.133
+          }
+        }
+      },
+      {
+        "attempt": "02-short.1795478538671695000",
+        "group": 2,
+        "order": [
+          "river",
+          "bulk-d2",
+          "bulk"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "aa7874ddcbc8de3acc0ab4eeac641706cd00084f7b65972652a0f6dc8631d23b",
+          "measured-bulk/measured-mesh": "7ae28329fcd88a587cfeaadd5abc58cba9f1c950441b56a716d5a30879f05105",
+          "measured-river/measured-go": "19812a024379cd6dbbe416f25b1c9d5738650f636c11ce0dce22c6dfe7a2f63b"
+        },
+        "scores": {
+          "bulk": {
+            "commit_jobs_per_s": 574.3851162456752,
+            "commit_to_pickup_p99_ms": 211.042,
+            "commit_to_settlement_p99_ms": 222.185,
+            "completed": 128,
+            "cpu_iowait_percent": 2.380952380952381,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 46.506,
+            "peak_runner_rss_bytes": 10354688,
+            "runner_cpu_ms_per_job": 1.3701953125,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 475.21282480610944,
+            "submit_to_settlement_p50_ms": 175.5655,
+            "submit_to_settlement_p99_ms": 268.691
+          },
+          "bulk-d2": {
+            "commit_jobs_per_s": 788.4346492389758,
+            "commit_to_pickup_p99_ms": 153.231,
+            "commit_to_settlement_p99_ms": 161.799,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1627906976744187,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 34.434,
+            "peak_runner_rss_bytes": 10366976,
+            "runner_cpu_ms_per_job": 1.1499609375,
+            "sha256": "41d86710cdd57f93e8fd6311f9f6b3b50ab64d0e835cc8f53ae71393f26e08bb",
+            "submit_jobs_per_s": 650.4693034388482,
+            "submit_to_settlement_p50_ms": 124.978,
+            "submit_to_settlement_p99_ms": 196.233
+          },
+          "river": {
+            "commit_jobs_per_s": 501.07849316301883,
+            "commit_to_pickup_p99_ms": 151.093,
+            "commit_to_settlement_p99_ms": 255.449,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 14.955,
+            "peak_runner_rss_bytes": 17485824,
+            "runner_cpu_ms_per_job": 0.8676015625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 473.3657786127424,
+            "submit_to_settlement_p50_ms": 176.833,
+            "submit_to_settlement_p99_ms": 270.404
+          }
+        }
+      },
+      {
+        "attempt": "03-short.1795478599120586000",
+        "group": 3,
+        "order": [
+          "bulk-d2",
+          "river",
+          "bulk"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "8530ad1ba367e3d56384b7ec7ff7a3cf9fa22b9f567810c3ee2ee363e8d34d44",
+          "measured-bulk/measured-mesh": "b4c1be4a74a8eddcf7be08f525aa1feaa2ab5f2e40aa8ece48125b8819722085",
+          "measured-river/measured-go": "d7a6e7ec6acb8861663187a109595f49525282374c7134822760ce5a2d736c02"
+        },
+        "scores": {
+          "bulk": {
+            "commit_jobs_per_s": 692.40839112419,
+            "commit_to_pickup_p99_ms": 176.339,
+            "commit_to_settlement_p99_ms": 184.319,
+            "completed": 128,
+            "cpu_iowait_percent": 2.3529411764705883,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 39.386,
+            "peak_runner_rss_bytes": 10747904,
+            "runner_cpu_ms_per_job": 1.2265078125,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 570.7966180300382,
+            "submit_to_settlement_p50_ms": 145.59,
+            "submit_to_settlement_p99_ms": 223.705
+          },
+          "bulk-d2": {
+            "commit_jobs_per_s": 743.3864738508,
+            "commit_to_pickup_p99_ms": 161.907,
+            "commit_to_settlement_p99_ms": 171.597,
+            "completed": 128,
+            "cpu_iowait_percent": 3.409090909090909,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 37.206,
+            "peak_runner_rss_bytes": 10194944,
+            "runner_cpu_ms_per_job": 1.2469843749999998,
+            "sha256": "41d86710cdd57f93e8fd6311f9f6b3b50ab64d0e835cc8f53ae71393f26e08bb",
+            "submit_jobs_per_s": 611.2965695755787,
+            "submit_to_settlement_p50_ms": 149.5155,
+            "submit_to_settlement_p99_ms": 208.803
+          },
+          "river": {
+            "commit_jobs_per_s": 769.0181800704132,
+            "commit_to_pickup_p99_ms": 148.901,
+            "commit_to_settlement_p99_ms": 166.446,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1494252873563218,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.135,
+            "peak_runner_rss_bytes": 17858560,
+            "runner_cpu_ms_per_job": 0.848015625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 712.7702819340576,
+            "submit_to_settlement_p50_ms": 179.581,
+            "submit_to_settlement_p99_ms": 179.581
+          }
+        }
+      },
+      {
+        "attempt": "04-short.1795478625285598000",
+        "group": 4,
+        "order": [
+          "bulk",
+          "river",
+          "bulk-d2"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "a569a5243bc6396a1bb2b7fc9406b4e7f0cfac0689af12b46496b54d139fc352",
+          "measured-bulk/measured-mesh": "4fdf5fc045d144efb195577373264daec04737eda89826d267415f28d4c7567b",
+          "measured-river/measured-go": "02b906e11571e872091545b9256ace83a4ed74f6022e0db540f738b53500f2f5"
+        },
+        "scores": {
+          "bulk": {
+            "commit_jobs_per_s": 646.5593445504645,
+            "commit_to_pickup_p99_ms": 186.146,
+            "commit_to_settlement_p99_ms": 194.534,
+            "completed": 128,
+            "cpu_iowait_percent": 4.705882352941177,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 33.752,
+            "peak_runner_rss_bytes": 10113024,
+            "runner_cpu_ms_per_job": 1.2786171875,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 552.3836649793072,
+            "submit_to_settlement_p50_ms": 139.533,
+            "submit_to_settlement_p99_ms": 228.286
+          },
+          "bulk-d2": {
+            "commit_jobs_per_s": 797.7662544874352,
+            "commit_to_pickup_p99_ms": 150.006,
+            "commit_to_settlement_p99_ms": 159.835,
+            "completed": 128,
+            "cpu_iowait_percent": 2.2988505747126435,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 35.383,
+            "peak_runner_rss_bytes": 10420224,
+            "runner_cpu_ms_per_job": 1.1479140625,
+            "sha256": "41d86710cdd57f93e8fd6311f9f6b3b50ab64d0e835cc8f53ae71393f26e08bb",
+            "submit_jobs_per_s": 653.6248091466622,
+            "submit_to_settlement_p50_ms": 128.60399999999998,
+            "submit_to_settlement_p99_ms": 195.218
+          },
+          "river": {
+            "commit_jobs_per_s": 786.3228961255168,
+            "commit_to_pickup_p99_ms": 149.611,
+            "commit_to_settlement_p99_ms": 162.783,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.957,
+            "peak_runner_rss_bytes": 17494016,
+            "runner_cpu_ms_per_job": 0.8627578125,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 724.2276790766097,
+            "submit_to_settlement_p50_ms": 176.74,
+            "submit_to_settlement_p99_ms": 176.74
+          }
+        }
+      },
+      {
+        "attempt": "05-short.1795478650576371000",
+        "group": 5,
+        "order": [
+          "river",
+          "bulk",
+          "bulk-d2"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "ed9e846cbbbaebd3effac7a09749517a823bae2a8f7f3defb20d08f2f393a09d",
+          "measured-bulk/measured-mesh": "a32b2346165286ec17758df610a589951be5a4b2962240450f5476da561756d9",
+          "measured-river/measured-go": "c1ea6bf888f034794f0e201fd4c71cc98166dfc7a855250bf1b13ed8d6e44061"
+        },
+        "scores": {
+          "bulk": {
+            "commit_jobs_per_s": 757.0739093403994,
+            "commit_to_pickup_p99_ms": 162.642,
+            "commit_to_settlement_p99_ms": 167.065,
+            "completed": 128,
+            "cpu_iowait_percent": 2.2988505747126435,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 34.946,
+            "peak_runner_rss_bytes": 10354688,
+            "runner_cpu_ms_per_job": 1.2169375,
+            "sha256": "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911",
+            "submit_jobs_per_s": 627.3956219549256,
+            "submit_to_settlement_p50_ms": 122.45150000000001,
+            "submit_to_settlement_p99_ms": 202.011
+          },
+          "bulk-d2": {
+            "commit_jobs_per_s": 741.8784594430116,
+            "commit_to_pickup_p99_ms": 162.441,
+            "commit_to_settlement_p99_ms": 171.71,
+            "completed": 128,
+            "cpu_iowait_percent": 2.247191011235955,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 32.744,
+            "peak_runner_rss_bytes": 10485760,
+            "runner_cpu_ms_per_job": 1.1861953125,
+            "sha256": "41d86710cdd57f93e8fd6311f9f6b3b50ab64d0e835cc8f53ae71393f26e08bb",
+            "submit_jobs_per_s": 623.5416189673566,
+            "submit_to_settlement_p50_ms": 130.38049999999998,
+            "submit_to_settlement_p99_ms": 204.454
+          },
+          "river": {
+            "commit_jobs_per_s": 490.2129745587126,
+            "commit_to_pickup_p99_ms": 162.642,
+            "commit_to_settlement_p99_ms": 261.111,
+            "completed": 128,
+            "cpu_iowait_percent": 0.7575757575757576,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.149,
+            "peak_runner_rss_bytes": 17506304,
+            "runner_cpu_ms_per_job": 0.871859375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 466.71042076861374,
+            "submit_to_settlement_p50_ms": 177.727,
+            "submit_to_settlement_p99_ms": 274.26
+          }
+        }
+      }
+    ],
+    "description": "Both Mesh lanes use the same bulk producer, migrator and V2 grouped-success policy. The runner's pool checkout changes. Stock River is the matched peer.",
+    "manifest_sha256": "9e1f55c44143a52e00165fed4d86d1f155bb9f94359d21d5ff37e348733a4793",
+    "title": "Short jobs \u00b7 bulk enqueue and PostgreSQL checkout"
+  },
   "bulk-short": {
     "blocks": [
       {
@@ -4585,6 +4917,428 @@
     "description": "Both writer modes wait for actor teardown before settlement. Writer-off and zero-hold share a runner ELF and use the same bulk producer. The earlier bulk V2 runner is a separate control. All three stock peers run the original adapters.",
     "manifest_sha256": "7a6b6f988b6ebf89d06a76f34838c1abb7f50895b91c19a66719636ecd1ee804",
     "title": "Short jobs \u00b7 settlement after actor teardown"
+  },
+  "hot-short": {
+    "blocks": [
+      {
+        "attempt": "01-short.1795478085871608000",
+        "group": 1,
+        "order": [
+          "ordinary-base-a",
+          "ordinary-d2",
+          "ordinary-base-b",
+          "river"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-ordinary-base-a/measured-mesh": "34d71a7a4e2097a809fefd23a9fa9516429848442f26bd2c6236d5b03848e1f4",
+          "measured-ordinary-base-b/measured-mesh": "b1757fbc696837f5d7bad9f2444b60255254b7597b165b813de1db4ed3a15371",
+          "measured-ordinary-d2/measured-mesh": "9524663e759867685722874e31ea3b16d6cf647bf6980ee4d4084a1dcfc6b147",
+          "measured-river/measured-go": "c570c8f4d2a41927536cb68cab2799cfcf7c78f7c9064970bec2287a834c8b81"
+        },
+        "scores": {
+          "ordinary-base-a": {
+            "commit_jobs_per_s": 717.9677026716251,
+            "commit_to_pickup_p99_ms": 166.159,
+            "commit_to_settlement_p99_ms": 177.588,
+            "completed": 128,
+            "cpu_iowait_percent": 2.272727272727273,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 80.056,
+            "peak_runner_rss_bytes": 10170368,
+            "runner_cpu_ms_per_job": 1.2885078125,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 495.4768383932615,
+            "submit_to_settlement_p50_ms": 179.55,
+            "submit_to_settlement_p99_ms": 257.644
+          },
+          "ordinary-base-b": {
+            "commit_jobs_per_s": 708.7800124036502,
+            "commit_to_pickup_p99_ms": 165.968,
+            "commit_to_settlement_p99_ms": 177.045,
+            "completed": 128,
+            "cpu_iowait_percent": 1.5384615384615385,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 77.535,
+            "peak_runner_rss_bytes": 10252288,
+            "runner_cpu_ms_per_job": 1.2956015625000001,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 495.879935070721,
+            "submit_to_settlement_p50_ms": 182.36649999999997,
+            "submit_to_settlement_p99_ms": 254.58
+          },
+          "ordinary-d2": {
+            "commit_jobs_per_s": 636.9680321668857,
+            "commit_to_pickup_p99_ms": 195.921,
+            "commit_to_settlement_p99_ms": 199.292,
+            "completed": 128,
+            "cpu_iowait_percent": 2.3529411764705883,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 90.81,
+            "peak_runner_rss_bytes": 10260480,
+            "runner_cpu_ms_per_job": 1.3177656249999998,
+            "sha256": "255787ae87f5a66716f8ab4b83b5ab7074b09126467f5f4c1f87374948d6abd3",
+            "submit_jobs_per_s": 438.71374613554883,
+            "submit_to_settlement_p50_ms": 212.20350000000002,
+            "submit_to_settlement_p99_ms": 290.102
+          },
+          "river": {
+            "commit_jobs_per_s": 785.1845490402959,
+            "commit_to_pickup_p99_ms": 150.859,
+            "commit_to_settlement_p99_ms": 163.019,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.475,
+            "peak_runner_rss_bytes": 17473536,
+            "runner_cpu_ms_per_job": 0.8757265625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 725.2371185422734,
+            "submit_to_settlement_p50_ms": 176.494,
+            "submit_to_settlement_p99_ms": 176.494
+          }
+        }
+      },
+      {
+        "attempt": "02-short.1795478124249978000",
+        "group": 2,
+        "order": [
+          "river",
+          "ordinary-base-b",
+          "ordinary-d2",
+          "ordinary-base-a"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-ordinary-base-a/measured-mesh": "f368b9cdde25eee4ef453593bdf7c42c097a1d0a9e7d11ac3bce66304db8c3d7",
+          "measured-ordinary-base-b/measured-mesh": "1edbb0a05159356d1a2736e52354e0618a2ca75c337d29308978599010d92b93",
+          "measured-ordinary-d2/measured-mesh": "13655f62770bcc6fc4c721b418022ec61b48a8222d17337e16c8342f9306c76b",
+          "measured-river/measured-go": "3a1a23bbe2ea43b58bdec8f143f3c410def3628afeaf940ece97da74a9acaaac"
+        },
+        "scores": {
+          "ordinary-base-a": {
+            "commit_jobs_per_s": 685.7387763848709,
+            "commit_to_pickup_p99_ms": 177.509,
+            "commit_to_settlement_p99_ms": 185.31,
+            "completed": 128,
+            "cpu_iowait_percent": 2.2988505747126435,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 81.784,
+            "peak_runner_rss_bytes": 10223616,
+            "runner_cpu_ms_per_job": 1.27209375,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 476.82198149334687,
+            "submit_to_settlement_p50_ms": 192.06650000000002,
+            "submit_to_settlement_p99_ms": 267.094
+          },
+          "ordinary-base-b": {
+            "commit_jobs_per_s": 735.6575514098188,
+            "commit_to_pickup_p99_ms": 164.934,
+            "commit_to_settlement_p99_ms": 173.274,
+            "completed": 128,
+            "cpu_iowait_percent": 2.272727272727273,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 76.596,
+            "peak_runner_rss_bytes": 10076160,
+            "runner_cpu_ms_per_job": 1.24403125,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 510.794524921186,
+            "submit_to_settlement_p50_ms": 171.918,
+            "submit_to_settlement_p99_ms": 249.87
+          },
+          "ordinary-d2": {
+            "commit_jobs_per_s": 779.1290797755134,
+            "commit_to_pickup_p99_ms": 154.129,
+            "commit_to_settlement_p99_ms": 163.72,
+            "completed": 128,
+            "cpu_iowait_percent": 3.3333333333333335,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 71.03,
+            "peak_runner_rss_bytes": 10477568,
+            "runner_cpu_ms_per_job": 1.1521796874999999,
+            "sha256": "255787ae87f5a66716f8ab4b83b5ab7074b09126467f5f4c1f87374948d6abd3",
+            "submit_jobs_per_s": 543.9494127046185,
+            "submit_to_settlement_p50_ms": 169.63150000000002,
+            "submit_to_settlement_p99_ms": 234.75
+          },
+          "river": {
+            "commit_jobs_per_s": 781.4026176987693,
+            "commit_to_pickup_p99_ms": 149.576,
+            "commit_to_settlement_p99_ms": 163.808,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1494252873563218,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 13.373,
+            "peak_runner_rss_bytes": 17453056,
+            "runner_cpu_ms_per_job": 0.7986484375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 722.4250907264322,
+            "submit_to_settlement_p50_ms": 177.181,
+            "submit_to_settlement_p99_ms": 177.181
+          }
+        }
+      },
+      {
+        "attempt": "03-short.1795478158779890000",
+        "group": 3,
+        "order": [
+          "ordinary-base-b",
+          "river",
+          "ordinary-base-a",
+          "ordinary-d2"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-ordinary-base-a/measured-mesh": "2459c55f91c0d1e32d139185f3c9ab0145132a3785df24226aa789cf6fa04b0d",
+          "measured-ordinary-base-b/measured-mesh": "b6c7891aab7b54b2b40e18fff7fd2578077d83a33311f515c2c0bc37c6be772f",
+          "measured-ordinary-d2/measured-mesh": "4613da534e3a801385e6f88bf4dfe7ca99c7f1aa50483ccb2ef1fd7792953ddc",
+          "measured-river/measured-go": "9f5b70c4e63fd956519d4da28f9ee2f18349db83d72e31db4257eb03ca245efb"
+        },
+        "scores": {
+          "ordinary-base-a": {
+            "commit_jobs_per_s": 689.0426075956182,
+            "commit_to_pickup_p99_ms": 169.483,
+            "commit_to_settlement_p99_ms": 182.357,
+            "completed": 128,
+            "cpu_iowait_percent": 3.3707865168539324,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 73.99,
+            "peak_runner_rss_bytes": 10067968,
+            "runner_cpu_ms_per_job": 1.323734375,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 492.77203518700315,
+            "submit_to_settlement_p50_ms": 183.1015,
+            "submit_to_settlement_p99_ms": 256.347
+          },
+          "ordinary-base-b": {
+            "commit_jobs_per_s": 643.0642009173713,
+            "commit_to_pickup_p99_ms": 170.016,
+            "commit_to_settlement_p99_ms": 197.692,
+            "completed": 128,
+            "cpu_iowait_percent": 2.3255813953488373,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 68.694,
+            "peak_runner_rss_bytes": 10616832,
+            "runner_cpu_ms_per_job": 1.2785078125,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 478.0739595355213,
+            "submit_to_settlement_p50_ms": 168.601,
+            "submit_to_settlement_p99_ms": 266.386
+          },
+          "ordinary-d2": {
+            "commit_jobs_per_s": 585.0332052049673,
+            "commit_to_pickup_p99_ms": 192.89,
+            "commit_to_settlement_p99_ms": 218.096,
+            "completed": 128,
+            "cpu_iowait_percent": 0.8,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 94.075,
+            "peak_runner_rss_bytes": 10461184,
+            "runner_cpu_ms_per_job": 1.385578125,
+            "sha256": "255787ae87f5a66716f8ab4b83b5ab7074b09126467f5f4c1f87374948d6abd3",
+            "submit_jobs_per_s": 409.12083767491515,
+            "submit_to_settlement_p50_ms": 213.846,
+            "submit_to_settlement_p99_ms": 312.171
+          },
+          "river": {
+            "commit_jobs_per_s": 506.46133879889527,
+            "commit_to_pickup_p99_ms": 170.192,
+            "commit_to_settlement_p99_ms": 252.734,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1627906976744187,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 17.525,
+            "peak_runner_rss_bytes": 17522688,
+            "runner_cpu_ms_per_job": 0.8913203125,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 473.61974994357263,
+            "submit_to_settlement_p50_ms": 176.976,
+            "submit_to_settlement_p99_ms": 270.259
+          }
+        }
+      },
+      {
+        "attempt": "04-short.1795478193805017000",
+        "group": 4,
+        "order": [
+          "ordinary-d2",
+          "ordinary-base-a",
+          "river",
+          "ordinary-base-b"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-ordinary-base-a/measured-mesh": "659727fa35116ed042185143cdc694ab79d615b9bd79512daa032401441b8516",
+          "measured-ordinary-base-b/measured-mesh": "e41ff93ae0238d17338e988d4e3bdf563ecbd76b21ace761201bc987535acabb",
+          "measured-ordinary-d2/measured-mesh": "8656ab67da8ef1eaaa26b1cdd6741eb2d1dacfe7c339ec68bbaac6c08198e5ba",
+          "measured-river/measured-go": "379e6a64b8d787ff331b692e9bd7b8c12e7c142f5fc6ee05fd8975f4614a2264"
+        },
+        "scores": {
+          "ordinary-base-a": {
+            "commit_jobs_per_s": 739.4014314349587,
+            "commit_to_pickup_p99_ms": 160.468,
+            "commit_to_settlement_p99_ms": 172.547,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1764705882352942,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 75.248,
+            "peak_runner_rss_bytes": 10092544,
+            "runner_cpu_ms_per_job": 1.310546875,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 515.3788235673072,
+            "submit_to_settlement_p50_ms": 169.68,
+            "submit_to_settlement_p99_ms": 247.795
+          },
+          "ordinary-base-b": {
+            "commit_jobs_per_s": 753.8502311611061,
+            "commit_to_pickup_p99_ms": 165.208,
+            "commit_to_settlement_p99_ms": 168.773,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1627906976744187,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 68.397,
+            "peak_runner_rss_bytes": 10485760,
+            "runner_cpu_ms_per_job": 1.2276953124999999,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 537.3816081144623,
+            "submit_to_settlement_p50_ms": 167.12650000000002,
+            "submit_to_settlement_p99_ms": 237.17
+          },
+          "ordinary-d2": {
+            "commit_jobs_per_s": 687.6766200694124,
+            "commit_to_pickup_p99_ms": 173.266,
+            "commit_to_settlement_p99_ms": 185.514,
+            "completed": 128,
+            "cpu_iowait_percent": 4.545454545454546,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 75.172,
+            "peak_runner_rss_bytes": 10432512,
+            "runner_cpu_ms_per_job": 1.2393750000000001,
+            "sha256": "255787ae87f5a66716f8ab4b83b5ab7074b09126467f5f4c1f87374948d6abd3",
+            "submit_jobs_per_s": 489.8471523807337,
+            "submit_to_settlement_p50_ms": 189.7405,
+            "submit_to_settlement_p99_ms": 260.686
+          },
+          "river": {
+            "commit_jobs_per_s": 594.2018893763201,
+            "commit_to_pickup_p99_ms": 178.995,
+            "commit_to_settlement_p99_ms": 215.415,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 14.438,
+            "peak_runner_rss_bytes": 17649664,
+            "runner_cpu_ms_per_job": 1.0396953125000001,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 556.8776565892114,
+            "submit_to_settlement_p50_ms": 229.853,
+            "submit_to_settlement_p99_ms": 229.853
+          }
+        }
+      },
+      {
+        "attempt": "05-short.1795478229585093000",
+        "group": 5,
+        "order": [
+          "ordinary-d2",
+          "ordinary-base-b",
+          "ordinary-base-a",
+          "river"
+        ],
+        "profile": "short",
+        "raw_sha256": {
+          "measured-ordinary-base-a/measured-mesh": "548cff48965d5e55e9253d98f1fb98853c26181743f3673852509d8e88bc623a",
+          "measured-ordinary-base-b/measured-mesh": "4840fdb2e8489b146aa3f4690e1a0339cd812a9e1091613d9a3fb75393a877b7",
+          "measured-ordinary-d2/measured-mesh": "7c1150578ec011f6654e18e0d2ddd2dd3624927ea21ab7d0b3312286deee7714",
+          "measured-river/measured-go": "76667835363270771572cd9e17504f1180c72ccf30b73d717029e2ad7da3b99c"
+        },
+        "scores": {
+          "ordinary-base-a": {
+            "commit_jobs_per_s": 603.4377091995965,
+            "commit_to_pickup_p99_ms": 202.501,
+            "commit_to_settlement_p99_ms": 211.399,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 91.53,
+            "peak_runner_rss_bytes": 10616832,
+            "runner_cpu_ms_per_job": 1.3583515625,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 421.5407313731689,
+            "submit_to_settlement_p50_ms": 222.26299999999998,
+            "submit_to_settlement_p99_ms": 302.929
+          },
+          "ordinary-base-b": {
+            "commit_jobs_per_s": 714.4053133895184,
+            "commit_to_pickup_p99_ms": 169.695,
+            "commit_to_settlement_p99_ms": 179.17,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 73.78,
+            "peak_runner_rss_bytes": 10063872,
+            "runner_cpu_ms_per_job": 1.29128125,
+            "sha256": "24aca86bf5986a3681aabb3780a69f25d1913304cca62b4ee0340ea3205fc6df",
+            "submit_jobs_per_s": 506.02885945839097,
+            "submit_to_settlement_p50_ms": 169.791,
+            "submit_to_settlement_p99_ms": 252.95
+          },
+          "ordinary-d2": {
+            "commit_jobs_per_s": 738.1265425691417,
+            "commit_to_pickup_p99_ms": 163.434,
+            "commit_to_settlement_p99_ms": 172.799,
+            "completed": 128,
+            "cpu_iowait_percent": 1.1904761904761905,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 90.193,
+            "peak_runner_rss_bytes": 10350592,
+            "runner_cpu_ms_per_job": 1.27209375,
+            "sha256": "255787ae87f5a66716f8ab4b83b5ab7074b09126467f5f4c1f87374948d6abd3",
+            "submit_jobs_per_s": 485.57500806130383,
+            "submit_to_settlement_p50_ms": 196.4845,
+            "submit_to_settlement_p99_ms": 262.992
+          },
+          "river": {
+            "commit_jobs_per_s": 606.9543693601847,
+            "commit_to_pickup_p99_ms": 176.968,
+            "commit_to_settlement_p99_ms": 210.889,
+            "completed": 128,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 16.427,
+            "peak_runner_rss_bytes": 17752064,
+            "runner_cpu_ms_per_job": 0.957078125,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 563.0927871333298,
+            "submit_to_settlement_p50_ms": 227.316,
+            "submit_to_settlement_p99_ms": 227.316
+          }
+        }
+      }
+    ],
+    "description": "Ordinary V2 with 2 checkout probes versus 256 on duplicate original V2 runners. The producer, grouped-success policy and stock River are fixed.",
+    "manifest_sha256": "ffe0ab2a57f3140fb936575ffa01ff5c650a0109172ede0795f5da882362bc9c",
+    "title": "Short jobs \u00b7 PostgreSQL checkout"
   },
   "lean": {
     "blocks": [

@@ -63,6 +63,27 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | River | 273.80 | 368.18 | 1/2 | 1/2 |
 | Apalis | 342.64 | 450.95 | 0/2 | 0/2 |
 
+## Short jobs with fewer PostgreSQL checkout probes
+
+5/5 matched rotations. V2 runners use the original producer. Hot checkout sent two probes across 256 writes, versus 256 probes in each identical control. All writes used their own committed transactions.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh · hot checkout | 485.58 | 687.68 | — | — |
+| V2 control A | 492.77 | 689.04 | 2/5 | 2/5 |
+| V2 control B | 506.03 | 714.41 | 1/5 | 2/5 |
+| River | 563.09 | 606.95 | 0/5 | 3/5 |
+
+## Short jobs with bulk enqueue and fewer checkout probes
+
+5/5 matched rotations. Both Mesh lanes share the V2 bulk producer. This experimental runner can report success before actor teardown. The comparison below it measures the separate exit-confirmed runner.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh · bulk and hot checkout | 650.47 | 788.43 | — | — |
+| Mesh · bulk | 552.38 | 646.56 | 4/5 | 4/5 |
+| River | 712.77 | 769.02 | 2/5 | 4/5 |
+
 ## Short jobs with confirmed actor teardown
 
 5/5 matched rotations. Zero hold sends ready completions to a writer as soon as they are available. The writer-off control runs the same executable and also waits for actor teardown. The earlier bulk V2 runner could settle while teardown was still running.
