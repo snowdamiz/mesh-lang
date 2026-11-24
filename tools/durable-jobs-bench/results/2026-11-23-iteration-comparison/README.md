@@ -10,7 +10,7 @@ For each trusted Mesh rotation, the paired time budget shows how much end-to-end
 
 Protected Mesh creates a separate process for each attempt. The smaller-worker experiment preserves fresh exec and fenced writes for its eligible handler. The trusted shared-process experiment runs ordinary application SQL in the runner's trust domain. Both write transactions must commit independently in every scored job. The symmetric storage series configures PostgreSQL EXTERNAL payload storage on all four engines. The separate Mesh-only storage series retains the default storage on its peers.
 
-The paired handler-progress tables follow the short and large batches through both application writes. They count how many Mesh jobs were still waiting for each step at the instant the peer finished, relative to each arm’s own enqueue commit. [Handler progress and backlog](handler-progress.md)
+The paired handler-progress tables follow the short and large batches through both application writes. They count how many Mesh jobs were still waiting for each step at the instant the peer finished, relative to each arm’s own enqueue commit. [Handler progress and backlog](handler-progress.md) The slow storage comparison counts outstanding jobs at each peer’s finish on both clocks. [Slow-job cutoffs](slow-peer-cutoffs.md)
 
 In a separate dense native diagnostic, reducing V1 from eight runners to two at 64 total slots and 32 warm application sessions raised submit throughput from 350–353 to 556 jobs/s and drain throughput from 437–442 to 764 jobs/s across two rotations. This measurement compares Mesh deployments. The five-rotation canonical scorecard uses eight runners. [Topology receipts and resources](../2026-11-23-ordinary-runner-topology/README.md)
 
