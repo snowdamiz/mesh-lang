@@ -6,8 +6,11 @@ The signed verifier reads three historical Linode release receipts from their or
 results=tools/durable-jobs-bench/results
 packet="$results/2026-11-24-dense-product-d2-transfer"
 archive="$results/2026-11-24-dense-two-runner-checkout/evidence/dense-native-portable.tar.gz"
-python3 -c 'import json, sys; print(*json.load(open(sys.argv[1]))["releases"], sep="\n")' \
-    "$packet/dense-r2-evidence.json" | tar -xzkf "$archive" -T -
+receipt=target/linode-jobs-stepchange/requests/2026-11-24-dense-two-runner-checkout
+tar -xzkf "$archive" \
+    "$receipt-groups-1-2.released.json" \
+    "$receipt-import-retry-groups-1-2.released.json" \
+    "$receipt-import-retry-groups-3-6.released.json"
 python3 -B "$packet/transfer.py" check
 ```
 
