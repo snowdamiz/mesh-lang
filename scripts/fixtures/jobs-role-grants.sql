@@ -48,3 +48,8 @@ GRANT SELECT ON mesh_jobs.job_summaries, mesh_jobs.queue_summaries TO :"inspecto
 GRANT SELECT (namespace, name, state) ON mesh_jobs.queues TO :"inspector";
 GRANT EXECUTE ON FUNCTION mesh_jobs.now_ms(), mesh_jobs.effect_key(mesh_jobs.jobs)
     TO :"producer", :"worker", :"operator";
+
+-- Optional producer fast path. Older PostgreSQL versions omit these functions.
+SELECT format('GRANT EXECUTE ON FUNCTION mesh_jobs.enqueue_batch_layout_v1(),
+    mesh_jobs.enqueue_batch_v1(text,jsonb) TO %I', :'producer')
+WHERE to_regprocedure('mesh_jobs.enqueue_batch_v1(text,jsonb)') IS NOT NULL \gexec

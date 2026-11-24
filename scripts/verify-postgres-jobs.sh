@@ -200,4 +200,5 @@ fi
 verify
 if [[ -n "$postgres_version" ]]; then
   python3 -B scripts/fixtures/jobs-claim-admission/prove.py "$data"
+  python3 -B scripts/fixtures/jobs-set-based-enqueue/prove.py "$data"
 fi

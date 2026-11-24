@@ -560,7 +560,7 @@ For a deployment that consistently enqueues large, hard-to-compress arguments, t
 ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE EXTERNAL;
 ```
 
-This policy applies to every queue sharing that table. Compare enqueue latency and `pg_column_size(args)` on representative payloads. Compressible data can take substantially more disk space under `EXTERNAL`. To restore the original policy for future writes, use `ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE EXTENDED`. PostgreSQL keeps the existing physical representation of stored rows until it rewrites their values. [PostgreSQL column storage](https://www.postgresql.org/docs/17/sql-altertable.html)
+This policy applies to every queue sharing that table. Producers that opted in to the [set-based enqueue writer](/docs/concurrency/jobs-operations#opt-in-to-set-based-enqueue-on-postgresql-17) keep it with `EXTERNAL` argument storage or the session-level LZ4 setting. Compare enqueue latency and `pg_column_size(args)` on representative payloads. Compressible data can take substantially more disk space under `EXTERNAL`. To restore the original policy for future writes, use `ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE EXTENDED`. PostgreSQL keeps the existing physical representation of stored rows until it rewrites their values. [PostgreSQL column storage](https://www.postgresql.org/docs/17/sql-altertable.html)
 
 ### Run workers and handle retries
 

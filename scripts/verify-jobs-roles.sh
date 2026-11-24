@@ -58,6 +58,12 @@ denied() {
 prepared='{"worker":"proof","version":1,"queue":"default","args":{"proof":1},"metadata":{},"tags":[],"priority":0,"max_attempts":2,"timeout_ms":60000,"backoff_base_ms":1000,"backoff_max_ms":60000,"suspended":false,"unique":null,"replace":{}}'
 workers='[{"worker":"proof","version":1}]'
 enqueue_sql="SELECT mesh_jobs.enqueue('proof', '$prepared', 'receipt', 'fingerprint') ->> 'id';"
+# Jobs.migrate installs the optional set-based enqueue writer on PostgreSQL 17 only.
+pg_major=$(( $(psql_proof -c 'SHOW server_version_num') / 10000 ))
+set_batch="[$(for i in $(seq 1 16); do
+  printf '%s{"spec":%s,"request_key":"batch-%s","fingerprint":"f%s"}' "$([[ $i == 1 ]] || echo ,)" "$prepared" "$i" "$i"
+done)]"
+set_batch_sql="SELECT count(*) FROM mesh_jobs.enqueue_batch_v1('proof-batch', '$set_batch') WHERE ordinal <> '0';"
 
 for database in jobs_role_fresh jobs_role_upgrade; do
   statement jobs_migrator "
@@ -96,6 +102,7 @@ for database in jobs_role_fresh jobs_role_upgrade; do
     printf 'BEGIN; SELECT pg_advisory_xact_lock(1782495102, 1);\n'
     cat compiler/mesh-rt/src/jobs/schema.sql
     cat compiler/mesh-rt/src/jobs/drain_schema.sql
+    if (( pg_major == 17 )); then cat compiler/mesh-rt/src/jobs/enqueue_schema.sql; fi
     printf 'COMMIT; BEGIN;\n'
     cat compiler/mesh-rt/src/jobs/cron_schema.sql
     printf 'COMMIT;\n'
@@ -109,7 +116,25 @@ for database in jobs_role_fresh jobs_role_upgrade; do
     statement jobs_migrator "REVOKE UPDATE ON mesh_jobs.jobs, mesh_jobs.queues FROM jobs_worker;"
   fi
   denied jobs_worker "SELECT mesh_jobs.claim_batch_set_v1('proof','default','$workers',60000,1,NULL);"
+  if (( pg_major == 17 )); then
+    denied jobs_producer "BEGIN; $set_batch_sql ROLLBACK;"
+  fi
   as_role jobs_migrator < scripts/fixtures/jobs-role-grants.sql
+  if (( pg_major == 17 )); then
+    # The scoped producer runs a real batch. The layout check takes its table
+    # locks as the owner while the writes keep the producer's own ACLs.
+    expect jobs_producer "BEGIN; INSERT INTO mesh_jobs.admissions AS a(namespace) VALUES ('proof-batch')
+      ON CONFLICT (namespace) DO UPDATE SET fence = NOT a.fence; $set_batch_sql ROLLBACK;" 16
+    for unprivileged in jobs_worker jobs_operator jobs_inspector; do
+      denied "$unprivileged" "BEGIN; $set_batch_sql ROLLBACK;"
+      denied "$unprivileged" "BEGIN; SELECT mesh_jobs.enqueue_batch_layout_v1(); ROLLBACK;"
+    done
+    as_role jobs_migrator < compiler/mesh-rt/src/jobs/enqueue_schema.sql >/dev/null
+    expect jobs_producer "SELECT has_function_privilege('mesh_jobs.enqueue_batch_v1(text,jsonb)', 'EXECUTE')
+      AND has_function_privilege('mesh_jobs.enqueue_batch_layout_v1()', 'EXECUTE');" t
+  else
+    expect jobs_migrator "SELECT to_regprocedure('mesh_jobs.enqueue_batch_v1(text,jsonb)') IS NULL;" t
+  fi
   denied jobs_worker "SELECT mesh_jobs.claim_batch_set_v1('proof','default','$workers',60000,1,NULL);"
   as_role jobs_migrator < scripts/fixtures/jobs-set-based-claim-grant.sql
   # Reapplying the normal owner migration must preserve the scoped opt-in grant.

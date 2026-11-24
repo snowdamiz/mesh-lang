@@ -105,6 +105,8 @@ impl Settlement {
 
 const MAX_INPUT: usize = 1024 * 1024;
 const MAX_BATCH: usize = 128;
+// The layout check and extra request outweigh the scalar savings on tiny batches.
+const MIN_SET_BASED_BATCH: usize = 16;
 const MAX_DURATION_MS: u64 = 365 * 24 * 60 * 60 * 1000;
 pub(super) const MAX_TIMESTAMP_MS: u64 = 253_402_300_799_999;
 const MAX_CONCURRENCY: u32 = 1024;
@@ -178,11 +180,20 @@ fn rollback_error(error: String, rollback: Result<(), String>) -> String {
 pub(super) fn migrate(db: &mut impl Database) -> Result<(), String> {
     standalone(db)?;
     db.simple("BEGIN ISOLATION LEVEL READ COMMITTED")?;
-    let result = db
-        .simple("SELECT pg_catalog.pg_advisory_xact_lock(1782495102, 1)")
-        .and_then(|()| db.simple(include_str!("schema.sql")))
-        .and_then(|()| db.simple(include_str!("drain_schema.sql")))
-        .and_then(|()| db.simple("COMMIT"));
+    let result = (|| {
+        db.simple("SELECT pg_catalog.pg_advisory_xact_lock(1782495102, 1)")?;
+        db.simple(include_str!("schema.sql"))?;
+        db.simple(include_str!("drain_schema.sql"))?;
+        if response(
+            db,
+            "SELECT (current_setting('server_version_num')::int / 10000 = 17)::text",
+            &[],
+        )? == "true"
+        {
+            db.simple(include_str!("enqueue_schema.sql"))?;
+        }
+        db.simple("COMMIT")
+    })();
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }
 
@@ -488,6 +499,7 @@ impl JobSpec {
         if unique.as_ref().is_none_or(Value::is_null) && !replace.is_empty() {
             return Err("mesh jobs replace requires a unique policy".into());
         }
+        let independent = unique.as_ref().is_none_or(Value::is_null) && replace.is_empty();
         let mut spec = serde_json::to_value(self).map_err(|error| error.to_string())?;
         spec["unique"] = unique.unwrap_or(Value::Null);
         spec["replace"] = json!(replace);
@@ -497,6 +509,7 @@ impl JobSpec {
             spec,
             request_key,
             fingerprint,
+            independent,
         })
     }
 }
@@ -505,6 +518,7 @@ struct Admission {
     spec: String,
     request_key: String,
     fingerprint: String,
+    independent: bool,
 }
 
 #[derive(Deserialize)]
@@ -542,10 +556,28 @@ pub(super) fn validate_enqueue_spec(spec: &str) -> Result<(), String> {
     decode::<JobSpec>(spec)?.prepare().map(drop)
 }
 
+/// Environment switch for the opt-in set-based PostgreSQL 17 writer.
+pub(super) const SET_BASED_ENQUEUE_ENV: &str = "MESH_JOBS_SET_BASED_ENQUEUE";
+
+fn set_based_enqueue_requested() -> bool {
+    std::env::var(SET_BASED_ENQUEUE_ENV).as_deref() == Ok("1")
+}
+
 pub(super) fn enqueue(
     db: &mut impl Database,
     namespace: &str,
     specs: &str,
+) -> Result<String, String> {
+    enqueue_with(db, namespace, specs, set_based_enqueue_requested())
+}
+
+/// `set_based` permits the checked batch writer. Any batch it does not
+/// qualify runs through the ordered scalar statements.
+pub(super) fn enqueue_with(
+    db: &mut impl Database,
+    namespace: &str,
+    specs: &str,
+    set_based: bool,
 ) -> Result<String, String> {
     if !db.in_transaction() {
         return Err("mesh jobs enqueue requires an outer transaction".into());
@@ -565,6 +597,12 @@ pub(super) fn enqueue(
 
     db.simple("SAVEPOINT mesh_jobs_enqueue")?;
     let result = (|| {
+        let set_based = set_based
+            && admissions.len() >= MIN_SET_BASED_BATCH
+            && admissions
+                .iter()
+                .all(|a| a.independent && !a.spec.contains(r"\u0000"))
+            && set_based_enqueue_available(db)?;
         // Broad uniqueness policies can match any insert in this namespace. A new
         // row version also forces a retry when an outer repeatable-read snapshot is stale.
         db.query(
@@ -572,19 +610,15 @@ pub(super) fn enqueue(
              ON CONFLICT (namespace) DO UPDATE SET fence = NOT a.fence",
             &[namespace],
         )?;
-        let mut receipts = Vec::with_capacity(admissions.len());
-        for admission in admissions {
-            receipts.push(response(
-                db,
-                "SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt",
-                &[
-                    namespace,
-                    &admission.spec,
-                    &admission.request_key,
-                    &admission.fingerprint,
-                ],
-            )?);
-        }
+        let receipts = if set_based {
+            set_based_enqueue(db, namespace, &admissions)?
+        } else {
+            None
+        };
+        let mut receipts = match receipts {
+            Some(receipts) => receipts,
+            None => ordered_enqueue(db, namespace, &admissions)?,
+        };
         db.simple("RELEASE SAVEPOINT mesh_jobs_enqueue")?;
         Ok(if batch {
             format!("[{}]", receipts.join(","))
@@ -598,6 +632,127 @@ pub(super) fn enqueue(
             db.simple("ROLLBACK TO SAVEPOINT mesh_jobs_enqueue")
                 .and_then(|()| db.simple("RELEASE SAVEPOINT mesh_jobs_enqueue")),
         )
+    })
+}
+
+fn set_based_enqueue_available(db: &mut impl Database) -> Result<bool, String> {
+    // Check on this connection before issuing either writer. The shared
+    // migration lock keeps the versioned functions stable until commit.
+    response(
+        db,
+        "SELECT CASE WHEN pg_catalog.current_setting('server_version_num')::int / 10000 = 17
+                     AND pg_catalog.current_setting('transaction_isolation') = 'read committed'
+                     AND pg_catalog.has_function_privilege(
+                           pg_catalog.to_regprocedure('mesh_jobs.enqueue_batch_v1(text,jsonb)'), 'EXECUTE')
+                     AND pg_catalog.has_function_privilege(
+                           pg_catalog.to_regprocedure('mesh_jobs.enqueue_batch_layout_v1()'), 'EXECUTE')
+                     AND pg_catalog.has_table_privilege(
+                           pg_catalog.to_regclass('mesh_jobs.receipts'), 'SELECT')
+                     AND pg_catalog.has_table_privilege(
+                           pg_catalog.to_regclass('mesh_jobs.receipts'), 'INSERT')
+                 THEN pg_catalog.pg_try_advisory_xact_lock_shared(1782495102, 1)::text
+                 ELSE 'false' END",
+        &[],
+    )
+    .map(|available| available == "true")
+}
+
+fn ordered_enqueue(
+    db: &mut impl Database,
+    namespace: &str,
+    admissions: &[Admission],
+) -> Result<Vec<String>, String> {
+    admissions
+        .iter()
+        .map(|admission| {
+            response(
+                db,
+                "SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt",
+                &[
+                    namespace,
+                    &admission.spec,
+                    &admission.request_key,
+                    &admission.fingerprint,
+                ],
+            )
+        })
+        .collect()
+}
+
+fn set_based_enqueue(
+    db: &mut impl Database,
+    namespace: &str,
+    admissions: &[Admission],
+) -> Result<Option<Vec<String>>, String> {
+    use std::fmt::Write;
+
+    let mut batch = String::from("[");
+    for (index, admission) in admissions.iter().enumerate() {
+        if index > 0 {
+            batch.push(',');
+        }
+        let key = serde_json::to_string(&admission.request_key).map_err(|err| err.to_string())?;
+        write!(
+            batch,
+            r#"{{"spec":{},"request_key":{},"fingerprint":"{}"}}"#,
+            admission.spec, key, admission.fingerprint
+        )
+        .expect("writing to a String cannot fail");
+    }
+    batch.push(']');
+    if batch.len() > crate::db::pg::MAX_DB_VALUE_BYTES {
+        return Ok(None);
+    }
+    let rows = db.query(
+        "SELECT ordinal, receipt FROM mesh_jobs.enqueue_batch_v1($1, $2::jsonb)
+         ORDER BY ordinal::integer",
+        &[namespace, &batch],
+    )?;
+
+    if let [row] = rows.as_slice() {
+        if let [(_, ordinal), (_, disposition)] = row.as_slice() {
+            if ordinal == "0" && disposition == "stock" {
+                return Ok(None);
+            }
+        }
+    }
+
+    // Check completeness before releasing the savepoint. A query or response
+    // error is never evidence that an ordered retry is safe.
+    if rows.len() != admissions.len() {
+        return Err("mesh jobs incomplete set-based enqueue response".into());
+    }
+    let mut receipts = Vec::with_capacity(rows.len());
+    for (index, row) in rows.into_iter().enumerate() {
+        let [(_, ordinal), (_, receipt)]: [_; 2] = row
+            .try_into()
+            .map_err(|_| "mesh jobs invalid set-based enqueue response")?;
+        if ordinal.parse::<usize>() != Ok(index + 1) || !valid_insert_receipt(&receipt) {
+            return Err("mesh jobs invalid set-based enqueue response".into());
+        }
+        receipts.push(receipt);
+    }
+    Ok(Some(receipts))
+}
+
+fn valid_insert_receipt(receipt: &str) -> bool {
+    #[derive(Deserialize)]
+    struct InsertReceipt<'a> {
+        id: &'a str,
+        effect_key: &'a str,
+        state: State,
+        conflict: bool,
+        inserted: bool,
+    }
+    serde_json::from_str::<InsertReceipt<'_>>(receipt).is_ok_and(|receipt| {
+        !receipt.id.is_empty()
+            && !receipt.effect_key.is_empty()
+            && matches!(
+                receipt.state,
+                State::Available | State::Scheduled | State::Suspended
+            )
+            && !receipt.conflict
+            && receipt.inserted
     })
 }
 

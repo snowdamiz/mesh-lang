@@ -64,6 +64,54 @@ resumes.
    downstream system by `effect_key`. Automatic retry and `run_now` keep it.
    Operator `retry` on a terminal job starts a new run with a new key.
 
+## Opt in to set-based enqueue on PostgreSQL 17
+
+The set-based writer is an opt-in for producers that enqueue batches. Set
+`MESH_JOBS_SET_BASED_ENQUEUE=1` in the producer's environment. The setting
+covers `Jobs.enqueue` and `Jobs.enqueue_in`. Without it, every enqueue uses
+the ordered scalar writer.
+
+1. Run `Jobs.migrate` as the Jobs owner. On PostgreSQL 17 it adds
+   `mesh_jobs.enqueue_batch_v1` and `mesh_jobs.enqueue_batch_layout_v1`
+   beside the existing scalar function. Other PostgreSQL versions skip them,
+   and the producer keeps the ordered writer.
+2. If the producer uses a scoped role, reapply the
+   [current Jobs role grants](https://github.com/snowdamiz/mesh-lang/blob/main/scripts/fixtures/jobs-role-grants.sql).
+   They grant `EXECUTE` on both functions to the producer only.
+3. Restart the producer with the setting. Older binaries can keep writing
+   to the same namespace during the rollout.
+
+A batch of 16 to 128 independent specs uses one set-based statement when the
+transaction is READ COMMITTED and the Jobs tables have the layout that
+`Jobs.migrate` creates. Each job keeps its own database clock, generated ID,
+position, and receipt, in input order. Everything else uses the ordered
+writer:
+
+- single specs and batches of fewer than 16
+- specs with a `unique` or `replace` policy
+- a request key that already exists or repeats inside the batch
+- REPEATABLE READ or SERIALIZABLE transactions
+- a migration that holds the Jobs schema lock
+- any added trigger, rule, or row-security policy on the Jobs tables
+- a changed column compression method, or any column storage change other
+  than `EXTERNAL` on `mesh_jobs.jobs.args`
+
+The writer decides before it sends any batch write. A transport, PostgreSQL,
+or reply error rolls back to the enqueue savepoint and returns an error. It
+never retries the batch with the ordered writer. If the COMMIT reply is lost,
+the outcome is unknown. Retry with the same request keys to read back the
+committed receipts.
+
+Session settings do not affect the choice. For example,
+`SET LOCAL default_toast_compression = 'lz4'` keeps the set-based writer for
+large arguments. The writer also accepts
+`ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE EXTERNAL`.
+`SET COMPRESSION` on any Jobs column and other storage changes select the
+ordered writer until the owner restores the default. See
+[Store large job arguments](/docs/concurrency/#store-large-job-arguments).
+The [proof notes](https://github.com/snowdamiz/mesh-lang/blob/main/proof/jobs-set-based-enqueue/README.md)
+describe the checks.
+
 ## Try enqueue, retry, drain, and lease recovery
 
 Use an empty, disposable PostgreSQL database on macOS or Linux. Export
