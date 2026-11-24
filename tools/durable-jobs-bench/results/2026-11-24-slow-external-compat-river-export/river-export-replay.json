@@ -1,0 +1,9 @@
+{
+  "captured_raw": "tools/durable-jobs-bench/results/2026-11-23-slow-external-compat/evidence/native/setup-1c579b8d929846f4b4f7082956900532/00-slow/diagnostic-river-external/diagnostic-go/raw.tar.gz",
+  "old_collision_reproduced": true,
+  "repaired_stock_exclusive_export_passed": true,
+  "checks": {
+    "initial": 9,
+    "repaired": 0
+  }
+}

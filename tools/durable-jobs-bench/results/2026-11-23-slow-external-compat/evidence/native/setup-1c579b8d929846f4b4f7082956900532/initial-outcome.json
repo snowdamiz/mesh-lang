@@ -1,0 +1,11 @@
+{
+  "dispatch_exit_status": 1,
+  "native_timing_started": false,
+  "failed_arm": "diagnostic-river-external",
+  "adapter_returned": 1,
+  "preserved_arms": {
+    "00-slow/diagnostic-river-external/diagnostic-go/raw.tar.gz": "7896f014e781830630713cf520ec81edf573059e5e4d125ca02d37298676cbcd",
+    "00-slow/diagnostic-bulk-default/diagnostic-mesh/raw.tar.gz": "3d90e11b3069c6220df0171a2f47c106ef7c0dda53d74fb4cbe55b96f4d6a623"
+  },
+  "observed_failure": "Native overlay and stock River adapter both attempted to write ledger.json."
+}

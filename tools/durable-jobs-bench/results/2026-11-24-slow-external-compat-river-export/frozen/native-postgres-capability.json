@@ -1,0 +1,13 @@
+{
+  "bootstrap": "target/linode-jobs-native/bootstrap-oban-v2.log",
+  "bootstrap_sha256": "3bc84ad515a0359fe035cefecf3724d62065cd72165c7921411b023d63c82946",
+  "excerpt": {
+    "165": "checking whether to build with LZ4 support... no",
+    "284": "checking for lz4... no",
+    "9005": "b70863988c4762b6b914ac54d194fa5a1723201100d8155caf7781edba29faa1  /var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres"
+  },
+  "lz4_available": false,
+  "pg_stat_statements_sha256": "0cb86ff6113361a6e677309642c97a2779d4234d5b615ef8e740d7d9f8a4d637",
+  "postgres_path": "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres",
+  "postgres_sha256": "b70863988c4762b6b914ac54d194fa5a1723201100d8155caf7781edba29faa1"
+}
