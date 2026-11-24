@@ -1,0 +1,67 @@
+{
+  "cpus": [
+    0,
+    1
+  ],
+  "derived": {
+    "native-arm.py": "6085d1f7ba378a738fc63a5a9ca3452ad6ab9841e575deb57ef572782759c2fc",
+    "native-dense-import-retry.sh": "68ea676cb7d1c9993c327e95f64d59671916e0400da25d3255689fc1ea54bf89",
+    "native-score.py": "83a4f6d01492c47867b7e4de1338830fb548e25fe640ba21db03818e5204f10e"
+  },
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-hot-completion-hold/evidence/native",
+  "expected_timing_minutes": 18,
+  "id": "2026-11-24-dense-hot-completion-hold",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "inputs": {
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/matrix.py": "dffaa6d936cd0010f2f4377106d5b2846bdaa2cc6f9c431338a776e1d63c84bb",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-completion-hold/adapter.patch": "fb79cf15c28b44fe05a58720deba2a754d1a69c8fcb73ff193812f42711b4113",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-hot-completion-hold/controller.py": "d965df9f032ba646cedef8511af4013470a6d6db98574a3988542fa1f7270404",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/evidence/native-import-retry/series.json": "a26c4b60bbd68a131ab10dd74c12772efe936e5218d6cff4cf2a90d6e9256f02",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/native-arm.py": "dd067a6a5cbb42f4439116534cdfb1598ea87e6b7c4fa31f7b1e46635c964f52",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/native-controller.py": "9df1c51533a285b80dc5fdcfeca457584548e0c449d291afa3a59a6ee8d553c4",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/native-dense-import-retry.sh": "16b92927c535964a4a6197b50b7ee91c08f5e172066deeee7d392210b69a7758",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/native-dense.sh": "29da65b6b93dd092d18fd877abbe0fe114287e069939abed6a29e593e81fcb23",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/native-score.py": "894013b9b1b342b851436dd1c6dd99d55d93cd712e9262644e429ab0c845c214"
+  },
+  "no_build": true,
+  "offline_check": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-hot-completion-hold/controller.py check",
+  "ready": true,
+  "schedule": [
+    {
+      "group": 1,
+      "order": [
+        "hot-a",
+        "river-2x32",
+        "hot-zero",
+        "apalis-2x32",
+        "hot-hold1",
+        "oban-2x32",
+        "hot-b"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 2,
+      "order": [
+        "hot-b",
+        "oban-2x32",
+        "hot-hold1",
+        "apalis-2x32",
+        "hot-zero",
+        "river-2x32",
+        "hot-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "timing_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-hot-completion-hold/controller.py timing 1 2"
+}

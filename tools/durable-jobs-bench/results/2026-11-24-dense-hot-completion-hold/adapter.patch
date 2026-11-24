@@ -1,0 +1,76 @@
+--- a/native-arm.py
++++ b/native-arm.py
+@@ -20,7 +20,7 @@
+           "7f228c192630bb6d95cbf9e06c5e0132931f429c1cfa07391bb28cb6fdec8911")
+ R2 = ("93fef96704ae412cf3c55fae73cc2aac405c8b423670826b4876954a44c8b010",
+       "361f10d2c2866f694989198bb8359d29c91dd9928dcd95e8f92293293f226d29")
+-MODES = ("d2-off", "d2-on", "r2-off", "r2-zero", "v1")
++MODES = ("d2-off", "d2-on", "d2-zero", "d2-hold1", "r2-off", "r2-zero", "v1")
+ ROLES = {"compiled_caller": 32, "parity_subject": 8, "parity_producer": 1}
+ ROSTER = """
+ SELECT coalesce(json_agg(json_build_object(
+@@ -70,7 +70,7 @@
+     base = arm.Subject
+     runner = runner_dir / "mesh"
+     expected_runner = (os.environ["DENSE_D2_ELF"], os.environ["DENSE_D2_MANIFEST"]) if mode in (
+-        "d2-off", "d2-on") else (V1 if mode == "v1" else R2)
++        "d2-off", "d2-on", "d2-zero", "d2-hold1") else (V1 if mode == "v1" else R2)
+     expected_broker = V1 if mode == "v1" else BROKER
+     check(arm.h.digest(runner_dir / "mesh.json") == expected_runner[1], "runner manifest seal changed")
+     runner_build = json.loads((runner_dir / "mesh.json").read_text())
+@@ -131,9 +131,9 @@
+             child_env = dict(env)
+             child_env.pop("TRUSTED_COMPLETION_WRITER_MS", None)
+             child_env.pop("MESH_PG_HOT_CHECKOUT", None)
+-            if mode == "r2-zero":
+-                child_env["TRUSTED_COMPLETION_WRITER_MS"] = "0"
+-            if mode == "d2-on":
++            if mode in {"r2-zero", "d2-zero", "d2-hold1"}:
++                child_env["TRUSTED_COMPLETION_WRITER_MS"] = "1" if mode == "d2-hold1" else "0"
++            if mode in {"d2-on", "d2-zero", "d2-hold1"}:
+                 child_env["MESH_PG_HOT_CHECKOUT"] = "1"
+             clean = {key: child_env.get(key) for key in (
+                 "TRUSTED_COMPLETION_WRITER_MS", "MESH_PG_HOT_CHECKOUT", "MESH_EFFECT_LANES",
+--- a/native-score.py
++++ b/native-score.py
+@@ -9,7 +9,8 @@
+ 
+ V1 = "mesh-v1-2x32"
+ MODES = {"d2-off-a": "d2-off", "d2-off-b": "d2-off", "d2-on": "d2-on",
+-         "r2-off-a": "r2-off", "r2-off-b": "r2-off", "r2-zero": "r2-zero", V1: "v1"}
++         "r2-off-a": "r2-off", "r2-off-b": "r2-off", "r2-zero": "r2-zero", V1: "v1", "hot-a": "d2-on", "hot-b": "d2-on",
++         "hot-zero": "d2-zero", "hot-hold1": "d2-hold1"}
+ ROLES = {"compiled_caller": 32, "parity_subject": 8, "parity_producer": 1}
+ 
+ 
+@@ -82,8 +83,8 @@
+     for index, record in enumerate(launch["runners"]):
+         child_identity(record, runner["path"] + "/mesh", runner["elf"], "run", launch["adapter_pid"])
+         require(record["options"] == {
+-            "MESH_PG_HOT_CHECKOUT": "1" if label == "d2-on" else None,
+-            "TRUSTED_COMPLETION_WRITER_MS": "0" if label == "r2-zero" else None,
++            "MESH_PG_HOT_CHECKOUT": "1" if MODES[label] in {"d2-on", "d2-zero", "d2-hold1"} else None,
++            "TRUSTED_COMPLETION_WRITER_MS": {"r2-zero": "0", "d2-zero": "0", "d2-hold1": "1"}.get(MODES[label]),
+             "MESH_EFFECT_LANES": "16", "JOBS_PARITY_SLOTS": "32",
+             "MESH_SCHEDULER_MIN_WORKERS": "2", "MESH_SCHEDULER_MAX_WORKERS": "2",
+             "JOBS_PARITY_MESH_BATCH": "1", "JOBS_PARITY_MESH_LISTEN": "1",
+@@ -132,7 +133,7 @@
+     require(len(health) <= 1 and len(statements) == 2 + len(health)
+             and probes == sum(r["rows"] for r in health)
+             and raw["raw_application_sql_calls"] == 2 * JOBS + probes
+-            and (0 <= probes < 2 * JOBS if label == "d2-on" else probes == 2 * JOBS),
++            and (0 <= probes < 2 * JOBS if MODES[label] in {"d2-on", "d2-zero", "d2-hold1"} else probes == 2 * JOBS),
+             "actual application checkout probes differ")
+     return dict(result, checkout_probes=probes, enqueues_bulk=bulk, enqueues_scalar=scalar,
+                 terminal_xids=len(cohort), max_terminal_cohort=max(cohort.values()), admitted_queries=admitted,
+--- a/native-dense-import-retry.sh
++++ b/native-dense-import-retry.sh
+@@ -15,7 +15,7 @@
+ policy=success_cohort
+ bulk=1
+ case "$mode" in
+-    d2-off|d2-on)
++    d2-off|d2-on|d2-zero|d2-hold1)
+         [[ "$runner" =~ ^"$base"/builds/exit-bulk-d2-[a-f0-9]{12}$ ]]
+         [[ "$elf" =~ ^[a-f0-9]{64}$ && "$manifest" =~ ^[a-f0-9]{64}$ ]]
+         ;;
