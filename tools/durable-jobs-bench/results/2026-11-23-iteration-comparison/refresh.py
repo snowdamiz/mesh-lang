@@ -353,12 +353,45 @@ def write_scorecard(data):
     profiles = [("ordinary-dense", "Dense no-op"), ("ordinary", "Short"),
                 ("ordinary-slow", "Slow"), ("ordinary-sparse", "Sparse"),
                 ("ordinary-large", "Large · EXTERNAL")]
-    lines = [
-        "# Four native queue engines on the same two CPUs",
-        "",
-        "The five workloads below use the original trusted Mesh V1 runner and its protected Mesh control. Each completed rotation contains both Mesh modes and all three stock peers on the same Linode. Rates are median jobs per second. The last column counts the rotations in which trusted Mesh was faster than each peer.",
-        "",
-    ]
+    lines = ["# Four native queue engines on the same two CPUs", ""]
+    short = data.get("public-short-selection", {})
+    if short:
+        public = [("public-short-selection", "Short, 1 × 16"), ("public-dense-stock", "Dense, 8 × 8"),
+                  ("public-sparse", "Sparse, 1 slot"), ("public-slow", "Slow, 1 × 64"),
+                  ("public-large", "Large, 8 × 8"), ("public-dense-mixed", "Dense, Mesh 2 × 32 and peers 8 × 8"),
+                  ("public-dense-equal", "Dense, all engines 2 × 32"), ("public-large-external", "Large, all engines EXTERNAL")]
+        lines.extend(["## Public trusted Mesh, Go River, Elixir Oban and Rust Apalis", "",
+                      "Each row gives the median jobs/s and matched wins over five Linode rotations. "
+                      "All rows use the same public Mesh executable, the policy selected on short jobs, and two CPUs shared with PostgreSQL. "
+                      "Every handler commits its two application writes independently. Submit includes producer work. Drain starts at enqueue commit. "
+                      "Both clocks end at the final durable settlement. [Interactive results](chart.html#public-short-selection)", "",
+                      "| Workload and deployment | Clock | Mesh | River | Oban | Apalis | Mesh wins vs River / Oban / Apalis |",
+                      "|---|---|---:|---:|---:|---:|---|"])
+        for key, label in public:
+            if key not in data:
+                continue
+            series = data[key]
+            if series["selected_mode"] != short["selected_mode"] or series["product_elf_sha256"] != short["product_elf_sha256"]:
+                raise ValueError(f"{key}: public score table mixes Mesh settings or executable")
+            mesh = short["selected_mode"] if key == "public-short-selection" else "product"
+            rows = [b["scores"] for b in series["blocks"]]
+            for metric, clock in (("submit_jobs_per_s", "Submit"), ("commit_jobs_per_s", "Drain")):
+                peers = ("river", "oban", "apalis")
+                rates = " | ".join(f"{median(r[lane][metric] for r in rows):,.2f}" for lane in (mesh, *peers))
+                wins = " / ".join(str(sum(r[mesh][metric] > r[peer][metric] for r in rows)) for peer in peers)
+                lines.append(f"| [{label}](chart.html#{key}) | {clock} | {rates} | {wins} |")
+        lines.extend(["", "Stock profiles use the original runner counts and default storage. "
+                      "The additional dense and large comparisons identify the changed runner counts or PostgreSQL argument storage.", ""])
+        for key, label in public:
+            for late in data.get(key, {}).get("late_apalis_settlements", []):
+                note = (f"In {label}, Apalis group {late['group']} settled its final job, `{late['job']}`, "
+                        f"{late['tail_ms'] / 1000:.2f} s after the last application write committed.")
+                if late["samples"]:
+                    note += (f" The observer recorded one job executing and all others terminal in {late['samples']} "
+                             f"samples spanning {late['sampled_span_ms'] / 1000:.2f} s.")
+                lines.extend([note + " The rates and paired wins include this run.", ""])
+    lines.extend(["## Original V1 and protected workloads", "",
+                  "The five workloads below use the original trusted Mesh V1 runner and its protected Mesh control. Each completed rotation contains both Mesh modes and all three stock peers on the same Linode. Rates are median jobs per second. The last column counts the rotations in which trusted Mesh was faster than each peer.", ""])
     for metric, title in [("submit_jobs_per_s", "Submission through last settlement"),
                           ("commit_jobs_per_s", "First enqueue commit through last settlement")]:
         lines.extend([f"## {title}", "",
@@ -379,7 +412,6 @@ def write_scorecard(data):
             lines.append(f"| {label} | {len(blocks)}/5 | {rates} | {wins} |")
         lines.append("")
     peers = [("oban", "Oban"), ("river", "River"), ("apalis", "Apalis")]
-    short = data.get("public-short-selection", {})
     if short:
         chosen = short["selected_mode"]
         policies = {"product-bulk": "Individual terminal commits", "product-group": "Grouped terminal commits"}
@@ -389,17 +421,6 @@ def write_scorecard(data):
                          "The candidate win columns count paired wins for the selected policy. "
                          "The frozen rule requires grouped commits to win four pairs on each clock with no increase in median p99.",
                          [(chosen, policies[chosen] + " (selected)"), (alternate, policies[alternate]), *peers])
-        for key, series in data.items():
-            if key.startswith("public-") and key != "public-short-selection":
-                add_policy_table(lines, series, series["title"],
-                                 series["description"], [("product", "Public Mesh · " + policies[chosen].lower()), *peers])
-                for late in series.get("late_apalis_settlements", []):
-                    note = (f"Apalis group {late['group']} settled its final job, `{late['job']}`, "
-                            f"{late['tail_ms'] / 1000:.2f} s after the last application write committed.")
-                    if late["samples"]:
-                        note += (f" The observer recorded one job executing and all others terminal in {late['samples']} "
-                                 f"samples spanning {late['sampled_span_ms'] / 1000:.2f} s.")
-                    lines.extend([note + " The reported rates and paired wins include this run.", ""])
     dense = data.get("dense-exit-confirmed", {})
     if dense:
         add_policy_table(lines, dense, "Dense jobs with confirmed teardown and hot checkout",
@@ -550,10 +571,19 @@ def write_producer_budgets(data):
         "",
         "The three counts partition the rotations. The required time saving is the signed difference between full Mesh and peer times, in rotation order. A negative value is the observed Mesh lead. All rows use single-transaction batches and include two independently committed application writes per job.",
         "",
-        "| Trusted Mesh workload | Peer | Already faster or tied | Faster enqueue could close gap | Faster drain also needed | Mesh enqueue, median ms | Required end-to-end saving by rotation, ms |",
-        "|---|---|---:|---:|---:|---:|---|",
+        "The minimum drain saving credits Mesh with free enqueue in each pair. A zero means the observed Mesh drain already fits inside its peer's full submission window. Sparse jobs have separate submissions and are shown in the per-job response tables.",
+        "",
+        "| Trusted Mesh workload | Peer | Already faster or tied | Faster enqueue could close gap | Faster drain also needed | Mesh enqueue, median ms | Minimum drain saving with free enqueue, median ms | Required end-to-end saving by rotation, ms |",
+        "|---|---|---:|---:|---:|---:|---:|---|",
     ]
     for series, workload, lane in [
+        ("public-short-selection", "Public short", data.get("public-short-selection", {}).get("selected_mode")),
+        ("public-dense-stock", "Public dense · all 8 × 8", "product"),
+        ("public-dense-mixed", "Public dense · Mesh 2 × 32, peers 8 × 8", "product"),
+        ("public-dense-equal", "Public dense · all 2 × 32", "product"),
+        ("public-slow", "Public slow · all 1 × 64", "product"),
+        ("public-large", "Public large · default storage", "product"),
+        ("public-large-external", "Public large · EXTERNAL", "product"),
         ("ordinary", "Short", "ordinary"), ("ordinary-slow", "Slow", "ordinary"),
         ("ordinary-large", "Large · EXTERNAL", "ordinary"), ("ordinary-dense", "Dense", "ordinary"),
         ("workmem-large", "Large · EXTERNAL and 16 MiB work_mem", "ordinary"),
@@ -568,7 +598,7 @@ def write_producer_budgets(data):
             continue
         for engine, name in [("oban", "Oban"), ("go", "River"), ("rust", "Apalis")]:
             wins = producer = 0
-            enqueue, gaps = [], []
+            enqueue, gaps, drain_savings = [], [], []
             for block in blocks:
                 ours = block["scores"][lane]
                 peer, = (s for s in block["scores"].values() if s["engine"] == engine)
@@ -584,9 +614,10 @@ def write_producer_budgets(data):
                 producer += drain <= peer_full < full
                 enqueue.append((full - drain) / 1000)
                 gaps.append((full - peer_full) / 1000)
+                drain_savings.append(max(0, drain - peer_full) / 1000)
             savings = ", ".join(f"{gap:+.1f}" for gap in gaps)
-            lines.append(f"| {workload} | {name} | {wins} | {producer} | {len(blocks) - wins - producer} | {median(enqueue):.1f} | {savings} |")
-    lines += ["", "Trusted Mesh runs handlers with application credentials in the shared process. The large series applies the same EXTERNAL payload storage policy on every engine. The grouped-settlement variant can commit up to eight successful terminal transitions together. [Matched runs and executable identities](scores.json) · [Interactive results](chart.html)", ""]
+            lines.append(f"| {workload} | {name} | {wins} | {producer} | {len(blocks) - wins - producer} | {median(enqueue):.1f} | {median(drain_savings):.1f} | {savings} |")
+    lines += ["", "Trusted Mesh runs handlers with application credentials in the shared process. Large rows labeled EXTERNAL apply the same payload storage policy to every engine. The grouped-settlement variant can commit up to eight successful terminal transitions together. [Matched runs and executable identities](scores.json) · [Interactive results](chart.html)", ""]
     (HERE / "producer-budgets.md").write_text("\n".join(lines))
 
 
@@ -604,31 +635,38 @@ def same_record(previous, current):
 
 
 def write_sparse_latency(data):
-    blocks = data.get("ordinary-sparse", {}).get("blocks", [])
-    if not blocks:
-        return
     metrics = ("submit_to_settlement_p50_ms", "submit_to_settlement_p99_ms",
                "commit_to_pickup_p99_ms", "commit_to_settlement_p99_ms")
-    lanes = [("ordinary", "Trusted Mesh V1"), ("protected-mesh", "Protected Mesh"), ("oban", "Oban"),
-             ("river", "River"), ("apalis", "Apalis")]
     lines = ["# Response time for sparse durable jobs", "",
-             f"{len(blocks)} matched rotations of 24 singleton submissions per engine. Each submission followed the "
-             "preceding settlement and a 250 ms pause. Each job committed its two application writes independently. "
+             "Each arm submits 24 jobs individually. After each settlement the producer waits 250 ms before its next submission. "
+             "Each job commits its two application writes independently. "
              "The pause falls outside each job’s response time. Times are milliseconds.", "",
-             "| Engine | Submit to settle p50 | Submit to settle p99 | Commit to pickup p99 | Commit to settle p99 | Worst submit to settle |",
-             "|---|---:|---:|---:|---:|---:|"]
-    for lane, label in lanes:
-        values = [[b["scores"][lane][k] for b in blocks] for k in metrics]
-        cells = [median(v) for v in values] + [max(values[1])]
-        lines.append("| " + label + " | " + " | ".join(f"{x:.2f}" for x in cells) + " |")
-    lines.extend(["", "Each percentile column shows the median of the per-rotation percentiles. "
-                  "With 24 jobs, the matrix’s nearest-rank p99 is the slowest job in that arm. The final column is the maximum over all verified rotations.", "",
-                  "| Rotation | Trusted Mesh submit to settle p99 | Protected Mesh | Oban | River | Apalis |",
-                  "|---|---:|---:|---:|---:|---:|"])
-    for block in blocks:
-        cells = [block["scores"][lane]["submit_to_settlement_p99_ms"] for lane, _ in lanes]
-        lines.append(f"| {block['group']} | " + " | ".join(f"{x:.2f}" for x in cells) + " |")
-    lines.extend(["", "[Time spent between submissions](sparse-windows.md) · [Arm identities, orders, and source digests](scores.json) · [All workload scores](four-engine-scorecard.md)", ""])
+             "Each percentile column shows the median of the per-rotation percentiles. With 24 jobs, the matrix’s nearest-rank p99 "
+             "is the slowest job in that arm. The final column shows the slowest response across all rotations.", ""]
+    peers = [("oban", "Oban"), ("river", "River"), ("apalis", "Apalis")]
+    configurations = [
+        ("public-sparse", "Selected public build", [("product", "Public trusted Mesh"), *peers]),
+        ("ordinary-sparse", "Original runners", [("ordinary", "Trusted Mesh V1"), ("protected-mesh", "Protected Mesh"), *peers]),
+    ]
+    for series, title, lanes in configurations:
+        blocks = data.get(series, {}).get("blocks", [])
+        if not blocks:
+            continue
+        lines.extend([f"## {title}", "", f"{len(blocks)} matched Linode rotations.", "",
+                      "| Engine | Submit to settle p50 | Submit to settle p99 | Commit to pickup p99 | Commit to settle p99 | Worst submit to settle |",
+                      "|---|---:|---:|---:|---:|---:|"])
+        for lane, label in lanes:
+            values = [[b["scores"][lane][k] for b in blocks] for k in metrics]
+            cells = [median(v) for v in values] + [max(values[1])]
+            lines.append("| " + label + " | " + " | ".join(f"{x:.2f}" for x in cells) + " |")
+        lines.extend(["", "Submit to settlement p99 in each rotation, in milliseconds.", "",
+                      "| Rotation | " + " | ".join(label for _, label in lanes) + " |",
+                      "|---|" + "---:|" * len(lanes)])
+        for block in blocks:
+            cells = [block["scores"][lane]["submit_to_settlement_p99_ms"] for lane, _ in lanes]
+            lines.append(f"| {block['group']} | " + " | ".join(f"{x:.2f}" for x in cells) + " |")
+        lines.append("")
+    lines.extend(["[Time spent between submissions](sparse-windows.md) · [Arm identities, orders, and source digests](scores.json) · [All workload scores](four-engine-scorecard.md)", ""])
     (HERE / "sparse-latency.md").write_text("\n".join(lines))
 
 

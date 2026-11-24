@@ -1,6 +1,12 @@
 # Response time for sparse durable jobs
 
-5 matched rotations of 24 singleton submissions per engine. Each submission followed the preceding settlement and a 250 ms pause. Each job committed its two application writes independently. The pause falls outside each job’s response time. Times are milliseconds.
+Each arm submits 24 jobs individually. After each settlement the producer waits 250 ms before its next submission. Each job commits its two application writes independently. The pause falls outside each job’s response time. Times are milliseconds.
+
+Each percentile column shows the median of the per-rotation percentiles. With 24 jobs, the matrix’s nearest-rank p99 is the slowest job in that arm. The final column shows the slowest response across all rotations.
+
+## Original runners
+
+5 matched Linode rotations.
 
 | Engine | Submit to settle p50 | Submit to settle p99 | Commit to pickup p99 | Commit to settle p99 | Worst submit to settle |
 |---|---:|---:|---:|---:|---:|
@@ -10,9 +16,9 @@
 | River | 194.37 | 242.60 | 2.26 | 241.20 | 248.69 |
 | Apalis | 9.31 | 16.09 | 5.62 | 12.75 | 18.69 |
 
-Each percentile column shows the median of the per-rotation percentiles. With 24 jobs, the matrix’s nearest-rank p99 is the slowest job in that arm. The final column is the maximum over all verified rotations.
+Submit to settlement p99 in each rotation, in milliseconds.
 
-| Rotation | Trusted Mesh submit to settle p99 | Protected Mesh | Oban | River | Apalis |
+| Rotation | Trusted Mesh V1 | Protected Mesh | Oban | River | Apalis |
 |---|---:|---:|---:|---:|---:|
 | 1 | 18.95 | 28.89 | 226.02 | 242.60 | 18.69 |
 | 2 | 23.36 | 32.97 | 232.74 | 246.45 | 16.46 |

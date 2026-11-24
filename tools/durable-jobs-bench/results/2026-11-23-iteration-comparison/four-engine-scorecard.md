@@ -1,5 +1,26 @@
 # Four native queue engines on the same two CPUs
 
+## Public trusted Mesh, Go River, Elixir Oban and Rust Apalis
+
+Each row gives the median jobs/s and matched wins over five Linode rotations. All rows use the same public Mesh executable, the policy selected on short jobs, and two CPUs shared with PostgreSQL. Every handler commits its two application writes independently. Submit includes producer work. Drain starts at enqueue commit. Both clocks end at the final durable settlement. [Interactive results](chart.html#public-short-selection)
+
+| Workload and deployment | Clock | Mesh | River | Oban | Apalis | Mesh wins vs River / Oban / Apalis |
+|---|---|---:|---:|---:|---:|---|
+| [Short, 1 × 16](chart.html#public-short-selection) | Submit | 570.01 | 561.11 | 277.41 | 854.46 | 3 / 5 / 0 |
+| [Short, 1 × 16](chart.html#public-short-selection) | Drain | 713.61 | 613.50 | 313.31 | 924.81 | 3 / 5 / 0 |
+| [Dense, 8 × 8](chart.html#public-dense-stock) | Submit | 470.19 | 841.96 | 634.18 | 1,112.67 | 0 / 0 / 1 |
+| [Dense, 8 × 8](chart.html#public-dense-stock) | Drain | 512.48 | 904.54 | 698.45 | 1,162.19 | 0 / 0 / 1 |
+| [Dense, Mesh 2 × 32 and peers 8 × 8](chart.html#public-dense-mixed) | Submit | 682.04 | 843.03 | 621.83 | 1,119.75 | 0 / 5 / 0 |
+| [Dense, Mesh 2 × 32 and peers 8 × 8](chart.html#public-dense-mixed) | Drain | 770.33 | 900.16 | 684.68 | 1,165.95 | 0 / 5 / 0 |
+| [Dense, all engines 2 × 32](chart.html#public-dense-equal) | Submit | 688.41 | 997.17 | 762.22 | 1,407.67 | 0 / 0 / 0 |
+| [Dense, all engines 2 × 32](chart.html#public-dense-equal) | Drain | 772.65 | 1,079.96 | 855.47 | 1,493.00 | 0 / 0 / 0 |
+
+Stock profiles use the original runner counts and default storage. The additional dense and large comparisons identify the changed runner counts or PostgreSQL argument storage.
+
+In Dense, 8 × 8, Apalis group 2 settled its final job, `job_001009`, 25.92 s after the last application write committed. The observer recorded one job executing and all others terminal in 169 samples spanning 25.67 s. The rates and paired wins include this run.
+
+## Original V1 and protected workloads
+
 The five workloads below use the original trusted Mesh V1 runner and its protected Mesh control. Each completed rotation contains both Mesh modes and all three stock peers on the same Linode. Rates are median jobs per second. The last column counts the rotations in which trusted Mesh was faster than each peer.
 
 ## Submission through last settlement
@@ -33,30 +54,6 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | Oban | 277.41 | 313.31 | 5/5 | 5/5 |
 | River | 561.11 | 613.50 | 3/5 | 3/5 |
 | Apalis | 854.46 | 924.81 | 0/5 | 0/5 |
-
-## Public Mesh · dense, two Mesh runners and eight peer runners
-
-5/5 matched rotations. Mesh uses two 32-slot runners. Oban, River and Apalis each use eight eight-slot runners. Every engine handles the same 1,024 jobs.
-
-| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
-|---|---:|---:|---:|---:|
-| Public Mesh · individual terminal commits | 682.04 | 770.33 | — | — |
-| Oban | 621.83 | 684.68 | 5/5 | 5/5 |
-| River | 843.03 | 900.16 | 0/5 | 0/5 |
-| Apalis | 1,119.75 | 1,165.95 | 0/5 | 0/5 |
-
-## Public Mesh · dense, eight runners per engine
-
-5/5 matched rotations. Each engine uses eight runners and 64 slots for 1,024 jobs. Mesh uses the policy selected on short jobs.
-
-| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
-|---|---:|---:|---:|---:|
-| Public Mesh · individual terminal commits | 470.19 | 512.48 | — | — |
-| Oban | 634.18 | 698.45 | 0/5 | 0/5 |
-| River | 841.96 | 904.54 | 0/5 | 0/5 |
-| Apalis | 1,112.67 | 1,162.19 | 1/5 | 1/5 |
-
-Apalis group 2 settled its final job, `job_001009`, 25.92 s after the last application write committed. The observer recorded one job executing and all others terminal in 169 samples spanning 25.67 s. The reported rates and paired wins include this run.
 
 ## Dense jobs with confirmed teardown and hot checkout
 
