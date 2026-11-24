@@ -1,0 +1,18 @@
+{
+  "cases": [
+    "short-set-grant",
+    "mixed-checked-cursor",
+    "ambiguous-claim-commit",
+    "ambiguous-application-write",
+    "teardown-release",
+    "teardown-kill",
+    "short-hot-grant",
+    "hot-ambiguous-application-write"
+  ],
+  "checked_probes": 4,
+  "elf": "d112f7343c85160dc564ae34276e2c8ad54b4577d3814377adcc06b2f6894c39",
+  "hot_probes": 0,
+  "raw_sha256": "ab7697f2b96dccc8aa72847b36a0ee002b9aeb312d96db730b0365a5fdd12fe1",
+  "runtime": "c2e0ae4a4b61b2acdc88fc8bc65d0ab0f1c4e607e41daf4bfa3b288d15a7bcc2",
+  "source": "1e70f18d624a841740d3bbb3d0fd09b269257f68"
+}
