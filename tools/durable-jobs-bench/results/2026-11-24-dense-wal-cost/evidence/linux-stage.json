@@ -1,0 +1,26 @@
+{
+  "architecture": "aarch64",
+  "explicit_imports": [
+    "identity.py",
+    "native-arm.py",
+    "peer-arm.py"
+  ],
+  "file_mode": "0644",
+  "gid": 65534,
+  "kernel": "6.12.115-0-virt",
+  "offline": true,
+  "pin_guard_rejected": [
+    "mesh",
+    "go",
+    "rust",
+    "oban"
+  ],
+  "sha256": {
+    "identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "native-arm.py": "dd067a6a5cbb42f4439116534cdfb1598ea87e6b7c4fa31f7b1e46635c964f52",
+    "peer-arm.py": "84bb45e4467b43d7b01ac0c8b68cdaffc9dfa3e71d18fa1fd8ba1caedf192058",
+    "wal_capture.py": "5d0a211f2aee749778ac2d20fca921ea5ab42e07fb0672885d95796d1bce2ca8"
+  },
+  "stage_mode": "0711",
+  "uid": 65534
+}
