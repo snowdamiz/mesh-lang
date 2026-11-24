@@ -1,0 +1,15 @@
+warmup-mesh warmup mesh: 1
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-equal-topology-cap71/packet.py", line 272, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-equal-topology-cap71/packet.py", line 268, in main
+    return dispatch(directory, config, mode, pins, args.group, args.binary, args.setup_archive)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-equal-topology-cap71/packet.py", line 234, in dispatch
+    require(outcome.get("exit_code") == 0 and (folder / "raw.tar.gz").exists(),
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            f"{engine} arm did not exit cleanly with evidence; preserve attempt")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/verify.py", line 27, in require
+    raise ValueError(message)
+ValueError: mesh arm did not exit cleanly with evidence; preserve attempt
