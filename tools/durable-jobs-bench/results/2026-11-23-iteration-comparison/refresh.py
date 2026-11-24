@@ -51,6 +51,41 @@ def capture_topology(directory, kind):
     return dict(manifest_sha256=run.digest(directory / "series.json"), blocks=blocks)
 
 
+def capture_slow_storage(packet):
+    sys.path.insert(0, str(packet / "replay"))
+    import native as storage_run
+
+    config = storage_run.check()
+    blocks = []
+    for group, order in enumerate(config["orders"], 1):
+        receipts = sorted((packet / "evidence/native").glob(f"timing-*/{group:02d}-slow/reconciled.json"))
+        if not receipts:
+            continue
+        receipt, = receipts
+        block = receipt.parent
+        phases = ["warmup", "measured"]
+        if run.read_json(block / "order.json") != dict(group=group, order=order, phases=phases):
+            raise ValueError(f"{block}: slow storage order changed")
+        sealed = run.read_json(receipt)
+        scores, archives = {}, {}
+        for phase in phases:
+            for lane in order:
+                definition = config["lanes"][lane]
+                engine = definition["engine"]
+                name = f"{phase}-{lane}"
+                row = storage_run.score(block / name, definition, config, phase)
+                if row != sealed[name]:
+                    raise ValueError(f"{block}/{name}: storage or timing receipt changed")
+                archives[f"{name}/{phase}-{engine}"] = row["raw_sha256"]
+                if phase == "measured":
+                    scores[lane] = {metric: row[metric] for metric in METRICS}
+                    scores[lane].update(engine=engine, completed=row["completed"],
+                                        sha256=definition["inventory"]["engines"][engine]["artifact_sha256"])
+        blocks.append(dict(group=group, profile="slow", attempt=f"{block.parent.name}/{block.name}",
+                           order=order, scores=scores, raw_sha256=archives))
+    return dict(manifest_sha256=run.digest(packet / "frozen/native-config.json"), blocks=blocks)
+
+
 def capture(directory, live=None):
     directories = [path for path in (directory, live) if path and (path / "series.json").is_file()]
     if not directories:
@@ -190,6 +225,11 @@ def write_scorecard(data):
                      "The original V1 trusted runner and its protected control use their standard producer.",
                      [("bulk", "Trusted Mesh · batch enqueue"), ("scalar", "Same binary · scalar enqueue"),
                       ("ordinary", "Original trusted Mesh"), ("protected-mesh", "Protected Mesh"), *peers])
+    for policy in ("default", "external"):
+        add_policy_table(lines, data.get("slow-storage", {}), f"Slow jobs with {policy.upper()} payload storage",
+                         "All four engines use one 64-slot runner and two CPUs shared with PostgreSQL. "
+                         "Mesh uses set-based enqueue and individual terminal commits.",
+                         [(f"bulk-{policy}", "Trusted Mesh"), *((f"{key}-{policy}", label) for key, label in peers)])
     add_policy_table(lines, data.get("bulk-v2-slow", {}), "Slow jobs with grouped successes",
                      "This pilot stopped after two opposite orders. The V2 lanes can settle up to eight successes "
                      "together. V1 keeps one terminal transaction per job. Both policies used the same 512-job "
@@ -352,8 +392,12 @@ def refresh(collect):
             if (item.get("pending") and name not in data
                     and not any(path and (path / "series.json").is_file() for path in (archived, live))):
                 continue
-            current = (capture_topology(archived, item["topology"]) if "topology" in item
-                       else capture(archived, live))
+            if name == "slow-storage":
+                current = capture_slow_storage(archived)
+            elif "topology" in item:
+                current = capture_topology(archived, item["topology"])
+            else:
+                current = capture(archived, live)
             previous = data.get(name)
             if previous:
                 old = {b["attempt"]: b for b in previous["blocks"]}

@@ -50,6 +50,12 @@ experimental runner that can settle before actor teardown.
 
 In these five dense rotations, the last application write committed 373–489 ms later on Mesh than on River. A local six-rotation experiment reduced terminal transaction counts in every rotation and failed to advance drain time beyond the identical controls. [Native stage chart and local completion experiment](../2026-11-24-dense-two-runner-completion/README.md)
 
+## Slow-job storage and refill
+
+All five Linode rotations compared default and EXTERNAL argument storage on each engine. Mesh kept the same bulk producer and one 64-slot runner. EXTERNAL saved a paired median 159 ms to enqueue commit and 179 ms from submit to final settlement against default Mesh, with gains in every group. Mesh beat EXTERNAL River in 5/5 drains and 3/5 full submissions, and beat EXTERNAL Oban in 5/5 on both clocks. Apalis led Mesh in every pair under both policies.
+
+From the 64th to the 512th first committed write, EXTERNAL Mesh took a paired median 385 ms longer than River and 298 ms longer than Apalis. Mesh reached the 64th write 271 ms earlier than River and 36 ms earlier than Apalis at the paired medians. The next two-runner comparison can measure whether faster refill preserves the early lead through settlement. [Job counts and elapsed intervals](slow-peer-cutoffs.md) · [Matched rates](four-engine-scorecard.md#slow-jobs-with-external-payload-storage)
+
 ## Replay
 
 Reproduce the fixed-drain calculation with

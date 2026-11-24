@@ -4,6 +4,7 @@ import hashlib
 import json
 import tarfile
 from pathlib import Path
+from statistics import median
 
 HERE = Path(__file__).resolve().parent
 EVIDENCE = HERE.parent / "2026-11-24-slow-external-compat-scorer-input/evidence/native"
@@ -38,6 +39,13 @@ def read_arm(block, name, score):
     return tx, jobs, finish
 
 
+def phase_times(run):
+    tx, jobs, finish = run
+    starts = sorted(j["attempt_committed_us"] for j in jobs)
+    edges = (tx["submitted_us"], tx["committed_us"], starts[63], starts[-1], finish)
+    return tuple(b - a for a, b in zip(edges, edges[1:]))
+
+
 def render(groups):
     lines = ["# Slow Mesh jobs outstanding at peer completion", "",
              f"Verified {len(groups)} of five Linode rotations of the 512-job storage comparison. "
@@ -48,6 +56,7 @@ def render(groups):
              "Waiting for the second write includes the required hold. These counts describe progress and do not assign CPU cost.", "",
              "| Group | Storage | Peer | Clock | Gap (ms) | Awaiting entry | Awaiting first write | Awaiting second write | Awaiting settlement |",
              "|---:|---|---|---|---:|---:|---:|---:|---:|"]
+    differences = {}
     for group in groups:
         path, = EVIDENCE.glob(f"timing-*/{group:02d}-slow/reconciled.json")
         scores = json.loads(path.read_text())
@@ -61,6 +70,9 @@ def render(groups):
             for peer in ("oban", "river", "apalis"):
                 peer_tx, peer_jobs, peer_finish = runs[peer]
                 assert payloads == {j["job_key"]: j["payload_sha256"] for j in peer_jobs}
+                delta = [a - b for a, b in zip(phase_times(runs["bulk"]), phase_times(runs[peer]))]
+                assert sum(delta) == (finish - mesh_tx["submitted_us"]) - (peer_finish - peer_tx["submitted_us"])
+                differences.setdefault((policy, peer), []).append(delta)
                 for clock, start in (("submit", "submitted_us"), ("commit", "committed_us")):
                     cutoff = mesh_tx[start] + peer_finish - peer_tx[start]
                     reached = [sum(j[k] <= cutoff for j in jobs) for k in EDGES]
@@ -68,6 +80,21 @@ def render(groups):
                     assert min(counts) >= 0 and sum(counts) + reached[-1] == len(jobs)
                     row = [group, policy, peer, clock, f"{(finish - cutoff) / 1000:+.3f}", *counts]
                     lines.append("| " + " | ".join(map(str, row)) + " |")
+    lines.extend(["", "## Where the elapsed time differs", "",
+                  "Each column gives the median paired Mesh minus peer difference in milliseconds. "
+                  "The middle interval covers the next 448 jobs reaching their first durable write. "
+                  "The four intervals sum to the submit-to-settlement difference in each individual pair. "
+                  "Column medians can come from different pairs.", "",
+                  "| Storage | Peer | Submit to enqueue commit | Enqueue commit to 64th first write | 64th to 512th first write | Last first write to final settlement | Mesh faster during middle interval |",
+                  "|---|---|---:|---:|---:|---:|---:|"])
+    for (policy, peer), pairs in differences.items():
+        cells = [f"{median(values) / 1000:+.1f}" for values in zip(*pairs)]
+        wins = sum(row[2] < 0 for row in pairs)
+        lines.append("| " + " | ".join([policy, peer, *cells, f"{wins}/{len(pairs)}"]) + " |")
+    lines.extend(["", "The ranks use committed application writes from each engine’s own ledger. "
+                  "They leave CPU attribution and individual claim timing open. "
+                  "[Native storage receipts](../2026-11-24-slow-external-compat-scorer-input/evidence/native) · "
+                  "[Ledger replay](slow-peer-cutoffs.py)"])
     return "\n".join(lines) + "\n"
 
 

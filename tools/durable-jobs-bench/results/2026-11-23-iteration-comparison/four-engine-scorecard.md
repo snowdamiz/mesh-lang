@@ -73,6 +73,28 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | River | 288.66 | 387.57 | 1/5 | 1/5 |
 | Apalis | 355.45 | 457.84 | 0/5 | 1/5 |
 
+## Slow jobs with DEFAULT payload storage
+
+5/5 matched rotations. All four engines use one 64-slot runner and two CPUs shared with PostgreSQL. Mesh uses set-based enqueue and individual terminal commits.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Trusted Mesh | 260.33 | 359.31 | — | — |
+| Oban | 242.41 | 314.17 | 5/5 | 5/5 |
+| River | 252.97 | 337.72 | 3/5 | 3/5 |
+| Apalis | 340.34 | 441.72 | 0/5 | 0/5 |
+
+## Slow jobs with EXTERNAL payload storage
+
+5/5 matched rotations. All four engines use one 64-slot runner and two CPUs shared with PostgreSQL. Mesh uses set-based enqueue and individual terminal commits.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Trusted Mesh | 286.63 | 361.58 | — | — |
+| Oban | 278.03 | 336.48 | 5/5 | 5/5 |
+| River | 286.87 | 347.54 | 3/5 | 5/5 |
+| Apalis | 401.49 | 452.36 | 0/5 | 0/5 |
+
 ## Slow jobs with grouped successes
 
 2/5 matched rotations. This pilot stopped after two opposite orders. The V2 lanes can settle up to eight successes together. V1 keeps one terminal transaction per job. Both policies used the same 512-job input and 100 ms hold. [Extension decision](../2026-11-23-bulk-enqueue-v2-slow/README.md)
