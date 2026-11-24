@@ -1,0 +1,42 @@
+{
+  "candidate": "two",
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "decision_window": "Compare submit-to-terminal, enqueue-commit-to-terminal, vacancy through final claim, and first/last committed holds with both duplicate controls. Size a useful improvement at approximately 100 ms beyond the same-block control spread and verify direction across opposite orders. Preserve the initial raw groups even if the diagnostic ends there. Six balanced orders are available for controller-selected continuation.",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/evidence/native-import-retry",
+  "expected_timing_minutes": 12,
+  "id": "ordinary-slow-runner-concentration-import-retry",
+  "kind": "Controller-owned build-free TIMING diagnostic",
+  "launcher_recovery": "Explicit import of the original pinned arm.py through the 0711 staging path. Original workload, frozen schedule, scorer and executables reused. Retain earlier failed arms.",
+  "local_gate": "All 18 timed arms reconcile, 512 positions verified from the extra untimed wire arm, 30 archived native peer ledgers replay, six negative scope checks reject, and 16 benchmark matrix tests pass. Local wall-time verdict remains inconclusive under duplicate spread.",
+  "local_sha256": {
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-claim-turns/replay.py": "2c565ef9acad9af3c22ead23e037532030d8af9d56df20c462a30c2fd67303ba",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/arm.py": "7cf3f626f9e242ed176c69e0577ef89fb7439f6b2bf7c1332e0545fdaebfaee5",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/replay.py": "0382e2aa0b61d78e7c879d457b5f59102499027acef4895702edb6651e778d0d",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/import-retry/native-mesh.sh": "a60fd3361070bb17c91717a31a1a0b022e72a4f13291b0f903eb87d9ba5464e1",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/native-import-retry.py": "851c72e2f1f5e8051fc68f072a4a2d8d7df412162019422a3197fb7af74bba09",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/native-mesh.sh": "bdebe4f0b970ec19a6773f9f706c0cb57d4957c24136f53bdba8da52f28236d1",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/native.py": "a1be23d736b92d17e903f89c391361f140fc75b1d2286b18e1d25295b7802005",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/replay.py": "af0e90119611d54f56ac30eae10aff522eba279435d8e47c3d2a8a5cf30d88dd",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/slow_arm.py": "73c1d46ef69a492df2f3c1aa8d78567f3a5e86b7955b00975bdd0939ecc1c44a",
+    "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue/evidence/bulk-enqueue-v1-slow/series.json": "b27a47891d3233fa2f892a8f4af0a9bb3a2231ff76217b01a8cd78b93922fce7",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "offline_check": "python3 -B tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/native-import-retry.py check",
+  "operator_id": "ordinary-slow-claim-supply-topology-v1",
+  "priority": "Keep active native, dense equal-topology, and same-profile storage work in their existing order. Reuse the verified sole-controller grant and locks.",
+  "ready": true,
+  "replay_command": "python3 -B tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/native.py replay",
+  "requested_at": "2026-11-24T02:06:54.124108+00:00",
+  "scope": "Two opposite full slow blocks initially. Two duplicate true-bulk V1 1x64 controls, true-bulk V1 2x32 as an alternate deployment, and actual stock 1x64 River, Oban and Apalis. All arms use 64 slots, 512 canonical 16 KiB jobs, 100 ms hold and PostgreSQL 17.11 cap 68 on CPUs 0,1. Matched work and stock peer topology. No builds or profiler during timing. Save every raw arm.",
+  "source_sha": "4191961c74feff477adf94d9438aac07fe9c48e5",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration",
+  "state": "ready",
+  "timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/native-import-retry.py dispatch"
+}
