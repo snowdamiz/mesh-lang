@@ -1,0 +1,13 @@
+{
+  "group": 2,
+  "order": [
+    "apalis",
+    "oban",
+    "river",
+    "product"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "sparse"
+}
