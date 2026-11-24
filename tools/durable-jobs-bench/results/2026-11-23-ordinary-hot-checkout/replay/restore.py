@@ -30,6 +30,9 @@ for selected in (PACKET / "sealed-inputs").rglob("*"):
 
 lane = destination / "target/ordinary-hot-checkout"
 copytree(PACKET / "evidence", lane / "evidence")
+for packed in (lane / "evidence").glob("*/native-identity.txt.gz"):
+    with gzip.open(packed, "rb") as source, packed.with_suffix("").open("xb") as restored:
+        copyfileobj(source, restored)
 (lane / "tmp").mkdir()
 state = destination / "target/linode-jobs-stepchange"
 state.mkdir(exist_ok=True)
