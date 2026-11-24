@@ -115,6 +115,7 @@ pub(super) struct PgConn {
     /// b'E' = in a failed transaction block. Updated on every ReadyForQuery.
     pub(super) txn_status: u8,
     broken: bool,
+    pub(super) hot_checkout: bool,
 }
 
 impl PgConn {
@@ -178,6 +179,7 @@ impl PgConn {
             stream: PgStream::Plain(BufReader::new(stream)),
             txn_status: b'I',
             broken: false,
+            hot_checkout: false,
         }
     }
 }
@@ -1221,6 +1223,7 @@ enum Values {
 /// connection failing, a reply the driver cannot decode, a limit).
 enum Failure {
     Server(PgError),
+    IncompleteServer(PgError),
     Other(String),
 }
 
@@ -1235,7 +1238,9 @@ impl Failure {
     /// structured form Repo maps constraint violations from.
     fn structured(self) -> String {
         match self {
-            Failure::Server(error) => format_pg_error_string(&error),
+            Failure::Server(error) | Failure::IncompleteServer(error) => {
+                format_pg_error_string(&error)
+            }
             Failure::Other(message) => message,
         }
     }
@@ -1243,7 +1248,7 @@ impl Failure {
     /// Only the message.
     fn message(self) -> String {
         match self {
-            Failure::Server(error) => error.message,
+            Failure::Server(error) | Failure::IncompleteServer(error) => error.message,
             Failure::Other(message) => message,
         }
     }
@@ -1266,9 +1271,17 @@ fn request(
     let mut failure = None;
     let mut buffer = MessageBuffer::new();
     loop {
-        let (tag, body) = conn
-            .read_wire_message(&mut buffer)
-            .map_err(|error| format!("read {what}: {error}"))?;
+        let (tag, body) = match conn.read_wire_message(&mut buffer) {
+            Ok(message) => message,
+            Err(error) => {
+                return Err(match failure {
+                    Some(Failure::Server(server)) if conn.hot_checkout => {
+                        Failure::IncompleteServer(server)
+                    }
+                    _ => Failure::Other(format!("read {what}: {error}")),
+                });
+            }
+        };
         match tag {
             b'C' => {
                 count = parse_command_tag(String::from_utf8_lossy(body).trim_end_matches('\0'));
@@ -1554,6 +1567,7 @@ pub(super) fn connect_with_socket(
         stream,
         txn_status,
         broken: false,
+        hot_checkout: false,
     };
     // Connected: statements take as long as they take.
     conn.set_read_timeout(None);
@@ -2063,9 +2077,10 @@ pub(super) fn pg_jobs_ack(
     params: &[&str],
 ) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
     let rows = text_query(conn, sql, params).map_err(|failure| match failure {
-        // request() returns a server error only after reading ReadyForQuery.
+        // Only a complete exchange confirms that the server rejected it.
         Failure::Server(error)
-            if error.sqlstate.len() == 5
+            if conn.txn_status == b'I'
+                && error.sqlstate.len() == 5
                 && !error.sqlstate.starts_with("08")
                 && error.sqlstate != "40003" =>
         {
@@ -3165,12 +3180,16 @@ mod tests {
         .concat();
         let rejected = message(b'E', b"SERROR\0C55P03\0Mrow locked\0\0");
         let unknown = message(b'E', b"SERROR\0C40003\0Mcompletion unknown\0\0");
+        let fatal = message(b'E', b"SFATAL\0C57P01\0Mserver terminated before Ready\0\0");
         for (reply, expected) in [
             ([success.clone(), ready(b'I')].concat(), "confirmed"),
             (success.clone(), "uncertain"),
             ([success, ready(b'T')].concat(), "uncertain"),
             ([rejected.clone(), ready(b'I')].concat(), "rejected"),
+            ([rejected.clone(), ready(b'E')].concat(), "uncertain"),
             (rejected, "uncertain"),
+            (fatal.clone(), "fatal"),
+            (fatal, "fatal-default"),
             ([unknown, ready(b'I')].concat(), "uncertain"),
         ] {
             let (url, peer) = wire_peer("sslmode=disable", move |mut socket| {
@@ -3184,6 +3203,7 @@ mod tests {
             });
             let mut conn = connect(&url).unwrap();
             conn.set_read_timeout(Some(Duration::from_secs(5)));
+            conn.hot_checkout = expected != "fatal-default";
             let result = pg_jobs_ack(&mut conn, "SELECT mesh_jobs.settle_state()", &[]);
             peer.join().unwrap();
             match (result, expected) {
@@ -3192,6 +3212,14 @@ mod tests {
                     assert_eq!(message, "row locked");
                 }
                 (Err(JobsAckError::Unconfirmed(_)), "uncertain") => {}
+                (Err(JobsAckError::Unconfirmed(message)), "fatal") => {
+                    assert_eq!(message, "server terminated before Ready");
+                    assert!(conn.is_broken());
+                }
+                (Err(JobsAckError::Unconfirmed(message)), "fatal-default") => {
+                    assert!(message.starts_with("read "), "{message}");
+                    assert!(conn.is_broken());
+                }
                 (result, _) => panic!("expected {expected}, got {result:?}"),
             }
         }
