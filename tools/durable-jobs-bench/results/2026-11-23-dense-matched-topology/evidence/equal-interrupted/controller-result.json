@@ -1,0 +1,20 @@
+{
+  "attempts": [
+    1
+  ],
+  "exit_status": 1,
+  "group_command": "dispatch",
+  "groups": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "id": "dense-matched-topology-equal",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/native-dense-matched-topology/equal",
+  "started": "2026-11-24T00:36:54.621406+00:00",
+  "release_unverified": true,
+  "transport_test": "Pinned port 22 connect timed out with SSH 255.",
+  "verbatim_local_receipt_sha256": "d34c2e5598e0ed622e9dae2ad52cfa2988336c734f6e9a33b233e5724ac2ea2d"
+}

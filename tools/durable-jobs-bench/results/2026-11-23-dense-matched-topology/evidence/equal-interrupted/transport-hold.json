@@ -1,0 +1,123 @@
+{
+  "id": "dense-matched-topology-equal",
+  "held_at": "2026-11-24T01:19:17Z",
+  "active_manifest": "target/native-dense-matched-topology/equal/series.json",
+  "stock_archive_commit": "4f33954c",
+  "blocks": [
+    {
+      "path": "target/native-dense-matched-topology/equal/blocks/01-noop.1795480623023091000",
+      "dispatch": {
+        "measured-apalis-2x32/measured-rust/dispatch.json": {
+          "outcome": {
+            "exit_code": 255,
+            "finished": "2026-11-24T01:18:34.050525+00:00"
+          },
+          "raw_retained": false,
+          "partials": [
+            {
+              "name": "download-8947ed2e52f749d282374afa51a3d75a.partial",
+              "bytes": 0
+            }
+          ]
+        },
+        "measured-mesh-v1-2x32/measured-mesh/dispatch.json": {
+          "outcome": {
+            "exit_code": 255,
+            "finished": "2026-11-24T01:18:44.151410+00:00"
+          },
+          "raw_retained": false,
+          "partials": [
+            {
+              "name": "download-97bbc60926c741e0a1670b43beb1c7b9.partial",
+              "bytes": 0
+            }
+          ]
+        },
+        "measured-mesh-v1-8x8/measured-mesh/dispatch.json": {
+          "outcome": {
+            "exit_code": 255,
+            "finished": "2026-11-24T01:19:04.374828+00:00"
+          },
+          "raw_retained": false,
+          "partials": [
+            {
+              "name": "download-e1e6c993328a4f1098f94cfbf5303a3b.partial",
+              "bytes": 0
+            }
+          ]
+        },
+        "measured-oban-2x32/measured-oban/dispatch.json": {
+          "outcome": {
+            "exit_code": 255,
+            "finished": "2026-11-24T01:19:14.457801+00:00"
+          },
+          "raw_retained": false,
+          "partials": [
+            {
+              "name": "download-881bbafd0bdd450d9c72b55188652d71.partial",
+              "bytes": 0
+            }
+          ]
+        },
+        "measured-river-2x32/measured-go/dispatch.json": {
+          "outcome": {
+            "exit_code": 255,
+            "finished": "2026-11-24T01:18:54.226204+00:00"
+          },
+          "raw_retained": false,
+          "partials": [
+            {
+              "name": "download-ba7d0ec189544ff08640f56f0d4f629a.partial",
+              "bytes": 0
+            }
+          ]
+        },
+        "warmup-apalis-2x32/warmup-rust/dispatch.json": {
+          "outcome": {
+            "exit_code": 0,
+            "finished": "2026-11-24T00:37:10.428936+00:00"
+          },
+          "raw_retained": true,
+          "partials": []
+        },
+        "warmup-mesh-v1-2x32/warmup-mesh/dispatch.json": {
+          "outcome": {
+            "exit_code": 0,
+            "finished": "2026-11-24T00:37:20.273688+00:00"
+          },
+          "raw_retained": true,
+          "partials": []
+        },
+        "warmup-mesh-v1-8x8/warmup-mesh/dispatch.json": {
+          "outcome": {
+            "exit_code": 0,
+            "finished": "2026-11-24T00:37:39.032537+00:00"
+          },
+          "raw_retained": true,
+          "partials": []
+        },
+        "warmup-oban-2x32/warmup-oban/dispatch.json": {
+          "outcome": {
+            "exit_code": 0,
+            "finished": "2026-11-24T00:37:52.902166+00:00"
+          },
+          "raw_retained": false,
+          "partials": [
+            {
+              "name": "download-b457365bc6404630affc6d5a40e840ed.partial",
+              "bytes": 0
+            }
+          ]
+        },
+        "warmup-river-2x32/warmup-go/dispatch.json": {
+          "outcome": {
+            "exit_code": 0,
+            "finished": "2026-11-24T00:37:27.954243+00:00"
+          },
+          "raw_retained": true,
+          "partials": []
+        }
+      }
+    }
+  ]
+}
