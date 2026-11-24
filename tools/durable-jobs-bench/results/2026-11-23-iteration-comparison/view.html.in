@@ -55,6 +55,8 @@ const measures={
 };
 const workloads={noop:"Dense no-op",slow:"Slow · 64 slots",sparse:"Sparse arrivals",short:"Short · 16 slots",large:"Large · 512 KiB"};
 const names={mesh:"Mesh",ordinary:"Mesh · trusted",stock:"Mesh · stock",current:"Mesh · current",historical:"Mesh · archived",
+ two:"Mesh · 2 × 32","one-a":"Mesh · 1 × 64 A","one-b":"Mesh · 1 × 64 B","river-stock-1x64":"Go River · 1 × 64",
+ "oban-stock-1x64":"Elixir Oban · 1 × 64","apalis-stock-1x64":"Rust Apalis · 1 × 64",
  "mesh-v1-2x32":"Mesh V1 · 2 × 32","mesh-v1-8x8":"Mesh V1 · 8 × 8",
  "river-2x32":"Go River · 2 × 32","river-8x8":"Go River · 8 × 8",
  "oban-2x32":"Elixir Oban · 2 × 32","oban-8x8":"Elixir Oban · 8 × 8",
@@ -98,7 +100,7 @@ function draw() {
    if(blocks.length>1)row.append(element("small","Range "+number.format(Math.min(...r.vals))+"–"+number.format(Math.max(...r.vals))));
    chart.append(row);
  }
- get("note").textContent=blocks.length+" of 5 matched rotations. "+(blocks.length===1?"Single observation. ":"Bars show the median. ")+measures[key][2];
+ get("note").textContent=blocks.length+(blocks.length===1?" matched rotation. Single observation. ":" matched rotations. Bars show the median. ")+measures[key][2];
  get("paired").hidden=!higherIsBetter;
  if(higherIsBetter) {
    const opponent=get("opponent"), previous=opponent.value;
@@ -132,6 +134,7 @@ for(const [key,s] of Object.entries(db))if(s.blocks.length)series.add(option(key
 for(const [key,m] of Object.entries(measures))metric.add(option(key,m[0]));
 const selected=location.hash.slice(1);
 if(db[selected]?.blocks?.length)series.value=selected;
+else if(db["slow-stock-topology"]?.blocks.length===6)series.value="slow-stock-topology";
 else if(db["exit-confirmed-hot-short"]?.blocks.length===5)series.value="exit-confirmed-hot-short";
 else if(db["slow-storage"]?.blocks.length===5)series.value="slow-storage";
 else if(db["bulk-hot-short-peers"]?.blocks.length===5)series.value="bulk-hot-short-peers";

@@ -22,6 +22,19 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | Sparse | 5/5 | 2.64 | 2.66 | 2.04 | 2.08 | 2.49 | 5 / 5 / 5 |
 | Large · EXTERNAL | 5/5 | 76.80 | 106.61 | 116.07 | 70.62 | 331.07 | 1 / 5 / 0 |
 
+## Slow jobs with two Mesh runners against stock peers
+
+6/6 matched rotations. Each Mesh arm uses the same V1 bulk executable. The control copies give one runner 64 slots. The candidate gives two runners 32 slots each. All three peers use one 64-slot runner. Every arm shares two CPUs with PostgreSQL and has a 68-connection cap.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh V1 · 2 × 32 | 273.58 | 392.95 | — | — |
+| Mesh V1 · 1 × 64 A | 261.53 | 362.39 | 5/6 | 5/6 |
+| Mesh V1 · 1 × 64 B | 261.07 | 356.20 | 5/6 | 5/6 |
+| Oban | 240.91 | 318.49 | 5/6 | 5/6 |
+| River | 253.35 | 333.40 | 5/6 | 5/6 |
+| Apalis | 342.61 | 443.12 | 0/6 | 0/6 |
+
 ## Dense jobs against peers using eight 8-slot runners
 
 5/5 matched rotations. Both Mesh lanes use the same V1 runner and 64 total slots. The peer engines share the same CPU and PostgreSQL limits.

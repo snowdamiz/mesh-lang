@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 from statistics import median
+import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
@@ -32,20 +33,37 @@ def capture_topology(directory, kind):
     for lane, definition in config["lanes"].items():
         _, inventory = matrix.stages(config, lane, run.REMOTE / manifest["remotes"][lane])
         identities[lane] = inventory["engines"][definition["engine"]]["artifact_sha256"]
+    return collect_topology_blocks(directory, config["lanes"], identities, summary["blocks"])
+
+
+def capture_slow_topology(directory):
+    packet = directory.parents[1]
+    replay = subprocess.check_output([sys.executable, "-B", packet / "native-import-retry.py", "replay"])
+    summary = json.loads(replay)
+    lanes = run.read_json(directory / "series.json")["config"]["lanes"]
+    identities = {lane: spec["inventory"]["engines"][spec["engine"]]["artifact_sha256"]
+                  for lane, spec in lanes.items()}
+    reconciled = {attempt: rows for attempt, rows in summary["attempts"].items()
+                  if (directory / "blocks" / attempt / "reconciled.json").is_file()}
+    return collect_topology_blocks(directory, lanes, identities, reconciled)
+
+
+def collect_topology_blocks(directory, lanes, identities, replayed):
     blocks = []
-    for attempt, rows in sorted(summary["blocks"].items()):
+    for attempt, rows in sorted(replayed.items()):
         path = directory / "blocks" / attempt
         if rows != run.read_json(path / "reconciled.json"):
             raise ValueError(f"{path}: replay differs from controller receipt")
         block = run.read_json(path / "order.json")
         scores, archives = {}, {}
-        for phase, lane, definition, folder in matrix.paths(path, config, block):
-            row = rows[f"{phase}-{lane}"]
-            archives[str(folder.relative_to(path))] = row["raw_sha256"]
-            if phase == "measured":
-                scores[lane] = {metric: row[metric] for metric in METRICS}
-                scores[lane].update(engine=definition["engine"], completed=row["completed"],
-                                    sha256=identities[lane])
+        for phase in block["phases"]:
+            for lane in block["order"]:
+                engine = lanes[lane]["engine"]
+                row = rows[f"{phase}-{lane}"]
+                archives[f"{phase}-{lane}/{phase}-{engine}"] = row["raw_sha256"]
+                if phase == "measured":
+                    scores[lane] = {metric: row[metric] for metric in METRICS}
+                    scores[lane].update(engine=engine, completed=row["completed"], sha256=identities[lane])
         blocks.append(dict(group=block["group"], profile=block["profile"], attempt=attempt,
                            order=block["order"], scores=scores, raw_sha256=archives))
     return dict(manifest_sha256=run.digest(directory / "series.json"), blocks=blocks)
@@ -158,11 +176,11 @@ def text_json(value):
     return json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
-def add_policy_table(lines, series, title, detail, lanes):
+def add_policy_table(lines, series, title, detail, lanes, planned=5):
     blocks = series.get("blocks", [])
     if not blocks:
         return
-    lines.extend([f"## {title}", "", f"{len(blocks)}/5 matched rotations. {detail}", "",
+    lines.extend([f"## {title}", "", f"{len(blocks)}/{planned} matched rotations. {detail}", "",
                   "| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |",
                   "|---|---:|---:|---:|---:|"])
     candidate = lanes[0][0]
@@ -207,6 +225,12 @@ def write_scorecard(data):
             lines.append(f"| {label} | {len(blocks)}/5 | {rates} | {wins} |")
         lines.append("")
     peers = [("oban", "Oban"), ("river", "River"), ("apalis", "Apalis")]
+    add_policy_table(lines, data.get("slow-stock-topology", {}), "Slow jobs with two Mesh runners against stock peers",
+                     "Each Mesh arm uses the same V1 bulk executable. The control copies give one runner 64 slots. "
+                     "The candidate gives two runners 32 slots each. All three peers use one 64-slot runner. "
+                     "Every arm shares two CPUs with PostgreSQL and has a 68-connection cap.",
+                     [("two", "Mesh V1 · 2 × 32"), ("one-a", "Mesh V1 · 1 × 64 A"), ("one-b", "Mesh V1 · 1 × 64 B"),
+                      *((f"{key}-stock-1x64", label) for key, label in peers)], planned=6)
     for kind, topology in (("stock", "8x8"), ("equal", "2x32")):
         layout = "eight 8-slot runners" if kind == "stock" else "two 32-slot runners"
         add_policy_table(lines, data.get(f"dense-{kind}-topology", {}),
@@ -401,6 +425,8 @@ def refresh(collect):
                 continue
             if name == "slow-storage":
                 current = capture_slow_storage(archived)
+            elif name == "slow-stock-topology":
+                current = capture_slow_topology(archived)
             elif "topology" in item:
                 current = capture_topology(archived, item["topology"])
             else:
