@@ -24,7 +24,7 @@ tar -xzf packet.tar.gz
 sha256sum -c native-pins.txt >"$out/resident-pin-check.txt"
 [[ "$(uname -s):$(uname -m):$(uname -r)" == Linux:x86_64:6.8.0-149-generic ]]
 [[ "$(cat /proc/sys/kernel/random/boot_id)" == 90ec1c24-08c8-4bc1-aa28-79b6db1bd13a ]]
-[[ "$(findmnt -no MAJ:MIN --target "$base")" == 8:0 ]]
+[[ "$(findmnt --raw --noheadings --output MAJ:MIN --target "$base")" == 8:0 ]]
 [[ "$(getconf CLK_TCK)" == 100 ]]
 export PATH="$tool/rust-1.99.0/bin:$tool/llvm-21.1.8/bin:/usr/sbin:/usr/bin:/bin" LC_ALL=C.UTF-8
 export LLVM_SYS_211_PREFIX="$tool/llvm-21.1.8" CARGO_HOME="$base/cargo-home"
