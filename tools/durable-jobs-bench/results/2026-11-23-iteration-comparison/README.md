@@ -18,7 +18,19 @@ The sparse response-time replay follows each job from its own submit through dur
 
 The public shared-process build at `db5937e7` has its own native correctness checks and one direct timing pair for each of short and dense. The V1 and V2 throughput series use their archived experimental executables. [Product verification and matched pairs](../2026-11-23-ordinary-trusted-product-db5937e7/README.md)
 
+The five dense rotations with stock peer deployments put trusted Mesh at
+547.01 jobs/s from submit and 751.82 from enqueue commit with two runners.
+Against eight Mesh runners, the paired median gains were 50.8% and 66.2%.
+Mesh finished ahead of Oban from enqueue commit in all five rotations.
+Even with instantaneous Mesh enqueue, matching River from submit would
+require a further 97–193 ms of drain savings per 1,024 jobs at these observed
+drain times. [Dense budgets by rotation](dense-stock-budgets.md) ·
+[Deployment, ledgers and native evidence](../2026-11-23-dense-matched-topology/README.md)
+
 ## Replay
+
+Reproduce the fixed-drain calculation across the five rotations with
+`python3 -B tools/durable-jobs-bench/results/2026-11-23-iteration-comparison/dense-topology-budgets.py stock`.
 
 From the checkout root, rebuild the standalone page from the committed score data.
 
