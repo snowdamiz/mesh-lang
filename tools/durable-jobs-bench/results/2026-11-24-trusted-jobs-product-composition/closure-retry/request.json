@@ -1,0 +1,26 @@
+{
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5-closure-retry",
+  "id": "2026-11-24-trusted-jobs-product-composition-closure-retry",
+  "local_sha256": {
+    "target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/backend.py": "c0f4bea07a5148ad04223edcab6c97679da7e4ef76beac0cd78297b8340b2715",
+    "target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/controller-timing.py": "a86fd3ed80c4ed49505a175cbeb2ed907992247e0559e81796cf16b1ad031962",
+    "target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/intake.py": "ffbb99463b1ada73f9fd4e442171d4065865da3632fa297944f3ee2be536dba3",
+    "target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/native-run": "c5e0351810985f4fb21487843dd6e95258cac9d9951989493b86e6d6c57de17a",
+    "target/2026-11-24-trusted-jobs-product-composition/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/product_arm.py": "b7253e622051a033050b3e79afab73cd11c4c61cb0bf1dedd06303b8facdce24",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/backend.py": "f2a897601d10f8c30b6bad30358ed1a88a8f688b54068095237ae1160ac7cea1",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/controller.py": "f347a9637ee01e61b44a348783b932912c67bfb7e2e4d892eb380f417c34b454",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/setup.sh": "916b6d61da5ba528228b39e0af21aa5f64ab788e49d47263a5c94b3c7cc11863"
+  },
+  "offline_check": "python3 -B tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/controller.py check",
+  "original_timing_failed_sha256": "47c2482f1710d282b5dd88cd9a1d4ec2a40d6f7c032d612c815d56bdbb92b7b9",
+  "ready": true,
+  "requested_window_minutes": 12,
+  "setup_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/controller.py setup",
+  "source_sha": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "state": "ready"
+}
