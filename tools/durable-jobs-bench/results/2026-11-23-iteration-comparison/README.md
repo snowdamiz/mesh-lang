@@ -27,6 +27,8 @@ require a further 97–193 ms of drain savings per 1,024 jobs at these observed
 drain times. [Dense budgets by rotation](dense-stock-budgets.md) ·
 [Deployment, ledgers and native evidence](../2026-11-23-dense-matched-topology/README.md)
 
+In these five dense rotations, the last application write committed 373–489 ms later on Mesh than on River. A local six-rotation experiment reduced terminal transaction counts in every rotation and failed to advance drain time beyond the identical controls. [Native stage chart and local completion experiment](../2026-11-24-dense-two-runner-completion/README.md)
+
 ## Replay
 
 Reproduce the fixed-drain calculation across the five rotations with
