@@ -1,0 +1,15 @@
+{
+  "attempts": [
+    1
+  ],
+  "exit_status": 1,
+  "group_command": "dispatch",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-trusted-jobs-product-composition-short-smaller",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller",
+  "released_at": "2026-11-24T04:43:37.356718+00:00",
+  "started": "2026-11-24T04:42:15.109102+00:00"
+}

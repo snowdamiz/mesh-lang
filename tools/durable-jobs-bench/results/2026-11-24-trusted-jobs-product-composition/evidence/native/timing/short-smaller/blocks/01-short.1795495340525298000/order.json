@@ -1,0 +1,14 @@
+{
+  "group": 1,
+  "order": [
+    "product-bulk",
+    "river",
+    "product-group",
+    "oban",
+    "apalis"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}

@@ -1,0 +1,8 @@
+{
+  "command_finished_at": "2026-11-24T04:42:14.005878+00:00",
+  "exit_status": 0,
+  "id": "2026-11-24-trusted-jobs-product-composition",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native",
+  "released_at": "2026-11-24T04:42:14.462877+00:00",
+  "started": "2026-11-24T04:38:32.364705+00:00"
+}

@@ -1,0 +1,16 @@
+{
+  "cases": [
+    "sql-cut",
+    "public-handler",
+    "ambiguous-application-write",
+    "ambiguous-claim-commit",
+    "ambiguous-group-commit",
+    "cancel-and-retry",
+    "teardown-release",
+    "teardown-kill"
+  ],
+  "executable_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+  "manifest_sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+  "raw_sha256": "fd14384d833597fe962429e36f2e741730c636f3309f72323859306e015dfae1",
+  "witness_sha256": "ed31ff159dd648adaf30e82cbb62114f44c5aa7a6accbc441d9a707085f48f58"
+}
