@@ -608,11 +608,11 @@ Batch dispatch uses two dedicated PostgreSQL sessions per runner, one for claims
 
 #### Use set-based batch claims
 
-Set `claim_batch_strategy: "set_based"` together with `claim_batch: true` to enable the set-based claim path for a fresh-process `Jobs.start` or `Jobs.start_effects` runner. Each claim batch commits before any attempt starts. Every handler outcome still settles in its own transaction after that attempt exits. A process starts only after the runner validates the complete batch response and receives PostgreSQL's COMMIT confirmation.
+Set `claim_batch_strategy: "set_based"` together with `claim_batch: true` to enable set-based claims on a long-running `Jobs.start` runner. Both fresh-process and trusted shared-process handlers support this option. The fresh-process `Jobs.start_effects` runner also supports it. The runner validates the complete grant and waits for PostgreSQL to confirm COMMIT before starting any attempt. Each attempt settles in its own transaction after its process or trusted actor exits.
 
 Run `Jobs.migrate` as the schema owner before opting in. For scoped installations, apply [the optional set-based claim grant](https://github.com/snowdamiz/mesh-lang/blob/main/scripts/fixtures/jobs-set-based-claim-grant.sql) to the existing worker role or grant `EXECUTE` on `mesh_jobs.claim_batch_set_v1(text, text, jsonb, bigint, integer, bigint)` to the existing batch-worker role. Keep the cursor grants for the size and encoding fallback. Both strategies enforce the same queue capacity and priority rules and can coexist with single-claim workers during rollout.
 
-The cursor is the default batch strategy. Remove `claim_batch_strategy` or set it to `"cursor"` to switch back on the next runner start. Trusted shared-process runners use the cursor. The separate bounded `Jobs.drain` API uses its own claim strategy. When a claim COMMIT is unacknowledged, the runner starts none of that batch and any committed claims go through normal lease recovery.
+The cursor is the default batch strategy. Remove `claim_batch_strategy` or set it to `"cursor"` to switch back on the next runner start. The separate bounded `Jobs.drain` API uses its own claim strategy. When a claim COMMIT is unacknowledged, the runner starts none of that batch and any committed claims go through normal lease recovery.
 
 #### Wake runners after commits
 

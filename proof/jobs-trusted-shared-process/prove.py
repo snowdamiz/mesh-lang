@@ -35,9 +35,9 @@ def wait(label, probe):
     raise AssertionError(f"timed out waiting for {label}")
 
 
-def config(**options):
+def config(*, slots=1, **options):
     return json.dumps(dict(
-        namespace=NAMESPACE, queues={"default": 1},
+        namespace=NAMESPACE, queues={"default": slots},
         workers=[dict(worker="record-receipt", version=1)],
         lease_ms=900, poll_ms=25, shutdown_grace_ms=0, **options,
     ))
@@ -159,7 +159,15 @@ def exercise(directory, binary, owner_url):
         original_effect = sql("SELECT xmin FROM tenant_app.receipts WHERE receipt_key='lost-owner'")
         trusted[0].send_signal(signal.SIGKILL)
         trusted[0].wait(timeout=10)
-        replacement = start(config(execution=TRUSTED))
+        for key in ("batch-a", "batch-b"):
+            enqueue(key)
+        replacement = start(config(execution=TRUSTED, slots=2, claim_batch=True,
+                                   claim_batch_strategy="set_based"))
+        for key in ("batch-a", "batch-b"):
+            assert reaches(key, "completed")[2] == 1 and effects(key) == 1
+        assert sql("""SELECT count(DISTINCT xmin::text) FROM mesh_jobs.jobs
+                      WHERE namespace = 'tenant-a' AND args->>'receipt_key' IN ('batch-a','batch-b')
+                        AND state = 'completed'""") == "2"
         assert reaches("lost-owner", "completed")[2] == 2
         assert effects("lost-owner") == 1
         assert original_effect == sql("SELECT xmin FROM tenant_app.receipts WHERE receipt_key='lost-owner'")
@@ -189,6 +197,8 @@ def exercise(directory, binary, owner_url):
         stop_runner(replacement)
         reaches("late-sql", "cancelled")
         assert effects("late-sql") == 1
+        assert sql("""SELECT calls > 0 FROM pg_stat_user_functions
+                      WHERE schemaname = 'mesh_jobs' AND funcname = 'claim_batch_set_v1'""") == "t"
     except (AssertionError, RuntimeError, subprocess.TimeoutExpired):
         for path in sorted(directory.glob("runner-*.*")):
             if path.suffix in {".out", ".err"}:
@@ -233,7 +243,7 @@ def main():
             listener.bind(("127.0.0.1", 0))
             port = listener.getsockname()[1]
         run(["pg_ctl", "-D", str(data), "-l", str(directory / "postgres.log"), "-w",
-             "-o", f"-p {port} -h 127.0.0.1 -k ''", "start"], env=env)
+             "-o", f"-p {port} -h 127.0.0.1 -k '' -c track_functions=pl", "start"], env=env)
         try:
             uri = f"postgres://proof_owner@127.0.0.1:{port}/postgres?sslmode=disable"
             exercise(directory, binary, uri)

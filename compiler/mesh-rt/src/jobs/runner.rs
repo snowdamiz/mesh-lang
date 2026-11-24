@@ -214,10 +214,8 @@ impl Config {
             return Err("runner configuration exceeds 128 KiB".into());
         }
         let config: Self = serde_json::from_str(json).map_err(|error| error.to_string())?;
-        if config.claim_batch_strategy == BatchStrategy::SetBased
-            && (!config.claim_batch || config.execution != WorkerExecution::FreshProcess)
-        {
-            return Err("Jobs set_based claim_batch_strategy requires batch claims and fresh-process execution".into());
+        if config.claim_batch_strategy == BatchStrategy::SetBased && !config.claim_batch {
+            return Err("Jobs set_based claim_batch_strategy requires batch claims".into());
         }
         if !identifier(&config.namespace) {
             return Err("invalid runner namespace".into());

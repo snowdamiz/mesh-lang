@@ -1972,7 +1972,7 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
 }
 
 #[test]
-fn set_based_batch_claims_require_explicit_fresh_process_batch_config() {
+fn set_based_batch_claims_require_explicit_batch_config() {
     let mut config: serde_json::Value = serde_json::from_str(TEST_CONFIG).unwrap();
     assert!(Config::parse(TEST_CONFIG).unwrap().claim_batch_strategy == BatchStrategy::Cursor);
     config["claim_batch_strategy"] = "set_based".into();
@@ -1981,7 +1981,11 @@ fn set_based_batch_claims_require_explicit_fresh_process_batch_config() {
     assert!(Config::parse(&config.to_string()).is_ok());
     assert!(Config::parse_effects(&config.to_string()).is_ok());
     config["execution"] = "trusted_shared_process".into();
+    assert!(Config::parse(&config.to_string()).is_ok());
+    assert!(Config::parse_effects(&config.to_string()).is_err());
+    config["drain"] = true.into();
     assert!(Config::parse(&config.to_string()).is_err());
+    config["drain"] = false.into();
     config["claim_batch_strategy"] = "cursor".into();
     assert!(Config::parse(&config.to_string()).is_ok());
     config["claim_batch_strategy"] = "cohort".into();
