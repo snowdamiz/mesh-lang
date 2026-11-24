@@ -1,0 +1,91 @@
+{
+  "baseline": {
+    "matched_fastest_peer_drain_gap_ms": [
+      517.125,
+      461.03700000000003,
+      519.855,
+      533.618,
+      501.51200000000006
+    ],
+    "median_drain_gap_ms": 517.125,
+    "median_gap_floor_ms": 129.28125,
+    "stock_drain_range_ms": 54.692999999999984
+  },
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "elf_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/native/default",
+  "expected_timing_minutes": 12,
+  "id": "2026-11-24-public-large-checked-cursor-default",
+  "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py": "d30834fa1ca18030edd5df0de5d760ea1952d2b84aa05fb3eae9d2af13825c52",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/README.md": "e6c5d0a3e31604416c1f944ea3218ee835dd8f34f950b46e7b14f8f5645ce8b6",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/audit.py": "dae384463cd0b53b30be800c0abbdeb79e62ee402873863b13c18873d277c667",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/check_trace.py": "148ca7cfd8c359164b346dfbb2b3771bd4bf25a51c42e5b8ea383aba9f20dac9",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/controller.py": "2dc249a8387ecfa288dd6a9aecc2b3e2959252a2cbd06b823f6f55e4d37a5415",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/diagnostic.py": "ae8e302b77bada120323155be2e6f0b429f9635fe0d9b91b8b0a8b509d0267a4",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/audit.json": "dbfd0b9f5251039bbc4adca77616d567eb0900b31d229e423b68567e84b99323",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/local-proof.json": "87f75eed2c16e739d2cabc73c5d02acb0c178919ed5a362688d056a537e3a1e1",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/evidence/provenance.json": "d227dcc0fcf30ac17c9325170067d711f74b329e941858150e767a55d50751a3",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/launch.sh": "b6ee7854363061158c0db830e61d109f82eee0ee147cebf1a08e2ebe415884c5",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/observe.py": "9c26e04306daf6b4e65f1f8954c05f52fe211c85e47721282b04c906d98dc936",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/proof.py": "6b1243dedf4fecfd0035739b0e487af930697ecee572276b2598dbd45f91d1d6",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/trace.py": "d99fa254959d7a460720fbab255b630fc951e803c9e2ad2280a5d592543eff89",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5-closure-retry/controller-release.json": "091c1d7382754929124dac432ad9f50d481b669a2f3736e2572dc044a184fbf5",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5-closure-retry/qualification.json": "590a3dc95cf10b3f4ce2586f73de620f90a29d30af4909b986fa6a8b3797d5c0",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/large.inventory.json": "63e91022de25bed9744fddeaa487292079c003928e20c43b033221f0fe14f6c7",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "manifest_sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+  "native_host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "no_build": true,
+  "offline_check": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/controller.py check large",
+  "priority": "Resume only by the sole controller after already queued reservations.",
+  "ready": true,
+  "replay_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/controller.py replay large",
+  "revision": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "schedule": [
+    {
+      "group": 1,
+      "order": [
+        "stock-a",
+        "thin",
+        "trace",
+        "stock-b"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "large"
+    },
+    {
+      "group": 2,
+      "order": [
+        "stock-b",
+        "trace",
+        "thin",
+        "stock-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "large"
+    }
+  ],
+  "scope": "Separate large-only consumer diagnostic. Original producer, checked cursor, PostgreSQL 17.11, no product relink.",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor",
+  "state": "parked-ready-for-sole-controller-intake",
+  "timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-public-large-checked-cursor/controller.py timing large"
+}

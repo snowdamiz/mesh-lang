@@ -1,0 +1,11 @@
+{
+  "scope": "macOS untimed harness rehearsal with retained b3557273 compiler and runtime, six cases passed",
+  "runtime_revision": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "postgres_version": "17.11 Homebrew",
+  "compiler_sha256": "706b83007f0a587d34d66a8552d5abfcfe5d174a38bc920152dc15a37a5f9d35",
+  "runtime_sha256": "acaace65bca241850cdbbfa0d36d815b0a20e7320c0990d0f97fb678eeace00d",
+  "relinked_fixture_sha256": "e8f87a1e7d382b45bda9ef06e5704a05dec2d68cbba719e8f7df8fcecf3e3cbb",
+  "retained_witness_sha256": "db87af825e7156893c74f23a0d3ac98ab2f7b74e2e121c9b6a406a614f3d217a",
+  "link_manifest_exit": 1,
+  "link_manifest_issue": "meshc produced the Mach-O, but the optional rehearsal manifest lookup could not find rustc on the workstation PATH. The native script predicates the link on the pinned Linux Rust PATH."
+}

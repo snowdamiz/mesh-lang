@@ -1,0 +1,32 @@
+UTC 2026-11-24T05:51:30+00:00
+system Linux 6.8.0-149-generic x86_64
+boot 90ec1c24-08c8-4bc1-aa28-79b6db1bd13a
+logical_cpus 4
+benchmark_affinity pid 2461767's current affinity list: 0,1
+clock_ticks 100
+postgres (PostgreSQL) 17.11
+/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres: OK
+/var/lib/durable-jobs-bench/native/builds/mesh-stock-3828f20d/abi/meshc: OK
+/var/lib/durable-jobs-bench/native/builds/trusted-jobs-product-623c46b92cc5/mesh: OK
+/var/lib/durable-jobs-bench/native/builds/trusted-jobs-product-623c46b92cc5/mesh.json: OK
+/var/lib/durable-jobs-bench/native/builds/bulk-enqueue-3b09dc3d0e23-ordinary-v2/mesh: OK
+/var/lib/durable-jobs-bench/native/builds/exit-bulk-d2-c7c50e726ca0/mesh: OK
+path=/var/tmp/mesh-durable-jobs-matrix owner=root:root mode=711 inode=284977 type=directory
+8:0 ext4 /dev/sda /
+path=/var/lib/durable-jobs-bench/native owner=root:root mode=755 inode=132255 type=directory
+8:0 ext4 /dev/sda /
+path=/var/lib/durable-jobs-bench/native/scratch owner=nobody:nogroup mode=700 inode=133846 type=directory
+8:0 ext4 /dev/sda /
+path=/var/lib/durable-jobs-bench/river/scratch owner=nobody:nogroup mode=700 inode=132237 type=directory
+8:0 ext4 /dev/sda /
+path=/var/lib/durable-jobs-bench/apalis/scratch owner=nobody:nogroup mode=700 inode=272133 type=directory
+8:0 ext4 /dev/sda /
+path=/var/tmp/mesh-durable-jobs-matrix/active-arm.lock owner=root:root mode=600 inode=284981 type=regular empty file
+8:0 ext4 /dev/sda /
+path=/var/lib/durable-jobs-bench/native/native.lock owner=root:root mode=644 inode=133844 type=regular empty file
+8:0 ext4 /dev/sda /
+scratch children for /var/lib/durable-jobs-bench/native/scratch
+scratch children for /var/lib/durable-jobs-bench/river/scratch
+scratch children for /var/lib/durable-jobs-bench/apalis/scratch
+Both canonical remote fences acquired simultaneously
+No active benchmark or compiler process

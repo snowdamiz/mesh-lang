@@ -1,0 +1,129 @@
+{
+  "first_resumption_commands": [
+    "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe",
+    "python3 -B target/linode-jobs-stepchange/pause-after-public-campaign.py --probe",
+    "python3 -B target/linode-jobs-stepchange/r2-d2-producer-boundary-slots.py check",
+    "python3 -B target/linode-jobs-stepchange/continue-after-public-product.py --resume"
+  ],
+  "hold": "Separate slow-cap71 confirmed refill remains held. Wait for explicit user instruction before any native grant.",
+  "host_receipt": "target/linode-jobs-stepchange/requests/public-campaign-pause-host-20261124T055129Z.txt",
+  "host_receipt_sha256": "93d97fa02420ab742992336ad64004ca440df84b0090df042eb11a6049d1914d",
+  "local_timing_fence": {
+    "inode": 1114338247,
+    "mode": "0o644",
+    "owner_gid": 20,
+    "owner_uid": 501,
+    "path": "tools/durable-jobs-bench/.timing.lock"
+  },
+  "output_policy": "Retain partial and failed attempts in their original paths. Keep all host resources and staged inputs.",
+  "pending": [
+    {
+      "id": "r2-d2-producer-boundary",
+      "launcher": "r2-d2-producer-boundary-slots.py run",
+      "request_sha256": "3d0ae889d0f8da8f3011727f99994af191bed5983b5438b62d9b69181494ba22"
+    },
+    {
+      "id": "2026-11-24-short16-river-readiness",
+      "launcher": "sealed slots.py setup, pilot, rest",
+      "request_sha256": "792eeaacc852feb39d8391c0f1dbb4419cdf561e3dcfee9ceaa5b5e84b7f2f11"
+    },
+    {
+      "id": "2026-11-24-ordinary-pg-permits",
+      "launcher": "cold-pg-permits-slots.py",
+      "request_sha256": "a627f855ab1b2a1af2c1cad10b4b2fab09b978bcb779b9713fba9f20832b9ae5"
+    },
+    {
+      "id": "2026-11-24-short16-fused-refill-closure-retry",
+      "launcher": "sealed closure-retry/launcher.py",
+      "request_sha256": "434b7a60bb4db2e763d8301ba9689d73a9b2d5de7a756fa7ccfaeb24b83bdf22"
+    },
+    {
+      "id": "2026-11-24-dense-product-d2-transfer-closure-retry",
+      "launcher": "dense-product-d2-slots.py",
+      "request_sha256": "38a6a6e561e1a5aef830367683d7a89ad08af332fdf0cc4c8ba510b639544ee2"
+    },
+    {
+      "id": "dense-matched-topology-bulk-pair-import-retry",
+      "launcher": "frozen-dense-pilots.py dense-matched-topology-bulk-pair-import-retry",
+      "request_sha256": "6f0b471c85be7236061c6b082df9be2f9e662c54fc0ebc94cbf2ea9646f7e316"
+    },
+    {
+      "id": "2026-11-24-dense-hot-worker-supply",
+      "launcher": "frozen-dense-pilots.py 2026-11-24-dense-hot-worker-supply",
+      "request_sha256": "03ef8b66361246bee321eecd91bbfb2ab2723533f4c48454ee4fc20acab9fbd4"
+    },
+    {
+      "id": "2026-11-24-dense-wal-cost",
+      "launcher": "frozen-dense-pilots.py 2026-11-24-dense-wal-cost",
+      "request_sha256": "7de1c8c9709b7912e96b4d3a91d4b5efb6e9c05f3b18b2e05b2ca95841240db3"
+    },
+    {
+      "id": "2026-11-24-public-dense-set-claim",
+      "launcher": "frozen-dense-pilots.py 2026-11-24-public-dense-set-claim",
+      "request_sha256": "3f77f5ddec6499eb31b88a99634d7d308807e9ab48796e7c5855f644dbee9a77"
+    }
+  ],
+  "pending_conditions": {
+    "fixed_worker": "Only groups 1\u20132 are booked. Extension needs both pilot arms to pass the original gate.",
+    "fused_refill": "Original source and seven cuts, corrected timing adapter proof, then gated pilot.",
+    "ordinary_pg_permits": "Original SETUP, exact import amendment acceptance, then original diagnostic and statistical gates.",
+    "river": "Three SETUP lifecycle witnesses then both opposite pilot orders before groups 3\u20136.",
+    "wal_and_set_claim": "Build-free separate diagnostics under their exact scopes and own windows."
+  },
+  "profiles": {
+    "dense-equal": {
+      "measured_arms": 20,
+      "series_sha256": "ab2aaa8b6422bff02637d2d3f7c736bf4613255a6c8429ec24b0cfeff9ed02f4",
+      "summary": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/dense-equal/summary.json",
+      "summary_sha256": "249833a8c440b742c9d1ff0e8bc40232938a1611e3d30c729942cddd8f5157c6"
+    },
+    "dense-mixed": {
+      "measured_arms": 20,
+      "series_sha256": "f5123ad81327114467ed6044178a196d7ee3f9ce9d6278b6c20bd9684832427c",
+      "summary": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/dense-mixed/summary.json",
+      "summary_sha256": "cd11317abdff85670d549084b7e09d5804d9910e23f8cfb22e793f3270811662"
+    },
+    "dense-stock": {
+      "measured_arms": 20,
+      "series_sha256": "25ba776814ecd9f5ce9be7dae2f9de00a66f8f352eb06136618cba480221374d",
+      "summary": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/dense-stock/summary.json",
+      "summary_sha256": "03e0ead93211d739f9f875a8a311a49220351b176d920b35ac056254ec66136c"
+    },
+    "large": {
+      "measured_arms": 20,
+      "series_sha256": "9ae4d5b318cba37ba793af3961721c9bd1ec3db29e3bd8c004257844aedb9824",
+      "summary": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/large/summary.json",
+      "summary_sha256": "e409342a6f36c69558ca51c93b06ae7fb986113da72db556a899c0df216cac05"
+    },
+    "large-external": {
+      "measured_arms": 20,
+      "series_sha256": "a2083d4a7c7f8f5e68352e1ade0ff0ecaf4360804ed41c8c24fe38fdc657df15",
+      "summary": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/large-external/summary.json",
+      "summary_sha256": "1a6906f0e6a03285d5ce9dac8fb3079881db6ed5ff42d7abb57243374bd47e00"
+    },
+    "short-smaller": {
+      "measured_arms": 25,
+      "series_sha256": "0548258a55159cc462ca38c234b198bbc36504d163ff392e18ecbe794dc0e2b9",
+      "summary": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/summary.json",
+      "summary_sha256": "28285f27b909dfd911c42539bbd3cd9382f508c1cae9d7b7bf9645d73cea8af6"
+    },
+    "slow": {
+      "measured_arms": 20,
+      "series_sha256": "1f7b2a896c9576384b6fa63ef0513e960bfcfab2764769e448c15a89ffeaeb3d",
+      "summary": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/slow/summary.json",
+      "summary_sha256": "763b9cb39bec01492a9cf6ab6240e5758ef90573345c6571fd5e2fb851d3eaa8"
+    },
+    "sparse": {
+      "measured_arms": 20,
+      "series_sha256": "3add76cd99905db865d41a2fccf8bcaa27365307ca7b6ba27c6930ef85ac0add",
+      "summary": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/sparse/summary.json",
+      "summary_sha256": "ba6a312e2d6d138f5310ea7f70e62defddf94d88e3354d6277f5e548d6769a06"
+    }
+  },
+  "releases": {
+    "target/linode-jobs-stepchange/requests/2026-11-24-trusted-jobs-product-composition-large-external-closure-retry-groups-1-2.released.json": "6ff1a3eab9b8fc1a82dbcc0cc23a06e56a30f51777700a2c2418b7e0eb821350",
+    "target/linode-jobs-stepchange/requests/2026-11-24-trusted-jobs-product-composition-large-external-closure-retry-groups-3-5.released.json": "e9ec86c90dfd4e597d971567832df3d4b08655f26c7410191550d418d127a32f"
+  },
+  "state": "paused-awaiting-user-resumption",
+  "verified_at": "2026-11-24T05:51:30.617265+00:00"
+}

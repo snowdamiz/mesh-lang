@@ -1,0 +1,23 @@
+--- target/2026-11-24-public-large-file-session/stage/original-main.mpl	2026-11-24 00:47:43
++++ target/2026-11-24-public-large-file-session/stage/broker-main.mpl	2026-11-24 00:47:43
+@@ -238,6 +238,20 @@
+   let verb = Json.as_string(Json.object_get(request, "verb")?)?
+   if verb == "enqueue" do
+     let receipt = transact_batch(conn, Json.object_get(request, "batch")?)?
++    println(receipt)
++  else if verb == "enqueue_file" do
++    let path = Json.as_string(Json.object_get(request, "batch")?)?
++    let fixture_dir = Env.get("JOBS_PARITY_FIXTURE_DIR", "")
++    let request_id = Json.as_string(Json.object_get(request, "request_id")?)?
++    if !String.starts_with(fixture_dir, "/") || !Regex.is_match(~r/^batch_[0-9]{6}$/, request_id) || path != fixture_dir <> "/" <> request_id <> ".json" do
++      return Err("expected an absolute batch path in the private fixture directory")
++    end
++    let input = read_batch(path)?
++    let current_id = Json.as_string(Json.object_get(input, "request_id")?)?
++    if current_id != request_id do
++      return Err("batch file does not match request ID")
++    end
++    let receipt = transact_batch(conn, input)?
+     println(receipt)
+   else if verb == "query" do
+     let sql = Json.as_string(Json.object_get(request, "sql")?)?
