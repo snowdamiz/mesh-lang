@@ -215,6 +215,21 @@ If Mesh kept each first application commit at its observed time and finished eac
 | River | 273.80 | 368.18 | 1/2 | 1/2 |
 | Apalis | 342.64 | 450.95 | 0/2 | 0/2 |
 
+## Short jobs with combined settlement and refill
+
+2/5 matched rotations. The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Fused A | 574.62 | 687.04 | — | — |
+| Fused B | 538.50 | 636.18 | 2/2 | 2/2 |
+| Grouped control A | 569.81 | 683.52 | 1/2 | 1/2 |
+| Grouped control B | 554.96 | 679.59 | 1/2 | 1/2 |
+| Public grouped control | 599.03 | 723.29 | 1/2 | 0/2 |
+| Oban | 264.47 | 301.68 | 2/2 | 2/2 |
+| River | 472.81 | 501.65 | 2/2 | 2/2 |
+| Apalis | 740.17 | 790.03 | 0/2 | 0/2 |
+
 ## Short jobs with stock and prewarmed River
 
 6/6 matched rotations. Prewarmed River opened its PostgreSQL connections before submit. Cold and prewarmed River used the same executable.

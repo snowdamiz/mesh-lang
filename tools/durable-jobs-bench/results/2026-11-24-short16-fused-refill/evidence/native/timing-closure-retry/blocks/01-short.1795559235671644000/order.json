@@ -1,0 +1,17 @@
+{
+  "group": 1,
+  "order": [
+    "group-a",
+    "fused-a",
+    "river",
+    "public-group",
+    "oban",
+    "fused-b",
+    "apalis",
+    "group-b"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}

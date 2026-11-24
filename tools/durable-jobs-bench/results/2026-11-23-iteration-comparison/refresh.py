@@ -334,7 +334,12 @@ def capture(directory, live=None):
                 measured[lane].update(engine=engine, completed=score["completed"],
                                       sha256=inputs["engines"][engine]["artifact_sha256"])
 
-        if config and sealed["raw_sha256"] != archives:
+        if config and "raw_sha256" not in sealed and block["phases"] == ["measured"]:
+            expected = {f"measured-{lane}/measured-{config['lanes'][lane]['engine']}": row["raw_sha256"]
+                        for lane, row in scores.items()}
+        else:
+            expected = sealed["raw_sha256"] if config else archives
+        if expected != archives:
             raise ValueError(f"{receipt}: raw archive digest mismatch")
         blocks.append(dict(group=block["group"], profile=block["profile"],
                            attempt=receipt.parent.name, order=block["order"],
@@ -530,6 +535,10 @@ def write_scorecard(data):
                      "input and 100 ms hold. [Extension decision](../2026-11-23-bulk-enqueue-v2-slow/README.md)",
                      [("bulk", "V2 · batch enqueue"), ("scalar", "V2 · scalar enqueue"),
                       ("v1-bulk", "V1 · batch enqueue"), ("v1-scalar", "V1 · scalar enqueue"), *peers])
+    add_policy_table(lines, data.get("short-fused-refill", {}), "Short jobs with combined settlement and refill",
+                     "The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.",
+                     [("fused-a", "Fused A"), ("fused-b", "Fused B"), ("group-a", "Grouped control A"),
+                      ("group-b", "Grouped control B"), ("public-group", "Public grouped control"), *peers])
     add_policy_table(lines, data.get("short-river-readiness", {}), "Short jobs with stock and prewarmed River",
                      "Prewarmed River opened its PostgreSQL connections before submit. Cold and prewarmed River used the same executable.",
                      [("r2-d2", "Mesh hot checkout"), ("r2-off", "Mesh checked checkout"),
