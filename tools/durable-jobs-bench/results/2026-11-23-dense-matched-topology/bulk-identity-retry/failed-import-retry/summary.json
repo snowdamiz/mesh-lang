@@ -1,0 +1,13 @@
+{
+  "arms": {},
+  "failures": {
+    "01/measured-bulk/measured-mesh": "ValueError: native adapter failed",
+    "01/measured-scalar/measured-mesh": "ValueError: native adapter failed",
+    "01/warmup-bulk/warmup-mesh": "ValueError: native adapter failed",
+    "01/warmup-scalar/warmup-mesh": "ValueError: native adapter failed",
+    "02/measured-bulk/measured-mesh": "ValueError: native adapter failed",
+    "02/measured-scalar/measured-mesh": "ValueError: native adapter failed",
+    "02/warmup-bulk/warmup-mesh": "ValueError: native adapter failed",
+    "02/warmup-scalar/warmup-mesh": "ValueError: native adapter failed"
+  }
+}
