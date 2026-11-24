@@ -1,0 +1,14 @@
+{
+  "group": 4,
+  "order": [
+    "mesh",
+    "oban",
+    "rust",
+    "go"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "slow"
+}
