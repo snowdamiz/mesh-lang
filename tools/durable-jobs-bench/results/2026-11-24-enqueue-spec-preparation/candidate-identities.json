@@ -1,0 +1,14 @@
+{
+  "large": {
+    "broker_source_sha256": "64f06243db4bb1b9fd2c04181c9faa46c207596b7e7f5686fd710d780ff11b22",
+    "candidate_store_sha256": "660963fdd3c71a460fdee24163502f6f7b643b1b162e92b786882e975339c22c",
+    "production_patch_sha256": "955d59a4db95cd2f51d611ccbbddd91a7e545ed435beaa2f555861dd41704c25",
+    "stock_store_sha256": "024a38917f66849f31710f4656da403ab105e309b08043e0f0340a1f96f848aa"
+  },
+  "short": {
+    "broker_source_sha256": "89c37190755ec407ae6d1b0f447cef26c43201b0117f3f7e7df0c9f7679cf167",
+    "candidate_store_sha256": "647d05e9ee3d1ab125a8dbc1b7b1ad3952cb9efbb702cf502927d9c8a7c36782",
+    "production_patch_sha256": "041f35b146dc30e5d90b643cf7d7e1bcc1f0aa6323fd007577ce71fbedead57c",
+    "stock_store_sha256": "c41b0c8e32b9861b00f46d0cbc81be5b462dbb6294da99b46f67a2eef7e7913f"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "after": {
+    "steal": 134,
+    "ticks": 4576920
+  },
+  "before": {
+    "steal": 134,
+    "ticks": 4576799
+  },
+  "binary_sha256": "422f493a23ffcf8ee520e44dcb2baf87f27695eb935a3b06832516df856e0c08",
+  "exit": 0,
+  "lane": "stock-a",
+  "order": [
+    "stock-b",
+    "candidate",
+    "stock-a"
+  ],
+  "profile": "large",
+  "rotation": 6,
+  "stderr": "",
+  "stdout": "{\"frames\":64,\"jobs\":64,\"repeats\":8,\"accepted\":512,\"cpu_ns\":1015283397,\"wall_ns\":1015314175,\"stage_wall_ns\":[0, 0, 0, 0, 0],\"output_sha256\":\"c98a0cd9500d920dfb07b040ffc7a90eb2628f82681eed196f2ea987db376e18\"}\n"
+}

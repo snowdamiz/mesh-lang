@@ -1,0 +1,463 @@
+{
+  "earlier_bulk_d2": {
+    "host": [
+      "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "6.8.0-149-generic",
+      "8:0"
+    ],
+    "profile": "short",
+    "rotations": [
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "river": true
+        },
+        "group": 1,
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "ea1b628d9884aa2c94032f757d087e6fcb895e2d24f0f0d9ed273c6343709888",
+          "measured-bulk/measured-mesh": "50ef0ed85711cf21f31d64db9caeaed304705d5376ecee0834558d13c686b07d",
+          "measured-river/measured-go": "6b1c4af98fcb665d69e8484019ef004988ac63cf1a94323e9b4b38158e1b8dc3"
+        },
+        "saving_needed_ms": {
+          "river": 18.126
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          193.259
+        ],
+        "stock_submit_to_commit_ms": [
+          34.147
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "river": false
+        },
+        "group": 2,
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "aa7874ddcbc8de3acc0ab4eeac641706cd00084f7b65972652a0f6dc8631d23b",
+          "measured-bulk/measured-mesh": "7ae28329fcd88a587cfeaadd5abc58cba9f1c950441b56a716d5a30879f05105",
+          "measured-river/measured-go": "19812a024379cd6dbbe416f25b1c9d5738650f636c11ce0dce22c6dfe7a2f63b"
+        },
+        "saving_needed_ms": {
+          "river": -73.623
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          196.781
+        ],
+        "stock_submit_to_commit_ms": [
+          34.434
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "river": true
+        },
+        "group": 3,
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "8530ad1ba367e3d56384b7ec7ff7a3cf9fa22b9f567810c3ee2ee363e8d34d44",
+          "measured-bulk/measured-mesh": "b4c1be4a74a8eddcf7be08f525aa1feaa2ab5f2e40aa8ece48125b8819722085",
+          "measured-river/measured-go": "d7a6e7ec6acb8861663187a109595f49525282374c7134822760ce5a2d736c02"
+        },
+        "saving_needed_ms": {
+          "river": 29.81
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          209.391
+        ],
+        "stock_submit_to_commit_ms": [
+          37.206
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "river": true
+        },
+        "group": 4,
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "a569a5243bc6396a1bb2b7fc9406b4e7f0cfac0689af12b46496b54d139fc352",
+          "measured-bulk/measured-mesh": "4fdf5fc045d144efb195577373264daec04737eda89826d267415f28d4c7567b",
+          "measured-river/measured-go": "02b906e11571e872091545b9256ace83a4ed74f6022e0db540f738b53500f2f5"
+        },
+        "saving_needed_ms": {
+          "river": 19.091
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          195.831
+        ],
+        "stock_submit_to_commit_ms": [
+          35.383
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "river": false
+        },
+        "group": 5,
+        "raw_sha256": {
+          "measured-bulk-d2/measured-mesh": "ed9e846cbbbaebd3effac7a09749517a823bae2a8f7f3defb20d08f2f393a09d",
+          "measured-bulk/measured-mesh": "a32b2346165286ec17758df610a589951be5a4b2962240450f5476da561756d9",
+          "measured-river/measured-go": "c1ea6bf888f034794f0e201fd4c71cc98166dfc7a855250bf1b13ed8d6e44061"
+        },
+        "saving_needed_ms": {
+          "river": -68.981
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          205.279
+        ],
+        "stock_submit_to_commit_ms": [
+          32.744
+        ]
+      }
+    ],
+    "source": "2026-11-23-ordinary-hot-checkout-bulk-v2/native-summary.json",
+    "source_sha256": "78722a2cf0c8e976a9212224a07d71e790548ae708919cec25aa0f04d982ba1e"
+  },
+  "large_broker_once": {
+    "host": [
+      "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "6.8.0-149-generic",
+      "8:0"
+    ],
+    "profile": "large",
+    "rotations": [
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis-external": true,
+          "oban-external": false,
+          "river-external": false
+        },
+        "group": 1,
+        "raw_sha256": {
+          "measured-apalis-external/measured-rust": "75a733bf83e468cec397d02c7f4a128e359be4584631722d9b3dcd53b40371ec",
+          "measured-oban-external/measured-oban": "454c30365bd1fd422647c7162eb38e9d96f74fad8266939a6257d9f205fde6fa",
+          "measured-ordinary-a/measured-mesh": "4b5518745c2dcce4e2cf05588a8bfadaeba49bf0ff118416ef085615a942dc31",
+          "measured-ordinary-b/measured-mesh": "b1a9aecbcdaeb81d75f124e4fca6ddc6177c4ba686e508e8218b2f935c52c0f3",
+          "measured-ordinary-once/measured-mesh": "3e2fcbd3c84857f537669e2977df439fce860511e7337dcaf086c8f4a21055dd",
+          "measured-river-external/measured-go": "707c538614468fcc1eefdc8435fc299b0c0770e919e75196bc4bc2e806e9bc9f",
+          "warmup-apalis-external/warmup-rust": "431c80ce3190244693570004c9040481ee2146b4a010cc9dabad13f17caf33e5",
+          "warmup-oban-external/warmup-oban": "9c83a1b11b740160ec984cb7ca4c5c47e1bdddd7aa54e3c103c915bbaa9e8adc",
+          "warmup-ordinary-a/warmup-mesh": "14ac7885b0a26efe6d7a535f1c4b8de839cc007387ac970a2bd679b9b5248dfa",
+          "warmup-ordinary-b/warmup-mesh": "eb2bdcbcf3a37a40df83651ce3aed0537e14dd7f6e9befede0e2eda6588b8943",
+          "warmup-ordinary-once/warmup-mesh": "3bf1085b6f60275a15d429629ae05ce0c04eace0c94220234acffe2a27fcd97c",
+          "warmup-river-external/warmup-go": "213e16b013d0138285a296db1288099dcb13af09fedcdeeaf3c4a77403701d30"
+        },
+        "saving_needed_ms": {
+          "apalis-external": 505.224,
+          "oban-external": -373.606,
+          "river-external": -1229.249
+        },
+        "stock_duplicate_enqueue_spread_ms": 11.762,
+        "stock_full_submit_ms": [
+          1300.849,
+          1352.636
+        ],
+        "stock_submit_to_commit_ms": [
+          749.608,
+          761.37
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis-external": true,
+          "oban-external": false,
+          "river-external": false
+        },
+        "group": 2,
+        "raw_sha256": {
+          "measured-apalis-external/measured-rust": "5156c2bc61007e2223c9fd5a836431312218caafa1f4936be68d9231ca7dc8b8",
+          "measured-oban-external/measured-oban": "2d7fa01bdfd03e0ec0605515a130115a85a8050b35ddd804b1089ccf762febef",
+          "measured-ordinary-a/measured-mesh": "b587a4b0ecbacdda8d14f8b80aaa01e8ec66fb9838cfac4e01e87d5392f7d3fa",
+          "measured-ordinary-b/measured-mesh": "ba522bd36579c5794842c3570293b2348fd51f30d6b1fae12061af0cd054092d",
+          "measured-ordinary-once/measured-mesh": "36efcd4f5ee15b6cd638e6096c9c244ccc71fb01c0f8a4855cbaae0c84e48e40",
+          "measured-river-external/measured-go": "8fbf88bd13c0650c0f64b59d65614552f066d8307edecd13dd44291bf1a0c968",
+          "warmup-apalis-external/warmup-rust": "46981d9611a49fd0934d4c7361e5f648f80191ea81560291fa629f8b01f241f4",
+          "warmup-oban-external/warmup-oban": "b7d90cebada3d18638c9f1adab31ce400b0ae8b7b43fe2c8445cc022c217819b",
+          "warmup-ordinary-a/warmup-mesh": "10483e5a9f25ff280421b4aa4d32d8f880ca62f1643c6e72d3409663a4645ced",
+          "warmup-ordinary-b/warmup-mesh": "a4b1e40ad224542491a96f2bf9489f8ae43d6ad3cec84a334efe957b72e5afbd",
+          "warmup-ordinary-once/warmup-mesh": "0c8a6b3a1042e4f6a355c552b181b3c2c301df0aa3c6cd766e330babb317c368",
+          "warmup-river-external/warmup-go": "a8c2bf003e87bec399fe4e24457ee101f5212dbb97bbae22a00f63c30ab2c4e5"
+        },
+        "saving_needed_ms": {
+          "apalis-external": 528.067,
+          "oban-external": -568.021,
+          "river-external": -979.852
+        },
+        "stock_duplicate_enqueue_spread_ms": 12.977,
+        "stock_full_submit_ms": [
+          1358.085,
+          1339.755
+        ],
+        "stock_submit_to_commit_ms": [
+          773.893,
+          760.916
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis-external": true,
+          "oban-external": false,
+          "river-external": false
+        },
+        "group": 3,
+        "raw_sha256": {
+          "measured-apalis-external/measured-rust": "63ba417da47421647a6bdeac32f69182de6e550f6eaee03a727eedfa72c2bd1e",
+          "measured-oban-external/measured-oban": "7bfeb7668a52bd1d5d40d60067d7413e3b3121bca7c60d85081d2ab914c86506",
+          "measured-ordinary-a/measured-mesh": "25d76d4070ee597049c75deea506339cfc488ec1e0470029f28abfd44cc71e7e",
+          "measured-ordinary-b/measured-mesh": "4b2da8cf096ff15e16cc0d3c89da0822de5110fcf3b2d163f1d78d26118defd6",
+          "measured-ordinary-once/measured-mesh": "26e35362dab48c30a5b79e5e73c4e6c66aeb49f54becfdda109d5cf0d3cb5bb3",
+          "measured-river-external/measured-go": "59b7697c7c1bf65bc7707036fe521d56c2f00bb1b1d099540aee70bfb84bfff1",
+          "warmup-apalis-external/warmup-rust": "1bc33c4f3183492e5b436ddbf80585b7f6f39ec5e85a11f3457243528054bcf1",
+          "warmup-oban-external/warmup-oban": "55dd149b99ff993ad2fe54c3786cf062ba8c3213252a10d3259ad0756b3fbeab",
+          "warmup-ordinary-a/warmup-mesh": "d23232486695364304dadf3528822ed74d90cd3261ed9efe0e7963fd009c4588",
+          "warmup-ordinary-b/warmup-mesh": "9d9afb7368ed41487862c57f50c1325fbc55b7326559559d41eb5543465d4299",
+          "warmup-ordinary-once/warmup-mesh": "e22d48331adf2eba7bd11267b98e5bfc07eeafc16b9384c7a89ff642e5876b45",
+          "warmup-river-external/warmup-go": "9c668a5e0414810027fa35c24e7173c22c0c69bd0dfb8012975a0357d577799d"
+        },
+        "saving_needed_ms": {
+          "apalis-external": 474.262,
+          "oban-external": -954.642,
+          "river-external": -1184.59
+        },
+        "stock_duplicate_enqueue_spread_ms": 26.154,
+        "stock_full_submit_ms": [
+          1345.124,
+          1347.374
+        ],
+        "stock_submit_to_commit_ms": [
+          793.08,
+          766.926
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis-external": true,
+          "oban-external": false,
+          "river-external": false
+        },
+        "group": 4,
+        "raw_sha256": {
+          "measured-apalis-external/measured-rust": "198fff4d12fb47ef7326100576af12b8c3ee670f267018bbb3a9be6c4caa4ee0",
+          "measured-oban-external/measured-oban": "499da7dfab86cdc7719c69b653e0d62d614bf913d5e73fd13fba4b6ec8c89e00",
+          "measured-ordinary-a/measured-mesh": "d89f07573c31c002f7cd8a74d3f590d45693cf05a0814ce0506cd86d779677af",
+          "measured-ordinary-b/measured-mesh": "f886198642f40a411d1569237b1822fbaae68878115d63df8c48ef34f2ff2be4",
+          "measured-ordinary-once/measured-mesh": "a493954c94d615d29daf27cdf599735e1efcef823beec5dfbb41fac50fac6ec8",
+          "measured-river-external/measured-go": "8cd318f1cb89b2d1417e096aeb14575250137f221df67578d10d816ea58fc1ab",
+          "warmup-apalis-external/warmup-rust": "57ccf90c3018ba572e47b27440acf0e29fc5d41c706ef8ad9df1e2382010f093",
+          "warmup-oban-external/warmup-oban": "730f88eec4f447d5b5f774b33fdbfed5b75b16975b501d6d6c40a6c64c69c3e4",
+          "warmup-ordinary-a/warmup-mesh": "1063da8733cc0e5ce7f2de78ad3ca5e3a01ff536782590d5dd9ff22480268743",
+          "warmup-ordinary-b/warmup-mesh": "39f2c64785c441dc68a8f227d952e28ed26358b91033a0e41268c8ebaef168d8",
+          "warmup-ordinary-once/warmup-mesh": "b334a4af9c1e5c7d7f55031574b768bfead47c6053188d93442eb07abac14bb8",
+          "warmup-river-external/warmup-go": "cb8470a80d6d5b82fc7825198280921390dc04d3dda3810353ed296f2d478ddf"
+        },
+        "saving_needed_ms": {
+          "apalis-external": 502.838,
+          "oban-external": -486.856,
+          "river-external": -964.717
+        },
+        "stock_duplicate_enqueue_spread_ms": 23.184,
+        "stock_full_submit_ms": [
+          1339.277,
+          1346.475
+        ],
+        "stock_submit_to_commit_ms": [
+          732.717,
+          755.901
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis-external": true,
+          "oban-external": false,
+          "river-external": false
+        },
+        "group": 5,
+        "raw_sha256": {
+          "measured-apalis-external/measured-rust": "0d9b90c52e4f70fd72c63ff650825105a7cacdcff111c0825a638037e20949e1",
+          "measured-oban-external/measured-oban": "21740b9d09fc5cf78493b9d46266e8d17215b96c31883cb12f9bc7516677264b",
+          "measured-ordinary-a/measured-mesh": "deb080c0aed9428b808d786036631533495cc8093d86dba66602e4fa415c90e2",
+          "measured-ordinary-b/measured-mesh": "3048fc24f05bfe8ff0ea51767f79a934488451756b0494b4e20e371e4bfe1cdf",
+          "measured-ordinary-once/measured-mesh": "b66e2608461d35fe0d0aba0163ddaea1c109bdf9788a93c3cf54ac0cd51992fb",
+          "measured-river-external/measured-go": "d753e983bfc405f010b6b711fa2452f9b96cefb497969c81a301ffd97bd1c8af",
+          "warmup-apalis-external/warmup-rust": "e3318882f45eee3ddf7f10cfead717bd7753d15db079c1a9b0dbde4a1cb6f322",
+          "warmup-oban-external/warmup-oban": "5f99e18329e72c5f8ce3466564e5b083dfa0bb1b7d623f80de54e4a204ff7f29",
+          "warmup-ordinary-a/warmup-mesh": "20ceecdccb7a83bddb27dcb2ea7cfcbc310c9b605a254f0e9af83081be9bed94",
+          "warmup-ordinary-b/warmup-mesh": "097a30812616fb26686fd3dac4e4f5b6ccbcf246590da224d20bdd46c89414b6",
+          "warmup-ordinary-once/warmup-mesh": "7d5070bac348a1e4895d5a9afc4b90f17f603825a4b0374b1c7ab19623297056",
+          "warmup-river-external/warmup-go": "6cb0da5da15294e479ff442fa027323d9a55e4da7e3cf149a527237b8165a3b2"
+        },
+        "saving_needed_ms": {
+          "apalis-external": 439.603,
+          "oban-external": -490.28,
+          "river-external": -1244.78
+        },
+        "stock_duplicate_enqueue_spread_ms": 13.363,
+        "stock_full_submit_ms": [
+          1260.103,
+          1327.888
+        ],
+        "stock_submit_to_commit_ms": [
+          732.777,
+          746.14
+        ]
+      }
+    ],
+    "source": "2026-11-23-ordinary-broker-once/evidence/native-summary.json",
+    "source_sha256": "794a5bc58c753943eafe8abcfe020c05801f51e9b4f1930a3a494ba8f2384101"
+  },
+  "six_lane_bulk_d2": {
+    "host": [
+      "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "6.8.0-149-generic",
+      "8:0"
+    ],
+    "profile": "short",
+    "rotations": [
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis": false,
+          "oban": false,
+          "river": false
+        },
+        "group": 1,
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "ec49493b21998066445334dbb369dd324a9324ead639b806960396f0af90d836",
+          "measured-bulk-d2/measured-mesh": "2b0af9e3b35749d22dc8ab7eeebf92dda98eb6d1909ef5186d5cafe56d9fc8e0",
+          "measured-bulk/measured-mesh": "46010a305108c89e8f55a3c27ad39e92eb9ed54517845810fb95472e8a5454fa",
+          "measured-oban/measured-oban": "ba6ce5a080cc1ccdf9c2103429dbb74c653d4ea4deb4a1af77083e83bdd13a7b",
+          "measured-protected-mesh/measured-mesh": "3b297d5484a1f80fa89425f54b0e3d7278907472533db224ba1762ac8a532413",
+          "measured-river/measured-go": "da1e3eb4aca3862f59db376e97dcac6397733424fc55ac2ac91407619d1aab14"
+        },
+        "saving_needed_ms": {
+          "apalis": 60.032,
+          "oban": -195.693,
+          "river": -68.58
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          201.608
+        ],
+        "stock_submit_to_commit_ms": [
+          33.996
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis": false,
+          "oban": false,
+          "river": false
+        },
+        "group": 2,
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "6304023750b45483bcfdbcc8a46d2de874b6bf9d96530b6d1c21fff71a301fef",
+          "measured-bulk-d2/measured-mesh": "b50f9c86a45392ab4a11e83db5fd17631673f0ccd4bf92304e3f67050b2f2bc4",
+          "measured-bulk/measured-mesh": "6d831337038c42093cd1be2b339489646cd30804f3933d1854158e97098613c0",
+          "measured-oban/measured-oban": "61735acd8da23395f653c44d928fbafbec651ca784139c773c01857275254470",
+          "measured-protected-mesh/measured-mesh": "977bc6f1762c05fce8a41b8cc0f06c251fc1196b67aa390e450c1ca110717dd1",
+          "measured-river/measured-go": "2fdff5c8356a0e2515a8c18ef8b52852243f60e064e0aa3fee92fac9a5181406"
+        },
+        "saving_needed_ms": {
+          "apalis": 57.995,
+          "oban": -212.455,
+          "river": -65.932
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          201.059
+        ],
+        "stock_submit_to_commit_ms": [
+          34.781
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis": false,
+          "oban": false,
+          "river": false
+        },
+        "group": 3,
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "f427b57b141b6a566d037206d8f7304d1ae63dc97a72dd5143a77e1b77205efe",
+          "measured-bulk-d2/measured-mesh": "464278f2a874f33b6d62c60f7edd56e06e5508b6f1018c59da37f856fffa0175",
+          "measured-bulk/measured-mesh": "e2a1e4757434dfa6a64dc434b2e85e638a1447112b56ccc6e8b2bcc7aa6b318d",
+          "measured-oban/measured-oban": "8e4f30b6b1e1156ee203ba3190e2febae3b71af44f4e5db40581a37d7da61ae5",
+          "measured-protected-mesh/measured-mesh": "9616a711f2bec8423a345401855341a6ca04fa002b3f526724a340a883fcbf89",
+          "measured-river/measured-go": "04ce57e68164e814660e109239888d330212a81d88065defb02e668b78dbb86d"
+        },
+        "saving_needed_ms": {
+          "apalis": 63.144,
+          "oban": -187.503,
+          "river": -4.675
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          219.997
+        ],
+        "stock_submit_to_commit_ms": [
+          49.215
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis": false,
+          "oban": false,
+          "river": false
+        },
+        "group": 4,
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "6cb0349cd36fa2740affd935b104f5cee00e74e7d550765a4dc5b82b5d0ede46",
+          "measured-bulk-d2/measured-mesh": "3301d4f55ebfba17b3a7bced331b927ae8f3b0c5b957963f8a6975ee764c7392",
+          "measured-bulk/measured-mesh": "520a3b178cc8bde6599befc542e89acfa432825b56c1412b9b5fa91c57b213a5",
+          "measured-oban/measured-oban": "3a4620962a712e1d9c83dfd9dfeabc22ca7cd4e5f6c7ac9a2ad2c0c19d282619",
+          "measured-protected-mesh/measured-mesh": "a633ef3776b4a47ddd2ebfbbf93c19b7c61e441792218acc678953509de907d9",
+          "measured-river/measured-go": "5ba5b2bee2fa5f314a21330fa0f56d8cee6ab0cb3df35f0dfe1c9fbbfb5841e1"
+        },
+        "saving_needed_ms": {
+          "apalis": 53.128,
+          "oban": -297.494,
+          "river": -77.399
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          194.607
+        ],
+        "stock_submit_to_commit_ms": [
+          36.225
+        ]
+      },
+      {
+        "can_close_by_changing_enqueue_alone": {
+          "apalis": false,
+          "oban": false,
+          "river": false
+        },
+        "group": 5,
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "ddbbcc9ff7ed5e1f55fa5639109395a50fd143ba1d2bcb06bc4c347adacb902c",
+          "measured-bulk-d2/measured-mesh": "eaa5c8bbdc512a0c83eefafd30374b65ab95d91746162462de4e9bec0ee01607",
+          "measured-bulk/measured-mesh": "35d59c2d78a1c803d7da4306736cc0bb490eaec0efdbd5cf46139c76af4c3e14",
+          "measured-oban/measured-oban": "56f305b2a9366e557acefa6287165d9a47680608f2d31546fa45ba3857923bba",
+          "measured-protected-mesh/measured-mesh": "26c444697fdd913bd423365f2fa9d12c1a38f97e528bfcaab938f8ce5042726b",
+          "measured-river/measured-go": "c4d392079c2f4000b48248282f0dd915e1cc17035802c401820da34db5f377b4"
+        },
+        "saving_needed_ms": {
+          "apalis": 74.824,
+          "oban": -222.918,
+          "river": -54.151
+        },
+        "stock_duplicate_enqueue_spread_ms": 0.0,
+        "stock_full_submit_ms": [
+          218.109
+        ],
+        "stock_submit_to_commit_ms": [
+          38.438
+        ]
+      }
+    ],
+    "source": "2026-11-24-bulk-d2-short-peers/evidence/2026-11-24-bulk-d2-short-peers/summary.json",
+    "source_sha256": "2bd3c8b8ccf1e8efccb92380fed250e48b78e356fdd753a5ef99de324f8b6b97"
+  }
+}

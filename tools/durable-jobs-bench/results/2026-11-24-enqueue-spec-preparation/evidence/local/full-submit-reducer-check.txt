@@ -1,0 +1,1 @@
+Synthetic reducer fixtures passed for material, below-threshold, noisy, and incomplete outcomes. No timing ran.

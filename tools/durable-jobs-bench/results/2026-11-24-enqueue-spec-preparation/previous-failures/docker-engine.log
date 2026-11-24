@@ -1,0 +1,2 @@
+docker version --format {{.Server.Os}} {{.Server.Arch}}
+Error response from daemon: Docker Desktop is unable to start

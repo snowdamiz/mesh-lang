@@ -1,0 +1,51 @@
+--- a/compiler/mesh-rt/src/jobs/store.rs
++++ b/compiler/mesh-rt/src/jobs/store.rs
+@@ -458,6 +458,14 @@
+
+ impl JobSpec {
+     fn prepare(&mut self) -> Result<Admission, String> {
++        self.prepare_with_payload(false)
++    }
++
++    fn prepare_for_enqueue(mut self) -> Result<Admission, String> {
++        self.prepare_with_payload(true)
++    }
++
++    fn prepare_with_payload(&mut self, take_payload: bool) -> Result<Admission, String> {
+         name(&self.worker, "worker")?;
+         name(&self.queue, "queue")?;
+         if self.version == 0 || !(1..=100).contains(&self.max_attempts) || self.priority > 9 {
+@@ -500,10 +508,23 @@
+             return Err("mesh jobs replace requires a unique policy".into());
+         }
+         let independent = unique.as_ref().is_none_or(Value::is_null) && replace.is_empty();
++        // Preserve the serializer's existing field positions and map ordering.
++        // The enqueue path can move these trees because it owns the input spec.
++        let payload = take_payload.then(|| {
++            (std::mem::take(&mut self.args), std::mem::take(&mut self.metadata))
++        });
+         let mut spec = serde_json::to_value(self).map_err(|error| error.to_string())?;
++        if let Some((args, metadata)) = payload {
++            spec["args"] = args;
++            spec["metadata"] = metadata;
++        }
+         spec["unique"] = unique.unwrap_or(Value::Null);
+         spec["replace"] = json!(replace);
+-        let spec = spec.to_string();
++        let spec = if take_payload {
++            serde_json::to_string(&spec).map_err(|error| error.to_string())?
++        } else {
++            spec.to_string()
++        };
+         let fingerprint = format!("{:x}", Sha256::digest(spec.as_bytes()));
+         Ok(Admission {
+             spec,
+@@ -574,7 +595,7 @@
+     }
+     let admissions = specs
+         .into_iter()
+-        .map(|mut spec| spec.prepare())
++        .map(JobSpec::prepare_for_enqueue)
+         .collect::<Result<Vec<_>, _>>()?;
+
+     db.simple("SAVEPOINT mesh_jobs_enqueue")?;

@@ -1,0 +1,18 @@
+{
+  "broker_source_sha256": "89c37190755ec407ae6d1b0f447cef26c43201b0117f3f7e7df0c9f7679cf167",
+  "collector_executable_sha256": "9cbe47a4e955ab1d426bd7d58c75ed6f9331825b8bd259e7456992c2565d15f8",
+  "collector_sha256": "2505f73c5e6cac06d0692089c21a5d87e93c9663b7d210447bcd4dd402daa7f4",
+  "compiler_sha256": "75b48bb3514971b99163041bce67d7b2f358064e5a0fd0ee06364c0b084c92eb",
+  "fixture_transport_sha256": "574f422c79908e71bbdcd203654402d21bbb76f7033efe32b286f905e1bf41f7",
+  "frames": [
+    {
+      "bytes": 154241,
+      "jobs": 128,
+      "sha256": "8f4054b25b031b70e5bd77cdab57ac7569c162f26da0f53ee243a1c11dd757ad"
+    }
+  ],
+  "jobs": 128,
+  "profile": "short",
+  "raw_ledger_archive_sha256": "ea1b628d9884aa2c94032f757d087e6fcb895e2d24f0f0d9ed273c6343709888",
+  "runtime_sha256": "3184c0433577572601715f24765137c5400f17d33831c8e92e4e40a3ca6c9723"
+}

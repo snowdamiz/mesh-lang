@@ -1,0 +1,43 @@
+2026-11-24 04:24:09.999 UTC [2299834] LOG:  starting PostgreSQL 17.11 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit
+2026-11-24 04:24:09.999 UTC [2299834] LOG:  listening on IPv4 address "127.0.0.1", port 58757
+2026-11-24 04:24:10.003 UTC [2299837] LOG:  database system was shut down at 2026-11-24 04:24:09 UTC
+2026-11-24 04:24:10.008 UTC [2299834] LOG:  database system is ready to accept connections
+2026-11-24 04:24:10.221 UTC [2299846] ERROR:  mesh jobs request_key already bound to a different spec
+2026-11-24 04:24:10.221 UTC [2299846] CONTEXT:  PL/pgSQL function mesh_jobs.enqueue(text,jsonb,text,text) line 20 at RAISE
+2026-11-24 04:24:10.221 UTC [2299846] STATEMENT:  SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt
+2026-11-24 04:24:10.233 UTC [2299846] ERROR:  mesh jobs request_key already bound to a different spec
+2026-11-24 04:24:10.233 UTC [2299846] CONTEXT:  PL/pgSQL function mesh_jobs.enqueue(text,jsonb,text,text) line 20 at RAISE
+2026-11-24 04:24:10.233 UTC [2299846] STATEMENT:  SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt
+2026-11-24 04:24:10.235 UTC [2299846] ERROR:  unsupported Unicode escape sequence
+2026-11-24 04:24:10.235 UTC [2299846] DETAIL:  \u0000 cannot be converted to text.
+2026-11-24 04:24:10.235 UTC [2299846] CONTEXT:  JSON data, line 1: {"args":{"invalid":"\u0000...
+	unnamed portal parameter $2 = '...'
+2026-11-24 04:24:10.235 UTC [2299846] STATEMENT:  SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt
+2026-11-24 04:24:10.236 UTC [2299846] ERROR:  unsupported Unicode escape sequence
+2026-11-24 04:24:10.236 UTC [2299846] DETAIL:  \u0000 cannot be converted to text.
+2026-11-24 04:24:10.236 UTC [2299846] CONTEXT:  JSON data, line 1: {"args":{"invalid":"\u0000...
+	unnamed portal parameter $2 = '...'
+2026-11-24 04:24:10.236 UTC [2299846] STATEMENT:  SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt
+2026-11-24 04:24:10.395 UTC [2299855] ERROR:  mesh jobs request_key already bound to a different spec
+2026-11-24 04:24:10.395 UTC [2299855] CONTEXT:  PL/pgSQL function mesh_jobs.enqueue(text,jsonb,text,text) line 20 at RAISE
+2026-11-24 04:24:10.395 UTC [2299855] STATEMENT:  SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt
+2026-11-24 04:24:10.409 UTC [2299855] ERROR:  mesh jobs request_key already bound to a different spec
+2026-11-24 04:24:10.409 UTC [2299855] CONTEXT:  PL/pgSQL function mesh_jobs.enqueue(text,jsonb,text,text) line 20 at RAISE
+2026-11-24 04:24:10.409 UTC [2299855] STATEMENT:  SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt
+2026-11-24 04:24:10.412 UTC [2299855] ERROR:  unsupported Unicode escape sequence
+2026-11-24 04:24:10.412 UTC [2299855] DETAIL:  \u0000 cannot be converted to text.
+2026-11-24 04:24:10.412 UTC [2299855] CONTEXT:  JSON data, line 1: {"args":{"invalid":"\u0000...
+	unnamed portal parameter $2 = '...'
+2026-11-24 04:24:10.412 UTC [2299855] STATEMENT:  SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt
+2026-11-24 04:24:10.414 UTC [2299855] ERROR:  unsupported Unicode escape sequence
+2026-11-24 04:24:10.414 UTC [2299855] DETAIL:  \u0000 cannot be converted to text.
+2026-11-24 04:24:10.414 UTC [2299855] CONTEXT:  JSON data, line 1: {"args":{"invalid":"\u0000...
+	unnamed portal parameter $2 = '...'
+2026-11-24 04:24:10.414 UTC [2299855] STATEMENT:  SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt
+2026-11-24 04:24:10.437 UTC [2299834] LOG:  received fast shutdown request
+2026-11-24 04:24:10.438 UTC [2299834] LOG:  aborting any active transactions
+2026-11-24 04:24:10.440 UTC [2299834] LOG:  background worker "logical replication launcher" (PID 2299840) exited with exit code 1
+2026-11-24 04:24:10.441 UTC [2299835] LOG:  shutting down
+2026-11-24 04:24:10.442 UTC [2299835] LOG:  checkpoint starting: shutdown immediate
+2026-11-24 04:24:10.542 UTC [2299835] LOG:  checkpoint complete: wrote 1968 buffers (12.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.052 s, sync=0.047 s, total=0.102 s; sync files=665, longest=0.001 s, average=0.001 s; distance=9414 kB, estimate=9414 kB; lsn=0/1E1E130, redo lsn=0/1E1E130
+2026-11-24 04:24:10.556 UTC [2299834] LOG:  database system is shut down

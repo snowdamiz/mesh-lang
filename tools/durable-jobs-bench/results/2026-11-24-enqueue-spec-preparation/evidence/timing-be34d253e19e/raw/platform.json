@@ -1,0 +1,18 @@
+{
+  "affinity": [
+    0
+  ],
+  "boot": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+  "cpuinfo": "processor\t: 0\nvendor_id\t: AuthenticAMD\ncpu family\t: 25\nmodel\t\t: 1\nmodel name\t: AMD EPYC 7713 64-Core Processor\nstepping\t: 1\nmicrocode\t: 0xa0011de\ncpu MHz\t\t: 1999.999\ncache size\t: 512 KB\nphysical id\t: 0\nsiblings\t: 4\ncore id\t\t: 0\ncpu cores\t: 4\napicid\t\t: 0\ninitial apicid\t: 0\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm rep_good nopl cpuid extd_apicid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw perfctr_core ssbd ibrs ibpb stibp vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves clzero xsaveerptr wbnoinvd arat umip pku ospke vaes vpclmulqdq rdpid overflow_recov succor fsrm\nbugs\t\t: sysret_ss_attrs null_seg spectre_v1 spectre_v2 spec_store_bypass srso ibpb_no_ret tsa\nbogomips\t: 3999.99\nTLB size\t: 1024 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management:",
+  "disk": "8:0",
+  "nproc_all": "4",
+  "uname": [
+    "Linux",
+    "localhost",
+    "6.8.0-149-generic",
+    "#149-Ubuntu SMP PREEMPT_DYNAMIC Fri Oct 23 13:21:10 UTC 2026",
+    "x86_64",
+    "x86_64"
+  ],
+  "uptime": "04:24:13 up 12:47,  1 user,  load average: 2.91, 2.64, 1.90"
+}

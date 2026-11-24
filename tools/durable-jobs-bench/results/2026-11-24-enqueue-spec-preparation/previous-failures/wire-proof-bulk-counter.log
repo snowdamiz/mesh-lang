@@ -1,0 +1,4 @@
+
+thread 'main' (112183071) panicked at compiler/mesh-rt/src/jobs/enqueue_spec_wire.rs:114:9:
+the opted-in writer did not run
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

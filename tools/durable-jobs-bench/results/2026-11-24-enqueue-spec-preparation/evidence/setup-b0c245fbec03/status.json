@@ -1,0 +1,10 @@
+{
+  "action": "setup",
+  "exit_status": 0,
+  "finished": "2026-11-24T04:24:12.530026+00:00",
+  "raw_sha256": "0ee3e1357ef38b50eb00efdaa9e33d337bef3bdbc4a3388c1b877717a0f18ac9",
+  "receipt_suffix": "b0c245fbec03",
+  "request_id": "enqueue-spec-preparation",
+  "setup_id": "enqueue-spec-preparation-b0c245fbec03",
+  "started": "2026-11-24T04:17:34.616131+00:00"
+}

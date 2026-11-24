@@ -1,0 +1,254 @@
+{
+  "platform": {
+    "affinity": [
+      0
+    ],
+    "boot": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "cpuinfo": "processor\t: 0\nvendor_id\t: AuthenticAMD\ncpu family\t: 25\nmodel\t\t: 1\nmodel name\t: AMD EPYC 7713 64-Core Processor\nstepping\t: 1\nmicrocode\t: 0xa0011de\ncpu MHz\t\t: 1999.999\ncache size\t: 512 KB\nphysical id\t: 0\nsiblings\t: 4\ncore id\t\t: 0\ncpu cores\t: 4\napicid\t\t: 0\ninitial apicid\t: 0\nfpu\t\t: yes\nfpu_exception\t: yes\ncpuid level\t: 16\nwp\t\t: yes\nflags\t\t: fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm rep_good nopl cpuid extd_apicid tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw perfctr_core ssbd ibrs ibpb stibp vmmcall fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves clzero xsaveerptr wbnoinvd arat umip pku ospke vaes vpclmulqdq rdpid overflow_recov succor fsrm\nbugs\t\t: sysret_ss_attrs null_seg spectre_v1 spectre_v2 spec_store_bypass srso ibpb_no_ret tsa\nbogomips\t: 3999.99\nTLB size\t: 1024 4K pages\nclflush size\t: 64\ncache_alignment\t: 64\naddress sizes\t: 48 bits physical, 48 bits virtual\npower management:",
+    "disk": "8:0",
+    "nproc_all": "4",
+    "uname": [
+      "Linux",
+      "localhost",
+      "6.8.0-149-generic",
+      "#149-Ubuntu SMP PREEMPT_DYNAMIC Fri Oct 23 13:21:10 UTC 2026",
+      "x86_64",
+      "x86_64"
+    ],
+    "uptime": "04:24:13 up 12:47,  1 user,  load average: 2.91, 2.64, 1.90"
+  },
+  "profiles": {
+    "large": {
+      "advance_to_broker_trial": false,
+      "arm_cpu_ms": {
+        "candidate": {
+          "max": 99.0923795,
+          "median": 93.8439125,
+          "min": 91.272231875
+        },
+        "stock-a": {
+          "max": 130.92985925,
+          "median": 129.5881385625,
+          "min": 126.910424625
+        },
+        "stock-b": {
+          "max": 134.49135975,
+          "median": 127.63475125,
+          "min": 125.926664125
+        }
+      },
+      "arm_wall_ms": {
+        "candidate": {
+          "max": 99.097064875,
+          "median": 93.85277562499999,
+          "min": 91.2811945
+        },
+        "stock-a": {
+          "max": 130.940871625,
+          "median": 129.5965090625,
+          "min": 126.914271875
+        },
+        "stock-b": {
+          "max": 134.498173,
+          "median": 127.6394911875,
+          "min": 125.929168875
+        }
+      },
+      "cpu_saving_vs_faster_stock_ms": [
+        34.428833374999996,
+        31.644744625,
+        35.125933875,
+        34.65443225,
+        34.864393625000005,
+        31.990047250000003
+      ],
+      "duplicate_cpu_spread_ms": [
+        1.2598582500000077,
+        3.7542356249999784,
+        0.26414137500000834,
+        5.003195124999991,
+        2.6469163750000035,
+        0.6895716249999992
+      ],
+      "minimum_ms": 40.0,
+      "raw_sha256": {
+        "large-1-candidate.json": "dcd7e2a1b5f2b91d18a9034568f1aa577355eaa64848ff7548cc75765534f500",
+        "large-1-stage.json": "add21d728f57fcdd8dc93972a2fee1b02a0d65906ae51f1c111254e08ae5e82b",
+        "large-1-stock-a.json": "a3a9f26b17d5c3cff1dc0178ae0d596c6dd46b027b24941fadf184bf204361da",
+        "large-1-stock-b.json": "c02cefdaf9cafe40d8cf1f901a1825b363c3cea17477cd2a13a32006c557f73a",
+        "large-2-candidate.json": "0a7edf24a72a3a7c518004e356d440ee6dc34470120852bdfdc40756d6c16240",
+        "large-2-stage.json": "13cb3bf8f3dbc4cb5f20c43d45a2b02448291c5719a7979c39145ddd3ce3c544",
+        "large-2-stock-a.json": "3dad14f4af04ca985459b171dcd4e781656a2477c2fb87e95623a2f263ef3586",
+        "large-2-stock-b.json": "b5f4ebfba3cc4bfcb59df739524798f051c3029c4e0474e38e140901e62ecaec",
+        "large-3-candidate.json": "143d836f35a7b59f3022af78c564784da01ccdcc6c517a53e2a3a054cbfd08b0",
+        "large-3-stage.json": "84e7cc8fedeabd6fd6976edcbe4940bf26e042782fbc5fceea86194428165a52",
+        "large-3-stock-a.json": "c76ec54d8a25e4f50059250bfc81fcf1305e24acc5e67c2af23cf8d5993882fa",
+        "large-3-stock-b.json": "04a6e536bae44a084029a7fdb0bccd99c1275c997adffc2860b0e1c1505d742a",
+        "large-4-candidate.json": "6e92feafcdf512601d16d6e420eeb08c0075b82c2dfe0bbc34c1e71883b15a37",
+        "large-4-stage.json": "b54111903a3d5450be2137f633447c0170212d84a87ec37adafdac517dd4e33d",
+        "large-4-stock-a.json": "dee7e18c05c50e060e8be6598b5eac40d75c65d055c958a497eab54fb27a3237",
+        "large-4-stock-b.json": "e6592d04ea46cccce93a8e7db375da5781d9a688f4b8fd8de54786a0fe5f62c4",
+        "large-5-candidate.json": "99b1dd187c080743574d5bec63e0f16bfab368fcb960949187ea4886e33c5a78",
+        "large-5-stage.json": "64a4985796492925b0a03d02a4f0ba4100e944f2c04f003d2deebf820c48118a",
+        "large-5-stock-a.json": "2a0a39d4cc44c23516e1d0ec42758274e169703db29942d048354b1d281a4a02",
+        "large-5-stock-b.json": "f12317f423144604f5f96403466d7f3a94f029a7bc6e02d927ee85fd44aebc57",
+        "large-6-candidate.json": "af885a415a7279b5c072be8a54cfd491cad68d0cb65da3b28c940c1b751bd2f5",
+        "large-6-stage.json": "50f7168206d7b4a8b71b5a167294a70dfcad9f96482eb5b34b8fbf5fa68b99be",
+        "large-6-stock-a.json": "dc38a9c50904f35500c48a93e8f2516b09b3fc417347afc18330383bfeecdae9",
+        "large-6-stock-b.json": "0ecae520df3953c2704b42a07d6131b07dafe46a9e5af6287f504cf54f540868"
+      },
+      "stock_stage_wall_ms_diagnostic_only": {
+        "serialization": {
+          "max": 49.463287875,
+          "median": 48.911017,
+          "min": 48.2702145
+        },
+        "sha256": {
+          "max": 22.99663025,
+          "median": 22.7398003125,
+          "min": 22.27113575
+        },
+        "to_value": {
+          "max": 25.0491635,
+          "median": 24.6693714375,
+          "min": 24.184394625
+        },
+        "untagged_decode": {
+          "max": 24.746552125,
+          "median": 24.44357575,
+          "min": 23.907582875
+        },
+        "validation_and_policies": {
+          "max": 0.020450125,
+          "median": 0.0169963125,
+          "min": 0.014638875
+        }
+      },
+      "wall_saving_vs_faster_stock_ms": [
+        34.424548875,
+        31.655136,
+        35.126977749999995,
+        34.647974375000004,
+        34.86377937500001,
+        32.000947999999994
+      ],
+      "wins_over_jitter": 6
+    },
+    "short": {
+      "advance_to_broker_trial": false,
+      "arm_cpu_ms": {
+        "candidate": {
+          "max": 0.8475332395833334,
+          "median": 0.8210758333333334,
+          "min": 0.8177115520833333
+        },
+        "stock-a": {
+          "max": 1.0457075,
+          "median": 1.0100047812500001,
+          "min": 0.9920568541666667
+        },
+        "stock-b": {
+          "max": 1.0633044895833332,
+          "median": 1.00546728125,
+          "min": 1.001943
+        }
+      },
+      "arm_wall_ms": {
+        "candidate": {
+          "max": 0.8479485416666667,
+          "median": 0.8212659635416666,
+          "min": 0.8183249583333334
+        },
+        "stock-a": {
+          "max": 1.0457197916666667,
+          "median": 1.0101128802083332,
+          "min": 0.9939166458333334
+        },
+        "stock-b": {
+          "max": 1.0633197604166666,
+          "median": 1.0055726458333334,
+          "min": 1.0019653229166667
+        }
+      },
+      "cpu_saving_vs_faster_stock_ms": [
+        0.16657008333333334,
+        0.18089228125,
+        0.16519091666666663,
+        0.18423144791666668,
+        0.17355508333333325,
+        0.18437456250000006
+      ],
+      "duplicate_cpu_spread_ms": [
+        0.032101156249999985,
+        0.041165322916666636,
+        0.06299836458333319,
+        0.003963239583333333,
+        0.014335531249999867,
+        0.027948874999999873
+      ],
+      "minimum_ms": 5.0,
+      "raw_sha256": {
+        "short-1-candidate.json": "2d64e6a31c745dd84079baeab6cc1a9d06d98a0ec39683f97d9948c8268ded48",
+        "short-1-stage.json": "c45eea9e86e5465e973eb3b6d6b7a5ef1ad89c44a843ca92d505ee8c6e540a8e",
+        "short-1-stock-a.json": "6377bdaec9faa7270c6a0cac7f88bf36a98fd2bd515b77110c1c9e0b487d4f06",
+        "short-1-stock-b.json": "c99f0cbb1a635078c6fd9f37b1c637b250f2a38b1a805c244b2f1a0f0f33b82a",
+        "short-2-candidate.json": "6f20130f7b20b26ef7ab3e9c7b5e62fde3db8251ed73f3ec2f09179d8d108cca",
+        "short-2-stage.json": "8976638f3a0fbb3a2a6081f0cac0296f2cd26bc091a2394d18407df5da2ec5e8",
+        "short-2-stock-a.json": "3c130848d5d8655f3f51cad43587fa94416248d84165d157e55dc0a0a984984f",
+        "short-2-stock-b.json": "0ee91e981e96a3d3feb6286333c6e745e79b8d5c53dbc41b9f7e05ce41160937",
+        "short-3-candidate.json": "e67ee638dbec7e1c451da646f4b023edfeccfaff89556e3fb2a93457bc6c0b90",
+        "short-3-stage.json": "9bfaef4900188aa6ac21c8896516e7f7b03eea3f964e9ad92d2400b7c82fbb39",
+        "short-3-stock-a.json": "442a86f0c936e0cf6edae140831191ed8ce8f1b29d9570a51a5b0ab82334d6f6",
+        "short-3-stock-b.json": "8fd421225d66570e651f52c6be5496a4b1cb721ad4b059fb5388827b93560dbd",
+        "short-4-candidate.json": "1ffc517432f73ca231266292decd4d69c9586c9f917ff969d2ea3841b4a8d2b6",
+        "short-4-stage.json": "a5f77ae9cc815966db26760abbdc8c037ec86293575ae26289a844dc09338715",
+        "short-4-stock-a.json": "b75e9d44a702ab9c24fe9344bc4190d29c8831471fc05e0edf3dfbe5aa2f56bf",
+        "short-4-stock-b.json": "a0dc6362b6ec16cb0bcd12e2e14bc77178ef8a506da43ec8d1fc6f118c501f51",
+        "short-5-candidate.json": "bf3cbe1a6efd88604e795b20547ebb0a9e04d2eb52515295e77c60c160e99d24",
+        "short-5-stage.json": "3a8c6d56ea2d742bca001f2cc67bb6340e0b0617fc974aa62bb28dc16d627c2b",
+        "short-5-stock-a.json": "b31953d12ebb3e4b5bf7189a069e945dfd09fe776295d4b4ecdbf47eb8fb381f",
+        "short-5-stock-b.json": "e3006da7a62219088eca74139794c49fb3e412bbc30d7eb7791ba7a025d60d23",
+        "short-6-candidate.json": "3677245531c3af9ae1805170692e00a623710252800be70c1f41a81de7572d2f",
+        "short-6-stage.json": "eb0eb1c5b1ba6cbb85657437c49a69dbcb4c0eae7bd4474aba6ac8f5c42d12f8",
+        "short-6-stock-a.json": "0632e6c0c372c6657ff7f4a5f0a68f4b750fcf982324eda8dbab509d9b170a72",
+        "short-6-stock-b.json": "e75bdb8d44cd7c191e1f30153d5db6aabd6d52d75edafb177eff1f04a74ecc94"
+      },
+      "stock_stage_wall_ms_diagnostic_only": {
+        "serialization": {
+          "max": 0.3862547083333333,
+          "median": 0.3827124947916667,
+          "min": 0.38039773958333334
+        },
+        "sha256": {
+          "max": 0.14201836458333333,
+          "median": 0.14015659375,
+          "min": 0.1394823125
+        },
+        "to_value": {
+          "max": 0.2157425625,
+          "median": 0.20410440104166666,
+          "min": 0.19836653125
+        },
+        "untagged_decode": {
+          "max": 0.20404909375,
+          "median": 0.20140097395833334,
+          "min": 0.19735357291666666
+        },
+        "validation_and_policies": {
+          "max": 0.010967583333333334,
+          "median": 0.010390046875,
+          "min": 0.010038072916666666
+        }
+      },
+      "wall_saving_vs_faster_stock_ms": [
+        0.16636707291666675,
+        0.18074432291666676,
+        0.16402340625,
+        0.18364036458333333,
+        0.17539584375000006,
+        0.18500671874999985
+      ],
+      "wins_over_jitter": 6
+    }
+  }
+}
