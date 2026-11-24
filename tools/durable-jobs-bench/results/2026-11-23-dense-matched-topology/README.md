@@ -19,8 +19,9 @@ and a physical connection cap of 96. [Stock comparison](stock.json) ·
 | River 0.51.2 | 80 shared | 68 shared | Before reading the batch file |
 | Apalis 1.2.0 | 80 shared | 68 shared | Before sending the batch to the warm producer session |
 
-Each deployment has 64 aggregate worker slots and two scheduler workers per
-runner process. The runner pool caps omit the dedicated producer/observer
+Each deployment has 64 aggregate worker slots. Mesh, Oban, and Apalis
+configure two scheduler or Tokio workers per runner. River is restricted to
+the same two CPU IDs and uses GOMAXPROCS 2 for the producer/observer. The runner pool caps omit the dedicated producer/observer
 connection. Mesh reserves, warms, and verifies 32 distinct application
 sessions under its scoped application role. The peer adapters use shared
 runner pools for queue and application writes. Replay records physical warm
@@ -82,3 +83,8 @@ pinned artifacts on the host, records the CPU mask, rejects other builders,
 and exports redacted raw evidence under the established lock sequence.
 [Stock timing request](request-stock.json) · [Peer setup request](request-peer-setup.json) ·
 [Equal-topology timing request](request-equal.json)
+
+The local workspace suite passed 4,821 tests. The PostgreSQL gate passed the
+scoped role proofs on fresh and upgraded databases and the compiled Jobs
+end-to-end tests. [Workspace result](evidence/gates/workspace.json) ·
+[PostgreSQL proof](evidence/gates/postgres-proof.json)

@@ -1,0 +1,9 @@
+{
+  "command": "cargo test --workspace --locked",
+  "exit_code": 0,
+  "test_results": 123,
+  "passed": 4821,
+  "ignored": 66,
+  "raw_sha256": "e63185cad521300e0718f59b16ef2c700ed2cf636b6411567a2d3f5d51cc3128",
+  "platform": "macOS arm64"
+}

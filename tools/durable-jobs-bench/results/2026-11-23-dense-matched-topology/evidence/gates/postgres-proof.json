@@ -1,0 +1,13 @@
+{
+  "command": "bash scripts/verify-postgres-jobs.sh --parity-driver-check --j6-roles",
+  "exit_code": 0,
+  "raw_sha256": "efc9f5eb54d8160331409ca31fca6232566229b26ebadbbbe806d2bf2ac21e74",
+  "checkout": "1825dfd1cf5dbdc48875bb15eee118d3ce378d8a",
+  "postgres": "17.11",
+  "includes": [
+    "parity driver and fault self-checks",
+    "scoped roles on fresh and upgraded DBs",
+    "DB and jobs unit tests",
+    "compiled durable Jobs end-to-end tests"
+  ]
+}
