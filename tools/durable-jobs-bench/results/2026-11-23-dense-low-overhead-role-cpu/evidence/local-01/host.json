@@ -1,0 +1,20 @@
+{
+  "host_start_load": [
+    36.55029296875,
+    51.2275390625,
+    62.71337890625
+  ],
+  "kernel": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linux-queue-perf/kernel.Image",
+  "lock_acquired": true,
+  "lock_wait_s": 9.208975825458765e-06,
+  "host_boot_load": [
+    46.32421875,
+    52.32421875,
+    62.71826171875
+  ],
+  "host_end_load": [
+    80.91943359375,
+    60.12353515625,
+    65.18212890625
+  ]
+}

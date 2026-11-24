@@ -1,0 +1,1111 @@
+{
+  "control_gates": {
+    "mesh": {
+      "drain_valid": false,
+      "pairs": [
+        {
+          "order": "forward",
+          "phases": {
+            "drain": {
+              "control_ms": [
+                2356.336,
+                685.251
+              ],
+              "control_spread_pct": 109.8824396606114,
+              "probe_ms": 1112.81,
+              "probe_shift_pct": -26.827014976063474,
+              "valid": false
+            },
+            "full": {
+              "control_ms": [
+                2608.394,
+                1117.517
+              ],
+              "control_spread_pct": 80.02751541837686,
+              "probe_ms": 1549.67,
+              "probe_shift_pct": -16.816585259282895,
+              "valid": false
+            },
+            "producer": {
+              "control_ms": [
+                252.058,
+                432.266
+              ],
+              "control_spread_pct": 52.66744992138227,
+              "probe_ms": 436.86,
+              "probe_shift_pct": 27.676363827660573,
+              "valid": false
+            }
+          },
+          "timed_client_cpu_control": [
+            0.002443765625,
+            0.0015523251953125
+          ],
+          "timed_client_cpu_probe": 0.0019687890625,
+          "timed_client_cpu_valid": false,
+          "valid": false,
+          "whole_runner_wait4_valid": null
+        },
+        {
+          "order": "reverse",
+          "reason": "incomplete or failed matched triple",
+          "valid": false,
+          "whole_runner_wait4_valid": null
+        }
+      ],
+      "valid": false
+    },
+    "peer": {
+      "drain_valid": false,
+      "pairs": [
+        {
+          "order": "forward",
+          "phases": {
+            "drain": {
+              "control_ms": [
+                848.725,
+                1007.795
+              ],
+              "control_spread_pct": 17.136362657014192,
+              "probe_ms": 4529.051,
+              "probe_shift_pct": 387.9075905457523,
+              "valid": false
+            },
+            "full": {
+              "control_ms": [
+                1086.504,
+                1234.004
+              ],
+              "control_spread_pct": 12.712733591092986,
+              "probe_ms": 5341.266,
+              "probe_shift_pct": 360.3531640485618,
+              "valid": false
+            },
+            "producer": {
+              "control_ms": [
+                237.779,
+                226.209
+              ],
+              "control_spread_pct": 4.987197944774431,
+              "probe_ms": 812.215,
+              "probe_shift_pct": 250.10172676879577,
+              "valid": false
+            }
+          },
+          "timed_client_cpu_control": [
+            0.0059130048828125,
+            0.00313737109375
+          ],
+          "timed_client_cpu_probe": 0.0065676640625,
+          "timed_client_cpu_valid": false,
+          "valid": false,
+          "whole_runner_wait4_valid": null
+        },
+        {
+          "order": "reverse",
+          "reason": "incomplete or failed matched triple",
+          "valid": false,
+          "whole_runner_wait4_valid": null
+        }
+      ],
+      "valid": false
+    }
+  },
+  "control_scope": "fixture elapsed and timed client root CPU only",
+  "hold": "representative fixture, one order, original control gates failed",
+  "platform": {
+    "auth": "SCRAM",
+    "cap": "96",
+    "commit_timestamps": "on",
+    "fsync": "on",
+    "full_pages": "on",
+    "mask": [
+      0,
+      1
+    ],
+    "spare": 2,
+    "sync": "on",
+    "tls": "t",
+    "uid": 65534,
+    "uname": [
+      "Linux",
+      "(none)",
+      "6.12.115-0-virt",
+      "#1-Alpine SMP PREEMPT_DYNAMIC 2026-11-01 10:34:06",
+      "aarch64"
+    ],
+    "version": "170011"
+  },
+  "rows": [
+    {
+      "boundaries_us": {
+        "ack_drain": [
+          1795481272795278,
+          1795481275151215
+        ],
+        "drain": [
+          1795481272794879,
+          1795481275151215
+        ],
+        "full": [
+          1795481272542821,
+          1795481275151215
+        ],
+        "producer": [
+          1795481272542821,
+          1795481272794879
+        ]
+      },
+      "durable_rows_per_stage": 1024,
+      "label": "mesh-1-off",
+      "lane": "mesh",
+      "mode": "off",
+      "order": "forward",
+      "phase_ms": {
+        "ack_drain": 2355.937,
+        "drain": 2356.336,
+        "full": 2608.394,
+        "producer": 252.058
+      },
+      "timed_client_cpu_ms_per_job": 0.002443765625
+    },
+    {
+      "boundaries_us": {
+        "ack_drain": [
+          1795481276922884,
+          1795481278033896
+        ],
+        "drain": [
+          1795481276921086,
+          1795481278033896
+        ],
+        "full": [
+          1795481276484226,
+          1795481278033896
+        ],
+        "producer": [
+          1795481276484226,
+          1795481276921086
+        ]
+      },
+      "budgets": {
+        "ack_drain": {
+          "boundary_epoch_us": [
+            1795481276922884,
+            1795481278033896
+          ],
+          "brackets": {
+            "bracket_reporter_cpu_ms": 12.214664,
+            "frames": 50,
+            "inner_edge_ms": [
+              24.152046,
+              17.974954
+            ],
+            "max_frame_ms": 0.459542,
+            "outer_edge_ms": [
+              22.870413,
+              5.630463
+            ]
+          },
+          "capacity_ms_per_job": 2.1699453125000003,
+          "contradiction": {
+            "captured_inner_cpu_ms": 2074.713691,
+            "host_upper_cpu_ms": 1920.0
+          },
+          "duration_ms": 1111.0120000000002,
+          "error": "captured role CPU exceeds host busy upper bound",
+          "host_cpu_ms_per_job": {
+            "busy": [
+              1.630859375,
+              1.875
+            ],
+            "idle": [
+              0.0,
+              0.078125
+            ],
+            "iowait": [
+              0.0,
+              0.01953125
+            ],
+            "steal": [
+              0.0,
+              0.01953125
+            ]
+          },
+          "iowait_pct_upper": 0.9000802871616147,
+          "process_errors": [],
+          "steal_pct_upper": 0.9000802871616147
+        },
+        "drain": {
+          "boundary_epoch_us": [
+            1795481276921086,
+            1795481278033896
+          ],
+          "brackets": {
+            "bracket_reporter_cpu_ms": 12.214664,
+            "frames": 50,
+            "inner_edge_ms": [
+              25.950046,
+              17.974954
+            ],
+            "max_frame_ms": 0.459542,
+            "outer_edge_ms": [
+              21.072413,
+              5.630463
+            ]
+          },
+          "capacity_ms_per_job": 2.1734570312500003,
+          "contradiction": {
+            "captured_inner_cpu_ms": 2074.713691,
+            "host_upper_cpu_ms": 1920.0
+          },
+          "duration_ms": 1112.8100000000002,
+          "error": "captured role CPU exceeds host busy upper bound",
+          "host_cpu_ms_per_job": {
+            "busy": [
+              1.630859375,
+              1.875
+            ],
+            "idle": [
+              0.0,
+              0.078125
+            ],
+            "iowait": [
+              0.0,
+              0.01953125
+            ],
+            "steal": [
+              0.0,
+              0.01953125
+            ]
+          },
+          "iowait_pct_upper": 0.8986260008447083,
+          "process_errors": [],
+          "steal_pct_upper": 0.8986260008447083
+        },
+        "full": {
+          "boundary_epoch_us": [
+            1795481276484226,
+            1795481278033896
+          ],
+          "brackets": {
+            "bracket_reporter_cpu_ms": 17.450704,
+            "frames": 69,
+            "inner_edge_ms": [
+              8.967879,
+              17.974954
+            ],
+            "max_frame_ms": 0.525833,
+            "outer_edge_ms": [
+              13.444955,
+              5.630463
+            ]
+          },
+          "capacity_ms_per_job": 3.02669921875,
+          "contradiction": {
+            "captured_inner_cpu_ms": 2535.814653,
+            "host_upper_cpu_ms": 2300.0
+          },
+          "duration_ms": 1549.67,
+          "error": "captured role CPU exceeds host busy upper bound",
+          "host_cpu_ms_per_job": {
+            "busy": [
+              2.060546875,
+              2.24609375
+            ],
+            "idle": [
+              0.419921875,
+              0.48828125
+            ],
+            "iowait": [
+              0.0,
+              0.01953125
+            ],
+            "steal": [
+              0.0,
+              0.01953125
+            ]
+          },
+          "iowait_pct_upper": 0.6452986764924145,
+          "process_errors": [],
+          "steal_pct_upper": 0.6452986764924145
+        },
+        "producer": {
+          "all_attributed_cpu_ms_per_job": [
+            0.38563582714843747,
+            0.4543900585937499
+          ],
+          "boundary_epoch_us": [
+            1795481276484226,
+            1795481276921086
+          ],
+          "brackets": {
+            "bracket_reporter_cpu_ms": 5.735747,
+            "frames": 22,
+            "inner_edge_ms": [
+              8.967879,
+              21.072413
+            ],
+            "max_frame_ms": 0.525833,
+            "outer_edge_ms": [
+              13.444955,
+              25.950046
+            ]
+          },
+          "capacity_ms_per_job": 0.8532421875,
+          "captured_pid_cpu_ms_per_job": {
+            "broker": [
+              0.00503654296875,
+              0.009489708984375
+            ],
+            "pg_application": [
+              0.0,
+              0.0
+            ],
+            "pg_background": null,
+            "pg_jobs": [
+              0.0,
+              0.044721190429687495
+            ],
+            "pg_producer_shared": [
+              0.38059928417968747,
+              0.39980839062499995
+            ],
+            "postmaster": [
+              0.0,
+              0.0
+            ],
+            "runner": [
+              0.0,
+              0.0003707685546875
+            ]
+          },
+          "duration_ms": 436.86,
+          "host_cpu_ms_per_job": {
+            "busy": [
+              0.33203125,
+              0.52734375
+            ],
+            "idle": [
+              0.37109375,
+              0.46875
+            ],
+            "iowait": [
+              0.0,
+              0.01953125
+            ],
+            "steal": [
+              0.0,
+              0.01953125
+            ]
+          },
+          "iowait_pct_upper": 2.2890628576660714,
+          "observer_cpu_ms": [
+            4.812082,
+            6.050789
+          ],
+          "process_errors": [],
+          "qualified_role_cpu_ms_per_job": {
+            "broker": null,
+            "pg_application": null,
+            "pg_background": null,
+            "pg_jobs": null,
+            "pg_producer_shared": null,
+            "postmaster": null,
+            "runner": null
+          },
+          "snapshot_screen_only": true,
+          "steal_pct_upper": 2.2890628576660714,
+          "unattributed_busy_cpu_ms_per_job": [
+            0,
+            0.14170792285156253
+          ]
+        }
+      },
+      "cadence": {
+        "error_codes": {},
+        "frames": 71,
+        "max_frame_ms": 0.525833,
+        "max_gap_ms": 30.10575,
+        "median_frame_ms": 0.190875,
+        "over_gap": 0,
+        "over_width": 0,
+        "recorder_interval_cpu_ms": 17.954329
+      },
+      "coverage": {
+        "clean_snapshot_screen": true,
+        "expected": {
+          "broker": 1,
+          "pg_application": 32,
+          "pg_jobs": 32,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "late_pids": [],
+        "post": {
+          "broker": 1,
+          "pg_application": 32,
+          "pg_jobs": 32,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "post_open_errors": {},
+        "pre": {
+          "broker": 1,
+          "pg_application": 32,
+          "pg_jobs": 32,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "pre_open_errors": {},
+        "retired_pids": [],
+        "reused_pids": [],
+        "stable_candidates": {
+          "broker": 1,
+          "pg_application": 32,
+          "pg_jobs": 32,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "unexplained_session_delta": 0,
+        "unknown_pids": []
+      },
+      "durable_rows_per_stage": 1024,
+      "label": "mesh-2-on",
+      "lane": "mesh",
+      "mode": "on",
+      "order": "forward",
+      "phase_ms": {
+        "ack_drain": 1111.012,
+        "drain": 1112.81,
+        "full": 1549.67,
+        "producer": 436.86
+      },
+      "timed_client_cpu_ms_per_job": 0.0019687890625
+    },
+    {
+      "boundaries_us": {
+        "ack_drain": [
+          1795481279949715,
+          1795481280634697
+        ],
+        "drain": [
+          1795481279949446,
+          1795481280634697
+        ],
+        "full": [
+          1795481279517180,
+          1795481280634697
+        ],
+        "producer": [
+          1795481279517180,
+          1795481279949446
+        ]
+      },
+      "durable_rows_per_stage": 1024,
+      "label": "mesh-3-off",
+      "lane": "mesh",
+      "mode": "off",
+      "order": "forward",
+      "phase_ms": {
+        "ack_drain": 684.982,
+        "drain": 685.251,
+        "full": 1117.517,
+        "producer": 432.266
+      },
+      "timed_client_cpu_ms_per_job": 0.0015523251953125
+    },
+    {
+      "boundaries_us": {
+        "ack_drain": [
+          1795481282420815,
+          1795481283269307
+        ],
+        "drain": [
+          1795481282420582,
+          1795481283269307
+        ],
+        "full": [
+          1795481282182803,
+          1795481283269307
+        ],
+        "producer": [
+          1795481282182803,
+          1795481282420582
+        ]
+      },
+      "durable_rows_per_stage": 1024,
+      "label": "peer-1-off",
+      "lane": "peer",
+      "mode": "off",
+      "order": "forward",
+      "phase_ms": {
+        "ack_drain": 848.492,
+        "drain": 848.725,
+        "full": 1086.504,
+        "producer": 237.779
+      },
+      "timed_client_cpu_ms_per_job": 0.0059130048828125
+    },
+    {
+      "boundaries_us": {
+        "ack_drain": [
+          1795481285789344,
+          1795481290310801
+        ],
+        "drain": [
+          1795481285781750,
+          1795481290310801
+        ],
+        "full": [
+          1795481284969535,
+          1795481290310801
+        ],
+        "producer": [
+          1795481284969535,
+          1795481285781750
+        ]
+      },
+      "budgets": {
+        "ack_drain": {
+          "error": "frame spans over 25 ms in the phase bracket"
+        },
+        "drain": {
+          "error": "frame spans over 25 ms in the phase bracket"
+        },
+        "full": {
+          "error": "wall clock read is not bounded by monotonic reads"
+        },
+        "producer": {
+          "error": "wall clock read is not bounded by monotonic reads"
+        }
+      },
+      "cadence": {
+        "error_codes": {},
+        "frames": 191,
+        "max_frame_ms": 26.353125,
+        "max_gap_ms": 77.312542,
+        "median_frame_ms": 0.573375,
+        "over_gap": 0,
+        "over_width": 1,
+        "recorder_interval_cpu_ms": 296.414371
+      },
+      "coverage": {
+        "clean_snapshot_screen": true,
+        "expected": {
+          "broker": 1,
+          "pg_jobs": 80,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "late_pids": [],
+        "post": {
+          "broker": 1,
+          "pg_jobs": 80,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "post_open_errors": {},
+        "pre": {
+          "broker": 1,
+          "pg_jobs": 80,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "pre_open_errors": {},
+        "retired_pids": [],
+        "reused_pids": [],
+        "stable_candidates": {
+          "broker": 1,
+          "pg_jobs": 80,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "unexplained_session_delta": 0,
+        "unknown_pids": []
+      },
+      "durable_rows_per_stage": 1024,
+      "label": "peer-2-on",
+      "lane": "peer",
+      "mode": "on",
+      "order": "forward",
+      "phase_ms": {
+        "ack_drain": 4521.457,
+        "drain": 4529.051,
+        "full": 5341.266,
+        "producer": 812.215
+      },
+      "timed_client_cpu_ms_per_job": 0.0065676640625
+    },
+    {
+      "boundaries_us": {
+        "ack_drain": [
+          1795481293591475,
+          1795481294599041
+        ],
+        "drain": [
+          1795481293591246,
+          1795481294599041
+        ],
+        "full": [
+          1795481293365037,
+          1795481294599041
+        ],
+        "producer": [
+          1795481293365037,
+          1795481293591246
+        ]
+      },
+      "durable_rows_per_stage": 1024,
+      "label": "peer-3-off",
+      "lane": "peer",
+      "mode": "off",
+      "order": "forward",
+      "phase_ms": {
+        "ack_drain": 1007.566,
+        "drain": 1007.795,
+        "full": 1234.004,
+        "producer": 226.209
+      },
+      "timed_client_cpu_ms_per_job": 0.00313737109375
+    },
+    {
+      "boundaries_us": {
+        "ack_drain": [
+          1795481297067383,
+          1795481298188561
+        ],
+        "drain": [
+          1795481297067083,
+          1795481298188561
+        ],
+        "full": [
+          1795481296764583,
+          1795481298188561
+        ],
+        "producer": [
+          1795481296764583,
+          1795481297067083
+        ]
+      },
+      "budgets": {
+        "ack_drain": {
+          "all_attributed_cpu_ms_per_job": [
+            1.5860131416015624,
+            1.6349149140625
+          ],
+          "boundary_epoch_us": [
+            1795481297067383,
+            1795481298188561
+          ],
+          "brackets": {
+            "bracket_reporter_cpu_ms": 14.915588,
+            "frames": 53,
+            "inner_edge_ms": [
+              2.368014,
+              12.500236
+            ],
+            "max_frame_ms": 0.635792,
+            "outer_edge_ms": [
+              18.468445,
+              9.522764
+            ]
+          },
+          "capacity_ms_per_job": 2.18980078125,
+          "captured_pid_cpu_ms_per_job": {
+            "broker": [
+              0.0,
+              0.0003189697265625
+            ],
+            "pg_application": [
+              0.23658529003906248,
+              0.23658529003906248
+            ],
+            "pg_background": null,
+            "pg_jobs": [
+              1.3448133876953123,
+              1.37591926171875
+            ],
+            "pg_producer_shared": [
+              0.0,
+              0.0174182939453125
+            ],
+            "postmaster": [
+              0.001804078125,
+              0.001804078125
+            ],
+            "runner": [
+              0.0028103857421874997,
+              0.0028690205078125
+            ]
+          },
+          "duration_ms": 1121.178,
+          "host_cpu_ms_per_job": {
+            "busy": [
+              1.396484375,
+              1.591796875
+            ],
+            "idle": [
+              0.380859375,
+              0.44921875
+            ],
+            "iowait": [
+              0.0,
+              0.01953125
+            ],
+            "steal": [
+              0.0,
+              0.01953125
+            ]
+          },
+          "iowait_pct_upper": 0.8919190351576645,
+          "observer_cpu_ms": [
+            14.102672,
+            15.122754
+          ],
+          "process_errors": [
+            1435
+          ],
+          "qualified_role_cpu_ms_per_job": {
+            "broker": null,
+            "pg_application": null,
+            "pg_background": null,
+            "pg_jobs": null,
+            "pg_producer_shared": null,
+            "postmaster": null,
+            "runner": null
+          },
+          "snapshot_screen_only": false,
+          "steal_pct_upper": 0.8919190351576645,
+          "unattributed_busy_cpu_ms_per_job": [
+            0,
+            0.005783733398437629
+          ]
+        },
+        "drain": {
+          "all_attributed_cpu_ms_per_job": [
+            1.5860131416015624,
+            1.6349149140625
+          ],
+          "boundary_epoch_us": [
+            1795481297067083,
+            1795481298188561
+          ],
+          "brackets": {
+            "bracket_reporter_cpu_ms": 14.915588,
+            "frames": 53,
+            "inner_edge_ms": [
+              2.668014,
+              12.500236
+            ],
+            "max_frame_ms": 0.635792,
+            "outer_edge_ms": [
+              18.168445,
+              9.522764
+            ]
+          },
+          "capacity_ms_per_job": 2.19038671875,
+          "captured_pid_cpu_ms_per_job": {
+            "broker": [
+              0.0,
+              0.0003189697265625
+            ],
+            "pg_application": [
+              0.23658529003906248,
+              0.23658529003906248
+            ],
+            "pg_background": null,
+            "pg_jobs": [
+              1.3448133876953123,
+              1.37591926171875
+            ],
+            "pg_producer_shared": [
+              0.0,
+              0.0174182939453125
+            ],
+            "postmaster": [
+              0.001804078125,
+              0.001804078125
+            ],
+            "runner": [
+              0.0028103857421874997,
+              0.0028690205078125
+            ]
+          },
+          "duration_ms": 1121.478,
+          "host_cpu_ms_per_job": {
+            "busy": [
+              1.396484375,
+              1.591796875
+            ],
+            "idle": [
+              0.380859375,
+              0.44921875
+            ],
+            "iowait": [
+              0.0,
+              0.01953125
+            ],
+            "steal": [
+              0.0,
+              0.01953125
+            ]
+          },
+          "iowait_pct_upper": 0.891680443129513,
+          "observer_cpu_ms": [
+            14.102672,
+            15.122754
+          ],
+          "process_errors": [
+            1435
+          ],
+          "qualified_role_cpu_ms_per_job": {
+            "broker": null,
+            "pg_application": null,
+            "pg_background": null,
+            "pg_jobs": null,
+            "pg_producer_shared": null,
+            "postmaster": null,
+            "runner": null
+          },
+          "snapshot_screen_only": false,
+          "steal_pct_upper": 0.891680443129513,
+          "unattributed_busy_cpu_ms_per_job": [
+            0,
+            0.005783733398437629
+          ]
+        },
+        "full": {
+          "boundary_epoch_us": [
+            1795481296764583,
+            1795481298188561
+          ],
+          "brackets": {
+            "bracket_reporter_cpu_ms": 18.192545,
+            "frames": 66,
+            "inner_edge_ms": [
+              17.90118,
+              12.500236
+            ],
+            "max_frame_ms": 0.635792,
+            "outer_edge_ms": [
+              7.187945,
+              9.522764
+            ]
+          },
+          "capacity_ms_per_job": 2.78120703125,
+          "contradiction": {
+            "captured_inner_cpu_ms": 1900.6387479999999,
+            "host_upper_cpu_ms": 1890.0
+          },
+          "duration_ms": 1423.978,
+          "error": "captured role CPU exceeds host busy upper bound",
+          "host_cpu_ms_per_job": {
+            "busy": [
+              1.650390625,
+              1.845703125
+            ],
+            "idle": [
+              0.6640625,
+              0.751953125
+            ],
+            "iowait": [
+              0.0,
+              0.01953125
+            ],
+            "steal": [
+              0.0,
+              0.01953125
+            ]
+          },
+          "iowait_pct_upper": 0.7022580405034348,
+          "process_errors": [
+            1435
+          ],
+          "steal_pct_upper": 0.7022580405034348
+        },
+        "producer": {
+          "all_attributed_cpu_ms_per_job": [
+            0.2523421220703125,
+            0.2848686513671875
+          ],
+          "boundary_epoch_us": [
+            1795481296764583,
+            1795481297067083
+          ],
+          "brackets": {
+            "bracket_reporter_cpu_ms": 3.535415,
+            "frames": 15,
+            "inner_edge_ms": [
+              17.90118,
+              18.168445
+            ],
+            "max_frame_ms": 0.393125,
+            "outer_edge_ms": [
+              7.187945,
+              2.668014
+            ]
+          },
+          "capacity_ms_per_job": 0.5908203125,
+          "captured_pid_cpu_ms_per_job": {
+            "broker": [
+              0.0037864980468749997,
+              0.00419836328125
+            ],
+            "pg_application": [
+              0.0,
+              0.0
+            ],
+            "pg_background": null,
+            "pg_jobs": [
+              0.0,
+              0.0
+            ],
+            "pg_producer_shared": [
+              0.24855562402343748,
+              0.28067028808593747
+            ],
+            "postmaster": [
+              0.0,
+              0.0
+            ],
+            "runner": [
+              0.0,
+              0.0
+            ]
+          },
+          "duration_ms": 302.5,
+          "host_cpu_ms_per_job": {
+            "busy": [
+              0.21484375,
+              0.37109375
+            ],
+            "idle": [
+              0.244140625,
+              0.341796875
+            ],
+            "iowait": [
+              0.0,
+              0.01953125
+            ],
+            "steal": [
+              0.0,
+              0.01953125
+            ]
+          },
+          "iowait_pct_upper": 3.3057851239669422,
+          "observer_cpu_ms": [
+            2.803958,
+            3.741499
+          ],
+          "process_errors": [],
+          "qualified_role_cpu_ms_per_job": {
+            "broker": null,
+            "pg_application": null,
+            "pg_background": null,
+            "pg_jobs": null,
+            "pg_producer_shared": null,
+            "postmaster": null,
+            "runner": null
+          },
+          "snapshot_screen_only": false,
+          "steal_pct_upper": 3.3057851239669422,
+          "unattributed_busy_cpu_ms_per_job": [
+            0,
+            0.11875162792968752
+          ]
+        }
+      },
+      "cadence": {
+        "error_codes": {
+          "3": 54
+        },
+        "frames": 70,
+        "max_frame_ms": 0.635792,
+        "max_gap_ms": 25.082459,
+        "median_frame_ms": 0.21702100000000002,
+        "over_gap": 0,
+        "over_width": 0,
+        "recorder_interval_cpu_ms": 19.002046
+      },
+      "coverage": {
+        "clean_snapshot_screen": false,
+        "expected": {
+          "broker": 1,
+          "pg_application": 32,
+          "pg_jobs": 32,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "late_pids": [
+          1486,
+          1488
+        ],
+        "post": {
+          "broker": 1,
+          "pg_application": 32,
+          "pg_jobs": 32,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "post_open_errors": {},
+        "pre": {
+          "broker": 1,
+          "pg_application": 32,
+          "pg_jobs": 31,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "pre_open_errors": {},
+        "retired_pids": [
+          1435
+        ],
+        "reused_pids": [],
+        "stable_candidates": {
+          "broker": 1,
+          "pg_application": 32,
+          "pg_jobs": 30,
+          "pg_producer_shared": 1,
+          "postmaster": 1,
+          "runner": 8
+        },
+        "unexplained_session_delta": 1,
+        "unknown_pids": [
+          1479
+        ]
+      },
+      "durable_rows_per_stage": 1024,
+      "force": {
+        "ephemeral": 1490,
+        "late": 1488,
+        "missing_transient_cpu": null,
+        "readiness_jobs": 23,
+        "replacement": 1486,
+        "retired": 1435,
+        "unclassified_pid": 1479
+      },
+      "label": "mesh-churn",
+      "lane": "mesh",
+      "mode": "on",
+      "order": "forward",
+      "phase_ms": {
+        "ack_drain": 1121.178,
+        "drain": 1121.478,
+        "full": 1423.978,
+        "producer": 302.5
+      },
+      "timed_client_cpu_ms_per_job": 0.0028690205078125
+    }
+  ]
+}
