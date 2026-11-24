@@ -1,6 +1,6 @@
 """Replay first-write, second-write and settlement timestamps from native ledgers."""
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from math import isfinite
 from pathlib import Path
 from statistics import median
@@ -45,6 +45,7 @@ def stage_times(ledger, score):
     return dict(enqueue=(tx["committed_us"] - tx["submitted_us"]) / 1000,
                 entry=(last[0] - tx["committed_us"]) / 1000,
                 write=(last[2] - tx["committed_us"]) / 1000,
+                middle_writes_ms=(hi - lo) / 1000,
                 sixteenth_write=(effects[15] - tx["committed_us"]) / 1000,
                 tail=(last[3] - last[2]) / 1000,
                 submit=(last[3] - tx["submitted_us"]) / 1000,
@@ -71,6 +72,34 @@ def application_statement_times(statements, jobs):
     if len(times) != len(expected):
         raise ValueError("incomplete PostgreSQL application statement statistics")
     return times
+
+
+def drain_disk_flushes(archive, ledger):
+    host = run.file_json(archive, "host.json")
+    mount = host["pg_mount"]
+    if mount["maj:min"] != "8:0" or mount["source"] != "/dev/sda" or mount["fstype"] != "ext4":
+        raise ValueError("unexpected native PostgreSQL device")
+    with archive.extractfile("host-samples.jsonl") as stream:
+        samples = [json.loads(line) for line in stream]
+    times = [point["epoch_us"] for point in samples]
+    counts, durations = [], []
+    for point in samples:
+        rows = (s.split() for s in point["diskstats"])
+        device, = (row for row in rows if row[:3] == ["8", "0", "sda"])
+        counts.append(int(device[18]))
+        durations.append(int(device[19]))
+    if any(b <= a for a, b in zip(times, times[1:])) or counts != sorted(counts) or durations != sorted(durations):
+        raise ValueError("clock or flush counters moved backwards")
+    tx, = ledger["transactions"]
+    start, end = tx["committed_us"], max(j["settled_us"] for j in ledger["jobs"])
+    # worker.py timestamps before reading diskstats. The next sample starts after that read.
+    before = bisect_right(times, start) - 2
+    after = bisect_left(times, end)
+    first_inside = bisect_left(times, start)
+    last_inside = bisect_right(times, end) - 2
+    if not 0 <= before < first_inside <= last_inside < after < len(times):
+        raise ValueError("disk samples do not bracket this drain")
+    return [(v[last_inside] - v[first_inside], v[after] - v[before]) for v in (counts, durations)]
 
 
 def dense_runner_backlog(ledger, topology):
@@ -168,11 +197,11 @@ def short_slot_times(ledger):
     return result
 
 
-def read_series(series, lanes):
+def read_series(series, lanes, *, expected_groups=5):
     inputs = run.read_json(HERE / "series-list.json")
     root = SUITE / next(item["path"] for item in inputs if item["name"] == series)
     blocks = run.read_json(HERE / "scores.json")[series]["blocks"]
-    if [block["group"] for block in blocks] != [1, 2, 3, 4, 5]:
+    if [block["group"] for block in blocks] != list(range(1, expected_groups + 1)):
         raise ValueError(f"incomplete {series}")
     groups = []
     for block in blocks:
@@ -186,6 +215,8 @@ def read_series(series, lanes):
             with tarfile.open(raw) as archive:
                 ledger = run.file_json(archive, "adapter/ledger.json")
                 rows[lane] = stage_times(ledger, score)
+                if series == "dense-exit-confirmed":
+                    rows[lane]["flushes"], rows[lane]["flush_ms"] = drain_disk_flushes(archive, ledger)
                 if series == "dense-equal-topology" and lane == "mesh-v1-2x32":
                     statements = run.file_json(archive, "adapter/trusted-application-statements.json")
                     rows[lane]["statements"] = application_statement_times(statements, score["completed"])
@@ -343,6 +374,50 @@ def report():
             lower, upper = row["available"]
             cells.extend((f"{lower:.2f}–{upper:.2f}", f"{row['after_write']:.2f}"))
         print(f"| {number} | " + " | ".join(cells) + " |")
+
+    print("\n## Dense jobs after hot checkout\n")
+    lanes = {"d2-on": "Mesh · hot checkout", "d2-off-a": "Mesh · checked checkout A",
+             "d2-off-b": "Mesh · checked checkout B", "r2-zero": "Mesh · zero-hold writer",
+             "r2-off-a": "Mesh · writer off A", "r2-off-b": "Mesh · writer off B",
+             "mesh-v1-2x32": "Mesh V1", "oban-2x32": "Oban", "river-2x32": "River",
+             "apalis-2x32": "Apalis"}
+    groups = read_series("dense-exit-confirmed", lanes, expected_groups=6)
+    print("Each value is the median of six native 1,024-job arms. The middle interval begins at the "
+          "103rd committed second application write and ends at the 922nd. The last three columns give "
+          "time-weighted counts of jobs in each stage during that interval. A job can finish its writes "
+          "and free a handler before the queue records its terminal commit.\n")
+    print("| Engine | Enqueue (ms) | Middle writes (ms) | Commit to last write (ms) | Terminal tail (ms) "
+          "| Entered, awaiting first write | Between writes | Awaiting settlement |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|")
+    for lane, label in lanes.items():
+        values = [median(g[lane][k] for g in groups) for k in
+                  ("enqueue", "middle_writes_ms", "write", "tail", "waiting_first", "between_writes", "waiting_terminal")]
+        print(f"| {label} | " + " | ".join(f"{v:.2f}" for v in values) + " |")
+    print("\nThe next rows compare hot Mesh with River in each matched rotation. The producer, last-write "
+          "and terminal-tail differences sum to the full submit difference. The middle-write column "
+          "sits inside the last-write interval. Positive values mean Mesh took longer.\n")
+    print("| Rotation | Producer (ms) | Commit to last write (ms) | Terminal tail (ms) | Full submit (ms) "
+          "| Middle writes (ms) |")
+    print("|---:|---:|---:|---:|---:|---:|")
+    for number, group in enumerate(groups, 1):
+        mesh, river = group["d2-on"], group["river-2x32"]
+        gaps = [mesh[k] - river[k] for k in ("enqueue", "write", "tail", "submit", "middle_writes_ms")]
+        if abs(sum(gaps[:3]) - gaps[3]) > 0.001:
+            raise ValueError("dense paired intervals do not reproduce submit-to-settlement")
+        print(f"| {number} | " + " | ".join(f"{gap:+.2f}" for gap in gaps) + " |")
+    print("\n### Device flushes during the dense drain\n")
+    print("The recorder reads the PostgreSQL device counters after timestamping each sample. "
+          "The next sample bounds when that read finished. Inner differences use two reads fully inside "
+          "enqueue commit through final settlement. Outer differences span that whole interval. "
+          "Both bounds include every user of the same ext4 device. "
+          "[Recorder](../../worker.py) · [Linux 6.8 disk counters](https://www.kernel.org/doc/html/v6.8/admin-guide/iostats.html)\n")
+    print("| Rotation | Mesh flushes | River flushes | Mesh flush time (ms) | River flush time (ms) |")
+    print("|---:|---:|---:|---:|---:|")
+    for number, group in enumerate(groups, 1):
+        cells = [group[lane][key] for key in ("flushes", "flush_ms") for lane in ("d2-on", "river-2x32")]
+        print(f"| {number} | " + " | ".join(f"{lo}–{hi}" for lo, hi in cells) + " |")
+    print("\nLinux counts completed device flushes and accumulates their duration. Several independent "
+          "commits can share a flush. Attribution to a specific backend or WAL record requires a PostgreSQL measurement.")
 
 
 if __name__ == "__main__":

@@ -125,3 +125,46 @@ The next table counts empty Mesh slots only while an unclaimed job is available 
 | 3 | 27.26–34.25 | 22.49 | 26.11–33.10 | 20.31 |
 | 4 | 31.93–38.92 | 25.52 | 29.21–36.20 | 19.24 |
 | 5 | 37.57–44.56 | 29.67 | 32.01–39.00 | 21.74 |
+
+## Dense jobs after hot checkout
+
+Each value is the median of six native 1,024-job arms. The middle interval begins at the 103rd committed second application write and ends at the 922nd. The last three columns give time-weighted counts of jobs in each stage during that interval. A job can finish its writes and free a handler before the queue records its terminal commit.
+
+| Engine | Enqueue (ms) | Middle writes (ms) | Commit to last write (ms) | Terminal tail (ms) | Entered, awaiting first write | Between writes | Awaiting settlement |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Mesh · hot checkout | 159.23 | 920.86 | 1211.39 | 1.43 | 8.65 | 1.48 | 5.49 |
+| Mesh · checked checkout A | 194.93 | 1011.89 | 1354.67 | 1.77 | 9.22 | 1.60 | 4.50 |
+| Mesh · checked checkout B | 167.67 | 1019.50 | 1348.14 | 1.10 | 10.81 | 1.66 | 4.85 |
+| Mesh · zero-hold writer | 174.94 | 1046.54 | 1363.99 | 1.46 | 9.93 | 1.64 | 3.81 |
+| Mesh · writer off A | 161.44 | 1001.02 | 1318.93 | 1.10 | 10.22 | 1.64 | 4.70 |
+| Mesh · writer off B | 164.34 | 1013.79 | 1322.52 | 2.31 | 10.90 | 1.61 | 4.67 |
+| Mesh V1 | 530.99 | 1085.22 | 1378.22 | 2.60 | 10.38 | 1.52 | 5.81 |
+| Oban | 143.13 | 865.29 | 1235.41 | 1.53 | 6.24 | 9.21 | 7.87 |
+| River | 79.40 | 376.35 | 791.00 | 166.58 | 2.75 | 10.10 | 168.22 |
+| Apalis | 38.02 | 505.33 | 700.38 | 7.11 | 4.94 | 8.64 | 24.25 |
+
+The next rows compare hot Mesh with River in each matched rotation. The producer, last-write and terminal-tail differences sum to the full submit difference. The middle-write column sits inside the last-write interval. Positive values mean Mesh took longer.
+
+| Rotation | Producer (ms) | Commit to last write (ms) | Terminal tail (ms) | Full submit (ms) | Middle writes (ms) |
+|---:|---:|---:|---:|---:|---:|
+| 1 | +74.06 | +401.90 | -43.20 | +432.77 | +498.19 |
+| 2 | +78.86 | +416.04 | -157.40 | +337.49 | +529.06 |
+| 3 | +60.48 | +380.95 | -115.72 | +325.71 | +529.26 |
+| 4 | +85.19 | +463.89 | -195.86 | +353.22 | +566.02 |
+| 5 | +81.24 | +418.95 | -187.64 | +312.54 | +534.60 |
+| 6 | +86.33 | +466.98 | -170.82 | +382.49 | +576.37 |
+
+### Device flushes during the dense drain
+
+The recorder reads the PostgreSQL device counters after timestamping each sample. The next sample bounds when that read finished. Inner differences use two reads fully inside enqueue commit through final settlement. Outer differences span that whole interval. Both bounds include every user of the same ext4 device. [Recorder](../../worker.py) · [Linux 6.8 disk counters](https://www.kernel.org/doc/html/v6.8/admin-guide/iostats.html)
+
+| Rotation | Mesh flushes | River flushes | Mesh flush time (ms) | River flush time (ms) |
+|---:|---:|---:|---:|---:|
+| 1 | 1001–1641 | 110–492 | 71–117 | 9–50 |
+| 2 | 1349–1660 | 326–554 | 93–115 | 23–40 |
+| 3 | 1025–1622 | 308–490 | 67–109 | 24–39 |
+| 4 | 988–1709 | 330–497 | 71–120 | 29–41 |
+| 5 | 989–1620 | 401–562 | 71–117 | 30–44 |
+| 6 | 1324–1678 | 271–456 | 95–121 | 22–38 |
+
+Linux counts completed device flushes and accumulates their duration. Several independent commits can share a flush. Attribution to a specific backend or WAL record requires a PostgreSQL measurement.

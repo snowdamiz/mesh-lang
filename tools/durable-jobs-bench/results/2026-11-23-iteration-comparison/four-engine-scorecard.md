@@ -22,6 +22,32 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | Sparse | 5/5 | 2.64 | 2.66 | 2.04 | 2.08 | 2.49 | 5 / 5 / 5 |
 | Large · EXTERNAL | 5/5 | 76.80 | 106.61 | 116.07 | 70.62 | 331.07 | 1 / 5 / 0 |
 
+## Dense jobs with confirmed teardown and hot checkout
+
+6/6 matched rotations. All ten arms use two 32-slot runners on the same two CPUs. The hot and checked checkout arms use the same Mesh executable and bulk producer. The separate writer comparison uses checked checkout throughout.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh · hot checkout | 747.37 | 844.06 | — | — |
+| Mesh · checked checkout A | 659.93 | 755.10 | 6/6 | 6/6 |
+| Mesh · checked checkout B | 674.92 | 759.01 | 6/6 | 6/6 |
+| Mesh V1 · scalar producer | 532.38 | 741.66 | 6/6 | 6/6 |
+| Oban | 741.75 | 827.67 | 4/6 | 5/6 |
+| River | 1,008.06 | 1,090.44 | 0/6 | 0/6 |
+| Apalis | 1,369.28 | 1,447.14 | 0/6 | 0/6 |
+
+## Dense jobs with overlapping terminal writes
+
+6/6 matched rotations. The zero-hold writer settles successful jobs while the dispatcher continues. Both writer-off controls use the same runner and bulk producer.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Mesh · zero-hold writer | 665.89 | 749.11 | — | — |
+| Mesh · writer off A | 690.55 | 775.52 | 1/6 | 1/6 |
+| Mesh · writer off B | 689.79 | 772.98 | 1/6 | 2/6 |
+
+Hot checkout cleared the prespecified threshold in 4/6 rotations and the zero-hold writer in 0/6. Advancement required four. Each qualifying rotation needed an earlier final application write and savings on each durable clock above both 5% of the faster control's elapsed time and the time difference between the two controls.
+
 ## Slow jobs with two Mesh runners against stock peers
 
 6/6 matched rotations. Each Mesh arm uses the same V1 bulk executable. The control copies give one runner 64 slots. The candidate gives two runners 32 slots each. All three peers use one 64-slot runner. Every arm shares two CPUs with PostgreSQL and has a 68-connection cap.

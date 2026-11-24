@@ -6,6 +6,7 @@ from pathlib import Path
 from statistics import median
 import subprocess
 import sys
+import tarfile
 
 HERE = Path(__file__).resolve().parent
 SUITE = HERE.parents[1]
@@ -46,6 +47,39 @@ def capture_slow_topology(directory):
     reconciled = {attempt: rows for attempt, rows in summary["attempts"].items()
                   if (directory / "blocks" / attempt / "reconciled.json").is_file()}
     return collect_topology_blocks(directory, lanes, identities, reconciled)
+
+
+def capture_dense_checkout(directory):
+    packet = directory.parents[1]
+    portable = packet / "evidence/dense-native-portable.tar.gz"
+    result = json.loads(subprocess.check_output(
+        [sys.executable, "-B", packet / "portable-native.py", "check", portable, "--scratch", packet / "evidence"]))
+    if result["missing"]:
+        raise ValueError(f"missing dense checkout rotations {result['missing']}")
+    with tarfile.open(portable) as archive:
+        prefix = directory.relative_to(SUITE.parents[1])
+        manifest = run.file_json(archive, str(prefix / "series.json"))
+        lanes = manifest["config"]["lanes"]
+        identities = {}
+        for lane, definition in lanes.items():
+            inventory = run.file_json(archive, str(prefix / "staging" / lane / "inventory.json"))
+            identities[lane] = inventory["engines"][definition["engine"]]["artifact_sha256"]
+    if manifest != run.read_json(directory / "series.json"):
+        raise ValueError("dense series manifest differs from the portable capture")
+    rows = {block["attempt"]: block["raw_scores"] for block in result["blocks"].values()}
+    series = collect_topology_blocks(directory, lanes, identities, rows)
+    config = manifest["config"]
+    for block in series["blocks"]:
+        for lane, score in block["scores"].items():
+            raw = rows[block["attempt"]]["measured-" + lane]
+            score["commit_to_last_effect_ms"] = (raw["last_effect_us"] - raw["first_commit_us"]) / 1000
+            score["last_effect_to_settlement_ms"] = (raw["last_settlement_us"] - raw["last_effect_us"]) / 1000
+            if score["engine"] == "mesh":
+                score.update(broker_sha256=config["mesh_broker"][lane]["elf"],
+                             runner_sha256=config["mesh_runner"][lane]["elf"],
+                             checkout_probes=raw["checkout_probes"], terminal_xids=raw["terminal_xids"])
+    series["contrasts"] = {name: result["summary"][name] for name in ("d2", "writer")}
+    return series
 
 
 def collect_topology_blocks(directory, lanes, identities, replayed):
@@ -225,6 +259,26 @@ def write_scorecard(data):
             lines.append(f"| {label} | {len(blocks)}/5 | {rates} | {wins} |")
         lines.append("")
     peers = [("oban", "Oban"), ("river", "River"), ("apalis", "Apalis")]
+    dense = data.get("dense-exit-confirmed", {})
+    if dense:
+        add_policy_table(lines, dense, "Dense jobs with confirmed teardown and hot checkout",
+                         "All ten arms use two 32-slot runners on the same two CPUs. "
+                         "The hot and checked checkout arms use the same Mesh executable and bulk producer. "
+                         "The separate writer comparison uses checked checkout throughout.",
+                         [("d2-on", "Mesh · hot checkout"), ("d2-off-a", "Mesh · checked checkout A"),
+                          ("d2-off-b", "Mesh · checked checkout B"), ("mesh-v1-2x32", "Mesh V1 · scalar producer"),
+                          *((f"{key}-2x32", label) for key, label in peers)], planned=6)
+        add_policy_table(lines, dense, "Dense jobs with overlapping terminal writes",
+                         "The zero-hold writer settles successful jobs while the dispatcher continues. "
+                         "Both writer-off controls use the same runner and bulk producer.",
+                         [("r2-zero", "Mesh · zero-hold writer"), ("r2-off-a", "Mesh · writer off A"),
+                          ("r2-off-b", "Mesh · writer off B")], planned=6)
+        checkout = dense["contrasts"]["d2"]["meaningful_rotations"]
+        writer = dense["contrasts"]["writer"]["meaningful_rotations"]
+        lines.extend([f"Hot checkout cleared the prespecified threshold in {checkout}/6 rotations and the "
+                      f"zero-hold writer in {writer}/6. Advancement required four. Each qualifying rotation "
+                      "needed an earlier final application write and savings on each durable clock above both "
+                      "5% of the faster control's elapsed time and the time difference between the two controls.", ""])
     add_policy_table(lines, data.get("slow-stock-topology", {}), "Slow jobs with two Mesh runners against stock peers",
                      "Each Mesh arm uses the same V1 bulk executable. The control copies give one runner 64 slots. "
                      "The candidate gives two runners 32 slots each. All three peers use one 64-slot runner. "
@@ -425,6 +479,8 @@ def refresh(collect):
                 continue
             if name == "slow-storage":
                 current = capture_slow_storage(archived)
+            elif name == "dense-exit-confirmed":
+                current = capture_dense_checkout(archived)
             elif name == "slow-stock-topology":
                 current = capture_slow_topology(archived)
             elif "topology" in item:

@@ -55,6 +55,8 @@ const measures={
 };
 const workloads={noop:"Dense no-op",slow:"Slow · 64 slots",sparse:"Sparse arrivals",short:"Short · 16 slots",large:"Large · 512 KiB"};
 const names={mesh:"Mesh",ordinary:"Mesh · trusted",stock:"Mesh · stock",current:"Mesh · current",historical:"Mesh · archived",
+ "d2-on":"Mesh · hot checkout","d2-off-a":"Mesh · checked checkout A","d2-off-b":"Mesh · checked checkout B",
+ "r2-zero":"Mesh · zero-hold writer","r2-off-a":"Mesh · writer off A","r2-off-b":"Mesh · writer off B",
  two:"Mesh · 2 × 32","one-a":"Mesh · 1 × 64 A","one-b":"Mesh · 1 × 64 B","river-stock-1x64":"Go River · 1 × 64",
  "oban-stock-1x64":"Elixir Oban · 1 × 64","apalis-stock-1x64":"Rust Apalis · 1 × 64",
  "mesh-v1-2x32":"Mesh V1 · 2 × 32","mesh-v1-8x8":"Mesh V1 · 8 × 8",
@@ -134,6 +136,7 @@ for(const [key,s] of Object.entries(db))if(s.blocks.length)series.add(option(key
 for(const [key,m] of Object.entries(measures))metric.add(option(key,m[0]));
 const selected=location.hash.slice(1);
 if(db[selected]?.blocks?.length)series.value=selected;
+else if(db["dense-exit-confirmed"]?.blocks.length===6)series.value="dense-exit-confirmed";
 else if(db["slow-stock-topology"]?.blocks.length===6)series.value="slow-stock-topology";
 else if(db["exit-confirmed-hot-short"]?.blocks.length===5)series.value="exit-confirmed-hot-short";
 else if(db["slow-storage"]?.blocks.length===5)series.value="slow-storage";
