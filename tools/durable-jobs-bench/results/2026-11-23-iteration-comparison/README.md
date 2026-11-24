@@ -8,6 +8,8 @@ Submit-to-settlement includes producer work and the final durable terminal commi
 
 The equal-topology slow comparison gives every engine two 32-slot runners and permits 71 PostgreSQL sessions. Its scorecard includes how many sessions each engine actually used and how many jobs overlapped during their 100 ms holds. The original slow comparison used a cap of 68. [Equal-topology design and receipts](../2026-11-24-ordinary-slow-equal-topology-cap71/README.md)
 
+On that deployment Mesh reached its 64th first application commit ahead of Apalis in seven of eight blocks. By its 192nd first commit Mesh was behind in all eight. Moving from the 64th to the 512th first commit took Mesh a paired median 161 ms longer. Over that window Mesh accumulated 138 ms more time per available slot outside the interval from handler entry to the second application commit. That interval leaves admission, release, and time with no reservation to be distinguished experimentally. [Rank and slot replay](slow-equal-refill.md)
+
 For each trusted Mesh rotation, the paired time budget shows how much end-to-end time Mesh would have to save to match the peer, and whether the gap fits inside the observed producer interval. [Producer time budgets](producer-budgets.md)
 
 Protected Mesh creates a separate process for each attempt. The smaller-worker experiment preserves fresh exec and fenced writes for its eligible handler. The trusted shared-process experiment runs ordinary application SQL in the runner's trust domain. Both write transactions must commit independently in every scored job. The symmetric storage series configures PostgreSQL EXTERNAL payload storage on all four engines. The separate Mesh-only storage series retains the default storage on its peers.
