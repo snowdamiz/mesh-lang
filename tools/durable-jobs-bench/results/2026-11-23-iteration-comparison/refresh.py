@@ -241,9 +241,25 @@ def capture_public_product(directory):
             if engine == "mesh":
                 for key in ("checkout_probes", "terminal_xids", "largest_terminal_cohort"):
                     scores[label][key] = row[key]
-            if engine == "rust":
-                with tarfile.open(path / f"measured-{label}/measured-rust/raw.tar.gz") as archive:
+            if engine == "rust" or block["profile"] == "slow":
+                with tarfile.open(path / f"measured-{label}/measured-{engine}/raw.tar.gz") as archive:
                     jobs = run.file_json(archive, "adapter/ledger.json")["jobs"]
+                    if block["profile"] == "slow":
+                        events = []
+                        for j in jobs:
+                            start, end = j["attempt_committed_us"], j["effect_committed_us"]
+                            if j["hold_ms"] != 100 or end - start < 99_000:
+                                raise ValueError(f"{path}/{label}: invalid slow hold")
+                            events.extend(((start, 1), (end, -1)))
+                        active = peak = 0
+                        for _, delta in sorted(events):
+                            active += delta
+                            peak = max(peak, active)
+                        if active or peak > bound["recipe"]["slots"]:
+                            raise ValueError(f"{path}/{label}: invalid overlapping commits")
+                        series.setdefault("committed_hold_peaks", {}).setdefault(str(block["group"]), {})[label] = peak
+                    if engine != "rust":
+                        continue
                     last = max(jobs, key=lambda j: j["settled_us"])
                     tail = last["settled_us"] - max(j["effect_committed_us"] for j in jobs)
                     if tail >= 10_000_000:
@@ -362,8 +378,8 @@ def write_scorecard(data):
                   ("public-dense-equal", "Dense, all engines 2 × 32"), ("public-large-external", "Large, all engines EXTERNAL")]
         lines.extend(["## Public trusted Mesh, Go River, Elixir Oban and Rust Apalis", "",
                       "Each row gives the median jobs/s and matched wins over five Linode rotations. "
-                      "All rows use the same public Mesh executable, the policy selected on short jobs, and two CPUs shared with PostgreSQL. "
-                      "Every handler commits its two application writes independently. Submit includes producer work. Drain starts at enqueue commit. "
+                      "All rows use one Mesh executable and the policy selected on short jobs. The trusted handler runs inside its application process. "
+                      "PostgreSQL 17.11 shares two CPUs with each queue. Every handler commits its two application writes independently. Submit includes producer work. Drain starts at the first enqueue commit. "
                       "Both clocks end at the final durable settlement. [Interactive results](chart.html#public-short-selection)", "",
                       "| Workload and deployment | Clock | Mesh | River | Oban | Apalis | Mesh wins vs River / Oban / Apalis |",
                       "|---|---|---:|---:|---:|---:|---|"])
@@ -382,6 +398,11 @@ def write_scorecard(data):
                 lines.append(f"| [{label}](chart.html#{key}) | {clock} | {rates} | {wins} |")
         lines.extend(["", "Stock profiles use the original runner counts and default storage. "
                       "The additional dense and large comparisons identify the changed runner counts or PostgreSQL argument storage.", ""])
+        peaks = data.get("public-slow", {}).get("committed_hold_peaks")
+        if peaks:
+            span = [v for group in peaks.values() for v in group.values()]
+            if min(span) == max(span) == 64:
+                lines.extend(["All four engines reached 64 simultaneous jobs between their first and second committed writes in every slow rotation. The canonical slow workload allowed 68 PostgreSQL connections.", ""])
         for key, label in public:
             for late in data.get(key, {}).get("late_apalis_settlements", []):
                 note = (f"In {label}, Apalis group {late['group']} settled its final job, `{late['job']}`, "

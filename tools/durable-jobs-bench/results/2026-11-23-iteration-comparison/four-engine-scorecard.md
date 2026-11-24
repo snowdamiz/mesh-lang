@@ -2,7 +2,7 @@
 
 ## Public trusted Mesh, Go River, Elixir Oban and Rust Apalis
 
-Each row gives the median jobs/s and matched wins over five Linode rotations. All rows use the same public Mesh executable, the policy selected on short jobs, and two CPUs shared with PostgreSQL. Every handler commits its two application writes independently. Submit includes producer work. Drain starts at enqueue commit. Both clocks end at the final durable settlement. [Interactive results](chart.html#public-short-selection)
+Each row gives the median jobs/s and matched wins over five Linode rotations. All rows use one Mesh executable and the policy selected on short jobs. The trusted handler runs inside its application process. PostgreSQL 17.11 shares two CPUs with each queue. Every handler commits its two application writes independently. Submit includes producer work. Drain starts at the first enqueue commit. Both clocks end at the final durable settlement. [Interactive results](chart.html#public-short-selection)
 
 | Workload and deployment | Clock | Mesh | River | Oban | Apalis | Mesh wins vs River / Oban / Apalis |
 |---|---|---:|---:|---:|---:|---|
@@ -12,12 +12,16 @@ Each row gives the median jobs/s and matched wins over five Linode rotations. Al
 | [Dense, 8 × 8](chart.html#public-dense-stock) | Drain | 512.48 | 904.54 | 698.45 | 1,162.19 | 0 / 0 / 1 |
 | [Sparse, 1 slot](chart.html#public-sparse) | Submit | 2.66 | 2.08 | 2.04 | 2.48 | 5 / 5 / 5 |
 | [Sparse, 1 slot](chart.html#public-sparse) | Drain | 2.66 | 2.08 | 2.04 | 2.48 | 5 / 5 / 5 |
+| [Slow, 1 × 64](chart.html#public-slow) | Submit | 262.23 | 287.43 | 242.05 | 354.62 | 2 / 5 / 0 |
+| [Slow, 1 × 64](chart.html#public-slow) | Drain | 366.99 | 391.01 | 321.85 | 455.00 | 2 / 5 / 0 |
 | [Dense, Mesh 2 × 32 and peers 8 × 8](chart.html#public-dense-mixed) | Submit | 682.04 | 843.03 | 621.83 | 1,119.75 | 0 / 5 / 0 |
 | [Dense, Mesh 2 × 32 and peers 8 × 8](chart.html#public-dense-mixed) | Drain | 770.33 | 900.16 | 684.68 | 1,165.95 | 0 / 5 / 0 |
 | [Dense, all engines 2 × 32](chart.html#public-dense-equal) | Submit | 688.41 | 997.17 | 762.22 | 1,407.67 | 0 / 0 / 0 |
 | [Dense, all engines 2 × 32](chart.html#public-dense-equal) | Drain | 772.65 | 1,079.96 | 855.47 | 1,493.00 | 0 / 0 / 0 |
 
 Stock profiles use the original runner counts and default storage. The additional dense and large comparisons identify the changed runner counts or PostgreSQL argument storage.
+
+All four engines reached 64 simultaneous jobs between their first and second committed writes in every slow rotation. The canonical slow workload allowed 68 PostgreSQL connections.
 
 In Dense, 8 × 8, Apalis group 2 settled its final job, `job_001009`, 25.92 s after the last application write committed. The observer recorded one job executing and all others terminal in 169 samples spanning 25.67 s. The rates and paired wins include this run.
 
