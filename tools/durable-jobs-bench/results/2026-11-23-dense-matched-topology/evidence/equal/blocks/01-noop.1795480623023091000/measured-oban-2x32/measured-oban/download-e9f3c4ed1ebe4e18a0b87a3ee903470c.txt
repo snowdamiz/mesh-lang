@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/var/tmp/mesh-durable-jobs-matrix/dense-matched-topology-equal-40f254f45055-oban-2x32/worker.py", line 252, in <module>
+    main()
+  File "/var/tmp/mesh-durable-jobs-matrix/dense-matched-topology-equal-40f254f45055-oban-2x32/worker.py", line 225, in main
+    export(raw, config)
+  File "/var/tmp/mesh-durable-jobs-matrix/dense-matched-topology-equal-40f254f45055-oban-2x32/worker.py", line 183, in export
+    raise RuntimeError("arm is still running or has no durable exit status")
+RuntimeError: arm is still running or has no durable exit status

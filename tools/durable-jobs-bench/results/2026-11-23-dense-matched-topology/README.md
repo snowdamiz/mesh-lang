@@ -78,11 +78,34 @@ reconciled and confirm native Mesh, River, and Apalis launch topology. The
 Oban warmup export timed out. The measured dispatches then failed to connect
 to SSH on port 22. The controller placed the series on hold pending
 recovery of the existing route and verification of the host and locks.
-Zero equal-topology blocks qualified. The original block and all receipts
-are retained. [Peer setup receipt](evidence/peer-setup/setup.json) ·
+Zero equal-topology blocks qualified under the interrupted grant. The original
+block and all receipts are retained. [Peer setup receipt](evidence/peer-setup/setup.json) ·
 [Raw warmup replay](evidence/equal/warmup-only-replay.json) ·
 [Interrupted block receipt](evidence/equal/interrupted-01.json) ·
 [Controller hold and retained staging](evidence/controller-hold.json)
+
+## Native equal-topology comparison
+
+The controller reauthenticated the original Linode at 01:48:04 UTC on
+November 24, 2026. It verified the original boot, CPUs 0 and 1, PostgreSQL
+17.11 executable and disk, and all three locks before renewing the timing
+grant. All five rotations followed the frozen order and passed replay. The
+original Oban warmup archive was recovered and remains in the interrupted
+block. [Verified host and fences](evidence/equal-recovery/verified-original-host.json) ·
+[Controller release](evidence/equal/controller-release.json)
+
+| Deployment | Median submit jobs/s | Median drain jobs/s |
+| --- | ---: | ---: |
+| Mesh V1 2 × 32 | 545.94 | 766.91 |
+| Mesh V1 8 × 8 | 359.43 | 446.38 |
+| Oban 2 × 32 | 780.50 | 880.61 |
+| River 2 × 32 | 1002.35 | 1091.82 |
+| Apalis 2 × 32 | 1352.34 | 1425.24 |
+
+Mesh 2 × 32 improved both windows over Mesh 8 × 8 in every rotation. The
+three 2 × 32 peers also led Mesh in both windows in every rotation. Mesh
+2 × 32 used 41 peak connections and 1,024 terminal transactions per arm.
+[Full scorecard](evidence/equal/scorecard.md) · [Raw replay](evidence/equal/replay.json)
 
 ## Producer-only composition
 
