@@ -2,7 +2,7 @@
 +++ b/compiler/mesh-rt/src/jobs/runner.rs
 @@ -2000,7 +2000,35 @@
  }
-
+ 
  type BatchResult = Result<(Lease, ClaimBatch, Option<Instant>), String>;
 -type BatchReply = (String, BatchResult);
 +type BatchReply = (String, BatchResult, Instant, Instant);
@@ -34,7 +34,7 @@
 +        });
 +    }
 +}
-
+ 
  enum DispatchSessions {
      Pool,
 @@ -2039,7 +2067,15 @@
@@ -79,7 +79,7 @@
      let mut attempts = Vec::<Attempt>::new();
      let drain_queues = config
 @@ -2420,6 +2461,12 @@
-
+ 
          let (admitting, pending) = {
              let mut state = runner.state.lock();
 +            let sample = (state.jobs.len(), state.pending.as_ref().map_or(0, |r| r.slots),
