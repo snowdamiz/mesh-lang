@@ -4,6 +4,8 @@
 
 [Open the interactive results](chart.html). Choose a series and workload to compare the engines within the same rotations. For either throughput measure, expand **Head-to-head throughput** to count paired wins and see the median percentage change against the chosen engine. The individual rotations include execution order and CPU steal. The standalone page includes its own downloadable copy of the score data.
 
+The public trusted build at `b3557273` reached 570 jobs/s from submission and 714 jobs/s from enqueue commit on short jobs with individual terminal commits. It beat Oban in five of five paired rotations and River in three of five on both clocks. Apalis won all five. Both Mesh settings used the same batch producer and confirmed handler teardown. Grouping successful jobs won four submit comparisons and three drain comparisons against individual commits. The frozen rule retained individual terminal commits for the other profiles. [Public short comparisons](chart.html#public-short-selection) · [Selection receipt](../2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/selection-evidence.json)
+
 Submit-to-settlement includes producer work and the final durable terminal commit. Commit-to-settlement starts after enqueue. Changing the producer can improve the first measure even when workers drain the queue at the same speed.
 
 The equal-topology slow comparison gives every engine two 32-slot runners and permits 71 PostgreSQL sessions. Its scorecard includes how many sessions each engine actually used and how many jobs overlapped during their 100 ms holds. The original slow comparison used a cap of 68. [Equal-topology design and receipts](../2026-11-24-ordinary-slow-equal-topology-cap71/README.md)

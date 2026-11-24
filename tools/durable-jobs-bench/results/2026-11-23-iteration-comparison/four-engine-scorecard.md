@@ -22,6 +22,18 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | Sparse | 5/5 | 2.64 | 2.66 | 2.04 | 2.08 | 2.49 | 5 / 5 / 5 |
 | Large · EXTERNAL | 5/5 | 76.80 | 106.61 | 116.07 | 70.62 | 331.07 | 1 / 5 / 0 |
 
+## Public trusted runner on 128 short jobs
+
+5/5 matched rotations. The same b3557273 executable and batch producer ran both Mesh policies. The candidate win columns count paired wins for the selected policy. The frozen rule requires grouped commits to win four pairs on each clock with no increase in median p99.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Individual terminal commits (selected) | 570.01 | 713.61 | — | — |
+| Grouped terminal commits | 591.24 | 715.56 | 1/5 | 2/5 |
+| Oban | 277.41 | 313.31 | 5/5 | 5/5 |
+| River | 561.11 | 613.50 | 3/5 | 3/5 |
+| Apalis | 854.46 | 924.81 | 0/5 | 0/5 |
+
 ## Dense jobs with confirmed teardown and hot checkout
 
 6/6 matched rotations. All ten arms use two 32-slot runners on the same two CPUs. The hot and checked checkout arms use the same Mesh executable and bulk producer. The separate writer comparison uses checked checkout throughout.

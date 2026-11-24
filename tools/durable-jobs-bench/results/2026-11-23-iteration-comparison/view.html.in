@@ -67,6 +67,7 @@ const names={mesh:"Mesh",ordinary:"Mesh · trusted",stock:"Mesh · stock",curren
  "mesh-strict":"Mesh · fresh worker","mesh-trusted-persistent":"Mesh · reusable worker",
  "ordinary-4mb-a":"Mesh · 4 MiB control A","ordinary-4mb-b":"Mesh · 4 MiB control B",
  product:"Mesh · public trusted mode","frozen-v1":"Mesh · frozen V1",
+ "product-bulk":"Mesh · individual terminal commits","product-group":"Mesh · grouped terminal commits",
  "bulk-default":"Mesh · default storage","bulk-external":"Mesh · EXTERNAL",
  "oban-default":"Elixir Oban · default storage","river-default":"Go River · default storage","apalis-default":"Rust Apalis · default storage",
  "bulk-d2":"Mesh · batch enqueue and hot checkout",
@@ -136,6 +137,7 @@ for(const [key,s] of Object.entries(db))if(s.blocks.length)series.add(option(key
 for(const [key,m] of Object.entries(measures))metric.add(option(key,m[0]));
 const selected=location.hash.slice(1);
 if(db[selected]?.blocks?.length)series.value=selected;
+else if(db["public-short-selection"]?.blocks.length===5)series.value="public-short-selection";
 else if(db["slow-equal-cap71"]?.blocks.length===8)series.value="slow-equal-cap71";
 else if(db["dense-exit-confirmed"]?.blocks.length===6)series.value="dense-exit-confirmed";
 else if(db["slow-stock-topology"]?.blocks.length===6)series.value="slow-stock-topology";

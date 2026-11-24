@@ -175,6 +175,77 @@ def capture_slow_storage(packet):
     return dict(manifest_sha256=run.digest(packet / "frozen/native-config.json"), blocks=blocks)
 
 
+def capture_public_product(directory):
+    packet = directory.parents[3]
+    bound_path = directory.with_suffix(".inventory.json")
+    bound = run.read_json(bound_path)
+    manifest = run.read_json(directory / "series.json")
+    setup = directory.parents[1] / "setup/trusted-jobs-product-623c46b92cc5"
+    proof = run.read_json(setup / "qualified.json")
+    if (bound["artifact"] != run.read_json(setup / "mesh.json")
+            or run.digest(setup / "mesh.json") != bound["manifest_sha256"]
+            or bound["manifest_sha256"] != proof["manifest_sha256"]
+            or proof["executable_sha256"] != bound["artifact"]["files"]["mesh"]
+            or run.digest(setup / "raw.tar.gz") != proof["raw_sha256"]):
+        raise ValueError(f"{directory}: timed build differs from the native fault proof")
+    if manifest["config"] != bound["configuration"] or manifest["plan"] != bound["recipe"]["blocks"]:
+        raise ValueError(f"{directory}: timing inventory or order differs from the frozen plan")
+    paths = []
+    for block in manifest["plan"]:
+        receipt, = (directory / "blocks").glob(f"{run.block_prefix(block)}.*/reconciled.json")
+        paths.append(receipt.parent)
+    output = subprocess.check_output([sys.executable, "-B", packet / "replay/intake.py",
+                                      "replay", bound_path, *paths])
+    if output != (directory / "summary.json").read_bytes():
+        raise ValueError(f"{directory}: raw replay differs from the controller release")
+    lanes = bound["configuration"]["lanes"]
+    series = dict(manifest_sha256=run.digest(directory / "series.json"),
+                  product_elf_sha256=proof["executable_sha256"],
+                  product_modes={name: lane["product_mode"] for name, lane in lanes.items() if lane["engine"] == "mesh"},
+                  blocks=[])
+    decision = run.read_json(directory.parent / "short-smaller/selection-evidence.json")
+    summary = json.loads(output)
+    if directory.name == "short-smaller":
+        wins = {key: sum(row["product-group"][key] > row["product-bulk"][key] for row in summary["groups"])
+                for key in ("submit_jobs_per_s", "commit_jobs_per_s")}
+        tails = {key: {lane: summary["medians"][lane][key] for lane in ("product-bulk", "product-group")}
+                 for key in ("submit_to_settlement_p99_ms", "commit_to_settlement_p99_ms")}
+        use_group = min(wins.values()) >= 4 and all(row["product-group"] <= row["product-bulk"] for row in tails.values())
+        if (decision["grouped_wins"] != wins or decision["median_p99_ms"] != tails
+                or decision["mode"] != ("product-group" if use_group else "product-bulk")):
+            raise ValueError("short selection differs from paired throughput and p99")
+    elif series["product_modes"] != {"product": decision["mode"]}:
+        raise ValueError(f"{directory}: selected mode changed")
+    series["selected_mode"] = decision["mode"]
+    for block, path, group in zip(manifest["plan"], paths, summary["groups"], strict=True):
+        if group != run.read_json(path / "reconciled.json")["scores"]:
+            raise ValueError(f"{path}: per-arm scores differ from raw replay")
+        seals = {name.lstrip("*"): digest for digest, name in
+                 (line.split(maxsplit=1) for line in (path / "SHA256SUMS").read_text().splitlines())}
+        scores, archives = {}, {}
+        for label in block["order"]:
+            lane = lanes[label]
+            engine = lane["engine"]
+            for phase in block["phases"]:
+                folder = f"{phase}-{label}/{phase}-{engine}"
+                member = f"{folder}/raw.tar.gz"
+                archives[folder] = run.digest(path / member)
+                if archives[folder] != seals[member]:
+                    raise ValueError(f"{path / member}: archive seal differs")
+            row = group[label]
+            if row["failed"] or row["completed"] != row["ordered_independent_writes"] or row["affinity"] != [0, 1]:
+                raise ValueError(f"{path}/{label}: durable writes or CPU affinity differ")
+            scores[label] = {key: row[key] for key in METRICS}
+            scores[label].update(engine=engine, completed=row["completed"],
+                                 sha256=lane["inventory"]["engines"][engine]["artifact_sha256"])
+            if engine == "mesh":
+                for key in ("checkout_probes", "terminal_xids", "largest_terminal_cohort"):
+                    scores[label][key] = row[key]
+        series["blocks"].append(dict(group=block["group"], profile=block["profile"], order=block["order"],
+                                     attempt=path.name, scores=scores, raw_sha256=archives))
+    return series
+
+
 def capture(directory, live=None):
     directories = [path for path in (directory, live) if path and (path / "series.json").is_file()]
     if not directories:
@@ -296,6 +367,20 @@ def write_scorecard(data):
             lines.append(f"| {label} | {len(blocks)}/5 | {rates} | {wins} |")
         lines.append("")
     peers = [("oban", "Oban"), ("river", "River"), ("apalis", "Apalis")]
+    short = data.get("public-short-selection", {})
+    if short:
+        chosen = short["selected_mode"]
+        policies = {"product-bulk": "Individual terminal commits", "product-group": "Grouped terminal commits"}
+        alternate, = (lane for lane in policies if lane != chosen)
+        add_policy_table(lines, short, "Public trusted runner on 128 short jobs",
+                         "The same b3557273 executable and batch producer ran both Mesh policies. "
+                         "The candidate win columns count paired wins for the selected policy. "
+                         "The frozen rule requires grouped commits to win four pairs on each clock with no increase in median p99.",
+                         [(chosen, policies[chosen] + " (selected)"), (alternate, policies[alternate]), *peers])
+        for key, series in data.items():
+            if key.startswith("public-") and key != "public-short-selection":
+                add_policy_table(lines, series, series["title"],
+                                 series["description"], [("product", "Public Mesh · " + policies[chosen].lower()), *peers])
     dense = data.get("dense-exit-confirmed", {})
     if dense:
         add_policy_table(lines, dense, "Dense jobs with confirmed teardown and hot checkout",
@@ -528,18 +613,24 @@ def write_sparse_latency(data):
     (HERE / "sparse-latency.md").write_text("\n".join(lines))
 
 
-def refresh(collect):
+def refresh(collect, selected=()):
     target = HERE / "scores.json"
     data = run.read_json(target) if target.exists() else {}
     if collect:
         for item in run.read_json(HERE / "series-list.json"):
             name = item["name"]
+            if selected and name not in selected:
+                continue
             live = SUITE / item["live"] if "live" in item else None
             archived = SUITE / item["path"]
+            if item.get("public_product") and not (archived / "summary.json").is_file() and name not in data:
+                continue
             if (item.get("pending") and name not in data
                     and not any(path and (path / "series.json").is_file() for path in (archived, live))):
                 continue
-            if name == "slow-storage":
+            if item.get("public_product"):
+                current = capture_public_product(archived)
+            elif name == "slow-storage":
                 current = capture_slow_storage(archived)
             elif name == "dense-exit-confirmed":
                 current = capture_dense_checkout(archived)
@@ -576,4 +667,7 @@ def refresh(collect):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--collect", action="store_true", help="verify the original arm archives")
-    refresh(parser.parse_args().collect)
+    parser.add_argument("--series", nargs="+", choices=[item["name"] for item in run.read_json(HERE / "series-list.json")],
+                        help="verify only these series and regenerate the full viewer with the archived scores")
+    args = parser.parse_args()
+    refresh(args.collect or bool(args.series), args.series)
