@@ -1,0 +1,22 @@
+{
+  "archive_sha256": "78468180f0c0be9b2b17533b54dc8cbd69e3982d84b239457b15e5beb018b530",
+  "attempt": "trusted-1e70f18d-standalone-78468180f0c0",
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-qualified-hot-pool/evidence/standalone",
+  "id": "qualified-hot-pool-1e70f18d-standalone",
+  "mode": "standalone",
+  "native_script_sha256": "0b4eaa5c70d6668d75f296a1b59963705a5daa2d9c928643e0bc52d274b64c8e",
+  "pins": {
+    "tools/durable-jobs-bench/results/2026-11-24-e4156740-trusted-jobs-native/native.sh": "dac656e57e5991f9a801c83fa3dcda64e743f3438c8b95c74b7d6266e66db2ec",
+    "tools/durable-jobs-bench/results/2026-11-24-qualified-hot-pool/controller.py": "e7cd818799e59ecba44ab842d91f1d0b40b0f6e032550ca59c1beeac3f2e83cd",
+    "tools/durable-jobs-bench/results/2026-11-24-qualified-hot-pool/freeze.py": "c2803132df47dfd259af9423fe2bd406cc2e1e9e4228546bd4b38995f86351f0",
+    "tools/durable-jobs-bench/results/2026-11-24-qualified-hot-pool/source.tar.gz": "78468180f0c0be9b2b17533b54dc8cbd69e3982d84b239457b15e5beb018b530"
+  },
+  "ready": true,
+  "requested_window_minutes": 45,
+  "setup_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-qualified-hot-pool/controller.py standalone setup",
+  "source_sha": "1e70f18d624a841740d3bbb3d0fd09b269257f68"
+}

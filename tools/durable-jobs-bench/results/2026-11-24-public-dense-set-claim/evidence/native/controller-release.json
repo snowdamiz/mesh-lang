@@ -1,0 +1,15 @@
+{
+  "attempts": [
+    0
+  ],
+  "exit_status": 0,
+  "group_command": "dispatch",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-public-dense-set-claim",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native",
+  "released_at": "2026-11-24T22:55:58.109884+00:00",
+  "started": "2026-11-24T22:53:34.302887+00:00"
+}
