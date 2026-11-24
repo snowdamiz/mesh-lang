@@ -54,6 +54,8 @@ In the fresh short series that waits for actor teardown, Mesh with hot checkout 
 
 In the exit-confirmed short series, River started with four physical database connections and reached 18 during every measured run. Mesh stayed at 13. Mesh reached the 16th second write in 21 ms at the median, compared with River's 76 ms. The next 112 second writes took Mesh 146 ms and River 79 ms. River completed those later writes faster in every rotation. They leave the contribution of opening River's connections unresolved. [Sample counts and application-write intervals](application-intervals.md#short-job-database-connections-and-write-progress)
 
+Across those last 112 short writes, Mesh lost 52–113 ms to River. Slot time before handler entry or after the second write accounted for 30–64 ms of that gap, normalized across the 16 slots. The checked-pool Mesh control also had 25–39 ms of empty slot time with jobs still waiting to be claimed. That measures the opportunity to refill sooner. The saving available from combining settlement and refill still needs a matched run. [Slot times in all five rotations](application-intervals.md#where-the-16-slots-spent-time-after-the-first-16-writes)
+
 In the five equal-topology dense rotations, the last application write committed 373–489 ms later on Mesh than on River. A local six-rotation experiment reduced terminal transaction counts in every rotation and failed to advance drain time beyond the identical controls. [Native stage chart and local completion experiment](../2026-11-24-dense-two-runner-completion/README.md)
 
 ## Slow-job storage and refill

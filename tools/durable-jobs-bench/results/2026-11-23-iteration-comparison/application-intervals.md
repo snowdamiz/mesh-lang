@@ -84,3 +84,30 @@ The connection columns span all five rotations. Each count covers the queue stac
 | Apalis | 19 | 19 | 36.31 | 105.73 |
 
 These snapshots show when connections were present. A separate matched run with River’s connections open before submission can measure how much pool startup changes its early writes and final settlement.
+
+### Where the 16 slots spent time after the first 16 writes
+
+Each row subtracts a peer’s time from trusted Mesh with hot checkout in the interval from its own 16th to 128th second write. The columns sum to the elapsed gap before rounding. They integrate the number of slots in each state over time and divide by 16. The last state includes admission, settlement and idle slots.
+
+| Rotation | Peer | Handler entry to first write (ms) | Between writes (ms) | Before handler entry or after second write (ms) | Total difference (ms) |
+|---:|---|---:|---:|---:|---:|
+| 1 | River | +24.99 | +17.53 | +47.58 | +90.11 |
+| 1 | Apalis | +18.00 | +7.31 | +23.97 | +49.28 |
+| 2 | River | +13.85 | +6.00 | +46.21 | +66.06 |
+| 2 | Apalis | +7.55 | +2.02 | +33.85 | +43.42 |
+| 3 | River | +12.72 | +9.05 | +30.04 | +51.81 |
+| 3 | Apalis | +7.70 | +0.23 | +18.97 | +26.91 |
+| 4 | River | +11.54 | +7.60 | +46.21 | +65.35 |
+| 4 | Apalis | +8.14 | +2.29 | +33.55 | +43.97 |
+| 5 | River | +26.04 | +22.67 | +63.87 | +112.59 |
+| 5 | Apalis | +21.24 | +17.19 | +48.65 | +87.08 |
+
+The next table counts empty Mesh slots only while an unclaimed job is available to fill each one. It excludes empty slots after the last claim. Bounds place each millisecond claim stamp at the start or end of its bin, capped by handler entry. A claim stamp is written inside the transaction, before its COMMIT acknowledgement. The second column for each mode counts slots occupied after the second write through terminal commit. Both measures use the same 16-slot normalization. They include required work and cannot establish the speedup from combining settlement and refill.
+
+| Rotation | Hot checkout, free with backlog (ms) | Hot, awaiting settlement (ms) | Checked checkout, free with backlog (ms) | Checked, awaiting settlement (ms) |
+|---:|---:|---:|---:|---:|
+| 1 | 29.99–36.99 | 27.70 | 25.34–32.33 | 17.18 |
+| 2 | 30.03–37.03 | 21.92 | 28.17–35.16 | 22.40 |
+| 3 | 27.26–34.25 | 22.49 | 26.11–33.10 | 20.31 |
+| 4 | 31.93–38.92 | 25.52 | 29.21–36.20 | 19.24 |
+| 5 | 37.57–44.56 | 29.67 | 32.01–39.00 | 21.74 |

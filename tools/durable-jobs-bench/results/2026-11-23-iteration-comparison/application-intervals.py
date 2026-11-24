@@ -1,5 +1,6 @@
 """Replay first-write, second-write and settlement timestamps from native ledgers."""
 
+from bisect import bisect_right
 from math import isfinite
 from pathlib import Path
 from statistics import median
@@ -90,6 +91,48 @@ def short_connections(archive, engine, completed):
     return idle[-1]["connections"], max(row["connections"] for row in timed)
 
 
+def short_slot_times(ledger):
+    slots = ledger["slots"]
+    jobs = ledger["jobs"]
+    if slots != 16 or len(jobs) != 128 or ledger["runners"] != 1:
+        raise ValueError("unexpected short workload dimensions")
+    effects = sorted(j["effect_committed_us"] for j in jobs)
+    lo, hi = effects[slots - 1], effects[-1]
+    entries = sorted(j["entered_us"] for j in jobs)
+    if hi <= lo or any(bisect_right(entries, t) - bisect_right(effects, t) > slots for t in entries):
+        raise ValueError("invalid handler occupancy or empty short write interval")
+
+    def area(begin, end):
+        return sum(max(0, min(hi, j[end]) - max(lo, j[begin])) for j in jobs)
+
+    scale = 1000 * slots
+    first = area("entered_us", "attempt_committed_us") / scale
+    second = area("attempt_committed_us", "effect_committed_us") / scale
+    result = dict(first=first, second=second, other=(hi - lo) / 1000 - first - second)
+    if ledger["engine"] != "mesh":
+        return result
+
+    if any(j["claimed_us"] % 1000 or j["claimed_us"] > j["entered_us"] for j in jobs):
+        raise ValueError("unexpected Mesh claim stamp or entry time")
+    ends = sorted(j["settled_us"] for j in jobs)
+
+    def available_before_admission(rounding_us):
+        claims = sorted(min(j["entered_us"], j["claimed_us"] + rounding_us) for j in jobs)
+        edges = sorted({lo, hi, *(t for t in claims + ends if lo < t < hi)})
+        total = 0
+        for start, stop in zip(edges, edges[1:]):
+            claimed = bisect_right(claims, start)
+            settled = bisect_right(ends, start)
+            unclaimed = len(jobs) - claimed
+            seats = max(0, slots - (claimed - settled))
+            total += min(seats, unclaimed) * (stop - start)
+        return total / scale
+
+    result["available"] = (available_before_admission(0), available_before_admission(999))
+    result["after_write"] = area("effect_committed_us", "settled_us") / scale
+    return result
+
+
 def read_series(series, lanes):
     inputs = run.read_json(HERE / "series-list.json")
     root = SUITE / next(item["path"] for item in inputs if item["name"] == series)
@@ -106,12 +149,14 @@ def read_series(series, lanes):
             if run.digest(raw) != block["raw_sha256"][folder]:
                 raise ValueError(f"raw archive digest differs for {raw}")
             with tarfile.open(raw) as archive:
-                rows[lane] = stage_times(run.file_json(archive, "adapter/ledger.json"), score)
+                ledger = run.file_json(archive, "adapter/ledger.json")
+                rows[lane] = stage_times(ledger, score)
                 if series == "dense-equal-topology" and lane == "mesh-v1-2x32":
                     statements = run.file_json(archive, "adapter/trusted-application-statements.json")
                     rows[lane]["statements"] = application_statement_times(statements, score["completed"])
                 if series == "exit-confirmed-hot-short":
                     rows[lane]["connections"] = short_connections(archive, score["engine"], score["completed"])
+                    rows[lane]["slots"] = short_slot_times(ledger)
         groups.append(rows)
     return groups
 
@@ -191,7 +236,7 @@ def report():
     print("| Rotation | Peer | Submit to enqueue commit (ms) | Enqueue commit to last application write (ms) | "
           "Last write to last settlement (ms) | Full submit difference (ms) |")
     print("|---:|---|---:|---:|---:|---:|")
-    groups = read_series("exit-confirmed-hot-short", ("r2-d2", "river", "oban", "apalis"))
+    groups = read_series("exit-confirmed-hot-short", ("r2-d2", "r2-off", "river", "oban", "apalis"))
     for number, group in enumerate(groups, 1):
         for lane, label in (("river", "River"), ("oban", "Oban"), ("apalis", "Apalis")):
             differences = [group["r2-d2"][k] - group[lane][k] for k in ("enqueue", "write", "tail", "submit")]
@@ -220,6 +265,35 @@ def report():
     print("\nThese snapshots show when connections were present. A separate matched run with "
           "River’s connections open before submission can measure how much pool startup changes "
           "its early writes and final settlement.")
+    print("\n### Where the 16 slots spent time after the first 16 writes\n")
+    print("Each row subtracts a peer’s time from trusted Mesh with hot checkout in the interval "
+          "from its own 16th to 128th second write. The columns sum to the elapsed gap before rounding. "
+          "They integrate the number of slots in each state over time and divide by 16. "
+          "The last state includes admission, settlement and idle slots.\n")
+    print("| Rotation | Peer | Handler entry to first write (ms) | Between writes (ms) | "
+          "Before handler entry or after second write (ms) | Total difference (ms) |")
+    print("|---:|---|---:|---:|---:|---:|")
+    for number, group in enumerate(groups, 1):
+        for lane, label in (("river", "River"), ("apalis", "Apalis")):
+            vals = [group["r2-d2"]["slots"][k] - group[lane]["slots"][k] for k in ("first", "second", "other")]
+            print(f"| {number} | {label} | " + " | ".join(f"{v:+.2f}" for v in (*vals, sum(vals))) + " |")
+    print("\nThe next table counts empty Mesh slots only while an unclaimed job is available "
+          "to fill each one. It excludes empty slots after the last claim. Bounds place each "
+          "millisecond claim stamp at the start or end of its bin, capped by handler entry. "
+          "A claim stamp is written inside the transaction, before its COMMIT acknowledgement. "
+          "The second column for each mode counts slots occupied after the second write through "
+          "terminal commit. Both measures use the same 16-slot normalization. They include "
+          "required work and cannot establish the speedup from combining settlement and refill.\n")
+    print("| Rotation | Hot checkout, free with backlog (ms) | Hot, awaiting settlement (ms) | "
+          "Checked checkout, free with backlog (ms) | Checked, awaiting settlement (ms) |")
+    print("|---:|---:|---:|---:|---:|")
+    for number, group in enumerate(groups, 1):
+        cells = []
+        for lane in ("r2-d2", "r2-off"):
+            row = group[lane]["slots"]
+            lower, upper = row["available"]
+            cells.extend((f"{lower:.2f}–{upper:.2f}", f"{row['after_write']:.2f}"))
+        print(f"| {number} | " + " | ".join(cells) + " |")
 
 
 if __name__ == "__main__":
