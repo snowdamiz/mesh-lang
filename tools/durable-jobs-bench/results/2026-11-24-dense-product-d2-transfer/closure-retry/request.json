@@ -1,0 +1,209 @@
+{
+  "active_grant_id": "2026-11-24-dense-product-d2-transfer-closure-retry",
+  "adapter": {
+    "archive_sha256": "1cef741fe8639176aaa4d2146e4cbaee4920aef1dcdf0342639326004295684b",
+    "files": {
+      "/var/lib/durable-jobs-bench/native/source-trusted-jobs-product-623c46b92cc5/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay-closure-retry/backend.py": "f2a897601d10f8c30b6bad30358ed1a88a8f688b54068095237ae1160ac7cea1",
+      "/var/lib/durable-jobs-bench/native/source-trusted-jobs-product-623c46b92cc5/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay-closure-retry/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+      "/var/lib/durable-jobs-bench/native/source-trusted-jobs-product-623c46b92cc5/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay-closure-retry/native-run": "c5e0351810985f4fb21487843dd6e95258cac9d9951989493b86e6d6c57de17a",
+      "/var/lib/durable-jobs-bench/native/source-trusted-jobs-product-623c46b92cc5/source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay-closure-retry/product_arm.py": "b7253e622051a033050b3e79afab73cd11c4c61cb0bf1dedd06303b8facdce24"
+    },
+    "release_sha256": "091c1d7382754929124dac432ad9f50d481b669a2f3736e2572dc044a184fbf5"
+  },
+  "advancement": "At least four of all six complete rotations. On each clock require saving over faster checked greater than max(5% of faster checked, absolute A/A elapsed spread), plus earlier final application effect. Report actual probes and peer wins independently.",
+  "amendment_of": "2026-11-24-dense-product-d2-transfer",
+  "bind": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/amendment.py bind",
+  "build_free": true,
+  "check": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/amendment.py check",
+  "continuation_groups": [
+    3,
+    4,
+    5,
+    6
+  ],
+  "continuation_window_minutes": 40,
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "dispatch": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/amendment.py timing",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry",
+  "group_plan": [
+    {
+      "group": 1,
+      "order": [
+        "checked-a",
+        "river-2x32",
+        "apalis-2x32",
+        "hot",
+        "checked-b",
+        "oban-2x32"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 2,
+      "order": [
+        "river-2x32",
+        "hot",
+        "checked-a",
+        "oban-2x32",
+        "apalis-2x32",
+        "checked-b"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 3,
+      "order": [
+        "hot",
+        "oban-2x32",
+        "river-2x32",
+        "checked-b",
+        "checked-a",
+        "apalis-2x32"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 4,
+      "order": [
+        "oban-2x32",
+        "checked-b",
+        "hot",
+        "apalis-2x32",
+        "river-2x32",
+        "checked-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 5,
+      "order": [
+        "checked-b",
+        "apalis-2x32",
+        "oban-2x32",
+        "checked-a",
+        "hot",
+        "river-2x32"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 6,
+      "order": [
+        "apalis-2x32",
+        "checked-a",
+        "checked-b",
+        "river-2x32",
+        "oban-2x32",
+        "hot"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "id": "2026-11-24-dense-product-d2-transfer-closure-retry",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "kind": "Build-free public closure adapter amendment to the distinct dense product checkout transfer",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue/native/bulk-enqueue-ce5e551d079e.tar.gz": "542925005370032c71db1a2aa488c2d35d16f14f9fdc8f54ee0afbb81f80fc82",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/README.md": "9ed225885d2464158fb7b3aba358052d84daa86d5d34cf317a32d48cf9d21fae",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/amendment.py": "272a0aaf230d54aa4eab599a52e65e7b8cd2a81e41e9ad9a6c93bbdcc7275acf",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/offline-regression.txt": "4c37cb28e9eb82672c364f25d183f7713f116a71cd67d0f5ff9d0e40b9c1ea73",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/regression.py": "898fee015aae8b600cdddaf091f3a84d3049e8c76fb5b129017c42fc923b9261",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/request-public.pem": "b505b0f35b7d03ff714805ccf409a9882ca4e9b381dc371ced1ceeddfedd795f",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/short-raw-replay.json": "280520831872e129e84411b0bc02ab258788a5b3b8fcd78dbfd7efe00e6af7ab",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/product-setup-binding/binding.json": "da084fc7675057c14352f520f517dac479421f817ac72332bae88e7c8f4ac590",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/product-setup-binding/controller-release.json": "372ccb3bbea74889d6d2aaa462ee487e1f4845bbefdc8be6f4ae7d4d709fe851",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/request-public.pem": "d55d5ad9ff815aed92326639c941340e3de9deb800b406b762d0c7de25573d3c",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/request.json": "a2ff6cbd305d97af77679860c0455e3480e0979576dee0e182c4d4ee1b2cb753",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/request.sig": "96f8bb390b11042fa3d0d9851a3db7ac64f05e611bea4bde45406d0d01434d47",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/backend.py": "f2a897601d10f8c30b6bad30358ed1a88a8f688b54068095237ae1160ac7cea1",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/request.json": "32da08c0cec88e65e76701d763e3f9ba2a972689a20a81c643b03286213926a2",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/setup.sh": "916b6d61da5ba528228b39e0af21aa5f64ab788e49d47263a5c94b3c7cc11863",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5-closure-retry/controller-release.json": "091c1d7382754929124dac432ad9f50d481b669a2f3736e2572dc044a184fbf5",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5-closure-retry/qualification.json": "590a3dc95cf10b3f4ce2586f73de620f90a29d30af4909b986fa6a8b3797d5c0",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5-closure-retry/raw.tar.gz": "1cef741fe8639176aaa4d2146e4cbaee4920aef1dcdf0342639326004295684b",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5-closure-retry/status.json": "bd735d0d3e599b337451ccb79b758da14a7e534bc5e8284d0e3038974999a929",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5/qualified.json": "c02bf743e8e7e3ca687fbbad8b818da2d069fad520ce7559a2c0ad001b276717",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5/raw.tar.gz": "fd14384d833597fe962429e36f2e741730c636f3309f72323859306e015dfae1",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller.inventory.json": "433fc418608b53a33192c5677fbe2998ac31188c0ac1800a523a638adffb785f",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/blocks/01-short.1795495773542665000/reconciled.json": "37ae29ee5c3e6c44c09ff7eda64f1b80205a0e95352e797bdaf44969b2076e86",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/blocks/02-short.1795495812557317000/reconciled.json": "c9c903af9e15b68b8a71b76736f18b5d47fa6c24412f0232aa826d5b24a2dda2",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/blocks/03-short.1795495857589467000/reconciled.json": "7158a6c0a2bcff8138721b80cbccecd08c13b47d46841fabd7bfc772f0e1aee7",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/blocks/04-short.1795495897609866000/reconciled.json": "e4cbc69f84249ba4fd03f58e131a73d70f78ffe80eb6a638e209471d5470a02d",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/blocks/05-short.1795495936387894000/reconciled.json": "d501e07c90633b4fc801c2ec20dfc98da518894957dc6f6ac4c66e2efee4f2a5",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/2026-11-24-trusted-jobs-product-composition-short-smaller-closure-retry-groups-1-2.released.json": "7c20818814304eec145c0c32c51fa2ac6f04b440945343f35b9e1142ccfe7bcd",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/2026-11-24-trusted-jobs-product-composition-short-smaller-closure-retry-groups-3-5.released.json": "05188bad4f04cf9f796a8d8be2053e916c5932d547f87bd8a61dd33af4f7143f",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/2026-11-24-trusted-jobs-product-composition.short-selection.json": "e7c403b57f1136a0dc93d8d1756e4c3fbdd8c5dd9b9dfcd5340d8a39f2afe695",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/SHA256SUMS": "7777638b03fad6c4f78c2b04ae3d2a1374846ba399abd627c2ee1aae06e8ef46",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/controller-timing-0fb3b786a412.json": "05188bad4f04cf9f796a8d8be2053e916c5932d547f87bd8a61dd33af4f7143f",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/controller-timing-e07021cc6839.json": "7c20818814304eec145c0c32c51fa2ac6f04b440945343f35b9e1142ccfe7bcd",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/selection-evidence.json": "664d4e3d9fd2cc93253fbafb53a3e9a79c05f792d4e9c7bcd6dd185eaa211405",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/series.json": "0548258a55159cc462ca38c234b198bbc36504d163ff392e18ecbe794dc0e2b9",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/summary.json": "28285f27b909dfd911c42539bbd3cd9382f508c1cae9d7b7bf9645d73cea8af6",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/timing-0fb3b786a412-1.log": "ca5bad5ab12cdf0078bb37d901c42c1a564ef521651854d875a156a7b887cad2",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/short-smaller/controller-evidence/timing-e07021cc6839-1.log": "336fe1a7d90a7e82bdddcc85a40ae8bd277f0b80e38c4f7851a6c3c062d99506",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/01-short.1795495340525298000/measured-apalis/measured-rust/raw.tar.gz": "a20caff61c8767fd6d847826eb1769f5b5d9397a95b649c8c7414796cab95bba",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/01-short.1795495340525298000/measured-oban/measured-oban/raw.tar.gz": "1e4676da9de39b9b156ad446f9be6430b67fc1f07c7ecbb6fbd8c93b7e1ffa79",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/01-short.1795495340525298000/measured-product-bulk/measured-mesh/raw.tar.gz": "47c2482f1710d282b5dd88cd9a1d4ec2a40d6f7c032d612c815d56bdbb92b7b9",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/01-short.1795495340525298000/measured-product-group/measured-mesh/raw.tar.gz": "3ddba531c8dbaf76b3ac87c5263a72104a942b6082cf2e9f74e4e7b85b24656a",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/01-short.1795495340525298000/measured-river/measured-go/raw.tar.gz": "6b373e86cb70f8b31d46ac08e1bbca655094bc9756814c427d2267d7f4b99dcd",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/02-short.1795495378581697000/measured-apalis/measured-rust/raw.tar.gz": "091fc3da2acb5a395d821242c0831c6d4e55385723802866bc1f1311619a20c8",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/02-short.1795495378581697000/measured-oban/measured-oban/raw.tar.gz": "fc338e1cfdfb9146985ad10e70212922b39a4683506cb59b9d80f90be0e0e08a",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/02-short.1795495378581697000/measured-product-bulk/measured-mesh/raw.tar.gz": "1c184d120eace4c9984b2035de8a237a5952bdcdfb80ed166bf278d1a13fbb07",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/02-short.1795495378581697000/measured-product-group/measured-mesh/raw.tar.gz": "e8ad8552c073681d8dc653830bb6a6a3c224cbbf9872346a5915e1024e127143",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing/short-smaller/blocks/02-short.1795495378581697000/measured-river/measured-go/raw.tar.gz": "da12917bbc60ca51a911af5e5b85a8a01be1d24ce27a20fd5e0ef7b61fe2138a",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay/intake.py": "ffbb99463b1ada73f9fd4e442171d4065865da3632fa297944f3ee2be536dba3"
+  },
+  "original_request_sha256": "a2ff6cbd305d97af77679860c0455e3480e0979576dee0e182c4d4ee1b2cb753",
+  "original_setup_binding_commit": "5d00e4006793fa0cb8d6cd17f98b3971850deed1",
+  "pilot_groups": [
+    1,
+    2
+  ],
+  "pilot_window_minutes": 24,
+  "product_executable": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+  "product_manifest": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+  "proof": "Native same-ELF SETUP and closure raw replay; 5 completed short groups, 25 measured receipts, original closure and attempt recovery reproduced via offline real code.",
+  "ready": true,
+  "replay": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/amendment.py replay",
+  "requested_at": "2026-11-24T04:58:41.798279+00:00",
+  "retention": "Keep incomplete and failed raw exports, transfer/import logs, complete warmups and measurements, binding and release digest. Verify host and fences before retry. Reconcile groups 1 and 2 before releasing groups 3\u20136.",
+  "scheduling": "Replace only the original dense transfer dispatch target in the 04:13 reservation. Follow all booked work. Leave the fixed short-smaller and selected all-profile requests as they are.",
+  "scope": "Checked A/A versus per-pool D2 on the same b3557273 grouped-success ELF. Two 32-slot runners, 16 app TLS sessions per runner, two scheduler workers, PG 17.11 cap 96, default storage and 4 MB work_mem. Exact equal 2x32 stock River, Apalis, Oban. Separate from all prior series.",
+  "signature": {
+    "algorithm": "Ed25519",
+    "detached": "request.sig",
+    "public_key_sha256": "b505b0f35b7d03ff714805ccf409a9882ca4e9b381dc371ced1ceeddfedd795f"
+  },
+  "source_archive_sha256": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+  "source_sha": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry",
+  "state": "ready"
+}

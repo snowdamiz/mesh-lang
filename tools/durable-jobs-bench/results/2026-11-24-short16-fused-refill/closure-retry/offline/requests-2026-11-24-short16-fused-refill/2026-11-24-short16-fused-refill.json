@@ -1,0 +1,202 @@
+{
+  "attempt": "short16-fused-refill-c4c5cc2243b6",
+  "base_product": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "bind_recipe": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/intake.py bind short16-fused-refill-c4c5cc2243b6 <exported candidate mesh.json> <public attempt> <exported public mesh.json>",
+  "candidate_lanes": {
+    "fused-a, fused-b": "candidate ELF, product-fused (same-image A/A)"
+  },
+  "contingent_groups": [
+    3,
+    4,
+    5
+  ],
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "database_connection_cap": 20,
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/evidence/native",
+  "expected_setup_minutes": 15,
+  "group_plan": [
+    {
+      "group": 1,
+      "order": [
+        "group-a",
+        "fused-a",
+        "river",
+        "public-group",
+        "oban",
+        "fused-b",
+        "apalis",
+        "group-b"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 2,
+      "order": [
+        "group-b",
+        "apalis",
+        "fused-b",
+        "oban",
+        "public-group",
+        "river",
+        "fused-a",
+        "group-a"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 3,
+      "order": [
+        "fused-a",
+        "oban",
+        "group-b",
+        "apalis",
+        "public-group",
+        "river",
+        "group-a",
+        "fused-b"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 4,
+      "order": [
+        "fused-b",
+        "group-a",
+        "river",
+        "public-group",
+        "apalis",
+        "group-b",
+        "oban",
+        "fused-a"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 5,
+      "order": [
+        "river",
+        "group-b",
+        "fused-b",
+        "public-group",
+        "apalis",
+        "fused-a",
+        "oban",
+        "group-a"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    }
+  ],
+  "id": "2026-11-24-short16-fused-refill",
+  "isolated_branch": "t3/short16-fused-refill (local only, not pushed)",
+  "isolated_source": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/short16-fused-refill/source",
+  "jobs": 128,
+  "kind": "Controller-owned native product SETUP and separately granted comparative TIMING",
+  "local_cut_receipts": {
+    "confirm-commit": "7f0d0d9f1975e373b62b79e854755626af406cf287160762ab690279eca8ec32",
+    "lost-commit": "47d19f821d833db2c9a207987106af0eaed0808bc6f19a11f92859cda0a788c6",
+    "malformed-grant": "e2d7f8f750d3dc6021806e357b622e54815085766ecc5f16846b0e777a067a23",
+    "sql-cut": "f27cbfec6caf28992fdea7485a9f11b19396a4d28bbf32f88ef708e2396f28d9",
+    "stop-at-commit": "c233519f0a58efec60988c02e289a32a88820101132e9490e4f6eff44e54fd8e",
+    "teardown-kill": "c95365440a1b8ebaf41a809af8390898c360972993a7a374d586b7d7c8210e53",
+    "teardown-release": "1f75f7fced593bb37c1b70b38213b4b92295561ca5864a7c0d61b14c5bb37073"
+  },
+  "local_gate": "Untimed macOS arm64 only: cargo test --workspace 4828 passed 0 failed; jobs:: with PostgreSQL 17 81 passed; host semantic suite and seven completion/refill cuts passed from the committed packet; offline bind of the eight-lane plan passed with synthetic manifests. No workstation benchmark was run.",
+  "local_sha256": {
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py": "d30834fa1ca18030edd5df0de5d760ea1952d2b84aa05fb3eae9d2af13825c52",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-bulk-d2-short-peers/short.json": "be33d238748dd544e21f13857ac8aaa99e95f7b37c51572dcc20e6123ca51041",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/backend.py": "d4d8bc80380540be142eda4dc61adcf5467bebfc8b8e044582708b1b287aa916",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/controller-timing.py": "2f68b1303d4a3e5cc8dc19e6d0e91a9bd8a56d9857a8b789d34357fe013182ab",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/intake.py": "95129282841b8ef6134c5ddcc3ec42d4bd943137d2231b7bf230767ff21b03e4",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/native-run": "32807783aaa893b0c5b4a6742e9117cd7a1ef1f3b1f1d9a4abce482089b9a47e",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/product_arm.py": "b7253e622051a033050b3e79afab73cd11c4c61cb0bf1dedd06303b8facdce24",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/refill_proof.py": "c3b95a29ca47b7e06a23a77623da0b7aad15be7b761ba35f547a72bb3f9b5c21",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/semantic.py": "354cd1215b700168042a2be949e65d351bf55da526e7d9c5f76090cdfa7dff5b",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/slot_times.py": "8add10177c93ee05f81e0a64620be7513c0f8ece2b0a54f4cb56784bcaf6fdf9",
+    "target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/wire.py": "072eb14973c33ecc553c45aa8c3e980b45f722baf889facd84ee2262e57b3285",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/README.md": "8a64b92792ee9a05c1c39171e778e37bc980fbb0b0fbc37f67068409fc7188d6",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/local-evidence.json": "b22d455ca3f1a997586848f66c5da8287f04300d18a53430fe6a8109bbd8c0ed",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/native-setup.sh": "23d09dd8d993bc3c7e771feb57931a167d14c55689df917681a5ec8a0ffe18cb",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/plan.json": "358eb4c7e24799b6ae1315f103109f03f3337ca6369c0d7e27a0bde1540a884c",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/source.tar.gz": "c4c5cc2243b6db3a9f7d50cf5f25b115a8c54e356cb876503b0d709b46d2c422"
+  },
+  "metrics": [
+    "submit_jobs_per_s",
+    "commit_jobs_per_s",
+    "submit_to_settlement_p99_ms",
+    "commit_to_settlement_p99_ms",
+    "peak_executing",
+    "peak_connections",
+    "sixteenth_to_last_write_ms",
+    "slots.available",
+    "slots.after_write",
+    "completion_refill"
+  ],
+  "peer_lanes": "Matched stock river, oban, apalis from 2026-11-24-bulk-d2-short-peers/short.json (exact pinned inventories)",
+  "per_series_timing_grant": "2026-11-24-short16-fused-refill",
+  "pilot_groups": [
+    1,
+    2
+  ],
+  "public_control_filename": "2026-11-24-short16-fused-refill.public-control.json",
+  "public_control_schema": {
+    "attempt": "public trusted-jobs-product-<12 hex> SETUP attempt",
+    "dependency": "2026-11-24-trusted-jobs-product-composition",
+    "manifest_sha256": "exact exported public release mesh.json SHA-256",
+    "receipts": {
+      "absolute path": "SHA-256 of the controller-owned public SETUP release and exported manifest"
+    }
+  },
+  "queue_position": "Behind the public short-smaller baseline (2026-11-24-trusted-jobs-product-composition) and all earlier bookings, per the existing QUEUE INTAKE line.",
+  "ready": true,
+  "ready_at": "2026-11-24T04:16:35.223932+00:00",
+  "requested_at": "2026-11-24T04:16:35.223932+00:00",
+  "runners": 1,
+  "setup_argv": [
+    "bash",
+    "native-setup.sh",
+    "short16-fused-refill-c4c5cc2243b6",
+    "2f979de4a783088590f0d197362d84afeae9a797",
+    "c4c5cc2243b6db3a9f7d50cf5f25b115a8c54e356cb876503b0d709b46d2c422"
+  ],
+  "setup_host": "Existing pinned GNU/Linux AMD64 Linode, only under the sole controller's SETUP and locks",
+  "setup_output": {
+    "artifact": "/var/lib/durable-jobs-bench/native/builds/short16-fused-refill-c4c5cc2243b6/mesh",
+    "manifest": "/var/lib/durable-jobs-bench/native/runs/short16-fused-refill-c4c5cc2243b6/mesh.json",
+    "raw": "/var/lib/durable-jobs-bench/native/runs/short16-fused-refill-c4c5cc2243b6"
+  },
+  "setup_scope": "Release mesh-rt build with the pinned stock compiler e023d594\u2026, product and teardown-witness links, host semantic suite (public handler, ambiguous app write/claim/group COMMIT, cancel/retry, teardown) and the seven completion/refill cuts, all untimed under taskset 0,1.",
+  "setup_script": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/native-setup.sh",
+  "setup_stdin": "source.tar.gz",
+  "short_off_controls": {
+    "group-a, group-b": "candidate ELF with complete_and_refill off, product-group: same checked pool, D2 off (same-image A/A)",
+    "public-group": "exact public b3557273 trusted product ELF from its own SETUP, product-group: checked pool, group success, D2 off"
+  },
+  "slots": 16,
+  "source_archive": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/source.tar.gz",
+  "source_archive_sha256": "c4c5cc2243b6db3a9f7d50cf5f25b115a8c54e356cb876503b0d709b46d2c422",
+  "source_sha": "2f979de4a783088590f0d197362d84afeae9a797",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill",
+  "state": "ready",
+  "timing_followup": "Only after groups 1 and 2 reconcile and fused improves both submit and commit clocks against both off controls in both orders, run the same command with 3 4 5 under a fresh grant. Otherwise stop at the pilot and publish it. Keep every failed or partial attempt.",
+  "timing_recipe": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/short16-fused-refill/source/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/replay/controller-timing.py /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/requests <bound-inventory.json> <new-output-directory> 1 2"
+}
