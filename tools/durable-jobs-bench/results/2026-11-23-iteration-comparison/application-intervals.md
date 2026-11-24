@@ -168,3 +168,18 @@ The recorder reads the PostgreSQL device counters after timestamping each sample
 | 6 | 1324–1678 | 271–456 | 95–121 | 22–38 |
 
 Linux counts completed device flushes and accumulates their duration. Several independent commits can share a flush. Attribution to a specific backend or WAL record requires a PostgreSQL measurement.
+
+### CPU allowance at River’s middle-write pace
+
+The 103rd through 922nd second-write timestamps enclose 819 advances in rank. Mesh’s busy-CPU lower bound uses readings wholly inside its window with the archived clock and tick allowances. River’s elapsed time multiplied by two CPUs gives the maximum CPU time available at its observed pace. Both columns use CPU-ms per advance. The readings cover all activity on the two pinned CPUs. [CPU bounds replay](../2026-11-23-ordinary-native-cpu/replay/offline.py)
+
+| Rotation | Mesh busy CPU, lower bound | River total CPU allowance | Lower bound minus allowance |
+|---:|---:|---:|---:|
+| 1 | 0.965 | 0.980 | -0.016 |
+| 2 | 0.977 | 0.939 | +0.038 |
+| 3 | 0.977 | 0.859 | +0.118 |
+| 4 | 0.965 | 0.899 | +0.066 |
+| 5 | 0.977 | 0.961 | +0.016 |
+| 6 | 0.977 | 0.880 | +0.097 |
+
+In 5 of 6 rotations, the observed minimum CPU charge would exceed the time available at River’s middle-write pace even with both CPUs fully busy. A change could reduce work, move it outside this window, or do both. The samples leave its process and SQL attribution open.

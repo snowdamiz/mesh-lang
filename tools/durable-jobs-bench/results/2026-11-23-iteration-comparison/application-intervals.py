@@ -12,6 +12,8 @@ HERE = Path(__file__).resolve().parent
 SUITE = HERE.parents[1]
 sys.path.insert(0, str(SUITE))
 import run
+sys.path.insert(0, str(HERE.parent / "2026-11-23-ordinary-native-cpu/replay"))
+from offline import host_interval
 
 
 def stage_times(ledger, score):
@@ -200,6 +202,10 @@ def short_slot_times(ledger):
 def read_series(series, lanes, *, expected_groups=5):
     inputs = run.read_json(HERE / "series-list.json")
     root = SUITE / next(item["path"] for item in inputs if item["name"] == series)
+    if series == "dense-exit-confirmed":
+        inventory = run.read_json(root / "series.json")["config"]
+        if inventory["cpus"] != [0, 1] or inventory["clock_ticks"] != 100:
+            raise ValueError("unexpected Linux CPU or clock tick configuration")
     blocks = run.read_json(HERE / "scores.json")[series]["blocks"]
     if [block["group"] for block in blocks] != list(range(1, expected_groups + 1)):
         raise ValueError(f"incomplete {series}")
@@ -217,6 +223,11 @@ def read_series(series, lanes, *, expected_groups=5):
                 rows[lane] = stage_times(ledger, score)
                 if series == "dense-exit-confirmed":
                     rows[lane]["flushes"], rows[lane]["flush_ms"] = drain_disk_flushes(archive, ledger)
+                    effects = sorted(j["effect_committed_us"] for j in ledger["jobs"])
+                    with archive.extractfile("host-samples.jsonl") as stream:
+                        points = [json.loads(line) for line in stream]
+                    rows[lane]["middle_cpu"] = host_interval(points, (effects[102], effects[921]),
+                                                             inventory["clock_ticks"], ["cpu0", "cpu1"], 819)
                 if series == "dense-equal-topology" and lane == "mesh-v1-2x32":
                     statements = run.file_json(archive, "adapter/trusted-application-statements.json")
                     rows[lane]["statements"] = application_statement_times(statements, score["completed"])
@@ -418,6 +429,23 @@ def report():
         print(f"| {number} | " + " | ".join(f"{lo}–{hi}" for lo, hi in cells) + " |")
     print("\nLinux counts completed device flushes and accumulates their duration. Several independent "
           "commits can share a flush. Attribution to a specific backend or WAL record requires a PostgreSQL measurement.")
+    print("\n### CPU allowance at River’s middle-write pace\n")
+    print("The 103rd through 922nd second-write timestamps enclose 819 advances in rank. "
+          "Mesh’s busy-CPU lower bound uses readings wholly inside its window with the archived clock and tick allowances. "
+          "River’s elapsed time multiplied by two CPUs gives the maximum CPU time available at its observed pace. "
+          "Both columns use CPU-ms per advance. The readings cover all activity on the two pinned CPUs. "
+          "[CPU bounds replay](../2026-11-23-ordinary-native-cpu/replay/offline.py)\n")
+    print("| Rotation | Mesh busy CPU, lower bound | River total CPU allowance | Lower bound minus allowance |")
+    print("|---:|---:|---:|---:|")
+    excess = []
+    for number, group in enumerate(groups, 1):
+        lower = group["d2-on"]["middle_cpu"]["host_ms_per_job"]["busy"][0]
+        capacity = group["river-2x32"]["middle_cpu"]["capacity_ms_per_job"]
+        excess.append(lower - capacity)
+        print(f"| {number} | {lower:.3f} | {capacity:.3f} | {excess[-1]:+.3f} |")
+    print(f"\nIn {sum(value > 0 for value in excess)} of {len(groups)} rotations, the observed minimum "
+          "CPU charge would exceed the time available at River’s middle-write pace even with both CPUs fully busy. "
+          "A change could reduce work, move it outside this window, or do both. The samples leave its process and SQL attribution open.")
 
 
 if __name__ == "__main__":
