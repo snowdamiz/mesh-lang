@@ -38,6 +38,35 @@ The existing Linode controller accepted the sealed request into its queue after 
 
 The sealed link script relinked the same source with the matched Darwin compiler and runtime and returned the same artifact on a second install. The relinked binary passed the TLS producer proof. Offline inventory validation preserved both identical controls, all three original peer definitions, and the warmup and measured phases of all five rotations. [Offline receipt](verification/native-offline.json)
 
+## Native comparison
+
+The November 24 UTC SETUP linked broker ELF
+`5992c82104f641153e85ff0e7c9eedbb63e6791c6ceb53cca221890a16f1083c`
+and passed all six large correctness arms. Five matched rotations used
+CPUs 0 and 1 for both the workload and PostgreSQL 17.11. Every measured
+arm settled 64 × 512 KiB payloads with the canonical two application
+commits and reconciled EXTERNAL storage. All lanes used 16 MiB `work_mem`.
+[SETUP witness and executable pins](evidence/ordinary-broker-once-setup-14e25bc45d2d/linked.json)
+
+| Lane | Submit jobs/s | Drain jobs/s | Submit to commit (ms) | Pinned CPU (ms/job) |
+| --- | ---: | ---: | ---: | ---: |
+| One-pass broker | 47.63 | 110.96 | 769.76 | 35.94 |
+| Stock ordinary A | 47.79 | 115.93 | 749.61 | 35.16 |
+| Stock ordinary B | 47.53 | 110.01 | 760.92 | 36.25 |
+| Oban | 34.98 | 104.22 | 1,201.11 | 44.22 |
+| River | 25.29 | 67.12 | 1,549.98 | 56.56 |
+| Apalis | 76.19 | 334.72 | 645.66 | 22.50 |
+
+The one-pass broker beat both stock ordinary controls in three groups.
+Its paired median throughput gain was 0.09 jobs/s against the duplicate
+mean, within the 2.59 jobs/s maximum duplicate spread. The table reports
+medians. Arm wall time, raw SHA-256 values, latency tails, disk counters
+and per-lane version pins are in the measured result. [Five matched rotations](evidence/native-summary.json)
+
+For offline replay, restore the exact [work_mem inputs and ordinary large
+inputs](../2026-11-23-ordinary-large-workmem/README.md) at their pinned
+paths, then run `python3 -B replay-native.py` from this packet.
+
 ## Workspace gates
 
 The workspace build, formatting, core tests, runtime tests, language proofs, and the PostgreSQL 17.11 compatibility and parity-driver proof all passed. The tests compiled the archived source from `6c802a19`. The PostgreSQL wrapper's checkout banner came from the enclosing live worktree. [Commands](verification/gate-commands.txt) · [Source verification](verification/source-blobs.json) · [Exit status](verification/gate-status.txt) · [Raw logs](verification/gate-raw.tar.gz)
