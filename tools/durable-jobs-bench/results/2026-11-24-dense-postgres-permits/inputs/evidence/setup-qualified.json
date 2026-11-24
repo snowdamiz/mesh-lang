@@ -1,0 +1,7 @@
+{
+  "attempt": "pg-permits-082ff0067340",
+  "digest": "91fbb743fcbce86ad249afbcc808eed09fac0fcb79bec129dabac75cc0cd572b",
+  "elf": "468e5e0092e063bb500754aa63d5f335b9df99f7863ea7b45a91b4a862735fce",
+  "manifest": "9d7aa816419f0b34de159ec0fbdecdd0ceb67e5b970c3d698099ab527603f3af",
+  "path": "/var/lib/durable-jobs-bench/native/builds/pg-permits-082ff0067340"
+}

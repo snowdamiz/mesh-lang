@@ -1,0 +1,53 @@
+{
+  "amends": "2026-11-24-ordinary-pg-permits",
+  "app_sessions": 32,
+  "build_free": true,
+  "command": "python3 -B target/ordinary-cooperative-pg-permits/import-amendment/controller.py check",
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "database_connection_cap": 96,
+  "diagnostic_command": "python3 -B target/ordinary-cooperative-pg-permits/import-amendment/controller.py timing diagnostic",
+  "evidence_destination": "target/ordinary-cooperative-pg-permits/evidence",
+  "id": "2026-11-24-ordinary-pg-permits-import-amendment",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "local_sha256": {
+    "target/ordinary-cooperative-pg-permits/evidence/offline-check.json": "9c78e90f1e3f378f83b7ac3d1723e8fbc010bd9ca57378a4826085ad667b2975",
+    "target/ordinary-cooperative-pg-permits/import-amendment/controller.py": "5ecbaea762d9cad896b6c027d75ce55618fbe799b0f668a24f887b458c7ed067",
+    "target/ordinary-cooperative-pg-permits/import-amendment/guest-04.log": "8cbd3308fa4c9cb95dd5997d079834bacb40178f876be3989e8aeb2123ef55dc",
+    "target/ordinary-cooperative-pg-permits/import-amendment/guest-init.S": "bc186308be8af0f8f086cca4e9ff05d79739d34785e9b5c48f8a624fb4d26097",
+    "target/ordinary-cooperative-pg-permits/import-amendment/launch-native-arm.py": "0c9a70e8b04fdf60cb629ecd8fc322db9961afcbd1dd03f3b5c3f1fa2fd40ea2",
+    "target/ordinary-cooperative-pg-permits/import-amendment/linux-import-receipt.json": "155a581b0fcbe8ddfe21d35e36d031021472d281058ece182a90742b7ad004a5",
+    "target/ordinary-cooperative-pg-permits/import-amendment/native-dense-import.sh": "12e53a45c45f9ead30d7d7a416bcb3b8ec1057da864ac720037bc026ab9efcf7",
+    "target/ordinary-cooperative-pg-permits/import-amendment/pack-guest.py": "29ffb718579e20ec5a7159eedff159479e46b4bad192f5dbc3c23c7ebe4cbddb",
+    "target/ordinary-cooperative-pg-permits/import-amendment/prove-imports.py": "50c93bfeb01c54e3b59ca13e5a772192e510c4ebce1f3c0a9b96ad9d28cb9ce6",
+    "target/ordinary-cooperative-pg-permits/packet/request.json": "a627f855ab1b2a1af2c1cad10b4b2fab09b978bcb779b9713fba9f20832b9ae5"
+  },
+  "offline_check_command": "python3 -B target/ordinary-cooperative-pg-permits/import-amendment/controller.py check",
+  "operator_id": "ordinary-actor-pg-permits",
+  "original_request": "target/ordinary-cooperative-pg-permits/packet/request.json",
+  "original_request_sha256": "a627f855ab1b2a1af2c1cad10b4b2fab09b978bcb779b9713fba9f20832b9ae5",
+  "original_setup_command": "python3 -B target/ordinary-cooperative-pg-permits/packet/controller.py setup",
+  "phase_window_minutes": {
+    "confirm": 30,
+    "diagnostic": 4,
+    "pilot": 15,
+    "screen": 12
+  },
+  "pilot_command": "python3 -B target/ordinary-cooperative-pg-permits/import-amendment/controller.py timing pilot",
+  "prerequisites": "No extra grant or series. Original SETUP and successful proof remain required. Append READY 2026-11-24-ordinary-pg-permits-import-amendment <exact sibling SHA-256> before TIMING under 2026-11-24-ordinary-pg-permits. Use the amended diagnostic, screen, pilot and confirm commands in the original order and retain the original continuation gates.",
+  "proof": "target/ordinary-cooperative-pg-permits/import-amendment/linux-import-receipt.json",
+  "ready": true,
+  "remaining_timing_command": "python3 -B target/ordinary-cooperative-pg-permits/import-amendment/controller.py timing confirm",
+  "scheduler_workers_per_runner": 2,
+  "scope": "Use a pinned by-path import of the original native arm and identity helper under the original timing reservation. The original SETUP, candidate binding, schedule, CPU and connection caps, source, scoring, evidence destination, and prior bookings apply.",
+  "screen_command": "python3 -B target/ordinary-cooperative-pg-permits/import-amendment/controller.py timing screen",
+  "source_sha": "9145afcc025adb128f6e8cee4ca13628f4e799a4923afa0eb929f5cfa4ba358e",
+  "state": "ready-for-controller",
+  "summarize_command": "python3 -B target/ordinary-cooperative-pg-permits/import-amendment/controller.py replay confirm",
+  "timing_command": "python3 -B target/ordinary-cooperative-pg-permits/import-amendment/controller.py timing diagnostic",
+  "timing_grant_id": "2026-11-24-ordinary-pg-permits",
+  "verify_setup_command": "python3 -B target/ordinary-cooperative-pg-permits/packet/controller.py verify-setup"
+}
