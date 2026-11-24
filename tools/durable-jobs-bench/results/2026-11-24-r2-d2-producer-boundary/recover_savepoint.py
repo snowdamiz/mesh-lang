@@ -58,7 +58,11 @@ def main():
         return
     summary = c.replay(OUTPUT)
     assert summary["complete"]
-    c.run.write_json(OUTPUT / "summary.json", summary)
+    report = OUTPUT / "summary.json"
+    try:
+        c.run.write_json(report, summary)
+    except FileExistsError:
+        assert c.run.read_json(report) == summary
 
 
 if __name__ == "__main__":
