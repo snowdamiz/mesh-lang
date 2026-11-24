@@ -33,3 +33,17 @@ Each row compares 128-job runs. A positive gap means Mesh reached that boundary 
 | Six lanes | 5 | 38.44 | 15.89 | +10.91 | 2.81 | 90.42 | -54.15 |
 
 The two series ran at different times and in different orders. The observed tails alone cannot identify the cause of their variation. [Native rates and paired wins](four-engine-scorecard.md) · [Score inputs and raw archive digests](scores.json)
+
+## PostgreSQL execution time for the dense Mesh handler
+
+Each 2×32 Mesh run recorded 2,048 pool checkout probes, 1,024 attempt inserts and 1,024 effect inserts for its dedicated application role. Every call returned or inserted one row. The first three times come from PostgreSQL’s cumulative `pg_stat_statements.total_exec_time` for those calls.
+
+| Rotation | Checkout (ms) | Attempt INSERT (ms) | Effect INSERT (ms) | Total (ms) | Residual vs River (ms) | Residual vs Oban (ms) | Residual vs Apalis (ms) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 7.71 | 43.54 | 30.64 | 81.89 | +303.58 | +94.82 | +537.36 |
+| 2 | 6.57 | 37.21 | 35.32 | 79.10 | +439.24 | +80.42 | +550.16 |
+| 3 | 7.28 | 37.73 | 28.86 | 73.88 | +295.93 | -8.58 | +494.22 |
+| 4 | 8.40 | 44.13 | 31.52 | 84.06 | +303.62 | +95.03 | +447.44 |
+| 5 | 5.73 | 39.28 | 30.56 | 75.57 | +368.12 | +128.74 | +595.79 |
+
+The residual subtracts the entire PostgreSQL execution total from Mesh’s observed enqueue-commit-to-final-settlement time and compares it with the peer in the same rotation. Positive means Mesh would still finish later. This credits every millisecond to the critical path even when backends overlapped and holds all other work fixed. The counters leave client scheduling, protocol exchanges, planning and transaction commit time unpriced. They cannot predict the effect of changing concurrency. [Per-arm archive digests](scores.json) · [Raw equal-topology series](../2026-11-23-dense-matched-topology/evidence/equal/)

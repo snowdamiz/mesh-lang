@@ -36,6 +36,8 @@ still need a median 312 ms off the 1,024-job drain to match River from submit.
 [Equal-topology scorecard](../2026-11-23-dense-matched-topology/evidence/equal/scorecard.md) ·
 [Time budgets by rotation](dense-equal-budgets.md)
 
+PostgreSQL recorded 74–84 ms in total executing the Mesh handler's two INSERTs per job and its pool checkout probes across each dense run. Even crediting all of that time as a drain saving leaves Mesh 296–439 ms behind River in the five equal-topology rotations. Client waits, planning and commit acknowledgements remain outside that calculation. [PostgreSQL statement times and matched peer gaps](application-intervals.md#postgresql-execution-time-for-the-dense-mesh-handler)
+
 On short jobs, experimental V2 Mesh with bulk enqueue and hot pool checkout
 finished ahead of Go River and Elixir Oban in all five six-lane rotations
 on both clocks. Rust Apalis finished ahead of Mesh in all five. The earlier

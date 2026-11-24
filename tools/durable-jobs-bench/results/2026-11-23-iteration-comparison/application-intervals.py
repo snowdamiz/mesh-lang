@@ -1,5 +1,6 @@
 """Replay first-write, second-write and settlement timestamps from native ledgers."""
 
+from math import isfinite
 from pathlib import Path
 from statistics import median
 import sys
@@ -49,6 +50,26 @@ def stage_times(ledger, score):
                 waiting_terminal=mean_outstanding(fields[2], fields[3]))
 
 
+def application_statement_times(statements, jobs):
+    expected = {
+        "SELECT $1": ("checkout", 2 * jobs),
+        "INSERT INTO public.mesh_jobs_parity_attempts": ("attempt", jobs),
+        "INSERT INTO public.mesh_jobs_parity_effects": ("effect", jobs),
+    }
+    times = {}
+    for row in statements:
+        kind, count = expected[row["query"].splitlines()[0]]
+        if kind in times or row["calls"] != count or row["rows"] != count:
+            raise ValueError(f"unexpected application statement counts for {kind}")
+        elapsed = row["execution_ms"]
+        if not isfinite(elapsed) or elapsed < 0:
+            raise ValueError(f"invalid PostgreSQL execution time for {kind}")
+        times[kind] = elapsed
+    if len(times) != len(expected):
+        raise ValueError("incomplete PostgreSQL application statement statistics")
+    return times
+
+
 def read_series(series, lanes):
     inputs = run.read_json(HERE / "series-list.json")
     root = SUITE / next(item["path"] for item in inputs if item["name"] == series)
@@ -66,6 +87,9 @@ def read_series(series, lanes):
                 raise ValueError(f"raw archive digest differs for {raw}")
             with tarfile.open(raw) as archive:
                 rows[lane] = stage_times(run.file_json(archive, "adapter/ledger.json"), score)
+                if series == "dense-equal-topology" and lane == "mesh-v1-2x32":
+                    statements = run.file_json(archive, "adapter/trusted-application-statements.json")
+                    rows[lane]["statements"] = application_statement_times(statements, score["completed"])
         groups.append(rows)
     return groups
 
@@ -111,6 +135,32 @@ def report():
     print("\nThe two series ran at different times and in different orders. The observed tails alone "
           "cannot identify the cause of their variation. [Native rates and paired wins](four-engine-scorecard.md) · "
           "[Score inputs and raw archive digests](scores.json)")
+    print("\n## PostgreSQL execution time for the dense Mesh handler\n")
+    print("Each 2×32 Mesh run recorded 2,048 pool checkout probes, 1,024 attempt inserts and "
+          "1,024 effect inserts for its dedicated application role. Every call returned or inserted "
+          "one row. The first three times come from PostgreSQL’s cumulative "
+          "`pg_stat_statements.total_exec_time` for those calls.\n")
+    print("| Rotation | Checkout (ms) | Attempt INSERT (ms) | Effect INSERT (ms) | Total (ms) | "
+          "Residual vs River (ms) | Residual vs Oban (ms) | Residual vs Apalis (ms) |")
+    print("|---:|---:|---:|---:|---:|---:|---:|---:|")
+    for number, group in enumerate(groups, 1):
+        mesh = group["mesh-v1-2x32"]
+        times = mesh["statements"]
+        total = sum(times.values())
+        adjusted = mesh["write"] + mesh["tail"] - total
+        residuals = [adjusted - (group[p]["write"] + group[p]["tail"])
+                     for p in ("river-2x32", "oban-2x32", "apalis-2x32")]
+        print(f"| {number} | {times['checkout']:.2f} | {times['attempt']:.2f} | "
+              f"{times['effect']:.2f} | {total:.2f} | " +
+              " | ".join(f"{gap:+.2f}" for gap in residuals) + " |")
+    print("\nThe residual subtracts the entire PostgreSQL execution total from Mesh’s observed "
+          "enqueue-commit-to-final-settlement time and compares it with the peer in the same rotation. "
+          "Positive means Mesh would still finish later. This credits every millisecond to the "
+          "critical path even when backends overlapped and holds all other work fixed. "
+          "The counters leave client scheduling, protocol exchanges, planning and transaction "
+          "commit time unpriced. They cannot predict the effect of changing concurrency. "
+          "[Per-arm archive digests](scores.json) · "
+          "[Raw equal-topology series](../2026-11-23-dense-matched-topology/evidence/equal/)")
 
 
 if __name__ == "__main__":
