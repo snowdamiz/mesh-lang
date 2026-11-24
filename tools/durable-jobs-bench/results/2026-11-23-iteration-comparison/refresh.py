@@ -398,6 +398,15 @@ def write_scorecard(data):
                 lines.append(f"| [{label}](chart.html#{key}) | {clock} | {rates} | {wins} |")
         lines.extend(["", "Stock profiles use the original runner counts and default storage. "
                       "The additional dense and large comparisons identify the changed runner counts or PostgreSQL argument storage.", ""])
+        canonical = ("public-short-selection", "public-dense-stock", "public-sparse", "public-slow", "public-large")
+        if all(key in data for key in canonical):
+            jobs = 0
+            for key in canonical:
+                selected = short["selected_mode"] if key == "public-short-selection" else "product"
+                for block in data[key]["blocks"]:
+                    jobs += sum(block["scores"][lane]["completed"] for lane in (selected, "river", "oban", "apalis"))
+            lines.extend([f"The five stock profiles cover {jobs:,} measured jobs and {2 * jobs:,} independent application commits "
+                          "for the selected Mesh policy and its three peers. Warmups, the alternate short policy, and deployment sensitivities are additional runs.", ""])
         peaks = data.get("public-slow", {}).get("committed_hold_peaks")
         if peaks:
             span = [v for group in peaks.values() for v in group.values()]

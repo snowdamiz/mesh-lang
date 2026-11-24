@@ -23,6 +23,9 @@ The minimum drain saving credits Mesh with free enqueue in each pair. A zero mea
 | Public slow · all 1 × 64 | Oban | 5 | 0 | 0 | 530.5 | 0.0 | -259.6, -128.7, -133.7, -188.2, -247.0 |
 | Public slow · all 1 × 64 | River | 2 | 3 | 0 | 530.5 | 0.0 | +94.9, +183.2, -11.9, -72.4, +96.6 |
 | Public slow · all 1 × 64 | Apalis | 0 | 4 | 1 | 530.5 | 0.0 | +416.8, +509.1, +568.0, +508.7, +382.0 |
+| Public large · default storage | Oban | 4 | 1 | 0 | 1814.3 | 0.0 | -62.7, -86.1, +129.9, -175.5, -14.8 |
+| Public large · default storage | River | 5 | 0 | 0 | 1814.3 | 0.0 | -569.4, -568.6, -413.5, -674.8, -718.7 |
+| Public large · default storage | Apalis | 0 | 5 | 0 | 1814.3 | 0.0 | +718.7, +830.8, +1034.6, +770.0, +829.6 |
 | Short | Oban | 4 | 1 | 0 | 73.8 | 0.0 | -193.5, -121.3, -166.3, -190.7, +32.5 |
 | Short | River | 1 | 1 | 3 | 73.8 | 40.5 | -0.6, +148.1, +114.2, +9.4, +281.4 |
 | Short | Apalis | 0 | 0 | 5 | 73.8 | 61.6 | +122.5, +146.4, +149.7, +130.1, +307.4 |

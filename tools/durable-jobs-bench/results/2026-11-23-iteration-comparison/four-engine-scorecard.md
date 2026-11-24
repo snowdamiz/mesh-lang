@@ -14,12 +14,16 @@ Each row gives the median jobs/s and matched wins over five Linode rotations. Al
 | [Sparse, 1 slot](chart.html#public-sparse) | Drain | 2.66 | 2.08 | 2.04 | 2.48 | 5 / 5 / 5 |
 | [Slow, 1 × 64](chart.html#public-slow) | Submit | 262.23 | 287.43 | 242.05 | 354.62 | 2 / 5 / 0 |
 | [Slow, 1 × 64](chart.html#public-slow) | Drain | 366.99 | 391.01 | 321.85 | 455.00 | 2 / 5 / 0 |
+| [Large, 8 × 8](chart.html#public-large) | Submit | 25.36 | 20.69 | 24.95 | 37.78 | 5 / 4 / 0 |
+| [Large, 8 × 8](chart.html#public-large) | Drain | 90.72 | 70.90 | 109.05 | 339.78 | 5 / 0 / 0 |
 | [Dense, Mesh 2 × 32 and peers 8 × 8](chart.html#public-dense-mixed) | Submit | 682.04 | 843.03 | 621.83 | 1,119.75 | 0 / 5 / 0 |
 | [Dense, Mesh 2 × 32 and peers 8 × 8](chart.html#public-dense-mixed) | Drain | 770.33 | 900.16 | 684.68 | 1,165.95 | 0 / 5 / 0 |
 | [Dense, all engines 2 × 32](chart.html#public-dense-equal) | Submit | 688.41 | 997.17 | 762.22 | 1,407.67 | 0 / 0 / 0 |
 | [Dense, all engines 2 × 32](chart.html#public-dense-equal) | Drain | 772.65 | 1,079.96 | 855.47 | 1,493.00 | 0 / 0 / 0 |
 
 Stock profiles use the original runner counts and default storage. The additional dense and large comparisons identify the changed runner counts or PostgreSQL argument storage.
+
+The five stock profiles cover 35,040 measured jobs and 70,080 independent application commits for the selected Mesh policy and its three peers. Warmups, the alternate short policy, and deployment sensitivities are additional runs.
 
 All four engines reached 64 simultaneous jobs between their first and second committed writes in every slow rotation. The canonical slow workload allowed 68 PostgreSQL connections.
 
