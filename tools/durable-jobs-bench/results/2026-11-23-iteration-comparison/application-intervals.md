@@ -47,3 +47,27 @@ Each 2×32 Mesh run recorded 2,048 pool checkout probes, 1,024 attempt inserts a
 | 5 | 5.73 | 39.28 | 30.56 | 75.57 | +368.12 | +128.74 | +595.79 |
 
 The residual subtracts the entire PostgreSQL execution total from Mesh’s observed enqueue-commit-to-final-settlement time and compares it with the peer in the same rotation. Positive means Mesh would still finish later. This credits every millisecond to the critical path even when backends overlapped and holds all other work fixed. The counters leave client scheduling, protocol exchanges, planning and transaction commit time unpriced. They cannot predict the effect of changing concurrency. [Per-arm archive digests](scores.json) · [Raw equal-topology series](../2026-11-23-dense-matched-topology/evidence/equal/)
+
+## Exit-confirmed short jobs against stock peers
+
+The Mesh runner uses the bulk producer, skips checkout probes for recently used connections and waits for actor teardown before settlement. Each signed difference is Mesh elapsed time minus the paired peer time. The three intervals partition the full submit-to-settlement clock. Positive values mean Mesh took longer.
+
+| Rotation | Peer | Submit to enqueue commit (ms) | Enqueue commit to last application write (ms) | Last write to last settlement (ms) | Full submit difference (ms) |
+|---:|---|---:|---:|---:|---:|
+| 1 | River | +25.37 | +34.35 | -9.35 | +50.38 |
+| 1 | Oban | -11.81 | -215.13 | +0.56 | -226.39 |
+| 1 | Apalis | +28.63 | +25.97 | -2.09 | +52.51 |
+| 2 | River | +19.18 | -1.63 | -39.34 | -21.79 |
+| 2 | Oban | -24.31 | -191.93 | -0.80 | -217.04 |
+| 2 | Apalis | +25.76 | +35.61 | -2.68 | +58.70 |
+| 3 | River | +23.10 | -3.90 | -90.46 | -71.27 |
+| 3 | Oban | -12.46 | -204.29 | +2.08 | -214.67 |
+| 3 | Apalis | +23.71 | +14.92 | +0.41 | +39.04 |
+| 4 | River | +22.05 | +1.14 | -48.90 | -25.71 |
+| 4 | Oban | -13.58 | -228.70 | -3.21 | -245.48 |
+| 4 | Apalis | +25.22 | +23.37 | -3.98 | +44.60 |
+| 5 | River | +33.44 | +60.17 | -8.79 | +84.82 |
+| 5 | Oban | -11.86 | -230.92 | -1.82 | -244.60 |
+| 5 | Apalis | +36.36 | +72.24 | -2.13 | +106.47 |
+
+All four engines committed two independent application transactions per job. A queue can group terminal acknowledgements and can have an earlier job still waiting to settle when the last application write commits. [Raw matched short runs](../2026-11-24-exit-confirmed-bulk-d2/evidence/native-timing/2026-11-24-exit-confirmed-bulk-d2/)

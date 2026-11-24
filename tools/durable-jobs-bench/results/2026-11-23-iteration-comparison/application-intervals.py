@@ -161,6 +161,25 @@ def report():
           "commit time unpriced. They cannot predict the effect of changing concurrency. "
           "[Per-arm archive digests](scores.json) · "
           "[Raw equal-topology series](../2026-11-23-dense-matched-topology/evidence/equal/)")
+    print("\n## Exit-confirmed short jobs against stock peers\n")
+    print("The Mesh runner uses the bulk producer, skips checkout probes for recently used "
+          "connections and waits for actor teardown before settlement. Each signed difference "
+          "is Mesh elapsed time minus the paired peer time. The three intervals partition "
+          "the full submit-to-settlement clock. Positive values mean Mesh took longer.\n")
+    print("| Rotation | Peer | Submit to enqueue commit (ms) | Enqueue commit to last application write (ms) | "
+          "Last write to last settlement (ms) | Full submit difference (ms) |")
+    print("|---:|---|---:|---:|---:|---:|")
+    groups = read_series("exit-confirmed-hot-short", ("r2-d2", "river", "oban", "apalis"))
+    for number, group in enumerate(groups, 1):
+        for lane, label in (("river", "River"), ("oban", "Oban"), ("apalis", "Apalis")):
+            differences = [group["r2-d2"][k] - group[lane][k] for k in ("enqueue", "write", "tail", "submit")]
+            if abs(sum(differences[:3]) - differences[3]) > 0.001:
+                raise ValueError("paired intervals do not reproduce submit-to-settlement")
+            print(f"| {number} | {label} | " + " | ".join(f"{gap:+.2f}" for gap in differences) + " |")
+    print("\nAll four engines committed two independent application transactions per job. "
+          "A queue can group terminal acknowledgements and can have an earlier job still waiting "
+          "to settle when the last application write commits. [Raw matched short runs]"
+          "(../2026-11-24-exit-confirmed-bulk-d2/evidence/native-timing/2026-11-24-exit-confirmed-bulk-d2/)")
 
 
 if __name__ == "__main__":

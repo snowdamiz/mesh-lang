@@ -66,6 +66,7 @@ const names={mesh:"Mesh",ordinary:"Mesh · trusted",stock:"Mesh · stock",curren
  "bulk-default":"Mesh · default storage","bulk-external":"Mesh · EXTERNAL",
  "oban-default":"Elixir Oban · default storage","river-default":"Go River · default storage","apalis-default":"Rust Apalis · default storage",
  "bulk-d2":"Mesh · batch enqueue and hot checkout",
+ "r2-d2":"Mesh · exit confirmed, hot checkout","r2-off":"Mesh · exit confirmed, checked checkout",
  "admission-v3":"Mesh · set-based admission","ordinary-stock":"Mesh · trusted, individual settlements",
  "ordinary-success-cohort":"Mesh · trusted, grouped settlements",bulk:"Mesh · batch enqueue",scalar:"Mesh · same binary, scalar enqueue",
  "protected-mesh":"Mesh · protected","mesh-stock-a":"Mesh · stock A","mesh-stock-b":"Mesh · stock B",
@@ -131,6 +132,7 @@ for(const [key,s] of Object.entries(db))if(s.blocks.length)series.add(option(key
 for(const [key,m] of Object.entries(measures))metric.add(option(key,m[0]));
 const selected=location.hash.slice(1);
 if(db[selected]?.blocks?.length)series.value=selected;
+else if(db["exit-confirmed-hot-short"]?.blocks.length===5)series.value="exit-confirmed-hot-short";
 else if(db["slow-storage"]?.blocks.length===5)series.value="slow-storage";
 else if(db["bulk-hot-short-peers"]?.blocks.length===5)series.value="bulk-hot-short-peers";
 else if(db["dense-equal-topology"]?.blocks.length===5)series.value="dense-equal-topology";

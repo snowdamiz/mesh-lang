@@ -109,6 +109,19 @@ The five workloads below use the original trusted Mesh V1 runner and its protect
 | River | 273.80 | 368.18 | 1/2 | 1/2 |
 | Apalis | 342.64 | 450.95 | 0/2 | 0/2 |
 
+## Short jobs with hot checkout and confirmed actor teardown
+
+5/5 matched rotations. Both trusted runners use the same bulk producer and wait for teardown before submitting successes for settlement. Recent pooled connections skip the checkout probe in the candidate. Each job makes two independently committed application writes.
+
+| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |
+|---|---:|---:|---:|---:|
+| Trusted Mesh · hot checkout | 626.59 | 762.06 | — | — |
+| Trusted Mesh · checked checkout | 600.51 | 720.80 | 3/5 | 3/5 |
+| Protected Mesh | 193.59 | 221.68 | 5/5 | 5/5 |
+| Oban | 285.49 | 321.83 | 5/5 | 5/5 |
+| River | 566.19 | 612.64 | 3/5 | 3/5 |
+| Apalis | 808.73 | 874.10 | 0/5 | 0/5 |
+
 ## Short jobs with fewer PostgreSQL checkout probes
 
 5/5 matched rotations. V2 runners use the original producer. Hot checkout sent two probes across 256 writes, versus 256 probes in each identical control. All writes used their own committed transactions.

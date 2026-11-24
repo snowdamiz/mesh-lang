@@ -236,6 +236,12 @@ def write_scorecard(data):
                      "input and 100 ms hold. [Extension decision](../2026-11-23-bulk-enqueue-v2-slow/README.md)",
                      [("bulk", "V2 · batch enqueue"), ("scalar", "V2 · scalar enqueue"),
                       ("v1-bulk", "V1 · batch enqueue"), ("v1-scalar", "V1 · scalar enqueue"), *peers])
+    add_policy_table(lines, data.get("exit-confirmed-hot-short", {}), "Short jobs with hot checkout and confirmed actor teardown",
+                     "Both trusted runners use the same bulk producer and wait for teardown before submitting "
+                     "successes for settlement. Recent pooled connections skip the checkout probe in the candidate. "
+                     "Each job makes two independently committed application writes.",
+                     [("r2-d2", "Trusted Mesh · hot checkout"), ("r2-off", "Trusted Mesh · checked checkout"),
+                      ("protected-mesh", "Protected Mesh"), *peers])
     add_policy_table(lines, data.get("hot-short", {}), "Short jobs with fewer PostgreSQL checkout probes",
                      "V2 runners use the original producer. Hot checkout sent two probes across 256 writes, versus 256 "
                      "probes in each identical control. All writes used their own committed transactions.",
@@ -311,6 +317,7 @@ def write_producer_budgets(data):
         ("ordinary-cohort", "Short · grouped settlements", "ordinary-success-cohort"),
         ("bulk-slow", "Slow · batch enqueue", "bulk"), ("bulk-short", "Short · batch enqueue and grouped settlements", "bulk"),
         ("bulk-hot-short-peers", "Short · batch enqueue, grouped settlements and hot checkout", "bulk-d2"),
+        ("exit-confirmed-hot-short", "Short · batch enqueue, hot checkout and confirmed teardown", "r2-d2"),
     ]:
         blocks = sorted(data.get(series, {}).get("blocks", []), key=lambda b: b["group"])
         if not blocks:
