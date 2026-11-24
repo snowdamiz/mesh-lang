@@ -1,0 +1,17 @@
+{
+  "group": 2,
+  "order": [
+    "river-default",
+    "oban-external",
+    "bulk-external",
+    "apalis-default",
+    "apalis-external",
+    "bulk-default",
+    "oban-default",
+    "river-external"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "arch": "x86_64",
+  "boot": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+  "clock_ticks": 100,
+  "cores": 4,
+  "cpus": [
+    0,
+    1
+  ],
+  "disks": {
+    "/var/lib/durable-jobs-bench/apalis/scratch": "8:0",
+    "/var/lib/durable-jobs-bench/native/scratch": "8:0",
+    "/var/lib/durable-jobs-bench/river/scratch": "8:0"
+  },
+  "files": [
+    "adapter",
+    "adapter.log",
+    "host-samples.jsonl",
+    "host.json",
+    "invocation.json",
+    "status.json"
+  ],
+  "invocation": {
+    "action": "run",
+    "attempt": "d21cf447b7d1439cb038dcfb2ad8bff4",
+    "engine": "go",
+    "phase": "warmup",
+    "profile": "slow"
+  },
+  "kernel": "6.8.0-149-generic",
+  "local_timing_lock_acquired": true,
+  "locks": {
+    "/var/lib/durable-jobs-bench/native/native.lock": {
+      "acquired": true,
+      "owners": []
+    },
+    "/var/tmp/mesh-durable-jobs-matrix/active-arm.lock": {
+      "acquired": true,
+      "owners": []
+    }
+  },
+  "observed_at": "2026-11-24T02:33:46.167848+00:00",
+  "postgres": "postgres (PostgreSQL) 17.11",
+  "postgres_sha256": "b70863988c4762b6b914ac54d194fa5a1723201100d8155caf7781edba29faa1",
+  "raw_directory": true,
+  "remote_attempt": "/var/tmp/mesh-durable-jobs-matrix/slow-external-d54d1fc3fec9-river-default/raw/d21cf447b7d1439cb038dcfb2ad8bff4",
+  "request_sha256": "0dd64c556deff8385f0661956c2d2c45f9ef67ebcc8fdaa3997efb0add6a573e",
+  "running": [],
+  "status": {
+    "exit_code": 0,
+    "finished_us": 1795487115534785
+  },
+  "uptime": "02:33:46 up 10:56,  1 user,  load average: 0.00, 0.24, 0.73"
+}
