@@ -13,6 +13,8 @@ To price idle slots between claims, replay the saved claim cohorts in their orig
 
 Under either scenario Mesh still lost four of the six drain comparisons to warm River and five to Apalis. Within these observed batch sizes, matching warm River consistently would also require changing residence after the claim, or a different cohort size or ordering. These are counterfactuals. The remaining differences depend on the assumption that earlier launches preserve measured service times under contention. Fused refill could change those times and needs its own native result.
 
+Even allowing arbitrary cohort sizes and job ordering, there is a lower bound from the longest residence and total slot time divided by 16. Use the earliest first claim and the latest feasible claim on every job to make this optimistic. With the original producer and fixed residence, this floor still trails warm River from submit in groups 1, 2, 3, and 5 by 10.98, 13.55, 61.99, and 30.34 ms. From commit the corresponding floor exceeds warm River in groups 3 and 5 by 26.28 and 1.91 ms. A floor below the comparator leaves feasibility open.
+
 Run the following to reconstruct both scenarios from the six archived Mesh ledgers and verify each raw digest against the reconciled comparison. [Per-rotation differences](evidence/refill-budget.json) · [Measured stage differences](NATIVE-RESULTS.md)
 
 ```sh

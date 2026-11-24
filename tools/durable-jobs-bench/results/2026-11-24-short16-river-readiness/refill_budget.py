@@ -54,13 +54,23 @@ def main():
         tx, = data["transactions"]
         end = max(job["settled_us"] for job in data["jobs"])
         predicted = [simulate(data["jobs"], 16, latest) for latest in (False, True)]
+        # Earliest possible first grant and latest possible timestamp for each
+        # individual claim give a lower bound independent of cohort order.
+        jobs = data["jobs"]
+        earliest = min(job["claimed_us"] for job in jobs)
+        residence = [job["settled_us"] - min(job["entered_us"], job["claimed_us"] + 999) for job in jobs]
+        floor = earliest + max(max(residence), (sum(residence) + 15) // 16)
+        assert floor <= min(predicted)
+        floor_deltas = {}
         peers = {}
         for label in ["river-warm", "river", "oban", "apalis"]:
             peer = group["lanes"][label]
+            floor_deltas[label] = {"submit_ms": (floor - tx["submitted_us"]) / 1000 - peer["submit_to_settlement_ms"],
+                                   "drain_ms": (floor - tx["committed_us"]) / 1000 - peer["commit_to_settlement_ms"]}
             peers[label] = {metric: [(stamp-tx[start])/1000 - peer[metric] for stamp in predicted]
                             for metric,start in [("submit_to_settlement_ms","submitted_us"),
                                                  ("commit_to_settlement_ms","committed_us")]}
-        rows.append(dict(group=group["group"], savings_ms=[(end-stamp)/1000 for stamp in predicted], peer_delta_ms=peers))
+        rows.append(dict(group=group["group"], savings_ms=[(end-stamp)/1000 for stamp in predicted], peer_delta_ms=peers, arbitrary_order_floor_minus_peer_ms=floor_deltas))
     print(json.dumps(rows, indent=2, sort_keys=True))
 
 
