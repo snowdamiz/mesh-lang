@@ -1,0 +1,8 @@
+{
+  "command_finished_at": "2026-11-24T02:22:01.298427+00:00",
+  "exit_status": 0,
+  "id": "ordinary-slow-external-compat-scorer-input",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/evidence/native",
+  "released_at": "2026-11-24T02:22:01.693543+00:00",
+  "started": "2026-11-24T02:20:26.415967+00:00"
+}

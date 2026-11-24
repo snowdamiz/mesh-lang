@@ -1,0 +1,14 @@
+{
+  "grant": {
+    "from_utc": "2026-11-24T02:34:01Z",
+    "kind": "TIMING",
+    "request_sha256": "0dd64c556deff8385f0661956c2d2c45f9ef67ebcc8fdaa3997efb0add6a573e",
+    "until_utc": "2026-11-24T03:24:01Z"
+  },
+  "groups": [
+    2,
+    3,
+    4,
+    5
+  ]
+}
