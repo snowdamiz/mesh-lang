@@ -4,6 +4,8 @@ The five measured 128-job Linode arms each used one guarded enqueue_batch_v1 cal
 
 The prior native receipts capture submit, transaction commit timestamp and acknowledgement. Their writer counters prove the selected bulk call, with no per-stage timing. The separate booked enqueue-spec-preparation experiment extracts the exact 154,241-byte frame and covers decoding, validation, normalization, JSON conversion, encoding and fingerprinting. It owns the preparation decision, including any subsequent conditional broker trial. The older scalar packing experiments used a different SQL path. [Preparation packet](../2026-11-24-enqueue-spec-preparation/README.md) · [Original R2 timing](../2026-11-24-exit-confirmed-bulk-d2/native-results.md)
 
+The released Linode preparation component replayed six groups on the exact short frame. Stock controls took about 1.01 ms of CPU per batch. The clone-removal candidate saved a median 0.177 ms against the faster control, with a 0.165–0.184 ms range. The 5 ms threshold ruled out a full broker trial for that patch. This isolated component supplies context for the producer budget. [Verified preparation receipt](evidence/linked-native-spec-preparation.json)
+
 ## Controller experiment
 
 The five groups rotate four lanes on the pinned Linode using PostgreSQL 17.11 and CPUs 0 and 1. Both controls reuse the untouched prior bulk broker, migrator, workload, runner and adapter. The client and nested lanes relink the exact stock producer source with a benchmark-only recorder. They keep the original stock migrator, direct exit-confirmed R2 D2 runner, TLS roles, capacity, wakeups and success_cohort policy. The already qualified peers and their scores are pinned to their original raw blocks.

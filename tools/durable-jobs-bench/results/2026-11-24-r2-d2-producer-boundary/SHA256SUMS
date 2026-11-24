@@ -1,4 +1,4 @@
-2402da5d560c11c0af0a53681167f7e0cba1ace39ed5f78b2f9ad0c0b06cccb6  ./README.md
+4f130e9432afde82fe95cb646c489d4cd2e074b7a698a6ecfce42160dcfed8f0  ./README.md
 102d1168e388549906341ad5e27b1340a08e0458db295ea3a698ea94f18bdb71  ./adapter.py
 3fdb8a59df667cff1f6a658900b30e6a2b4deea9a86d58748f022b79c114ceeb  ./audit.py
 1ff744a033d3b57e39db199b92d195d1f263949a3dce7c54b3593af643f62a14  ./controller.py
@@ -7,6 +7,7 @@ c3cc575af0768988ecd0c846c0dbc5cdc8cd7074209288b3aecb206d7913d86e  ./evidence/ini
 f77edf89078b007590bb6832325c73d7ff0113b856ca4f2db4bf562938b8a16a  ./evidence/initial-failures/packet-gzip-mode.txt
 c965c5ed787a1f5089403a7e9e551589e734eb74484f6ca0ff2ac61a264b2b8c  ./evidence/initial-failures/pre-mount-readiness-request.json
 eb1e238a35daa8872cde8d99b530c82c88d6c1b0620881dbe87ee3be59d75a26  ./evidence/initial-failures/raw-audit-peer-schema.txt
+a00d071ce87f809691272d69423f03429d120bee830029f25dbcf819fe057c3b  ./evidence/linked-native-spec-preparation.json
 39d8e70662dda3b43b782bb2fc4888b87d28c8b7adce4032e99813cc695a5542  ./evidence/offline/audited-peer-scores.json
 54716b0c6c3f052826f909a94debb5db188b13a4111d8fc8ab83fcb2cf6f51d8  ./evidence/offline/checks.json
 b48e19ff1a1866a9100e5e980e1e721bc4115670ec321bb51ad28a6929292c3f  ./evidence/offline/runtime-pins.json

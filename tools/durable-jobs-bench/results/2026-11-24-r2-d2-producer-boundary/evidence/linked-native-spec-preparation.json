@@ -1,0 +1,67 @@
+{
+  "advance_to_broker_trial": false,
+  "capture": {
+    "path": "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/short-capture.json",
+    "sha256": "f519370ad9b6638f0939631101b91dfae127f02d209f62fea9e0dc71885275e6"
+  },
+  "classification": "native extracted-frame component",
+  "controller_release": {
+    "attempts": [
+      0
+    ],
+    "exit_status": 0,
+    "group_command": "dispatch",
+    "groups": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "id": "enqueue-spec-preparation-component",
+    "receipt": "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/evidence",
+    "released_at": "2026-11-24T04:24:44.896856+00:00",
+    "started": "2026-11-24T04:24:13.300369+00:00"
+  },
+  "controller_release_sha256": "b09ae8c42193d731d195a82f66bc2d90648469fe7abc3c71d6cdeec9c19b5a02",
+  "frame": {
+    "bytes": 154241,
+    "jobs": 128,
+    "sha256": "8f4054b25b031b70e5bd77cdab57ac7569c162f26da0f53ee243a1c11dd757ad"
+  },
+  "minimum_saving_ms": 5.0,
+  "paired_cpu_saving_ms": {
+    "max": 0.18437456250000006,
+    "median": 0.17722368229166663,
+    "min": 0.16519091666666663,
+    "values": [
+      0.16657008333333334,
+      0.18089228125,
+      0.16519091666666663,
+      0.18423144791666668,
+      0.17355508333333325,
+      0.18437456250000006
+    ]
+  },
+  "raw_archive": {
+    "path": "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/evidence/timing-be34d253e19e/raw/../raw.tar.gz",
+    "sha256": "efb88f8f883ed1357c67ce24c82e3904e446e9ea81542da961bd1539ca51ea99"
+  },
+  "source": {
+    "path": "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/evidence/timing-be34d253e19e/raw/summary.json",
+    "sha256": "aacdeb8204b1d9d717fde024d9def2db24a6983d93fafffdefc19af8af937685"
+  },
+  "stock_cpu_ms": {
+    "stock-a": {
+      "max": 1.0457075,
+      "median": 1.0100047812500001,
+      "min": 0.9920568541666667
+    },
+    "stock-b": {
+      "max": 1.0633044895833332,
+      "median": 1.00546728125,
+      "min": 1.001943
+    }
+  }
+}
