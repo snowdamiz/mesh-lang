@@ -1,0 +1,15 @@
+{
+  "attempts": [
+    0
+  ],
+  "exit_status": 0,
+  "group_command": "timing_command",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-exit-confirmed-bulk-d2",
+  "receipt": "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/evidence/native-timing/2026-11-24-exit-confirmed-bulk-d2",
+  "released_at": "2026-11-24T03:08:54.672624+00:00",
+  "started": "2026-11-24T03:07:15.558680+00:00"
+}

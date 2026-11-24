@@ -1,0 +1,15 @@
+{
+  "group": 1,
+  "order": [
+    "r2-off",
+    "river",
+    "r2-d2",
+    "protected-mesh",
+    "apalis",
+    "oban"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}

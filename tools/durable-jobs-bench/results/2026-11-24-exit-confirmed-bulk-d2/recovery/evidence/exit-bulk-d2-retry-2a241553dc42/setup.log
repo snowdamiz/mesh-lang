@@ -1,0 +1,7 @@
+/var/lib/durable-jobs-bench/native/source-exit-bulk-d2-retry-2a241553dc42/incoming.tar: OK
+/var/lib/durable-jobs-bench/native/builds/exit-bulk-d2-c7c50e726ca0/mesh: OK
+/var/lib/durable-jobs-bench/native/builds/exit-bulk-d2-c7c50e726ca0/mesh.json: OK
+/var/lib/durable-jobs-bench/native/builds/bulk-writer-b1dcd34af288/mesh: OK
+/var/lib/durable-jobs-bench/native/builds/bulk-writer-b1dcd34af288/mesh.json: OK
+/var/lib/durable-jobs-bench/native/builds/bulk-enqueue-3b09dc3d0e23-ordinary-v2/mesh: OK
+/var/lib/durable-jobs-bench/native/builds/bulk-enqueue-3b09dc3d0e23-ordinary-v2/mesh.json: OK

@@ -1,0 +1,8 @@
+{
+  "command_finished_at": "2026-11-24T03:07:13.844219+00:00",
+  "exit_status": 0,
+  "id": "2026-11-24-exit-confirmed-bulk-d2-recovery",
+  "receipt": "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/recovery/evidence",
+  "released_at": "2026-11-24T03:07:14.240132+00:00",
+  "started": "2026-11-24T03:06:35.577954+00:00"
+}
