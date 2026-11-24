@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use super::{
     finish_startup, parse_error_response_full, parse_pg_url, read_message_with_limit, text_params,
     write_bind_values, write_describe_portal, write_execute, write_parse, write_sync,
-    MessageBuffer, PgStream, SslMode,
+    MessageBuffer, PgStream, SslMode, DESCRIBE_EXECUTE_SYNC_BYTES,
 };
 
 pub(crate) const IO_TIMEOUT: Duration = Duration::from_secs(5);
@@ -217,8 +217,13 @@ impl EffectSession {
     ) -> Result<EffectReceipt, EffectFailure> {
         let mut request = Vec::new();
         write_parse(&mut request, sql);
-        write_bind_values(&mut request, &text_params(params), &[])
-            .map_err(|_| EffectFailure::BeforeSubmission)?;
+        write_bind_values(
+            &mut request,
+            &text_params(params),
+            &[],
+            DESCRIBE_EXECUTE_SYNC_BYTES,
+        )
+        .map_err(|_| EffectFailure::BeforeSubmission)?;
         write_describe_portal(&mut request);
         write_execute(&mut request);
         write_sync(&mut request);

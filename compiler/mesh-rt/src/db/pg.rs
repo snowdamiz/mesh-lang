@@ -481,6 +481,7 @@ fn write_bind_values(
     buf: &mut Vec<u8>,
     params: &[BindValue<'_>],
     result_formats: &[i16],
+    suffix_bytes: usize,
 ) -> Result<(), String> {
     if params.len() > MAX_PG_VALUES {
         return Err(format!(
@@ -489,10 +490,9 @@ fn write_bind_values(
         ));
     }
     // Sized in full before any value is copied: values each within their
-    // limit can still make a message past the protocol's. At most
-    // MAX_PG_VALUES values of MAX_DB_VALUE_BYTES each, the sum cannot
-    // overflow a 64-bit usize.
-    let mut body_len = 8 + 2 * params.len() + 2 * result_formats.len();
+    // limit can still make a message past the protocol's. Use a wider
+    // total on 32-bit targets and check every value before the frame limit.
+    let mut body_len = 8 + 2 * params.len() as u64 + 2 * result_formats.len() as u64;
     for (index, param) in params.iter().enumerate() {
         let value_len = match param {
             BindValue::Text(bytes) | BindValue::Binary(bytes) => bytes.len(),
@@ -503,21 +503,25 @@ fn write_bind_values(
                 "PostgreSQL parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
             ));
         }
-        body_len += 4 + value_len;
+        body_len += 4 + value_len as u64;
     }
     let message_len = body_len + 4;
-    if message_len > MAX_PG_MESSAGE_BYTES {
+    if message_len > MAX_PG_MESSAGE_BYTES as u64 {
         return Err(format!(
             "PostgreSQL Bind message exceeds {MAX_PG_MESSAGE_BYTES} byte limit"
         ));
     }
 
-    let mut body = Vec::with_capacity(body_len);
-    body.push(0); // unnamed portal
-    body.push(0); // unnamed statement
-    body.extend_from_slice(&(params.len() as i16).to_be_bytes());
+    let frame_bytes = 1 + message_len as usize;
+    let start = buf.len();
+    buf.reserve(frame_bytes + suffix_bytes);
+    buf.push(b'B');
+    buf.extend_from_slice(&(message_len as i32).to_be_bytes());
+    buf.push(0); // unnamed portal
+    buf.push(0); // unnamed statement
+    buf.extend_from_slice(&(params.len() as i16).to_be_bytes());
     for param in params {
-        body.extend_from_slice(
+        buf.extend_from_slice(
             &match param {
                 BindValue::Binary(_) => 1_i16,
                 BindValue::Text(_) | BindValue::Null => 0_i16,
@@ -526,28 +530,27 @@ fn write_bind_values(
         );
     }
 
-    body.extend_from_slice(&(params.len() as i16).to_be_bytes());
+    buf.extend_from_slice(&(params.len() as i16).to_be_bytes());
     for param in params {
         match param {
             BindValue::Text(bytes) | BindValue::Binary(bytes) => {
-                body.extend_from_slice(&(bytes.len() as i32).to_be_bytes());
-                body.extend_from_slice(bytes);
+                buf.extend_from_slice(&(bytes.len() as i32).to_be_bytes());
+                buf.extend_from_slice(bytes);
             }
-            BindValue::Null => body.extend_from_slice(&(-1_i32).to_be_bytes()),
+            BindValue::Null => buf.extend_from_slice(&(-1_i32).to_be_bytes()),
         }
     }
 
-    body.extend_from_slice(&(result_formats.len() as i16).to_be_bytes());
+    buf.extend_from_slice(&(result_formats.len() as i16).to_be_bytes());
     for format in result_formats {
-        body.extend_from_slice(&format.to_be_bytes());
+        buf.extend_from_slice(&format.to_be_bytes());
     }
-    debug_assert_eq!(body.len(), body_len);
-
-    buf.push(b'B');
-    buf.extend_from_slice(&(message_len as i32).to_be_bytes());
-    buf.extend_from_slice(&body);
+    debug_assert_eq!(buf.len() - start, frame_bytes);
     Ok(())
 }
+
+const EXECUTE_SYNC_BYTES: usize = 10 + 5;
+const DESCRIBE_EXECUTE_SYNC_BYTES: usize = 7 + EXECUTE_SYNC_BYTES;
 
 /// Write Describe (Portal) message: Byte1('D') Int32(len) Byte1('P') String("")
 fn write_describe_portal(buf: &mut Vec<u8>) {
@@ -1337,7 +1340,7 @@ fn execute(conn: &mut PgConn, sql: &str, params: &[BindValue]) -> Result<i64, Fa
     validate_sql(sql)?;
     let mut message = Vec::new();
     write_parse(&mut message, sql);
-    write_bind_values(&mut message, params, &[])?;
+    write_bind_values(&mut message, params, &[], EXECUTE_SYNC_BYTES)?;
     write_execute(&mut message);
     write_sync(&mut message);
     request(conn, "execute", &message, |_, _| Ok(()))
@@ -1365,7 +1368,7 @@ fn query<R>(
             Vec::new()
         }
     };
-    write_bind_values(&mut message, params, &formats)?;
+    write_bind_values(&mut message, params, &formats, DESCRIBE_EXECUTE_SYNC_BYTES)?;
     write_describe_portal(&mut message);
     write_execute(&mut message);
     write_sync(&mut message);
@@ -2140,7 +2143,12 @@ pub(super) fn pg_jobs_claim_rows(
     validate_sql(sql)?;
     let mut message = Vec::new();
     write_parse(&mut message, sql);
-    write_bind_values(&mut message, &text_params(params), &[])?;
+    write_bind_values(
+        &mut message,
+        &text_params(params),
+        &[],
+        DESCRIBE_EXECUTE_SYNC_BYTES,
+    )?;
     write_describe_portal(&mut message);
     write_execute(&mut message);
     write_sync(&mut message);
@@ -3044,7 +3052,7 @@ mod tests {
         ];
         let mut message = Vec::new();
 
-        write_bind_values(&mut message, &params, &[]).unwrap();
+        write_bind_values(&mut message, &params, &[], 0).unwrap();
 
         assert_eq!(message[0], b'B');
         assert!(message.windows(3).any(|bytes| bytes == [0, 0xff, 0x80]));
@@ -3058,10 +3066,29 @@ mod tests {
         let params = [BindValue::Binary(&chunk); 4];
         let mut message = vec![b'X'];
 
-        let error = write_bind_values(&mut message, &params, &[]).unwrap_err();
+        let error = write_bind_values(&mut message, &params, &[], 0).unwrap_err();
 
         assert!(error.contains("Bind message exceeds"));
         assert_eq!(message, [b'X']);
+    }
+
+    #[test]
+    fn typed_bind_size_does_not_wrap_before_validation() {
+        let chunk = vec![0; MAX_DB_VALUE_BYTES + 1];
+        let mut params = vec![BindValue::Binary(&chunk[..MAX_DB_VALUE_BYTES]); 257];
+        let mut message = vec![b'P', 0, 0, 0, 4];
+        let prefix = message.clone();
+
+        assert_eq!(
+            write_bind_values(&mut message, &params, &[], EXECUTE_SYNC_BYTES).unwrap_err(),
+            format!("PostgreSQL Bind message exceeds {MAX_PG_MESSAGE_BYTES} byte limit")
+        );
+        params.push(BindValue::Text(&chunk));
+        assert_eq!(
+            write_bind_values(&mut message, &params, &[], EXECUTE_SYNC_BYTES).unwrap_err(),
+            format!("PostgreSQL parameter at index 257 exceeds {MAX_DB_VALUE_BYTES} byte limit")
+        );
+        assert_eq!(message, prefix);
     }
 
     #[test]
@@ -3304,7 +3331,7 @@ mod tests {
         let mut message = Vec::new();
         let nulls = vec![BindValue::Null; MAX_PG_VALUES + 1];
         assert_eq!(
-            write_bind_values(&mut message, &nulls, &[]).unwrap_err(),
+            write_bind_values(&mut message, &nulls, &[], 0).unwrap_err(),
             "too many PostgreSQL parameters: 32768 (maximum 32767)"
         );
         let large = vec![0; MAX_DB_VALUE_BYTES + 1];
@@ -3312,7 +3339,8 @@ mod tests {
             write_bind_values(
                 &mut message,
                 &[BindValue::Null, BindValue::Text(&large)],
-                &[]
+                &[],
+                0,
             )
             .unwrap_err(),
             format!("PostgreSQL parameter at index 1 exceeds {MAX_DB_VALUE_BYTES} byte limit")
