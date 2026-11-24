@@ -1,0 +1,10 @@
+{
+  "candidate_source_sha256": "c4c5cc2243b6db3a9f7d50cf5f25b115a8c54e356cb876503b0d709b46d2c422",
+  "identical_fixture_sections": [
+    "producer",
+    "handler",
+    "application-write SQL",
+    "worker identity"
+  ],
+  "public_source_sha256": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02"
+}

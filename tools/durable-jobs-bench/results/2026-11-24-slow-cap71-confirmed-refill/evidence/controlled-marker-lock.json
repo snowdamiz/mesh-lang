@@ -1,0 +1,20 @@
+{
+  "complete_replies": 2,
+  "controlled_marker_lock": true,
+  "database": {
+    "committed_jobs": 0,
+    "producer": {
+      "query_class": "producer marker",
+      "state": "active",
+      "transaction_open": true,
+      "wait_event": "relation",
+      "wait_event_type": "Lock"
+    }
+  },
+  "process_alive": true,
+  "receipt_written": false,
+  "setup_ready": true,
+  "stack_symbols": [
+    "mesh_pg"
+  ]
+}

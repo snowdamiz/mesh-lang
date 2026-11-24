@@ -1,0 +1,35 @@
+{
+  "archived_peer_replay": {
+    "apalis": {
+      "artifact": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+      "hold_peak": 64,
+      "jobs": 512,
+      "replayed_raw_sha256": "4f796987befabe83cbcfca2d2af54a62b4f7f4d97e7ca346c707c66d9d827c73",
+      "write_xids": 1024
+    },
+    "oban": {
+      "artifact": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+      "hold_peak": 64,
+      "jobs": 512,
+      "replayed_raw_sha256": "d02a3134d31ec2ea50a148b59cdbdffcbed2f1ea7a4d2a35c7c2f4b476fab04a",
+      "write_xids": 1024
+    },
+    "river": {
+      "artifact": "a23130f74210946291ed3609797e5b218ece5a7bd70df318851cf91e634da1e1",
+      "hold_peak": 64,
+      "jobs": 512,
+      "replayed_raw_sha256": "5c3208bf944a9a31ad38428e237e99a84caff2ef502ee541594379bcbdfc2084",
+      "write_xids": 1024
+    }
+  },
+  "duplicate_gate": true,
+  "public_native_setup": {
+    "manifest": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+    "raw": "fd14384d833597fe962429e36f2e741730c636f3309f72323859306e015dfae1",
+    "release": "372ccb3bbea74889d6d2aaa462ee487e1f4845bbefdc8be6f4ae7d4d709fe851",
+    "short_adapter_qualification": "590a3dc95cf10b3f4ce2586f73de620f90a29d30af4909b986fa6a8b3797d5c0"
+  },
+  "reversed_orders": true,
+  "source_sections_match": true,
+  "workload_launched": false
+}
