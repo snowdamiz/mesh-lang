@@ -1,0 +1,32 @@
+{
+  "platform": "darwin",
+  "euid": 501,
+  "postgres_version_num": "170011",
+  "tls_rosters": [
+    21,
+    41
+  ],
+  "participant_connections_by_owned_runner": [
+    4,
+    4
+  ],
+  "matched_direct_libpq_backend_pids": true,
+  "caps": {
+    "roles": {
+      "compiled_caller": 32,
+      "parity_subject": 8,
+      "parity_producer": 1
+    },
+    "max_connections": 96,
+    "database_limit": 96,
+    "reserved": 0,
+    "superuser_reserved": 0
+  },
+  "negative_controls": {
+    "changed_backend_start": true,
+    "changed_backend_pid": true,
+    "changed_client_port": true,
+    "lost_tls": true
+  },
+  "procfd_denial_reproduced": false
+}

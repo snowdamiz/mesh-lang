@@ -1,0 +1,127 @@
+{
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/evidence/native",
+  "id": "2026-11-25-dense-live-grant-plans-procfd-recovery",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "local_sha256": {
+    "scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+    "scripts/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py": "d30834fa1ca18030edd5df0de5d760ea1952d2b84aa05fb3eae9d2af13825c52",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/matrix.py": "dffaa6d936cd0010f2f4377106d5b2846bdaa2cc6f9c431338a776e1d63c84bb",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/qualification.py": "97a48e0b96532710fba3fade20bd96e8bebcde3d15529de6dc6f23ca1da799ee",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/01-noop.1795559433627716000/measured-hot/measured-mesh/raw.tar.gz": "0c3272ce74bb778a66da443b500482c40db7a8671e260174a85a48e01f8c85df",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/01-noop.1795559433627716000/measured-hot/measured-mesh/request.json": "d34687e945565e51dcc6a37708ee26f351fa11094b491d442382800dad325dee",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/series.json": "6f1de7b22b2c0442a6c15832a15b09b8ce59c9defc7d01f7086a4f4776a83c16",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/staging/hot/inventory.json": "fbb81ed0a609bb397f07eea85cd00afee949a8b57e2d3fcce9e2cef72b1542ae",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/transfer.py": "43cf1e9017ca66a7f77ba744770908f736142e3587bd9bc3cdcc10be48593475",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/evidence/native-import-retry/blocks/01-noop.1795492284634802000/measured-d2-on/measured-mesh/raw.tar.gz": "404c450b5d35a829b71f60693635ee2b495c7239e02fdff5598e0a99d27804fc",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/evidence/native-import-retry/controller-evidence/2026-11-24-dense-two-runner-checkout-import-retry-groups-1-2.released.json": "efdb6ac984db8b042972e6b2464d252316d0559a834e5067202cdce50bd050e7",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/native-score.py": "894013b9b1b342b851436dd1c6dd99d55d93cd712e9262644e429ab0c845c214",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/2026-11-24-public-dense-bounded-grant-groups-0-6.released.json": "6f99f8b1f78f0cceaf58cb67f910f41587cf95726bc8d24ecae27b8927ef1fdc",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/dispatch.json": "64f15b2392bfa308f98faa2d8ef22d747e825e8c64c9129f6c2198384379b6bf",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/dispatch.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/download-7f4d24a182a749a7a5c67678691bb21e.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/raw.tar.gz": "3ad3ee1645690c99dbfd18627cbc22a673c9213698c2004098259f492df9f37f",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/request.json": "b1381bf74e220d797334ff53d365d8f3a50776222c3fc3e6fa84f0ed4eaab265",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/order.json": "3b429703ddf2d8cde0217b034beb243a11a731e50591ad96bbf4db683aa91b28",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/plan-gate.json": "bca51a262e3a02c5b4e2509507105e04fbc41377b8fc207d0a92269d32a6b3b5",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/batch_000000.json.gz": "28195c3ee036b760404e9b5f1ea00f7fef5c2ea4d64e3ac124931c5bb0c75904",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-equal-trace/measured-mesh/raw.tar.gz": "834c0347b9ad198261c6ca43b8931cce42fa209f72147be4aa568e2652912fc2",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-equal-trace/measured-mesh/raw.tar.gz": "8d4c69809a25c2305157296c494e294ef8aadeb35f391fd7a43142759cdaca86",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/original-failure/dispatch.json": "8015118425f2b82c3621dd0679b576a41fb4404fcdfa7ee2502d6c8ef9deb539",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/original-failure/raw.tar.gz": "0eb4b74c11b214f47d5f9cfe049794db4f699893a36e578ce202a0aaed782acd",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/original-failure/request.json": "fce038d47b0e40fc427af3a5addc63ff90ff92383f33256fede5cbccb43faecb",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/source.tar.gz": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/POSTGRESQL-COPYRIGHT": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/README.md": "fe7cee8c508143237fe5cf1512835be0c4e805f6e9300d1efbdd478fde7f6b75",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/auto_explain.c": "ec87b02dab5e42e465d916f724666ed59e2dce9154a3b3cff8518feecb739416",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/canary.py": "9727ea22eb59b5d7ec8a2a6c237d99dbf58b0e46eccceeb3ae8fda054f1cb7af",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/controller-packet.json": "cff901a29c24f6fe2477a033c5c24f6b8024e7124c3fdc4bd0a739316af2281f",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/controller.py": "41d5bac64e63e7c3dc43e3f368ff10e550894f129c254caca68163b5f0a5204d",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/historical-recovery.json": "846a78ffe4af0bfd3a4fe71ab467435145a117962ec9b7e8265e78acbd06fc71",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/local-canary.json": "881b96a0729ddea0c0ff3785982c2a539807cf0c90b3c551eb84ce75d73306d1",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native/blocks/01-noop/off-a/measured-mesh/dispatch.json": "b419ffc962e075d99222d5d5cfedb5324da2f5c16ef907d65ae8f14b99e439df",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native/blocks/01-noop/off-a/measured-mesh/raw.tar.gz": "1967016f262f9726e15d31afa1a3940c316ff9f96459059385f1a01e89b7bcb3",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native/blocks/01-noop/off-a/measured-mesh/request.json": "87558efd359b8ec0dfd1bce3fcf0fc1071c16df3ce71b9f813967d5f2c289f86",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native/controller-release.json": "b05b30874c2161cd74605bf389e0b1db24ece7a4a3b64769483a10628d5f877a",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native/failure.json": "a0c64f29db63e17d8efb5b2e8e005f82f03270803cf28334d84f86a8783e3bde",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native/setup-controller-release.json": "55a57971722d07ac4e3ea9de6e4a9434a4eb8397fbf22c88f7d3022fec530325",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native/setup.json": "744afe8516c0973f22bef89279eb76217f5ed5cbd6af916ce07e7e3b90c06b4c",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/git-replay-pins.json": "fa1423e63ecd14b463fd4920d04990f21a410df384f339e0f5e73a8332903fd2",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/launch.sh": "02fa935ab09261d59e4a96e59b40ed3fd6eee3da2035da0c553f4cca2224e1bf",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/launcher.py": "bc9b73c8ea1835d96e031c6f3eecacd37b5826928fb3cef136e4c3a8c515cae4",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/observe.py": "52d08fd3c52ceeaaa21e4dea69912904605abb4e2d6e2fc32ba9ccb54918266d",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/plans.py": "ec9f3e8bbabb9745575b39e141f00241c57e55c2d882db64e1af01fa4410a4f3",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/README.md": "b30803af1d91c012b345479c79a9579d4d8117eb2444c1f48e096d175b12c110",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/adapt.py": "c51741542972033005423457ca9b8e8e346a40527e2f718e6e243a72ee862b1a",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/control.py": "9f9e6fd5eabb95a95b9647d1c966866dd176d57823469509abdfd6efd8c03e95",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/controller.py": "28995547f49c17b4ac8d8893040e7fa224508ab5baa60904b89bc48cd06ac732",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/evidence/nonroot-tls.json": "6d03441c43afd5cc538c4e5671a4eb660178e1ba1023a0c8c06e12fc57512ecf",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/evidence/qualified-roster.json": "d105b3a6b042fe0919631b223e7650b18b86f307bb2a1d8e8839943a66dc6e28",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/launch.sh": "2b0561885566e542d8d42e7ab1770ceeed3197ce25dc646c0a9f1c4563be28b4",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/roster.py": "6991d9bbe7d56b5a6f5e3d4eaad6c6d2197786ce6ca256f1f2eff99df126670f",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/settings.py": "91bf2eb1471d65e9f48ac5722bfed28e193357ab2c7058f6d366cce367bedfcc",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/setup.sh": "142f8b03578fb849fbb5d3c63da4b3a65792ce660991220b94df063b4d2f8af4",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "module_sha256": "0f454e61b3f17831fb93fea58c882573b51eedf04fb2d48640a99be25b365e01",
+  "native_host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "no_build_during_timing": true,
+  "no_repoll": true,
+  "offline_check": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery && python3 -B controller.py check",
+  "only_existing_controller": true,
+  "original_module": "/var/lib/durable-jobs-bench/native/dense-live-grant-plans-20261125/auto_explain.so",
+  "original_sha256": "cff901a29c24f6fe2477a033c5c24f6b8024e7124c3fdc4bd0a739316af2281f",
+  "priority": "Behind all current bookings, one attempt, no automatic retry or repoll.",
+  "registration_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/requests/2026-11-25-dense-live-grant-plans-procfd-recovery.json",
+  "replay_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery && python3 -B controller.py replay",
+  "requested_timing_minutes": 12,
+  "resource_bounds": {
+    "arms": 6,
+    "one_arm_at_a_time": true,
+    "pg_cap": 96,
+    "pg_version": "17.11",
+    "runners": 2,
+    "slots_per_runner": 32,
+    "warm_app_tls": 32
+  },
+  "schedule": [
+    {
+      "group": 1,
+      "order": [
+        "off-a",
+        "sampled",
+        "off-b"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 2,
+      "order": [
+        "off-b",
+        "sampled",
+        "off-a"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "state": "sealed-for-sole-controller",
+  "timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery && python3 -B controller.py timing",
+  "timing_reservation": "2026-11-25-dense-live-grant-plans-procfd-recovery-timing"
+}
