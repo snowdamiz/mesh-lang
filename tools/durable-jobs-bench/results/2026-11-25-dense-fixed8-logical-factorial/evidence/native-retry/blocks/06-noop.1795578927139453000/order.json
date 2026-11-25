@@ -1,0 +1,14 @@
+{
+  "group": 6,
+  "order": [
+    "apalis-2x32",
+    "combined",
+    "oban-2x32",
+    "river-2x32"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}

@@ -1,0 +1,112 @@
+{
+  "diagnostic": {
+    "smoke-combined": {
+      "completed": 1024,
+      "native_smoke": {
+        "checks": {
+          "admin_fence": true,
+          "context_and_ordinality": true,
+          "isolated_namespace": true,
+          "legacy_capacity": true,
+          "namespace_and_trigger_fence": true,
+          "ordered_rows": [
+            "c81e728d-9d4c-2f63-6f06-7f89cc14862c",
+            "eccbc87e-4b5c-e2fe-2830-8fd9f2a7baf3",
+            "c4ca4238-a0b9-2382-0dcc-509a6f75849b"
+          ],
+          "oversized_and_isolation_fallback": true,
+          "rollback": true,
+          "skip_locked": true,
+          "worker_tls": [
+            "parity_subject",
+            "parity_subject",
+            true
+          ]
+        },
+        "contraction": {
+          "executing_after_contraction": 2,
+          "grants_after_release": 1,
+          "grants_at_or_above_cap": 0,
+          "held_contraction_sqlstate": "55P03",
+          "new_capacity": 1,
+          "old_capacity": 2
+        },
+        "overlay": {
+          "baseline_body_sha256": "f2d4720701661a141bc3f8d6591b76dd607a19fb60a9c46826766d99df168f6c",
+          "body_sha256": "ecf89d59b8ffcfa3b07aea4b2c1533d329795f366ced63b7e4221a1b40040044",
+          "metadata": {
+            "acl": [
+              "parity_migrator=X/parity_migrator",
+              "parity_subject=X/parity_migrator"
+            ],
+            "app_execute": false,
+            "configuration": [
+              "search_path=pg_catalog, pg_temp",
+              "lock_timeout=100ms"
+            ],
+            "owner": "parity_migrator",
+            "producer_execute": false,
+            "security_definer": false,
+            "worker_execute": true
+          }
+        }
+      },
+      "raw_sha256": "2f05b8ebc24006521b11e664d680a3ad89f732e7912b4f1c526c4aef4043feec",
+      "writer_mode": "fixed8ms"
+    },
+    "smoke-stock": {
+      "completed": 1024,
+      "native_smoke": {
+        "checks": {
+          "admin_fence": true,
+          "context_and_ordinality": true,
+          "isolated_namespace": true,
+          "legacy_capacity": true,
+          "namespace_and_trigger_fence": true,
+          "ordered_rows": [
+            "c81e728d-9d4c-2f63-6f06-7f89cc14862c",
+            "eccbc87e-4b5c-e2fe-2830-8fd9f2a7baf3",
+            "c4ca4238-a0b9-2382-0dcc-509a6f75849b"
+          ],
+          "oversized_and_isolation_fallback": true,
+          "rollback": true,
+          "skip_locked": true,
+          "worker_tls": [
+            "parity_subject",
+            "parity_subject",
+            true
+          ]
+        },
+        "contraction": {
+          "executing_after_contraction": 2,
+          "grants_after_release": 1,
+          "grants_at_or_above_cap": 0,
+          "held_contraction_sqlstate": "55P03",
+          "new_capacity": 1,
+          "old_capacity": 2
+        },
+        "overlay": {
+          "baseline_body_sha256": "f2d4720701661a141bc3f8d6591b76dd607a19fb60a9c46826766d99df168f6c",
+          "body_sha256": "f2d4720701661a141bc3f8d6591b76dd607a19fb60a9c46826766d99df168f6c",
+          "metadata": {
+            "acl": [
+              "parity_migrator=X/parity_migrator",
+              "parity_subject=X/parity_migrator"
+            ],
+            "app_execute": false,
+            "configuration": [
+              "search_path=pg_catalog, pg_temp",
+              "lock_timeout=100ms"
+            ],
+            "owner": "parity_migrator",
+            "producer_execute": false,
+            "security_definer": false,
+            "worker_execute": true
+          }
+        }
+      },
+      "raw_sha256": "69c6be7c5e03c80d16d3fd50d28c0f29a2af4ccf760d416263eac891f4f1ba5f",
+      "writer_mode": "immediate"
+    }
+  }
+}
