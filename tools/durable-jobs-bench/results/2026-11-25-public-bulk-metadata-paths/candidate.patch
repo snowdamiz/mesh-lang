@@ -31,7 +31,8 @@
          RETURN QUERY SELECT '0'::text, 'stock'::text;
          RETURN;
      END IF;
-
+-
++
      INSERT INTO mesh_jobs.queues(namespace, name)
 -    SELECT ns, x.value->'spec'->>'queue'
 -    FROM jsonb_array_elements(batch) WITH ORDINALITY AS x(value, i)
@@ -40,5 +41,6 @@
 +    FROM generate_series(0, jsonb_array_length(batch) - 1) AS x(i)
 +    GROUP BY batch #>> ARRAY[x.i::text, 'spec', 'queue'] ORDER BY min(x.i)
      ON CONFLICT DO NOTHING;
-
+-
++
      RETURN QUERY
