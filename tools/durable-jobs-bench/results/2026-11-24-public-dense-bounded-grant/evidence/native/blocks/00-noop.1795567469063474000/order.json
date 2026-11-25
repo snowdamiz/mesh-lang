@@ -1,0 +1,10 @@
+{
+  "group": 0,
+  "order": [
+    "qualify"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "noop"
+}
