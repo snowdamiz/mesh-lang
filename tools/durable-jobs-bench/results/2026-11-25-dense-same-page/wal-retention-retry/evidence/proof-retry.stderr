@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-same-page/wal-retention-retry/wal_proof.py", line 77, in <module>
+    print(json.dumps(prove(parser.parse_args().bindir.resolve()), indent=2))
+                     ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-same-page/wal-retention-retry/wal_proof.py", line 68, in prove
+    assert activity and int(activity[3]) > 0, checkpoint.split("; write=")[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 2026-11-24 20:52:19.557 EST [28768] LOG:  checkpoint complete: wrote 49 buffers (0.3%); 0 WAL file(s) added, 1 removed, 0 recycled

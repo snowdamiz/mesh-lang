@@ -1,0 +1,12 @@
+The first indexed fixture reproduction reached a clean shutdown, confirmed that
+the first segment disappeared, reproduced the old decoder's missing-file error,
+and decoded the copied range. It then exited on an overly narrow assertion for
+the number of recycled segments.
+
+  File "wal_proof.py", line 66, in prove
+    assert "1 recycled" in checkpoint
+AssertionError
+
+The next run's preserved stderr showed one removed segment and zero recycled.
+The corrected fixture accepts either kind of retirement and identifies the
+missing segment by filename.

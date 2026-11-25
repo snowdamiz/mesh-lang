@@ -1,0 +1,51 @@
+{
+  "original": {
+    "raw_sha256": "be8de6eeec97a7625b66d26f5fd3bd50be590a42083cd733aed6a4bbf4f5d113",
+    "original_released_exit": 1,
+    "captured_arms": 1,
+    "qualified_arms": 0,
+    "measured_arms": 0,
+    "qualified_groups": 0,
+    "eligible_for_peer_pricing": false,
+    "graded_rejection": "native exit 1: FixtureError at arm.py:401 main -> arm.py:369 run_arm -> observe.py:90 stop -> jobs-parity.py:235 call -> jobs-parity.py:93 checked",
+    "wal_bounds": [
+      "0/1A37BB0",
+      "0/2052B28"
+    ],
+    "observed_writes": {
+      "attempts": [
+        1024
+      ],
+      "effects": [
+        1024
+      ]
+    },
+    "bulk": 8,
+    "scalar": 0,
+    "reported_heap_changes": {
+      "n_tup_ins": 1024,
+      "n_tup_upd": 2048,
+      "n_tup_newpage_upd": 1495,
+      "n_tup_hot_upd": 0
+    }
+  },
+  "frozen_grader_rejection": {
+    "01-noop.1795570920779314000": "warmup/default-a: native exit 1: FixtureError at arm.py:401 main -> arm.py:369 run_arm -> observe.py:90 stop -> jobs-parity.py:235 call -> jobs-parity.py:93 checked"
+  },
+  "prior_hot_raw_sha256": "0c3272ce74bb778a66da443b500482c40db7a8671e260174a85a48e01f8c85df",
+  "window_counts": {
+    "inserts": 2,
+    "insert_extent_pages": 1,
+    "heap_extent_pages": 1,
+    "updates": 1,
+    "same_page": 1,
+    "hot": 0,
+    "prefix": 1,
+    "suffix": 1,
+    "fpi": 0,
+    "record_bytes": 71
+  },
+  "rejected_unflushed": true,
+  "structural_complete_prefix": 64,
+  "rejected_decision_controls": 8
+}
