@@ -67,3 +67,19 @@ In the illustration below, each job becomes eligible 250 µs after its effect co
 | 5 | 71 | 27 | 9.50 ms |
 
 The illustration retains **171 of 392** pairs. With the same assumed exit and receipt latency, immediate election retains 172 and a 1 ms delay retains 142. In an individual pair, a later election can miss an open offer or give the other runner enough time to publish one. A qualifying pair has to displace enough elapsed work after accounting for the two-exchange shared commit, local handoff, and any delayed refill. This is scheduling sensitivity for the recorded cohorts. Actual teardown, polling, publication, renewal, and receipt latency can change the groups and their ordering. Native evidence needs the real mixed-owner XIDs and durable write clocks. [Window calculation](offer_windows.py) · [Five archive hashes and all lag assumptions](offer-windows.json)
+
+## What did the original terminal SQL cost?
+
+At the proposed 1 ms election delay, 142 pairs fit the modeled windows. The native ledgers identify which of their two original terminal calls settled one job and which settled a batch. The PostgreSQL statement counters reconcile every terminal XID and all 1,024 settled jobs in each arm. They give elapsed execution time by statement class across the arm. Individual calls have no corresponding duration in the archive.
+
+| Rotation | Eligible pairs | Both original calls priced at class means, ms | Difference after charging one mean batch per pair, ms | Submit gap to River, ms |
+|---|---:|---:|---:|---:|
+| 1 | 32 | 145.1 | 72.8 | 93.9 |
+| 2 | 40 | 131.9 | 49.2 | 1,196.6 |
+| 3 | 21 | 105.9 | 50.1 | 153.3 |
+| 4 | 22 | 89.2 | 38.1 | 216.6 |
+| 5 | 27 | 121.7 | 53.5 | 256.4 |
+
+Even giving full elapsed credit for both original calls and charging zero for the replacement leaves four of five submit deficits open at those class means. Charging one ordinary batch leaves a deficit in all five. These are sensitivities: the eligible calls may differ from the means, the originals can execute concurrently, and the replacement adds XID readback and receipt handling. The statement measurements exclude the separate transaction completion and any downstream change in claim or handler scheduling. A performance case therefore needs measured changes in those costs or in sustained refill.
+
+The [per-rotation calculation](pair-sql.json) includes the original scalar and batch means, pair composition and three election delays. Reproduce it with `python3 -B offer_windows.py --sql` from this directory.
