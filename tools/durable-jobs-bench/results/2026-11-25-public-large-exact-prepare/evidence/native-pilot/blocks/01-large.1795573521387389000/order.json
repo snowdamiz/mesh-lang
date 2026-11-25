@@ -1,0 +1,14 @@
+{
+  "group": 1,
+  "order": [
+    "control-a",
+    "prepared",
+    "exact-stock",
+    "control-b"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "large"
+}
