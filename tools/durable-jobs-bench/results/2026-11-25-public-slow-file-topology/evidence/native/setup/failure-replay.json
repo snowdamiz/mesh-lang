@@ -1,0 +1,138 @@
+{
+  "blocks/00-slow.1795580052555471000/diagnostic-file/diagnostic-mesh/raw.tar.gz": {
+    "failure": {
+      "message": "[Errno 13] Permission denied: '/proc/2979301/fd'",
+      "stage": [
+        [
+          "arm.py",
+          322,
+          "run_arm"
+        ],
+        [
+          "jobs-parity.py",
+          35,
+          "run_trial"
+        ],
+        [
+          "slow.py",
+          113,
+          "capture_runners"
+        ],
+        [
+          "socket_map.py",
+          24,
+          "runner_backend_map"
+        ],
+        [
+          "pathlib.py",
+          1058,
+          "iterdir"
+        ]
+      ],
+      "type": "PermissionError"
+    },
+    "sha256": "33fbe385768696df9a556966e0b10f2c7edc8d648b35929d44a2953c7a1248dc"
+  },
+  "blocks/00-slow.1795580052555471000/diagnostic-inline-a/diagnostic-mesh/raw.tar.gz": {
+    "failure": {
+      "message": "[Errno 13] Permission denied: '/proc/2979095/fd'",
+      "stage": [
+        [
+          "arm.py",
+          322,
+          "run_arm"
+        ],
+        [
+          "jobs-parity.py",
+          35,
+          "run_trial"
+        ],
+        [
+          "slow.py",
+          113,
+          "capture_runners"
+        ],
+        [
+          "socket_map.py",
+          24,
+          "runner_backend_map"
+        ],
+        [
+          "pathlib.py",
+          1058,
+          "iterdir"
+        ]
+      ],
+      "type": "PermissionError"
+    },
+    "sha256": "c654d15d39aa58fd90f3a66f7d8754cc6f2400e34c52ec0f495ddbe1c82775b1"
+  },
+  "blocks/00-slow.1795580052555471000/diagnostic-split-file/diagnostic-mesh/raw.tar.gz": {
+    "failure": {
+      "message": "[Errno 13] Permission denied: '/proc/2979725/fd'",
+      "stage": [
+        [
+          "arm.py",
+          322,
+          "run_arm"
+        ],
+        [
+          "jobs-parity.py",
+          35,
+          "run_trial"
+        ],
+        [
+          "slow.py",
+          113,
+          "capture_runners"
+        ],
+        [
+          "socket_map.py",
+          24,
+          "runner_backend_map"
+        ],
+        [
+          "pathlib.py",
+          1058,
+          "iterdir"
+        ]
+      ],
+      "type": "PermissionError"
+    },
+    "sha256": "a8e96e2775e68b083bc008f9fdf870c64746993bd2e4546586f738f87075e7f8"
+  },
+  "blocks/00-slow.1795580052555471000/diagnostic-split-inline/diagnostic-mesh/raw.tar.gz": {
+    "failure": {
+      "message": "[Errno 13] Permission denied: '/proc/2979507/fd'",
+      "stage": [
+        [
+          "arm.py",
+          322,
+          "run_arm"
+        ],
+        [
+          "jobs-parity.py",
+          35,
+          "run_trial"
+        ],
+        [
+          "slow.py",
+          113,
+          "capture_runners"
+        ],
+        [
+          "socket_map.py",
+          24,
+          "runner_backend_map"
+        ],
+        [
+          "pathlib.py",
+          1058,
+          "iterdir"
+        ]
+      ],
+      "type": "PermissionError"
+    },
+    "sha256": "ec5590ba21a974426bc5e8e8eaf73d90610457945163369f4dcae1ef13414bf3"
+  }
+}

@@ -1,0 +1,18 @@
+diagnostic-inline-a diagnostic mesh: 1
+diagnostic-file diagnostic mesh: 1
+diagnostic-split-inline diagnostic mesh: 1
+diagnostic-split-file diagnostic mesh: 1
+00-slow.1795580052555471000 incomplete: adapter reported a failed exit
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-slow-file-topology/controller.py", line 241, in <module>
+    sys.exit(dispatch(phase, doc))
+             ~~~~~~~~^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-slow-file-topology/controller.py", line 230, in dispatch
+    return matrix.dispatch(output, config, None)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py", line 258, in dispatch
+    results = [dispatch_block(directory, manifest, block)
+               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-slow-file-topology/controller.py", line 226, in dispatch_block
+    raise ValueError(f"group {block['group']} failed reconciliation")
+ValueError: group 0 failed reconciliation
