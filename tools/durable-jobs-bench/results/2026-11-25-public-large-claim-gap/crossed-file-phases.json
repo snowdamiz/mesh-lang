@@ -113,7 +113,28 @@
           "last_confirmation_after_commit_us": 413712,
           "last_confirmation_to_final_effect_us": 67235,
           "runners_with_confirmed_grants": 8,
-          "runners_with_effects": 8
+          "runners_with_effects": 8,
+          "serialized_grants": {
+            "activation_calls": 8,
+            "first_to_last_grant_stamp_us": [
+              22000,
+              6000,
+              7000,
+              7000,
+              20000,
+              19000,
+              24000,
+              8000
+            ],
+            "other_runner_events_inside": {
+              "attempt_committed_us": 25,
+              "effect_committed_us": 19,
+              "settled_us": 12
+            },
+            "pgss_elapsed_ms": 583.536579,
+            "rows_including_count": 72,
+            "total_stamp_span_us": 113000
+          }
         }
       },
       "savings_vs_that_control_us": {
@@ -246,7 +267,28 @@
           "last_confirmation_after_commit_us": 472750,
           "last_confirmation_to_final_effect_us": 49007,
           "runners_with_confirmed_grants": 8,
-          "runners_with_effects": 8
+          "runners_with_effects": 8,
+          "serialized_grants": {
+            "activation_calls": 8,
+            "first_to_last_grant_stamp_us": [
+              37000,
+              45000,
+              7000,
+              6000,
+              40000,
+              34000,
+              18000,
+              23000
+            ],
+            "other_runner_events_inside": {
+              "attempt_committed_us": 45,
+              "effect_committed_us": 27,
+              "settled_us": 30
+            },
+            "pgss_elapsed_ms": 633.2191619999999,
+            "rows_including_count": 72,
+            "total_stamp_span_us": 210000
+          }
         }
       },
       "savings_vs_that_control_us": {

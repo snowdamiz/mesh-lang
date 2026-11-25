@@ -15,6 +15,18 @@ Each column uses the same control throughout one rotation, selected by the faste
 
 For the claim treatment, 39 and 51 effects had already committed by the time the last runner confirmed its grant. Another 67.235 and 49.007 ms elapsed before the last durable effect. The original arms cannot establish why producer time varied across claim modes or how the two changes interact.
 
+## Time inside the serialized grant updates
+
+The two measured prepared arms each made eight activation calls returning 72 rows. Eight rows were counts. Eight runners each reported eight confirmed grants, and every job completed on its first attempt. Together those checks identify one productive activation per runner. The first and last grant stamps inside each activation were separated by a total of **113 ms forward and 210 ms reverse**. The eight intervals in each arm were disjoint. Each timestamp is floored to milliseconds, giving less than 8 ms of rounding uncertainty in the sum.
+
+| Inside the eight grant intervals | Forward | Reverse |
+|---|---:|---:|
+| Other runners’ first application commits | 25 | 45 |
+| Other runners’ second application commits | 19 | 27 |
+| Other runners’ terminal commits | 12 | 30 |
+
+The counts use the conservative interior of each interval. PostgreSQL recorded 584 and 633 ms of aggregate activation statement elapsed, which includes concurrent callers waiting for the queue lock. The observed grant intervals include scheduling and other runners’ progress. To establish a saving, a changed activation would have to advance the last effect and settlement on fresh matched runs. The first warmup had ten activations and cannot be partitioned using the measured arms’ one-activation-per-runner argument.
+
 ## Replay
 
 From the repository root, with both original archive commits available in local Git, run

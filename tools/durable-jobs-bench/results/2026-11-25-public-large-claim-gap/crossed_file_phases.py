@@ -23,6 +23,30 @@ def blob(series, path):
     return git("show", f"{revision}:{directory}/{path}")
 
 
+def serialized_grants(jobs, statement, final_receipts):
+    by_runner = {}
+    for job in jobs:
+        by_runner.setdefault(job["worker_pid"], []).append(job["claimed_us"])
+    assert statement["calls"] == len(by_runner) == len(final_receipts) == 8
+    # Each activation returns one count row plus its committed grants.
+    assert statement["rows"] - statement["calls"] == len(jobs) == 64
+    assert all(len(stamps) == 8 and all(s % 1000 == 0 for s in stamps)
+               for stamps in by_runner.values())
+    windows = sorted((min(stamps), max(stamps), pid) for pid, stamps in by_runner.items())
+    assert all(end + 999 < start for (_, end, _), (start, _, _) in zip(windows, windows[1:]))
+    assert all(start + 999 <= end for start, end, _ in windows)
+    widths = [end - start for start, end, _ in windows]
+    # floor(clock_timestamp() in ms) makes this a conservative interior.
+    events = {
+        clock: sum(any(start + 999 <= job[clock] <= end and pid != job["worker_pid"]
+                       for start, end, pid in windows) for job in jobs)
+        for clock in ("attempt_committed_us", "effect_committed_us", "settled_us")
+    }
+    return dict(activation_calls=statement["calls"], rows_including_count=statement["rows"],
+                pgss_elapsed_ms=statement["execution_ms"], first_to_last_grant_stamp_us=widths,
+                total_stamp_span_us=sum(widths), other_runner_events_inside=events)
+
+
 def arm(series, path, digest, clocks, last_confirmed):
     raw = blob(series, path)
     assert sha256(raw).hexdigest() == digest
@@ -33,6 +57,9 @@ def arm(series, path, digest, clocks, last_confirmed):
         assert (storage["storage"], storage["args_storage"], storage["topology"]) == ("default", "x", "stock")
         writer = json.load(archive.extractfile("adapter/producer-writer.json"))
         assert writer["enabled"] and (writer["scalar"], writer["bulk"]) == (64, 0)
+        queue = json.load(archive.extractfile("adapter/queue-policy.json"))
+        activations = [row for row in queue["queue_statements"]
+                       if "FROM mesh_jobs.activate_batch_v1(" in row["query"]]
         final_receipts = []
         if last_confirmed is not None:
             for i in range(8):
@@ -70,6 +97,9 @@ def arm(series, path, digest, clocks, last_confirmed):
                        effects_committed_at_last_confirmation=sum(t <= latest for t in effects),
                        last_confirmation_to_final_effect_us=effects[-1] - latest,
                        claims_per_productive_runner=sorted(count for _, count in final_receipts))
+    if activations:
+        statement, = activations
+        receipt["serialized_grants"] = serialized_grants(jobs, statement, final_receipts)
     return times, {j["job_key"]: j["payload_sha256"] for j in jobs}, receipt
 
 
