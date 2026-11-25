@@ -1,0 +1,62 @@
+{
+  "id": "2026-11-25-dense-postflush-boundary-screen-loader-retry",
+  "previous_seal": "943d17b5da9b00dff833d6c78ab5ba93b9bc117e603bff721751494ddb11f3d2",
+  "module": "/var/lib/durable-jobs-bench/native/postflush-pg17-65af9b85ab67/postflush.so",
+  "module_sha256": "fe0d7eb8935483f2a3002aeaecd8584dc1e65ac759ddb8f4cd1a0c29e9aabccf",
+  "host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "cpus": [
+    0,
+    1
+  ],
+  "group": {
+    "group": 1,
+    "profile": "noop",
+    "phases": [
+      "warmup",
+      "measured"
+    ],
+    "order": [
+      "off-a",
+      "on",
+      "off-b"
+    ]
+  },
+  "minutes": 5,
+  "arm_timeout_seconds": 35,
+  "release_reserve_seconds": 45,
+  "arm_files": {
+    "worker.py": "tools/durable-jobs-bench/worker.py",
+    "native-arm.py": "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/timing-identity-retry/native-arm.py",
+    "topology_arm.py": "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/arm.py",
+    "identity.py": "tools/durable-jobs-bench/results/2026-11-24-dense-individual-hot-pool/identity.py",
+    "native-arm.sh": "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/native-arm.sh",
+    "arm_overlay.py": "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/arm_overlay.py",
+    "boundary.py": "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/boundary.py",
+    "verify_stage.py": "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/verify_stage.py",
+    "native-preflight.sh": "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/native-preflight.sh"
+  },
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/arm.py": "7cf3f626f9e242ed176c69e0577ef89fb7439f6b2bf7c1332e0545fdaebfaee5",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-trusted-v1/ordinary-trusted-v1.tar.gz": "e742644d89b872a41b4d9d241091a2349491f3de6d393fe77c4cbdbc05f6a58c",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-individual-hot-pool/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/timing-identity-retry/native-arm.py": "a5217d8656f367b575a8e879ea9effdc3fbdf6fc1b612424e2b66ec13d14b998",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/boundary.py": "ded780e5c2229740ae2f7db141c063b992695bedb9376d77492bacb7a685eb25",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/evidence/native/screen/controller-release.json": "5c99dd46fd8dec9e6695e47ace026a27ec79e2bc8c53d9b0269d6dcf0a1b60f3",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/evidence/native/setup/controller-release.json": "bc4f8b75972a5e4511f4690588cd359bf523fe1058e313f1658b9ca8d4c16e16",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/evidence/native/setup/setup.json": "2ec47157b08d471f0be2ab26a6d333a22625b1f4f6566be0062a7e3ecc57f218",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/evidence/native/timing/01-noop/warmup-off-a/warmup-mesh/raw.tar.gz": "977596f30fa5233b84b807ee536bbf998d5d90d89ec960fb177d6ef1b25520e4",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/evidence/native/timing/stages.json": "57e4f73a2d36403ca0cd5726cbab0f741f891c9601e9116f2f13c13b789cfc50",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/native-arm.sh": "b475a1855bf3e159b230ca86f096cdd527c0f337229247eaa3bbbbeca48d7b91",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/arm_overlay.py": "06a4dfb80d1a623a17c6f7e4b3a0597e81187e349f63a0237dcaa0ce24a28536",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/controller.py": "74337365af0e3d7039cd1b13f3d8c596928f4a1aee883acbe92158d8f5c66dc5",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/local-proof.sh": "438b3481723e5d1f2b7c01d96c3f54755429dc2653a14364551114826621a1eb",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/native-preflight.sh": "66ebb5e33beedf769896892e440c4ee1245de7024160b45d4e34aa27602d1834",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/retry.py": "d0b922a6b95a170665f7726b425b97ad967ebe057cd18637a957c4109c06e091",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/verify_stage.py": "2820b2d273a46a8f1268293ab48920ff3f5db864e808415ce8cd64890bfba880",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  }
+}
