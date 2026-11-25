@@ -3,6 +3,9 @@
     {
       "deadlines": {
         "apalis": {
+          "claim_stamp_advance_lower_bound_us": 466360,
+          "claim_stamps_after_deadline_max": 56,
+          "claim_stamps_after_deadline_min": 56,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 511787,
@@ -19,9 +22,14 @@
               "peer_us": 1614351
             }
           },
-          "effect_advance_even_with_zero_tail_us": 507418
+          "effect_advance_even_with_zero_tail_us": 507418,
+          "first_writes_after_deadline": 63,
+          "second_writes_after_deadline": 64
         },
         "oban": {
+          "claim_stamp_advance_lower_bound_us": 184416,
+          "claim_stamps_after_deadline_max": 25,
+          "claim_stamps_after_deadline_min": 25,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 229843,
@@ -38,9 +46,14 @@
               "peer_us": 2462664
             }
           },
-          "effect_advance_even_with_zero_tail_us": 225474
+          "effect_advance_even_with_zero_tail_us": 225474,
+          "first_writes_after_deadline": 32,
+          "second_writes_after_deadline": 32
         },
         "river": {
+          "claim_stamp_advance_lower_bound_us": 0,
+          "claim_stamps_after_deadline_max": 0,
+          "claim_stamps_after_deadline_min": 0,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 0,
@@ -57,7 +70,9 @@
               "peer_us": 3102655
             }
           },
-          "effect_advance_even_with_zero_tail_us": 0
+          "effect_advance_even_with_zero_tail_us": 0,
+          "first_writes_after_deadline": 0,
+          "second_writes_after_deadline": 0
         }
       },
       "group": 1,
@@ -95,6 +110,9 @@
     {
       "deadlines": {
         "apalis": {
+          "claim_stamp_advance_lower_bound_us": 506627,
+          "claim_stamps_after_deadline_max": 56,
+          "claim_stamps_after_deadline_min": 56,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 541914,
@@ -111,9 +129,14 @@
               "peer_us": 1677790
             }
           },
-          "effect_advance_even_with_zero_tail_us": 537549
+          "effect_advance_even_with_zero_tail_us": 537549,
+          "first_writes_after_deadline": 59,
+          "second_writes_after_deadline": 63
         },
         "oban": {
+          "claim_stamp_advance_lower_bound_us": 212433,
+          "claim_stamps_after_deadline_max": 24,
+          "claim_stamps_after_deadline_min": 24,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 247720,
@@ -130,9 +153,14 @@
               "peer_us": 2450781
             }
           },
-          "effect_advance_even_with_zero_tail_us": 243355
+          "effect_advance_even_with_zero_tail_us": 243355,
+          "first_writes_after_deadline": 32,
+          "second_writes_after_deadline": 32
         },
         "river": {
+          "claim_stamp_advance_lower_bound_us": 0,
+          "claim_stamps_after_deadline_max": 0,
+          "claim_stamps_after_deadline_min": 0,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 0,
@@ -149,7 +177,9 @@
               "peer_us": 3213712
             }
           },
-          "effect_advance_even_with_zero_tail_us": 0
+          "effect_advance_even_with_zero_tail_us": 0,
+          "first_writes_after_deadline": 0,
+          "second_writes_after_deadline": 0
         }
       },
       "group": 2,
@@ -187,6 +217,9 @@
     {
       "deadlines": {
         "apalis": {
+          "claim_stamp_advance_lower_bound_us": 442073,
+          "claim_stamps_after_deadline_max": 48,
+          "claim_stamps_after_deadline_min": 48,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 484085,
@@ -203,9 +236,14 @@
               "peer_us": 1859550
             }
           },
-          "effect_advance_even_with_zero_tail_us": 480046
+          "effect_advance_even_with_zero_tail_us": 480046,
+          "first_writes_after_deadline": 56,
+          "second_writes_after_deadline": 56
         },
         "oban": {
+          "claim_stamp_advance_lower_bound_us": 207110,
+          "claim_stamps_after_deadline_max": 26,
+          "claim_stamps_after_deadline_min": 25,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 249122,
@@ -222,9 +260,14 @@
               "peer_us": 2546441
             }
           },
-          "effect_advance_even_with_zero_tail_us": 245083
+          "effect_advance_even_with_zero_tail_us": 245083,
+          "first_writes_after_deadline": 32,
+          "second_writes_after_deadline": 32
         },
         "river": {
+          "claim_stamp_advance_lower_bound_us": 0,
+          "claim_stamps_after_deadline_max": 0,
+          "claim_stamps_after_deadline_min": 0,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 0,
@@ -241,7 +284,9 @@
               "peer_us": 3085324
             }
           },
-          "effect_advance_even_with_zero_tail_us": 0
+          "effect_advance_even_with_zero_tail_us": 0,
+          "first_writes_after_deadline": 0,
+          "second_writes_after_deadline": 0
         }
       },
       "group": 3,
@@ -279,6 +324,9 @@
     {
       "deadlines": {
         "apalis": {
+          "claim_stamp_advance_lower_bound_us": 0,
+          "claim_stamps_after_deadline_max": 0,
+          "claim_stamps_after_deadline_min": 0,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 0,
@@ -295,9 +343,14 @@
               "peer_us": 26775845
             }
           },
-          "effect_advance_even_with_zero_tail_us": 0
+          "effect_advance_even_with_zero_tail_us": 0,
+          "first_writes_after_deadline": 0,
+          "second_writes_after_deadline": 0
         },
         "oban": {
+          "claim_stamp_advance_lower_bound_us": 201279,
+          "claim_stamps_after_deadline_max": 24,
+          "claim_stamps_after_deadline_min": 24,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 236238,
@@ -314,9 +367,14 @@
               "peer_us": 2467800
             }
           },
-          "effect_advance_even_with_zero_tail_us": 234243
+          "effect_advance_even_with_zero_tail_us": 234243,
+          "first_writes_after_deadline": 32,
+          "second_writes_after_deadline": 32
         },
         "river": {
+          "claim_stamp_advance_lower_bound_us": 0,
+          "claim_stamps_after_deadline_max": 0,
+          "claim_stamps_after_deadline_min": 0,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 0,
@@ -333,7 +391,9 @@
               "peer_us": 3049346
             }
           },
-          "effect_advance_even_with_zero_tail_us": 0
+          "effect_advance_even_with_zero_tail_us": 0,
+          "first_writes_after_deadline": 0,
+          "second_writes_after_deadline": 0
         }
       },
       "group": 4,
@@ -371,6 +431,9 @@
     {
       "deadlines": {
         "apalis": {
+          "claim_stamp_advance_lower_bound_us": 532438,
+          "claim_stamps_after_deadline_max": 51,
+          "claim_stamps_after_deadline_min": 51,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 552389,
@@ -387,9 +450,14 @@
               "peer_us": 1820198
             }
           },
-          "effect_advance_even_with_zero_tail_us": 548729
+          "effect_advance_even_with_zero_tail_us": 548729,
+          "first_writes_after_deadline": 56,
+          "second_writes_after_deadline": 57
         },
         "oban": {
+          "claim_stamp_advance_lower_bound_us": 195658,
+          "claim_stamps_after_deadline_max": 22,
+          "claim_stamps_after_deadline_min": 21,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 215609,
@@ -406,9 +474,14 @@
               "peer_us": 2859582
             }
           },
-          "effect_advance_even_with_zero_tail_us": 211949
+          "effect_advance_even_with_zero_tail_us": 211949,
+          "first_writes_after_deadline": 24,
+          "second_writes_after_deadline": 24
         },
         "river": {
+          "claim_stamp_advance_lower_bound_us": 6683,
+          "claim_stamps_after_deadline_max": 3,
+          "claim_stamps_after_deadline_min": 3,
           "clocks": {
             "drain_us": {
               "advance_needed_us": 26634,
@@ -425,7 +498,9 @@
               "peer_us": 3084538
             }
           },
-          "effect_advance_even_with_zero_tail_us": 22974
+          "effect_advance_even_with_zero_tail_us": 22974,
+          "first_writes_after_deadline": 5,
+          "second_writes_after_deadline": 5
         }
       },
       "group": 5,

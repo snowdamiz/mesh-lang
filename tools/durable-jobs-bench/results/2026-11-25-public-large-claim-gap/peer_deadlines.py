@@ -25,9 +25,13 @@ def budgets():
         assert set(block["order"]) == set(scores) == LANES
         assert json.loads((path.parent / "order.json").read_bytes()) == block
         lanes = {}
+        file_events = {}
         for label in ("file", "river", "oban", "apalis"):
             score = scores[label]
             jobs, commit, drain, boot = read_lane(path.parent, label, score)
+            if label == "file":
+                file_events = {key: [job[key] - commit for job in jobs]
+                               for key in ("claimed_us", "attempt_committed_us", "effect_committed_us")}
             lanes[label] = dict(boot=boot, submit_us=score["last_settlement_us"] - score["first_submit_us"],
                                 drain_us=drain, last_effect_us=max(j["effect_committed_us"] for j in jobs) - commit,
                                 raw_sha256=score["raw_sha256"])
@@ -44,7 +48,17 @@ def budgets():
                                      advance_needed_us=max(0, mesh[clock] - deadline),
                                      file_at_target=mesh[clock] <= deadline)
             deadline = clocks["drain_us"]["deadline_us"]
-            deadlines[peer] = dict(clocks=clocks, effect_advance_even_with_zero_tail_us=max(0, mesh["last_effect_us"] - deadline))
+            stamps = file_events["claimed_us"]
+            deadlines[peer] = dict(
+                clocks=clocks,
+                # Mesh floors the in-transaction claim stamp to a millisecond.
+                claim_stamp_advance_lower_bound_us=max(0, max(stamps) - deadline),
+                claim_stamps_after_deadline_min=sum(t > deadline for t in stamps),
+                claim_stamps_after_deadline_max=sum(t + 999 > deadline for t in stamps),
+                first_writes_after_deadline=sum(t > deadline for t in file_events["attempt_committed_us"]),
+                second_writes_after_deadline=sum(t > deadline for t in file_events["effect_committed_us"]),
+                effect_advance_even_with_zero_tail_us=max(0, mesh["last_effect_us"] - deadline),
+            )
         blocks.append(dict(group=group, lanes=lanes, deadlines=deadlines))
     summary = {}
     for peer in ("river", "oban", "apalis"):

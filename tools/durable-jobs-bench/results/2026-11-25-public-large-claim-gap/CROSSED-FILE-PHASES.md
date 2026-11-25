@@ -52,6 +52,17 @@ The table shows the further advance needed from the original FILE arm in each pa
 
 The separate consumer pilots advanced the final effect from commit by 146.7 and 115.9 ms against their own controls. Earlier durable writes therefore matter even if the combined producer captures all the intended enqueue savings. The fresh peer runs, if qualified, provide the matched comparison.
 
+At the same Oban drain deadline, 21–26 of the 64 Mesh jobs still lacked a database claim stamp. Even if each job could finish at the instant PostgreSQL stamped its claim, the last stamp would have to advance by at least 184–212 ms. The claim timestamps precede COMMIT and have millisecond resolution. The count ranges include stamps whose millisecond straddled the deadline.
+
+| FILE progress at the paired Oban deadline | 1 | 2 | 3 | 4 | 5 |
+|---|---:|---:|---:|---:|---:|
+| Minimum advance needed at last database claim stamp (ms) | 184.4 | 212.4 | 207.1 | 201.3 | 195.7 |
+| Jobs with claim stamps after deadline | 25 | 24 | 25–26 | 24 | 21–22 |
+| Jobs still awaiting their first durable write | 32 | 32 | 32 | 32 | 24 |
+| Jobs still awaiting their second durable write | 32 | 32 | 32 | 32 | 24 |
+
+In every rotation, every job that had committed its first write by the deadline had also committed its second. A change that only accelerates settlement after the last grant cannot cover this gap. Earlier handler or settlement changes could still advance subsequent grants.
+
 For equal batches of 64 jobs, a 20% throughput gain requires FILE to finish by five sixths of the peer's time. The replay verifies the raw hashes, ledgers, boot identity and three clock boundaries for 20 measured peer and FILE archives. It includes Apalis's delayed settlement in rotation four. This descriptive margin does not affect either original gate.
 
 ```sh
