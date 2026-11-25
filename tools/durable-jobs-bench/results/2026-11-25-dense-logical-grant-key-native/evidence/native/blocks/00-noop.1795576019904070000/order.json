@@ -1,0 +1,11 @@
+{
+  "group": 0,
+  "order": [
+    "plan-stock",
+    "plan-key"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "noop"
+}
