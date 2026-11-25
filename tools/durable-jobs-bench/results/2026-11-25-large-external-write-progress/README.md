@@ -56,3 +56,25 @@ Replay the 20 matched historical archives and 16 factorial captures with the arc
 ```sh
 python3 -B factorial_deadlines.py "$external_pilot_evidence" | cmp - factorial-deadlines.json
 ```
+
+## Last confirmed grant and handler work
+
+The four measured prepared-consumer arms expose the client timestamp after each runner's last positive grant COMMIT. The replay joins runners to job ledgers by PID and reconciles the groups to eight or nine activation calls. In the reverse combined arm, one runner took two turns. Its earlier eight-job receipt is bounded by the latest claim stamp and earliest handler entry in that turn. Either end of the bound gives the same final effect in the calculations below.
+
+| Combined EXTERNAL arm, ms from durable enqueue | Forward | Reverse |
+|---|---:|---:|
+| Last confirmed grant | 480.122 | 478.987 |
+| Last durable effect | 531.631 | 523.107 |
+| Last effect with each receipt-to-entry interval removed | 521.201 | 515.697 |
+| Last effect with each entry-to-first-write interval removed | 521.829 | 510.384 |
+| Last effect with each receipt-to-first-write interval removed | 490.377 | 493.833 |
+
+Each illustration moves a job's later events by its own removed interval and takes the latest adjusted effect across all 64 jobs. The grant schedule and downstream durations stay fixed. The entry-to-first-write interval includes application SQL and scheduling as well as parsing. Moving work off the shared CPUs could also advance later grants in a new run.
+
+Even instant completion at every confirmed grant misses the most permissive historical Oban deadline of 446.855 ms by 33.267 and 32.132 ms. At the tightest historical deadline the corresponding gaps are 75.439 and 74.304 ms. These are minimum advances in final confirmation for a 20% drain-throughput lead against those historical times. An actual peer comparison still requires fresh matched runs.
+
+On the released runtime, the PostgreSQL row reader validates UTF-8 and copies the context into an owned string. Preparation moves that string into the checked batch. The trusted worker copies it into its actor heap before handler entry. Parsing a JSON string copies the decoded value into the heap, while a successful `Json.as_string` returns the stored pointer. Charging that accessor for another payload copy would overstate the opportunity. The source pins are `f3b3612d9` in `compiler/mesh-rt/src/db/pg.rs`, `src/jobs/prepared_claim.rs`, `src/jobs/worker.rs` and `src/json.rs` under the same runtime crate.
+
+```sh
+python3 -B confirmed_handler.py "$external_pilot_evidence" | cmp - confirmed-handler.json
+```
