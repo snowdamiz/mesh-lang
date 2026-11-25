@@ -47,6 +47,8 @@ const measures={
  submit_to_settlement_p99_ms:["Submission to settlement p99","ms","99th percentile of per-job time from its submission to its durable terminal commit."],
  commit_to_settlement_p99_ms:["Enqueue commit to settlement p99","ms","99th percentile of per-job time from its enqueue commit to its durable terminal commit."],
  first_submit_to_commit_ms:["First submission to commit","ms","Producer latency through the first durable enqueue commit."],
+ submit_to_last_settlement_ms:["Submission to last settlement","ms","Elapsed time from producer submission to the last durable settlement."],
+ commit_to_last_settlement_ms:["First commit to last settlement","ms","Elapsed time from first durable enqueue commit to the last durable settlement."],
  commit_to_pickup_p99_ms:["Pickup p99 from commit","ms","Each arm contributes its own 99th percentile."],
  runner_cpu_ms_per_job:["Runner CPU per job","ms/job","CPU charged to the runner process trees. PostgreSQL CPU is separate."],
  peak_runner_rss_bytes:["Peak runner RSS","MiB","Sampled sum of resident memory in the runner process trees. Shared pages can count once per process."],
@@ -86,6 +88,9 @@ function median(xs) {const x=xs.slice().sort((a,b)=>a-b),i=Math.floor(x.length/2
 const number=new Intl.NumberFormat("en-US",{maximumFractionDigits:2});
 function draw() {
  const s=db[series.value], blocks=s.blocks.filter(b=>b.profile===profile.value);
+ const laneName=l=>series.value==="public-large-file-session"
+   ? ({file:"Mesh · file", "inline-a":"Mesh · inline A", "inline-b":"Mesh · inline B", product:"Mesh · public stock"}[l]??names[l]??l)
+   : (names[l]??l);
  const key=metric.value, unit=measures[key][1];
  const value=(b,l)=>b.scores[l][key]/(key==="peak_runner_rss_bytes"?1048576:1);
  get("title").textContent=s.title;get("scope").textContent=s.description;
@@ -97,7 +102,7 @@ function draw() {
  const chart=get("chart");chart.replaceChildren();
  for(const r of rows) {
    const row=element("div",undefined,"row"), line=element("div",undefined,"line"), track=element("div",undefined,"track");
-   line.append(element("span",names[r.l]??r.l),element("strong",number.format(r.m)+" "+unit));
+   line.append(element("span",laneName(r.l)),element("strong",number.format(r.m)+" "+unit));
    const bar=element("div",undefined,"bar "+blocks[0].scores[r.l].engine);
    bar.style.width=(high?100*r.m/high:0)+"%";track.append(bar);row.append(line,track);
    if(blocks.length>1)row.append(element("small","Range "+number.format(Math.min(...r.vals))+"–"+number.format(Math.max(...r.vals))));
@@ -107,7 +112,7 @@ function draw() {
  get("paired").hidden=!higherIsBetter;
  if(higherIsBetter) {
    const opponent=get("opponent"), previous=opponent.value;
-   opponent.replaceChildren(...lanes.map(l=>option(l,names[l]??l)));
+   opponent.replaceChildren(...lanes.map(l=>option(l,laneName(l))));
    opponent.value=lanes.includes(previous)?previous:lanes.find(l=>l.startsWith("oban"))??lanes[0];
    const table=get("pairs"), header=element("tr");
    for(const label of ["Engine","Rotations faster","Median paired change"])header.append(element("th",label));
@@ -116,7 +121,7 @@ function draw() {
      if(l===opponent.value)continue;
      const changes=blocks.map(b=>100*(value(b,l)/value(b,opponent.value)-1));
      const change=median(changes),line=element("tr");
-     line.append(element("td",names[l]??l),element("td",changes.filter(x=>x>0).length+" / "+changes.length),
+     line.append(element("td",laneName(l)),element("td",changes.filter(x=>x>0).length+" / "+changes.length),
        element("td",(change>0?"+":"")+number.format(change)+"%"));
      table.append(line);
    }
@@ -124,17 +129,21 @@ function draw() {
  const t=get("rotations");t.replaceChildren();
  const head=element("tr");for(const item of ["Group · execution order",measures[key][0]+" ("+unit+")","CPU steal (%)"])head.append(element("th",item));t.append(head);
  for(const b of blocks)for(const l of b.order) {
-   const tr=element("tr");for(const x of [b.group+" · "+(names[l]??l),number.format(value(b,l)),number.format(b.scores[l].cpu_steal_percent)])tr.append(element("td",x));t.append(tr);
+   const tr=element("tr");for(const x of [b.group+" · "+laneName(l),number.format(value(b,l)),number.format(b.scores[l].cpu_steal_percent)])tr.append(element("td",x));t.append(tr);
  }
 }
 function chooseSeries() {
  const prior=profile.value, b=db[series.value].blocks;profile.replaceChildren();
+ const priorMetric=metric.value;
+ metric.replaceChildren(...Object.entries(measures)
+   .filter(([key])=>series.value==="public-large-file-session"||!key.endsWith("_to_last_settlement_ms"))
+   .map(([key,m])=>option(key,m[0])));
+ if([...metric.options].some(o=>o.value===priorMetric))metric.value=priorMetric;
  for (const [id,label] of Object.entries(workloads)) if(b.some(row=>row.profile===id))profile.add(option(id,label));
  if([...profile.options].some(o=>o.value===prior))profile.value=prior;
  draw();
 }
 for(const [key,s] of Object.entries(db))if(s.blocks.length)series.add(option(key,s.title));
-for(const [key,m] of Object.entries(measures))metric.add(option(key,m[0]));
 const selected=location.hash.slice(1);
 if(db[selected]?.blocks?.length)series.value=selected;
 else if(db["public-short-selection"]?.blocks.length===5)series.value="public-short-selection";

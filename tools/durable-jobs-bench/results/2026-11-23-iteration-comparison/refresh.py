@@ -383,6 +383,53 @@ def add_policy_table(lines, series, title, detail, lanes, planned=5):
     lines.append("")
 
 
+def add_large_file_session(lines, series):
+    title = "Public large jobs with the file-session producer"
+    lines.extend([f"## {title}", ""])
+    blocks = series.get("blocks", [])
+    failures = ("The original SETUP export failed. The controller recovered the same native SETUP archive. "
+                "The first TIMING attempt failed before the file and duplicate inline adapters could launch "
+                "and yielded zero qualified rotations.")
+    if not blocks:
+        lines.extend([failures + " Scores are pending five qualified rotations and a matching release for the path-only retry. "
+                      "[Campaign evidence](../2026-11-24-public-large-file-session/resume/README.md)", ""])
+        return
+    metrics = ("enqueue_ms", "submit_ms", "drain_ms")
+    lane_labels = {"file": "Mesh file", "inline-a": "Mesh inline A", "inline-b": "Mesh inline B",
+                   "product": "Public stock Mesh", "river": "Go River", "oban": "Elixir Oban", "apalis": "Rust Apalis"}
+    windows = ("First submit to enqueue commit", "Submit to last settlement", "Enqueue commit to last settlement")
+    lines.extend([f"{len(blocks)} matched rotations on CPUs 0 and 1. Each lane completed 64 jobs and committed "
+                  "two ordered application writes per job. The file lane and both inline duplicates used the same "
+                  "runner and broker ELFs. Public stock used the same runner ELF and its stock broker. "
+                  "[Interactive results](chart.html#public-large-file-session)", "",
+                  "Elapsed time in milliseconds. Cells show median (min–max).", "",
+                  "| Lane | " + " | ".join(windows) + " |", "|---|---:|---:|---:|"])
+    for label, name in lane_labels.items():
+        columns = []
+        for key in metrics:
+            values = [b["clocks"][label][key] for b in blocks]
+            columns.append(f"{median(values):.2f} ({min(values):.2f}–{max(values):.2f})")
+        lines.append("| " + " | ".join([name, *columns]) + " |")
+    lines.extend(["", "Each cell below gives the median paired difference in milliseconds and the count of rotations "
+                  "where file was faster. Positive differences favor file.", "",
+                  "| Reference | " + " | ".join(windows) + " |", "|---|---:|---:|---:|"])
+    for label in (*list(lane_labels)[1:], "faster-duplicate"):
+        comparisons = [b["faster_duplicate_minus_file_ms"] if label == "faster-duplicate" else b["paired_ms"][label]
+                       for b in blocks]
+        columns = []
+        for key in metrics:
+            values = [row[key] for row in comparisons]
+            columns.append(f"{median(values):+.2f} ({sum(x > 0 for x in values)}/{len(values)})")
+        lines.append("| " + " | ".join([lane_labels.get(label, "Faster inline duplicate"), *columns]) + " |")
+    lines.extend(["", "Within-rotation absolute difference between the two inline controls, in milliseconds.", "",
+                  "| Rotation | " + " | ".join(windows) + " |", "|---|---:|---:|---:|"])
+    for block in blocks:
+        spread = " | ".join(f"{block['duplicate_spread_ms'][key]:.2f}" for key in metrics)
+        lines.append(f"| {block['group']} | {spread} |")
+    lines.extend(["", failures + " All scores above use the released path-only retry. "
+                  "[Execution orders, per-arm clocks and evidence digests](scores.json)", ""])
+
+
 def write_scorecard(data):
     profiles = [("ordinary-dense", "Dense no-op"), ("ordinary", "Short"),
                 ("ordinary-slow", "Slow"), ("ordinary-sparse", "Sparse"),
@@ -438,6 +485,7 @@ def write_scorecard(data):
                     note += (f" The observer recorded one job executing and all others terminal in {late['samples']} "
                              f"samples spanning {late['sampled_span_ms'] / 1000:.2f} s.")
                 lines.extend([note + " The rates and paired wins include this run.", ""])
+    add_large_file_session(lines, data.get("public-large-file-session", {}))
     lines.extend(["## Original V1 and protected workloads", "",
                   "The five workloads below use the original trusted Mesh V1 runner and its protected Mesh control. Each completed rotation contains both Mesh modes and all three stock peers on the same Linode. Rates are median jobs per second. The last column counts the rotations in which trusted Mesh was faster than each peer.", ""])
     for metric, title in [("submit_jobs_per_s", "Submission through last settlement"),
@@ -748,6 +796,19 @@ def refresh(collect, selected=()):
                 continue
             if item.get("public_product"):
                 current = capture_public_product(archived)
+            elif name == "public-large-file-session":
+                previous_release = data.get(name, {}).get("release_sha256")
+                command = [sys.executable, "-B", HERE / "large-file-session.py", archived]
+                if previous_release:
+                    command.append(previous_release)
+                replay = subprocess.run(command, capture_output=True, text=True)
+                if replay.returncode:
+                    print(f"{name}: {replay.stderr.strip()}", file=sys.stderr)
+                    continue
+                current = json.loads(replay.stdout)
+                if previous_release and current["release_sha256"] != previous_release:
+                    print(f"{name}: previously captured TIMING release changed", file=sys.stderr)
+                    continue
             elif name == "slow-storage":
                 current = capture_slow_storage(archived)
             elif name == "public-dense-hot-checkout":

@@ -103,4 +103,8 @@ Rebuild the sparse time decomposition from the original 25 arms with `python3 -B
 
 Add `--collect` to replay all locally available measured and warmup arm archives in [the input list](series-list.json). Acquisition uses the shared matrix ledger verifier, checks the frozen rotation order, two-CPU affinity, independent write counts, the displayed metrics, and the raw archive digests. A partially written block enters the viewer after the matrix owner records its reconciliation. A changed previously captured group stops the refresh. The collector reads archived groups first and can pick up newly reconciled groups from their live directories. When both copies exist, it checks their manifest and receipt digests.
 
+Replay the public LARGE file producer from its retained native evidence with
+`python3 -B tools/durable-jobs-bench/results/2026-11-23-iteration-comparison/refresh.py --series public-large-file-session`.
+This series requires all five path-only retry rotations and a matching live controller release for initial publication. After publication, the saved release digest supports offline replay in a checkout with the retained evidence. The scorecard shows the producer interval, both durable windows, paired gaps, and the spread between duplicate inline runs. [Campaign evidence](../2026-11-24-public-large-file-session/resume/README.md)
+
 [Per-arm scores, executable identities and archive digests](scores.json) · [Original four-engine matrix](../2026-11-23-baseline/README.md)

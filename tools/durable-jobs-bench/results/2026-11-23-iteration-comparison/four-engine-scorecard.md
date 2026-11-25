@@ -31,6 +31,10 @@ All four engines reached 64 simultaneous jobs between their first and second com
 
 In Dense, 8 × 8, Apalis group 2 settled its final job, `job_001009`, 25.92 s after the last application write committed. The observer recorded one job executing and all others terminal in 169 samples spanning 25.67 s. The rates and paired wins include this run.
 
+## Public large jobs with the file-session producer
+
+The original SETUP export failed. The controller recovered the same native SETUP archive. The first TIMING attempt failed before the file and duplicate inline adapters could launch and yielded zero qualified rotations. Scores are pending five qualified rotations and a matching release for the path-only retry. [Campaign evidence](../2026-11-24-public-large-file-session/resume/README.md)
+
 ## Original V1 and protected workloads
 
 The five workloads below use the original trusted Mesh V1 runner and its protected Mesh control. Each completed rotation contains both Mesh modes and all three stock peers on the same Linode. Rates are median jobs per second. The last column counts the rotations in which trusted Mesh was faster than each peer.
