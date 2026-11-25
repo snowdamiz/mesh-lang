@@ -14,7 +14,7 @@ def load(archive, name):
     return json.load(archive.extractfile(f"adapter/{name}.json"))
 
 
-def coverage(jobs, calls):
+def coverage(jobs, calls, work_bucket=None):
     """All durations are integer microseconds summed independently per runner."""
     by_runner = defaultdict(list)
     for job in jobs:
@@ -29,6 +29,7 @@ def coverage(jobs, calls):
     exposure = {k: Counter() for k in THRESHOLDS}
     extra_seats = []
     cohort_count = 0
+    bucket_us = 0
     for pid, stream in by_runner.items():
         groups = defaultdict(list)
         for job in stream:
@@ -41,6 +42,16 @@ def coverage(jobs, calls):
         events = defaultdict(list)
         events[lo] = []
         events[hi] = []
+        work_events = Counter()
+        if work_bucket is not None:
+            assert work_bucket in (0, 1, 2)
+            for job in stream:
+                entry, effect = job["entered_us"], job["effect_committed_us"]
+                assert entry <= effect <= job["settled_us"]
+                begin, finish = max(entry, lo), min(effect, hi)
+                if begin < finish:
+                    work_events[begin] += 1
+                    work_events[finish] -= 1
         for idx, stamp in enumerate(stamps):
             group = groups[stamp]
             if len(group) == 16:
@@ -58,12 +69,19 @@ def coverage(jobs, calls):
                         events[start].append((kind, stamp, 1))
                         events[end].append((kind, stamp, -1))
         live = {kind: Counter() for kind in ("possible", "witnessed", "same")}
-        times = sorted(events)
+        entered = 0
+        times = sorted(events.keys() | work_events.keys())
         for start, end in zip(times, times[1:]):
             for kind, stamp, change in events[start]:
                 live[kind][stamp] += change
                 if not live[kind][stamp]:
                     del live[kind][stamp]
+            if work_bucket is not None:
+                entered += work_events[start]
+                assert entered >= 0
+                if min(entered, 2) != work_bucket:
+                    continue
+                bucket_us += end - start
             counts = {key: counter.total() for key, counter in live.items()}
             assert 0 <= counts["witnessed"] <= counts["same"] <= counts["possible"]
             dt = end - start
@@ -92,12 +110,15 @@ def coverage(jobs, calls):
                               later_grant_only_us=witnessed[k], runner_us=duration,
                               lower_percent=100*low/duration, upper_percent=100*possible[k]/duration)
     assert extra_seats and min(extra_seats) >= 0
-    return dict(stamp_groups=cohort_count, max_split_groups=splits, calls=calls,
-                groups_at_16=len(extra_seats), possible_extra_seats=sum(extra_seats),
-                groups_at_16_with_room=sum(x > 0 for x in extra_seats), bounds=bounds)
+    result = dict(stamp_groups=cohort_count, max_split_groups=splits, calls=calls,
+                  groups_at_16=len(extra_seats), possible_extra_seats=sum(extra_seats),
+                  groups_at_16_with_room=sum(x > 0 for x in extra_seats), bounds=bounds)
+    if work_bucket is not None:
+        result["bucket_us"] = bucket_us
+    return result
 
 
-def replay():
+def replay(work_bucket=None):
     sealed = json.loads((NATIVE / "final-replay.json").read_bytes())
     result = {}
     for group, block in sealed["blocks"].items():
@@ -116,7 +137,7 @@ def replay():
                 assert len(jobs) == len({j["id"] for j in jobs}) == 1024
                 assert len({j[k] for j in jobs for k in ("attempt_xid", "effect_xid")}) == 2048
                 assert all(j["state"] == "completed" for j in jobs)
-                result[group][lane] = dict(raw_sha256=digest, **coverage(jobs, load(archive,"raw")["raw_claim_calls"]))
+                result[group][lane] = dict(raw_sha256=digest, **coverage(jobs, load(archive,"raw")["raw_claim_calls"], work_bucket))
     return result
 
 
