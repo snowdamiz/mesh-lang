@@ -1,0 +1,13 @@
+{
+  "group": 0,
+  "order": [
+    "inline-a",
+    "file",
+    "split-inline",
+    "split-file"
+  ],
+  "phases": [
+    "diagnostic"
+  ],
+  "profile": "slow"
+}
