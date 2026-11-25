@@ -1,0 +1,2868 @@
+{
+  "dependency_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/evidence/equal/controller-release.json": "6e4156c2af52128a19371e5aceaffab81a6c9ae35d8ace87734ab78290eb1f1a",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/evidence/equal/series.json": "632db522c3b86aeae0a48350ee945195d9449965018072a0d5144170273bd1e0",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/evidence/equal/staging/river-2x32/inventory.json": "d6c7c5d5a00b2a2f60939d3fc882015aae4a97653023120e87c3f43263085354",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/blocks/03-noop.1795578693251135000/reconciled.json": "3ba8dca83182e8dd73a63f55f66bf1ceebf1f03bfc3f063bcbf922b190b47c47",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/blocks/04-noop.1795578771812803000/reconciled.json": "56c87d1bbe1c259533cf59aefc2fac6091a5a70def9ac783e23a8bbd266ebdb6",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/blocks/05-noop.1795578849663526000/reconciled.json": "81037953a82a6fde3d652befc5ca96429acd58b8bfeecd85956f022f4e854707",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/blocks/06-noop.1795578927139453000/reconciled.json": "8d8639e9f3d1af246a20708fcf6bbda940bd1437f0cce50019cfeb27c4a9dbaa",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/blocks/07-noop.1795579004902380000/reconciled.json": "1957e9571f011fa1d0f1ff0abce9b410d131a3f2b0e619b4a46f8bf0a245678f",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/controller/controller-timing-257fdab04646.json": "4bff29fe758e51ce42e57b0dc51536058daa29d903055f7ae1a29f644a3cb5d0",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/staging/2026-11-25-dense-fixed8-logical-factorial-retry-peers.1795578687870697000/apalis-2x32/inventory.json": "784674abde42c2929c4b01012981a036611a842aca4913cc83975b2af9723f49",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/staging/2026-11-25-dense-fixed8-logical-factorial-retry-peers.1795578687870697000/combined/inventory.json": "052bf45bf6f1fec84fbd300de4305687b79b2409175a9fdf4c226ebed443d4be",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/staging/2026-11-25-dense-fixed8-logical-factorial-retry-peers.1795578687870697000/oban-2x32/inventory.json": "30402db442d2547a1380f5b503c38ecfe4698457c1aaf8c5fab632361543aa0b",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/staging/2026-11-25-dense-fixed8-logical-factorial-retry-peers.1795578687870697000/river-2x32/inventory.json": "c02148b4dc381e9faecb9c4986d04dbf45749d86d6d55620e9640fbbc7b2f839"
+  },
+  "original_equal_measured_river": {
+    "1": {
+      "after_last_effect_us": 216256,
+      "connections": {
+        "idle": [
+          7,
+          7
+        ],
+        "last_idle": 7,
+        "peak": 68
+      },
+      "drain_jobs_per_s": 1078.179603242541,
+      "drain_us": 949749,
+      "enqueue_us": 73132,
+      "ledger_sha256": "05f54567816e2e65d0ebd90de19b7b2391e2a00ac0df488a6d4051a2e815b120",
+      "per_job_effect_to_settlement_us": {
+        "max": 250715,
+        "median": 64463.5,
+        "min": 10347,
+        "n": 1024
+      },
+      "progress": {
+        "first_write": {
+          "from_commit_us": {
+            "1024": 732015,
+            "256": 384682,
+            "64": 271886,
+            "768": 604956,
+            "960": 670411
+          },
+          "last_64_us": 61604,
+          "middle_512_us": 220274
+        },
+        "second_write": {
+          "from_commit_us": {
+            "1024": 733493,
+            "256": 387916,
+            "64": 284980,
+            "768": 606473,
+            "960": 712607
+          },
+          "last_64_us": 20886,
+          "middle_512_us": 218557
+        },
+        "settlement": {
+          "from_commit_us": {
+            "1024": 949749,
+            "256": 427528,
+            "64": 412666,
+            "768": 676643,
+            "960": 751454
+          },
+          "last_64_us": 198295,
+          "middle_512_us": 249115
+        }
+      },
+      "raw_sha256": "51a5a840517393b5a76b9b150f45899136e32b0a12bff79aaecc1655b598d92e",
+      "submit_jobs_per_s": 1001.0939688976528,
+      "submit_us": 1022881,
+      "terminal_xids": 12
+    },
+    "2": {
+      "after_last_effect_us": 51573,
+      "connections": {
+        "idle": [
+          7,
+          7
+        ],
+        "last_idle": 7,
+        "peak": 67
+      },
+      "drain_jobs_per_s": 1234.6259529467652,
+      "drain_us": 829401,
+      "enqueue_us": 85252,
+      "ledger_sha256": "cd7edddf7a2fb8257949da9a833f52a3a346a562461c8ae022dbd37f9f74725f",
+      "per_job_effect_to_settlement_us": {
+        "max": 283677,
+        "median": 100889.5,
+        "min": 19875,
+        "n": 1024
+      },
+      "progress": {
+        "first_write": {
+          "from_commit_us": {
+            "1024": 775312,
+            "256": 405206,
+            "64": 296120,
+            "768": 648188,
+            "960": 732002
+          },
+          "last_64_us": 43310,
+          "middle_512_us": 242982
+        },
+        "second_write": {
+          "from_commit_us": {
+            "1024": 777828,
+            "256": 412267,
+            "64": 311773,
+            "768": 652775,
+            "960": 733081
+          },
+          "last_64_us": 44747,
+          "middle_512_us": 240508
+        },
+        "settlement": {
+          "from_commit_us": {
+            "1024": 829401,
+            "256": 531861,
+            "64": 447139,
+            "768": 717500,
+            "960": 829401
+          },
+          "last_64_us": 0,
+          "middle_512_us": 185639
+        }
+      },
+      "raw_sha256": "bbc71959dc25fd284a0211bba1876b3e74de5e73766be9800ad0c8c26200a08c",
+      "submit_jobs_per_s": 1119.5502556707297,
+      "submit_us": 914653,
+      "terminal_xids": 10
+    },
+    "3": {
+      "after_last_effect_us": 220831,
+      "connections": {
+        "idle": [
+          7,
+          7
+        ],
+        "last_idle": 7,
+        "peak": 68
+      },
+      "drain_jobs_per_s": 1081.884041893424,
+      "drain_us": 946497,
+      "enqueue_us": 75099,
+      "ledger_sha256": "d699f6b4270574017498b906979fa3b1eda0e79a728f9a1756e44ee1c7e393c1",
+      "per_job_effect_to_settlement_us": {
+        "max": 287443,
+        "median": 70304.5,
+        "min": 12138,
+        "n": 1024
+      },
+      "progress": {
+        "first_write": {
+          "from_commit_us": {
+            "1024": 724585,
+            "256": 374332,
+            "64": 251609,
+            "768": 577509,
+            "960": 692877
+          },
+          "last_64_us": 31708,
+          "middle_512_us": 203177
+        },
+        "second_write": {
+          "from_commit_us": {
+            "1024": 725666,
+            "256": 379135,
+            "64": 274484,
+            "768": 580854,
+            "960": 694970
+          },
+          "last_64_us": 30696,
+          "middle_512_us": 201719
+        },
+        "settlement": {
+          "from_commit_us": {
+            "1024": 946497,
+            "256": 416748,
+            "64": 414582,
+            "768": 666928,
+            "960": 944276
+          },
+          "last_64_us": 2221,
+          "middle_512_us": 250180
+        }
+      },
+      "raw_sha256": "8423c444baba544e3599703e5e0efbb75e7198cc0aff5400ff7af633be8b0351",
+      "submit_jobs_per_s": 1002.3531807093998,
+      "submit_us": 1021596,
+      "terminal_xids": 14
+    },
+    "4": {
+      "after_last_effect_us": 191812,
+      "connections": {
+        "idle": [
+          7,
+          7
+        ],
+        "last_idle": 7,
+        "peak": 67
+      },
+      "drain_jobs_per_s": 1091.8206215487432,
+      "drain_us": 937883,
+      "enqueue_us": 84287,
+      "ledger_sha256": "004aec64de4066adfe6ca9d2e30e886448737c2f32f0b5e2312f60ccd3f31c24",
+      "per_job_effect_to_settlement_us": {
+        "max": 277566,
+        "median": 71611.0,
+        "min": 12744,
+        "n": 1024
+      },
+      "progress": {
+        "first_write": {
+          "from_commit_us": {
+            "1024": 743341,
+            "256": 403280,
+            "64": 302273,
+            "768": 614392,
+            "960": 724087
+          },
+          "last_64_us": 19254,
+          "middle_512_us": 211112
+        },
+        "second_write": {
+          "from_commit_us": {
+            "1024": 746071,
+            "256": 405799,
+            "64": 310482,
+            "768": 620444,
+            "960": 728922
+          },
+          "last_64_us": 17149,
+          "middle_512_us": 214645
+        },
+        "settlement": {
+          "from_commit_us": {
+            "1024": 937883,
+            "256": 472926,
+            "64": 392214,
+            "768": 664876,
+            "960": 937883
+          },
+          "last_64_us": 0,
+          "middle_512_us": 191950
+        }
+      },
+      "raw_sha256": "e1894c8396edd69025665f6906ccf3a8cf8276b7382547cd515638ae50b9e311",
+      "submit_jobs_per_s": 1001.7903088527348,
+      "submit_us": 1022170,
+      "terminal_xids": 13
+    },
+    "5": {
+      "after_last_effect_us": 174941,
+      "connections": {
+        "idle": [
+          7,
+          7
+        ],
+        "last_idle": 7,
+        "peak": 70
+      },
+      "drain_jobs_per_s": 1108.8767533301495,
+      "drain_us": 923457,
+      "enqueue_us": 87178,
+      "ledger_sha256": "b905537d893e8bfe92f973c398fac832cd50ed5574b7279937f6ce0a713a0812",
+      "per_job_effect_to_settlement_us": {
+        "max": 295478,
+        "median": 81670.5,
+        "min": 26575,
+        "n": 1024
+      },
+      "progress": {
+        "first_write": {
+          "from_commit_us": {
+            "1024": 745165,
+            "256": 398337,
+            "64": 254622,
+            "768": 613880,
+            "960": 725358
+          },
+          "last_64_us": 19807,
+          "middle_512_us": 215543
+        },
+        "second_write": {
+          "from_commit_us": {
+            "1024": 748516,
+            "256": 402865,
+            "64": 279735,
+            "768": 617437,
+            "960": 731735
+          },
+          "last_64_us": 16781,
+          "middle_512_us": 214572
+        },
+        "settlement": {
+          "from_commit_us": {
+            "1024": 923457,
+            "256": 464726,
+            "64": 462114,
+            "768": 681617,
+            "960": 923457
+          },
+          "last_64_us": 0,
+          "middle_512_us": 216891
+        }
+      },
+      "raw_sha256": "2eb8e953926437aa10f42d93dbaaf653be2eacc88cf580ba4a4ea4d17c110aa4",
+      "submit_jobs_per_s": 1013.2243589426449,
+      "submit_us": 1010635,
+      "terminal_xids": 12
+    }
+  },
+  "original_river_spec": {
+    "argv": [
+      "/usr/bin/python3",
+      "-B",
+      "/var/lib/durable-jobs-bench/dense-matched-topology-v1/peer-arm.py",
+      "go",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run.py",
+      "--binary",
+      "/var/lib/durable-jobs-bench/dense-matched-topology-v1/river-2x32",
+      "--pg-bin",
+      "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin",
+      "--scratch",
+      "/var/lib/durable-jobs-bench/river/scratch"
+    ],
+    "artifact_sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+    "evidence_globs": [
+      "input.json",
+      "runtime.json",
+      "counters.json",
+      "metrics.json",
+      "river/*",
+      "river/*/*"
+    ],
+    "postgres_storage": "/var/lib/durable-jobs-bench/river/scratch",
+    "run_as": "nobody",
+    "verified_files": {
+      "/var/lib/durable-jobs-bench/dense-matched-topology-v1/peer-arm.py": "84bb45e4467b43d7b01ac0c8b68cdaffc9dfa3e71d18fa1fd8ba1caedf192058",
+      "/var/lib/durable-jobs-bench/dense-matched-topology-v1/river-2x32": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+      "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres": "b70863988c4762b6b914ac54d194fa5a1723201100d8155caf7781edba29faa1",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/river-bench": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/SHA256SUMS": "20ac691e53f71586c4904fc4455ff83d8b2140a3ba263e63f7ab6228cbb581f1",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/scripts/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/db.go": "5b46edba58b4bbf318759cef2b5fc5540aae4f5f15b2df9083b875525c89ba85",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/evidence.go": "9dc4522dd46ff8787d10d1413528284986d419a091271f0cc8cc0d660f754621",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/go.mod": "b50f560f8a406715b0796e6729837fa21b14595a897a33560afd7c590ca840da",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/go.sum": "d0b5ac110be4112c71271ad2d3f126667f185f41cff7db605e99a5eb4b3d8f4b",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/main.go": "0e9c26aed160e6313e30c7ee8562a14d14cde94f89f1bf0756fad68e26128da0",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/prepare_input.py": "3536fefd1492b22389ab083422739fd30549d33c75f76bc4deb8629ef1d73a7f",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/raw_evidence.py": "94ad94c58e3f8faf63b3c4b06030a53bbd552254f2e87947f65cc1821974bf7e",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run": "0a770416fc9433c76d5f5d5cf2ef87e2af4f20a61d0fa4c7e98d5715d781345d",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run.py": "e97ede452fb9df9c62fc9b12c914dbb2b5c92b2cd64165b7d11ac5e2dcc5d030",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/worker.go": "6c0f7b8e817a5cd05e98a72af57e48f0c9b5f4bcf283c057e246a9f8fa1e6d69",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+      "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/wrapper-source.tar.gz": "140547e8e8202bdf446c7eaffa575991b3220cbfeef31192b990c91e646e2f8a",
+      "/var/tmp/mesh-durable-jobs-matrix/dense-matched-topology-equal-40f254f45055-river-2x32/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+    },
+    "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4"
+  },
+  "qualified_combined_with_stock_peers": {
+    "3": {
+      "order": [
+        "combined",
+        "river-2x32",
+        "apalis-2x32",
+        "oban-2x32"
+      ],
+      "phases": {
+        "measured": {
+          "apalis-2x32": {
+            "after_last_effect_us": 9266,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1487.4662088059742,
+            "drain_us": 688419,
+            "enqueue_us": 36366,
+            "ledger_sha256": "079475e506b834a4de5f7eb3274fd31efa99376a479d4cc37f044fc8b32b8efe",
+            "per_job_effect_to_settlement_us": {
+              "max": 43020,
+              "median": 13817.5,
+              "min": 4319,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 665621,
+                  "256": 209653,
+                  "64": 69456,
+                  "768": 521002,
+                  "960": 630639
+                },
+                "last_64_us": 34982,
+                "middle_512_us": 311349
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 679153,
+                  "256": 213798,
+                  "64": 82668,
+                  "768": 530165,
+                  "960": 632491
+                },
+                "last_64_us": 46662,
+                "middle_512_us": 316367
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 688419,
+                  "256": 226237,
+                  "64": 102118,
+                  "768": 537245,
+                  "960": 639832
+                },
+                "last_64_us": 48587,
+                "middle_512_us": 311008
+              }
+            },
+            "raw_sha256": "d5f88a119bfa2ebe8861eec85b40566e01a695b44490f3752bba93daa22fd1c6",
+            "submit_jobs_per_s": 1412.832771097636,
+            "submit_us": 724785,
+            "terminal_xids": 58
+          },
+          "combined": {
+            "after_last_effect_us": 5561,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1234.739095047177,
+            "drain_us": 829325,
+            "enqueue_us": 162107,
+            "idle_application_tls": 32,
+            "ledger_sha256": "4b05b08266e76b2d05d9480a0afb013285635505ace33570648476b760e8378b",
+            "per_job_effect_to_settlement_us": {
+              "max": 40125,
+              "median": 8126.5,
+              "min": 1764,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 823040,
+                  "256": 219135,
+                  "64": 78723,
+                  "768": 592715,
+                  "960": 767676
+                },
+                "last_64_us": 55364,
+                "middle_512_us": 373580
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 823764,
+                  "256": 220428,
+                  "64": 79797,
+                  "768": 594914,
+                  "960": 770988
+                },
+                "last_64_us": 52776,
+                "middle_512_us": 374486
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 829325,
+                  "256": 228688,
+                  "64": 90469,
+                  "768": 603403,
+                  "960": 777072
+                },
+                "last_64_us": 52253,
+                "middle_512_us": 374715
+              }
+            },
+            "raw_sha256": "2b1301b3995554f363bc728a5ac0270ea871c58a8514c77c6203db6447d30fcb",
+            "submit_jobs_per_s": 1032.8494541229252,
+            "submit_us": 991432,
+            "terminal_xids": 160
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 915,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 862.4501501286517,
+            "drain_us": 1187315,
+            "enqueue_us": 131358,
+            "ledger_sha256": "ada339b12d9066d72455fbe7dd6ed6b3c4333b22c2c342c14e78ce7fd53d4052",
+            "per_job_effect_to_settlement_us": {
+              "max": 55552,
+              "median": 6990.5,
+              "min": 713,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1185388,
+                  "256": 411979,
+                  "64": 166626,
+                  "768": 892762,
+                  "960": 1129373
+                },
+                "last_64_us": 56015,
+                "middle_512_us": 480783
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1186400,
+                  "256": 422096,
+                  "64": 194187,
+                  "768": 904472,
+                  "960": 1140834
+                },
+                "last_64_us": 45566,
+                "middle_512_us": 482376
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1187315,
+                  "256": 427257,
+                  "64": 220167,
+                  "768": 919921,
+                  "960": 1145978
+                },
+                "last_64_us": 41337,
+                "middle_512_us": 492664
+              }
+            },
+            "raw_sha256": "2e8ae1e62efd1fa47c48dc4708eaca5117c66aef56eb5f85de03ecb9c830cf63",
+            "submit_jobs_per_s": 776.5382319953468,
+            "submit_us": 1318673,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 173931,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1100.1383767802045,
+            "drain_us": 930792,
+            "enqueue_us": 90399,
+            "ledger_sha256": "7cef42c8ecfcbb6f6a5ec2ba4b964a0739b452bd72dcb9cf94dc979599c1ab95",
+            "per_job_effect_to_settlement_us": {
+              "max": 288784,
+              "median": 88937.0,
+              "min": 20118,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 754520,
+                  "256": 417902,
+                  "64": 319230,
+                  "768": 618287,
+                  "960": 734794
+                },
+                "last_64_us": 19726,
+                "middle_512_us": 200385
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 756861,
+                  "256": 422999,
+                  "64": 334107,
+                  "768": 628290,
+                  "960": 736945
+                },
+                "last_64_us": 19916,
+                "middle_512_us": 205291
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 930792,
+                  "256": 548453,
+                  "64": 433132,
+                  "768": 707775,
+                  "960": 930792
+                },
+                "last_64_us": 0,
+                "middle_512_us": 159322
+              }
+            },
+            "raw_sha256": "8dae0ff0c7f22e2f4a5af7d6bf21c47a6d9fa18b28aef117c7b54bdcd7fd785a",
+            "submit_jobs_per_s": 1002.7507097105242,
+            "submit_us": 1021191,
+            "terminal_xids": 10
+          }
+        },
+        "warmup": {
+          "apalis-2x32": {
+            "after_last_effect_us": 1874,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1447.7365684967433,
+            "drain_us": 707311,
+            "enqueue_us": 37469,
+            "ledger_sha256": "f0870e64278aee13276722017e3f496085683969ec5f63036ca1a4919443f29f",
+            "per_job_effect_to_settlement_us": {
+              "max": 33570,
+              "median": 14099.5,
+              "min": 1874,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 699162,
+                  "256": 215453,
+                  "64": 75039,
+                  "768": 534678,
+                  "960": 654643
+                },
+                "last_64_us": 44519,
+                "middle_512_us": 319225
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 705437,
+                  "256": 220567,
+                  "64": 92227,
+                  "768": 546236,
+                  "960": 661178
+                },
+                "last_64_us": 44259,
+                "middle_512_us": 325669
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 707311,
+                  "256": 229956,
+                  "64": 106991,
+                  "768": 557280,
+                  "960": 678770
+                },
+                "last_64_us": 28541,
+                "middle_512_us": 327324
+              }
+            },
+            "raw_sha256": "770c9dd223a7c113ab519207592559c4cd5f67b7ef0da1a24230d31d2ef580a8",
+            "submit_jobs_per_s": 1374.9026558178255,
+            "submit_us": 744780,
+            "terminal_xids": 55
+          },
+          "combined": {
+            "after_last_effect_us": 7144,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1229.969454957774,
+            "drain_us": 832541,
+            "enqueue_us": 170702,
+            "idle_application_tls": 32,
+            "ledger_sha256": "1b2a8f914ea184f012da68c942dd3488886e94c846161ccfcc1e12bf18c066a9",
+            "per_job_effect_to_settlement_us": {
+              "max": 36032,
+              "median": 8297.5,
+              "min": 1578,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 824806,
+                  "256": 220393,
+                  "64": 75596,
+                  "768": 588696,
+                  "960": 762162
+                },
+                "last_64_us": 62644,
+                "middle_512_us": 368303
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 825397,
+                  "256": 221693,
+                  "64": 76467,
+                  "768": 591646,
+                  "960": 764084
+                },
+                "last_64_us": 61313,
+                "middle_512_us": 369953
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 832541,
+                  "256": 226956,
+                  "64": 86813,
+                  "768": 597968,
+                  "960": 772228
+                },
+                "last_64_us": 60313,
+                "middle_512_us": 371012
+              }
+            },
+            "raw_sha256": "26778c3540b8612dde482e4960d5d9bd56cd70710fac078a5e1e19961405161b",
+            "submit_jobs_per_s": 1020.6899026457199,
+            "submit_us": 1003243,
+            "terminal_xids": 163
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 1548,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 815.0484691177021,
+            "drain_us": 1256367,
+            "enqueue_us": 173923,
+            "ledger_sha256": "9f449d4b2fe40af9d64b27a8082a1b22d3eb6353836dba4c5ebb297e906004f0",
+            "per_job_effect_to_settlement_us": {
+              "max": 62872,
+              "median": 7071.0,
+              "min": 760,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1249570,
+                  "256": 446598,
+                  "64": 147768,
+                  "768": 954260,
+                  "960": 1187769
+                },
+                "last_64_us": 61801,
+                "middle_512_us": 507662
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1254819,
+                  "256": 458877,
+                  "64": 159146,
+                  "768": 962100,
+                  "960": 1202138
+                },
+                "last_64_us": 52681,
+                "middle_512_us": 503223
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1256367,
+                  "256": 464524,
+                  "64": 175898,
+                  "768": 964877,
+                  "960": 1211488
+                },
+                "last_64_us": 44879,
+                "middle_512_us": 500353
+              }
+            },
+            "raw_sha256": "eee1a26e65942bff42d8050f16abf61cb63669438c09cbdb57411529be2771bf",
+            "submit_jobs_per_s": 715.9387257129673,
+            "submit_us": 1430290,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 145961,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 859.3985385189306,
+            "drain_us": 1191531,
+            "enqueue_us": 82424,
+            "ledger_sha256": "76e6c32bad334660f76768fcdcbe328739af844453bc8adc9f66f26632682087",
+            "per_job_effect_to_settlement_us": {
+              "max": 331577,
+              "median": 87539.5,
+              "min": 19993,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1044402,
+                  "256": 528079,
+                  "64": 367007,
+                  "768": 851454,
+                  "960": 1007675
+                },
+                "last_64_us": 36727,
+                "middle_512_us": 323375
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1045570,
+                  "256": 532081,
+                  "64": 387459,
+                  "768": 857765,
+                  "960": 1015781
+                },
+                "last_64_us": 29789,
+                "middle_512_us": 325684
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1191531,
+                  "256": 604677,
+                  "64": 509684,
+                  "768": 961966,
+                  "960": 1052507
+                },
+                "last_64_us": 139024,
+                "middle_512_us": 357289
+              }
+            },
+            "raw_sha256": "13fb884c00a84e8e1931ffef8a3840dcd38657d680c602fcd19750e73559c648",
+            "submit_jobs_per_s": 803.7960524508322,
+            "submit_us": 1273955,
+            "terminal_xids": 15
+          }
+        }
+      }
+    },
+    "4": {
+      "order": [
+        "river-2x32",
+        "oban-2x32",
+        "combined",
+        "apalis-2x32"
+      ],
+      "phases": {
+        "measured": {
+          "apalis-2x32": {
+            "after_last_effect_us": 7537,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1461.5500994824629,
+            "drain_us": 700626,
+            "enqueue_us": 36737,
+            "ledger_sha256": "a4afa537116d5de2282ab56622629d3618dbf8251ba1f379f9661dec8b98059f",
+            "per_job_effect_to_settlement_us": {
+              "max": 50183,
+              "median": 13562.0,
+              "min": 4555,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 689990,
+                  "256": 197220,
+                  "64": 62793,
+                  "768": 540381,
+                  "960": 643132
+                },
+                "last_64_us": 46858,
+                "middle_512_us": 343161
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 693089,
+                  "256": 200653,
+                  "64": 87664,
+                  "768": 546364,
+                  "960": 653120
+                },
+                "last_64_us": 39969,
+                "middle_512_us": 345711
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 700626,
+                  "256": 212451,
+                  "64": 97115,
+                  "768": 551662,
+                  "960": 671853
+                },
+                "last_64_us": 28773,
+                "middle_512_us": 339211
+              }
+            },
+            "raw_sha256": "0bc33e312b845599bbd8b08268d905fffe21de3b0d856f946717d3d8e1b05591",
+            "submit_jobs_per_s": 1388.732550995914,
+            "submit_us": 737363,
+            "terminal_xids": 54
+          },
+          "combined": {
+            "after_last_effect_us": 6450,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1278.1801909531305,
+            "drain_us": 801139,
+            "enqueue_us": 170453,
+            "idle_application_tls": 32,
+            "ledger_sha256": "d77ab28e94da747a0e098743e0bea1451d23aab2bd583af0746e2e1185300318",
+            "per_job_effect_to_settlement_us": {
+              "max": 29944,
+              "median": 8133.5,
+              "min": 1611,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 793798,
+                  "256": 210395,
+                  "64": 69283,
+                  "768": 582112,
+                  "960": 749107
+                },
+                "last_64_us": 44691,
+                "middle_512_us": 371717
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 794689,
+                  "256": 212053,
+                  "64": 70188,
+                  "768": 583323,
+                  "960": 750005
+                },
+                "last_64_us": 44684,
+                "middle_512_us": 371270
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 801139,
+                  "256": 219497,
+                  "64": 81116,
+                  "768": 599331,
+                  "960": 757225
+                },
+                "last_64_us": 43914,
+                "middle_512_us": 379834
+              }
+            },
+            "raw_sha256": "bcfbcaa72434cca4b7b48946e6f80faee19a4c4eb859737f8ecbb298e5283e6f",
+            "submit_jobs_per_s": 1053.9403370962298,
+            "submit_us": 971592,
+            "terminal_xids": 156
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 1689,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 864.2203491821556,
+            "drain_us": 1184883,
+            "enqueue_us": 142419,
+            "ledger_sha256": "1c260b2afc101d5c36812de18f89c4913afcea21a52812fe12979cd6d01b9b7e",
+            "per_job_effect_to_settlement_us": {
+              "max": 44969,
+              "median": 7348.5,
+              "min": 1030,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1179569,
+                  "256": 399584,
+                  "64": 158186,
+                  "768": 906873,
+                  "960": 1111287
+                },
+                "last_64_us": 68282,
+                "middle_512_us": 507289
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1183194,
+                  "256": 415046,
+                  "64": 170852,
+                  "768": 913760,
+                  "960": 1130098
+                },
+                "last_64_us": 53096,
+                "middle_512_us": 498714
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1184883,
+                  "256": 421836,
+                  "64": 180320,
+                  "768": 919847,
+                  "960": 1139962
+                },
+                "last_64_us": 44921,
+                "middle_512_us": 498011
+              }
+            },
+            "raw_sha256": "405fbb302bd12985fe3d8068982905e19711f7ad40dabe5c34f3f68992be1375",
+            "submit_jobs_per_s": 771.4898342652991,
+            "submit_us": 1327302,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 208803,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "drain_jobs_per_s": 1077.2427215106645,
+            "drain_us": 950575,
+            "enqueue_us": 74682,
+            "ledger_sha256": "ecf33f6455df404fa98d5ca8335d5cf1f9f755e8159f68d2792e0274081f9489",
+            "per_job_effect_to_settlement_us": {
+              "max": 263816,
+              "median": 68957.0,
+              "min": 13591,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 740988,
+                  "256": 383986,
+                  "64": 281905,
+                  "768": 607400,
+                  "960": 718818
+                },
+                "last_64_us": 22170,
+                "middle_512_us": 223414
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 741772,
+                  "256": 390475,
+                  "64": 299295,
+                  "768": 613911,
+                  "960": 721834
+                },
+                "last_64_us": 19938,
+                "middle_512_us": 223436
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 950575,
+                  "256": 459964,
+                  "64": 411418,
+                  "768": 679021,
+                  "960": 947804
+                },
+                "last_64_us": 2771,
+                "middle_512_us": 219057
+              }
+            },
+            "raw_sha256": "ad423eea9e8892791610dd15b67ffb79c5fecf397bca08f5d619099c1a9a1fa7",
+            "submit_jobs_per_s": 998.773965942198,
+            "submit_us": 1025257,
+            "terminal_xids": 14
+          }
+        },
+        "warmup": {
+          "apalis-2x32": {
+            "after_last_effect_us": 8581,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1248.4835923164612,
+            "drain_us": 820195,
+            "enqueue_us": 42986,
+            "ledger_sha256": "1f8a64257517ffbdc8a45ed1b13422304dc2bc0b2f76c90bf7b3c7c6aa9d25a9",
+            "per_job_effect_to_settlement_us": {
+              "max": 58181,
+              "median": 14980.5,
+              "min": 3846,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 799324,
+                  "256": 217814,
+                  "64": 71119,
+                  "768": 623346,
+                  "960": 759611
+                },
+                "last_64_us": 39713,
+                "middle_512_us": 405532
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 811614,
+                  "256": 228711,
+                  "64": 89179,
+                  "768": 627215,
+                  "960": 765728
+                },
+                "last_64_us": 45886,
+                "middle_512_us": 398504
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 820195,
+                  "256": 239933,
+                  "64": 102787,
+                  "768": 635687,
+                  "960": 772661
+                },
+                "last_64_us": 47534,
+                "middle_512_us": 395754
+              }
+            },
+            "raw_sha256": "d64d485291940558a907fa6239fda6a0c596b81c9196bf39e8b32bf4de05a9e6",
+            "submit_jobs_per_s": 1186.3097079291597,
+            "submit_us": 863181,
+            "terminal_xids": 57
+          },
+          "combined": {
+            "after_last_effect_us": 7239,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1223.4783585317305,
+            "drain_us": 836958,
+            "enqueue_us": 163473,
+            "idle_application_tls": 32,
+            "ledger_sha256": "1b9c9fa52eaeaa614d751a817f861a6891dd78567e95005a029de2918d1fd2b2",
+            "per_job_effect_to_settlement_us": {
+              "max": 39757,
+              "median": 8011.0,
+              "min": 1561,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 829320,
+                  "256": 211656,
+                  "64": 63221,
+                  "768": 592900,
+                  "960": 762921
+                },
+                "last_64_us": 66399,
+                "middle_512_us": 381244
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 829719,
+                  "256": 213954,
+                  "64": 64912,
+                  "768": 594136,
+                  "960": 763940
+                },
+                "last_64_us": 65779,
+                "middle_512_us": 380182
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 836958,
+                  "256": 222545,
+                  "64": 70100,
+                  "768": 599502,
+                  "960": 772226
+                },
+                "last_64_us": 64732,
+                "middle_512_us": 376957
+              }
+            },
+            "raw_sha256": "1af72fe268a4e6254f4c360fa47a5687d3f4cf9f4f2b6b1d1f7e3aefd08111aa",
+            "submit_jobs_per_s": 1023.5588461373148,
+            "submit_us": 1000431,
+            "terminal_xids": 162
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 1534,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 847.3804854232351,
+            "drain_us": 1208430,
+            "enqueue_us": 144835,
+            "ledger_sha256": "76079fa9e716bc23e96fbbf9fbee1178fb281d5ca801242a47af30fa67a1b687",
+            "per_job_effect_to_settlement_us": {
+              "max": 44062,
+              "median": 7736.0,
+              "min": 889,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1198209,
+                  "256": 420069,
+                  "64": 195123,
+                  "768": 930203,
+                  "960": 1126346
+                },
+                "last_64_us": 71863,
+                "middle_512_us": 510134
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1206896,
+                  "256": 433329,
+                  "64": 200549,
+                  "768": 935918,
+                  "960": 1138578
+                },
+                "last_64_us": 68318,
+                "middle_512_us": 502589
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1208430,
+                  "256": 445090,
+                  "64": 205376,
+                  "768": 940249,
+                  "960": 1143741
+                },
+                "last_64_us": 64689,
+                "middle_512_us": 495159
+              }
+            },
+            "raw_sha256": "04bc7304bfd4a46ec4470a37057b98087c12c36fe7e024da0aa71f9bdbe56f6f",
+            "submit_jobs_per_s": 756.6884534810255,
+            "submit_us": 1353265,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 237589,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "drain_jobs_per_s": 1084.1106851600705,
+            "drain_us": 944553,
+            "enqueue_us": 76410,
+            "ledger_sha256": "c2a9fa41cefe2169fbb43e4f93473769c9d185bd4394babbbe86ccf08ef3ff56",
+            "per_job_effect_to_settlement_us": {
+              "max": 273115,
+              "median": 75483.0,
+              "min": 14684,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 704038,
+                  "256": 381988,
+                  "64": 271096,
+                  "768": 590034,
+                  "960": 659731
+                },
+                "last_64_us": 44307,
+                "middle_512_us": 208046
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 706964,
+                  "256": 386374,
+                  "64": 279978,
+                  "768": 591799,
+                  "960": 662870
+                },
+                "last_64_us": 44094,
+                "middle_512_us": 205425
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 944553,
+                  "256": 488828,
+                  "64": 421099,
+                  "768": 709888,
+                  "960": 711016
+                },
+                "last_64_us": 233537,
+                "middle_512_us": 221060
+              }
+            },
+            "raw_sha256": "844ac1ff167eb90e214cff0a6fabe20553d1160526ccedf587d72c4236258713",
+            "submit_jobs_per_s": 1002.9746425678502,
+            "submit_us": 1020963,
+            "terminal_xids": 12
+          }
+        }
+      }
+    },
+    "5": {
+      "order": [
+        "oban-2x32",
+        "apalis-2x32",
+        "river-2x32",
+        "combined"
+      ],
+      "phases": {
+        "measured": {
+          "apalis-2x32": {
+            "after_last_effect_us": 3557,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1458.7434862259856,
+            "drain_us": 701974,
+            "enqueue_us": 37818,
+            "ledger_sha256": "71e85b9eac47c1435bae222a095f11ba0ac20a59a929a2fd05cd43da9aa14204",
+            "per_job_effect_to_settlement_us": {
+              "max": 49935,
+              "median": 13364.5,
+              "min": 3557,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 695857,
+                  "256": 203052,
+                  "64": 82400,
+                  "768": 555728,
+                  "960": 646495
+                },
+                "last_64_us": 49362,
+                "middle_512_us": 352676
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 698417,
+                  "256": 210491,
+                  "64": 99412,
+                  "768": 559085,
+                  "960": 649365
+                },
+                "last_64_us": 49052,
+                "middle_512_us": 348594
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 701974,
+                  "256": 227597,
+                  "64": 107701,
+                  "768": 570260,
+                  "960": 658363
+                },
+                "last_64_us": 43611,
+                "middle_512_us": 342663
+              }
+            },
+            "raw_sha256": "8095b8dccf41133d518177a3f62cd8d07810a3751bb373c37f624bd88ea2e99a",
+            "submit_jobs_per_s": 1384.172848584467,
+            "submit_us": 739792,
+            "terminal_xids": 56
+          },
+          "combined": {
+            "after_last_effect_us": 4438,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1207.4930604524798,
+            "drain_us": 848038,
+            "enqueue_us": 165648,
+            "idle_application_tls": 32,
+            "ledger_sha256": "8688404cdee35c040a8d320e3903ddf266fc71dedd0cc3ce72392a50ec4a739d",
+            "per_job_effect_to_settlement_us": {
+              "max": 39292,
+              "median": 8298.0,
+              "min": 1679,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 843180,
+                  "256": 221114,
+                  "64": 69581,
+                  "768": 607774,
+                  "960": 775176
+                },
+                "last_64_us": 68004,
+                "middle_512_us": 386660
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 843600,
+                  "256": 222317,
+                  "64": 70541,
+                  "768": 608510,
+                  "960": 776255
+                },
+                "last_64_us": 67345,
+                "middle_512_us": 386193
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 848038,
+                  "256": 231973,
+                  "64": 80350,
+                  "768": 620045,
+                  "960": 785541
+                },
+                "last_64_us": 62497,
+                "middle_512_us": 388072
+              }
+            },
+            "raw_sha256": "d10a9894de34bb4a9033820b88e24e970383395726fd8130da0d41e552912a05",
+            "submit_jobs_per_s": 1010.1747483934868,
+            "submit_us": 1013686,
+            "terminal_xids": 165
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 6060,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 864.6954313006236,
+            "drain_us": 1184232,
+            "enqueue_us": 159130,
+            "ledger_sha256": "68bcaa579035917f1a5f93c11ebee9edcfaa53e1e4d3196832009f5dfd7dc7cf",
+            "per_job_effect_to_settlement_us": {
+              "max": 61391,
+              "median": 7665.0,
+              "min": 823,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1172234,
+                  "256": 406849,
+                  "64": 147942,
+                  "768": 895350,
+                  "960": 1112039
+                },
+                "last_64_us": 60195,
+                "middle_512_us": 488501
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1178172,
+                  "256": 418040,
+                  "64": 158882,
+                  "768": 906074,
+                  "960": 1122664
+                },
+                "last_64_us": 55508,
+                "middle_512_us": 488034
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1184232,
+                  "256": 421947,
+                  "64": 167107,
+                  "768": 912589,
+                  "960": 1126289
+                },
+                "last_64_us": 57943,
+                "middle_512_us": 490642
+              }
+            },
+            "raw_sha256": "d2068666b980ab8c0626e30bbc41eb9bd2fefd369b21ff6f625701b50712764c",
+            "submit_jobs_per_s": 762.266611680247,
+            "submit_us": 1343362,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 199885,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1083.775645740836,
+            "drain_us": 944845,
+            "enqueue_us": 75016,
+            "ledger_sha256": "398b8bcffee4968bcb0914f682c38b195b6445cbff3ecb52b2e8f96bbe0b36f1",
+            "per_job_effect_to_settlement_us": {
+              "max": 297183,
+              "median": 81956.0,
+              "min": 18964,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 741934,
+                  "256": 385764,
+                  "64": 261267,
+                  "768": 614553,
+                  "960": 688166
+                },
+                "last_64_us": 53768,
+                "middle_512_us": 228789
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 744960,
+                  "256": 387456,
+                  "64": 277451,
+                  "768": 619759,
+                  "960": 694968
+                },
+                "last_64_us": 49992,
+                "middle_512_us": 232303
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 944845,
+                  "256": 471896,
+                  "64": 415003,
+                  "768": 672634,
+                  "960": 798412
+                },
+                "last_64_us": 146433,
+                "middle_512_us": 200738
+              }
+            },
+            "raw_sha256": "48e7c64719190f22dc4b78abeb4b953fbd5e18f616f0e2f3d69eed2dc892ffbc",
+            "submit_jobs_per_s": 1004.0583961932067,
+            "submit_us": 1019861,
+            "terminal_xids": 12
+          }
+        },
+        "warmup": {
+          "apalis-2x32": {
+            "after_last_effect_us": 4661,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1538.207327514984,
+            "drain_us": 665710,
+            "enqueue_us": 45934,
+            "ledger_sha256": "e693119feff719997099e64b0afee73202a7bb43568f8ed2d23605fde4c6a003",
+            "per_job_effect_to_settlement_us": {
+              "max": 45969,
+              "median": 13790.5,
+              "min": 4661,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 657178,
+                  "256": 199157,
+                  "64": 73502,
+                  "768": 532140,
+                  "960": 622418
+                },
+                "last_64_us": 34760,
+                "middle_512_us": 332983
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 661049,
+                  "256": 203035,
+                  "64": 85189,
+                  "768": 536443,
+                  "960": 625749
+                },
+                "last_64_us": 35300,
+                "middle_512_us": 333408
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 665710,
+                  "256": 212622,
+                  "64": 95171,
+                  "768": 557143,
+                  "960": 636389
+                },
+                "last_64_us": 29321,
+                "middle_512_us": 344521
+              }
+            },
+            "raw_sha256": "af4e69ad630a2962cb8d9a9895307f146a62f68d9f97018a08b9de3145b5e208",
+            "submit_jobs_per_s": 1438.9217080450337,
+            "submit_us": 711644,
+            "terminal_xids": 57
+          },
+          "combined": {
+            "after_last_effect_us": 7707,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1204.0896717562189,
+            "drain_us": 850435,
+            "enqueue_us": 194910,
+            "idle_application_tls": 32,
+            "ledger_sha256": "aaff26578845775d2a98e1c03dc0fdbb56e27fc6177bf6b026fe34cda6337ee5",
+            "per_job_effect_to_settlement_us": {
+              "max": 42964,
+              "median": 8067.0,
+              "min": 1557,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 841707,
+                  "256": 244467,
+                  "64": 83702,
+                  "768": 612842,
+                  "960": 788989
+                },
+                "last_64_us": 52718,
+                "middle_512_us": 368375
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 842728,
+                  "256": 245238,
+                  "64": 85070,
+                  "768": 614230,
+                  "960": 790259
+                },
+                "last_64_us": 52469,
+                "middle_512_us": 368992
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 850435,
+                  "256": 257510,
+                  "64": 92387,
+                  "768": 623847,
+                  "960": 796575
+                },
+                "last_64_us": 53860,
+                "middle_512_us": 366337
+              }
+            },
+            "raw_sha256": "b88d448f80a34be47757b4fcc43d7240fb0fff26994e118c0821554cb4736a97",
+            "submit_jobs_per_s": 979.5809039121056,
+            "submit_us": 1045345,
+            "terminal_xids": 163
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 3613,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 801.7594862475542,
+            "drain_us": 1277191,
+            "enqueue_us": 152218,
+            "ledger_sha256": "c792f8dec749d3e126c1c49493d39a3a47f8ebc29c7663de6b210032fe1ac5b6",
+            "per_job_effect_to_settlement_us": {
+              "max": 75123,
+              "median": 6674.5,
+              "min": 789,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1266938,
+                  "256": 467656,
+                  "64": 177302,
+                  "768": 949917,
+                  "960": 1202129
+                },
+                "last_64_us": 64809,
+                "middle_512_us": 482261
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1273578,
+                  "256": 478490,
+                  "64": 238889,
+                  "768": 963741,
+                  "960": 1207228
+                },
+                "last_64_us": 66350,
+                "middle_512_us": 485251
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1277191,
+                  "256": 486845,
+                  "64": 276821,
+                  "768": 972804,
+                  "960": 1220182
+                },
+                "last_64_us": 57009,
+                "middle_512_us": 485959
+              }
+            },
+            "raw_sha256": "1c8ad6b72624d26d23d1b539fe38b4ddd7864a9799c423d5518cc72861020acf",
+            "submit_jobs_per_s": 716.3799864139655,
+            "submit_us": 1429409,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 201297,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 67
+            },
+            "drain_jobs_per_s": 1092.718906598144,
+            "drain_us": 937112,
+            "enqueue_us": 85334,
+            "ledger_sha256": "366fb1692db9e8e58c0b4729055dbc4eb48ef4e7484ee97b192f0d1a142d99c0",
+            "per_job_effect_to_settlement_us": {
+              "max": 291523,
+              "median": 80498.0,
+              "min": 14587,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 734992,
+                  "256": 390708,
+                  "64": 291739,
+                  "768": 603146,
+                  "960": 704442
+                },
+                "last_64_us": 30550,
+                "middle_512_us": 212438
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 735815,
+                  "256": 400064,
+                  "64": 305443,
+                  "768": 605355,
+                  "960": 711754
+                },
+                "last_64_us": 24061,
+                "middle_512_us": 205291
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 937112,
+                  "256": 471868,
+                  "64": 402048,
+                  "768": 673821,
+                  "960": 742615
+                },
+                "last_64_us": 194497,
+                "middle_512_us": 201953
+              }
+            },
+            "raw_sha256": "edc4dea672fbdbe8e6f28a3faaf5b542135e36c7335b55c3bc430f5decc1c7e3",
+            "submit_jobs_per_s": 1001.5198846687258,
+            "submit_us": 1022446,
+            "terminal_xids": 12
+          }
+        }
+      }
+    },
+    "6": {
+      "order": [
+        "apalis-2x32",
+        "combined",
+        "oban-2x32",
+        "river-2x32"
+      ],
+      "phases": {
+        "measured": {
+          "apalis-2x32": {
+            "after_last_effect_us": 8647,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1366.7182745181785,
+            "drain_us": 749240,
+            "enqueue_us": 39590,
+            "ledger_sha256": "539055ce4bedd2da7fc54cd5dc7f7a4c1366c24e7403fba6d938be9be7c2779a",
+            "per_job_effect_to_settlement_us": {
+              "max": 45496,
+              "median": 15201.0,
+              "min": 4329,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 736718,
+                  "256": 220110,
+                  "64": 83699,
+                  "768": 588098,
+                  "960": 693955
+                },
+                "last_64_us": 42763,
+                "middle_512_us": 367988
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 740593,
+                  "256": 221755,
+                  "64": 94962,
+                  "768": 592420,
+                  "960": 700572
+                },
+                "last_64_us": 40021,
+                "middle_512_us": 370665
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 749240,
+                  "256": 230304,
+                  "64": 110733,
+                  "768": 601277,
+                  "960": 719830
+                },
+                "last_64_us": 29410,
+                "middle_512_us": 370973
+              }
+            },
+            "raw_sha256": "84eae42b0fd35a7e7094f26aefa7f88af5a475de03fd5286319c3274a5465a4a",
+            "submit_jobs_per_s": 1298.12507130814,
+            "submit_us": 788830,
+            "terminal_xids": 56
+          },
+          "combined": {
+            "after_last_effect_us": 6353,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1216.9585069440318,
+            "drain_us": 841442,
+            "enqueue_us": 161829,
+            "idle_application_tls": 32,
+            "ledger_sha256": "2b076968fe8e34ae91da05908a6fe6252948ab948b417d98d476ecddd04517c4",
+            "per_job_effect_to_settlement_us": {
+              "max": 31061,
+              "median": 8437.5,
+              "min": 1688,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 834536,
+                  "256": 213877,
+                  "64": 68062,
+                  "768": 603034,
+                  "960": 778675
+                },
+                "last_64_us": 55861,
+                "middle_512_us": 389157
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 835089,
+                  "256": 214866,
+                  "64": 68537,
+                  "768": 604059,
+                  "960": 782185
+                },
+                "last_64_us": 52904,
+                "middle_512_us": 389193
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 841442,
+                  "256": 223623,
+                  "64": 72068,
+                  "768": 615978,
+                  "960": 792109
+                },
+                "last_64_us": 49333,
+                "middle_512_us": 392355
+              }
+            },
+            "raw_sha256": "adc87db146dc1985a538f025fafbc46863b814728705bafce5d900c092b6ff12",
+            "submit_jobs_per_s": 1020.6614165066069,
+            "submit_us": 1003271,
+            "terminal_xids": 161
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 2648,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 861.9412533164536,
+            "drain_us": 1188016,
+            "enqueue_us": 133820,
+            "ledger_sha256": "aeb9c6cb655fc8bb8ffbdf63f0a1c5c27b46881b72ab6b7ef05d417cb58f6aeb",
+            "per_job_effect_to_settlement_us": {
+              "max": 42257,
+              "median": 7184.0,
+              "min": 973,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1174583,
+                  "256": 442512,
+                  "64": 195059,
+                  "768": 913753,
+                  "960": 1125531
+                },
+                "last_64_us": 49052,
+                "middle_512_us": 471241
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1185368,
+                  "256": 447711,
+                  "64": 217490,
+                  "768": 923524,
+                  "960": 1131827
+                },
+                "last_64_us": 53541,
+                "middle_512_us": 475813
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1188016,
+                  "256": 455456,
+                  "64": 243007,
+                  "768": 930033,
+                  "960": 1141920
+                },
+                "last_64_us": 46096,
+                "middle_512_us": 474577
+              }
+            },
+            "raw_sha256": "cd89e47198e8508779afbef973cdcc68cc64e1e96433d7b183df68b345925335",
+            "submit_jobs_per_s": 774.680066210937,
+            "submit_us": 1321836,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 190920,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "drain_jobs_per_s": 1079.2818981027194,
+            "drain_us": 948779,
+            "enqueue_us": 75686,
+            "ledger_sha256": "e1547a6d06e4c8d5a2c96f48cd8225931dcbe48fc8c5e199ab25b1ebbeedc97a",
+            "per_job_effect_to_settlement_us": {
+              "max": 257251,
+              "median": 76815.5,
+              "min": 12266,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 755593,
+                  "256": 388829,
+                  "64": 294231,
+                  "768": 620724,
+                  "960": 698321
+                },
+                "last_64_us": 57272,
+                "middle_512_us": 231895
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 757859,
+                  "256": 392288,
+                  "64": 301650,
+                  "768": 625573,
+                  "960": 702498
+                },
+                "last_64_us": 55361,
+                "middle_512_us": 233285
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 948779,
+                  "256": 453003,
+                  "64": 407841,
+                  "768": 716862,
+                  "960": 948396
+                },
+                "last_64_us": 383,
+                "middle_512_us": 263859
+              }
+            },
+            "raw_sha256": "ff0fcbfc1833e7c45750fd6d25c8a1cde8969b687ee1ffd2c751006ead69098e",
+            "submit_jobs_per_s": 999.5461045521321,
+            "submit_us": 1024465,
+            "terminal_xids": 13
+          }
+        },
+        "warmup": {
+          "apalis-2x32": {
+            "after_last_effect_us": 5459,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1463.1748608269224,
+            "drain_us": 699848,
+            "enqueue_us": 39145,
+            "ledger_sha256": "20bc5a4ebf4b877e716140eb2f8840943e374f994fb82b45109655cbc964a55d",
+            "per_job_effect_to_settlement_us": {
+              "max": 38665,
+              "median": 14986.0,
+              "min": 4492,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 688817,
+                  "256": 202791,
+                  "64": 73428,
+                  "768": 535067,
+                  "960": 641305
+                },
+                "last_64_us": 47512,
+                "middle_512_us": 332276
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 694389,
+                  "256": 209440,
+                  "64": 80525,
+                  "768": 538439,
+                  "960": 648374
+                },
+                "last_64_us": 46015,
+                "middle_512_us": 328999
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 699848,
+                  "256": 220822,
+                  "64": 93122,
+                  "768": 544024,
+                  "960": 656241
+                },
+                "last_64_us": 43607,
+                "middle_512_us": 323202
+              }
+            },
+            "raw_sha256": "2a9e059071c60cc632c347ab7502048ba93924c0bd792ff25115e0af73f14c17",
+            "submit_jobs_per_s": 1385.6694177076101,
+            "submit_us": 738993,
+            "terminal_xids": 54
+          },
+          "combined": {
+            "after_last_effect_us": 10791,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1222.3464994216533,
+            "drain_us": 837733,
+            "enqueue_us": 160490,
+            "idle_application_tls": 32,
+            "ledger_sha256": "64718a22f61cd46771920c0f3fb756b4dd11da321d54367a4b20f4abf30b34fa",
+            "per_job_effect_to_settlement_us": {
+              "max": 40332,
+              "median": 7968.5,
+              "min": 1536,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 826495,
+                  "256": 227968,
+                  "64": 72005,
+                  "768": 608460,
+                  "960": 779478
+                },
+                "last_64_us": 47017,
+                "middle_512_us": 380492
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 826942,
+                  "256": 229152,
+                  "64": 73061,
+                  "768": 609597,
+                  "960": 781973
+                },
+                "last_64_us": 44969,
+                "middle_512_us": 380445
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 837733,
+                  "256": 235941,
+                  "64": 79201,
+                  "768": 622072,
+                  "960": 791232
+                },
+                "last_64_us": 46501,
+                "middle_512_us": 386131
+              }
+            },
+            "raw_sha256": "2dcedd08d15d0fa727ff66b8054b69d858b592a937b6e3d05ce88ceb2275da54",
+            "submit_jobs_per_s": 1025.82288727068,
+            "submit_us": 998223,
+            "terminal_xids": 158
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 1489,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 869.4160818202041,
+            "drain_us": 1177802,
+            "enqueue_us": 136491,
+            "ledger_sha256": "7424a6516eb64aa0188fd06d6226f6b46ba5a90aea63bd861cf35bb2d099d47c",
+            "per_job_effect_to_settlement_us": {
+              "max": 60994,
+              "median": 6871.5,
+              "min": 809,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1172599,
+                  "256": 409405,
+                  "64": 148314,
+                  "768": 896779,
+                  "960": 1102266
+                },
+                "last_64_us": 70333,
+                "middle_512_us": 487374
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1176313,
+                  "256": 417641,
+                  "64": 162184,
+                  "768": 903765,
+                  "960": 1119053
+                },
+                "last_64_us": 57260,
+                "middle_512_us": 486124
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1177802,
+                  "256": 424590,
+                  "64": 167555,
+                  "768": 908639,
+                  "960": 1127395
+                },
+                "last_64_us": 50407,
+                "middle_512_us": 484049
+              }
+            },
+            "raw_sha256": "eb650a424721f8ab8e46801b3b25bed7f132bbf3fa4ad9e83627df15b90fa6a3",
+            "submit_jobs_per_s": 779.1261157139238,
+            "submit_us": 1314293,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 189813,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1077.2755868732286,
+            "drain_us": 950546,
+            "enqueue_us": 75947,
+            "ledger_sha256": "87d77f934f53b9f5ff827b1810e99f47457873e253ea934879f651485e71c939",
+            "per_job_effect_to_settlement_us": {
+              "max": 335144,
+              "median": 90558.5,
+              "min": 17412,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 759870,
+                  "256": 408664,
+                  "64": 289739,
+                  "768": 627793,
+                  "960": 734556
+                },
+                "last_64_us": 25314,
+                "middle_512_us": 219129
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 760733,
+                  "256": 413955,
+                  "64": 310179,
+                  "768": 633158,
+                  "960": 744836
+                },
+                "last_64_us": 15897,
+                "middle_512_us": 219203
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 950546,
+                  "256": 483849,
+                  "64": 474689,
+                  "768": 703731,
+                  "960": 800828
+                },
+                "last_64_us": 149718,
+                "middle_512_us": 219882
+              }
+            },
+            "raw_sha256": "40e35deab79df41e68549df2127c1d7dbba546263065e739c74f15d035d83c60",
+            "submit_jobs_per_s": 997.571342425131,
+            "submit_us": 1026493,
+            "terminal_xids": 10
+          }
+        }
+      }
+    },
+    "7": {
+      "order": [
+        "oban-2x32",
+        "apalis-2x32",
+        "river-2x32",
+        "combined"
+      ],
+      "phases": {
+        "measured": {
+          "apalis-2x32": {
+            "after_last_effect_us": 6262,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1393.6959755667674,
+            "drain_us": 734737,
+            "enqueue_us": 37895,
+            "ledger_sha256": "456637ee63bac51b41a590e83119d2160a5eccac558471799b77a4c6f53d5c3d",
+            "per_job_effect_to_settlement_us": {
+              "max": 49632,
+              "median": 13919.5,
+              "min": 3346,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 725401,
+                  "256": 210771,
+                  "64": 68976,
+                  "768": 564220,
+                  "960": 696896
+                },
+                "last_64_us": 28505,
+                "middle_512_us": 353449
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 728475,
+                  "256": 216394,
+                  "64": 80553,
+                  "768": 566737,
+                  "960": 700754
+                },
+                "last_64_us": 27721,
+                "middle_512_us": 350343
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 734737,
+                  "256": 222792,
+                  "64": 98637,
+                  "768": 582681,
+                  "960": 712835
+                },
+                "last_64_us": 21902,
+                "middle_512_us": 359889
+              }
+            },
+            "raw_sha256": "2326762846506dfb55c697908f5aab72fd50422c250a08c6a73a9d0f17093a7d",
+            "submit_jobs_per_s": 1325.339877198977,
+            "submit_us": 772632,
+            "terminal_xids": 56
+          },
+          "combined": {
+            "after_last_effect_us": 3603,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1181.9525995454562,
+            "drain_us": 866363,
+            "enqueue_us": 172296,
+            "idle_application_tls": 32,
+            "ledger_sha256": "9525f93a72b2822e5e660618605a078c653a06ded1e1c3e09011b78174433ed1",
+            "per_job_effect_to_settlement_us": {
+              "max": 41243,
+              "median": 8391.5,
+              "min": 1560,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 862356,
+                  "256": 216850,
+                  "64": 65003,
+                  "768": 634838,
+                  "960": 799593
+                },
+                "last_64_us": 62763,
+                "middle_512_us": 417988
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 862760,
+                  "256": 217835,
+                  "64": 66269,
+                  "768": 635832,
+                  "960": 802416
+                },
+                "last_64_us": 60344,
+                "middle_512_us": 417997
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 866363,
+                  "256": 224793,
+                  "64": 75403,
+                  "768": 646253,
+                  "960": 809461
+                },
+                "last_64_us": 56902,
+                "middle_512_us": 421460
+              }
+            },
+            "raw_sha256": "fa27e1e774e74e072baaec6b72ab74d9c5ffd4d6a7f5b13185c48babfbd9f127",
+            "submit_jobs_per_s": 985.886609560982,
+            "submit_us": 1038659,
+            "terminal_xids": 165
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 2013,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 878.5393596786467,
+            "drain_us": 1165571,
+            "enqueue_us": 135609,
+            "ledger_sha256": "bf533ff54de99c653008eff18416604d109f4cc314658658801894f85930725a",
+            "per_job_effect_to_settlement_us": {
+              "max": 43871,
+              "median": 6325.5,
+              "min": 750,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1157077,
+                  "256": 403384,
+                  "64": 155591,
+                  "768": 906601,
+                  "960": 1097392
+                },
+                "last_64_us": 59685,
+                "middle_512_us": 503217
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1163558,
+                  "256": 409610,
+                  "64": 159417,
+                  "768": 910701,
+                  "960": 1109275
+                },
+                "last_64_us": 54283,
+                "middle_512_us": 501091
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1165571,
+                  "256": 421555,
+                  "64": 165089,
+                  "768": 922208,
+                  "960": 1115040
+                },
+                "last_64_us": 50531,
+                "middle_512_us": 500653
+              }
+            },
+            "raw_sha256": "93d4c5959e4906c7bbabf327bdedb2e07e90740db04a8f9a1d03cea9193d886a",
+            "submit_jobs_per_s": 786.9779738391306,
+            "submit_us": 1301180,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 210062,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 67
+            },
+            "drain_jobs_per_s": 1083.1359748170885,
+            "drain_us": 945403,
+            "enqueue_us": 74918,
+            "ledger_sha256": "42a105726ab23f032675b997f9e86b1c2a88625fb130a2893ca33051b32d33f1",
+            "per_job_effect_to_settlement_us": {
+              "max": 275835,
+              "median": 83485.0,
+              "min": 17863,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 730832,
+                  "256": 383742,
+                  "64": 284058,
+                  "768": 597238,
+                  "960": 676099
+                },
+                "last_64_us": 54733,
+                "middle_512_us": 213496
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 735341,
+                  "256": 388323,
+                  "64": 293104,
+                  "768": 602706,
+                  "960": 682265
+                },
+                "last_64_us": 53076,
+                "middle_512_us": 214383
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 945403,
+                  "256": 478454,
+                  "64": 439784,
+                  "768": 665430,
+                  "960": 707271
+                },
+                "last_64_us": 238132,
+                "middle_512_us": 186976
+              }
+            },
+            "raw_sha256": "556257eb24ad8fe628f7c2f57ddb4714d9ad3b0bb92ab71b0f8b11febce132dc",
+            "submit_jobs_per_s": 1003.6057280012859,
+            "submit_us": 1020321,
+            "terminal_xids": 12
+          }
+        },
+        "warmup": {
+          "apalis-2x32": {
+            "after_last_effect_us": 6605,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 1397.4352150944837,
+            "drain_us": 732771,
+            "enqueue_us": 44962,
+            "ledger_sha256": "6aa2475b45707a702da99e5ab3b848cff7c7ac1a6a245117203cacdb17de15b1",
+            "per_job_effect_to_settlement_us": {
+              "max": 45220,
+              "median": 14025.0,
+              "min": 3583,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 724902,
+                  "256": 233708,
+                  "64": 52986,
+                  "768": 575737,
+                  "960": 674118
+                },
+                "last_64_us": 50784,
+                "middle_512_us": 342029
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 726166,
+                  "256": 237740,
+                  "64": 78999,
+                  "768": 579885,
+                  "960": 680321
+                },
+                "last_64_us": 45845,
+                "middle_512_us": 342145
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 732771,
+                  "256": 252614,
+                  "64": 90225,
+                  "768": 590516,
+                  "960": 697723
+                },
+                "last_64_us": 35048,
+                "middle_512_us": 337902
+              }
+            },
+            "raw_sha256": "e4c3af1491a2f1af11e299d9ba3accbd5937d0f257d4909aa2eea695f351397e",
+            "submit_jobs_per_s": 1316.6472298333747,
+            "submit_us": 777733,
+            "terminal_xids": 53
+          },
+          "combined": {
+            "after_last_effect_us": 9250,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "drain_jobs_per_s": 1148.848851207245,
+            "drain_us": 891327,
+            "enqueue_us": 160251,
+            "idle_application_tls": 32,
+            "ledger_sha256": "2f124880b1b381ca1f4952aa1ed18eb843f6f35daec108bd87389e5c0e58f2da",
+            "per_job_effect_to_settlement_us": {
+              "max": 39087,
+              "median": 8996.0,
+              "min": 1733,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 880808,
+                  "256": 221507,
+                  "64": 73012,
+                  "768": 603919,
+                  "960": 817670
+                },
+                "last_64_us": 63138,
+                "middle_512_us": 382412
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 882077,
+                  "256": 222263,
+                  "64": 74143,
+                  "768": 605842,
+                  "960": 818554
+                },
+                "last_64_us": 63523,
+                "middle_512_us": 383579
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 891327,
+                  "256": 229412,
+                  "64": 79738,
+                  "768": 614094,
+                  "960": 826687
+                },
+                "last_64_us": 64640,
+                "middle_512_us": 384682
+              }
+            },
+            "raw_sha256": "3de972d9a5f23b7ee922861f182a535fbcf8a2ab6320246eaa1a644ac49e16a3",
+            "submit_jobs_per_s": 973.7746510482342,
+            "submit_us": 1051578,
+            "terminal_xids": 169
+          },
+          "oban-2x32": {
+            "after_last_effect_us": 1341,
+            "connections": {
+              "idle": [
+                69,
+                69
+              ],
+              "last_idle": 69,
+              "peak": 69
+            },
+            "drain_jobs_per_s": 826.2422277556066,
+            "drain_us": 1239346,
+            "enqueue_us": 145314,
+            "ledger_sha256": "e816903aeca9f43b4d59fd68830c804e09eeeb1ff27fe4f3bdeb440d213c69c9",
+            "per_job_effect_to_settlement_us": {
+              "max": 72832,
+              "median": 6991.0,
+              "min": 1078,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1237420,
+                  "256": 461719,
+                  "64": 179246,
+                  "768": 969989,
+                  "960": 1188736
+                },
+                "last_64_us": 48684,
+                "middle_512_us": 508270
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1238005,
+                  "256": 473526,
+                  "64": 216267,
+                  "768": 974574,
+                  "960": 1193878
+                },
+                "last_64_us": 44127,
+                "middle_512_us": 501048
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1239346,
+                  "256": 488731,
+                  "64": 257794,
+                  "768": 980818,
+                  "960": 1196413
+                },
+                "last_64_us": 42933,
+                "middle_512_us": 492087
+              }
+            },
+            "raw_sha256": "9056a53572c592fda7bc35f25708c2e939ab8288a18cbb95a0337ac3efbe6669",
+            "submit_jobs_per_s": 739.5317261999336,
+            "submit_us": 1384660,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "after_last_effect_us": 215619,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "drain_jobs_per_s": 1088.079157758727,
+            "drain_us": 941108,
+            "enqueue_us": 78643,
+            "ledger_sha256": "c91d3725c4dd8afa706f5bfd60b71fb82b7d8bfe0066e8fbad697916b6793efa",
+            "per_job_effect_to_settlement_us": {
+              "max": 327172,
+              "median": 82672.0,
+              "min": 26489,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 723661,
+                  "256": 382690,
+                  "64": 284538,
+                  "768": 593951,
+                  "960": 705426
+                },
+                "last_64_us": 18235,
+                "middle_512_us": 211261
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 725489,
+                  "256": 390197,
+                  "64": 299533,
+                  "768": 602202,
+                  "960": 709043
+                },
+                "last_64_us": 16446,
+                "middle_512_us": 212005
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 941108,
+                  "256": 473099,
+                  "64": 404311,
+                  "768": 673264,
+                  "960": 791641
+                },
+                "last_64_us": 149467,
+                "middle_512_us": 200165
+              }
+            },
+            "raw_sha256": "3f07f98b40a3c0212febe757493d3410466eda0596e87a0b58de07908d353bf2",
+            "submit_jobs_per_s": 1004.1667034403497,
+            "submit_us": 1019751,
+            "terminal_xids": 11
+          }
+        }
+      }
+    }
+  },
+  "release": {
+    "attempts": [
+      0
+    ],
+    "exit_status": 0,
+    "group_command": "peer_command",
+    "groups": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "id": "2026-11-25-dense-fixed8-logical-factorial-retry-peers",
+    "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry",
+    "released_at": "2026-11-25T03:58:03.509011+00:00",
+    "started": "2026-11-25T03:51:26.420507+00:00"
+  }
+}

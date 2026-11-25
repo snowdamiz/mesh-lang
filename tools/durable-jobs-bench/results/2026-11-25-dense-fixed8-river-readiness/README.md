@@ -1,0 +1,22 @@
+# Dense fixed8 River readiness sensitivity
+
+The five released d388 + fixed8 stock-peer rotations are the stock comparison. This separate experiment asks how much of the paired Mesh gap survives when River has a connection available for each worker slot before submit. The original short16 stock, adapter-cold and warm River medians of 474, 472 and 882 jobs/s describe the short workload. The dense comparison uses fresh paired timings. In the released dense bridge, River held seven last-idle connections in every run. Its five timed peaks were 69, 68, 69, 68 and 67. Mesh held 32 application TLS sessions. [Dense stock replay](evidence/stock-peer-replay.json)
+
+Each disposable cluster runs PostgreSQL 17.11 on CPUs 0 and 1 with cap 96 at the server and database. Each arm uses the frozen 1,024-job dense input, two 32-slot runners, one durable enqueue commit and two independent work transactions per job. Mesh uses the exact qualified grouped-refill executable, d388 grant SQL, fixed8ms terminal policy, set-based producer and 32 hot application TLS sessions. The frozen River 2×32 executable and original peer launcher supply the stock bridge. River's two shared pools each keep their stock maximum of 34 and the producer/observer keeps its one-connection pool.
+
+The qualified short ELF accepts readiness only on short16 and fixes its worker count at one. This packet builds one new Linux AMD64 River benchmark ELF against the pinned dense stock source, Go 1.26.4 and original dependencies. The same ELF implements adapter-cold and warm and adds the same startup observations to each. Each warm runner acquires and releases 33 distinct verified TLS sessions before its normal River client start. One session becomes the detached listener. At submit the proof must show the stable identities of 32 shared pool sessions and one detached listener per runner, plus the unchanged producer/observer, for 67 sessions. The remaining stock pool headroom is available on demand. Cold and stock retain their lazy pools. The measured axes are two engines at slot-ready capacity and River's own cold versus warm behavior. The physical session totals differ because Mesh and River use different pool layouts.
+
+SETUP exercises all four lanes, proves the empty pre-submit workload and checks the cold and warm physical rosters. The two pilot blocks run in exact opposite orders. A fully reconciled SETUP and both pilot blocks authorize four additional predeclared blocks in two mirrored pairs. Each timing block provisions a fresh cluster for a full warmup and another fresh cluster for measurement in each lane. Only the six measured rows enter the final contrasts. The bridge prices the difference between frozen stock and rebuilt lazy River each block. On each durable clock, call an advantage or deficit only when all six paired gaps have the same sign and individually exceed both 5% of warm River elapsed time and the absolute stock versus rebuilt-cold gap for that block. Otherwise report the estimates and the inconclusive verdict. SETUP and pilot use evidence gates independent of the size and sign of the measured effect.
+
+Report paired elapsed times, throughput, connection counts and transaction counts. Use first submit and first durable enqueue commit as separate origins on the same final settlement. Preserve first-write, second-write and settlement ranks 64, 256, 768, 960 and 1,024, plus the middle 512 interval, the last 64 interval and the tail after the last effect. River reports producer connection setup, runner launch to readiness, per-runner fill, startup CPU, RSS and verified PostgreSQL identities separately. The optional River-only runner-launch-to-final-settlement clock includes the common idle window and excludes cluster, schema and producer setup. Mesh's retained adapter does not export the same launch boundary, so the cross-engine gap uses the two workload clocks. PostgreSQL startup CPU counts the observed client backends and RSS includes shared pages.
+
+Run the offline check from the checkout root. It reconstructs the archived inputs and reads the frozen Linux ELF without executing it. Only the sole native controller should register the sealed packet and call intake in the existing queue.
+
+```sh
+d=tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-river-readiness
+python3 -B "$d/controller.py" check
+python3 -B "$d/controller.py" intake setup SEAL
+python3 -B "$d/controller.py" intake pilot SEAL
+python3 -B "$d/controller.py" intake rest SEAL
+python3 -B "$d/controller.py" replay
+```

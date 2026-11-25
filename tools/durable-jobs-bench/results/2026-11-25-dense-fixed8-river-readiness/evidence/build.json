@@ -1,0 +1,41 @@
+{
+  "build_info": [
+    "\tpath\tmesh-lang/durable-jobs-bench/river",
+    "\tmod\tmesh-lang/durable-jobs-bench/river\t(devel)\t",
+    "\tdep\tgithub.com/jackc/pgpassfile\tv1.0.0\th1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=",
+    "\tdep\tgithub.com/jackc/pgservicefile\tv0.0.0-20240606120523-5a60cdf6a761\th1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=",
+    "\tdep\tgithub.com/jackc/pgx/v5\tv5.13.0\th1:Hl08k64maU0nrRyVUEbwCnK6/gT0EhMrtAqBHz9/gA4=",
+    "\tdep\tgithub.com/jackc/puddle/v2\tv2.2.3\th1:f8HoREISb3l5eO9coPgK7U3hKLhWGokOFVcThl5jrao=",
+    "\tdep\tgithub.com/riverqueue/river\tv0.51.2\th1:lCFmF8zlKftfjDEW6zCtcRamXmCgOFk6XjeJ82gAEh8=",
+    "\tdep\tgithub.com/riverqueue/river/riverdriver\tv0.51.2\th1:hIDg+sRD7h3Xcjy2ozlbDBnjsyLVDbLnB2cWgTR1SoU=",
+    "\tdep\tgithub.com/riverqueue/river/riverdriver/riverpgxv5\tv0.51.2\th1:vLucKpDFLu/w6m8/jQl4NV4bxu1U8iiM835pfPooJ+U=",
+    "\tdep\tgithub.com/riverqueue/river/rivershared\tv0.51.2\th1:d4MU7Az6iMQb9ADhgi9GEoO1ThB7Ou1Oe2EtvRaRIoA=",
+    "\tdep\tgithub.com/riverqueue/river/rivertype\tv0.51.2\th1:2GIvVH6cRJcXtIlba8bHmZDvlcydtND0PZQBHCRyEsw=",
+    "\tdep\tgithub.com/tidwall/gjson\tv1.20.0\th1:+agJ3rEzKcCXKDKo0ml26UROcpcAlnZyjq+TjbY5Fto=",
+    "\tdep\tgithub.com/tidwall/match\tv1.2.0\th1:0pt8FlkOwjN2fPt4bIl4BoNxb98gGHN2ObFEDkrfZnM=",
+    "\tdep\tgithub.com/tidwall/pretty\tv1.2.1\th1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4=",
+    "\tdep\tgithub.com/tidwall/sjson\tv1.2.5\th1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY=",
+    "\tdep\tgolang.org/x/sync\tv0.24.0\th1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=",
+    "\tdep\tgolang.org/x/text\tv0.43.0\th1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=",
+    "\tbuild\t-buildmode=exe",
+    "\tbuild\t-compiler=gc",
+    "\tbuild\t-trimpath=true",
+    "\tbuild\tCGO_ENABLED=0",
+    "\tbuild\tGOARCH=amd64",
+    "\tbuild\tGOOS=linux",
+    "\tbuild\tGOAMD64=v1"
+  ],
+  "candidate_elf": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+  "compiler": "go version go1.26.4 darwin/arm64",
+  "compressed_sha256": "43b96210fac729617108e0f981a121acba4560e8c65296abbf8eb91d2de712fd",
+  "source_pins": {
+    "db.go": "5b46edba58b4bbf318759cef2b5fc5540aae4f5f15b2df9083b875525c89ba85",
+    "evidence.go": "9dc4522dd46ff8787d10d1413528284986d419a091271f0cc8cc0d660f754621",
+    "go.mod": "b50f560f8a406715b0796e6729837fa21b14595a897a33560afd7c590ca840da",
+    "go.sum": "d0b5ac110be4112c71271ad2d3f126667f185f41cff7db605e99a5eb4b3d8f4b",
+    "main.go": "4e5ec1e3ce5f6815e4461324124cff394ebd7a3fc0e7400b9f17436f414c9572",
+    "readiness.go": "e4860320d544f93c14107f9c9c25fd070a9ed09f07cff1f960e2f0151f377802",
+    "worker.go": "88be93a0ef6ed14abcc0915620aba88dc79edfc86c598be3fc953bbbcefb677a"
+  },
+  "stock_elf": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae"
+}
