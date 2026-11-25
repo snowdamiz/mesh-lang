@@ -1,0 +1,92 @@
+{
+  "1": {
+    "file_sha256": "e8cfeb321b9eab9aaefc760aaf90399a1b46553973332943a7d377a7d3c837b8",
+    "oban_sha256": "d3afea1e3751a5d281dedc42ed6e8d792a3e605c3e2c1a4bd5cb15781462b653",
+    "file_drain_us": 689296,
+    "last_effect_to_last_settlement_us": 3284,
+    "tie_oban": {
+      "drain_deadline_us": 491690,
+      "effects_still_outstanding": 24,
+      "workers_with_late_effects": 2,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 194322
+    },
+    "twenty_percent_more_jobs_per_second": {
+      "drain_deadline_us": 409741,
+      "effects_still_outstanding": 32,
+      "workers_with_late_effects": 3,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 276271
+    }
+  },
+  "2": {
+    "file_sha256": "f501507714e50cc3c6932fcc4437b00430fc0d352c71dc8ae341ca3da9afb503",
+    "oban_sha256": "40b3dfb2944d7a70f28082ab5e7e1f3606ce0998abad92f3514a74a7d7f96f4f",
+    "file_drain_us": 648843,
+    "last_effect_to_last_settlement_us": 3919,
+    "tie_oban": {
+      "drain_deadline_us": 485620,
+      "effects_still_outstanding": 24,
+      "workers_with_late_effects": 3,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 159304
+    },
+    "twenty_percent_more_jobs_per_second": {
+      "drain_deadline_us": 404683,
+      "effects_still_outstanding": 32,
+      "workers_with_late_effects": 3,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 240241
+    }
+  },
+  "3": {
+    "file_sha256": "72bb4a0aa69392bc737a0f0a817911daa9121f3630d065b531eb3a7732b25fba",
+    "oban_sha256": "5d761c14ec7a96fb0bb65273ed611266b0846aea6a3d0fafb6b288652bba4e93",
+    "file_drain_us": 635136,
+    "last_effect_to_last_settlement_us": 2056,
+    "tie_oban": {
+      "drain_deadline_us": 511754,
+      "effects_still_outstanding": 18,
+      "workers_with_late_effects": 3,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 121326
+    },
+    "twenty_percent_more_jobs_per_second": {
+      "drain_deadline_us": 426461,
+      "effects_still_outstanding": 28,
+      "workers_with_late_effects": 3,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 206619
+    }
+  },
+  "4": {
+    "file_sha256": "cd65c7217b7c7e29ee9a79bee501ebe40ca5811245f113f539ddd3e63c9d5e4e",
+    "oban_sha256": "c0c1a1bf9b51dfc0bcf3b5e495973e991453d22b3ae3ca60a908ca4fe29ab327",
+    "file_drain_us": 862524,
+    "last_effect_to_last_settlement_us": 10551,
+    "tie_oban": {
+      "drain_deadline_us": 508086,
+      "effects_still_outstanding": 32,
+      "workers_with_late_effects": 4,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 343887
+    },
+    "twenty_percent_more_jobs_per_second": {
+      "drain_deadline_us": 423405,
+      "effects_still_outstanding": 40,
+      "workers_with_late_effects": 5,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 428568
+    }
+  },
+  "5": {
+    "file_sha256": "884a041449fa1f19b93c9d65e1de83a3d49262f1aaf7461d70318ce8d5d23c5a",
+    "oban_sha256": "13c0be9139ad2342af6621bdfd2e8537617f25adbb80090c1908e533f3d11896",
+    "file_drain_us": 659133,
+    "last_effect_to_last_settlement_us": 1746,
+    "tie_oban": {
+      "drain_deadline_us": 536226,
+      "effects_still_outstanding": 13,
+      "workers_with_late_effects": 2,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 121161
+    },
+    "twenty_percent_more_jobs_per_second": {
+      "drain_deadline_us": 446855,
+      "effects_still_outstanding": 24,
+      "workers_with_late_effects": 3,
+      "advance_needed_at_last_effect_if_terminal_cost_zero_us": 210532
+    }
+  }
+}
