@@ -1,0 +1,52 @@
+warmup-mesh-off-a warmup mesh: 0
+warmup-river-off-a warmup go: 0
+warmup-mesh-on warmup mesh: 0
+warmup-river-on warmup go: 0
+warmup-mesh-off-b warmup mesh: 0
+warmup-river-off-b warmup go: 0
+measured-mesh-off-a measured mesh: 0
+measured-river-off-a measured go: 0
+measured-mesh-on measured mesh: 0
+measured-river-on measured go: 0
+measured-mesh-off-b measured mesh: 0
+measured-river-off-b measured go: 0
+01-noop.1795573890216456000 failed qualification: expected workload statements missing: {'unmapped': 3761}
+warmup-river-off-b warmup go: 0
+warmup-mesh-off-b warmup mesh: 0
+warmup-river-on warmup go: 0
+warmup-mesh-on warmup mesh: 0
+warmup-river-off-a warmup go: 0
+warmup-mesh-off-a warmup mesh: 0
+measured-river-off-b measured go: 0
+measured-mesh-off-b measured mesh: 0
+measured-river-on measured go: 0
+measured-mesh-on measured mesh: 0
+measured-river-off-a measured go: 0
+measured-mesh-off-a measured mesh: 0
+02-noop.1795573995408897000 failed qualification: expected workload statements missing: {'unmapped': 2309}
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-statement-cpu/controller.py", line 329, in <module>
+    sys.exit(timing(cfg, setup_files()))
+             ~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-statement-cpu/controller.py", line 256, in timing
+    return matrix.dispatch(directory, config, ID, BLOCKS, timing_pins(), [1, 2])
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/matrix.py", line 208, in dispatch
+    summary = summarize(directory, config, schedule, pins)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-statement-cpu/controller.py", line 239, in <lambda>
+    matrix.summarize = lambda *_: dict(missing=[], **replay_result(cfg, files))
+                                                     ~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-statement-cpu/controller.py", line 205, in replay_result
+    score = score_arm(folder, phase, lane, cfg, run.REMOTE / manifest["remotes"][lane], files)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-statement-cpu/controller.py", line 175, in score_arm
+    postgres = attribute(report, catalog, mode == "on", name, roster)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-statement-cpu/measure.py", line 89, in attribute
+    require(stage["settle"] >= (1024 if engine == "mesh" else 1) and stage["grant"] > 0
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            and stage["application-write"] >= 2048 and stage["enqueue"] > 0 and stage["observer"] > 0,
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            f"expected workload statements missing: {dict(stage)}")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-statement-cpu/measure.py", line 11, in require
+    raise ValueError(message)
+ValueError: expected workload statements missing: {'unmapped': 3761}
