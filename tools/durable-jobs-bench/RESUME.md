@@ -2,7 +2,9 @@
 
 Open the existing Mesh worktree on branch `t3/9a80aabe` on the workstation that owns the benchmark. Its path is `/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe`. The Git history, local controller journal, staged binaries, and SSH configuration are available there. Other owners have changes in the Git index and working tree.
 
-## November 25 at the 10:56 UTC LARGE FILE factorial pilot
+## November 25 after the 11:01 UTC LARGE FILE factorial pilot
+
+All 24 captures reconciled. The combined producer and consumer finished in 1.868 and 1.863 s, saving 244 and 259 ms over the faster duplicate. Only the forward order passed all gates. The reverse order missed duplicate stability, enqueue saving and the incremental submit margin over producer-only. The controller closed peers. Against producer-only from first submit, the combined path took longer to reach the first 34 and 38 durable effects, respectively, then led at every later rank. The two active investigations price a smaller initial prepared grant and less work during activation. [Paired progress replay](results/2026-11-25-public-large-claim-gap/CROSSED-FILE-PHASES.md) · [Archive and release](../../../t3-09dc428a/tools/durable-jobs-bench/results/2026-11-25-public-large-file-factorial/evidence/pilot)
 
 The build-free recovery `05a78a8e…` released exit 0 at 10:55:05 UTC. The independent replay bound the retained producer and consumer and passed the three wire-fault cases. Each of the five qualification cells reconciled 64 first-attempt jobs, 128 independent application writes and 64 terminal transactions. The controller opened the reversed pilot `e9de9209…` at 10:56:25 UTC. Both rotations must pass before the peer stage can open. [Recovery release and verified binding](../../../t3-09dc428a/tools/durable-jobs-bench/results/2026-11-25-public-large-file-factorial/evidence/wire) · [Controller journal](../../target/linode-jobs-stepchange/requests/STATUS.md)
 
