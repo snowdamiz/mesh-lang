@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-readiness-timing/controller.py", line 319, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-readiness-timing/controller.py", line 306, in main
+    pilot, pilot_sha, used = released(base, "pilot", cfg, pins, retained, qualified, replay, used)
+                             ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-readiness-timing/controller.py", line 272, in released
+    require(release["id"] == grant["id"] == f"{ID}-{mode}" and release["exit_status"] == 0 and release["released_at"]
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            and release["request_sha256"] == grant["packet_sha256"] == sha(file_for(mode))
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            and release["retained_custody_sha256"] == {name: sha(folder / name) for name in CUSTODY_OUTPUTS}
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            and set(raws) == expected and raws == release["raw_sha256"] == replay.read(folder / "raw-sha256.json"),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            f"{mode}: released timing custody differs")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-readiness-timing/controller.py", line 54, in require
+    raise ValueError(message)
+ValueError: pilot: released timing custody differs
