@@ -1,0 +1,703 @@
+{
+  "clocks": {
+    "apalis": {
+      "drain_jobs_s": 285.5052550811013,
+      "drain_ms": 224.164,
+      "enqueue_ms": 671.467,
+      "jobs_s": 71.45800000223306,
+      "submit_ms": 895.631
+    },
+    "file": {
+      "drain_jobs_s": 98.63711252182732,
+      "drain_ms": 648.843,
+      "enqueue_ms": 714.099,
+      "jobs_s": 46.95724396195876,
+      "submit_ms": 1362.942
+    },
+    "inline-a": {
+      "drain_jobs_s": 86.21967155693866,
+      "drain_ms": 742.29,
+      "enqueue_ms": 1232.38,
+      "jobs_s": 32.410478712898865,
+      "submit_ms": 1974.67
+    },
+    "inline-b": {
+      "drain_jobs_s": 94.73902359593806,
+      "drain_ms": 675.54,
+      "enqueue_ms": 1007.23,
+      "jobs_s": 38.03252969805737,
+      "submit_ms": 1682.77
+    },
+    "oban": {
+      "drain_jobs_s": 131.7902887031012,
+      "drain_ms": 485.62,
+      "enqueue_ms": 1154.207,
+      "jobs_s": 39.028507275462594,
+      "submit_ms": 1639.827
+    },
+    "product": {
+      "drain_jobs_s": 94.1977151166727,
+      "drain_ms": 679.422,
+      "enqueue_ms": 1086.48,
+      "jobs_s": 36.242101770086904,
+      "submit_ms": 1765.902
+    },
+    "river": {
+      "drain_jobs_s": 68.76352438848812,
+      "drain_ms": 930.726,
+      "enqueue_ms": 1465.49,
+      "jobs_s": 26.708777505867584,
+      "submit_ms": 2396.216
+    }
+  },
+  "faster_inline_minus_file_ms": {
+    "drain_ms": 26.697,
+    "enqueue_ms": 293.131,
+    "submit_ms": 319.828
+  },
+  "inline_spread_ms": {
+    "drain_ms": 66.75,
+    "enqueue_ms": 225.15,
+    "submit_ms": 291.9
+  },
+  "lane_minus_file_ms": {
+    "apalis": {
+      "drain_ms": -424.679,
+      "enqueue_ms": -42.632,
+      "submit_ms": -467.311
+    },
+    "inline-a": {
+      "drain_ms": 93.447,
+      "enqueue_ms": 518.281,
+      "submit_ms": 611.728
+    },
+    "inline-b": {
+      "drain_ms": 26.697,
+      "enqueue_ms": 293.131,
+      "submit_ms": 319.828
+    },
+    "oban": {
+      "drain_ms": -163.223,
+      "enqueue_ms": 440.108,
+      "submit_ms": 276.885
+    },
+    "product": {
+      "drain_ms": 30.579,
+      "enqueue_ms": 372.381,
+      "submit_ms": 402.96
+    },
+    "river": {
+      "drain_ms": 281.883,
+      "enqueue_ms": 751.391,
+      "submit_ms": 1033.274
+    }
+  },
+  "receipts": {
+    "measured": {
+      "apalis": {
+        "app_xids": 128,
+        "raw_sha256": "60d58862ed4d480a888278d96cb2dc6ae008b4f093b81424c2a028ae7f0b6384",
+        "storage": {
+          "ddl_end_us": 1795574383587095,
+          "policy": "EXTERNAL",
+          "relation": "apalis.jobs",
+          "toast_heap_bytes": 34471936,
+          "verify_start_us": 1795574389508173
+        },
+        "terminal_xids": 15
+      },
+      "file": {
+        "app_xids": 128,
+        "raw_sha256": "f501507714e50cc3c6932fcc4437b00430fc0d352c71dc8ae341ca3da9afb503",
+        "storage": {
+          "args_compression": "",
+          "args_storage": "e",
+          "default_toast_compression": "pglz",
+          "max_connections": 96,
+          "shared_buffers": "128MB",
+          "storage": "external-4m",
+          "topology": "stock",
+          "wal_compression": "off",
+          "work_mem": "4MB"
+        },
+        "terminal_xids": 64
+      },
+      "inline-a": {
+        "app_xids": 128,
+        "raw_sha256": "396837325c98146aa477b2829a57566699da46004eedd52e60fd3d9322f3e625",
+        "storage": {
+          "args_compression": "",
+          "args_storage": "e",
+          "default_toast_compression": "pglz",
+          "max_connections": 96,
+          "shared_buffers": "128MB",
+          "storage": "external-4m",
+          "topology": "stock",
+          "wal_compression": "off",
+          "work_mem": "4MB"
+        },
+        "terminal_xids": 64
+      },
+      "inline-b": {
+        "app_xids": 128,
+        "raw_sha256": "5fb2a34c818f243489bc13a47f3595bc54fb01f26bbeb337bc1f8c18712c39c3",
+        "storage": {
+          "args_compression": "",
+          "args_storage": "e",
+          "default_toast_compression": "pglz",
+          "max_connections": 96,
+          "shared_buffers": "128MB",
+          "storage": "external-4m",
+          "topology": "stock",
+          "wal_compression": "off",
+          "work_mem": "4MB"
+        },
+        "terminal_xids": 64
+      },
+      "oban": {
+        "app_xids": 128,
+        "raw_sha256": "40b3dfb2944d7a70f28082ab5e7e1f3606ce0998abad92f3514a74a7d7f96f4f",
+        "storage": {
+          "ddl_end_us": 1795574357354167,
+          "policy": "EXTERNAL",
+          "relation": "parity_bf758ab76ac66cb5.oban_jobs",
+          "toast_heap_bytes": 34471936,
+          "verify_start_us": 1795574368475061
+        },
+        "terminal_xids": 64
+      },
+      "product": {
+        "app_xids": 128,
+        "raw_sha256": "1fa53deaa2587a0ed20b0e56e91d0e94918bac7cb392e7df00b1de20e6f09ebf",
+        "storage": {
+          "args_compression": "",
+          "args_storage": "e",
+          "default_toast_compression": "pglz",
+          "max_connections": 96,
+          "shared_buffers": "128MB",
+          "storage": "external-4m",
+          "topology": "stock",
+          "wal_compression": "off",
+          "work_mem": "4MB"
+        },
+        "terminal_xids": 64
+      },
+      "river": {
+        "app_xids": 128,
+        "raw_sha256": "4817a4fa4d8d6e592096800e8b01f8fe76bbf450f9a463193e4210ce5b1373b1",
+        "storage": {
+          "ddl_end_us": 1795574403929166,
+          "policy": "EXTERNAL",
+          "relation": "parity_04e6d0f4b0c19194.river_job",
+          "toast_heap_bytes": 34471936,
+          "verify_start_us": 1795574409849018
+        },
+        "terminal_xids": 16
+      }
+    },
+    "warmup": {
+      "apalis": {
+        "app_xids": 128,
+        "raw_sha256": "2588721f5b8c6f7b5dd38d7188ba2d4538e59a8190785b88ea1af502ffeb874a",
+        "storage": {
+          "ddl_end_us": 1795574303861566,
+          "policy": "EXTERNAL",
+          "relation": "apalis.jobs",
+          "toast_heap_bytes": 34471936,
+          "verify_start_us": 1795574309766371
+        },
+        "terminal_xids": 18
+      },
+      "file": {
+        "app_xids": 128,
+        "raw_sha256": "65f6dd4e0a2954b0c66184a1e2f5017e74f3a8f4acb59977cf31ea7842fc2376",
+        "storage": {
+          "args_compression": "",
+          "args_storage": "e",
+          "default_toast_compression": "pglz",
+          "max_connections": 96,
+          "shared_buffers": "128MB",
+          "storage": "external-4m",
+          "topology": "stock",
+          "wal_compression": "off",
+          "work_mem": "4MB"
+        },
+        "terminal_xids": 64
+      },
+      "inline-a": {
+        "app_xids": 128,
+        "raw_sha256": "11a4d44923ce02df1356f588a5eed9efe5c8483037c771d00219212c4f98160b",
+        "storage": {
+          "args_compression": "",
+          "args_storage": "e",
+          "default_toast_compression": "pglz",
+          "max_connections": 96,
+          "shared_buffers": "128MB",
+          "storage": "external-4m",
+          "topology": "stock",
+          "wal_compression": "off",
+          "work_mem": "4MB"
+        },
+        "terminal_xids": 64
+      },
+      "inline-b": {
+        "app_xids": 128,
+        "raw_sha256": "9a5a9b937173f0a1682890998908b0966d8bca0f49d169f2202849fb250511bd",
+        "storage": {
+          "args_compression": "",
+          "args_storage": "e",
+          "default_toast_compression": "pglz",
+          "max_connections": 96,
+          "shared_buffers": "128MB",
+          "storage": "external-4m",
+          "topology": "stock",
+          "wal_compression": "off",
+          "work_mem": "4MB"
+        },
+        "terminal_xids": 64
+      },
+      "oban": {
+        "app_xids": 128,
+        "raw_sha256": "b44f5d5370beeed5514691a61203df0409e62287c27da896892eb1db4a0e66d5",
+        "storage": {
+          "ddl_end_us": 1795574277948329,
+          "policy": "EXTERNAL",
+          "relation": "parity_9a01380b48927c52.oban_jobs",
+          "toast_heap_bytes": 34471936,
+          "verify_start_us": 1795574289419298
+        },
+        "terminal_xids": 64
+      },
+      "product": {
+        "app_xids": 128,
+        "raw_sha256": "e5c0cebcd2654cdfdac3967214bd7239cae57d4df5c1ceffeafbbaafc4b25429",
+        "storage": {
+          "args_compression": "",
+          "args_storage": "e",
+          "default_toast_compression": "pglz",
+          "max_connections": 96,
+          "shared_buffers": "128MB",
+          "storage": "external-4m",
+          "topology": "stock",
+          "wal_compression": "off",
+          "work_mem": "4MB"
+        },
+        "terminal_xids": 64
+      },
+      "river": {
+        "app_xids": 128,
+        "raw_sha256": "f1daf62927ab62a3f6638fcbfa2cde63ccb7438ce376b24dd8280337820fd724",
+        "storage": {
+          "ddl_end_us": 1795574324080534,
+          "policy": "EXTERNAL",
+          "relation": "parity_c6696eb642e0a9fb.river_job",
+          "toast_heap_bytes": 34471936,
+          "verify_start_us": 1795574329939429
+        },
+        "terminal_xids": 10
+      }
+    }
+  },
+  "scores": {
+    "apalis": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 11.6225,
+      "attempt_to_effect_commit_p99_ms": 21.171,
+      "claim_to_last_settlement_ms": null,
+      "commit_jobs_per_s": 285.5052550811013,
+      "commit_to_pickup_p50_ms": 150.157,
+      "commit_to_pickup_p99_ms": 197.185,
+      "commit_to_settlement_p50_ms": 211.506,
+      "commit_to_settlement_p99_ms": 224.164,
+      "completed": 64,
+      "cpu_iowait_percent": 0.4424778761061947,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 48,
+      "disk_flushes": 63,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 70447104,
+      "effect_commit_to_settlement_p50_ms": 18.858,
+      "effect_commit_to_settlement_p99_ms": 39.297,
+      "entry_to_attempt_commit_p50_ms": 18.007,
+      "entry_to_attempt_commit_p99_ms": 34.152,
+      "failed": 0,
+      "first_claim_from_commit_ms": null,
+      "first_commit_us": 1795574387797422,
+      "first_submit_to_commit_ms": 671.467,
+      "first_submit_us": 1795574387125955,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1135.893,
+      "host_samples": 6,
+      "last_settlement_us": 1795574388021586,
+      "ordered_independent_writes": 64,
+      "peak_connections": 81,
+      "peak_executing": 0,
+      "peak_runner_rss_bytes": 114708480,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "raw_sha256": "60d58862ed4d480a888278d96cb2dc6ae008b4f093b81424c2a028ae7f0b6384",
+      "runner_cpu_ms_per_job": 6.481671874999999,
+      "submit_jobs_per_s": 71.45800000223306,
+      "submit_to_pickup_p50_ms": 821.624,
+      "submit_to_pickup_p99_ms": 868.652,
+      "submit_to_settlement_p50_ms": 882.973,
+      "submit_to_settlement_p99_ms": 895.631
+    },
+    "file": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 5.1259999999999994,
+      "attempt_to_effect_commit_p99_ms": 17.836,
+      "checkout_probes": 128,
+      "claim_to_entry_p50_ms": 35.286,
+      "claim_to_entry_p99_ms": 51.088,
+      "claim_to_last_settlement_ms": 627.135,
+      "commit_jobs_per_s": 98.63711252182732,
+      "commit_to_claim_p50_ms": 362.708,
+      "commit_to_claim_p99_ms": 616.708,
+      "commit_to_pickup_p50_ms": 402.1375,
+      "commit_to_pickup_p99_ms": 637.841,
+      "commit_to_settlement_p50_ms": 421.36199999999997,
+      "commit_to_settlement_p99_ms": 648.843,
+      "completed": 64,
+      "cpu_iowait_percent": 0.9404388714733543,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 86,
+      "disk_flushes": 278,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 72269824,
+      "effect_commit_to_settlement_p50_ms": 7.908,
+      "effect_commit_to_settlement_p99_ms": 37.006,
+      "entry_to_attempt_commit_p50_ms": 5.327500000000001,
+      "entry_to_attempt_commit_p99_ms": 21.402,
+      "failed": 0,
+      "first_claim_from_commit_ms": 21.708,
+      "first_commit_us": 1795574418440292,
+      "first_submit_to_commit_ms": 714.099,
+      "first_submit_us": 1795574417726193,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1643.93,
+      "host_samples": 8,
+      "largest_terminal_cohort": 1,
+      "last_settlement_us": 1795574419089135,
+      "ordered_independent_writes": 64,
+      "peak_connections": 65,
+      "peak_executing": 8,
+      "peak_runner_rss_bytes": 100823040,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "raw_sha256": "f501507714e50cc3c6932fcc4437b00430fc0d352c71dc8ae341ca3da9afb503",
+      "runner_cpu_ms_per_job": 17.41459375,
+      "submit_jobs_per_s": 46.95724396195876,
+      "submit_to_pickup_p50_ms": 1116.2365,
+      "submit_to_pickup_p99_ms": 1351.94,
+      "submit_to_settlement_p50_ms": 1135.461,
+      "submit_to_settlement_p99_ms": 1362.942,
+      "terminal_xids": 64
+    },
+    "inline-a": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 7.3075,
+      "attempt_to_effect_commit_p99_ms": 16.392,
+      "checkout_probes": 128,
+      "claim_to_entry_p50_ms": 38.6225,
+      "claim_to_entry_p99_ms": 56.476,
+      "claim_to_last_settlement_ms": 666.713,
+      "commit_jobs_per_s": 86.21967155693866,
+      "commit_to_claim_p50_ms": 400.077,
+      "commit_to_claim_p99_ms": 703.577,
+      "commit_to_pickup_p50_ms": 439.94399999999996,
+      "commit_to_pickup_p99_ms": 721.192,
+      "commit_to_settlement_p50_ms": 465.128,
+      "commit_to_settlement_p99_ms": 742.29,
+      "completed": 64,
+      "cpu_iowait_percent": 3.982300884955752,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 410,
+      "disk_flushes": 287,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 72384512,
+      "effect_commit_to_settlement_p50_ms": 6.587999999999999,
+      "effect_commit_to_settlement_p99_ms": 44.942,
+      "entry_to_attempt_commit_p50_ms": 7.8605,
+      "entry_to_attempt_commit_p99_ms": 18.733,
+      "failed": 0,
+      "first_claim_from_commit_ms": 75.577,
+      "first_commit_us": 1795574429620423,
+      "first_submit_to_commit_ms": 1232.38,
+      "first_submit_us": 1795574428388043,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 2347.62,
+      "host_samples": 11,
+      "largest_terminal_cohort": 1,
+      "last_settlement_us": 1795574430362713,
+      "ordered_independent_writes": 64,
+      "peak_connections": 65,
+      "peak_executing": 8,
+      "peak_runner_rss_bytes": 112889856,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "raw_sha256": "396837325c98146aa477b2829a57566699da46004eedd52e60fd3d9322f3e625",
+      "runner_cpu_ms_per_job": 20.943671874999996,
+      "submit_jobs_per_s": 32.410478712898865,
+      "submit_to_pickup_p50_ms": 1672.324,
+      "submit_to_pickup_p99_ms": 1953.572,
+      "submit_to_settlement_p50_ms": 1697.5079999999998,
+      "submit_to_settlement_p99_ms": 1974.67,
+      "terminal_xids": 64
+    },
+    "inline-b": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 5.9965,
+      "attempt_to_effect_commit_p99_ms": 14.088,
+      "checkout_probes": 128,
+      "claim_to_entry_p50_ms": 32.4885,
+      "claim_to_entry_p99_ms": 60.083,
+      "claim_to_last_settlement_ms": 596.226,
+      "commit_jobs_per_s": 94.73902359593806,
+      "commit_to_claim_p50_ms": 366.314,
+      "commit_to_claim_p99_ms": 665.314,
+      "commit_to_pickup_p50_ms": 402.4155,
+      "commit_to_pickup_p99_ms": 670.495,
+      "commit_to_settlement_p50_ms": 413.9615,
+      "commit_to_settlement_p99_ms": 675.54,
+      "completed": 64,
+      "cpu_iowait_percent": 0.5449591280653951,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 77,
+      "disk_flushes": 295,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 72409088,
+      "effect_commit_to_settlement_p50_ms": 4.281499999999999,
+      "effect_commit_to_settlement_p99_ms": 33.67,
+      "entry_to_attempt_commit_p50_ms": 4.383,
+      "entry_to_attempt_commit_p99_ms": 18.042,
+      "failed": 0,
+      "first_claim_from_commit_ms": 79.314,
+      "first_commit_us": 1795574377040686,
+      "first_submit_to_commit_ms": 1007.23,
+      "first_submit_us": 1795574376033456,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1887.027,
+      "host_samples": 9,
+      "largest_terminal_cohort": 1,
+      "last_settlement_us": 1795574377716226,
+      "ordered_independent_writes": 64,
+      "peak_connections": 65,
+      "peak_executing": 8,
+      "peak_runner_rss_bytes": 101269504,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "raw_sha256": "5fb2a34c818f243489bc13a47f3595bc54fb01f26bbeb337bc1f8c18712c39c3",
+      "runner_cpu_ms_per_job": 18.628625,
+      "submit_jobs_per_s": 38.03252969805737,
+      "submit_to_pickup_p50_ms": 1409.6455,
+      "submit_to_pickup_p99_ms": 1677.725,
+      "submit_to_settlement_p50_ms": 1421.1915,
+      "submit_to_settlement_p99_ms": 1682.77,
+      "terminal_xids": 64
+    },
+    "oban": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 9.3205,
+      "attempt_to_effect_commit_p99_ms": 25.637,
+      "claim_to_entry_p50_ms": 132.778,
+      "claim_to_entry_p99_ms": 240.86,
+      "claim_to_last_settlement_ms": 466.139,
+      "commit_jobs_per_s": 131.7902887031012,
+      "commit_to_claim_p50_ms": 198.423,
+      "commit_to_claim_p99_ms": 286.295,
+      "commit_to_pickup_p50_ms": 317.8925,
+      "commit_to_pickup_p99_ms": 462.873,
+      "commit_to_settlement_p50_ms": 344.0815,
+      "commit_to_settlement_p99_ms": 485.62,
+      "completed": 64,
+      "cpu_iowait_percent": 0.5376344086021505,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 53,
+      "disk_flushes": 99,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 70684672,
+      "effect_commit_to_settlement_p50_ms": 9.0315,
+      "effect_commit_to_settlement_p99_ms": 18.537,
+      "entry_to_attempt_commit_p50_ms": 5.307499999999999,
+      "entry_to_attempt_commit_p99_ms": 37.942,
+      "failed": 0,
+      "first_claim_from_commit_ms": 19.481,
+      "first_commit_us": 1795574367142981,
+      "first_submit_to_commit_ms": 1154.207,
+      "first_submit_us": 1795574365988774,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1868.205,
+      "host_samples": 9,
+      "last_settlement_us": 1795574367628601,
+      "ordered_independent_writes": 64,
+      "peak_connections": 81,
+      "peak_executing": 16,
+      "peak_runner_rss_bytes": 869179392,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "raw_sha256": "40b3dfb2944d7a70f28082ab5e7e1f3606ce0998abad92f3514a74a7d7f96f4f",
+      "runner_cpu_ms_per_job": 142.23746874999998,
+      "submit_jobs_per_s": 39.028507275462594,
+      "submit_to_pickup_p50_ms": 1472.0994999999998,
+      "submit_to_pickup_p99_ms": 1617.08,
+      "submit_to_settlement_p50_ms": 1498.2885,
+      "submit_to_settlement_p99_ms": 1639.827
+    },
+    "product": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 5.7015,
+      "attempt_to_effect_commit_p99_ms": 16.849,
+      "checkout_probes": 128,
+      "claim_to_entry_p50_ms": 35.3465,
+      "claim_to_entry_p99_ms": 55.533,
+      "claim_to_last_settlement_ms": 634.417,
+      "commit_jobs_per_s": 94.1977151166727,
+      "commit_to_claim_p50_ms": 375.505,
+      "commit_to_claim_p99_ms": 667.005,
+      "commit_to_pickup_p50_ms": 415.291,
+      "commit_to_pickup_p99_ms": 672.608,
+      "commit_to_settlement_p50_ms": 444.41200000000003,
+      "commit_to_settlement_p99_ms": 679.422,
+      "completed": 64,
+      "cpu_iowait_percent": 0.5,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 83,
+      "disk_flushes": 297,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 72425472,
+      "effect_commit_to_settlement_p50_ms": 11.1675,
+      "effect_commit_to_settlement_p99_ms": 38.951,
+      "entry_to_attempt_commit_p50_ms": 7.792,
+      "entry_to_attempt_commit_p99_ms": 20.791,
+      "failed": 0,
+      "first_claim_from_commit_ms": 45.005,
+      "first_commit_us": 1795574397904995,
+      "first_submit_to_commit_ms": 1086.48,
+      "first_submit_us": 1795574396818515,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 2081.847,
+      "host_samples": 10,
+      "largest_terminal_cohort": 1,
+      "last_settlement_us": 1795574398584417,
+      "ordered_independent_writes": 64,
+      "peak_connections": 65,
+      "peak_executing": 8,
+      "peak_runner_rss_bytes": 126025728,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "raw_sha256": "1fa53deaa2587a0ed20b0e56e91d0e94918bac7cb392e7df00b1de20e6f09ebf",
+      "runner_cpu_ms_per_job": 19.229140625,
+      "submit_jobs_per_s": 36.242101770086904,
+      "submit_to_pickup_p50_ms": 1501.771,
+      "submit_to_pickup_p99_ms": 1759.088,
+      "submit_to_settlement_p50_ms": 1530.8919999999998,
+      "submit_to_settlement_p99_ms": 1765.902,
+      "terminal_xids": 64
+    },
+    "river": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 19.9765,
+      "attempt_to_effect_commit_p99_ms": 79.515,
+      "claim_to_entry_p50_ms": 368.468,
+      "claim_to_entry_p99_ms": 462.936,
+      "claim_to_last_settlement_ms": 929.456,
+      "commit_jobs_per_s": 68.76352438848812,
+      "commit_to_claim_p50_ms": 7.8645,
+      "commit_to_claim_p99_ms": 19.178,
+      "commit_to_pickup_p50_ms": 380.74699999999996,
+      "commit_to_pickup_p99_ms": 478.277,
+      "commit_to_settlement_p50_ms": 861.472,
+      "commit_to_settlement_p99_ms": 930.726,
+      "completed": 64,
+      "cpu_iowait_percent": 0.40160642570281124,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 58,
+      "disk_flushes": 94,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 70766592,
+      "effect_commit_to_settlement_p50_ms": 247.063,
+      "effect_commit_to_settlement_p99_ms": 441.063,
+      "entry_to_attempt_commit_p50_ms": 140.485,
+      "entry_to_attempt_commit_p99_ms": 263.69,
+      "failed": 0,
+      "first_claim_from_commit_ms": 1.27,
+      "first_commit_us": 1795574408593766,
+      "first_submit_to_commit_ms": 1465.49,
+      "first_submit_us": 1795574407128276,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 2500.004,
+      "host_samples": 12,
+      "last_settlement_us": 1795574409524492,
+      "ordered_independent_writes": 64,
+      "peak_connections": 73,
+      "peak_executing": 60,
+      "peak_runner_rss_bytes": 229191680,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "raw_sha256": "4817a4fa4d8d6e592096800e8b01f8fe76bbf450f9a463193e4210ce5b1373b1",
+      "runner_cpu_ms_per_job": 14.35071875,
+      "submit_jobs_per_s": 26.708777505867584,
+      "submit_to_pickup_p50_ms": 1846.237,
+      "submit_to_pickup_p99_ms": 1943.767,
+      "submit_to_settlement_p50_ms": 2326.962,
+      "submit_to_settlement_p99_ms": 2396.216
+    }
+  }
+}
