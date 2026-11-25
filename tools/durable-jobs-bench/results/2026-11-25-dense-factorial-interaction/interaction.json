@@ -1,0 +1,234 @@
+[
+  {
+    "extra_saving_vs_stock_a_b": {
+      "claim_sql_calls": [
+        -12,
+        -8
+      ],
+      "drain_ms": [
+        -20.463,
+        5.341
+      ],
+      "enqueue_ms": [
+        20.505,
+        42.094
+      ],
+      "host_cpu_ms": [
+        170.0,
+        220.0
+      ],
+      "last_effect_ms": [
+        -19.57,
+        4.392
+      ],
+      "middle_writes_ms": [
+        3.186,
+        15.388
+      ],
+      "pg_cpu_ms": [
+        0,
+        30
+      ],
+      "runner_cpu_ms": [
+        9.05,
+        7.883
+      ],
+      "submit_ms": [
+        0.042,
+        47.435
+      ],
+      "terminal_tail_ms": [
+        -0.893,
+        0.949
+      ],
+      "terminal_xids": [
+        24,
+        35
+      ]
+    },
+    "group": 1,
+    "measured": {
+      "combined": {
+        "claim_sql_calls": 188,
+        "drain_ms": 816.264,
+        "enqueue_ms": 160.346,
+        "host_cpu_ms": 1730.0,
+        "last_effect_ms": 808.05,
+        "middle_writes_ms": 597.8,
+        "pg_cpu_ms": 1130,
+        "runner_cpu_ms": 518.524,
+        "submit_ms": 976.61,
+        "terminal_tail_ms": 8.214,
+        "terminal_xids": 158
+      },
+      "fixed8": {
+        "claim_sql_calls": 127,
+        "drain_ms": 1008.182,
+        "enqueue_ms": 163.108,
+        "host_cpu_ms": 2260.0,
+        "last_effect_ms": 997.887,
+        "middle_writes_ms": 786.222,
+        "pg_cpu_ms": 1480,
+        "runner_cpu_ms": 513.659,
+        "submit_ms": 1171.29,
+        "terminal_tail_ms": 10.295,
+        "terminal_xids": 182
+      },
+      "key": {
+        "claim_sql_calls": 168,
+        "drain_ms": 976.567,
+        "enqueue_ms": 197.369,
+        "host_cpu_ms": 2100.0,
+        "last_effect_ms": 974.852,
+        "middle_writes_ms": 739.252,
+        "pg_cpu_ms": 1420,
+        "runner_cpu_ms": 557.971,
+        "submit_ms": 1173.936,
+        "terminal_tail_ms": 1.715,
+        "terminal_xids": 881
+      },
+      "stock-a": {
+        "claim_sql_calls": 119,
+        "drain_ms": 1188.948,
+        "enqueue_ms": 179.626,
+        "host_cpu_ms": 2460.0,
+        "last_effect_ms": 1184.259,
+        "middle_writes_ms": 924.488,
+        "pg_cpu_ms": 1770,
+        "runner_cpu_ms": 544.056,
+        "submit_ms": 1368.574,
+        "terminal_tail_ms": 4.689,
+        "terminal_xids": 881
+      },
+      "stock-b": {
+        "claim_sql_calls": 115,
+        "drain_ms": 1163.144,
+        "enqueue_ms": 158.037,
+        "host_cpu_ms": 2410.0,
+        "last_effect_ms": 1160.297,
+        "middle_writes_ms": 912.286,
+        "pg_cpu_ms": 1740,
+        "runner_cpu_ms": 545.223,
+        "submit_ms": 1321.181,
+        "terminal_tail_ms": 2.847,
+        "terminal_xids": 870
+      }
+    }
+  },
+  {
+    "extra_saving_vs_stock_a_b": {
+      "claim_sql_calls": [
+        3,
+        -2
+      ],
+      "drain_ms": [
+        32.557,
+        35.786
+      ],
+      "enqueue_ms": [
+        29.939,
+        16.515
+      ],
+      "host_cpu_ms": [
+        120.0,
+        260.0
+      ],
+      "last_effect_ms": [
+        34.097,
+        38.719
+      ],
+      "middle_writes_ms": [
+        -6.021,
+        3.757
+      ],
+      "pg_cpu_ms": [
+        90,
+        110
+      ],
+      "runner_cpu_ms": [
+        12.823,
+        -15.974
+      ],
+      "submit_ms": [
+        62.496,
+        52.301
+      ],
+      "terminal_tail_ms": [
+        -1.54,
+        -2.933
+      ],
+      "terminal_xids": [
+        55,
+        39
+      ]
+    },
+    "group": 2,
+    "measured": {
+      "combined": {
+        "claim_sql_calls": 188,
+        "drain_ms": 830.131,
+        "enqueue_ms": 161.07,
+        "host_cpu_ms": 1760.0,
+        "last_effect_ms": 819.316,
+        "middle_writes_ms": 605.673,
+        "pg_cpu_ms": 1130,
+        "runner_cpu_ms": 536.966,
+        "submit_ms": 991.201,
+        "terminal_tail_ms": 10.815,
+        "terminal_xids": 158
+      },
+      "fixed8": {
+        "claim_sql_calls": 127,
+        "drain_ms": 1046.654,
+        "enqueue_ms": 192.262,
+        "host_cpu_ms": 2380.0,
+        "last_effect_ms": 1037.363,
+        "middle_writes_ms": 794.101,
+        "pg_cpu_ms": 1570,
+        "runner_cpu_ms": 540.529,
+        "submit_ms": 1238.916,
+        "terminal_tail_ms": 9.291,
+        "terminal_xids": 180
+      },
+      "key": {
+        "claim_sql_calls": 180,
+        "drain_ms": 1016.466,
+        "enqueue_ms": 163.729,
+        "host_cpu_ms": 2110.0,
+        "last_effect_ms": 1014.901,
+        "middle_writes_ms": 751.801,
+        "pg_cpu_ms": 1430,
+        "runner_cpu_ms": 561.013,
+        "submit_ms": 1180.195,
+        "terminal_tail_ms": 1.565,
+        "terminal_xids": 908
+      },
+      "stock-a": {
+        "claim_sql_calls": 116,
+        "drain_ms": 1200.432,
+        "enqueue_ms": 164.982,
+        "host_cpu_ms": 2610.0,
+        "last_effect_ms": 1198.851,
+        "middle_writes_ms": 946.25,
+        "pg_cpu_ms": 1780,
+        "runner_cpu_ms": 551.7529999999999,
+        "submit_ms": 1365.414,
+        "terminal_tail_ms": 1.581,
+        "terminal_xids": 875
+      },
+      "stock-b": {
+        "claim_sql_calls": 121,
+        "drain_ms": 1197.203,
+        "enqueue_ms": 178.406,
+        "host_cpu_ms": 2470.0,
+        "last_effect_ms": 1194.229,
+        "middle_writes_ms": 936.472,
+        "pg_cpu_ms": 1760,
+        "runner_cpu_ms": 580.55,
+        "submit_ms": 1375.609,
+        "terminal_tail_ms": 2.974,
+        "terminal_xids": 891
+      }
+    }
+  }
+]
