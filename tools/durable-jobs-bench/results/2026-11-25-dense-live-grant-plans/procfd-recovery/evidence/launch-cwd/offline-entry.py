@@ -19,7 +19,9 @@ from types import SimpleNamespace
 HERE = Path(__file__).resolve().parent
 OWNER = HERE.parents[1]
 WRAPPER = HERE / "wrapper.py.txt"
-RELEASE = OWNER / "evidence/native/controller-release.json"
+NATIVE = OWNER / "evidence/native"
+BEFORE_DISPATCH = NATIVE / "controller-release-before-dispatch.json"
+RELEASE = BEFORE_DISPATCH if BEFORE_DISPATCH.is_file() else NATIVE / "controller-release.json"
 STDERR = OWNER / "evidence/native/controller-wrapper-stderr.txt"
 PREDECESSOR = (OWNER.parents[1] / "2026-11-25-dense-same-page/wal-retention-retry"
                / "evidence/native/controller-release.json")

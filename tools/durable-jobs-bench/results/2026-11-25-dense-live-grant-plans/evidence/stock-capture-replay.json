@@ -1,0 +1,86 @@
+{
+  "group_one": {
+    "completed": {
+      "off-a": 1024,
+      "off-b": 1024,
+      "sampled": 1024
+    },
+    "drain_plan_samples": 25,
+    "nested_grant_key": {
+      "dbid": "16424",
+      "queryid": 6827047345048828466,
+      "role": "parity_subject",
+      "toplevel": false,
+      "userid": "16421"
+    },
+    "overhead": {
+      "drain_ms": {
+        "duplicate_spread": 13.331000000000131,
+        "off_a": 1145.781,
+        "off_b": 1159.112,
+        "sampled": 1320.325,
+        "sampled_minus_off_mean": 167.87850000000003
+      },
+      "submit_ms": {
+        "duplicate_spread": 16.319000000000187,
+        "off_a": 1307.312,
+        "off_b": 1323.631,
+        "sampled": 1486.057,
+        "sampled_minus_off_mean": 170.5854999999999
+      }
+    },
+    "raw_sha256": {
+      "off-a": "59746585de74843623150108965cf888d8653f48f2afa3a2f0bb0e35ad8b1378",
+      "off-b": "6c1dab8c48cc8e0ce35c276192974c8b6d7a141bddcf6eda965efb1848b0480a",
+      "sampled": "0728173f0fb7eb2aa99ee81600ede2f778d3396c7c39b59bb3e638980c687a6f"
+    },
+    "reduction_sha256": "0cf120b4cedbbc1f76ab0e31b0fb2a29fd23b2ee76b5b038f006180fe02bf118",
+    "target_bitmap_samples": 0
+  },
+  "group_two": {
+    "failure": {
+      "message": "",
+      "stage": [
+        [
+          "arm.py",
+          322,
+          "run_arm"
+        ],
+        [
+          "jobs-parity.py",
+          925,
+          "run_trial"
+        ],
+        [
+          "observe.py",
+          138,
+          "capture_runners"
+        ]
+      ],
+      "type": "AssertionError"
+    },
+    "final_off_a_launched": false,
+    "generated_assertion": "assert {(row[\"backend\"], row[\"role\"], row[\"tls\"]) for row in standard} == {\n            (pid, values[0], True) for pid, values in pinned.items()}\n        self.cluster.roster_witness = witness",
+    "later_required_tls_counts": {
+      "compiled_caller": 32,
+      "parity_producer": 1,
+      "parity_subject": 8
+    },
+    "later_roster_persisted": false,
+    "off_b_raw_sha256": "a9702b73a03428decd62a83129ac96a36075166c1d6d465fbd28bec57fd52d4c",
+    "sampled_exit_status": 1,
+    "sampled_raw_sha256": "9e2f6e7763c2cde799ee8c93c94d4fc35201f99885ce2c63713d0a51914ba459",
+    "stock_tls_census": {
+      "compiled_caller": 32,
+      "parity_producer": 1,
+      "parity_subject": 6
+    }
+  },
+  "native_release": {
+    "earlier_exit_sha256": "15e80bcf5e168a1d1a0757733fa2b08d6452b2adb46c3149c3bd4ac8561ee2ab",
+    "exit_status": 1,
+    "released_at": "2026-11-25T02:49:51.825790+00:00",
+    "request_sha256": "1f5acbeef38ee53e6da91b9af424bdf7a31f73245724a50ab1368a2da82dfef2",
+    "sha256": "0733f9ebcfbf4bd8c48ad9fc9402e0311b68530bcab6b76e4b4ea41ba64db20c"
+  }
+}
