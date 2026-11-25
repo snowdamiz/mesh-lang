@@ -1,0 +1,15 @@
+{
+  "ends": "2026-11-25T02:20:22.712800+00:00",
+  "exact_smoke_ledger": 64,
+  "exit_status": 0,
+  "id": "large-v3-955b356b",
+  "phase": "setup",
+  "protocol": "locked_prepare_pg17_v1",
+  "raw_members": 36,
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-large-v3-setup-955b356b",
+  "released_at": "2026-11-25T02:11:45.877052+00:00",
+  "request_sha256": "be0383b284cb03798aa76298735bbd26120f7dc7535de5b2fa7ab5fb5988919f",
+  "setup_exit_status": 0,
+  "source_sha": "955b356b51f0dbef36a2958bc27ed45c15af3582",
+  "started": "2026-11-25T02:08:22.712800+00:00"
+}
