@@ -19,3 +19,17 @@ If these 1 ms pairs were the only source of improvement, tying stock River on su
 A cross-runner implementation needs to establish that both owners can hand off an exit-confirmed success before the existing flush deadline. Each owner must retain its charged seat through a correctly mapped terminal receipt, including partial and lost replies. A shared writer can also delay independent SQL. The useful measurements are actual mixed-owner terminal XIDs, any added handoff delay, first and last durable application writes, and CPU on the original matched deployment.
 
 Run `python3 -B cross_runner.py` here to reproduce the archive arithmetic. It reads the five Mesh, five River and five Oban measured captures and reconciles their independent writes.
+
+## How much of the submit gap can the producer reach?
+
+Subtracting drain from submit gives the observed producer window. Holding Mesh drain fixed, the largest producer window that would tie stock River is River submit minus Mesh drain. A negative budget means Mesh would still finish late with instantaneous enqueue.
+
+| Rotation | Mesh producer, ms | River producer, ms | Mesh producer budget for a tie, ms | Mesh drain minus River drain, ms |
+|---|---:|---:|---:|---:|
+| 1 | 176.553 | 77.303 | 82.670 | −5.367 |
+| 2 | 179.649 | 79.145 | −1,016.952 | +1,096.097 |
+| 3 | 214.159 | 79.860 | 60.862 | +18.998 |
+| 4 | 237.861 | 76.869 | 21.262 | +55.607 |
+| 5 | 204.933 | 73.140 | −51.494 | +124.634 |
+
+Matching River's enqueue time exactly would put Mesh ahead only in rotation 1. Even instantaneous enqueue leaves Mesh short of a 20% submit-throughput lead over River in every rotation. That deadline is River submit divided by 1.2 for the same 1,024 jobs. Against Oban, Mesh already won both clocks in rotations 1, 3, 4 and 5. In rotation 2, Mesh drain alone exceeded Oban's full submit time by 578.288 ms. These budgets retain the original schedules and do not estimate how a changed producer would affect follow-on claims.
