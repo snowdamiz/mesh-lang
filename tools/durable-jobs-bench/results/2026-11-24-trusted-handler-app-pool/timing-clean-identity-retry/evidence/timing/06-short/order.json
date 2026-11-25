@@ -1,0 +1,15 @@
+{
+  "group": 6,
+  "order": [
+    "service-b",
+    "service-a",
+    "direct-observed",
+    "direct",
+    "v1",
+    "service-observed"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}
