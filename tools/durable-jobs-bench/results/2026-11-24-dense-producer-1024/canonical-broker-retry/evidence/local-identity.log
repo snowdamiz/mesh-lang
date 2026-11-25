@@ -1,0 +1,4 @@
+{"canonical": true, "dotdot": "broker path must name the installed stage executable", "gid": 65534, "uid": 65534, "wrong_argv": "9: owned launch identity changed", "wrong_hash": "executable digest mismatch: /var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/broker/mesh", "wrong_launch": "9: owned launch identity changed"}
+{"replaced": "9: kernel executable differs from the pinned launch"}
+{"symlink": "noncanonical executable path: /var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/broker/mesh"}
+{"ancestor": "noncanonical executable path: /var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/broker/mesh"}

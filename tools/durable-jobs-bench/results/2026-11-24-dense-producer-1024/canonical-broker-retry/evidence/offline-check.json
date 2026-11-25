@@ -1,0 +1,39 @@
+{
+  "identity": {
+    "canonical": true,
+    "rejected": [
+      "dotdot",
+      "wrong_hash",
+      "wrong_argv",
+      "wrong_launch",
+      "replaced",
+      "symlink",
+      "ancestor"
+    ],
+    "uid": 65534
+  },
+  "rejected": {
+    "blocks/01-noop.1795573831070458000/measured-1024/measured-mesh/raw.tar.gz": "8cc4a573842bc3cc5427e9c98519ff7a6b68f959fd7398938f8623d41932ad06",
+    "blocks/01-noop.1795573831070458000/measured-128-a/measured-mesh/raw.tar.gz": "bf0e119baec6b8fbfa6e2a67495cee66e11ac10c55c49e561d5e95ce77b09b46",
+    "blocks/01-noop.1795573831070458000/measured-128-b/measured-mesh/raw.tar.gz": "00f3c08fa98932fdaa24e75009041b10a88e540971752f7c4f4f92050dde4dd0",
+    "blocks/01-noop.1795573831070458000/warmup-1024/warmup-mesh/raw.tar.gz": "82b5a5fd35431c7ce1486e7580b667a4b46dafc5813fd4c9d06babaecf7bbefa",
+    "blocks/01-noop.1795573831070458000/warmup-128-a/warmup-mesh/raw.tar.gz": "aaa0e107acea7c368d73c8d7e0bdeae1f64cd0181e76c542dbafd13b6cda803a",
+    "blocks/01-noop.1795573831070458000/warmup-128-b/warmup-mesh/raw.tar.gz": "58e3e8b595205090a851318dffaaf3d8ee19a4bfd02ab325ddec7f0d7901697a",
+    "blocks/02-noop.1795573852697547000/measured-1024/measured-mesh/raw.tar.gz": "9e0cb29a26973bdb2152ad3cca7627c773612833736b967cce67b0854a83017b",
+    "blocks/02-noop.1795573852697547000/measured-128-a/measured-mesh/raw.tar.gz": "5d86a9d4293a57320070b669741b8b910edf8c1c83e7767b502bc713604e6a94",
+    "blocks/02-noop.1795573852697547000/measured-128-b/measured-mesh/raw.tar.gz": "dc033d985c53246baa6e80390b41cf567440f01107cceadfd01625aded43b77e",
+    "blocks/02-noop.1795573852697547000/warmup-1024/warmup-mesh/raw.tar.gz": "d030035aab024eed6cbc95ab2ed05e3390802e178f01c639c414ed43aacba6b7",
+    "blocks/02-noop.1795573852697547000/warmup-128-a/warmup-mesh/raw.tar.gz": "158f37f4e9c5fd4ae1d29e27a7c06a790ca1e3da5dbef06f9fa6ffcd90572fde",
+    "blocks/02-noop.1795573852697547000/warmup-128-b/warmup-mesh/raw.tar.gz": "a0397aa6bdb1c16c4eb7e69459b6658c60587183ba48a295becd72f4faa5f36e"
+  },
+  "score_controls": {
+    "kind": "offline synthetic controls using archived data",
+    "results": {
+      "1024": "accepted",
+      "128-a": "accepted",
+      "eight-call-wide": "actual writer calls or returned row count changed",
+      "missing-receipt": "durable receipts differ from all 1,024 canonical keys or broker IDs",
+      "wrong-broker": "direct process identity differs"
+    }
+  }
+}

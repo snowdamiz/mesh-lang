@@ -1,0 +1,17 @@
+{
+  "build_free": true,
+  "controller": "linode-native-stepchange-controller-v1",
+  "evidence_destination": "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/canonical-broker-retry/evidence/peers",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-dense-producer-1024-peers-canonical-broker",
+  "intake_sha256": "b31f1cac068f3ba39973fb5e7861ece3e88409f699fc68a1ee4a5f21bb6624c3",
+  "offline_check_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/canonical-broker-retry/controller.py check",
+  "prerequisite": "Sole controller only after successful full diagnostic replay and release. Both pilot blocks must also qualify and release.",
+  "ready": true,
+  "requested_window_minutes": 20,
+  "summarize_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/canonical-broker-retry/controller.py replay peers",
+  "timing_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/canonical-broker-retry/controller.py dispatch peers"
+}
