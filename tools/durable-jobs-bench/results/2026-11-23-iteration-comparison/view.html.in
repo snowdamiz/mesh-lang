@@ -91,6 +91,7 @@ const seriesNames={
  "public-large-file-session":fileLanes,
  "public-large-file-external":fileLanes,
  "dense-fixed8-logical-peers":{combined:"Mesh · fixed8 + d388","river-2x32":"Go River · stock, opens sessions during drain"},
+ "dense-fixed8-river-readiness":{combined:"Mesh · fixed8 + d388","river-2x32":"Go River · stock","river-cold":"Go River · rebuilt lazy","river-warm":"Go River · rebuilt prewarmed"},
  "public-dense-individual-hot-checkout":{hot:"Mesh · hot checkout","checked-a":"Mesh · checked A","checked-b":"Mesh · checked B"}
 };
 function draw() {

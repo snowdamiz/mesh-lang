@@ -318,6 +318,34 @@ Stock River opened application sessions during drain. Its sampled total rose fro
 
 The two reversed factorial pilot rotations passed their advancement gates. Their combined lane used the same image, grant SQL and launch inventory as the five fresh peer rotations. [Same-image pilot](../2026-11-25-dense-fixed8-logical-factorial/PILOT-RESULTS.md) · [Peer release](../2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/peers-release.json)
 
+## Dense fixed8 and River connection readiness
+
+6/6 matched rotations. Each lane uses two 32-slot runners for 1,024 jobs on CPUs 0 and 1. Rebuilt River lazy and prewarmed modes share an ELF. This sensitivity uses six fresh rotations. [Interactive results](chart.html#dense-fixed8-river-readiness) · [Original stock comparison](chart.html#dense-fixed8-logical-peers)
+
+| Lane | Submit jobs/s | Drain jobs/s | Prewarmed River paired submit change (wins) | Prewarmed River paired drain change (wins) |
+|---|---:|---:|---:|---:|
+| Prewarmed Go River | 1,313.97 | 1,466.60 | — | — |
+| Lazy rebuilt Go River | 1,002.52 | 1,079.50 | +31.16% (6/6) | +34.53% (6/6) |
+| Stock Go River | 998.75 | 1,081.39 | +31.55% (6/6) | +36.25% (6/6) |
+| Experimental Mesh fixed8 + d388 | 980.45 | 1,194.85 | +35.33% (6/6) | +22.76% (6/6) |
+
+The sealed gate requires all six gaps to have the same sign and each absolute gap to exceed the larger of 5% of prewarmed River elapsed time and the absolute stock versus rebuilt-lazy River gap. The replay reports **Mesh deficit** from submit and **Mesh deficit** from enqueue commit.
+
+| Group | Prewarmed River submit lead (ms) | Submit threshold (ms) | Drain lead (ms) | Drain threshold (ms) |
+|---|---:|---:|---:|---:|
+| 1 | 210.34 | 39.36 | 122.24 | 35.76 |
+| 2 | 279.69 | 38.93 | 168.08 | 34.92 |
+| 3 | 275.90 | 38.53 | 149.71 | 34.91 |
+| 4 | 269.38 | 38.65 | 194.75 | 34.23 |
+| 5 | 720.18 | 39.01 | 635.66 | 34.72 |
+| 6 | 187.94 | 39.23 | 102.35 | 35.66 |
+
+Mesh had **41 idle total sessions**, including 32 warmed application TLS sessions. Prewarmed River had **67 idle total sessions**, with 32 shared-pool sessions and one listener per runner, plus the observer. Stock and rebuilt-lazy River each started with seven idle sessions.
+
+River runner launch to readiness took a median 56.4 ms in lazy mode and 314.7 ms in prewarmed mode. Including the common idle window, the paired median prewarmed-minus-lazy difference from runner launch through settlement was +29.5 ms. Mesh has no matching runner-launch timestamp. The cross-engine gates use the submit and drain clocks.
+
+All six rotations contribute to the table and medians, including group 5. [Releases and native startup replay](../2026-11-25-dense-fixed8-river-readiness/evidence/native/README.md)
+
 ## Short jobs with combined settlement and refill
 
 2/5 matched rotations. The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.

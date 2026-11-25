@@ -1,6 +1,7 @@
 """Replay the native ledgers and build the comparison without contacting a host."""
 
 import argparse
+import hashlib
 import json
 import runpy
 from pathlib import Path
@@ -296,6 +297,81 @@ def dense_fixed8_connections(raw, engine, score):
     if engine == "mesh":
         result["warmed_application_tls"] = score["physical_tls_by_role"]["compiled_caller"]
     return result
+
+
+def capture_dense_fixed8_river_readiness(directory):
+    campaign = directory.parents[1]
+    packet_path = campaign / "controller-packet.json"
+    packet = run.read_json(packet_path)
+    packet_sha = run.digest(packet_path)
+    source = directory / "replay-rest.json"
+    replay = subprocess.check_output([sys.executable, "-B", campaign / "controller.py", "replay"])
+    run.require(replay == source.read_bytes(), f"{source}: differs from fresh native replay")
+    report = json.loads(replay)
+    lanes = {"combined": "mesh", "river-2x32": "go", "river-cold": "go", "river-warm": "go"}
+    release_hashes, grant_hashes, blocks, diagnostics = {}, {}, [], {}
+    for stage, group_ids in (("setup", [0]), ("pilot", [1, 2]), ("rest", [3, 4, 5, 6])):
+        release_path = directory / "controller" / f"{stage}-release.json"
+        release = run.read_json(release_path)
+        key = f"{packet['id']}-{stage}"
+        run.require((release["id"], release["groups"], release["exit_status"]) == (key, group_ids, 0)
+                    and release == report["dispositions"][stage], f"{release_path}: successful release required")
+        staging, = (directory / "staging").glob(f"{stage}-*")
+        grant_path = directory / f"grant-{staging.name}.json"
+        grant = run.read_json(grant_path)
+        run.require((grant["id"], grant["request_sha256"]) == (key, packet_sha), f"{grant_path}: grant seal differs")
+        release_hashes[stage], grant_hashes[stage] = run.digest(release_path), run.digest(grant_path)
+        inventories = {lane: run.read_json(staging / lane / "inventory.json") for lane in lanes}
+        run.require([trial["group"] for trial in packet["schedule"][stage]] == group_ids, "unexpected release roster")
+        for trial in packet["schedule"][stage]:
+            folder, = (directory / "blocks").glob(f"{run.block_prefix(trial)}.*")
+            rows = report["groups"][str(trial["group"])]
+            run.require(run.read_json(folder / "order.json") == trial
+                        and run.read_json(folder / "reconciled.json") == rows, f"{folder}: replay differs")
+            scores, archives = {}, {}
+            for phase in trial["phases"]:
+                for lane in trial["order"]:
+                    engine = lanes[lane]
+                    arm = f"{phase}-{lane}/{phase}-{engine}"
+                    raw = folder / arm / "raw.tar.gz"
+                    row = rows[phase][lane]
+                    archives[arm] = run.digest(raw)
+                    with tarfile.open(raw) as archive:
+                        ledger_sha = hashlib.sha256(archive.extractfile("adapter/ledger.json").read()).hexdigest()
+                    run.require((archives[arm], ledger_sha) == (row["raw_sha256"], row["ledger_sha256"]),
+                                f"{raw}: archive or ledger digest differs")
+                    if phase == "measured":
+                        scores[lane] = dense_river_readiness_score(raw.parent, trial, engine, inventories[lane], row)
+                        if engine == "mesh":
+                            scores[lane]["runner_sha256"] = packet["mesh_elf"]
+            if stage == "setup":
+                diagnostics = archives
+            else:
+                blocks.append(dict(**trial, attempt=folder.name, scores=scores, raw_sha256=archives))
+    run.require(len(diagnostics) == 4 and sum(len(b["raw_sha256"]) for b in blocks) == 48,
+                "expected four setup and 48 timing archives")
+    return dict(manifest_sha256=packet_sha, release_sha256=release_hashes, grant_sha256=grant_hashes,
+                replay_sha256=run.digest(source), diagnostics_raw_sha256=diagnostics,
+                mesh_elf_sha256=packet["mesh_elf"], grant_sql_sha256=packet["mesh_sql"],
+                river_readiness_elf_sha256=packet["river_elf"], paired=report["paired"], blocks=blocks)
+
+
+def dense_river_readiness_score(folder, trial, engine, inventory, row):
+    profile = trial["profile"]
+    original = run.PROFILES[profile]
+    run.PROFILES[profile] = (2, *original[1:])
+    try:
+        score = run.score_arm(folder, trial, "measured", engine, inventory)
+    finally:
+        run.PROFILES[profile] = original
+    run.require((score["completed"], score["ordered_independent_writes"], score["failed"], score["affinity"])
+                == (1024, 1024, 0, [0, 1])
+                and score["submit_jobs_per_s"] == row["submit_jobs_per_s"]
+                and score["commit_jobs_per_s"] == row["drain_jobs_per_s"], f"{folder}: viewer clocks or outcome differ")
+    return dict({key: score[key] for key in METRICS}, **row, engine=engine, completed=score["completed"],
+                sha256=inventory["engines"][engine]["artifact_sha256"],
+                submit_to_last_settlement_ms=row["submit_us"] / 1000,
+                commit_to_last_settlement_ms=row["drain_us"] / 1000)
 
 
 def capture_public_large_file_external(retry):
@@ -645,6 +721,42 @@ def add_large_file_session(lines, series):
                   "[Execution orders, per-arm clocks and evidence digests](scores.json)", ""])
 
 
+def add_dense_river_readiness(lines, series):
+    if not series:
+        return
+    add_policy_table(lines, series, "Dense fixed8 and River connection readiness",
+                     "Each lane uses two 32-slot runners for 1,024 jobs on CPUs 0 and 1. Rebuilt River lazy and "
+                     "prewarmed modes share an ELF. This sensitivity uses six fresh rotations. "
+                     "[Interactive results](chart.html#dense-fixed8-river-readiness) · "
+                     "[Original stock comparison](chart.html#dense-fixed8-logical-peers)",
+                     [("river-warm", "Prewarmed Go River"), ("river-cold", "Lazy rebuilt Go River"),
+                      ("river-2x32", "Stock Go River"), ("combined", "Experimental Mesh fixed8 + d388")],
+                     planned=6, paired="Prewarmed River")
+    submit, drain = (series["paired"][clock] for clock in ("submit_us", "drain_us"))
+    lines.extend(["The sealed gate requires all six gaps to have the same sign and each absolute gap to exceed the larger "
+                  "of 5% of prewarmed River elapsed time and the absolute stock versus rebuilt-lazy River gap. "
+                  f"The replay reports **{submit['verdict']}** from submit and **{drain['verdict']}** from enqueue commit.", "",
+                  "| Group | Prewarmed River submit lead (ms) | Submit threshold (ms) | Drain lead (ms) | Drain threshold (ms) |",
+                  "|---|---:|---:|---:|---:|"])
+    for a, b in zip(submit["blocks"], drain["blocks"], strict=True):
+        leads = (a["mesh_us"] - a["warm_us"], a["threshold_us"], b["mesh_us"] - b["warm_us"], b["threshold_us"])
+        lines.append(f"| {a['group']} | " + " | ".join(f"{value / 1000:.2f}" for value in leads) + " |")
+    pairs = [(b["scores"]["river-cold"]["startup"], b["scores"]["river-warm"]["startup"]) for b in series["blocks"]]
+    launch = "runner_launch_to_ready_us"
+    through = "runner_launch_through_settlement_us"
+    ready_ms = [median(row[i][launch] for row in pairs) / 1000 for i in (0, 1)]
+    launch_delta = median(warm[through] - cold[through] for cold, warm in pairs) / 1000
+    lines.extend(["", "Mesh had **41 idle total sessions**, including 32 warmed application TLS sessions. "
+                  "Prewarmed River had **67 idle total sessions**, with 32 shared-pool sessions and one listener "
+                  "per runner, plus the observer. Stock and rebuilt-lazy River each started with seven idle sessions.", "",
+                  f"River runner launch to readiness took a median {ready_ms[0]:.1f} ms in lazy mode and "
+                  f"{ready_ms[1]:.1f} ms in prewarmed mode. Including the common idle window, the paired median "
+                  f"prewarmed-minus-lazy difference from runner launch through settlement was {launch_delta:+.1f} ms. "
+                  "Mesh has no matching runner-launch timestamp. The cross-engine gates use the submit and drain clocks.", "",
+                  "All six rotations contribute to the table and medians, including group 5. "
+                  "[Releases and native startup replay](../2026-11-25-dense-fixed8-river-readiness/evidence/native/README.md)", ""])
+
+
 def write_scorecard(data):
     profiles = [("ordinary-dense", "Dense no-op"), ("ordinary", "Short"),
                 ("ordinary-slow", "Slow"), ("ordinary-sparse", "Sparse"),
@@ -872,6 +984,7 @@ def write_scorecard(data):
                       "used the same image, grant SQL and launch inventory as the five fresh peer rotations. "
                       "[Same-image pilot](../2026-11-25-dense-fixed8-logical-factorial/PILOT-RESULTS.md) · "
                       "[Peer release](../2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/peers-release.json)", ""])
+    add_dense_river_readiness(lines, data.get("dense-fixed8-river-readiness", {}))
     add_policy_table(lines, data.get("short-fused-refill", {}), "Short jobs with combined settlement and refill",
                      "The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.",
                      [("fused-a", "Fused A"), ("fused-b", "Fused B"), ("group-a", "Grouped control A"),
@@ -1091,6 +1204,8 @@ def refresh(collect, selected=()):
                 current = capture_public_dense_individual_checkout(archived)
             elif name == "dense-fixed8-logical-peers":
                 current = capture_dense_fixed8_peers(archived)
+            elif name == "dense-fixed8-river-readiness":
+                current = capture_dense_fixed8_river_readiness(archived)
             elif name == "dense-exit-confirmed":
                 current = capture_dense_checkout(archived)
             elif name == "slow-equal-cap71":

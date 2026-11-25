@@ -8529,6 +8529,2739 @@
     "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
     "title": "Dense \u00b7 experimental Mesh fixed8 + d388 against stock peers"
   },
+  "dense-fixed8-river-readiness": {
+    "blocks": [
+      {
+        "attempt": "01-noop.1795580143998729000",
+        "group": 1,
+        "order": [
+          "combined",
+          "river-2x32",
+          "river-cold",
+          "river-warm"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-combined/measured-mesh": "23b68390b78dd37080f6b8290aa4a1d0063dbed2664670e71651664c7c77f19a",
+          "measured-river-2x32/measured-go": "466db3244e6055263f30d98c0a2b97e974848c7e10a7b5ca93e730ae4a056475",
+          "measured-river-cold/measured-go": "7e5006f9dbdff05b32af0abfc5214af6e9bdd3154ccc4bfc1fb1a4cc843c5c48",
+          "measured-river-warm/measured-go": "92cf7a7058e0cfa3deee1069beef14e99b8c11a13b06d755713d614b1853ad5b",
+          "warmup-combined/warmup-mesh": "387b9a9513ba0018c3dd70a7a83933f1754ee049a31beff6dc0feecefeb4ae53",
+          "warmup-river-2x32/warmup-go": "da11295167321134b3e74ef737097bf733f8285cff2558a720a2eb3c17a432c6",
+          "warmup-river-cold/warmup-go": "3f48e2107ce31f7522a38abce9c8d887af9415c9873fcc6bd730d30a8a5199da",
+          "warmup-river-warm/warmup-go": "d64fe115ca7acdd7a4798f1d2608251a7f4ecf4368c16dd98b688f23a05ac046"
+        },
+        "scores": {
+          "combined": {
+            "after_last_effect_us": 4732,
+            "commit_jobs_per_s": 1222.8720056653367,
+            "commit_to_last_settlement_ms": 837.373,
+            "commit_to_pickup_p99_ms": 816.551,
+            "commit_to_settlement_p99_ms": 830.404,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "cpu_iowait_percent": 1.3215859030837005,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1222.8720056653367,
+            "drain_us": 837373,
+            "engine": "mesh",
+            "enqueue_us": 160249,
+            "first_submit_to_commit_ms": 160.249,
+            "idle_application_tls": 32,
+            "ledger_sha256": "38a50ba1c371ec779f23bbeb67c17219e4b206c8b553b85298b3a1b655a4f631",
+            "peak_runner_rss_bytes": 23420928,
+            "per_job_effect_to_settlement_us": {
+              "max": 33144,
+              "median": 8316.5,
+              "min": 1693,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 832211,
+                  "256": 228475,
+                  "64": 82161,
+                  "768": 613834,
+                  "960": 785256
+                },
+                "last_64_us": 46955,
+                "middle_512_us": 385359
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 832641,
+                  "256": 229138,
+                  "64": 84101,
+                  "768": 614792,
+                  "960": 785826
+                },
+                "last_64_us": 46815,
+                "middle_512_us": 385654
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 837373,
+                  "256": 232850,
+                  "64": 90086,
+                  "768": 628024,
+                  "960": 793051
+                },
+                "last_64_us": 44322,
+                "middle_512_us": 395174
+              }
+            },
+            "raw_sha256": "23b68390b78dd37080f6b8290aa4a1d0063dbed2664670e71651664c7c77f19a",
+            "runner_cpu_ms_per_job": 0.5165439453124999,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "submit_jobs_per_s": 1026.4408764040888,
+            "submit_to_last_settlement_ms": 997.622,
+            "submit_to_settlement_p50_ms": 588.836,
+            "submit_to_settlement_p99_ms": 990.653,
+            "submit_us": 997622,
+            "terminal_xids": 159
+          },
+          "river-2x32": {
+            "after_last_effect_us": 177139,
+            "commit_jobs_per_s": 1083.8972456943134,
+            "commit_to_last_settlement_ms": 944.739,
+            "commit_to_pickup_p99_ms": 758.784,
+            "commit_to_settlement_p99_ms": 944.739,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "cpu_iowait_percent": 0.36101083032490977,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1083.8972456943134,
+            "drain_us": 944739,
+            "engine": "go",
+            "enqueue_us": 81304,
+            "first_submit_to_commit_ms": 81.304,
+            "ledger_sha256": "8024ea13bcd1613140c2001bab33b60bce352b97153fbc43732e121c1458fb03",
+            "peak_runner_rss_bytes": 43761664,
+            "per_job_effect_to_settlement_us": {
+              "max": 298717,
+              "median": 94045.5,
+              "min": 18057,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 765567,
+                  "256": 403751,
+                  "64": 286702,
+                  "768": 623865,
+                  "960": 741683
+                },
+                "last_64_us": 23884,
+                "middle_512_us": 220114
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 767600,
+                  "256": 404293,
+                  "64": 305565,
+                  "768": 628206,
+                  "960": 746039
+                },
+                "last_64_us": 21561,
+                "middle_512_us": 223913
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 944739,
+                  "256": 485509,
+                  "64": 461482,
+                  "768": 697828,
+                  "960": 944739
+                },
+                "last_64_us": 0,
+                "middle_512_us": 212319
+              }
+            },
+            "raw_sha256": "466db3244e6055263f30d98c0a2b97e974848c7e10a7b5ca93e730ae4a056475",
+            "runner_cpu_ms_per_job": 0.440470703125,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "submit_jobs_per_s": 998.0088553793554,
+            "submit_to_last_settlement_ms": 1026.043,
+            "submit_to_settlement_p50_ms": 697.425,
+            "submit_to_settlement_p99_ms": 1026.043,
+            "submit_us": 1026043,
+            "terminal_xids": 11
+          },
+          "river-cold": {
+            "after_last_effect_us": 150372,
+            "commit_jobs_per_s": 1113.19230723238,
+            "commit_to_last_settlement_ms": 919.877,
+            "commit_to_pickup_p99_ms": 763.687,
+            "commit_to_settlement_p99_ms": 919.877,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "cpu_iowait_percent": 0.43478260869565216,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1113.19230723238,
+            "drain_us": 919877,
+            "engine": "go",
+            "enqueue_us": 85238,
+            "first_submit_to_commit_ms": 85.238,
+            "ledger_sha256": "e7c219cbc7361e7f409f8b641df7a7669aa13e16593687c832f00c937671767d",
+            "peak_runner_rss_bytes": 43573248,
+            "per_job_effect_to_settlement_us": {
+              "max": 286837,
+              "median": 84454.5,
+              "min": 14009,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 765802,
+                  "256": 423364,
+                  "64": 203574,
+                  "768": 632811,
+                  "960": 716988
+                },
+                "last_64_us": 48814,
+                "middle_512_us": 209447
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 769505,
+                  "256": 427505,
+                  "64": 229457,
+                  "768": 639867,
+                  "960": 721784
+                },
+                "last_64_us": 47721,
+                "middle_512_us": 212362
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 919877,
+                  "256": 548968,
+                  "64": 436048,
+                  "768": 706286,
+                  "960": 919877
+                },
+                "last_64_us": 0,
+                "middle_512_us": 157318
+              }
+            },
+            "raw_sha256": "7e5006f9dbdff05b32af0abfc5214af6e9bdd3154ccc4bfc1fb1a4cc843c5c48",
+            "runner_cpu_ms_per_job": 0.4618017578125,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_cc41d498a55f2374:runner-0": 2984521,
+                "river:parity_cc41d498a55f2374:runner-1": 2984520
+              },
+              "per_runner_fill_us": [],
+              "physical_at_submit": 7,
+              "postgres_client_cpu_ms": 0.0,
+              "postgres_client_rss_bytes": 154546176,
+              "producer_before_ready": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28798976,
+                "threads": 9
+              },
+              "producer_connection": {
+                "cpu_ms": 10.0,
+                "rss_bytes": 28041216,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 15999,
+              "ready_to_presubmit_us": 3002103,
+              "runner_launch_through_settlement_us": 4077479,
+              "runner_launch_to_ready_us": 68725,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 10.0,
+                  "rss_bytes": 12312576,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 10.0,
+                  "rss_bytes": 12431360,
+                  "threads": 7
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1018.7888948030823,
+            "submit_to_last_settlement_ms": 1005.115,
+            "submit_to_settlement_p50_ms": 673.38,
+            "submit_to_settlement_p99_ms": 1005.115,
+            "submit_us": 1005115,
+            "terminal_xids": 12
+          },
+          "river-warm": {
+            "after_last_effect_us": 209890,
+            "commit_jobs_per_s": 1431.9054830513571,
+            "commit_to_last_settlement_ms": 715.131,
+            "commit_to_pickup_p99_ms": 498.338,
+            "commit_to_settlement_p99_ms": 715.131,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                67,
+                67
+              ],
+              "last_idle": 67,
+              "peak": 67
+            },
+            "cpu_iowait_percent": 0.5434782608695652,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1431.9054830513571,
+            "drain_us": 715131,
+            "engine": "go",
+            "enqueue_us": 72149,
+            "first_submit_to_commit_ms": 72.149,
+            "ledger_sha256": "94d154bfbdd88b7d647895d96ddfb2a90fdc804308c023d6dd020775dcaaa90d",
+            "peak_runner_rss_bytes": 44290048,
+            "per_job_effect_to_settlement_us": {
+              "max": 257470,
+              "median": 75287.5,
+              "min": 18214,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 501082,
+                  "256": 149042,
+                  "64": 58528,
+                  "768": 375119,
+                  "960": 449224
+                },
+                "last_64_us": 51858,
+                "middle_512_us": 226077
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 505241,
+                  "256": 156635,
+                  "64": 70935,
+                  "768": 379921,
+                  "960": 451761
+                },
+                "last_64_us": 53480,
+                "middle_512_us": 223286
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 715131,
+                  "256": 221090,
+                  "64": 176176,
+                  "768": 474691,
+                  "960": 477397
+                },
+                "last_64_us": 237734,
+                "middle_512_us": 253601
+              }
+            },
+            "raw_sha256": "92cf7a7058e0cfa3deee1069beef14e99b8c11a13b06d755713d614b1853ad5b",
+            "runner_cpu_ms_per_job": 0.466751953125,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_0ab9199acb0ec0bd:runner-0": 2984831,
+                "river:parity_0ab9199acb0ec0bd:runner-1": 2984832
+              },
+              "per_runner_fill_us": [
+                278723,
+                287585
+              ],
+              "physical_at_submit": 67,
+              "postgres_client_cpu_ms": 10.0,
+              "postgres_client_rss_bytes": 1059086336,
+              "producer_before_ready": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28827648,
+                "threads": 8
+              },
+              "producer_connection": {
+                "cpu_ms": 20.0,
+                "rss_bytes": 28123136,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 15239,
+              "ready_to_presubmit_us": 3001929,
+              "runner_launch_through_settlement_us": 4108503,
+              "runner_launch_to_ready_us": 312737,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 16625664,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 16998400,
+                  "threads": 8
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1300.6808251193984,
+            "submit_to_last_settlement_ms": 787.28,
+            "submit_to_settlement_p50_ms": 408.358,
+            "submit_to_settlement_p99_ms": 787.28,
+            "submit_us": 787280,
+            "terminal_xids": 11
+          }
+        }
+      },
+      {
+        "attempt": "02-noop.1795580211865281000",
+        "group": 2,
+        "order": [
+          "river-warm",
+          "river-cold",
+          "river-2x32",
+          "combined"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-combined/measured-mesh": "46909cbd230f43ebef4068696e78cd4967aeeb41e076eb99c3aad3b1054c265c",
+          "measured-river-2x32/measured-go": "7f6830e715122b0f825bc6ebc58b7ad1898f1437c6d22c320e878ba10d00df9f",
+          "measured-river-cold/measured-go": "6c65eaf3ab7bdd09f8f4003d61930a039789c4d6e6c9cbe431e9db202830bb6e",
+          "measured-river-warm/measured-go": "ec51c1bdab4767b970a3e9acfe078a169050871bf3ae0780c0cc02eca267b045",
+          "warmup-combined/warmup-mesh": "8931dac573d078fd8a6d277e89bef165a2cbb51dd54e5cee34513fa4c4ec0704",
+          "warmup-river-2x32/warmup-go": "a2a1168935fefd96f04c58dc4da85854b7227893204ae3833ec37812ece2ea92",
+          "warmup-river-cold/warmup-go": "c6a4ec5982a400d3aaef5d331f2c6838e34327b7e0bba533ddded411109d7ba2",
+          "warmup-river-warm/warmup-go": "b181e16593b3d7eccaef4885ad69c62bdabdb29d1d02a7dc2ce7df2bb8d6b0ca"
+        },
+        "scores": {
+          "combined": {
+            "after_last_effect_us": 5777,
+            "commit_jobs_per_s": 1181.9184937926195,
+            "commit_to_last_settlement_ms": 866.388,
+            "commit_to_pickup_p99_ms": 823.244,
+            "commit_to_settlement_p99_ms": 857.044,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "cpu_iowait_percent": 0.8888888888888888,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1181.9184937926195,
+            "drain_us": 866388,
+            "engine": "mesh",
+            "enqueue_us": 191826,
+            "first_submit_to_commit_ms": 191.826,
+            "idle_application_tls": 32,
+            "ledger_sha256": "4ef2b03e7122b4b71598e18e3676970a55bf43b23b3b96d439deeeaeafe9eaf0",
+            "peak_runner_rss_bytes": 23302144,
+            "per_job_effect_to_settlement_us": {
+              "max": 36376,
+              "median": 8534.0,
+              "min": 1708,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 860212,
+                  "256": 237810,
+                  "64": 94737,
+                  "768": 617266,
+                  "960": 795129
+                },
+                "last_64_us": 65083,
+                "middle_512_us": 379456
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 860611,
+                  "256": 238605,
+                  "64": 96002,
+                  "768": 618551,
+                  "960": 795636
+                },
+                "last_64_us": 64975,
+                "middle_512_us": 379946
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 866388,
+                  "256": 245418,
+                  "64": 101752,
+                  "768": 627443,
+                  "960": 806616
+                },
+                "last_64_us": 59772,
+                "middle_512_us": 382025
+              }
+            },
+            "raw_sha256": "46909cbd230f43ebef4068696e78cd4967aeeb41e076eb99c3aad3b1054c265c",
+            "runner_cpu_ms_per_job": 0.5276376953124999,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "submit_jobs_per_s": 967.6681654183369,
+            "submit_to_last_settlement_ms": 1058.214,
+            "submit_to_settlement_p50_ms": 625.024,
+            "submit_to_settlement_p99_ms": 1048.87,
+            "submit_us": 1058214,
+            "terminal_xids": 166
+          },
+          "river-2x32": {
+            "after_last_effect_us": 218492,
+            "commit_jobs_per_s": 1075.4574107312585,
+            "commit_to_last_settlement_ms": 952.153,
+            "commit_to_pickup_p99_ms": 727.651,
+            "commit_to_settlement_p99_ms": 952.153,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 67
+            },
+            "cpu_iowait_percent": 0.43478260869565216,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1075.4574107312585,
+            "drain_us": 952153,
+            "engine": "go",
+            "enqueue_us": 73552,
+            "first_submit_to_commit_ms": 73.552,
+            "ledger_sha256": "6b37a0a917673314a3f43bb496d2ec786577afcf437363651f81a0c73ced222e",
+            "peak_runner_rss_bytes": 44171264,
+            "per_job_effect_to_settlement_us": {
+              "max": 294374,
+              "median": 76180.5,
+              "min": 16403,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 732890,
+                  "256": 395011,
+                  "64": 251133,
+                  "768": 611032,
+                  "960": 711522
+                },
+                "last_64_us": 21368,
+                "middle_512_us": 216021
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 733661,
+                  "256": 402190,
+                  "64": 271129,
+                  "768": 612826,
+                  "960": 716458
+                },
+                "last_64_us": 17203,
+                "middle_512_us": 210636
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 952153,
+                  "256": 478629,
+                  "64": 427465,
+                  "768": 665861,
+                  "960": 951418
+                },
+                "last_64_us": 735,
+                "middle_512_us": 187232
+              }
+            },
+            "raw_sha256": "7f6830e715122b0f825bc6ebc58b7ad1898f1437c6d22c320e878ba10d00df9f",
+            "runner_cpu_ms_per_job": 0.4371787109375,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "submit_jobs_per_s": 998.3377286841733,
+            "submit_to_last_settlement_ms": 1025.705,
+            "submit_to_settlement_p50_ms": 659.669,
+            "submit_to_settlement_p99_ms": 1025.705,
+            "submit_us": 1025705,
+            "terminal_xids": 13
+          },
+          "river-cold": {
+            "after_last_effect_us": 215876,
+            "commit_jobs_per_s": 1076.8337721991807,
+            "commit_to_last_settlement_ms": 950.936,
+            "commit_to_pickup_p99_ms": 726.817,
+            "commit_to_settlement_p99_ms": 950.936,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 67
+            },
+            "cpu_iowait_percent": 0.4366812227074236,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1076.8337721991807,
+            "drain_us": 950936,
+            "engine": "go",
+            "enqueue_us": 72149,
+            "first_submit_to_commit_ms": 72.149,
+            "ledger_sha256": "537011dbd1b8b61c2d8c1d8a6afe1e2b119430ce3442020710730bf57bffdb25",
+            "peak_runner_rss_bytes": 43360256,
+            "per_job_effect_to_settlement_us": {
+              "max": 247663,
+              "median": 70340.0,
+              "min": 8549,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 730915,
+                  "256": 386703,
+                  "64": 285784,
+                  "768": 600728,
+                  "960": 715994
+                },
+                "last_64_us": 14921,
+                "middle_512_us": 214025
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 735060,
+                  "256": 388459,
+                  "64": 296926,
+                  "768": 606303,
+                  "960": 720674
+                },
+                "last_64_us": 14386,
+                "middle_512_us": 217844
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 950936,
+                  "256": 419683,
+                  "64": 416773,
+                  "768": 666940,
+                  "960": 950936
+                },
+                "last_64_us": 0,
+                "middle_512_us": 247257
+              }
+            },
+            "raw_sha256": "6c65eaf3ab7bdd09f8f4003d61930a039789c4d6e6c9cbe431e9db202830bb6e",
+            "runner_cpu_ms_per_job": 0.43098925781249997,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_6427efa7622db2b8:runner-0": 2986297,
+                "river:parity_6427efa7622db2b8:runner-1": 2986298
+              },
+              "per_runner_fill_us": [],
+              "physical_at_submit": 7,
+              "postgres_client_cpu_ms": 0.0,
+              "postgres_client_rss_bytes": 154537984,
+              "producer_before_ready": {
+                "cpu_ms": 10.0,
+                "rss_bytes": 28749824,
+                "threads": 8
+              },
+              "producer_connection": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28016640,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 14718,
+              "ready_to_presubmit_us": 3002285,
+              "runner_launch_through_settlement_us": 4071497,
+              "runner_launch_to_ready_us": 44969,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 0.0,
+                  "rss_bytes": 12357632,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 0.0,
+                  "rss_bytes": 12349440,
+                  "threads": 7
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1000.8943538415674,
+            "submit_to_last_settlement_ms": 1023.085,
+            "submit_to_settlement_p50_ms": 649.153,
+            "submit_to_settlement_p99_ms": 1023.085,
+            "submit_us": 1023085,
+            "terminal_xids": 14
+          },
+          "river-warm": {
+            "after_last_effect_us": 194247,
+            "commit_jobs_per_s": 1466.4016451193456,
+            "commit_to_last_settlement_ms": 698.308,
+            "commit_to_pickup_p99_ms": 495.543,
+            "commit_to_settlement_p99_ms": 698.308,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                67,
+                67
+              ],
+              "last_idle": 67,
+              "peak": 67
+            },
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1466.4016451193456,
+            "drain_us": 698308,
+            "engine": "go",
+            "enqueue_us": 80216,
+            "first_submit_to_commit_ms": 80.216,
+            "ledger_sha256": "134b712fbda118bbe981c7373cad5b0ca33d695259b7c93ff88e9379f0dd9be3",
+            "peak_runner_rss_bytes": 44113920,
+            "per_job_effect_to_settlement_us": {
+              "max": 253544,
+              "median": 81165.0,
+              "min": 15697,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 502033,
+                  "256": 163412,
+                  "64": 75517,
+                  "768": 376292,
+                  "960": 484054
+                },
+                "last_64_us": 17979,
+                "middle_512_us": 212880
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 504061,
+                  "256": 168828,
+                  "64": 82954,
+                  "768": 382104,
+                  "960": 485542
+                },
+                "last_64_us": 18519,
+                "middle_512_us": 213276
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 698308,
+                  "256": 229726,
+                  "64": 161614,
+                  "768": 451293,
+                  "960": 697270
+                },
+                "last_64_us": 1038,
+                "middle_512_us": 221567
+              }
+            },
+            "raw_sha256": "ec51c1bdab4767b970a3e9acfe078a169050871bf3ae0780c0cc02eca267b045",
+            "runner_cpu_ms_per_job": 0.4458408203125,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_7f7335eb4c07aa4b:runner-0": 2986109,
+                "river:parity_7f7335eb4c07aa4b:runner-1": 2986110
+              },
+              "per_runner_fill_us": [
+                274684,
+                275666
+              ],
+              "physical_at_submit": 67,
+              "postgres_client_cpu_ms": 0.0,
+              "postgres_client_rss_bytes": 1045082112,
+              "producer_before_ready": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28905472,
+                "threads": 9
+              },
+              "producer_connection": {
+                "cpu_ms": 10.0,
+                "rss_bytes": 28102656,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 14500,
+              "ready_to_presubmit_us": 3002228,
+              "runner_launch_through_settlement_us": 4099405,
+              "runner_launch_to_ready_us": 310953,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 16822272,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 16932864,
+                  "threads": 7
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1315.3094830730972,
+            "submit_to_last_settlement_ms": 778.524,
+            "submit_to_settlement_p50_ms": 404.853,
+            "submit_to_settlement_p99_ms": 778.524,
+            "submit_us": 778524,
+            "terminal_xids": 11
+          }
+        }
+      },
+      {
+        "attempt": "03-noop.1795580288747611000",
+        "group": 3,
+        "order": [
+          "river-2x32",
+          "river-warm",
+          "combined",
+          "river-cold"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-combined/measured-mesh": "c8aba3e1d13290a172070f460312a5a8f67e2911f03f0c7ec57c962ade9accb2",
+          "measured-river-2x32/measured-go": "c92d9692c2c9659ef28aff5afb8a92d0cd30b3310e2860179575a05d988b21a2",
+          "measured-river-cold/measured-go": "04c5427b9803931a8562856b34b70713cfe1576004b74580b5e69c2de2eb4b5b",
+          "measured-river-warm/measured-go": "7564529c9e98831c63e4ce6aa1b6cb2b08b31eaca58ca7add6953d86bb74da9a",
+          "warmup-combined/warmup-mesh": "f00cbbe06508ce15c6f8550f81c02ef51919b2cea977600f8d664b0d5fc9daba",
+          "warmup-river-2x32/warmup-go": "83f5a3b4b9a95251eaecd0e788734f7a933fa561a264e8727f5144ec9c4e39c2",
+          "warmup-river-cold/warmup-go": "635e9a617f96d3f2d0acc321730c60e2614aff9c64a84a3f2bafbd6fda4f93c8",
+          "warmup-river-warm/warmup-go": "75fc95cb12012c1db3be1b11947d73d6a44f1e076ca483998e8d9aae7542f11a"
+        },
+        "scores": {
+          "combined": {
+            "after_last_effect_us": 6948,
+            "commit_jobs_per_s": 1207.78929738273,
+            "commit_to_last_settlement_ms": 847.83,
+            "commit_to_pickup_p99_ms": 827.459,
+            "commit_to_settlement_p99_ms": 841.49,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "cpu_iowait_percent": 1.7699115044247788,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1207.78929738273,
+            "drain_us": 847830,
+            "engine": "mesh",
+            "enqueue_us": 198728,
+            "first_submit_to_commit_ms": 198.728,
+            "idle_application_tls": 32,
+            "ledger_sha256": "93caca52d114f494c58401732be14450c5e80940a95e24dffceec0bb6e22b961",
+            "peak_runner_rss_bytes": 23007232,
+            "per_job_effect_to_settlement_us": {
+              "max": 36731,
+              "median": 7937.0,
+              "min": 1818,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 839095,
+                  "256": 234081,
+                  "64": 88133,
+                  "768": 597568,
+                  "960": 779805
+                },
+                "last_64_us": 59290,
+                "middle_512_us": 363487
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 840882,
+                  "256": 234692,
+                  "64": 89929,
+                  "768": 598047,
+                  "960": 782540
+                },
+                "last_64_us": 58342,
+                "middle_512_us": 363355
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 847830,
+                  "256": 241432,
+                  "64": 98201,
+                  "768": 603434,
+                  "960": 789794
+                },
+                "last_64_us": 58036,
+                "middle_512_us": 362002
+              }
+            },
+            "raw_sha256": "c8aba3e1d13290a172070f460312a5a8f67e2911f03f0c7ec57c962ade9accb2",
+            "runner_cpu_ms_per_job": 0.5154130859375,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "submit_jobs_per_s": 978.4455328801653,
+            "submit_to_last_settlement_ms": 1046.558,
+            "submit_to_settlement_p50_ms": 629.085,
+            "submit_to_settlement_p99_ms": 1040.218,
+            "submit_us": 1046558,
+            "terminal_xids": 162
+          },
+          "river-2x32": {
+            "after_last_effect_us": 208176,
+            "commit_jobs_per_s": 1084.0131351904115,
+            "commit_to_last_settlement_ms": 944.638,
+            "commit_to_pickup_p99_ms": 731.662,
+            "commit_to_settlement_p99_ms": 944.638,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1084.0131351904115,
+            "drain_us": 944638,
+            "engine": "go",
+            "enqueue_us": 80221,
+            "first_submit_to_commit_ms": 80.221,
+            "ledger_sha256": "9f75a368b6daaec67a7738eb68f5e0e6a24b22877cd76676bf83a8676e774845",
+            "peak_runner_rss_bytes": 42663936,
+            "per_job_effect_to_settlement_us": {
+              "max": 267685,
+              "median": 88904.5,
+              "min": 11034,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 735159,
+                  "256": 393025,
+                  "64": 291116,
+                  "768": 601552,
+                  "960": 677093
+                },
+                "last_64_us": 58066,
+                "middle_512_us": 208527
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 736462,
+                  "256": 397852,
+                  "64": 304966,
+                  "768": 605498,
+                  "960": 681824
+                },
+                "last_64_us": 54638,
+                "middle_512_us": 207646
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 944638,
+                  "256": 469158,
+                  "64": 432341,
+                  "768": 691940,
+                  "960": 717814
+                },
+                "last_64_us": 226824,
+                "middle_512_us": 222782
+              }
+            },
+            "raw_sha256": "c92d9692c2c9659ef28aff5afb8a92d0cd30b3310e2860179575a05d988b21a2",
+            "runner_cpu_ms_per_job": 0.427966796875,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "submit_jobs_per_s": 999.1618359208437,
+            "submit_to_last_settlement_ms": 1024.859,
+            "submit_to_settlement_p50_ms": 662.634,
+            "submit_to_settlement_p99_ms": 1024.859,
+            "submit_us": 1024859,
+            "terminal_xids": 13
+          },
+          "river-cold": {
+            "after_last_effect_us": 158496,
+            "commit_jobs_per_s": 1113.4295478540928,
+            "commit_to_last_settlement_ms": 919.681,
+            "commit_to_pickup_p99_ms": 754.753,
+            "commit_to_settlement_p99_ms": 919.681,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 69
+            },
+            "cpu_iowait_percent": 0.4329004329004329,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1113.4295478540928,
+            "drain_us": 919681,
+            "engine": "go",
+            "enqueue_us": 89132,
+            "first_submit_to_commit_ms": 89.132,
+            "ledger_sha256": "ddf18e0647b714bfdc2f48bcdfc323a49540223a5688a6ee65cd6306c077fc35",
+            "peak_runner_rss_bytes": 44072960,
+            "per_job_effect_to_settlement_us": {
+              "max": 279032,
+              "median": 76442.5,
+              "min": 10342,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 760799,
+                  "256": 430173,
+                  "64": 262421,
+                  "768": 639000,
+                  "960": 737789
+                },
+                "last_64_us": 23010,
+                "middle_512_us": 208827
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 761185,
+                  "256": 435063,
+                  "64": 273154,
+                  "768": 645707,
+                  "960": 740077
+                },
+                "last_64_us": 21108,
+                "middle_512_us": 210644
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 919681,
+                  "256": 530063,
+                  "64": 423733,
+                  "768": 687641,
+                  "960": 919681
+                },
+                "last_64_us": 0,
+                "middle_512_us": 157578
+              }
+            },
+            "raw_sha256": "04c5427b9803931a8562856b34b70713cfe1576004b74580b5e69c2de2eb4b5b",
+            "runner_cpu_ms_per_job": 0.45693359375,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_32b7ba0ddfd45817:runner-0": 2989867,
+                "river:parity_32b7ba0ddfd45817:runner-1": 2989869
+              },
+              "per_runner_fill_us": [],
+              "physical_at_submit": 7,
+              "postgres_client_cpu_ms": 10.0,
+              "postgres_client_rss_bytes": 155729920,
+              "producer_before_ready": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28778496,
+                "threads": 9
+              },
+              "producer_connection": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28073984,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 15766,
+              "ready_to_presubmit_us": 3002460,
+              "runner_launch_through_settlement_us": 4080035,
+              "runner_launch_to_ready_us": 67050,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 0.0,
+                  "rss_bytes": 12324864,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 10.0,
+                  "rss_bytes": 12341248,
+                  "threads": 7
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1015.0543262229967,
+            "submit_to_last_settlement_ms": 1008.813,
+            "submit_to_settlement_p50_ms": 731.79,
+            "submit_to_settlement_p99_ms": 1008.813,
+            "submit_us": 1008813,
+            "terminal_xids": 12
+          },
+          "river-warm": {
+            "after_last_effect_us": 178013,
+            "commit_jobs_per_s": 1466.8007414219373,
+            "commit_to_last_settlement_ms": 698.118,
+            "commit_to_pickup_p99_ms": 516.095,
+            "commit_to_settlement_p99_ms": 698.118,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                67,
+                67
+              ],
+              "last_idle": 67,
+              "peak": 68
+            },
+            "cpu_iowait_percent": 0.5405405405405406,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1466.8007414219373,
+            "drain_us": 698118,
+            "engine": "go",
+            "enqueue_us": 72540,
+            "first_submit_to_commit_ms": 72.54,
+            "ledger_sha256": "3d234c2cdbbf780b3a6a1862c47c1049a29023c1fc79990a97bf7a32a4df0753",
+            "peak_runner_rss_bytes": 43470848,
+            "per_job_effect_to_settlement_us": {
+              "max": 257658,
+              "median": 97680.5,
+              "min": 19092,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 518941,
+                  "256": 169731,
+                  "64": 61622,
+                  "768": 394615,
+                  "960": 459286
+                },
+                "last_64_us": 59655,
+                "middle_512_us": 224884
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 520105,
+                  "256": 175441,
+                  "64": 73386,
+                  "768": 396911,
+                  "960": 467968
+                },
+                "last_64_us": 52137,
+                "middle_512_us": 221470
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 698118,
+                  "256": 224746,
+                  "64": 214804,
+                  "768": 478937,
+                  "960": 689801
+                },
+                "last_64_us": 8317,
+                "middle_512_us": 254191
+              }
+            },
+            "raw_sha256": "7564529c9e98831c63e4ce6aa1b6cb2b08b31eaca58ca7add6953d86bb74da9a",
+            "runner_cpu_ms_per_job": 0.45771972656250004,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_ccc0dbc651699009:runner-0": 2989392,
+                "river:parity_ccc0dbc651699009:runner-1": 2989394
+              },
+              "per_runner_fill_us": [
+                282465,
+                293828
+              ],
+              "physical_at_submit": 67,
+              "postgres_client_cpu_ms": 0.0,
+              "postgres_client_rss_bytes": 1053458432,
+              "producer_before_ready": {
+                "cpu_ms": 10.0,
+                "rss_bytes": 28909568,
+                "threads": 8
+              },
+              "producer_connection": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28004352,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 15005,
+              "ready_to_presubmit_us": 3002037,
+              "runner_launch_through_settlement_us": 4114630,
+              "runner_launch_to_ready_us": 335564,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 16875520,
+                  "threads": 8
+                },
+                {
+                  "cpu_ms": 70.0,
+                  "rss_bytes": 16887808,
+                  "threads": 8
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1328.7346657012579,
+            "submit_to_last_settlement_ms": 770.658,
+            "submit_to_settlement_p50_ms": 439.731,
+            "submit_to_settlement_p99_ms": 770.658,
+            "submit_us": 770658,
+            "terminal_xids": 8
+          }
+        }
+      },
+      {
+        "attempt": "04-noop.1795580356027338000",
+        "group": 4,
+        "order": [
+          "river-cold",
+          "combined",
+          "river-warm",
+          "river-2x32"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-combined/measured-mesh": "bb2c7612819e6e1c6f30b7b113d380f6a50c06b22a3b5da7828ae2a2f0884443",
+          "measured-river-2x32/measured-go": "cfc9558b3a02023a866e0ffba0d0396b4e53ebb705be1dde0dfdc9ea212c52c0",
+          "measured-river-cold/measured-go": "cc1728c03573b193f2454297091668db8e21491b7aa6cddd03c0f22f301e5f4c",
+          "measured-river-warm/measured-go": "28fffbb6d9169e163d731792bb7d11ed9f2262d3b3a62563ec706016775fc30a",
+          "warmup-combined/warmup-mesh": "849d1684dff7c7d0f9a5d4e6c98d12eda859f232356711154ad5c6959bdeea2b",
+          "warmup-river-2x32/warmup-go": "8d5a3e11482bcc6841d4ee0d230c7bbf16ae86310ea46bedbc6a60476d818028",
+          "warmup-river-cold/warmup-go": "0bb5a6f4c74334351399170fc27219a964b78d264e3ae3f2f17b6a944bbf4fb6",
+          "warmup-river-warm/warmup-go": "d75e816a3a719d844da3a9206ee55806f2c2bd8d2cf5e0f2f3df07a820032db2"
+        },
+        "scores": {
+          "combined": {
+            "after_last_effect_us": 9630,
+            "commit_jobs_per_s": 1164.3852750746503,
+            "commit_to_last_settlement_ms": 879.434,
+            "commit_to_pickup_p99_ms": 853.676,
+            "commit_to_settlement_p99_ms": 868.431,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "cpu_iowait_percent": 1.1070110701107012,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1164.3852750746503,
+            "drain_us": 879434,
+            "engine": "mesh",
+            "enqueue_us": 162851,
+            "first_submit_to_commit_ms": 162.851,
+            "idle_application_tls": 32,
+            "ledger_sha256": "ac82dcc98d870f0f06839f89d1df50eae26907e3c80b42895f9c27f48a909827",
+            "peak_runner_rss_bytes": 23478272,
+            "per_job_effect_to_settlement_us": {
+              "max": 37734,
+              "median": 8411.5,
+              "min": 1866,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 869420,
+                  "256": 222024,
+                  "64": 73564,
+                  "768": 632751,
+                  "960": 819720
+                },
+                "last_64_us": 49700,
+                "middle_512_us": 410727
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 869804,
+                  "256": 224206,
+                  "64": 74774,
+                  "768": 633606,
+                  "960": 820724
+                },
+                "last_64_us": 49080,
+                "middle_512_us": 409400
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 879434,
+                  "256": 235830,
+                  "64": 80733,
+                  "768": 644061,
+                  "960": 826648
+                },
+                "last_64_us": 52786,
+                "middle_512_us": 408231
+              }
+            },
+            "raw_sha256": "bb2c7612819e6e1c6f30b7b113d380f6a50c06b22a3b5da7828ae2a2f0884443",
+            "runner_cpu_ms_per_job": 0.53790234375,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "submit_jobs_per_s": 982.456813635426,
+            "submit_to_last_settlement_ms": 1042.285,
+            "submit_to_settlement_p50_ms": 593.488,
+            "submit_to_settlement_p99_ms": 1031.282,
+            "submit_us": 1042285,
+            "terminal_xids": 167
+          },
+          "river-2x32": {
+            "after_last_effect_us": 188856,
+            "commit_jobs_per_s": 1095.4660116692805,
+            "commit_to_last_settlement_ms": 934.762,
+            "commit_to_pickup_p99_ms": 742.139,
+            "commit_to_settlement_p99_ms": 934.762,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "cpu_iowait_percent": 0.43478260869565216,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1095.4660116692805,
+            "drain_us": 934762,
+            "engine": "go",
+            "enqueue_us": 73068,
+            "first_submit_to_commit_ms": 73.068,
+            "ledger_sha256": "025792114adbf5338c9e9f33cc63f3d66f68d650d5b4a25bf34038c8e34924b6",
+            "peak_runner_rss_bytes": 43868160,
+            "per_job_effect_to_settlement_us": {
+              "max": 269403,
+              "median": 91788.0,
+              "min": 24113,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 743652,
+                  "256": 402003,
+                  "64": 299936,
+                  "768": 611452,
+                  "960": 696767
+                },
+                "last_64_us": 46885,
+                "middle_512_us": 209449
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 745906,
+                  "256": 405361,
+                  "64": 313053,
+                  "768": 616300,
+                  "960": 698045
+                },
+                "last_64_us": 47861,
+                "middle_512_us": 210939
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 934762,
+                  "256": 462279,
+                  "64": 454541,
+                  "768": 703571,
+                  "960": 934172
+                },
+                "last_64_us": 590,
+                "middle_512_us": 241292
+              }
+            },
+            "raw_sha256": "cfc9558b3a02023a866e0ffba0d0396b4e53ebb705be1dde0dfdc9ea212c52c0",
+            "runner_cpu_ms_per_job": 0.4611748046875,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "submit_jobs_per_s": 1016.044372562833,
+            "submit_to_last_settlement_ms": 1007.83,
+            "submit_to_settlement_p50_ms": 677.359,
+            "submit_to_settlement_p99_ms": 1007.83,
+            "submit_us": 1007830,
+            "terminal_xids": 11
+          },
+          "river-cold": {
+            "after_last_effect_us": 223336,
+            "commit_jobs_per_s": 1078.3987463614574,
+            "commit_to_last_settlement_ms": 949.556,
+            "commit_to_pickup_p99_ms": 717.944,
+            "commit_to_settlement_p99_ms": 949.556,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "cpu_iowait_percent": 0.36496350364963503,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1078.3987463614574,
+            "drain_us": 949556,
+            "engine": "go",
+            "enqueue_us": 71770,
+            "first_submit_to_commit_ms": 71.77,
+            "ledger_sha256": "41c94324f89ee84f40857251f8c1007d7b16e0bd6043799739a7fd957b19857e",
+            "peak_runner_rss_bytes": 43057152,
+            "per_job_effect_to_settlement_us": {
+              "max": 273022,
+              "median": 74285.5,
+              "min": 16198,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 722083,
+                  "256": 388899,
+                  "64": 295833,
+                  "768": 603560,
+                  "960": 671968
+                },
+                "last_64_us": 50115,
+                "middle_512_us": 214661
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 726220,
+                  "256": 394160,
+                  "64": 311763,
+                  "768": 608374,
+                  "960": 676224
+                },
+                "last_64_us": 49996,
+                "middle_512_us": 214214
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 949556,
+                  "256": 459611,
+                  "64": 425621,
+                  "768": 677886,
+                  "960": 720215
+                },
+                "last_64_us": 229341,
+                "middle_512_us": 218275
+              }
+            },
+            "raw_sha256": "cc1728c03573b193f2454297091668db8e21491b7aa6cddd03c0f22f301e5f4c",
+            "runner_cpu_ms_per_job": 0.43333007812499996,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_3558f4919ad708c6:runner-0": 2991163,
+                "river:parity_3558f4919ad708c6:runner-1": 2991164
+              },
+              "per_runner_fill_us": [],
+              "physical_at_submit": 7,
+              "postgres_client_cpu_ms": 0.0,
+              "postgres_client_rss_bytes": 155533312,
+              "producer_before_ready": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28729344,
+                "threads": 8
+              },
+              "producer_connection": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28131328,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 14539,
+              "ready_to_presubmit_us": 3001453,
+              "runner_launch_through_settlement_us": 4069080,
+              "runner_launch_to_ready_us": 45188,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 0.0,
+                  "rss_bytes": 12365824,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 10.0,
+                  "rss_bytes": 12361728,
+                  "threads": 7
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1002.6181650129341,
+            "submit_to_last_settlement_ms": 1021.326,
+            "submit_to_settlement_p50_ms": 635.951,
+            "submit_to_settlement_p99_ms": 1021.326,
+            "submit_us": 1021326,
+            "terminal_xids": 13
+          },
+          "river-warm": {
+            "after_last_effect_us": 181000,
+            "commit_jobs_per_s": 1495.5717056527938,
+            "commit_to_last_settlement_ms": 684.688,
+            "commit_to_pickup_p99_ms": 494.308,
+            "commit_to_settlement_p99_ms": 684.688,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                67,
+                67
+              ],
+              "last_idle": 67,
+              "peak": 67
+            },
+            "cpu_iowait_percent": 0.546448087431694,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1495.5717056527938,
+            "drain_us": 684688,
+            "engine": "go",
+            "enqueue_us": 88221,
+            "first_submit_to_commit_ms": 88.221,
+            "ledger_sha256": "4025678564095fb6aeca5feb4e4b3d9376ed243372d417f6acc0a995538a650f",
+            "peak_runner_rss_bytes": 43859968,
+            "per_job_effect_to_settlement_us": {
+              "max": 252309,
+              "median": 71949.0,
+              "min": 12353,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 499300,
+                  "256": 164732,
+                  "64": 75522,
+                  "768": 368917,
+                  "960": 478234
+                },
+                "last_64_us": 21066,
+                "middle_512_us": 204185
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 503688,
+                  "256": 169789,
+                  "64": 84634,
+                  "768": 375779,
+                  "960": 480290
+                },
+                "last_64_us": 23398,
+                "middle_512_us": 205990
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 684688,
+                  "256": 212280,
+                  "64": 209052,
+                  "768": 436624,
+                  "960": 684138
+                },
+                "last_64_us": 550,
+                "middle_512_us": 224344
+              }
+            },
+            "raw_sha256": "28fffbb6d9169e163d731792bb7d11ed9f2262d3b3a62563ec706016775fc30a",
+            "runner_cpu_ms_per_job": 0.44424023437500004,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_556a16f83b30716a:runner-0": 2991779,
+                "river:parity_556a16f83b30716a:runner-1": 2991778
+              },
+              "per_runner_fill_us": [
+                273598,
+                271938
+              ],
+              "physical_at_submit": 67,
+              "postgres_client_cpu_ms": 0.0,
+              "postgres_client_rss_bytes": 1052041216,
+              "producer_before_ready": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28848128,
+                "threads": 8
+              },
+              "producer_connection": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28188672,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 18570,
+              "ready_to_presubmit_us": 3001171,
+              "runner_launch_through_settlement_us": 4095740,
+              "runner_launch_to_ready_us": 315235,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 16842752,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 16691200,
+                  "threads": 7
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1324.8648935385665,
+            "submit_to_last_settlement_ms": 772.909,
+            "submit_to_settlement_p50_ms": 391.966,
+            "submit_to_settlement_p99_ms": 772.909,
+            "submit_us": 772909,
+            "terminal_xids": 10
+          }
+        }
+      },
+      {
+        "attempt": "05-noop.1795580423273889000",
+        "group": 5,
+        "order": [
+          "river-warm",
+          "combined",
+          "river-2x32",
+          "river-cold"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-combined/measured-mesh": "6eca28ea2cc3561e88422c044c75a1a68cb9b6675ad56c1e695fe0f5e8e8cd30",
+          "measured-river-2x32/measured-go": "7b3cb7bf315a98a4a32bc92bb467fe9cc0741a9d80e3543434d034e04ada273d",
+          "measured-river-cold/measured-go": "1ad50811d4f9c1afa2698863cd1a536c68de693061250e8f8415365046d18f60",
+          "measured-river-warm/measured-go": "cbd33ccf1d703d60ea169dfb5c59c036112cbb936b2dbf9d0097f263ca743926",
+          "warmup-combined/warmup-mesh": "e5cc29a8ea6866212dcae02b15e6a75d2891263fc994e2585896719786eafd9c",
+          "warmup-river-2x32/warmup-go": "281cf37e688f338ba39ef0e41c9a471c6a7eea3feeb8a86209edd54477e161cb",
+          "warmup-river-cold/warmup-go": "cf3f8be0aa901d84d5dc637ddaf6e4fdd645a03910c8dcd2acbba4a942610e33",
+          "warmup-river-warm/warmup-go": "74e797471ad67f326c01b0f575ea4e98e318f0edc0860e431e3932c56ba32686"
+        },
+        "scores": {
+          "combined": {
+            "after_last_effect_us": 5520,
+            "commit_jobs_per_s": 769.861139304268,
+            "commit_to_last_settlement_ms": 1330.11,
+            "commit_to_pickup_p99_ms": 1302.83,
+            "commit_to_settlement_p99_ms": 1320.973,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "cpu_iowait_percent": 11.708860759493671,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 769.861139304268,
+            "drain_us": 1330110,
+            "engine": "mesh",
+            "enqueue_us": 170183,
+            "first_submit_to_commit_ms": 170.183,
+            "idle_application_tls": 32,
+            "ledger_sha256": "250dd1678fcff505ada6000e9b549ccfeed48d57f9dc84fa05bfc6d0e357aa73",
+            "peak_runner_rss_bytes": 23764992,
+            "per_job_effect_to_settlement_us": {
+              "max": 36830,
+              "median": 8989.5,
+              "min": 1677,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 1323487,
+                  "256": 352964,
+                  "64": 108847,
+                  "768": 1079884,
+                  "960": 1244470
+                },
+                "last_64_us": 79017,
+                "middle_512_us": 726920
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 1324590,
+                  "256": 354427,
+                  "64": 110738,
+                  "768": 1080701,
+                  "960": 1245600
+                },
+                "last_64_us": 78990,
+                "middle_512_us": 726274
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 1330110,
+                  "256": 361343,
+                  "64": 119547,
+                  "768": 1088751,
+                  "960": 1256038
+                },
+                "last_64_us": 74072,
+                "middle_512_us": 727408
+              }
+            },
+            "raw_sha256": "6eca28ea2cc3561e88422c044c75a1a68cb9b6675ad56c1e695fe0f5e8e8cd30",
+            "runner_cpu_ms_per_job": 0.5690781249999999,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "submit_jobs_per_s": 682.5333451532467,
+            "submit_to_last_settlement_ms": 1500.293,
+            "submit_to_settlement_p50_ms": 960.688,
+            "submit_to_settlement_p99_ms": 1491.156,
+            "submit_us": 1500293,
+            "terminal_xids": 233
+          },
+          "river-2x32": {
+            "after_last_effect_us": 206865,
+            "commit_jobs_per_s": 1078.8907233309064,
+            "commit_to_last_settlement_ms": 949.123,
+            "commit_to_pickup_p99_ms": 738.198,
+            "commit_to_settlement_p99_ms": 949.123,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1078.8907233309064,
+            "drain_us": 949123,
+            "engine": "go",
+            "enqueue_us": 75565,
+            "first_submit_to_commit_ms": 75.565,
+            "ledger_sha256": "3ab31a5ccb2362f2abebf6834f84580e7970f28d0a01a4e01e51da2aa1b8c4d1",
+            "peak_runner_rss_bytes": 43454464,
+            "per_job_effect_to_settlement_us": {
+              "max": 253873,
+              "median": 88805.5,
+              "min": 11659,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 740981,
+                  "256": 386814,
+                  "64": 293490,
+                  "768": 613202,
+                  "960": 693779
+                },
+                "last_64_us": 47202,
+                "middle_512_us": 226388
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 742258,
+                  "256": 388223,
+                  "64": 299410,
+                  "768": 619141,
+                  "960": 696262
+                },
+                "last_64_us": 45996,
+                "middle_512_us": 230918
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 949123,
+                  "256": 476974,
+                  "64": 418238,
+                  "768": 671544,
+                  "960": 948161
+                },
+                "last_64_us": 962,
+                "middle_512_us": 194570
+              }
+            },
+            "raw_sha256": "7b3cb7bf315a98a4a32bc92bb467fe9cc0741a9d80e3543434d034e04ada273d",
+            "runner_cpu_ms_per_job": 0.44528124999999996,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "submit_jobs_per_s": 999.3285761129241,
+            "submit_to_last_settlement_ms": 1024.688,
+            "submit_to_settlement_p50_ms": 694.95,
+            "submit_to_settlement_p99_ms": 1024.688,
+            "submit_us": 1024688,
+            "terminal_xids": 13
+          },
+          "river-cold": {
+            "after_last_effect_us": 188206,
+            "commit_jobs_per_s": 1053.6291040345557,
+            "commit_to_last_settlement_ms": 971.879,
+            "commit_to_pickup_p99_ms": 771.41,
+            "commit_to_settlement_p99_ms": 971.879,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 69
+            },
+            "cpu_iowait_percent": 0.4329004329004329,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1053.6291040345557,
+            "drain_us": 971879,
+            "engine": "go",
+            "enqueue_us": 84396,
+            "first_submit_to_commit_ms": 84.396,
+            "ledger_sha256": "77e74b8e0dcb1093c6e9570a74fb1de7cc91f8588733d913575e25525b652522",
+            "peak_runner_rss_bytes": 44101632,
+            "per_job_effect_to_settlement_us": {
+              "max": 293338,
+              "median": 82942.0,
+              "min": 20882,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 781972,
+                  "256": 443643,
+                  "64": 356188,
+                  "768": 654953,
+                  "960": 720437
+                },
+                "last_64_us": 61535,
+                "middle_512_us": 211310
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 783673,
+                  "256": 447654,
+                  "64": 363065,
+                  "768": 658219,
+                  "960": 724818
+                },
+                "last_64_us": 58855,
+                "middle_512_us": 210565
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 971879,
+                  "256": 498013,
+                  "64": 489245,
+                  "768": 737314,
+                  "960": 969981
+                },
+                "last_64_us": 1898,
+                "middle_512_us": 239301
+              }
+            },
+            "raw_sha256": "1ad50811d4f9c1afa2698863cd1a536c68de693061250e8f8415365046d18f60",
+            "runner_cpu_ms_per_job": 0.46580078124999996,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_dc01e0f2aad45046:runner-0": 2994039,
+                "river:parity_dc01e0f2aad45046:runner-1": 2994040
+              },
+              "per_runner_fill_us": [],
+              "physical_at_submit": 7,
+              "postgres_client_cpu_ms": 10.0,
+              "postgres_client_rss_bytes": 155525120,
+              "producer_before_ready": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28778496,
+                "threads": 9
+              },
+              "producer_connection": {
+                "cpu_ms": 10.0,
+                "rss_bytes": 28200960,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 16625,
+              "ready_to_presubmit_us": 3002715,
+              "runner_launch_through_settlement_us": 4127263,
+              "runner_launch_to_ready_us": 66603,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 10.0,
+                  "rss_bytes": 12333056,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 10.0,
+                  "rss_bytes": 12402688,
+                  "threads": 7
+                }
+              ]
+            },
+            "submit_jobs_per_s": 969.444510189108,
+            "submit_to_last_settlement_ms": 1056.275,
+            "submit_to_settlement_p50_ms": 723.302,
+            "submit_to_settlement_p99_ms": 1056.275,
+            "submit_us": 1056275,
+            "terminal_xids": 11
+          },
+          "river-warm": {
+            "after_last_effect_us": 187700,
+            "commit_jobs_per_s": 1474.5524502914545,
+            "commit_to_last_settlement_ms": 694.448,
+            "commit_to_pickup_p99_ms": 499.235,
+            "commit_to_settlement_p99_ms": 694.448,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                67,
+                67
+              ],
+              "last_idle": 67,
+              "peak": 69
+            },
+            "cpu_iowait_percent": 0.8733624454148472,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1474.5524502914545,
+            "drain_us": 694448,
+            "engine": "go",
+            "enqueue_us": 85669,
+            "first_submit_to_commit_ms": 85.669,
+            "ledger_sha256": "9824f64dfb5ea2aa91ae472c53c5a21f3e5259efe29991168a7359413b6cdb99",
+            "peak_runner_rss_bytes": 44339200,
+            "per_job_effect_to_settlement_us": {
+              "max": 247533,
+              "median": 82323.5,
+              "min": 10454,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 506250,
+                  "256": 148744,
+                  "64": 59605,
+                  "768": 358776,
+                  "960": 483752
+                },
+                "last_64_us": 22498,
+                "middle_512_us": 210032
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 506748,
+                  "256": 152593,
+                  "64": 75158,
+                  "768": 361975,
+                  "960": 488844
+                },
+                "last_64_us": 17904,
+                "middle_512_us": 209382
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 694448,
+                  "256": 219040,
+                  "64": 211998,
+                  "768": 435831,
+                  "960": 679436
+                },
+                "last_64_us": 15012,
+                "middle_512_us": 216791
+              }
+            },
+            "raw_sha256": "cbd33ccf1d703d60ea169dfb5c59c036112cbb936b2dbf9d0097f263ca743926",
+            "runner_cpu_ms_per_job": 0.45724804687500004,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_4b0d36669d4d2460:runner-0": 2993316,
+                "river:parity_4b0d36669d4d2460:runner-1": 2993314
+              },
+              "per_runner_fill_us": [
+                300860,
+                280257
+              ],
+              "physical_at_submit": 67,
+              "postgres_client_cpu_ms": 0.0,
+              "postgres_client_rss_bytes": 1053806592,
+              "producer_before_ready": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28848128,
+                "threads": 8
+              },
+              "producer_connection": {
+                "cpu_ms": 10.0,
+                "rss_bytes": 28037120,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 14946,
+              "ready_to_presubmit_us": 3002154,
+              "runner_launch_through_settlement_us": 4122513,
+              "runner_launch_to_ready_us": 332711,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 16793600,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 16683008,
+                  "threads": 7
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1312.6236192776212,
+            "submit_to_last_settlement_ms": 780.117,
+            "submit_to_settlement_p50_ms": 400.882,
+            "submit_to_settlement_p99_ms": 780.117,
+            "submit_us": 780117,
+            "terminal_xids": 10
+          }
+        }
+      },
+      {
+        "attempt": "06-noop.1795580490622907000",
+        "group": 6,
+        "order": [
+          "river-cold",
+          "river-2x32",
+          "combined",
+          "river-warm"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-combined/measured-mesh": "6abe4b3431e0d69da91ad8fbea840fc363e891c1991b3c50397f8ff01e9c716f",
+          "measured-river-2x32/measured-go": "b21d1342f87726d08bfec915a0c9995e767a8feedeec21ca63bd3bf9e0f527c9",
+          "measured-river-cold/measured-go": "95d51bc461c2fa115d4f3f093af8cfa4674058de8a9069e124c2ee70c672ecbf",
+          "measured-river-warm/measured-go": "2f26656611f97a78d09f7feda63cc49c8d48a37556fb50949bb4a7946fc875c3",
+          "warmup-combined/warmup-mesh": "5283adc7c502cbde31c44f008fd517970802d5e481164f77ffd5f8ec9f0432e3",
+          "warmup-river-2x32/warmup-go": "5e2ccfbfcaa24b5642b9b0f7a6b0532013809a6e1ff9de588b163b454ee4bd64",
+          "warmup-river-cold/warmup-go": "2d4986e9f2b6490e792324de8bb41f106c3d55089312857b349274f7dd78e777",
+          "warmup-river-warm/warmup-go": "3a19fa91bf1e31a06bda009d44bc41e29907852a23bd39609f1ced14baa4144e"
+        },
+        "scores": {
+          "combined": {
+            "after_last_effect_us": 3674,
+            "commit_jobs_per_s": 1255.6405728860113,
+            "commit_to_last_settlement_ms": 815.52,
+            "commit_to_pickup_p99_ms": 790.882,
+            "commit_to_settlement_p99_ms": 805.887,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                41,
+                41
+              ],
+              "last_idle": 41,
+              "peak": 41
+            },
+            "cpu_iowait_percent": 0.8810572687224669,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1255.6405728860113,
+            "drain_us": 815520,
+            "engine": "mesh",
+            "enqueue_us": 156933,
+            "first_submit_to_commit_ms": 156.933,
+            "idle_application_tls": 32,
+            "ledger_sha256": "8d3b4afd049716c72fe937e0b9f67de4945f94cdb5a54c911e9f3ed9f54ffe3e",
+            "peak_runner_rss_bytes": 23576576,
+            "per_job_effect_to_settlement_us": {
+              "max": 41002,
+              "median": 7850.0,
+              "min": 1539,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 811407,
+                  "256": 209793,
+                  "64": 67731,
+                  "768": 574911,
+                  "960": 747147
+                },
+                "last_64_us": 64260,
+                "middle_512_us": 365118
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 811846,
+                  "256": 210175,
+                  "64": 68720,
+                  "768": 575526,
+                  "960": 747739
+                },
+                "last_64_us": 64107,
+                "middle_512_us": 365351
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 815520,
+                  "256": 222739,
+                  "64": 78131,
+                  "768": 583697,
+                  "960": 758366
+                },
+                "last_64_us": 57154,
+                "middle_512_us": 360958
+              }
+            },
+            "raw_sha256": "6abe4b3431e0d69da91ad8fbea840fc363e891c1991b3c50397f8ff01e9c716f",
+            "runner_cpu_ms_per_job": 0.5135859374999999,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "submit_jobs_per_s": 1053.0071890363854,
+            "submit_to_last_settlement_ms": 972.453,
+            "submit_to_settlement_p50_ms": 554.992,
+            "submit_to_settlement_p99_ms": 962.82,
+            "submit_us": 972453,
+            "terminal_xids": 160
+          },
+          "river-2x32": {
+            "after_last_effect_us": 233479,
+            "commit_jobs_per_s": 1054.6665389531404,
+            "commit_to_last_settlement_ms": 970.923,
+            "commit_to_pickup_p99_ms": 729.01,
+            "commit_to_settlement_p99_ms": 970.923,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 69
+            },
+            "cpu_iowait_percent": 0.4291845493562232,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1054.6665389531404,
+            "drain_us": 970923,
+            "engine": "go",
+            "enqueue_us": 82095,
+            "first_submit_to_commit_ms": 82.095,
+            "ledger_sha256": "a6d001a3d4e76b22d6fa0af4c48c6dc01965fe5cc87cff3d77166cfbaedfbcdc",
+            "peak_runner_rss_bytes": 44011520,
+            "per_job_effect_to_settlement_us": {
+              "max": 322236,
+              "median": 83285.5,
+              "min": 13593,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 730338,
+                  "256": 404642,
+                  "64": 271876,
+                  "768": 621519,
+                  "960": 683716
+                },
+                "last_64_us": 46622,
+                "middle_512_us": 216877
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 737444,
+                  "256": 409667,
+                  "64": 298137,
+                  "768": 625956,
+                  "960": 688424
+                },
+                "last_64_us": 49020,
+                "middle_512_us": 216289
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 970923,
+                  "256": 491743,
+                  "64": 454136,
+                  "768": 701950,
+                  "960": 824076
+                },
+                "last_64_us": 146847,
+                "middle_512_us": 210207
+              }
+            },
+            "raw_sha256": "b21d1342f87726d08bfec915a0c9995e767a8feedeec21ca63bd3bf9e0f527c9",
+            "runner_cpu_ms_per_job": 0.4470263671875,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "submit_jobs_per_s": 972.4430161687644,
+            "submit_to_last_settlement_ms": 1053.018,
+            "submit_to_settlement_p50_ms": 682.646,
+            "submit_to_settlement_p99_ms": 1053.018,
+            "submit_us": 1053018,
+            "terminal_xids": 12
+          },
+          "river-cold": {
+            "after_last_effect_us": 219547,
+            "commit_jobs_per_s": 1080.6019290432873,
+            "commit_to_last_settlement_ms": 947.62,
+            "commit_to_pickup_p99_ms": 718.862,
+            "commit_to_settlement_p99_ms": 947.62,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                7,
+                7
+              ],
+              "last_idle": 7,
+              "peak": 68
+            },
+            "cpu_iowait_percent": 0.43103448275862066,
+            "cpu_steal_percent": 0.43103448275862066,
+            "drain_jobs_per_s": 1080.6019290432873,
+            "drain_us": 947620,
+            "engine": "go",
+            "enqueue_us": 73910,
+            "first_submit_to_commit_ms": 73.91,
+            "ledger_sha256": "749421509dd1544b4e66aba28ffc659b7420c69b759d82f0470d25797c3a939f",
+            "peak_runner_rss_bytes": 44175360,
+            "per_job_effect_to_settlement_us": {
+              "max": 305155,
+              "median": 80544.0,
+              "min": 16540,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 724761,
+                  "256": 378890,
+                  "64": 281288,
+                  "768": 596968,
+                  "960": 677877
+                },
+                "last_64_us": 46884,
+                "middle_512_us": 218078
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 728073,
+                  "256": 383759,
+                  "64": 296623,
+                  "768": 599284,
+                  "960": 679336
+                },
+                "last_64_us": 48737,
+                "middle_512_us": 215525
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 947620,
+                  "256": 433282,
+                  "64": 429598,
+                  "768": 657526,
+                  "960": 756369
+                },
+                "last_64_us": 191251,
+                "middle_512_us": 224244
+              }
+            },
+            "raw_sha256": "95d51bc461c2fa115d4f3f093af8cfa4674058de8a9069e124c2ee70c672ecbf",
+            "runner_cpu_ms_per_job": 0.4338359375,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_6454a1afa932282c:runner-0": 2995332,
+                "river:parity_6454a1afa932282c:runner-1": 2995331
+              },
+              "per_runner_fill_us": [],
+              "physical_at_submit": 7,
+              "postgres_client_cpu_ms": 0.0,
+              "postgres_client_rss_bytes": 154660864,
+              "producer_before_ready": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28758016,
+                "threads": 8
+              },
+              "producer_connection": {
+                "cpu_ms": 10.0,
+                "rss_bytes": 28049408,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 14542,
+              "ready_to_presubmit_us": 3002302,
+              "runner_launch_through_settlement_us": 4071554,
+              "runner_launch_to_ready_us": 46197,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 10.0,
+                  "rss_bytes": 12406784,
+                  "threads": 7
+                },
+                {
+                  "cpu_ms": 0.0,
+                  "rss_bytes": 12337152,
+                  "threads": 6
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1002.4179417148787,
+            "submit_to_last_settlement_ms": 1021.53,
+            "submit_to_settlement_p50_ms": 636.584,
+            "submit_to_settlement_p99_ms": 1021.53,
+            "submit_us": 1021530,
+            "terminal_xids": 12
+          },
+          "river-warm": {
+            "after_last_effect_us": 206975,
+            "commit_jobs_per_s": 1435.8407731105162,
+            "commit_to_last_settlement_ms": 713.171,
+            "commit_to_pickup_p99_ms": 470.155,
+            "commit_to_settlement_p99_ms": 713.171,
+            "completed": 1024,
+            "connections": {
+              "idle": [
+                67,
+                67
+              ],
+              "last_idle": 67,
+              "peak": 67
+            },
+            "cpu_iowait_percent": 1.098901098901099,
+            "cpu_steal_percent": 0.0,
+            "drain_jobs_per_s": 1435.8407731105162,
+            "drain_us": 713171,
+            "engine": "go",
+            "enqueue_us": 71345,
+            "first_submit_to_commit_ms": 71.345,
+            "ledger_sha256": "6bb7fb5e63592cca3596a176b1479bac43cc0fba2580f52652454232aa7ba4bb",
+            "peak_runner_rss_bytes": 44482560,
+            "per_job_effect_to_settlement_us": {
+              "max": 259454,
+              "median": 85441.0,
+              "min": 14053,
+              "n": 1024
+            },
+            "progress": {
+              "first_write": {
+                "from_commit_us": {
+                  "1024": 475220,
+                  "256": 152023,
+                  "64": 53629,
+                  "768": 379886,
+                  "960": 451906
+                },
+                "last_64_us": 23314,
+                "middle_512_us": 227863
+              },
+              "second_write": {
+                "from_commit_us": {
+                  "1024": 506196,
+                  "256": 156974,
+                  "64": 65037,
+                  "768": 384254,
+                  "960": 459080
+                },
+                "last_64_us": 47116,
+                "middle_512_us": 227280
+              },
+              "settlement": {
+                "from_commit_us": {
+                  "1024": 713171,
+                  "256": 248566,
+                  "64": 171491,
+                  "768": 479576,
+                  "960": 706705
+                },
+                "last_64_us": 6466,
+                "middle_512_us": 231010
+              }
+            },
+            "raw_sha256": "2f26656611f97a78d09f7feda63cc49c8d48a37556fb50949bb4a7946fc875c3",
+            "runner_cpu_ms_per_job": 0.44477734374999994,
+            "sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+            "startup": {
+              "listeners": {
+                "river:parity_906d96ed298aec7e:runner-0": 2996196,
+                "river:parity_906d96ed298aec7e:runner-1": 2996195
+              },
+              "per_runner_fill_us": [
+                287432,
+                278950
+              ],
+              "physical_at_submit": 67,
+              "postgres_client_cpu_ms": 10.0,
+              "postgres_client_rss_bytes": 1049800704,
+              "producer_before_ready": {
+                "cpu_ms": 10.0,
+                "rss_bytes": 28880896,
+                "threads": 8
+              },
+              "producer_connection": {
+                "cpu_ms": 0.0,
+                "rss_bytes": 28061696,
+                "threads": 7
+              },
+              "producer_connection_setup_us": 14574,
+              "ready_to_presubmit_us": 3001752,
+              "runner_launch_through_settlement_us": 4107047,
+              "runner_launch_to_ready_us": 314093,
+              "runners_at_ready": [
+                {
+                  "cpu_ms": 80.0,
+                  "rss_bytes": 17170432,
+                  "threads": 8
+                },
+                {
+                  "cpu_ms": 70.0,
+                  "rss_bytes": 16855040,
+                  "threads": 7
+                }
+              ]
+            },
+            "submit_jobs_per_s": 1305.2633725762125,
+            "submit_to_last_settlement_ms": 784.516,
+            "submit_to_settlement_p50_ms": 427.844,
+            "submit_to_settlement_p99_ms": 784.516,
+            "submit_us": 784516,
+            "terminal_xids": 10
+          }
+        }
+      }
+    ],
+    "description": "Six rotations compare experimental Mesh, stock River, and one River executable in lazy and prewarmed modes. Each lane uses two 32-slot runners for 1,024 jobs on CPUs 0 and 1. Mesh starts with 41 total idle sessions and prewarmed River with 67.",
+    "diagnostics_raw_sha256": {
+      "diagnostic-combined/diagnostic-mesh": "877e1a76bc33015513f6ea9c4b3277ea442491ff901979e0280bceabae991cb7",
+      "diagnostic-river-2x32/diagnostic-go": "9feb392b7decd121f2000707482cd9eb638eab2c37983e782e23b6fb20faeda4",
+      "diagnostic-river-cold/diagnostic-go": "d3089bf82886ceaf09e5177d8afbd797aae0ea77170c53b1b4320550c924d5c4",
+      "diagnostic-river-warm/diagnostic-go": "54682dff505853f7ea9f07430d0134d473ef7d8ea9d90d0b5ca0e6d6d5099b91"
+    },
+    "grant_sha256": {
+      "pilot": "d087342dfb6f0c14f0312d8803e426ecd2cde48148ec9b904c3534dd4d134edb",
+      "rest": "dbaaa0fb955445cbd7001511a892425e0bab19aabac85aa284bea9babb881e05",
+      "setup": "578f9225c58a16848548390ce6aa927d757734103cb1b4f5b41669b2857a366b"
+    },
+    "grant_sql_sha256": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+    "manifest_sha256": "9de600671c16a265d25e0d7fd43bfbe8e626dd890d2fbc1fc2c347b7d034df26",
+    "mesh_elf_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+    "paired": {
+      "drain_us": {
+        "blocks": [
+          {
+            "cold_minus_warm_us": 204746,
+            "cold_us": 919877,
+            "group": 1,
+            "mesh_throughput_pct": -14.598273409818564,
+            "mesh_us": 837373,
+            "stock_minus_cold_us": 24862,
+            "stock_minus_mesh_us": 107366,
+            "stock_us": 944739,
+            "threshold_us": 35756.55,
+            "warm_minus_mesh_us": -122242,
+            "warm_us": 715131
+          },
+          {
+            "cold_minus_warm_us": 252628,
+            "cold_us": 950936,
+            "group": 2,
+            "mesh_throughput_pct": -19.40008402701792,
+            "mesh_us": 866388,
+            "stock_minus_cold_us": 1217,
+            "stock_minus_mesh_us": 85765,
+            "stock_us": 952153,
+            "threshold_us": 34915.4,
+            "warm_minus_mesh_us": -168080,
+            "warm_us": 698308
+          },
+          {
+            "cold_minus_warm_us": 221563,
+            "cold_us": 919681,
+            "group": 3,
+            "mesh_throughput_pct": -17.65825696189095,
+            "mesh_us": 847830,
+            "stock_minus_cold_us": 24957,
+            "stock_minus_mesh_us": 96808,
+            "stock_us": 944638,
+            "threshold_us": 34905.9,
+            "warm_minus_mesh_us": -149712,
+            "warm_us": 698118
+          },
+          {
+            "cold_minus_warm_us": 264868,
+            "cold_us": 949556,
+            "group": 4,
+            "mesh_throughput_pct": -22.144470193328893,
+            "mesh_us": 879434,
+            "stock_minus_cold_us": -14794,
+            "stock_minus_mesh_us": 55328,
+            "stock_us": 934762,
+            "threshold_us": 34234.4,
+            "warm_minus_mesh_us": -194746,
+            "warm_us": 684688
+          },
+          {
+            "cold_minus_warm_us": 277431,
+            "cold_us": 971879,
+            "group": 5,
+            "mesh_throughput_pct": -47.79018276683883,
+            "mesh_us": 1330110,
+            "stock_minus_cold_us": -22756,
+            "stock_minus_mesh_us": -380987,
+            "stock_us": 949123,
+            "threshold_us": 34722.4,
+            "warm_minus_mesh_us": -635662,
+            "warm_us": 694448
+          },
+          {
+            "cold_minus_warm_us": 234449,
+            "cold_us": 947620,
+            "group": 6,
+            "mesh_throughput_pct": -12.550152050225627,
+            "mesh_us": 815520,
+            "stock_minus_cold_us": 23303,
+            "stock_minus_mesh_us": 155403,
+            "stock_us": 970923,
+            "threshold_us": 35658.55,
+            "warm_minus_mesh_us": -102349,
+            "warm_us": 713171
+          }
+        ],
+        "mesh_wins": 0,
+        "summary": {
+          "cold_minus_warm_us": {
+            "max": 277431,
+            "median": 243538.5,
+            "min": 204746,
+            "n": 6
+          },
+          "cold_us": {
+            "max": 971879,
+            "median": 948588.0,
+            "min": 919681,
+            "n": 6
+          },
+          "mesh_throughput_pct": {
+            "max": -12.550152050225627,
+            "median": -18.529170494454434,
+            "min": -47.79018276683883,
+            "n": 6
+          },
+          "mesh_us": {
+            "max": 1330110,
+            "median": 857109.0,
+            "min": 815520,
+            "n": 6
+          },
+          "stock_minus_cold_us": {
+            "max": 24957,
+            "median": 12260.0,
+            "min": -22756,
+            "n": 6
+          },
+          "stock_minus_mesh_us": {
+            "max": 155403,
+            "median": 91286.5,
+            "min": -380987,
+            "n": 6
+          },
+          "stock_us": {
+            "max": 970923,
+            "median": 946931.0,
+            "min": 934762,
+            "n": 6
+          },
+          "warm_minus_mesh_us": {
+            "max": -102349,
+            "median": -158896.0,
+            "min": -635662,
+            "n": 6
+          },
+          "warm_us": {
+            "max": 715131,
+            "median": 698213.0,
+            "min": 684688,
+            "n": 6
+          }
+        },
+        "verdict": "Mesh deficit"
+      },
+      "submit_us": {
+        "blocks": [
+          {
+            "cold_minus_warm_us": 217835,
+            "cold_us": 1005115,
+            "group": 1,
+            "mesh_throughput_pct": -21.084338557088756,
+            "mesh_us": 997622,
+            "stock_minus_cold_us": 20928,
+            "stock_minus_mesh_us": 28421,
+            "stock_us": 1026043,
+            "threshold_us": 39364.0,
+            "warm_minus_mesh_us": -210342,
+            "warm_us": 787280
+          },
+          {
+            "cold_minus_warm_us": 244561,
+            "cold_us": 1023085,
+            "group": 2,
+            "mesh_throughput_pct": -26.43038175643112,
+            "mesh_us": 1058214,
+            "stock_minus_cold_us": 2620,
+            "stock_minus_mesh_us": -32509,
+            "stock_us": 1025705,
+            "threshold_us": 38926.200000000004,
+            "warm_minus_mesh_us": -279690,
+            "warm_us": 778524
+          },
+          {
+            "cold_minus_warm_us": 238155,
+            "cold_us": 1008813,
+            "group": 3,
+            "mesh_throughput_pct": -26.362609621253675,
+            "mesh_us": 1046558,
+            "stock_minus_cold_us": 16046,
+            "stock_minus_mesh_us": -21699,
+            "stock_us": 1024859,
+            "threshold_us": 38532.9,
+            "warm_minus_mesh_us": -275900,
+            "warm_us": 770658
+          },
+          {
+            "cold_minus_warm_us": 248417,
+            "cold_us": 1021326,
+            "group": 4,
+            "mesh_throughput_pct": -25.844754553696923,
+            "mesh_us": 1042285,
+            "stock_minus_cold_us": -13496,
+            "stock_minus_mesh_us": -34455,
+            "stock_us": 1007830,
+            "threshold_us": 38645.450000000004,
+            "warm_minus_mesh_us": -269376,
+            "warm_us": 772909
+          },
+          {
+            "cold_minus_warm_us": 276158,
+            "cold_us": 1056275,
+            "group": 5,
+            "mesh_throughput_pct": -48.002356872957485,
+            "mesh_us": 1500293,
+            "stock_minus_cold_us": -31587,
+            "stock_minus_mesh_us": -475605,
+            "stock_us": 1024688,
+            "threshold_us": 39005.85,
+            "warm_minus_mesh_us": -720176,
+            "warm_us": 780117
+          },
+          {
+            "cold_minus_warm_us": 237014,
+            "cold_us": 1021530,
+            "group": 6,
+            "mesh_throughput_pct": -19.326075399016716,
+            "mesh_us": 972453,
+            "stock_minus_cold_us": 31488,
+            "stock_minus_mesh_us": 80565,
+            "stock_us": 1053018,
+            "threshold_us": 39225.8,
+            "warm_minus_mesh_us": -187937,
+            "warm_us": 784516
+          }
+        ],
+        "mesh_wins": 0,
+        "summary": {
+          "cold_minus_warm_us": {
+            "max": 276158,
+            "median": 241358.0,
+            "min": 217835,
+            "n": 6
+          },
+          "cold_us": {
+            "max": 1056275,
+            "median": 1021428.0,
+            "min": 1005115,
+            "n": 6
+          },
+          "mesh_throughput_pct": {
+            "max": -19.326075399016716,
+            "median": -26.1036820874753,
+            "min": -48.002356872957485,
+            "n": 6
+          },
+          "mesh_us": {
+            "max": 1500293,
+            "median": 1044421.5,
+            "min": 972453,
+            "n": 6
+          },
+          "stock_minus_cold_us": {
+            "max": 31488,
+            "median": 9333.0,
+            "min": -31587,
+            "n": 6
+          },
+          "stock_minus_mesh_us": {
+            "max": 80565,
+            "median": -27104.0,
+            "min": -475605,
+            "n": 6
+          },
+          "stock_us": {
+            "max": 1053018,
+            "median": 1025282.0,
+            "min": 1007830,
+            "n": 6
+          },
+          "warm_minus_mesh_us": {
+            "max": -187937,
+            "median": -272638.0,
+            "min": -720176,
+            "n": 6
+          },
+          "warm_us": {
+            "max": 787280,
+            "median": 779320.5,
+            "min": 770658,
+            "n": 6
+          }
+        },
+        "verdict": "Mesh deficit"
+      }
+    },
+    "release_sha256": {
+      "pilot": "6ce4c19ffad35d3c74ce72f3265595fb56a21c7393bc83161ea2912b0e3209d6",
+      "rest": "c9e6c9e81eb947ffd218e32876b934c77284d6cb7e46219a7869cdd79eb074b6",
+      "setup": "17d50b6f356ded7812ceac9f3566be3b49374bf12d87a189cb6b8e98c00ef642"
+    },
+    "replay_sha256": "a759cae9c967dbcfcb2a612f78b242b5bba3c3edacf7351818503efdb4ab00b3",
+    "river_readiness_elf_sha256": "4a83da4c367741358f12786fa420747d780d4ec517cfccb19b9ed96905e80544",
+    "title": "Dense \u00b7 fixed8 + d388 and River connection readiness"
+  },
   "dense-stock-topology": {
     "blocks": [
       {
