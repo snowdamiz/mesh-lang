@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-enqueue-jsonb-path/controller.py", line 238, in <module>
+    raise SystemExit(main(sys.argv[1:]))
+                     ~~~~^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-enqueue-jsonb-path/controller.py", line 227, in main
+    print(json.dumps(replay_native(cfg), indent=2, sort_keys=True, allow_nan=False))
+                     ~~~~~~~~~~~~~^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-enqueue-jsonb-path/controller.py", line 136, in replay_native
+    scored = score_block(folder, trial, cfg)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-enqueue-jsonb-path/controller.py", line 111, in score_block
+    phases.setdefault(phase, {})[lane] = score(arm, phase, lane, cfg)
+                                         ~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-enqueue-jsonb-path/controller.py", line 78, in score
+    result = original_score(folder, phase, "combined",
+                            dict(cfg, lanes={"combined": cfg["lanes"][lane]}),
+                            factorial.grouped, factorial.logical, POLICIES)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/score.py", line 57, in score_arm
+    assert run.read_json(folder / "dispatch.json").get("exit_code") == 0
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

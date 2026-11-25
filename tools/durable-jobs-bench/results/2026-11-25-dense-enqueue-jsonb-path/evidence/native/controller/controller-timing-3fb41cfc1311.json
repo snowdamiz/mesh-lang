@@ -1,0 +1,15 @@
+{
+  "attempts": [
+    1
+  ],
+  "exit_status": 1,
+  "group_command": "timing_command",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-25-dense-enqueue-jsonb-path",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-enqueue-jsonb-path/evidence/native",
+  "released_at": "2026-11-25T05:02:36.360270+00:00",
+  "started": "2026-11-25T05:02:20.965455+00:00"
+}
