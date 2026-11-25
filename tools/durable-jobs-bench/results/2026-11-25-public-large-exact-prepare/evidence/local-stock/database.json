@@ -1,0 +1,10 @@
+{
+  "commit_timestamps": true,
+  "database_connection_limit": 96,
+  "durable": true,
+  "max_connections": 96,
+  "reserve": 0,
+  "superuser_reserve": 0,
+  "tls": true,
+  "user": "parity_producer"
+}

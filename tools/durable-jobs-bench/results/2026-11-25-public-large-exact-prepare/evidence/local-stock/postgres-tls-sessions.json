@@ -1,0 +1,327 @@
+[
+  {
+    "backend": 74029,
+    "role": "parity_producer",
+    "tls": true
+  },
+  {
+    "backend": 74033,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74036,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74038,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74039,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74041,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74044,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74042,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74045,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74047,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74049,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74048,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74051,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74053,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74054,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74055,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74056,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74057,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74058,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74059,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74060,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74062,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74063,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74064,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74065,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74066,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74067,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74068,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74069,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74070,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74071,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74072,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74073,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74075,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74074,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74076,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74079,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74081,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74082,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74077,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74078,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74084,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74085,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74086,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74087,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 74089,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74088,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74090,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74091,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74092,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74093,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74094,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74095,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74096,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74097,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74098,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74100,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74101,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74102,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74103,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74104,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74106,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74107,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74108,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 74109,
+    "role": "parity_subject",
+    "tls": true
+  }
+]

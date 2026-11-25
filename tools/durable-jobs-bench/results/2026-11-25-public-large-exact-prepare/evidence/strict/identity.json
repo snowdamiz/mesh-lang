@@ -1,0 +1,13 @@
+{
+  "source_sha": "955b356b51f0dbef36a2958bc27ed45c15af3582",
+  "source_archive_sha256": "ddbe62e4da1ffa47105e4e1e2802e11cc1251030806bbbbfe8259b518bf185ba",
+  "frozen_archive_sha256": "76d93c2c7147d4cd12f69d7ad8e2698b721cb999535c4a9c9bfc5e79581d37ad",
+  "base_frozen_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+  "adapter": {
+    "run": "49159d1aeb84c335ed8e8e0f7f0f82d4aad7fc32f33bc0544fb11010972d223c",
+    "arm.py": "5f17efb5c1ad4a46d86728519a11cfd7c08e6c77728442e5bab269ea1e53016a",
+    "ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
+    "build": "6f5cb9b6f0437fec3580ef27fd4432b7739b3142961aba7faa8372d8d2a5da8c",
+    "manifest.py": "46f9a9218a8bab87f477bd41cf615293d853c5f55e1a8c4450256a3b08555e4b"
+  }
+}

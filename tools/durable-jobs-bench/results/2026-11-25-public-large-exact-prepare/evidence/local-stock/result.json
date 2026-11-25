@@ -1,0 +1,12 @@
+{
+  "application_transactions": 128,
+  "file_broker_sha256": "33c840994b9197365a4673b9aac63f1878e5f5c9d7d7c59ae1dd96f261f351c0",
+  "independent_terminal_transactions": 64,
+  "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+  "jobs": 64,
+  "mode": "stock",
+  "runner_sha256": "b107ac0a0c55aed9bce87b0a7f5d68acf46ca48524cc0e34bfa595ea1697de67",
+  "runners": 8,
+  "slots": 64,
+  "tls": true
+}

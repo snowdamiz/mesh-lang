@@ -1,0 +1,441 @@
+{
+  "admitted_queries": 235,
+  "completion_cohort_queries": 0,
+  "largest_terminal_cohort": 1,
+  "queue_policy": "set_based",
+  "queue_statements": [
+    {
+      "calls": 286,
+      "execution_ms": 0.16591899999999982,
+      "query": "COMMIT",
+      "rows": 0
+    },
+    {
+      "calls": 285,
+      "execution_ms": 1.1253229999999983,
+      "query": "BEGIN ISOLATION LEVEL READ COMMITTED",
+      "rows": 0
+    },
+    {
+      "calls": 235,
+      "execution_ms": 1947.6799249999995,
+      "query": "SELECT status, id, token, context, timeout_ms, context_bytes,\n                CASE WHEN $6::boolean AND status = $7\n                    THEN mesh_jobs.now_ms()::text END AS observed_at_ms, ordinality::text\n         FROM mesh_jobs.claim_batch_set_v1($1, $2, $3::jsonb, $4::bigint, $5::integer, $8)\n         WITH ORDINALITY",
+      "rows": 235
+    },
+    {
+      "calls": 202,
+      "execution_ms": 0.6128009999999995,
+      "query": "SELECT $1",
+      "rows": 202
+    },
+    {
+      "calls": 192,
+      "execution_ms": 51.287413999999956,
+      "query": "SELECT mesh_jobs.recover($1, $2::integer, nullif($3, $4)::jsonb)::text AS recovered",
+      "rows": 192
+    },
+    {
+      "calls": 186,
+      "execution_ms": 4.90792,
+      "query": "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n             SELECT greatest(j.scheduled_at_ms - (SELECT now_ms FROM clock), $5)::text\n             FROM mesh_jobs.queues q JOIN mesh_jobs.jobs j\n                 ON j.namespace = q.namespace AND j.queue = q.name\n             WHERE q.namespace = $1 AND q.name = $2 AND q.state = $6 AND q.concurrency > $7\n                 AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused\n                     WHERE paused.namespace = $1 AND paused.name = $8 AND paused.state = $9)\n                 AND j.state IN ($10, $11, $12)\n                 AND j.scheduled_at_ms > $4::bigint AND j.attempt < j.max_attempts\n                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)\n                             WHERE w.worker = j.worker AND w.version = j.version)\n             ORDER BY j.scheduled_at_ms LIMIT $13\n         ), $14)",
+      "rows": 186
+    },
+    {
+      "calls": 64,
+      "execution_ms": 47.619541,
+      "query": "SELECT coalesce(mesh_jobs.settle_state($1, $2::uuid, $3::uuid, $4::jsonb, $5), $6)",
+      "rows": 64
+    },
+    {
+      "calls": 49,
+      "execution_ms": 2.161873,
+      "query": "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n             SELECT (j.scheduled_at_ms - (SELECT now_ms FROM clock))::text\n             FROM mesh_jobs.queues q JOIN mesh_jobs.jobs j\n                 ON j.namespace = q.namespace AND j.queue = q.name\n             WHERE q.namespace = $1 AND q.name = $2 AND q.state = $4 AND q.concurrency > $5\n                 AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused\n                     WHERE paused.namespace = $1 AND paused.name = $6 AND paused.state = $7)\n                 AND j.state IN ($8, $9, $10)\n                 AND j.scheduled_at_ms > (SELECT now_ms FROM clock) AND j.attempt < j.max_attempts\n                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)\n                             WHERE w.worker = j.worker AND w.version = j.version)\n             ORDER BY j.scheduled_at_ms LIMIT $11\n         ), $12)",
+      "rows": 49
+    },
+    {
+      "calls": 49,
+      "execution_ms": 191.96925,
+      "query": "SELECT coalesce(status, $8) AS status, id, token, context, timeout_ms, context_bytes,\n                    CASE WHEN $7::boolean AND status = $9\n                    THEN floor(extract($10 FROM pg_catalog.clock_timestamp()) * $11)::bigint::text END AS observed_at_ms,\n                    ordinality::text\n             FROM (VALUES ($12)) AS probe_anchor(dummy)\n             LEFT JOIN LATERAL (\n                 SELECT * FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,\n                     nullif($6, $13)::bigint) WITH ORDINALITY\n             ) AS result ON $14\n             WHERE CASE WHEN ordinality IS NOT NULL THEN $15 ELSE EXISTS (\n                 SELECT FROM mesh_jobs.queues q\n                 WHERE q.namespace = $1 AND q.name = $2 AND q.state = $16\n                     AND q.concurrency > $17\n                     AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused\n                         WHERE paused.namespace = $1 AND paused.name = $18 AND paused.state = $19)\n                     AND q.concurrency > (SELECT count(*) FROM mesh_jobs.jobs running\n                         WHERE running.namespace = q.namespace AND running.queue = q.name\n                             AND running.state = $20)\n                     AND EXISTS (SELECT FROM mesh_jobs.jobs j\n                         WHERE j.namespace = q.namespace AND j.queue = q.name\n                             AND j.state IN ($21, $22, $23)\n                             AND j.scheduled_at_ms <= coalesce(nullif($6, $24)::bigint,\n                                 floor(extract($25 FROM pg_catalog.statement_timestamp()) * $26)::bigint)\n                             AND j.attempt < j.max_attempts\n                             AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)\n                                 WHERE w.worker = j.worker AND w.version = j.version)\n                             AND NOT EXISTS (SELECT FROM mesh_jobs.batch_context_blocks b\n                                 WHERE b.namespace = j.namespace AND b.id = j.id\n                                     AND b.row_version = j.xmin AND b.row_location = j.ctid\n                                     AND b.encoding = current_setting($27)::name))\n             ) END",
+      "rows": 105
+    },
+    {
+      "calls": 8,
+      "execution_ms": 1.357001,
+      "query": "WITH functions AS (\n                 SELECT to_regprocedure($6) AS renew,\n                        to_regprocedure($7) AS settle,\n                        to_regprocedure($8) AS batch,\n                        to_regprocedure($9) AS single_claim,\n                        to_regprocedure($10) AS batch_set,\n                        to_regprocedure($11) AS complete_batch,\n                        to_regprocedure($12) AS prepare,\n                        to_regprocedure($13) AS activate,\n                        to_regprocedure($14) AS exact\n             ) SELECT CASE\n                 WHEN version <> $15 OR to_regclass($16) IS NULL\n                     OR renew IS NULL OR settle IS NULL THEN $17\n                 WHEN NOT (has_function_privilege(renew, $18)\n                     AND has_function_privilege(settle, $19)) THEN $20\n                 WHEN $5::boolean AND (prepare IS NULL OR activate IS NULL OR exact IS NULL\n                     OR current_setting($21)::integer NOT BETWEEN $22 AND $23) THEN $24\n                 WHEN $5::boolean AND NOT (has_function_privilege(prepare, $25)\n                     AND has_function_privilege(activate, $26)\n                     AND has_function_privilege(exact, $27)) THEN $28\n                 WHEN $1::boolean AND batch IS NULL THEN $29\n                 WHEN $1::boolean AND NOT has_function_privilege(batch, $30) THEN $31\n                 WHEN $2::boolean AND single_claim IS NULL THEN $32\n                 WHEN $2::boolean AND NOT has_function_privilege(single_claim, $33) THEN $34\n                 WHEN $3::boolean AND batch_set IS NULL THEN $35\n                 WHEN $3::boolean AND NOT has_function_privilege(batch_set, $36) THEN $37\n                 WHEN $4::boolean AND complete_batch IS NULL THEN $38\n                 WHEN $4::boolean AND NOT has_function_privilege(complete_batch, $39) THEN $40\n                 ELSE $41\n             END FROM mesh_jobs.schema_version CROSS JOIN functions WHERE singleton",
+      "rows": 8
+    },
+    {
+      "calls": 8,
+      "execution_ms": 0.052166,
+      "query": "LISTEN \"mesh_jobs_wake_5f79e323e721e441daab765ee6f9ec0e\"",
+      "rows": 0
+    },
+    {
+      "calls": 2,
+      "execution_ms": 0.009207,
+      "query": "SELECT pg_catalog.pg_advisory_xact_lock($1, $2)",
+      "rows": 2
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.209917,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_expiring\n    ON mesh_jobs.jobs (namespace, lease_expires_at_ms, id) WHERE state = 'executing'",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.418041,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.enqueue(\n    ns text, spec jsonb, request_id text, fingerprint text\n) RETURNS jsonb\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    recorded mesh_jobs.receipts%ROWTYPE;\n    job mesh_jobs.jobs%ROWTYPE;\n    policy jsonb := spec -> 'unique';\n    fields jsonb := policy -> 'fields';\n    keys jsonb := policy -> 'keys';\n    replacements jsonb;\n    queue_name text := spec ->> 'queue';\n    now_at bigint;\n    run_at bigint;\n    duplicate boolean := false;\n    result jsonb;\nBEGIN\n    IF request_id <> '' THEN\n        SELECT * INTO recorded FROM mesh_jobs.receipts r\n        WHERE r.namespace = ns AND r.request_key = request_id;\n        IF FOUND THEN\n            IF recorded.fingerprint <> fingerprint THEN\n                RAISE EXCEPTION 'mesh jobs request_key already bound to a different spec';\n            END IF;\n            RETURN recorded.receipt;\n        END IF;\n    END IF;\n\n    now_at := mesh_jobs.now_ms();\n    run_at := coalesce((spec ->> 'scheduled_at_ms')::bigint,\n                       now_at + coalesce((spec ->> 'delay_ms')::bigint, 0));\n    IF policy <> 'null'::jsonb THEN\n        SELECT j.* INTO job FROM mesh_jobs.jobs j\n        WHERE j.namespace = ns AND (policy -> 'states') ? j.state\n            AND ((policy ->> 'key') IS NULL OR j.unique_key = policy ->> 'key')\n            AND (NOT fields ? 'worker' OR j.worker = spec ->> 'worker')\n            AND (NOT fields ? 'version' OR j.version = (spec ->> 'version')::bigint)\n            AND (NOT fields ? 'queue' OR j.queue = queue_name)\n            AND (NOT fields ? 'args' OR\n                mesh_jobs.unique_values(j.args, keys) = mesh_jobs.unique_values(spec -> 'args', keys))\n            AND (NOT fields ? 'metadata' OR\n                mesh_jobs.unique_values(j.metadata, keys) = mesh_jobs.unique_values(spec -> 'metadata', keys))\n            AND ((policy ->> 'period_ms') IS NULL OR\n                (CASE policy ->> 'timestamp' WHEN 'scheduled_at' THEN j.scheduled_at_ms\n                    ELSE j.inserted_at_ms END) > now_at - (policy ->> 'period_ms')::bigint)\n        ORDER BY j.inserted_at_ms DESC, j.position DESC\n        LIMIT 1 FOR NO KEY UPDATE;\n        duplicate := FOUND;\n    END IF;\n\n    IF duplicate THEN\n        replacements := (spec -> 'replace') -> job.state;\n        IF replacements IS NOT NULL AND replacements <> '[]'::jsonb THEN\n            IF replacements ? 'queue' AND job.state <> 'executing' THEN\n                INSERT INTO mesh_jobs.queues(namespace, name) VALUES (ns, queue_name)\n                ON CONFLICT DO NOTHING;\n            END IF;\n            UPDATE mesh_jobs.jobs j SET\n                args = CASE WHEN replacements ? 'args' THEN spec -> 'args' ELSE j.args END,\n                metadata = CASE WHEN replacements ? 'metadata' THEN spec -> 'metadata' ELSE j.metadata END,\n                priority = CASE WHEN replacements ? 'priority' THEN (spec ->> 'priority')::int ELSE j.priority END,\n                tags = CASE WHEN replacements ? 'tags' THEN spec -> 'tags' ELSE j.tags END,\n                max_attempts = CASE WHEN replacements ? 'max_attempts'\n                    THEN greatest(j.attempt + (j.state IN\n                        ('available', 'scheduled', 'retryable', 'suspended'))::int,\n                        (spec ->> 'max_attempts')::int) ELSE j.max_attempts END,\n                queue = CASE WHEN replacements ? 'queue' AND j.state <> 'executing'\n                    THEN queue_name ELSE j.queue END,\n                worker = CASE WHEN replacements ? 'worker' AND j.state <> 'executing'\n                    THEN spec ->> 'worker' ELSE j.worker END,\n                version = CASE WHEN replacements ? 'worker' AND j.state <> 'executing'\n                    THEN (spec ->> 'version')::bigint ELSE j.version END,\n                scheduled_at_ms = CASE WHEN replacements ? 'scheduled_at_ms' AND j.state <> 'executing'\n                    THEN run_at ELSE j.scheduled_at_ms END,\n                state = CASE WHEN replacements ? 'scheduled_at_ms'\n                           AND j.state IN ('available', 'scheduled', 'retryable')\n                    THEN CASE WHEN run_at > now_at THEN 'scheduled' ELSE 'available' END\n                    ELSE j.state END\n            WHERE j.namespace = ns AND j.id = job.id RETURNING j.* INTO job;\n        END IF;\n    ELSE\n        INSERT INTO mesh_jobs.queues(namespace, name) VALUES (ns, queue_name)\n        ON CONFLICT DO NOTHING;\n        INSERT INTO mesh_jobs.jobs (\n            namespace, worker, version, queue, args, metadata, tags, state, priority,\n            max_attempts, timeout_ms, backoff_base_ms, backoff_max_ms,\n            inserted_at_ms, scheduled_at_ms, unique_key\n        ) VALUES (\n            ns, spec ->> 'worker', (spec ->> 'version')::bigint, queue_name,\n            spec -> 'args', spec -> 'metadata', spec -> 'tags',\n            CASE WHEN (spec ->> 'suspended')::boolean THEN 'suspended'\n                 WHEN run_at > now_at THEN 'scheduled' ELSE 'available' END,\n            (spec ->> 'priority')::int, (spec ->> 'max_attempts')::int,\n            (spec ->> 'timeout_ms')::bigint, (spec ->> 'backoff_base_ms')::bigint,\n            (spec ->> 'backoff_max_ms')::bigint, now_at, run_at, policy ->> 'key'\n        ) RETURNING * INTO job;\n    END IF;\n\n    result := jsonb_build_object(\n        'id', job.id, 'effect_key', mesh_jobs.effect_key(job), 'state', job.state,\n        'conflict', duplicate, 'inserted', NOT duplicate);\n    IF request_id <> '' THEN\n        INSERT INTO mesh_jobs.receipts VALUES (ns, request_id, fingerprint, result);\n    END IF;\n    RETURN result;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.124167,
+      "query": "INSERT INTO mesh_jobs.schema_version (version) VALUES ($1)\nON CONFLICT (singleton) DO NOTHING",
+      "rows": 1
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.124041,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.claim(\n    ns text, queue_name text, workers jsonb, lease_ms bigint\n) RETURNS TABLE(id text, token text, context text, timeout_ms text)\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    q mesh_jobs.queues%ROWTYPE;\n    job mesh_jobs.jobs%ROWTYPE;\n    due_at bigint;\n    started_at bigint;\nBEGIN\n    -- Serialize capacity admission with queue controls without blocking enqueue's FK checks.\n    SELECT * INTO q FROM mesh_jobs.queues\n    WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE SKIP LOCKED;\n    IF NOT FOUND OR q.state <> 'active' OR q.concurrency = 0 THEN RETURN; END IF;\n\n    IF (SELECT count(*) FROM mesh_jobs.jobs j\n        WHERE j.namespace = ns AND j.queue = queue_name AND j.state = 'executing') >= q.concurrency\n    THEN RETURN; END IF;\n\n    due_at := mesh_jobs.now_ms();\n    SELECT j.* INTO job FROM mesh_jobs.jobs j\n    WHERE j.namespace = ns AND j.queue = queue_name\n        AND j.state IN ('available', 'scheduled', 'retryable') AND j.scheduled_at_ms <= due_at\n        AND j.attempt < j.max_attempts\n        AND EXISTS (\n            SELECT FROM jsonb_to_recordset(workers) AS w(worker text, version bigint)\n            WHERE w.worker = j.worker AND w.version = j.version\n        )\n    ORDER BY j.priority, j.scheduled_at_ms, j.position\n    LIMIT 1 FOR NO KEY UPDATE OF j SKIP LOCKED;\n    IF NOT FOUND THEN RETURN; END IF;\n\n    started_at := mesh_jobs.now_ms();\n    UPDATE mesh_jobs.jobs j SET state = 'executing', attempt = j.attempt + 1,\n        attempted_at_ms = started_at, lease_token = gen_random_uuid(),\n        lease_expires_at_ms = started_at + lease_ms\n    WHERE j.namespace = ns AND j.id = job.id RETURNING j.* INTO job;\n\n    RETURN QUERY SELECT job.id::text, job.lease_token::text, jsonb_build_object(\n        'id', job.id, 'effect_key', mesh_jobs.effect_key(job), 'worker', job.worker,\n        'version', job.version, 'args', job.args, 'attempt', job.attempt,\n        'max_attempts', job.max_attempts, 'queue', job.queue, 'metadata', job.metadata,\n        'tags', job.tags, 'scheduled_at_ms', job.scheduled_at_ms\n    )::text, job.timeout_ms::text;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 1.98025,
+      "query": "CREATE TABLE IF NOT EXISTS mesh_jobs.schema_version (\n    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),\n    version integer NOT NULL\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.930583,
+      "query": "SELECT mesh_jobs.queue_control($1, $2, $3, nullif($4, $5)::integer)::text",
+      "rows": 1
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.786583,
+      "query": "-- Select-only roles can read these summaries without access to job payloads.\nCREATE OR REPLACE VIEW mesh_jobs.job_summaries AS\n    SELECT namespace, id, run, worker, version, queue, state, priority, attempt, max_attempts,\n        timeout_ms, backoff_base_ms, backoff_max_ms, inserted_at_ms, scheduled_at_ms,\n        attempted_at_ms, finished_at_ms, lease_expires_at_ms, cancel_requested_at_ms,\n        id::text || '/' || run::text AS effect_key\n    FROM mesh_jobs.jobs",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 1.253209,
+      "query": "CREATE TABLE IF NOT EXISTS mesh_jobs.cron_activation (\n    namespace text PRIMARY KEY,\n    epoch bigint NOT NULL CHECK (epoch > 0),\n    activated_at_ms bigint NOT NULL,\n    activated_by text NOT NULL,\n    seen_at_ms bigint NOT NULL\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.183,
+      "query": "-- Keep legacy function bodies and grants intact when binaries share the schema.\n-- Old claim() takes the queue lock before reaching this transition. Try the\n-- namespace lock without waiting and read the pause row after acquiring it.\nCREATE OR REPLACE FUNCTION mesh_jobs.fence_claim_v1() RETURNS trigger\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nBEGIN\n    IF current_setting('transaction_isolation') <> 'read committed' THEN\n        RAISE EXCEPTION 'mesh jobs claim requires READ COMMITTED';\n    END IF;\n    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(NEW.namespace, 1782495106)) THEN\n        RAISE EXCEPTION 'mesh jobs namespace admission is paused or changing' USING ERRCODE = '55000';\n    END IF;\n    IF EXISTS (SELECT FROM mesh_jobs.queues\n               WHERE namespace = NEW.namespace AND name = '' AND state = 'paused') THEN\n        RAISE EXCEPTION 'mesh jobs namespace admission is paused or changing' USING ERRCODE = '55000';\n    END IF;\n    RETURN NEW;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.068083,
+      "query": "CREATE OR REPLACE TRIGGER mesh_jobs_queue_wake\n    AFTER UPDATE OF state, concurrency ON mesh_jobs.queues\n    FOR EACH ROW WHEN (\n        lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')\n        AND NEW.state = 'active' AND (NEW.concurrency > 0 OR NEW.name = '')\n        AND (OLD.state <> 'active' OR OLD.concurrency < NEW.concurrency)\n    ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1()",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.101042,
+      "query": "CREATE OR REPLACE TRIGGER mesh_jobs_insert_wake\n    AFTER INSERT ON mesh_jobs.jobs\n    FOR EACH ROW WHEN (\n        lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')\n        AND NEW.state IN ('available', 'scheduled', 'retryable') AND NEW.attempt < NEW.max_attempts\n    ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1()",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.0005,
+      "query": "BEGIN",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.251375,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_queue_due\n    ON mesh_jobs.jobs (namespace, queue, scheduled_at_ms)\n    WHERE state IN ('available', 'scheduled', 'retryable') AND attempt < max_attempts",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.10425,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.effect_key(j mesh_jobs.jobs) RETURNS text\nLANGUAGE sql IMMUTABLE STRICT SET search_path = pg_catalog, pg_temp AS $$\n    SELECT j.id::text || '/' || j.run::text\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.320166,
+      "query": "CREATE INDEX ON public.mesh_jobs_parity_attempts (engine, namespace, job_key)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.027,
+      "query": "-- Migration may run on installations with the PostgreSQL default function ACL.\n-- Keep existing explicit grants when repeating migration.\nREVOKE EXECUTE ON FUNCTION mesh_jobs.claim_batch_set_v1(text,text,jsonb,bigint,integer,bigint)\n    FROM PUBLIC",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.265708,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_finished\n    ON mesh_jobs.jobs (namespace, finished_at_ms, id) WHERE finished_at_ms IS NOT NULL",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.048583,
+      "query": "CREATE OR REPLACE TRIGGER mesh_jobs_fence_claim\n    BEFORE UPDATE OF state ON mesh_jobs.jobs\n    FOR EACH ROW WHEN (OLD.state <> 'executing' AND NEW.state = 'executing')\n    EXECUTE FUNCTION mesh_jobs.fence_claim_v1()",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.255,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.claim_batch_v1(\n    ns text, queue_name text, workers jsonb, lease_ms bigint, slots integer, cutoff_ms bigint\n) RETURNS TABLE(status text, id text, token text, context text, timeout_ms text, context_bytes text)\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    q mesh_jobs.queues%ROWTYPE;\n    job mesh_jobs.jobs%ROWTYPE;\n    candidate record;\n    due_at bigint;\n    started_at bigint;\n    remaining integer;\n    oversized_count integer := 0;\n    value_bytes integer;\n    row_bytes integer;\n    -- Reserve room for framing and the caller's optional per-row timing column.\n    reply_bytes integer := 32 * 1024 * 1024 - 1024;\n    wire_encoding name := current_setting('client_encoding');\n    same_encoding boolean := wire_encoding = current_setting('server_encoding');\n    candidates NO SCROLL CURSOR FOR\n        SELECT j AS job_row, j.xmin AS row_version, j.ctid AS row_location FROM mesh_jobs.jobs j\n        WHERE j.namespace = ns AND j.queue = queue_name\n            AND j.state IN ('available', 'scheduled', 'retryable') AND j.scheduled_at_ms <= due_at\n            AND j.attempt < j.max_attempts\n            AND EXISTS (\n                SELECT FROM jsonb_to_recordset(workers) AS w(worker text, version bigint)\n                WHERE w.worker = j.worker AND w.version = j.version\n            )\n            AND NOT EXISTS (\n                SELECT FROM mesh_jobs.batch_context_blocks b\n                WHERE b.namespace = j.namespace AND b.id = j.id\n                    AND b.row_version = j.xmin AND b.row_location = j.ctid\n                    AND b.encoding = wire_encoding\n            )\n        ORDER BY j.priority, j.scheduled_at_ms, j.position\n        FOR NO KEY UPDATE OF j SKIP LOCKED;\nBEGIN\n    -- Capacity must be read with a fresh snapshot after taking the same lock as claim().\n    IF current_setting('transaction_isolation') <> 'read committed' THEN\n        RAISE EXCEPTION 'mesh jobs batch claim requires READ COMMITTED';\n    END IF;\n    IF lease_ms IS NULL OR lease_ms NOT BETWEEN 1 AND 31536000000 THEN\n        RAISE EXCEPTION 'mesh jobs batch claim lease_ms must be positive and at most 365 days';\n    END IF;\n    remaining := least(coalesce(slots, 0), 16);\n    IF remaining <= 0 THEN RETURN; END IF;\n\n    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(ns, 1782495106)) THEN RETURN; END IF;\n    IF EXISTS (SELECT FROM mesh_jobs.queues WHERE namespace = ns AND name = '' AND state = 'paused')\n    THEN RETURN; END IF;\n\n    SELECT * INTO q FROM mesh_jobs.queues\n    WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE SKIP LOCKED;\n    IF NOT FOUND OR q.state <> 'active' OR q.concurrency = 0 THEN RETURN; END IF;\n\n    remaining := least(remaining, q.concurrency - (SELECT count(*) FROM mesh_jobs.jobs j\n        WHERE j.namespace = ns AND j.queue = queue_name AND j.state = 'executing'));\n    IF remaining <= 0 THEN RETURN; END IF;\n\n    due_at := coalesce(cutoff_ms, mesh_jobs.now_ms());\n    -- Fetch one row at a time so a cursor prefetch cannot lock work beyond the prefix.\n    OPEN candidates;\n    WHILE remaining > 0 LOOP\n        FETCH candidates INTO candidate;\n        EXIT WHEN NOT FOUND;\n        job := candidate.job_row;\n        id := job.id::text;\n        context := jsonb_build_object(\n            'id', job.id, 'effect_key', mesh_jobs.effect_key(job), 'worker', job.worker,\n            'version', job.version, 'args', job.args, 'attempt', job.attempt + 1,\n            'max_attempts', job.max_attempts, 'queue', job.queue, 'metadata', job.metadata,\n            'tags', job.tags, 'scheduled_at_ms', job.scheduled_at_ms\n        )::text;\n        value_bytes := CASE WHEN same_encoding THEN octet_length(context)\n            ELSE octet_length(convert_to(context, wire_encoding)) END;\n        context_bytes := value_bytes::text;\n\n        -- DataRow adds a 5-byte frame, a 2-byte count, and six 4-byte field lengths.\n        row_bytes := 31 + octet_length(id) + octet_length(context_bytes);\n        IF value_bytes > 16 * 1024 * 1024 THEN\n            status := 'oversized';\n            row_bytes := row_bytes + octet_length(status);\n            EXIT WHEN row_bytes > reply_bytes;\n            -- Mark this row version so another turn resumes past it. Edits\n            -- replace the tuple and make the new context eligible for sizing again.\n            INSERT INTO mesh_jobs.batch_context_blocks (namespace, id, row_version, row_location, encoding, context_bytes)\n            VALUES (ns, job.id, candidate.row_version, candidate.row_location, wire_encoding, value_bytes)\n            ON CONFLICT ON CONSTRAINT batch_context_blocks_pkey DO UPDATE\n            SET row_version = excluded.row_version, row_location = excluded.row_location, encoding = excluded.encoding,\n                context_bytes = excluded.context_bytes;\n            token := NULL;\n            context := NULL;\n            timeout_ms := NULL;\n            RETURN NEXT;\n            reply_bytes := reply_bytes - row_bytes;\n            oversized_count := oversized_count + 1;\n            EXIT WHEN oversized_count >= 4;\n            CONTINUE;\n        END IF;\n\n        status := 'claimed';\n        token := gen_random_uuid()::text;\n        timeout_ms := job.timeout_ms::text;\n        row_bytes := row_bytes + octet_length(status) + octet_length(token) +\n            value_bytes + octet_length(timeout_ms);\n        -- Keep the ordered prefix of claimable jobs when the next one cannot fit.\n        EXIT WHEN row_bytes > reply_bytes;\n\n        started_at := mesh_jobs.now_ms();\n        UPDATE mesh_jobs.jobs j SET state = 'executing', attempt = j.attempt + 1,\n            attempted_at_ms = started_at, lease_token = token::uuid,\n            lease_expires_at_ms = started_at + lease_ms\n        WHERE j.namespace = ns AND j.id = job.id;\n\n        RETURN NEXT;\n        reply_bytes := reply_bytes - row_bytes;\n        remaining := remaining - 1;\n    END LOOP;\n    CLOSE candidates;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.197792,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_running\n    ON mesh_jobs.jobs (namespace, queue) WHERE state = 'executing'",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.253292,
+      "query": "CREATE SCHEMA IF NOT EXISTS mesh_jobs",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.159,
+      "query": "-- Installed on PostgreSQL 17, whose MERGE RETURNING exposes the source ordinal.\nCREATE OR REPLACE FUNCTION mesh_jobs.enqueue_batch_layout_v1() RETURNS boolean\nLANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$\nBEGIN\n    -- A column-scoped INSERT grant cannot take these locks directly. This\n    -- helper only locks and inspects the fixed tables; the writes use invoker ACLs.\n    LOCK TABLE ONLY mesh_jobs.admissions, ONLY mesh_jobs.queues,\n        ONLY mesh_jobs.jobs, ONLY mesh_jobs.receipts\n        IN ROW EXCLUSIVE MODE;\n\n    IF NOT EXISTS (SELECT FROM mesh_jobs.schema_version WHERE singleton AND version = 1) THEN\n        RETURN false;\n    END IF;\n\n    -- Compare with schema.sql on PostgreSQL 17. In particular, a statement\n    -- trigger fires even for a zero-row write, and a row trigger can inspect,\n    -- change or suppress a job or receipt. Decide before issuing any batch DML.\n    RETURN (WITH tables AS (\n        SELECT c.*, a.amname, t.reloptions AS toast_options\n        FROM pg_class c\n        LEFT JOIN pg_am a ON a.oid = c.relam\n        LEFT JOIN pg_class t ON t.oid = c.reltoastrelid\n        WHERE c.oid IN ('mesh_jobs.jobs'::regclass, 'mesh_jobs.queues'::regclass,\n                        'mesh_jobs.receipts'::regclass, 'mesh_jobs.admissions'::regclass)\n    ), layout(item) AS (\n        SELECT jsonb_build_array('table', relname, relkind, relpersistence,\n            amname, relrowsecurity, relforcerowsecurity, relispartition, relhassubclass,\n            relhasrules, reloptions, toast_options) FROM tables\n        UNION ALL\n        SELECT jsonb_build_array('column', t.relname, a.attnum, a.attname,\n            a.atttypid, a.atttypmod, a.attcollation, a.attnotnull, a.attidentity,\n            a.attgenerated,\n            -- Treat only the jobs argument's two supported physical formats\n            -- as the same layout. Compression and all other fields still match.\n            CASE WHEN t.oid = 'mesh_jobs.jobs'::regclass AND a.attname = 'args'\n                      AND a.attstorage IN ('x', 'e') THEN 'x'::\"char\"\n                 ELSE a.attstorage END,\n            a.attcompression, a.attisdropped,\n            pg_get_expr(d.adbin, d.adrelid))\n        FROM tables t JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum > 0\n        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum\n        UNION ALL\n        SELECT jsonb_build_array('constraint', t.relname, c.conname, c.convalidated,\n            pg_get_constraintdef(c.oid))\n        FROM tables t JOIN pg_constraint c ON c.conrelid = t.oid\n        UNION ALL\n        SELECT jsonb_build_array('index', t.relname, i.indisvalid, i.indisready,\n            pg_get_indexdef(i.indexrelid))\n        FROM tables t JOIN pg_index i ON i.indrelid = t.oid\n        UNION ALL\n        SELECT jsonb_build_array('trigger', t.relname, tr.tgenabled,\n            CASE WHEN tr.tgisinternal THEN tr.tgtype::text ELSE pg_get_triggerdef(tr.oid) END)\n        FROM tables t JOIN pg_trigger tr ON tr.tgrelid = t.oid\n        UNION ALL\n        SELECT jsonb_build_array('function', pg_get_functiondef(p.oid))\n        FROM pg_proc p\n        WHERE p.oid IN ('mesh_jobs.enqueue(text,jsonb,text,text)'::regprocedure,\n                        'mesh_jobs.now_ms()'::regprocedure,\n                        'mesh_jobs.effect_key(mesh_jobs.jobs)'::regprocedure,\n                        'mesh_jobs.publish_wake_v1()'::regprocedure,\n                        'mesh_jobs.fence_claim_v1()'::regprocedure)\n    )\n    SELECT md5(string_agg(item::text, E'\\n' ORDER BY item::text COLLATE \"C\")) = 'd40b27c60eed17d561be929bc792f074'\n    FROM layout);\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.061542,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.set_namespace_paused(ns text, paused boolean) RETURNS jsonb\nLANGUAGE plpgsql VOLATILE STRICT SET search_path = pg_catalog, pg_temp AS $$\nBEGIN\n    PERFORM pg_advisory_xact_lock(hashtextextended(ns, 1782495106));\n    INSERT INTO mesh_jobs.queues (namespace, name, concurrency, state)\n        VALUES (ns, '', 0, CASE WHEN paused THEN 'paused' ELSE 'active' END)\n    ON CONFLICT (namespace, name) DO UPDATE SET state = excluded.state;\n    RETURN jsonb_build_object('paused', paused);\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.059625,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.unique_values(payload jsonb, keys jsonb) RETURNS jsonb\nLANGUAGE sql IMMUTABLE STRICT SET search_path = pg_catalog, pg_temp AS $$\n    SELECT CASE WHEN keys = '[]' THEN payload ELSE coalesce((\n        SELECT jsonb_object_agg(k, payload -> k)\n        FROM jsonb_array_elements_text(keys) AS k\n        WHERE payload ? k\n    ), '{}'::jsonb) END\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.190958,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_unique_key\n    ON mesh_jobs.jobs (namespace, unique_key) WHERE unique_key IS NOT NULL",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.147083,
+      "query": "-- Only fully reaped successful outcomes are eligible. Omitted ordinals use\n-- scalar settlement, including cancellation and expired or replaced leases.\nCREATE OR REPLACE FUNCTION mesh_jobs.complete_batch_v1(\n    ns text, ids uuid[], tokens uuid[]\n) RETURNS TABLE(ordinal bigint)\nLANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\n    WITH held AS MATERIALIZED (\n        SELECT j.id, j.lease_token, j.lease_expires_at_ms, p.ordinal\n        FROM unnest(ids, tokens) WITH ORDINALITY AS p(id, token, ordinal)\n        JOIN mesh_jobs.jobs j ON j.namespace = ns AND (j.id, j.lease_token) = (p.id, p.token)\n        WHERE cardinality(ids) = cardinality(tokens) AND cardinality(ids) BETWEEN 1 AND 8\n            AND j.state = 'executing' AND j.cancel_requested_at_ms IS NULL\n        FOR NO KEY UPDATE OF j SKIP LOCKED\n    ), checked AS MATERIALIZED (\n        SELECT h.*, mesh_jobs.now_ms() AS finished_at FROM held h\n    ), completed AS (\n        UPDATE mesh_jobs.jobs j SET state = 'completed', finished_at_ms = h.finished_at,\n            lease_token = NULL, lease_expires_at_ms = NULL\n        FROM checked h WHERE j.namespace = ns AND j.id = h.id AND j.lease_token = h.lease_token\n            AND h.lease_expires_at_ms > h.finished_at\n        RETURNING h.ordinal\n    )\n    SELECT c.ordinal FROM completed c\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.506417,
+      "query": "DO $legacy$\nBEGIN\n    -- Standalone v1 bodies support workers with grants on only the legacy functions.\n    IF to_regprocedure('mesh_jobs.renew(text,uuid,uuid,bigint)') IS NULL THEN\n        CREATE FUNCTION mesh_jobs.renew(\n            ns text, job_id uuid, token uuid, lease_ms bigint\n        ) RETURNS text\n        LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $body$\n        DECLARE\n            job mesh_jobs.jobs%ROWTYPE;\n            now_at bigint;\n        BEGIN\n            SELECT * INTO job FROM mesh_jobs.jobs\n            WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE;\n            IF NOT FOUND THEN RETURN 'lost'; END IF;\n            now_at := mesh_jobs.now_ms();\n            IF job.lease_expires_at_ms <= now_at THEN RETURN 'lost'; END IF;\n            IF job.cancel_requested_at_ms IS NOT NULL THEN RETURN 'cancelled'; END IF;\n\n            UPDATE mesh_jobs.jobs SET lease_expires_at_ms = greatest(lease_expires_at_ms, now_at + lease_ms)\n            WHERE namespace = ns AND id = job_id;\n            RETURN 'active';\n        END\n        $body$;\n    END IF;\n\n    IF to_regprocedure('mesh_jobs.settle(text,uuid,uuid,jsonb,boolean)') IS NULL THEN\n        CREATE FUNCTION mesh_jobs.settle(\n            ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean\n        ) RETURNS boolean\n        LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $body$\n        DECLARE\n            job mesh_jobs.jobs%ROWTYPE;\n            action text := outcome ->> 'action';\n            reason text := outcome ->> 'reason';\n            next_state text;\n            delay_ms bigint := (outcome ->> 'delay_ms')::bigint;\n            now_at bigint;\n        BEGIN\n            SELECT * INTO job FROM mesh_jobs.jobs\n            WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE;\n            IF NOT FOUND THEN RETURN false; END IF;\n            now_at := mesh_jobs.now_ms();\n            IF (job.lease_expires_at_ms <= now_at) <> recovering THEN RETURN false; END IF;\n\n            IF job.cancel_requested_at_ms IS NOT NULL THEN\n                next_state := 'cancelled';\n                reason := 'cancelled by operator';\n            ELSE\n                next_state := CASE action\n                    WHEN 'complete' THEN 'completed'\n                    WHEN 'cancel' THEN 'cancelled'\n                    WHEN 'discard' THEN 'discarded'\n                    WHEN 'snooze' THEN 'scheduled'\n                    WHEN 'fail' THEN CASE WHEN job.attempt < job.max_attempts\n                        THEN 'retryable' ELSE 'discarded' END\n                    WHEN 'retry_after' THEN CASE WHEN job.attempt < job.max_attempts\n                        THEN 'retryable' ELSE 'discarded' END\n                END;\n            END IF;\n            IF next_state = 'retryable' AND delay_ms IS NULL THEN\n                delay_ms := least(job.backoff_max_ms::numeric,\n                    job.backoff_base_ms::numeric * power(2::numeric, job.attempt - 1))::bigint;\n            END IF;\n\n            UPDATE mesh_jobs.jobs SET\n                state = next_state,\n                attempt = CASE WHEN next_state = 'scheduled' THEN job.attempt - 1 ELSE job.attempt END,\n                scheduled_at_ms = CASE WHEN next_state IN ('scheduled', 'retryable')\n                    THEN now_at + delay_ms ELSE job.scheduled_at_ms END,\n                finished_at_ms = CASE WHEN next_state IN ('completed', 'cancelled', 'discarded') THEN now_at END,\n                metadata = CASE WHEN next_state = 'scheduled' THEN job.metadata || jsonb_build_object(\n                    'snoozed', 1 + CASE WHEN jsonb_typeof(job.metadata -> 'snoozed') = 'number' THEN\n                        greatest(0, least(2147483646, trunc((job.metadata ->> 'snoozed')::numeric)))\n                        ELSE 0 END)\n                    ELSE job.metadata END,\n                lease_token = NULL, lease_expires_at_ms = NULL, cancel_requested_at_ms = NULL,\n                errors = CASE WHEN reason IS NULL THEN job.errors ELSE\n                    CASE WHEN jsonb_array_length(job.errors) >= 100 THEN job.errors - 0 ELSE job.errors END ||\n                    jsonb_build_array(jsonb_build_object('at_ms', now_at, 'attempt', job.attempt, 'reason', reason))\n                    END\n            WHERE namespace = ns AND id = job_id;\n            RETURN true;\n        END\n        $body$;\n    END IF;\nEND\n$legacy$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.0385,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.publish_wake_v1() RETURNS trigger\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    queue_name text;\nBEGIN\n    IF TG_TABLE_NAME = 'queues' THEN\n        queue_name := NEW.name;\n    ELSE\n        queue_name := NEW.queue;\n    END IF;\n    PERFORM pg_notify('mesh_jobs_wake_' || md5(convert_to(NEW.namespace, 'UTF8')),\n                      md5(convert_to(queue_name, 'UTF8')));\n    RETURN NULL;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.029208,
+      "query": "REVOKE EXECUTE ON FUNCTION mesh_jobs.complete_batch_v1(text,uuid[],uuid[]) FROM PUBLIC",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.014667,
+      "query": "SET ROLE parity_subject",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.122167,
+      "query": "CREATE OR REPLACE TRIGGER mesh_jobs_update_wake\n    AFTER UPDATE OF queue, worker, version, state, attempt, max_attempts, scheduled_at_ms ON mesh_jobs.jobs\n    FOR EACH ROW WHEN (\n        lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')\n        AND NEW.state IN ('available', 'scheduled', 'retryable') AND NEW.attempt < NEW.max_attempts\n        AND (OLD.state NOT IN ('available', 'scheduled', 'retryable') OR OLD.attempt >= OLD.max_attempts\n             OR (OLD.queue, OLD.worker, OLD.version, OLD.scheduled_at_ms)\n                IS DISTINCT FROM (NEW.queue, NEW.worker, NEW.version, NEW.scheduled_at_ms))\n    ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1()",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.237792,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_cron_reboot\n    ON mesh_jobs.cron_schedules (namespace, reboot_epoch, name)\n    WHERE expression = '@reboot'",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 1.245583,
+      "query": "CREATE TABLE IF NOT EXISTS mesh_jobs.admissions (\n    namespace text PRIMARY KEY,\n    fence boolean NOT NULL DEFAULT false\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.708458,
+      "query": "CREATE TABLE IF NOT EXISTS mesh_jobs.receipts (\n    namespace text NOT NULL,\n    request_key text NOT NULL,\n    fingerprint text NOT NULL,\n    receipt jsonb NOT NULL,\n    PRIMARY KEY (namespace, request_key)\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.788917,
+      "query": "CREATE TABLE IF NOT EXISTS mesh_jobs.queues (\n    namespace text NOT NULL,\n    name text NOT NULL,\n    concurrency integer NOT NULL DEFAULT 1 CHECK (concurrency BETWEEN 0 AND 1024),\n    state text NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'paused', 'stopped')),\n    PRIMARY KEY (namespace, name)\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.197125,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.enqueue_batch_v1(ns text, batch jsonb)\nRETURNS TABLE(ordinal text, receipt text)\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    processed integer;\nBEGIN\n    -- The caller holds the same namespace fence as scalar and older producers.\n    -- Ordinal zero is reserved for this branch, before the first batch write.\n    IF jsonb_array_length(batch) NOT BETWEEN 16 AND 128\n       OR NOT mesh_jobs.enqueue_batch_layout_v1()\n       OR EXISTS (SELECT FROM jsonb_array_elements(batch) x\n                  WHERE x->'spec'->'unique' IS DISTINCT FROM 'null'::jsonb\n                     OR x->'spec'->'replace' IS DISTINCT FROM '{}'::jsonb)\n       OR EXISTS (SELECT FROM jsonb_array_elements(batch) x\n                  WHERE x->>'request_key' <> ''\n                  GROUP BY x->>'request_key' HAVING count(*) > 1)\n       OR EXISTS (SELECT FROM jsonb_array_elements(batch) x JOIN mesh_jobs.receipts r\n                  ON r.namespace = ns AND r.request_key = x->>'request_key'\n                  WHERE x->>'request_key' <> '') THEN\n        RETURN QUERY SELECT '0'::text, 'stock'::text;\n        RETURN;\n    END IF;\n\n    INSERT INTO mesh_jobs.queues(namespace, name)\n    SELECT ns, x.value->'spec'->>'queue'\n    FROM jsonb_array_elements(batch) WITH ORDINALITY AS x(value, i)\n    GROUP BY x.value->'spec'->>'queue' ORDER BY min(x.i)\n    ON CONFLICT DO NOTHING;\n\n    RETURN QUERY\n    WITH inserted AS (\n        MERGE INTO mesh_jobs.jobs j USING (\n            SELECT x.i, x.value->'spec' AS s, x.value->>'request_key' AS rk,\n                x.value->>'fingerprint' AS fp, mesh_jobs.now_ms() AS ts\n            FROM jsonb_array_elements(batch) WITH ORDINALITY AS x(value, i)\n            ORDER BY x.i\n        ) input ON false\n        WHEN NOT MATCHED THEN INSERT (\n            namespace, worker, version, queue, args, metadata, tags, state, priority,\n            max_attempts, timeout_ms, backoff_base_ms, backoff_max_ms,\n            inserted_at_ms, scheduled_at_ms, unique_key\n        ) VALUES (\n            ns, s->>'worker', (s->>'version')::bigint, s->>'queue',\n            s->'args', s->'metadata', s->'tags',\n            CASE WHEN (s->>'suspended')::boolean THEN 'suspended'\n                WHEN coalesce((s->>'scheduled_at_ms')::bigint, ts + coalesce((s->>'delay_ms')::bigint, 0)) > ts\n                THEN 'scheduled' ELSE 'available' END,\n            (s->>'priority')::integer, (s->>'max_attempts')::integer, (s->>'timeout_ms')::bigint,\n            (s->>'backoff_base_ms')::bigint, (s->>'backoff_max_ms')::bigint,\n            ts, coalesce((s->>'scheduled_at_ms')::bigint, ts + coalesce((s->>'delay_ms')::bigint, 0)),\n            NULL\n        )\n        RETURNING input.i, input.rk, input.fp, jsonb_build_object(\n            'id', j.id, 'effect_key', mesh_jobs.effect_key(j), 'state', j.state,\n            'conflict', false, 'inserted', true\n        ) AS result\n    ), saved AS (\n        INSERT INTO mesh_jobs.receipts(namespace, request_key, fingerprint, receipt)\n        SELECT ns, i.rk, i.fp, i.result FROM inserted i WHERE i.rk <> '' ORDER BY i.i\n        RETURNING request_key\n    )\n    SELECT i.i::text, i.result::text FROM inserted i LEFT JOIN saved r ON r.request_key = i.rk\n    WHERE i.rk = '' OR r.request_key IS NOT NULL\n    ORDER BY i.i;\n\n    GET DIAGNOSTICS processed = ROW_COUNT;\n    IF processed <> jsonb_array_length(batch) THEN\n        RAISE EXCEPTION 'mesh jobs incomplete set-based enqueue';\n    END IF;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.12575,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.job_control(\n    ns text, job_id uuid, operation text, absolute_ms bigint, delay_ms bigint\n) RETURNS jsonb\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    job mesh_jobs.jobs%ROWTYPE;\n    now_at bigint;\n    run_at bigint;\nBEGIN\n    SELECT * INTO job FROM mesh_jobs.jobs\n    WHERE namespace = ns AND id = job_id FOR NO KEY UPDATE;\n    IF NOT FOUND THEN RETURN 'null'::jsonb; END IF;\n\n    now_at := mesh_jobs.now_ms();\n    run_at := coalesce(absolute_ms, now_at + coalesce(delay_ms, 0));\n    CASE operation\n        WHEN 'cancel' THEN\n            UPDATE mesh_jobs.jobs SET\n                state = CASE WHEN job.state = 'executing' THEN 'executing' ELSE 'cancelled' END,\n                cancel_requested_at_ms = CASE WHEN job.state = 'executing' THEN now_at END,\n                finished_at_ms = CASE WHEN job.state <> 'executing' THEN now_at END\n            WHERE namespace = ns AND id = job_id AND job.finished_at_ms IS NULL\n                AND job.cancel_requested_at_ms IS NULL;\n        WHEN 'retry' THEN\n            UPDATE mesh_jobs.jobs SET state = 'available', run = job.run + 1, attempt = 0,\n                attempted_at_ms = NULL, finished_at_ms = NULL, scheduled_at_ms = now_at\n            WHERE namespace = ns AND id = job_id AND job.finished_at_ms IS NOT NULL;\n        WHEN 'discard' THEN\n            UPDATE mesh_jobs.jobs SET state = 'discarded', finished_at_ms = now_at\n            WHERE namespace = ns AND id = job_id AND job.finished_at_ms IS NULL AND job.state <> 'executing';\n        WHEN 'reschedule' THEN\n            UPDATE mesh_jobs.jobs SET scheduled_at_ms = run_at, state = CASE\n                WHEN job.state = 'suspended' THEN 'suspended'\n                WHEN run_at > now_at THEN 'scheduled' ELSE 'available' END\n            WHERE namespace = ns AND id = job_id AND job.finished_at_ms IS NULL AND job.state <> 'executing';\n        WHEN 'suspend' THEN\n            UPDATE mesh_jobs.jobs SET state = 'suspended'\n            WHERE namespace = ns AND id = job_id AND job.finished_at_ms IS NULL AND job.state <> 'executing';\n        WHEN 'resume_job' THEN\n            UPDATE mesh_jobs.jobs SET state = CASE\n                WHEN job.scheduled_at_ms > now_at THEN 'scheduled' ELSE 'available' END\n            WHERE namespace = ns AND id = job_id AND job.state = 'suspended';\n        WHEN 'delete' THEN\n            DELETE FROM mesh_jobs.jobs WHERE namespace = ns AND id = job_id AND job.state <> 'executing';\n            RETURN jsonb_build_object('id', job_id, 'deleted', FOUND);\n    END CASE;\n\n    SELECT * INTO job FROM mesh_jobs.jobs WHERE namespace = ns AND id = job_id;\n    RETURN mesh_jobs.job_json(job);\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.003542,
+      "query": "SELECT (current_setting($1)::int / $2 = $3)::text",
+      "rows": 1
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.174583,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.settle_state(\n    ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean\n) RETURNS text\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    job mesh_jobs.jobs%ROWTYPE;\n    action text := outcome ->> 'action';\n    reason text := outcome ->> 'reason';\n    next_state text;\n    delay_ms bigint := (outcome ->> 'delay_ms')::bigint;\n    now_at bigint;\nBEGIN\n    SELECT * INTO job FROM mesh_jobs.jobs\n    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE NOWAIT;\n    IF NOT FOUND THEN RETURN NULL; END IF;\n    now_at := mesh_jobs.now_ms();\n    IF (job.lease_expires_at_ms <= now_at) <> recovering THEN RETURN NULL; END IF;\n\n    IF job.cancel_requested_at_ms IS NOT NULL THEN\n        next_state := 'cancelled';\n        reason := 'cancelled by operator';\n    ELSE\n        next_state := CASE action\n            WHEN 'complete' THEN 'completed'\n            WHEN 'cancel' THEN 'cancelled'\n            WHEN 'discard' THEN 'discarded'\n            WHEN 'snooze' THEN 'scheduled'\n            WHEN 'fail' THEN CASE WHEN job.attempt < job.max_attempts\n                THEN 'retryable' ELSE 'discarded' END\n            WHEN 'retry_after' THEN CASE WHEN job.attempt < job.max_attempts\n                THEN 'retryable' ELSE 'discarded' END\n        END;\n    END IF;\n    IF next_state = 'retryable' AND delay_ms IS NULL THEN\n        delay_ms := least(job.backoff_max_ms::numeric,\n            job.backoff_base_ms::numeric * power(2::numeric, job.attempt - 1))::bigint;\n    END IF;\n\n    UPDATE mesh_jobs.jobs SET\n        state = next_state,\n        attempt = CASE WHEN next_state = 'scheduled' THEN job.attempt - 1 ELSE job.attempt END,\n        scheduled_at_ms = CASE WHEN next_state IN ('scheduled', 'retryable')\n            THEN now_at + delay_ms ELSE job.scheduled_at_ms END,\n        finished_at_ms = CASE WHEN next_state IN ('completed', 'cancelled', 'discarded') THEN now_at END,\n        metadata = CASE WHEN next_state = 'scheduled' THEN job.metadata || jsonb_build_object(\n            'snoozed', 1 + CASE WHEN jsonb_typeof(job.metadata -> 'snoozed') = 'number' THEN\n                greatest(0, least(2147483646, trunc((job.metadata ->> 'snoozed')::numeric)))\n                ELSE 0 END)\n            ELSE job.metadata END,\n        lease_token = NULL, lease_expires_at_ms = NULL, cancel_requested_at_ms = NULL,\n        errors = CASE WHEN reason IS NULL THEN job.errors ELSE\n            CASE WHEN jsonb_array_length(job.errors) >= 100 THEN job.errors - 0 ELSE job.errors END ||\n            jsonb_build_array(jsonb_build_object('at_ms', now_at, 'attempt', job.attempt, 'reason', reason))\n            END\n    WHERE namespace = ns AND id = job_id AND lease_token = token\n    RETURNING state INTO next_state;\n    RETURN next_state;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.266375,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.claim_batch_set_v1(\n    ns text, queue_name text, workers jsonb, lease_ms bigint, slots integer, cutoff_ms bigint\n) RETURNS TABLE(status text, id text, token text, context text, timeout_ms text, context_bytes text)\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp SET lock_timeout = '100ms' AS $$\nDECLARE\n    q mesh_jobs.queues%ROWTYPE;\n    remaining integer := least(coalesce(slots, 0), 16);\n    due_at bigint;\nBEGIN\n    IF lease_ms IS NULL OR lease_ms NOT BETWEEN 1 AND 31536000000 THEN\n        RAISE EXCEPTION 'mesh jobs admitted claim lease_ms must be positive and at most 365 days';\n    END IF;\n    IF remaining <= 0 THEN RETURN; END IF;\n    IF current_setting('transaction_isolation') <> 'read committed'\n        OR current_setting('client_encoding') <> current_setting('server_encoding') THEN\n        RETURN QUERY SELECT 'fallback'::text, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text;\n        RETURN;\n    END IF;\n\n    -- Serialize with single claims, cursor batches and queue controls.\n    -- Namespace pause takes its advisory lock first. Never wait for it\n    -- while holding a queue row, including when a legacy claimant is present.\n    SELECT * INTO q FROM mesh_jobs.queues\n    WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE;\n    IF NOT FOUND OR q.state <> 'active' OR q.concurrency = 0 THEN RETURN; END IF;\n    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(ns, 1782495106)) THEN RETURN; END IF;\n    IF EXISTS (SELECT FROM mesh_jobs.queues WHERE namespace = ns AND name = '' AND state = 'paused')\n    THEN RETURN; END IF;\n\n    -- This command takes a fresh snapshot after acquiring the capacity lock.\n    remaining := least(remaining, q.concurrency - (SELECT count(*) FROM mesh_jobs.jobs j\n        WHERE j.namespace = ns AND j.queue = queue_name AND j.state = 'executing'));\n    IF remaining <= 0 THEN RETURN; END IF;\n\n    due_at := coalesce(cutoff_ms, mesh_jobs.now_ms());\n    RETURN QUERY\n    WITH picked AS MATERIALIZED (\n        SELECT j.* FROM mesh_jobs.jobs j\n        WHERE j.namespace = ns AND j.queue = queue_name\n            AND j.state IN ('available', 'scheduled', 'retryable') AND j.scheduled_at_ms <= due_at\n            AND j.attempt < j.max_attempts\n            AND EXISTS (SELECT FROM jsonb_to_recordset(workers) AS w(worker text, version bigint)\n                        WHERE (w.worker, w.version) = (j.worker, j.version))\n            AND NOT EXISTS (\n                SELECT FROM mesh_jobs.batch_context_blocks b\n                WHERE b.namespace = j.namespace AND b.id = j.id\n                    AND b.row_version = j.xmin AND b.row_location = j.ctid\n                    AND b.encoding = current_setting('client_encoding')::name)\n        ORDER BY j.priority, j.scheduled_at_ms, j.position\n        LIMIT remaining FOR NO KEY UPDATE OF j SKIP LOCKED\n    ), rendered AS MATERIALIZED (\n        -- Keep speculative memory bounded before detoasting. Compressed and\n        -- larger values go to the released exact-prefix cursor on a new turn.\n        SELECT p.id, p.priority, p.scheduled_at_ms, p.position, p.timeout_ms,\n            gen_random_uuid() AS grant_token,\n            CASE WHEN pg_column_size(p.args)::bigint + pg_column_size(p.metadata)\n                    + pg_column_size(p.tags) <= 65536\n                    AND pg_column_compression(p.args) IS NULL\n                    AND pg_column_compression(p.metadata) IS NULL\n                    AND pg_column_compression(p.tags) IS NULL\n                    AND octet_length(p.worker) + octet_length(p.queue) <= 1024\n            THEN jsonb_build_object(\n                'id', p.id, 'effect_key', p.id::text || '/' || p.run::text, 'worker', p.worker,\n                'version', p.version, 'args', p.args, 'attempt', p.attempt + 1,\n                'max_attempts', p.max_attempts, 'queue', p.queue, 'metadata', p.metadata,\n                'tags', p.tags, 'scheduled_at_ms', p.scheduled_at_ms\n            )::text END AS body\n        FROM picked p\n    ), sized AS MATERIALIZED (\n        SELECT r.*, octet_length(r.body) AS bytes FROM rendered r\n    ), budget AS MATERIALIZED (\n        SELECT coalesce(bool_and(s.bytes IS NOT NULL AND s.bytes <= 16 * 1024 * 1024)\n                     AND sum(s.bytes + 128) <= 32 * 1024 * 1024 - 1024, true) AS fits,\n               mesh_jobs.now_ms() AS started_at\n        FROM sized s\n    ), granted AS (\n        UPDATE mesh_jobs.jobs j SET state = 'executing', attempt = j.attempt + 1,\n            attempted_at_ms = b.started_at, lease_token = s.grant_token,\n            lease_expires_at_ms = b.started_at + lease_ms\n        FROM sized s, budget b WHERE b.fits AND j.namespace = ns AND j.id = s.id\n        RETURNING j.id AS job_id, s.grant_token, s.body, s.timeout_ms, s.bytes,\n                  s.priority, s.scheduled_at_ms, s.position\n    )\n    SELECT 'claimed'::text, g.job_id::text, g.grant_token::text, g.body, g.timeout_ms::text, g.bytes::text\n    FROM granted g ORDER BY g.priority, g.scheduled_at_ms, g.position;\n\n    IF FOUND THEN RETURN; END IF;\n    -- The speculative transaction made no state transitions. Determine whether\n    -- exact sizing or a busy eligible row needs the existing claim protocol.\n    IF EXISTS (\n        SELECT FROM mesh_jobs.jobs j\n        WHERE j.namespace = ns AND j.queue = queue_name\n            AND j.state IN ('available', 'scheduled', 'retryable') AND j.scheduled_at_ms <= due_at\n            AND j.attempt < j.max_attempts\n            AND EXISTS (SELECT FROM jsonb_to_recordset(workers) AS w(worker text, version bigint)\n                        WHERE (w.worker, w.version) = (j.worker, j.version))\n            AND NOT EXISTS (\n                SELECT FROM mesh_jobs.batch_context_blocks b\n                WHERE b.namespace = j.namespace AND b.id = j.id\n                    AND b.row_version = j.xmin AND b.row_location = j.ctid\n                    AND b.encoding = current_setting('client_encoding')::name)\n    ) THEN\n        RETURN QUERY SELECT 'fallback'::text, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text;\n    ELSE\n        -- Use the exact scan cutoff to cover a deadline crossing after this\n        -- transaction and before the separate next-due read.\n        RETURN QUERY SELECT 'empty'::text, NULL::text, NULL::text, NULL::text, due_at::text, NULL::text;\n    END IF;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.751625,
+      "query": "CREATE TABLE IF NOT EXISTS mesh_jobs.cron_schedules (\n    namespace text NOT NULL,\n    name text NOT NULL,\n    id uuid NOT NULL DEFAULT pg_catalog.gen_random_uuid(),\n    expression text NOT NULL,\n    timezone text NOT NULL,\n    misfire text NOT NULL CHECK (misfire IN ('skip', 'coalesce', 'catch_up')),\n    lookback_minutes integer NOT NULL CHECK (lookback_minutes BETWEEN 1 AND 1440),\n    job jsonb NOT NULL CHECK (jsonb_typeof(job) = 'object'),\n    cursor_minute bigint NOT NULL,\n    reboot_epoch bigint NOT NULL DEFAULT 0,\n    PRIMARY KEY (namespace, name)\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.5895,
+      "query": "CREATE TABLE public.mesh_jobs_parity_product (\n    engine text NOT NULL, namespace text NOT NULL, request_id text NOT NULL,\n    PRIMARY KEY (engine, namespace, request_id)\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.200083,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.claim_drain_v1(\n    ns text, queue_name text, workers jsonb, lease_ms bigint,\n    cutoff_ms bigint, initial_ids jsonb\n) RETURNS TABLE(id text, token text, context text, timeout_ms text)\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    q mesh_jobs.queues%ROWTYPE;\n    job mesh_jobs.jobs%ROWTYPE;\n    due_at bigint;\n    started_at bigint;\nBEGIN\n    IF current_setting('transaction_isolation') <> 'read committed' THEN\n        RAISE EXCEPTION 'mesh jobs claim requires READ COMMITTED';\n    END IF;\n    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(ns, 1782495106)) THEN RETURN; END IF;\n    IF EXISTS (SELECT FROM mesh_jobs.queues WHERE namespace = ns AND name = '' AND state = 'paused')\n    THEN RETURN; END IF;\n\n    -- Serialize capacity admission with queue controls without blocking enqueue's FK checks.\n    SELECT * INTO q FROM mesh_jobs.queues\n    WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE SKIP LOCKED;\n    IF NOT FOUND OR q.state <> 'active' OR q.concurrency = 0 THEN RETURN; END IF;\n\n    IF (SELECT count(*) FROM mesh_jobs.jobs j\n        WHERE j.namespace = ns AND j.queue = queue_name AND j.state = 'executing') >= q.concurrency\n    THEN RETURN; END IF;\n\n    due_at := coalesce(cutoff_ms, mesh_jobs.now_ms());\n    SELECT j.* INTO job FROM mesh_jobs.jobs j\n    WHERE j.namespace = ns AND j.queue = queue_name\n        AND j.state IN ('available', 'scheduled', 'retryable') AND j.scheduled_at_ms <= due_at\n        AND j.attempt < j.max_attempts\n        AND (initial_ids IS NULL OR initial_ids ? j.id::text)\n        AND EXISTS (\n            SELECT FROM jsonb_to_recordset(workers) AS w(worker text, version bigint)\n            WHERE w.worker = j.worker AND w.version = j.version\n        )\n    ORDER BY j.priority, j.scheduled_at_ms, j.position\n    LIMIT 1 FOR NO KEY UPDATE OF j SKIP LOCKED;\n    IF NOT FOUND THEN RETURN; END IF;\n\n    started_at := mesh_jobs.now_ms();\n    UPDATE mesh_jobs.jobs j SET state = 'executing', attempt = j.attempt + 1,\n        attempted_at_ms = started_at, lease_token = gen_random_uuid(),\n        lease_expires_at_ms = started_at + lease_ms\n    WHERE j.namespace = ns AND j.id = job.id RETURNING j.* INTO job;\n\n    RETURN QUERY SELECT job.id::text, job.lease_token::text, jsonb_build_object(\n        'id', job.id, 'effect_key', mesh_jobs.effect_key(job), 'worker', job.worker,\n        'version', job.version, 'args', job.args, 'attempt', job.attempt,\n        'max_attempts', job.max_attempts, 'queue', job.queue, 'metadata', job.metadata,\n        'tags', job.tags, 'scheduled_at_ms', job.scheduled_at_ms\n    )::text, job.timeout_ms::text;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 1.710667,
+      "query": "CREATE TABLE public.mesh_jobs_parity_attempts (\n    engine text NOT NULL, namespace text NOT NULL, job_key text NOT NULL,\n    effect_key text NOT NULL, attempt integer NOT NULL, entered_at timestamptz NOT NULL,\n    worker_pid integer NOT NULL\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.102959,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.queue_json(q mesh_jobs.queues) RETURNS jsonb\nLANGUAGE sql STABLE STRICT SET search_path = pg_catalog, pg_temp AS $$\n    SELECT jsonb_build_object(\n        'queue', q.name, 'concurrency', q.concurrency, 'state', q.state,\n        'running', (SELECT count(*) FROM mesh_jobs.jobs j\n                    WHERE j.namespace = q.namespace AND j.queue = q.name AND j.state = 'executing'))\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.240584,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.recover(ns text, page_size integer, queue_filter jsonb) RETURNS bigint\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    job record;\n    recovered bigint := 0;\n    cutoff bigint := mesh_jobs.now_ms();\nBEGIN\n    FOR job IN SELECT id, lease_token FROM mesh_jobs.jobs\n        WHERE namespace = ns AND state = 'executing' AND lease_expires_at_ms <= cutoff\n            AND (queue_filter IS NULL OR queue_filter ? queue)\n        ORDER BY lease_expires_at_ms, id LIMIT page_size FOR NO KEY UPDATE SKIP LOCKED\n    LOOP\n        IF mesh_jobs.settle(ns, job.id, job.lease_token,\n            '{\"action\":\"fail\",\"reason\":\"lease expired\"}'::jsonb, true)\n        THEN recovered := recovered + 1; END IF;\n    END LOOP;\n\n    WITH due AS (\n        SELECT id FROM mesh_jobs.jobs\n        WHERE namespace = ns AND state IN ('scheduled', 'retryable') AND scheduled_at_ms <= cutoff\n            AND (queue_filter IS NULL OR queue_filter ? queue)\n        ORDER BY scheduled_at_ms, id LIMIT page_size FOR NO KEY UPDATE SKIP LOCKED\n    )\n    UPDATE mesh_jobs.jobs j SET state = 'available'\n    FROM due WHERE j.namespace = ns AND j.id = due.id;\n    RETURN recovered;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.102416,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.try_renew(\n    ns text, job_id uuid, token uuid, lease_ms bigint\n) RETURNS text\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    job mesh_jobs.jobs%ROWTYPE;\n    now_at bigint;\nBEGIN\n    -- A busy attempt must not delay lease renewals for the runner's other jobs.\n    SELECT * INTO job FROM mesh_jobs.jobs\n    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE NOWAIT;\n    IF NOT FOUND THEN RETURN 'lost'; END IF;\n    now_at := mesh_jobs.now_ms();\n    IF job.lease_expires_at_ms <= now_at THEN RETURN 'lost'; END IF;\n    IF job.cancel_requested_at_ms IS NOT NULL THEN RETURN 'cancelled'; END IF;\n\n    UPDATE mesh_jobs.jobs SET lease_expires_at_ms = greatest(lease_expires_at_ms, now_at + lease_ms)\n    WHERE namespace = ns AND id = job_id;\n    RETURN 'active';\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.414292,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.now_ms() RETURNS bigint\nLANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\n    SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.250792,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_due\n    ON mesh_jobs.jobs (namespace, scheduled_at_ms, id) WHERE state IN ('scheduled', 'retryable')",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.260125,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_unique_candidates\n    ON mesh_jobs.jobs (namespace, worker, queue, inserted_at_ms DESC)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 2.476667,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.job_json(j mesh_jobs.jobs) RETURNS jsonb\nLANGUAGE sql STABLE STRICT SET search_path = pg_catalog, pg_temp AS $$\n    SELECT (to_jsonb(j) - ARRAY['namespace', 'lease_token', 'unique_key', 'position']) ||\n        jsonb_build_object('effect_key', mesh_jobs.effect_key(j))\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.756042,
+      "query": "CREATE TABLE public.mesh_jobs_parity_effects (\n    engine text NOT NULL, namespace text NOT NULL, job_key text NOT NULL,\n    effect_key text NOT NULL, effected_at timestamptz NOT NULL,\n    PRIMARY KEY (engine, namespace, effect_key)\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 1.177166,
+      "query": "DO $$\nBEGIN\n    IF NOT EXISTS (SELECT FROM mesh_jobs.schema_version WHERE version = 1) THEN\n        RAISE EXCEPTION 'unsupported mesh_jobs schema version';\n    END IF;\nEND\n$$",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 2.477416,
+      "query": "CREATE TABLE IF NOT EXISTS mesh_jobs.jobs (\n    namespace text NOT NULL,\n    id uuid NOT NULL DEFAULT pg_catalog.gen_random_uuid(),\n    position bigint GENERATED ALWAYS AS IDENTITY,\n    run bigint NOT NULL DEFAULT 1 CHECK (run > 0),\n    worker text NOT NULL,\n    version bigint NOT NULL CHECK (version BETWEEN 1 AND 4294967295),\n    queue text NOT NULL,\n    args jsonb NOT NULL CHECK (jsonb_typeof(args) = 'object'),\n    metadata jsonb NOT NULL CHECK (jsonb_typeof(metadata) = 'object'),\n    tags jsonb NOT NULL CHECK (jsonb_typeof(tags) = 'array'),\n    state text NOT NULL CHECK (state IN\n        ('available', 'scheduled', 'retryable', 'suspended', 'executing',\n         'completed', 'cancelled', 'discarded')),\n    priority integer NOT NULL CHECK (priority BETWEEN 0 AND 9),\n    attempt integer NOT NULL DEFAULT 0 CHECK (attempt BETWEEN 0 AND max_attempts),\n    max_attempts integer NOT NULL CHECK (max_attempts BETWEEN 1 AND 100),\n    timeout_ms bigint NOT NULL CHECK (timeout_ms > 0),\n    backoff_base_ms bigint NOT NULL CHECK (backoff_base_ms >= 0),\n    backoff_max_ms bigint NOT NULL CHECK (backoff_max_ms >= backoff_base_ms),\n    inserted_at_ms bigint NOT NULL,\n    scheduled_at_ms bigint NOT NULL,\n    attempted_at_ms bigint,\n    finished_at_ms bigint,\n    lease_token uuid,\n    lease_expires_at_ms bigint,\n    cancel_requested_at_ms bigint,\n    errors jsonb NOT NULL DEFAULT '[]' CHECK (jsonb_typeof(errors) = 'array'),\n    unique_key text,\n    PRIMARY KEY (namespace, id),\n    FOREIGN KEY (namespace, queue) REFERENCES mesh_jobs.queues(namespace, name),\n    CHECK ((state = 'executing') = (lease_token IS NOT NULL)),\n    CHECK (state <> 'executing' OR attempt > 0),\n    CHECK ((state = 'executing') = (lease_expires_at_ms IS NOT NULL)),\n    CHECK (state = 'executing' OR cancel_requested_at_ms IS NULL),\n    CHECK ((state IN ('completed', 'cancelled', 'discarded')) = (finished_at_ms IS NOT NULL))\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.218541,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_cron_timed\n    ON mesh_jobs.cron_schedules (namespace, cursor_minute, name)\n    WHERE expression <> '@reboot'",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.731417,
+      "query": "CREATE TABLE IF NOT EXISTS mesh_jobs.batch_context_blocks (\n    namespace text NOT NULL,\n    id uuid NOT NULL,\n    row_version xid NOT NULL,\n    row_location tid NOT NULL,\n    encoding name NOT NULL,\n    context_bytes integer NOT NULL,\n    PRIMARY KEY (namespace, id),\n    FOREIGN KEY (namespace, id) REFERENCES mesh_jobs.jobs(namespace, id) ON DELETE CASCADE\n)",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.037917,
+      "query": "REVOKE EXECUTE ON FUNCTION mesh_jobs.enqueue_batch_layout_v1(),\n    mesh_jobs.enqueue_batch_v1(text,jsonb) FROM PUBLIC",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.274417,
+      "query": "CREATE OR REPLACE VIEW mesh_jobs.queue_summaries AS\n    SELECT q.namespace, q.name AS queue, q.concurrency, q.state,\n        EXISTS (SELECT FROM mesh_jobs.queues paused WHERE paused.namespace = q.namespace\n            AND paused.name = '' AND paused.state = 'paused') AS namespace_paused,\n        (SELECT count(*) FROM mesh_jobs.jobs j WHERE j.namespace = q.namespace\n            AND j.queue = q.name AND j.state = 'executing') AS running\n    FROM mesh_jobs.queues q WHERE q.name <> ''",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.377875,
+      "query": "CREATE INDEX IF NOT EXISTS mesh_jobs_ready\n    ON mesh_jobs.jobs (namespace, queue, priority, scheduled_at_ms, position)\n    WHERE state IN ('available', 'scheduled', 'retryable')",
+      "rows": 0
+    },
+    {
+      "calls": 1,
+      "execution_ms": 0.078708,
+      "query": "CREATE OR REPLACE FUNCTION mesh_jobs.queue_control(\n    ns text, queue_name text, operation text, capacity integer\n) RETURNS jsonb\nLANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$\nDECLARE\n    q mesh_jobs.queues%ROWTYPE;\nBEGIN\n    IF operation = 'configure' OR operation = 'start' THEN\n        INSERT INTO mesh_jobs.queues(namespace, name, concurrency)\n            VALUES (ns, queue_name, coalesce(capacity, 1))\n        ON CONFLICT (namespace, name) DO UPDATE SET\n            concurrency = coalesce(capacity, queues.concurrency),\n            state = CASE WHEN operation = 'start' THEN 'active' ELSE queues.state END\n        RETURNING * INTO q;\n    ELSE\n        UPDATE mesh_jobs.queues SET\n            concurrency = CASE WHEN operation = 'scale' THEN capacity ELSE concurrency END,\n            state = CASE operation\n                WHEN 'pause' THEN CASE WHEN state = 'active' THEN 'paused' ELSE state END\n                WHEN 'resume' THEN CASE WHEN state = 'paused' THEN 'active' ELSE state END\n                WHEN 'stop' THEN 'stopped'\n                ELSE state END\n        WHERE namespace = ns AND name = queue_name RETURNING * INTO q;\n    END IF;\n    RETURN coalesce(mesh_jobs.queue_json(q), 'null'::jsonb);\nEND\n$$",
+      "rows": 0
+    }
+  ],
+  "terminal_xids": 64
+}

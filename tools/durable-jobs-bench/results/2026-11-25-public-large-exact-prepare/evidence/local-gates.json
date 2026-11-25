@@ -1,0 +1,29 @@
+{
+  "host": "Darwin arm64",
+  "postgres": {
+    "command": "bash scripts/verify-postgres-jobs.sh --compatibility 17.11",
+    "exit": 0,
+    "failed": 0,
+    "passed": 131,
+    "server": "PostgreSQL 17.11"
+  },
+  "public_wire": {
+    "cases": [
+      "prepare",
+      "activate",
+      "commit"
+    ],
+    "exit": 0,
+    "prior_failure": "probe-text matcher counted to_regprocedure capability probe as an activation; harness fixed, runtime unchanged",
+    "runner_sha256": "b107ac0a0c55aed9bce87b0a7f5d68acf46ca48524cc0e34bfa595ea1697de67",
+    "script": "prove-wire.py"
+  },
+  "revision": "f3b3612d99473af58c228228b3b32befb11672c2",
+  "timed": false,
+  "workspace": {
+    "command": "cargo test --workspace --locked",
+    "exit": 0,
+    "failed": 0,
+    "passed": 4828
+  }
+}

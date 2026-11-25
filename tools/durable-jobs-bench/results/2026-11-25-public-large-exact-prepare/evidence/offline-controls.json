@@ -1,0 +1,36 @@
+{
+  "gate": "positive, submit, RSS and temp rejection controls",
+  "historical": {
+    "01": {
+      "drain_us": 651760,
+      "enqueue_us": 1506152,
+      "last_stamp_us": 606333,
+      "submit_us": 2157912
+    },
+    "02": {
+      "drain_us": 694434,
+      "enqueue_us": 1545966,
+      "last_stamp_us": 659147,
+      "submit_us": 2240400
+    },
+    "03": {
+      "drain_us": 664426,
+      "enqueue_us": 1581292,
+      "last_stamp_us": 622414,
+      "submit_us": 2245718
+    },
+    "04": {
+      "drain_us": 651184,
+      "enqueue_us": 1462082,
+      "last_stamp_us": 616225,
+      "submit_us": 2113266
+    },
+    "05": {
+      "drain_us": 723394,
+      "enqueue_us": 1484119,
+      "last_stamp_us": 703443,
+      "submit_us": 2207513
+    }
+  },
+  "historical_temp_observed": false
+}

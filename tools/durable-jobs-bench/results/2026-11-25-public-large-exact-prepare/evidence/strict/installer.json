@@ -1,0 +1,6 @@
+{
+  "rejects_unexpected_named_acl": true,
+  "scoped_install": true,
+  "removes_pg17_module": true,
+  "legacy_batch_remains": true
+}

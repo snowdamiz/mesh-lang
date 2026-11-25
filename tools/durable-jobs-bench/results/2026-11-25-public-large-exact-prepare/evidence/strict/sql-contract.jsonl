@@ -1,0 +1,8 @@
+{"pass_": "separate install, worker grants, inspector and TEMP denied", "schema_sha256": "08d08dc1e068175b75eb61c16ed6658d24745162147ab4a66705e0463c2b11c9"}
+{"pass_": "invalid physical offsets and blocks rejected before heap access", "schema_sha256": "08d08dc1e068175b75eb61c16ed6658d24745162147ab4a66705e0463c2b11c9"}
+{"pass_": "disjoint concurrent reservations, live mixed-binary cap, priority, exact prefix", "schema_sha256": "08d08dc1e068175b75eb61c16ed6658d24745162147ab4a66705e0463c2b11c9"}
+{"pass_": "pauses and bounded queue-lock wait leave final attempts intact", "schema_sha256": "08d08dc1e068175b75eb61c16ed6658d24745162147ab4a66705e0463c2b11c9"}
+{"pass_": "opaque JSON and operator changes, stale transaction/tuple rejection, cancellation", "schema_sha256": "08d08dc1e068175b75eb61c16ed6658d24745162147ab4a66705e0463c2b11c9"}
+{"pass_": "connection close and server transaction timeout release unspent job rows", "schema_sha256": "08d08dc1e068175b75eb61c16ed6658d24745162147ab4a66705e0463c2b11c9"}
+{"pass_": "exact stock byte shapes and reply prefix, four markers, edited oversized row becomes eligible", "schema_sha256": "08d08dc1e068175b75eb61c16ed6658d24745162147ab4a66705e0463c2b11c9"}
+{"pass_": "legacy reinstall and opt-in grant coexist", "schema_sha256": "08d08dc1e068175b75eb61c16ed6658d24745162147ab4a66705e0463c2b11c9"}

@@ -1,0 +1,55 @@
+{
+  "bundles": {
+    "provenance/candidate-f3b3612d9.bundle": {
+      "commits": [
+        "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+        "f3b3612d99473af58c228228b3b32befb11672c2"
+      ],
+      "head": "f3b3612d99473af58c228228b3b32befb11672c2",
+      "prerequisite": "734416cdbce2e557cb7dd7c4e2833ad7a4b5703d",
+      "sha256": "64db34eee7fd3ab8bf02ffd63717cdf4a1fb745978f65194174b877435444104"
+    },
+    "provenance/strict-955b356b5.bundle": {
+      "head": "955b356b51f0dbef36a2958bc27ed45c15af3582",
+      "prerequisite": "3828f20d2d6beb683868cce33e6dd1958365914b",
+      "sha256": "5301d557c35326d2668078e7c15fb53089178e8f744336ef3f512ef0ca0a026e"
+    }
+  },
+  "candidate_patch": {
+    "equals": "git diff b3557273d f3b3612d9",
+    "file": "candidate.patch",
+    "sha256": "2ee6e41365e18d6bcf3e9c3f198329bdcf0da95e503b2b441ec382acbb53dc2e"
+  },
+  "ignored_target_pins": {
+    "target/linode-jobs-stepchange/requests/large-v3-955b356b.json": {
+      "copy": "evidence/strict/recovered-intake.json",
+      "sha256": "be0383b284cb03798aa76298735bbd26120f7dc7535de5b2fa7ab5fb5988919f"
+    },
+    "target/native-large-payload-v3/DESIGN.md": {
+      "copy": "evidence/strict/design.md",
+      "sha256": "4e90550afd9692b4d9dc41f4d8dd8e103e336a18f0b3e3d3887969838a2a0714"
+    },
+    "target/native-large-payload-v3/REPORT.md": {
+      "copy": "evidence/strict/report.md",
+      "sha256": "a2908bb7ba83b3450f954ec95087dc71c047a6b7b7c3ea78a5c27d128a2b7ac2"
+    },
+    "target/native-large-payload-v3/bundle-955b356b/identity.json": {
+      "copy": "evidence/strict/identity.json",
+      "sha256": "e703e81bf494d8c582e38fea6999e892101359aacac21870e2aa41bf60fe7b28"
+    },
+    "target/native-large-payload-v3/candidate.patch": {
+      "copy": "evidence/strict/candidate-955b356b.patch",
+      "sha256": "a1a43874f78072d960fc065c5fb8b299a6e76c551ca424c65294771d031e0e78"
+    }
+  },
+  "local_untimed_only": true,
+  "packet": {
+    "file": "request.json",
+    "sha256": "c098809a67de34b2818d4bf5b8b10143e05e791e13b4f0290a36240f222bac70"
+  },
+  "source_bundle": {
+    "file": "source.tar.gz",
+    "sha256": "01de6fef884898606039951edd04ffd4ca230156e9a190545e733fbe9046c45d",
+    "tree": "f3b3612d9 subset listed in request.json portable_files"
+  }
+}
