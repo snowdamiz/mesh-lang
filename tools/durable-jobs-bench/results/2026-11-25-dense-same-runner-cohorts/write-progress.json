@@ -1,0 +1,402 @@
+{
+  "1": {
+    "lanes": {
+      "B": {
+        "sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 503000,
+            "last_from_enqueue_us": 1107847
+          },
+          "entered_us": {
+            "middle512_us": 506299,
+            "last_from_enqueue_us": 1114006
+          },
+          "attempt_committed_us": {
+            "middle512_us": 511891,
+            "last_from_enqueue_us": 1124147
+          },
+          "effect_committed_us": {
+            "middle512_us": 507094,
+            "last_from_enqueue_us": 1126512
+          },
+          "settled_us": {
+            "middle512_us": 504491,
+            "last_from_enqueue_us": 1132590
+          }
+        },
+        "median_entry_to_attempt_us": 7699.0,
+        "median_attempt_to_effect_us": 2076.5
+      },
+      "river": {
+        "sha256": "1ad05f965ef66c9722999a1715047115bc82c6846db439ee648c6da020fa4d10",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 335259,
+            "last_from_enqueue_us": 878952
+          },
+          "entered_us": {
+            "middle512_us": 318196,
+            "last_from_enqueue_us": 886333
+          },
+          "attempt_committed_us": {
+            "middle512_us": 315919,
+            "last_from_enqueue_us": 888030
+          },
+          "effect_committed_us": {
+            "middle512_us": 315979,
+            "last_from_enqueue_us": 896676
+          },
+          "settled_us": {
+            "middle512_us": 288200,
+            "last_from_enqueue_us": 1137957
+          }
+        },
+        "median_entry_to_attempt_us": 670.0,
+        "median_attempt_to_effect_us": 5972.5
+      }
+    },
+    "mesh_minus_river_us": {
+      "claimed_us": {
+        "middle512_us": 167741,
+        "last_from_enqueue_us": 228895
+      },
+      "entered_us": {
+        "middle512_us": 188103,
+        "last_from_enqueue_us": 227673
+      },
+      "attempt_committed_us": {
+        "middle512_us": 195972,
+        "last_from_enqueue_us": 236117
+      },
+      "effect_committed_us": {
+        "middle512_us": 191115,
+        "last_from_enqueue_us": 229836
+      },
+      "settled_us": {
+        "middle512_us": 216291,
+        "last_from_enqueue_us": -5367
+      }
+    }
+  },
+  "2": {
+    "lanes": {
+      "B": {
+        "sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 1129000,
+            "last_from_enqueue_us": 2220507
+          },
+          "entered_us": {
+            "middle512_us": 1138299,
+            "last_from_enqueue_us": 2229926
+          },
+          "attempt_committed_us": {
+            "middle512_us": 1237445,
+            "last_from_enqueue_us": 2242358
+          },
+          "effect_committed_us": {
+            "middle512_us": 1238201,
+            "last_from_enqueue_us": 2242896
+          },
+          "settled_us": {
+            "middle512_us": 1252614,
+            "last_from_enqueue_us": 2249419
+          }
+        },
+        "median_entry_to_attempt_us": 16138.0,
+        "median_attempt_to_effect_us": 4540.5
+      },
+      "river": {
+        "sha256": "9d2edd45d65c08ea3fea527c4a4e793a192c22cfd6dbd539efa0c40936a5bdef",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 298165,
+            "last_from_enqueue_us": 859412
+          },
+          "entered_us": {
+            "middle512_us": 300368,
+            "last_from_enqueue_us": 870888
+          },
+          "attempt_committed_us": {
+            "middle512_us": 299358,
+            "last_from_enqueue_us": 871061
+          },
+          "effect_committed_us": {
+            "middle512_us": 291171,
+            "last_from_enqueue_us": 905970
+          },
+          "settled_us": {
+            "middle512_us": 248260,
+            "last_from_enqueue_us": 1153322
+          }
+        },
+        "median_entry_to_attempt_us": 678.5,
+        "median_attempt_to_effect_us": 5903.0
+      }
+    },
+    "mesh_minus_river_us": {
+      "claimed_us": {
+        "middle512_us": 830835,
+        "last_from_enqueue_us": 1361095
+      },
+      "entered_us": {
+        "middle512_us": 837931,
+        "last_from_enqueue_us": 1359038
+      },
+      "attempt_committed_us": {
+        "middle512_us": 938087,
+        "last_from_enqueue_us": 1371297
+      },
+      "effect_committed_us": {
+        "middle512_us": 947030,
+        "last_from_enqueue_us": 1336926
+      },
+      "settled_us": {
+        "middle512_us": 1004354,
+        "last_from_enqueue_us": 1096097
+      }
+    }
+  },
+  "3": {
+    "lanes": {
+      "B": {
+        "sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 517000,
+            "last_from_enqueue_us": 1104478
+          },
+          "entered_us": {
+            "middle512_us": 514493,
+            "last_from_enqueue_us": 1115167
+          },
+          "attempt_committed_us": {
+            "middle512_us": 521966,
+            "last_from_enqueue_us": 1131500
+          },
+          "effect_committed_us": {
+            "middle512_us": 525532,
+            "last_from_enqueue_us": 1131931
+          },
+          "settled_us": {
+            "middle512_us": 531131,
+            "last_from_enqueue_us": 1139331
+          }
+        },
+        "median_entry_to_attempt_us": 8667.0,
+        "median_attempt_to_effect_us": 2115.0
+      },
+      "river": {
+        "sha256": "7118aa8cdf7b11a55137cc55e04d5ebd6c1843a27e225b2ca89a3a22b1e04578",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 304902,
+            "last_from_enqueue_us": 881993
+          },
+          "entered_us": {
+            "middle512_us": 297222,
+            "last_from_enqueue_us": 890519
+          },
+          "attempt_committed_us": {
+            "middle512_us": 299670,
+            "last_from_enqueue_us": 890711
+          },
+          "effect_committed_us": {
+            "middle512_us": 298117,
+            "last_from_enqueue_us": 891408
+          },
+          "settled_us": {
+            "middle512_us": 291299,
+            "last_from_enqueue_us": 1120333
+          }
+        },
+        "median_entry_to_attempt_us": 632.0,
+        "median_attempt_to_effect_us": 6234.0
+      }
+    },
+    "mesh_minus_river_us": {
+      "claimed_us": {
+        "middle512_us": 212098,
+        "last_from_enqueue_us": 222485
+      },
+      "entered_us": {
+        "middle512_us": 217271,
+        "last_from_enqueue_us": 224648
+      },
+      "attempt_committed_us": {
+        "middle512_us": 222296,
+        "last_from_enqueue_us": 240789
+      },
+      "effect_committed_us": {
+        "middle512_us": 227415,
+        "last_from_enqueue_us": 240523
+      },
+      "settled_us": {
+        "middle512_us": 239832,
+        "last_from_enqueue_us": 18998
+      }
+    }
+  },
+  "4": {
+    "lanes": {
+      "B": {
+        "sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 536000,
+            "last_from_enqueue_us": 1156157
+          },
+          "entered_us": {
+            "middle512_us": 539969,
+            "last_from_enqueue_us": 1169940
+          },
+          "attempt_committed_us": {
+            "middle512_us": 540901,
+            "last_from_enqueue_us": 1178758
+          },
+          "effect_committed_us": {
+            "middle512_us": 537845,
+            "last_from_enqueue_us": 1180779
+          },
+          "settled_us": {
+            "middle512_us": 531573,
+            "last_from_enqueue_us": 1184739
+          }
+        },
+        "median_entry_to_attempt_us": 8301.0,
+        "median_attempt_to_effect_us": 1990.5
+      },
+      "river": {
+        "sha256": "46344afee41bc4b14aae8e9d01f678c14bbc4d4104c57c724150dd83f3506cf8",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 282020,
+            "last_from_enqueue_us": 865620
+          },
+          "entered_us": {
+            "middle512_us": 276451,
+            "last_from_enqueue_us": 882590
+          },
+          "attempt_committed_us": {
+            "middle512_us": 276777,
+            "last_from_enqueue_us": 883347
+          },
+          "effect_committed_us": {
+            "middle512_us": 279993,
+            "last_from_enqueue_us": 884145
+          },
+          "settled_us": {
+            "middle512_us": 230661,
+            "last_from_enqueue_us": 1129132
+          }
+        },
+        "median_entry_to_attempt_us": 619.5,
+        "median_attempt_to_effect_us": 5904.0
+      }
+    },
+    "mesh_minus_river_us": {
+      "claimed_us": {
+        "middle512_us": 253980,
+        "last_from_enqueue_us": 290537
+      },
+      "entered_us": {
+        "middle512_us": 263518,
+        "last_from_enqueue_us": 287350
+      },
+      "attempt_committed_us": {
+        "middle512_us": 264124,
+        "last_from_enqueue_us": 295411
+      },
+      "effect_committed_us": {
+        "middle512_us": 257852,
+        "last_from_enqueue_us": 296634
+      },
+      "settled_us": {
+        "middle512_us": 300912,
+        "last_from_enqueue_us": 55607
+      }
+    }
+  },
+  "5": {
+    "lanes": {
+      "B": {
+        "sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 528000,
+            "last_from_enqueue_us": 1138798
+          },
+          "entered_us": {
+            "middle512_us": 524991,
+            "last_from_enqueue_us": 1148825
+          },
+          "attempt_committed_us": {
+            "middle512_us": 531723,
+            "last_from_enqueue_us": 1183077
+          },
+          "effect_committed_us": {
+            "middle512_us": 534268,
+            "last_from_enqueue_us": 1183837
+          },
+          "settled_us": {
+            "middle512_us": 526741,
+            "last_from_enqueue_us": 1195132
+          }
+        },
+        "median_entry_to_attempt_us": 8542.0,
+        "median_attempt_to_effect_us": 2101.0
+      },
+      "river": {
+        "sha256": "b35594b0d3455275962b9e6fd5b01b3ba5ddad0f4c073d7e044a79abead1840a",
+        "progress": {
+          "claimed_us": {
+            "middle512_us": 300458,
+            "last_from_enqueue_us": 864331
+          },
+          "entered_us": {
+            "middle512_us": 301359,
+            "last_from_enqueue_us": 868477
+          },
+          "attempt_committed_us": {
+            "middle512_us": 301279,
+            "last_from_enqueue_us": 869034
+          },
+          "effect_committed_us": {
+            "middle512_us": 295719,
+            "last_from_enqueue_us": 873905
+          },
+          "settled_us": {
+            "middle512_us": 281752,
+            "last_from_enqueue_us": 1070498
+          }
+        },
+        "median_entry_to_attempt_us": 609.0,
+        "median_attempt_to_effect_us": 5743.0
+      }
+    },
+    "mesh_minus_river_us": {
+      "claimed_us": {
+        "middle512_us": 227542,
+        "last_from_enqueue_us": 274467
+      },
+      "entered_us": {
+        "middle512_us": 223632,
+        "last_from_enqueue_us": 280348
+      },
+      "attempt_committed_us": {
+        "middle512_us": 230444,
+        "last_from_enqueue_us": 314043
+      },
+      "effect_committed_us": {
+        "middle512_us": 238549,
+        "last_from_enqueue_us": 309932
+      },
+      "settled_us": {
+        "middle512_us": 244989,
+        "last_from_enqueue_us": 124634
+      }
+    }
+  }
+}
