@@ -90,6 +90,7 @@ const fileLanes={file:"Mesh · file","inline-a":"Mesh · inline A","inline-b":"M
 const seriesNames={
  "public-large-file-session":fileLanes,
  "public-large-file-external":fileLanes,
+ "dense-fixed8-logical-peers":{combined:"Mesh · fixed8 + d388","river-2x32":"Go River · stock, opens sessions during drain"},
  "public-dense-individual-hot-checkout":{hot:"Mesh · hot checkout","checked-a":"Mesh · checked A","checked-b":"Mesh · checked B"}
 };
 function draw() {

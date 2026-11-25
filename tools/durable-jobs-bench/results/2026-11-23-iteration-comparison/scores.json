@@ -7698,6 +7698,837 @@
     "manifest_sha256": "a26c4b60bbd68a131ab10dd74c12772efe936e5218d6cff4cf2a90d6e9256f02",
     "title": "Dense \u00b7 hot checkout and confirmed actor teardown"
   },
+  "dense-fixed8-logical-peers": {
+    "archive_manifest_sha256": "8811f597c9275a6f7f784c86be9ec623f98c7f42f6802331458670e7983a43ab",
+    "blocks": [
+      {
+        "attempt": "03-noop.1795578693251135000",
+        "group": 3,
+        "order": [
+          "combined",
+          "river-2x32",
+          "apalis-2x32",
+          "oban-2x32"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-apalis-2x32/measured-rust": "d5f88a119bfa2ebe8861eec85b40566e01a695b44490f3752bba93daa22fd1c6",
+          "measured-combined/measured-mesh": "2b1301b3995554f363bc728a5ac0270ea871c58a8514c77c6203db6447d30fcb",
+          "measured-oban-2x32/measured-oban": "2e8ae1e62efd1fa47c48dc4708eaca5117c66aef56eb5f85de03ecb9c830cf63",
+          "measured-river-2x32/measured-go": "8dae0ff0c7f22e2f4a5af7d6bf21c47a6d9fa18b28aef117c7b54bdcd7fd785a",
+          "warmup-apalis-2x32/warmup-rust": "770c9dd223a7c113ab519207592559c4cd5f67b7ef0da1a24230d31d2ef580a8",
+          "warmup-combined/warmup-mesh": "26778c3540b8612dde482e4960d5d9bd56cd70710fac078a5e1e19961405161b",
+          "warmup-oban-2x32/warmup-oban": "eee1a26e65942bff42d8050f16abf61cb63669438c09cbdb57411529be2771bf",
+          "warmup-river-2x32/warmup-go": "13fb884c00a84e8e1931ffef8a3840dcd38657d680c602fcd19750e73559c648"
+        },
+        "scores": {
+          "apalis-2x32": {
+            "commit_jobs_per_s": 1487.4662088059742,
+            "commit_to_pickup_p99_ms": 656.871,
+            "commit_to_settlement_p99_ms": 688.419,
+            "completed": 1024,
+            "cpu_iowait_percent": 1.0638297872340425,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 36.366,
+            "peak_runner_rss_bytes": 19791872,
+            "runner_cpu_ms_per_job": 0.34623242187500003,
+            "runners": 2,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "slots": 64,
+            "submit_jobs_per_s": 1412.832771097636,
+            "submit_to_settlement_p50_ms": 416.2715,
+            "submit_to_settlement_p99_ms": 724.785,
+            "terminal_xids": 58
+          },
+          "combined": {
+            "commit_jobs_per_s": 1234.739095047177,
+            "commit_to_pickup_p99_ms": 806.068,
+            "commit_to_settlement_p99_ms": 820.544,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 41,
+              "timed_peak": 41,
+              "warmed_application_tls": 32
+            },
+            "cpu_iowait_percent": 0.8771929824561403,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 162.107,
+            "peak_runner_rss_bytes": 23068672,
+            "runner_cpu_ms_per_job": 0.504453125,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "runners": 2,
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "slots": 64,
+            "submit_jobs_per_s": 1032.8494541229252,
+            "submit_to_settlement_p50_ms": 576.933,
+            "submit_to_settlement_p99_ms": 982.651,
+            "terminal_xids": 160
+          },
+          "oban-2x32": {
+            "commit_jobs_per_s": 862.4501501286517,
+            "commit_to_pickup_p99_ms": 1161.225,
+            "commit_to_settlement_p99_ms": 1182.495,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.35842293906810035,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 131.358,
+            "peak_runner_rss_bytes": 228958208,
+            "runner_cpu_ms_per_job": 3.1424912109375,
+            "runners": 2,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "slots": 64,
+            "submit_jobs_per_s": 776.5382319953468,
+            "submit_to_settlement_p50_ms": 806.6675,
+            "submit_to_settlement_p99_ms": 1313.853,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "commit_jobs_per_s": 1100.1383767802045,
+            "commit_to_pickup_p99_ms": 751.703,
+            "commit_to_settlement_p99_ms": 930.792,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 7,
+              "timed_peak": 69
+            },
+            "cpu_iowait_percent": 0.4366812227074236,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 90.399,
+            "peak_runner_rss_bytes": 43208704,
+            "runner_cpu_ms_per_job": 0.4463876953125,
+            "runners": 2,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "slots": 64,
+            "submit_jobs_per_s": 1002.7507097105242,
+            "submit_to_settlement_p50_ms": 652.152,
+            "submit_to_settlement_p99_ms": 1021.191,
+            "terminal_xids": 10
+          }
+        }
+      },
+      {
+        "attempt": "04-noop.1795578771812803000",
+        "group": 4,
+        "order": [
+          "river-2x32",
+          "oban-2x32",
+          "combined",
+          "apalis-2x32"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-apalis-2x32/measured-rust": "0bc33e312b845599bbd8b08268d905fffe21de3b0d856f946717d3d8e1b05591",
+          "measured-combined/measured-mesh": "bcfbcaa72434cca4b7b48946e6f80faee19a4c4eb859737f8ecbb298e5283e6f",
+          "measured-oban-2x32/measured-oban": "405fbb302bd12985fe3d8068982905e19711f7ad40dabe5c34f3f68992be1375",
+          "measured-river-2x32/measured-go": "ad423eea9e8892791610dd15b67ffb79c5fecf397bca08f5d619099c1a9a1fa7",
+          "warmup-apalis-2x32/warmup-rust": "d64d485291940558a907fa6239fda6a0c596b81c9196bf39e8b32bf4de05a9e6",
+          "warmup-combined/warmup-mesh": "1af72fe268a4e6254f4c360fa47a5687d3f4cf9f4f2b6b1d1f7e3aefd08111aa",
+          "warmup-oban-2x32/warmup-oban": "04bc7304bfd4a46ec4470a37057b98087c12c36fe7e024da0aa71f9bdbe56f6f",
+          "warmup-river-2x32/warmup-go": "844ac1ff167eb90e214cff0a6fabe20553d1160526ccedf587d72c4236258713"
+        },
+        "scores": {
+          "apalis-2x32": {
+            "commit_jobs_per_s": 1461.5500994824629,
+            "commit_to_pickup_p99_ms": 686.599,
+            "commit_to_settlement_p99_ms": 692.983,
+            "completed": 1024,
+            "cpu_iowait_percent": 1.0638297872340425,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 36.737,
+            "peak_runner_rss_bytes": 19660800,
+            "runner_cpu_ms_per_job": 0.341955078125,
+            "runners": 2,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "slots": 64,
+            "submit_jobs_per_s": 1388.732550995914,
+            "submit_to_settlement_p50_ms": 413.889,
+            "submit_to_settlement_p99_ms": 729.72,
+            "terminal_xids": 54
+          },
+          "combined": {
+            "commit_jobs_per_s": 1278.1801909531305,
+            "commit_to_pickup_p99_ms": 782.071,
+            "commit_to_settlement_p99_ms": 792.642,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 41,
+              "timed_peak": 41,
+              "warmed_application_tls": 32
+            },
+            "cpu_iowait_percent": 0.4444444444444444,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 170.453,
+            "peak_runner_rss_bytes": 23420928,
+            "runner_cpu_ms_per_job": 0.5066162109375,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "runners": 2,
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "slots": 64,
+            "submit_jobs_per_s": 1053.9403370962298,
+            "submit_to_settlement_p50_ms": 570.396,
+            "submit_to_settlement_p99_ms": 963.095,
+            "terminal_xids": 156
+          },
+          "oban-2x32": {
+            "commit_jobs_per_s": 864.2203491821556,
+            "commit_to_pickup_p99_ms": 1161.592,
+            "commit_to_settlement_p99_ms": 1179.947,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.3021148036253776,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 142.419,
+            "peak_runner_rss_bytes": 226123776,
+            "runner_cpu_ms_per_job": 3.0616855468749997,
+            "runners": 2,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "slots": 64,
+            "submit_jobs_per_s": 771.4898342652991,
+            "submit_to_settlement_p50_ms": 813.846,
+            "submit_to_settlement_p99_ms": 1322.366,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "commit_jobs_per_s": 1077.2427215106645,
+            "commit_to_pickup_p99_ms": 737.47,
+            "commit_to_settlement_p99_ms": 950.575,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 7,
+              "timed_peak": 68
+            },
+            "cpu_iowait_percent": 0.8620689655172413,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 74.682,
+            "peak_runner_rss_bytes": 43155456,
+            "runner_cpu_ms_per_job": 0.4379013671875,
+            "runners": 2,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "slots": 64,
+            "submit_jobs_per_s": 998.773965942198,
+            "submit_to_settlement_p50_ms": 644.014,
+            "submit_to_settlement_p99_ms": 1025.257,
+            "terminal_xids": 14
+          }
+        }
+      },
+      {
+        "attempt": "05-noop.1795578849663526000",
+        "group": 5,
+        "order": [
+          "oban-2x32",
+          "apalis-2x32",
+          "river-2x32",
+          "combined"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-apalis-2x32/measured-rust": "8095b8dccf41133d518177a3f62cd8d07810a3751bb373c37f624bd88ea2e99a",
+          "measured-combined/measured-mesh": "d10a9894de34bb4a9033820b88e24e970383395726fd8130da0d41e552912a05",
+          "measured-oban-2x32/measured-oban": "d2068666b980ab8c0626e30bbc41eb9bd2fefd369b21ff6f625701b50712764c",
+          "measured-river-2x32/measured-go": "48e7c64719190f22dc4b78abeb4b953fbd5e18f616f0e2f3d69eed2dc892ffbc",
+          "warmup-apalis-2x32/warmup-rust": "af4e69ad630a2962cb8d9a9895307f146a62f68d9f97018a08b9de3145b5e208",
+          "warmup-combined/warmup-mesh": "b88d448f80a34be47757b4fcc43d7240fb0fff26994e118c0821554cb4736a97",
+          "warmup-oban-2x32/warmup-oban": "1c8ad6b72624d26d23d1b539fe38b4ddd7864a9799c423d5518cc72861020acf",
+          "warmup-river-2x32/warmup-go": "edc4dea672fbdbe8e6f28a3faaf5b542135e36c7335b55c3bc430f5decc1c7e3"
+        },
+        "scores": {
+          "apalis-2x32": {
+            "commit_jobs_per_s": 1458.7434862259856,
+            "commit_to_pickup_p99_ms": 692.375,
+            "commit_to_settlement_p99_ms": 701.974,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.5494505494505495,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 37.818,
+            "peak_runner_rss_bytes": 19660800,
+            "runner_cpu_ms_per_job": 0.351029296875,
+            "runners": 2,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "slots": 64,
+            "submit_jobs_per_s": 1384.172848584467,
+            "submit_to_settlement_p50_ms": 428.395,
+            "submit_to_settlement_p99_ms": 739.792,
+            "terminal_xids": 56
+          },
+          "combined": {
+            "commit_jobs_per_s": 1207.4930604524798,
+            "commit_to_pickup_p99_ms": 819.498,
+            "commit_to_settlement_p99_ms": 838.227,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 41,
+              "timed_peak": 41,
+              "warmed_application_tls": 32
+            },
+            "cpu_iowait_percent": 1.1029411764705883,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 165.648,
+            "peak_runner_rss_bytes": 23171072,
+            "runner_cpu_ms_per_job": 0.5164248046875,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "runners": 2,
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "slots": 64,
+            "submit_jobs_per_s": 1010.1747483934868,
+            "submit_to_settlement_p50_ms": 595.286,
+            "submit_to_settlement_p99_ms": 1003.875,
+            "terminal_xids": 165
+          },
+          "oban-2x32": {
+            "commit_jobs_per_s": 864.6954313006236,
+            "commit_to_pickup_p99_ms": 1165.699,
+            "commit_to_settlement_p99_ms": 1179.628,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.3021148036253776,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 159.13,
+            "peak_runner_rss_bytes": 225034240,
+            "runner_cpu_ms_per_job": 3.0478769531250003,
+            "runners": 2,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "slots": 64,
+            "submit_jobs_per_s": 762.266611680247,
+            "submit_to_settlement_p50_ms": 826.62,
+            "submit_to_settlement_p99_ms": 1338.758,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "commit_jobs_per_s": 1083.775645740836,
+            "commit_to_pickup_p99_ms": 737.973,
+            "commit_to_settlement_p99_ms": 944.845,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 7,
+              "timed_peak": 69
+            },
+            "cpu_iowait_percent": 0.36900369003690037,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 75.016,
+            "peak_runner_rss_bytes": 43880448,
+            "runner_cpu_ms_per_job": 0.4289619140625,
+            "runners": 2,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "slots": 64,
+            "submit_jobs_per_s": 1004.0583961932067,
+            "submit_to_settlement_p50_ms": 635.056,
+            "submit_to_settlement_p99_ms": 1019.861,
+            "terminal_xids": 12
+          }
+        }
+      },
+      {
+        "attempt": "06-noop.1795578927139453000",
+        "group": 6,
+        "order": [
+          "apalis-2x32",
+          "combined",
+          "oban-2x32",
+          "river-2x32"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-apalis-2x32/measured-rust": "84eae42b0fd35a7e7094f26aefa7f88af5a475de03fd5286319c3274a5465a4a",
+          "measured-combined/measured-mesh": "adc87db146dc1985a538f025fafbc46863b814728705bafce5d900c092b6ff12",
+          "measured-oban-2x32/measured-oban": "cd89e47198e8508779afbef973cdcc68cc64e1e96433d7b183df68b345925335",
+          "measured-river-2x32/measured-go": "ff0fcbfc1833e7c45750fd6d25c8a1cde8969b687ee1ffd2c751006ead69098e",
+          "warmup-apalis-2x32/warmup-rust": "2a9e059071c60cc632c347ab7502048ba93924c0bd792ff25115e0af73f14c17",
+          "warmup-combined/warmup-mesh": "2dcedd08d15d0fa727ff66b8054b69d858b592a937b6e3d05ce88ceb2275da54",
+          "warmup-oban-2x32/warmup-oban": "eb650a424721f8ab8e46801b3b25bed7f132bbf3fa4ad9e83627df15b90fa6a3",
+          "warmup-river-2x32/warmup-go": "40e35deab79df41e68549df2127c1d7dbba546263065e739c74f15d035d83c60"
+        },
+        "scores": {
+          "apalis-2x32": {
+            "commit_jobs_per_s": 1366.7182745181785,
+            "commit_to_pickup_p99_ms": 732.746,
+            "commit_to_settlement_p99_ms": 747.283,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.4329004329004329,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 39.59,
+            "peak_runner_rss_bytes": 19922944,
+            "runner_cpu_ms_per_job": 0.3490107421875,
+            "runners": 2,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "slots": 64,
+            "submit_jobs_per_s": 1298.12507130814,
+            "submit_to_settlement_p50_ms": 452.55,
+            "submit_to_settlement_p99_ms": 786.873,
+            "terminal_xids": 56
+          },
+          "combined": {
+            "commit_jobs_per_s": 1216.9585069440318,
+            "commit_to_pickup_p99_ms": 817.525,
+            "commit_to_settlement_p99_ms": 832.429,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 41,
+              "timed_peak": 41,
+              "warmed_application_tls": 32
+            },
+            "cpu_iowait_percent": 1.094890510948905,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 161.829,
+            "peak_runner_rss_bytes": 23498752,
+            "runner_cpu_ms_per_job": 0.50753125,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "runners": 2,
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "slots": 64,
+            "submit_jobs_per_s": 1020.6614165066069,
+            "submit_to_settlement_p50_ms": 582.097,
+            "submit_to_settlement_p99_ms": 994.258,
+            "terminal_xids": 161
+          },
+          "oban-2x32": {
+            "commit_jobs_per_s": 861.9412533164536,
+            "commit_to_pickup_p99_ms": 1168.125,
+            "commit_to_settlement_p99_ms": 1183.639,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.3597122302158273,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 133.82,
+            "peak_runner_rss_bytes": 227770368,
+            "runner_cpu_ms_per_job": 3.0088955078125,
+            "runners": 2,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "slots": 64,
+            "submit_jobs_per_s": 774.680066210937,
+            "submit_to_settlement_p50_ms": 831.0475,
+            "submit_to_settlement_p99_ms": 1317.459,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "commit_jobs_per_s": 1079.2818981027194,
+            "commit_to_pickup_p99_ms": 750.421,
+            "commit_to_settlement_p99_ms": 948.779,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 7,
+              "timed_peak": 68
+            },
+            "cpu_iowait_percent": 0.4366812227074236,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 75.686,
+            "peak_runner_rss_bytes": 43081728,
+            "runner_cpu_ms_per_job": 0.4401708984375,
+            "runners": 2,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "slots": 64,
+            "submit_jobs_per_s": 999.5461045521321,
+            "submit_to_settlement_p50_ms": 649.169,
+            "submit_to_settlement_p99_ms": 1024.465,
+            "terminal_xids": 13
+          }
+        }
+      },
+      {
+        "attempt": "07-noop.1795579004902380000",
+        "group": 7,
+        "order": [
+          "oban-2x32",
+          "apalis-2x32",
+          "river-2x32",
+          "combined"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-apalis-2x32/measured-rust": "2326762846506dfb55c697908f5aab72fd50422c250a08c6a73a9d0f17093a7d",
+          "measured-combined/measured-mesh": "fa27e1e774e74e072baaec6b72ab74d9c5ffd4d6a7f5b13185c48babfbd9f127",
+          "measured-oban-2x32/measured-oban": "93d4c5959e4906c7bbabf327bdedb2e07e90740db04a8f9a1d03cea9193d886a",
+          "measured-river-2x32/measured-go": "556257eb24ad8fe628f7c2f57ddb4714d9ad3b0bb92ab71b0f8b11febce132dc",
+          "warmup-apalis-2x32/warmup-rust": "e4c3af1491a2f1af11e299d9ba3accbd5937d0f257d4909aa2eea695f351397e",
+          "warmup-combined/warmup-mesh": "3de972d9a5f23b7ee922861f182a535fbcf8a2ab6320246eaa1a644ac49e16a3",
+          "warmup-oban-2x32/warmup-oban": "9056a53572c592fda7bc35f25708c2e939ab8288a18cbb95a0337ac3efbe6669",
+          "warmup-river-2x32/warmup-go": "3f07f98b40a3c0212febe757493d3410466eda0596e87a0b58de07908d353bf2"
+        },
+        "scores": {
+          "apalis-2x32": {
+            "commit_jobs_per_s": 1393.6959755667674,
+            "commit_to_pickup_p99_ms": 722.352,
+            "commit_to_settlement_p99_ms": 734.737,
+            "completed": 1024,
+            "cpu_iowait_percent": 1.0695187165775402,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 37.895,
+            "peak_runner_rss_bytes": 19791872,
+            "runner_cpu_ms_per_job": 0.34520703124999996,
+            "runners": 2,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "slots": 64,
+            "submit_jobs_per_s": 1325.339877198977,
+            "submit_to_settlement_p50_ms": 449.05899999999997,
+            "submit_to_settlement_p99_ms": 772.632,
+            "terminal_xids": 56
+          },
+          "combined": {
+            "commit_jobs_per_s": 1181.9525995454562,
+            "commit_to_pickup_p99_ms": 822.668,
+            "commit_to_settlement_p99_ms": 854.159,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 41,
+              "timed_peak": 41,
+              "warmed_application_tls": 32
+            },
+            "cpu_iowait_percent": 1.4814814814814814,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 172.296,
+            "peak_runner_rss_bytes": 23228416,
+            "runner_cpu_ms_per_job": 0.5272626953125,
+            "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+            "runners": 2,
+            "sha256": "981846a3311edd9598f9a10e42e48d3ccf20329c85cfa60dac33d2544b237f7d",
+            "slots": 64,
+            "submit_jobs_per_s": 985.886609560982,
+            "submit_to_settlement_p50_ms": 585.794,
+            "submit_to_settlement_p99_ms": 1026.455,
+            "terminal_xids": 165
+          },
+          "oban-2x32": {
+            "commit_jobs_per_s": 878.5393596786467,
+            "commit_to_pickup_p99_ms": 1144.776,
+            "commit_to_settlement_p99_ms": 1161.77,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 135.609,
+            "peak_runner_rss_bytes": 224022528,
+            "runner_cpu_ms_per_job": 3.0602646484375,
+            "runners": 2,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "slots": 64,
+            "submit_jobs_per_s": 786.9779738391306,
+            "submit_to_settlement_p50_ms": 811.511,
+            "submit_to_settlement_p99_ms": 1297.379,
+            "terminal_xids": 1024
+          },
+          "river-2x32": {
+            "commit_jobs_per_s": 1083.1359748170885,
+            "commit_to_pickup_p99_ms": 729.74,
+            "commit_to_settlement_p99_ms": 945.403,
+            "completed": 1024,
+            "connections": {
+              "last_idle": 7,
+              "timed_peak": 67
+            },
+            "cpu_iowait_percent": 0.36363636363636365,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 74.918,
+            "peak_runner_rss_bytes": 43765760,
+            "runner_cpu_ms_per_job": 0.43630078125,
+            "runners": 2,
+            "sha256": "98fcdb5a1bf83ea2949bfaaee88742c9b8a9c8ebe9ad4b5408cede8cc25837ae",
+            "slots": 64,
+            "submit_jobs_per_s": 1003.6057280012859,
+            "submit_to_settlement_p50_ms": 650.78,
+            "submit_to_settlement_p99_ms": 1020.321,
+            "terminal_xids": 12
+          }
+        }
+      }
+    ],
+    "description": "Five fresh rotations of 1,024 jobs on CPUs 0 and 1. All engines use two 32-slot runners. The public-derived grouped Mesh build starts with a warmed application pool. Stock River opens application sessions during drain.",
+    "fresh_peer_pairs": {
+      "apalis-2x32": {
+        "drain_us": {
+          "block_deltas": [
+            -140906,
+            -100513,
+            -146064,
+            -92202,
+            -131626
+          ],
+          "median_delta": -131626
+        },
+        "host_cpu_ms": {
+          "block_deltas": [
+            -350.0,
+            -320.0,
+            -530.0,
+            -370.0,
+            -370.0
+          ],
+          "median_delta": -370.0
+        },
+        "last_effect_from_commit_us": {
+          "block_deltas": [
+            -144611,
+            -101600,
+            -145183,
+            -94496,
+            -134285
+          ],
+          "median_delta": -134285
+        },
+        "runner_cpu_ms": {
+          "block_deltas": [
+            -162.01799999999992,
+            -168.613,
+            -169.36499999999995,
+            -162.325,
+            -186.42500000000007
+          ],
+          "median_delta": -168.613
+        },
+        "submit_us": {
+          "block_deltas": [
+            -266647,
+            -234229,
+            -273894,
+            -214441,
+            -266027
+          ],
+          "median_delta": -266027
+        },
+        "terminal_xids": {
+          "block_deltas": [
+            -102,
+            -102,
+            -109,
+            -105,
+            -109
+          ],
+          "median_delta": -105
+        }
+      },
+      "oban-2x32": {
+        "drain_us": {
+          "block_deltas": [
+            357990,
+            383744,
+            336194,
+            346574,
+            299208
+          ],
+          "median_delta": 346574
+        },
+        "host_cpu_ms": {
+          "block_deltas": [
+            580.0,
+            890.0,
+            600.0,
+            410.0,
+            580.0
+          ],
+          "median_delta": 580.0
+        },
+        "last_effect_from_commit_us": {
+          "block_deltas": [
+            362636,
+            388505,
+            334572,
+            350279,
+            300798
+          ],
+          "median_delta": 350279
+        },
+        "runner_cpu_ms": {
+          "block_deltas": [
+            2701.351,
+            2616.3909999999996,
+            2592.2070000000003,
+            2561.397,
+            2593.794
+          ],
+          "median_delta": 2593.794
+        },
+        "submit_us": {
+          "block_deltas": [
+            327241,
+            355710,
+            329676,
+            318565,
+            262521
+          ],
+          "median_delta": 327241
+        },
+        "terminal_xids": {
+          "block_deltas": [
+            864,
+            868,
+            859,
+            863,
+            859
+          ],
+          "median_delta": 863
+        }
+      },
+      "river-2x32": {
+        "drain_us": {
+          "block_deltas": [
+            101467,
+            149436,
+            96807,
+            107337,
+            79040
+          ],
+          "median_delta": 101467
+        },
+        "host_cpu_ms": {
+          "block_deltas": [
+            -220.0,
+            0.0,
+            -170.0,
+            -270.0,
+            -220.0
+          ],
+          "median_delta": -220.0
+        },
+        "last_effect_from_commit_us": {
+          "block_deltas": [
+            -66903,
+            -52917,
+            -98640,
+            -77230,
+            -127419
+          ],
+          "median_delta": -77230
+        },
+        "runner_cpu_ms": {
+          "block_deltas": [
+            -59.458999999999946,
+            -70.36399999999998,
+            -89.56199999999995,
+            -68.97699999999998,
+            -93.14500000000004
+          ],
+          "median_delta": -70.36399999999998
+        },
+        "submit_us": {
+          "block_deltas": [
+            29759,
+            53665,
+            6175,
+            21194,
+            -18338
+          ],
+          "median_delta": 21194
+        },
+        "terminal_xids": {
+          "block_deltas": [
+            -150,
+            -142,
+            -153,
+            -148,
+            -153
+          ],
+          "median_delta": -150
+        }
+      }
+    },
+    "grant_sql_sha256": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+    "inventory_sha256": {
+      "apalis-2x32": "784674abde42c2929c4b01012981a036611a842aca4913cc83975b2af9723f49",
+      "combined": "052bf45bf6f1fec84fbd300de4305687b79b2409175a9fdf4c226ebed443d4be",
+      "oban-2x32": "30402db442d2547a1380f5b503c38ecfe4698457c1aaf8c5fab632361543aa0b",
+      "river-2x32": "c02148b4dc381e9faecb9c4986d04dbf45749d86d6d55620e9640fbbc7b2f839"
+    },
+    "manifest_sha256": "5d97e99284e97944c6dc3b838a8b899a9d7ef24b7c01a0e92cd51c18b2ee7ab7",
+    "pilot_gates": {
+      "1": {
+        "checks": {
+          "fewer_terminal_transactions": true,
+          "last_effect_earlier": true,
+          "no_host_cpu_transfer": true,
+          "no_pg_cpu_transfer": true,
+          "no_runner_cpu_transfer": true
+        },
+        "clocks": {
+          "drain_us": {
+            "duplicate_threshold_us": 58157.200000000004,
+            "incremental_threshold_us": 25804,
+            "incremental_us": 160303,
+            "passed": true,
+            "saving_us": 346880
+          },
+          "submit_us": {
+            "duplicate_threshold_us": 66059.05,
+            "incremental_threshold_us": 47393,
+            "incremental_us": 194680,
+            "passed": true,
+            "saving_us": 344571
+          }
+        },
+        "passed": true,
+        "terminal_xids_saved": 712
+      },
+      "2": {
+        "checks": {
+          "fewer_terminal_transactions": true,
+          "last_effect_earlier": true,
+          "no_host_cpu_transfer": true,
+          "no_pg_cpu_transfer": true,
+          "no_runner_cpu_transfer": true
+        },
+        "clocks": {
+          "drain_us": {
+            "duplicate_threshold_us": 59860.15,
+            "incremental_threshold_us": 10000,
+            "incremental_us": 186335,
+            "passed": true,
+            "saving_us": 367072
+          },
+          "submit_us": {
+            "duplicate_threshold_us": 68270.7,
+            "incremental_threshold_us": 10195,
+            "incremental_us": 188994,
+            "passed": true,
+            "saving_us": 374213
+          }
+        },
+        "passed": true,
+        "terminal_xids_saved": 717
+      }
+    },
+    "pilot_inventory_sha256": "052bf45bf6f1fec84fbd300de4305687b79b2409175a9fdf4c226ebed443d4be",
+    "release_sha256": {
+      "peers": "4bff29fe758e51ce42e57b0dc51536058daa29d903055f7ae1a29f644a3cb5d0",
+      "pilot": "4f48a5cf2d9015736da4433955e454c7928f0dcabcfe767586601d2c3ab50edf"
+    },
+    "replay_sha256": "1dc521472eda81f58b678c50bc8e4a9368d98412153252402dfae584f428fd67",
+    "runner_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+    "title": "Dense \u00b7 experimental Mesh fixed8 + d388 against stock peers"
+  },
   "dense-stock-topology": {
     "blocks": [
       {

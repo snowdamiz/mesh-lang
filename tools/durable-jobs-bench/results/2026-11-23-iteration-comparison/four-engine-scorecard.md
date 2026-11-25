@@ -303,6 +303,21 @@ If Mesh kept each first application commit at its observed time and finished eac
 
 Against the faster checked duplicate in each rotation, hot checkout gained a median 9.61% from submit and 11.25% from enqueue commit. Rotations 1, 3, 4, 6 cleared the preregistered margin. [Release receipts and raw replay](../2026-11-24-dense-individual-hot-pool/logger-off-retry/evidence/native/README.md)
 
+## Dense experimental fixed8 and d388 against stock peers
+
+5/5 matched rotations. Five fresh groups run 1,024 jobs with two 32-slot runners per engine on CPUs 0 and 1. The public-derived experimental Mesh ELF groups successful settlements in fixed8ms mode and uses logical-key grant SQL d388. Rates and matched changes are medians. [Interactive results](chart.html#dense-fixed8-logical-peers)
+
+| Lane | Submit jobs/s | Drain jobs/s | Mesh paired submit change (wins) | Mesh paired drain change (wins) |
+|---|---:|---:|---:|---:|
+| Mesh fixed8 + d388 | 1,020.66 | 1,216.96 | — | — |
+| Stock Go River | 1,002.75 | 1,083.14 | +2.11% (4/5) | +12.23% (5/5) |
+| Stock Elixir Oban | 774.68 | 864.22 | +32.52% (5/5) | +41.19% (5/5) |
+| Stock Rust Apalis | 1,384.17 | 1,458.74 | -25.61% (0/5) | -15.19% (0/5) |
+
+Stock River opened application sessions during drain. Its sampled total rose from 7 idle connections to peaks of 67–69. Mesh started with 32 warmed application TLS sessions and held 41 total connections in the timed samples. A prewarmed River comparison is a separate sensitivity. The product ELF requires its own proof and timing.
+
+The two reversed factorial pilot rotations passed their advancement gates. Their combined lane used the same image, grant SQL and launch inventory as the five fresh peer rotations. [Same-image pilot](../2026-11-25-dense-fixed8-logical-factorial/PILOT-RESULTS.md) · [Peer release](../2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/peers-release.json)
+
 ## Short jobs with combined settlement and refill
 
 2/5 matched rotations. The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.
