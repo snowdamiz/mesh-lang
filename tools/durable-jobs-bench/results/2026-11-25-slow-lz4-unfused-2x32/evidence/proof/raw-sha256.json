@@ -1,0 +1,14 @@
+{
+  "00/diagnostic-one-apalis-pglz/diagnostic-rust/raw.tar.gz": "9d6a156d6eceb7303ee2a59da11a1fbd9c6a2829aa1d9e105823a054cb756f5c",
+  "00/diagnostic-one-bulk-pglz/diagnostic-mesh/raw.tar.gz": "8ce4ce877421c65d5648dd933db9f6aefde0d8a6101d24cb4c08420a4ad06180",
+  "00/diagnostic-one-oban-pglz/diagnostic-oban/raw.tar.gz": "69632e5928f50084e5caceb2fc9491d20328abc3550da85af8efc6dd7d4cfc13",
+  "00/diagnostic-one-river-pglz/diagnostic-go/raw.tar.gz": "91c86af7ce7e5fe4bc5c06d93b577e3a350a118693bde49ef1d833ed4cfcd4e9",
+  "00/diagnostic-two-apalis-lz4/diagnostic-rust/raw.tar.gz": "b2142767ae76bada2d5cf07eced693a7760036f2ae5a345aac12cf46c005c278",
+  "00/diagnostic-two-apalis-pglz/diagnostic-rust/raw.tar.gz": "ec5a97b5a395bb359ae3a3a7065f33e87c3ddf29b0e55d37490ecbb366cbf009",
+  "00/diagnostic-two-bulk-lz4/diagnostic-mesh/raw.tar.gz": "b3e12bfcea09a4636064d1c32d482a577bad7616e942ab3e08ac85446df81de3",
+  "00/diagnostic-two-bulk-pglz/diagnostic-mesh/raw.tar.gz": "3e12953acc6031dddceae672e7e4f78441d28f91beb6e7642605fb93e3250acf",
+  "00/diagnostic-two-oban-lz4/diagnostic-oban/raw.tar.gz": "1bbd535ccc64a0ca02cce1a57c1a1cd78eedb6470194436fc93ea366a7428fcc",
+  "00/diagnostic-two-oban-pglz/diagnostic-oban/raw.tar.gz": "f32a019571c380fdff45345616fc987dd2374b75b05ac1ee38200c0c8d6b0540",
+  "00/diagnostic-two-river-lz4/diagnostic-go/raw.tar.gz": "810021f7d8632cb3b510f03bdc11f4869fe80b1c80705558958563523da73a96",
+  "00/diagnostic-two-river-pglz/diagnostic-go/raw.tar.gz": "7ca8ef6c008002ace5be58e97da9440871b5e0a178a51a568406ed231b182ca9"
+}
