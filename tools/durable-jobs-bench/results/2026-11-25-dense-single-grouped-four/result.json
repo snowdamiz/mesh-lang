@@ -1,0 +1,1614 @@
+{
+  "blocks": {
+    "1": {
+      "canonical_eight_grouped": {
+        "busiest_writer_statement_floor_in_observed_run_ms": 84.322,
+        "claim_statements": {
+          "mesh_jobs.claim_batch_bounded_v1(": {
+            "calls": 385,
+            "execution_ms": 8671.374,
+            "rows": 1154
+          },
+          "mesh_jobs.claim_batch_set_v1(": {
+            "calls": 0,
+            "execution_ms": 0,
+            "rows": 0
+          }
+        },
+        "drain_us": 1278874,
+        "elf_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+        "last_write_to_terminal_us": 6609,
+        "mean_terminal_statement_ms": 1.67805,
+        "middle_occupancy": {
+          "claim_to_entry": {
+            "mean": 4.61,
+            "peak": 15
+          },
+          "claim_to_terminal": {
+            "mean": 20.728,
+            "peak": 35
+          },
+          "entry_to_first": {
+            "mean": 5.524,
+            "peak": 17
+          },
+          "first_to_second": {
+            "mean": 1.724,
+            "peak": 7
+          },
+          "second_to_terminal": {
+            "mean": 8.87,
+            "peak": 20
+          }
+        },
+        "peak_claim_to_terminal": 48,
+        "raw_sha256": "b69272140653f3ce374d3b555c4e00f3bef4951adedef2b2b25739e9446a8efe",
+        "runners": 8,
+        "submit_us": 1461455,
+        "terminal_statement_total_ms": 674.576,
+        "terminal_statements": {
+          "grouped": {
+            "calls": 317,
+            "execution_ms": 563.063,
+            "rows": 939
+          },
+          "scalar": {
+            "calls": 85,
+            "execution_ms": 111.513,
+            "rows": 85
+          }
+        },
+        "terminal_widths": {
+          "1": 85,
+          "2": 130,
+          "3": 112,
+          "4": 39,
+          "5": 30,
+          "6": 5,
+          "7": 1
+        },
+        "terminal_xids": 402,
+        "width_by_runner": {
+          "3099683": {
+            "1": 12,
+            "2": 15,
+            "3": 17,
+            "4": 9,
+            "5": 1
+          },
+          "3099688": {
+            "1": 10,
+            "2": 12,
+            "3": 16,
+            "4": 2,
+            "5": 7
+          },
+          "3099696": {
+            "1": 19,
+            "2": 12,
+            "3": 9,
+            "4": 8,
+            "5": 3,
+            "7": 1
+          },
+          "3099705": {
+            "1": 4,
+            "2": 14,
+            "3": 20,
+            "4": 3,
+            "5": 4,
+            "6": 1
+          },
+          "3099726": {
+            "1": 5,
+            "2": 24,
+            "3": 10,
+            "4": 10,
+            "5": 2
+          },
+          "3099734": {
+            "1": 9,
+            "2": 22,
+            "3": 15,
+            "4": 2,
+            "5": 2,
+            "6": 1
+          },
+          "3099743": {
+            "1": 15,
+            "2": 18,
+            "3": 10,
+            "4": 2,
+            "5": 7
+          },
+          "3099762": {
+            "1": 11,
+            "2": 13,
+            "3": 15,
+            "4": 3,
+            "5": 4,
+            "6": 3
+          }
+        },
+        "writes": {
+          "first": {
+            "middle_820_us": 979494,
+            "rank_1024_from_enqueue_us": 1268505,
+            "rank_1_from_enqueue_us": 12523,
+            "rank_512_from_enqueue_us": 642427,
+            "rank_64_from_enqueue_us": 121524
+          },
+          "second": {
+            "middle_820_us": 980636,
+            "rank_1024_from_enqueue_us": 1272265,
+            "rank_1_from_enqueue_us": 13763,
+            "rank_512_from_enqueue_us": 643374,
+            "rank_64_from_enqueue_us": 125773
+          }
+        }
+      },
+      "scalar": {
+        "single-four": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 367.376,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 82,
+              "execution_ms": 791.478,
+              "rows": 1042
+            }
+          },
+          "drain_us": 1382524,
+          "elf_sha256": "c9f029a001e2f8d058a00c0af8a376bc283304bff7ed9156baf299455c622cb9",
+          "last_write_to_terminal_us": 3987,
+          "mean_terminal_statement_ms": 0.358766,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 15.615,
+              "peak": 30
+            },
+            "claim_to_terminal": {
+              "mean": 27.216,
+              "peak": 43
+            },
+            "entry_to_first": {
+              "mean": 5.112,
+              "peak": 20
+            },
+            "first_to_second": {
+              "mean": 0.913,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 5.577,
+              "peak": 18
+            }
+          },
+          "peak_claim_to_terminal": 43,
+          "raw_sha256": "5eac803e259537fa548553dea4af8548e1e96abfe439407ca5b782f21a5563ce",
+          "runners": 1,
+          "submit_us": 1579298,
+          "terminal_statement_total_ms": 367.376,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 367.376,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "2899829": {
+              "1": 1024
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 1012261,
+              "rank_1024_from_enqueue_us": 1377990,
+              "rank_1_from_enqueue_us": 21451,
+              "rank_512_from_enqueue_us": 704686,
+              "rank_64_from_enqueue_us": 128867
+            },
+            "second": {
+              "middle_820_us": 1010899,
+              "rank_1024_from_enqueue_us": 1378537,
+              "rank_1_from_enqueue_us": 34332,
+              "rank_512_from_enqueue_us": 705215,
+              "rank_64_from_enqueue_us": 129408
+            }
+          }
+        },
+        "stock-a": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 216.649,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 113,
+              "execution_ms": 1189.552,
+              "rows": 1058
+            }
+          },
+          "drain_us": 1190574,
+          "elf_sha256": "c9f029a001e2f8d058a00c0af8a376bc283304bff7ed9156baf299455c622cb9",
+          "last_write_to_terminal_us": 2145,
+          "mean_terminal_statement_ms": 0.423142,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 26.738,
+              "peak": 44
+            },
+            "claim_to_terminal": {
+              "mean": 43.022,
+              "peak": 58
+            },
+            "entry_to_first": {
+              "mean": 7.681,
+              "peak": 23
+            },
+            "first_to_second": {
+              "mean": 1.394,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 7.209,
+              "peak": 19
+            }
+          },
+          "peak_claim_to_terminal": 64,
+          "raw_sha256": "74d63517764c26fff91f0a912e57580730722f97fcbfba001823134820ccca26",
+          "runners": 2,
+          "submit_us": 1356935,
+          "terminal_statement_total_ms": 433.297,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 433.297,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "2899558": {
+              "1": 522
+            },
+            "2899563": {
+              "1": 502
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 909951,
+              "rank_1024_from_enqueue_us": 1187900,
+              "rank_1_from_enqueue_us": 14086,
+              "rank_512_from_enqueue_us": 573154,
+              "rank_64_from_enqueue_us": 89651
+            },
+            "second": {
+              "middle_820_us": 911061,
+              "rank_1024_from_enqueue_us": 1188429,
+              "rank_1_from_enqueue_us": 19334,
+              "rank_512_from_enqueue_us": 574195,
+              "rank_64_from_enqueue_us": 91216
+            }
+          }
+        },
+        "stock-b": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 205.006,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 121,
+              "execution_ms": 1324.317,
+              "rows": 1062
+            }
+          },
+          "drain_us": 1235566,
+          "elf_sha256": "c9f029a001e2f8d058a00c0af8a376bc283304bff7ed9156baf299455c622cb9",
+          "last_write_to_terminal_us": 1198,
+          "mean_terminal_statement_ms": 0.400401,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 26.976,
+              "peak": 46
+            },
+            "claim_to_terminal": {
+              "mean": 43.372,
+              "peak": 60
+            },
+            "entry_to_first": {
+              "mean": 8.186,
+              "peak": 24
+            },
+            "first_to_second": {
+              "mean": 1.464,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 6.745,
+              "peak": 17
+            }
+          },
+          "peak_claim_to_terminal": 62,
+          "raw_sha256": "e8979d18ba49e252360c796c6642e80d432e71ce8ea8904af0b4df5c9f356da4",
+          "runners": 2,
+          "submit_us": 1400951,
+          "terminal_statement_total_ms": 410.011,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 410.011,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "2900359": {
+              "1": 505
+            },
+            "2900364": {
+              "1": 519
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 922018,
+              "rank_1024_from_enqueue_us": 1233914,
+              "rank_1_from_enqueue_us": 19640,
+              "rank_512_from_enqueue_us": 610485,
+              "rank_64_from_enqueue_us": 96687
+            },
+            "second": {
+              "middle_820_us": 921623,
+              "rank_1024_from_enqueue_us": 1234368,
+              "rank_1_from_enqueue_us": 23967,
+              "rank_512_from_enqueue_us": 611489,
+              "rank_64_from_enqueue_us": 97851
+            }
+          }
+        }
+      },
+      "serial_statement_budget": {
+        "historical_scalar_stock_gate_improvement_ms": {
+          "drain_us": 251.479,
+          "submit_us": 290.21
+        },
+        "max_mean_ms_per_cohort_at_128_xids_to_clear_scalar_drain_gate_from_sql_alone": 0.905445,
+        "projected_serial_statement_reclaim_at_128_xids_and_same_mean_price_ms": 157.221,
+        "projected_serial_statement_reclaim_at_public_group_count_ms": 99.757,
+        "reclaim_needed_to_match_public_grouped_drain_ms": 544.961,
+        "reclaim_needed_to_match_public_grouped_submit_ms": 579.789,
+        "remaining_gap_after_removing_all_scalar_terminal_statement_ms": 177.585
+      },
+      "transfer": {
+        "A1": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 209.881,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 115,
+              "execution_ms": 1374.999,
+              "rows": 1058
+            }
+          },
+          "drain_us": 1193330,
+          "elf_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+          "last_write_to_terminal_us": 828,
+          "mean_terminal_statement_ms": 0.409923,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 26.118,
+              "peak": 46
+            },
+            "claim_to_terminal": {
+              "mean": 43.018,
+              "peak": 62
+            },
+            "entry_to_first": {
+              "mean": 8.596,
+              "peak": 26
+            },
+            "first_to_second": {
+              "mean": 1.424,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 6.88,
+              "peak": 17
+            }
+          },
+          "peak_claim_to_terminal": 62,
+          "raw_sha256": "33f45f28ce4ba2bba0fb69976c42af2b58eeb8daf16c10cc35bddd94840cf302",
+          "runners": 2,
+          "submit_us": 1367107,
+          "terminal_statement_total_ms": 419.761,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 419.761,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "3082177": {
+              "1": 496
+            },
+            "3082181": {
+              "1": 528
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 940431,
+              "rank_1024_from_enqueue_us": 1191821,
+              "rank_1_from_enqueue_us": 17240,
+              "rank_512_from_enqueue_us": 597159,
+              "rank_64_from_enqueue_us": 94180
+            },
+            "second": {
+              "middle_820_us": 939334,
+              "rank_1024_from_enqueue_us": 1192502,
+              "rank_1_from_enqueue_us": 23577,
+              "rank_512_from_enqueue_us": 598478,
+              "rank_64_from_enqueue_us": 94536
+            }
+          }
+        },
+        "A2": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 206.946,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 120,
+              "execution_ms": 1324.706,
+              "rows": 1061
+            }
+          },
+          "drain_us": 1201853,
+          "elf_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+          "last_write_to_terminal_us": 2998,
+          "mean_terminal_statement_ms": 0.404191,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 27.487,
+              "peak": 46
+            },
+            "claim_to_terminal": {
+              "mean": 44.273,
+              "peak": 61
+            },
+            "entry_to_first": {
+              "mean": 8.377,
+              "peak": 26
+            },
+            "first_to_second": {
+              "mean": 1.5,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 6.909,
+              "peak": 17
+            }
+          },
+          "peak_claim_to_terminal": 61,
+          "raw_sha256": "69c97c6e00f88b328a02dcd153fb130526381727d446a39af2d73605051980b9",
+          "runners": 2,
+          "submit_us": 1365561,
+          "terminal_statement_total_ms": 413.892,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 413.892,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "3083020": {
+              "1": 486
+            },
+            "3083025": {
+              "1": 538
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 930184,
+              "rank_1024_from_enqueue_us": 1196399,
+              "rank_1_from_enqueue_us": 22189,
+              "rank_512_from_enqueue_us": 615663,
+              "rank_64_from_enqueue_us": 108292
+            },
+            "second": {
+              "middle_820_us": 930766,
+              "rank_1024_from_enqueue_us": 1198855,
+              "rank_1_from_enqueue_us": 29275,
+              "rank_512_from_enqueue_us": 617074,
+              "rank_64_from_enqueue_us": 109565
+            }
+          }
+        },
+        "B": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 133.809,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 193,
+              "execution_ms": 570.861,
+              "rows": 1062
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            }
+          },
+          "drain_us": 837563,
+          "elf_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+          "last_write_to_terminal_us": 8514,
+          "mean_terminal_statement_ms": 1.641834,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 26.876,
+              "peak": 51
+            },
+            "claim_to_terminal": {
+              "mean": 59.184,
+              "peak": 64
+            },
+            "entry_to_first": {
+              "mean": 19.595,
+              "peak": 46
+            },
+            "first_to_second": {
+              "mean": 1.891,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 10.822,
+              "peak": 22
+            }
+          },
+          "peak_claim_to_terminal": 64,
+          "raw_sha256": "6defbd1ac8db62bb2399b081447e4b8d48bdd07f65cfb06d08705ac6e760447e",
+          "runners": 2,
+          "submit_us": 999509,
+          "terminal_statement_total_ms": 267.619,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 162,
+              "execution_ms": 265.623,
+              "rows": 1023
+            },
+            "scalar": {
+              "calls": 1,
+              "execution_ms": 1.996,
+              "rows": 1
+            }
+          },
+          "terminal_widths": {
+            "1": 1,
+            "2": 4,
+            "3": 3,
+            "4": 19,
+            "5": 19,
+            "6": 30,
+            "7": 41,
+            "8": 46
+          },
+          "terminal_xids": 163,
+          "width_by_runner": {
+            "3082449": {
+              "1": 1,
+              "2": 2,
+              "3": 1,
+              "4": 13,
+              "5": 9,
+              "6": 13,
+              "7": 16,
+              "8": 26
+            },
+            "3082454": {
+              "2": 2,
+              "3": 2,
+              "4": 6,
+              "5": 10,
+              "6": 17,
+              "7": 25,
+              "8": 20
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 615471,
+              "rank_1024_from_enqueue_us": 828690,
+              "rank_1_from_enqueue_us": 17294,
+              "rank_512_from_enqueue_us": 406470,
+              "rank_64_from_enqueue_us": 77710
+            },
+            "second": {
+              "middle_820_us": 616076,
+              "rank_1024_from_enqueue_us": 829049,
+              "rank_1_from_enqueue_us": 20765,
+              "rank_512_from_enqueue_us": 409004,
+              "rank_64_from_enqueue_us": 79762
+            }
+          }
+        },
+        "C": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 135.578,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 195,
+              "execution_ms": 563.492,
+              "rows": 1061
+            }
+          },
+          "drain_us": 832330,
+          "elf_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+          "last_write_to_terminal_us": 6917,
+          "mean_terminal_statement_ms": 1.653396,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 27.566,
+              "peak": 47
+            },
+            "claim_to_terminal": {
+              "mean": 58.971,
+              "peak": 64
+            },
+            "entry_to_first": {
+              "mean": 18.82,
+              "peak": 40
+            },
+            "first_to_second": {
+              "mean": 1.885,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 10.699,
+              "peak": 21
+            }
+          },
+          "peak_claim_to_terminal": 64,
+          "raw_sha256": "789db8921d559f65f2c5d2e2a1dd789bde3b4bb94c1e89e80ecd75c41a207265",
+          "runners": 2,
+          "submit_us": 1007319,
+          "terminal_statement_total_ms": 271.157,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 164,
+              "execution_ms": 271.157,
+              "rows": 1024
+            },
+            "scalar": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            }
+          },
+          "terminal_widths": {
+            "2": 1,
+            "3": 6,
+            "4": 17,
+            "5": 24,
+            "6": 35,
+            "7": 42,
+            "8": 39
+          },
+          "terminal_xids": 164,
+          "width_by_runner": {
+            "3082739": {
+              "3": 2,
+              "4": 11,
+              "5": 10,
+              "6": 11,
+              "7": 26,
+              "8": 21
+            },
+            "3082744": {
+              "2": 1,
+              "3": 4,
+              "4": 6,
+              "5": 14,
+              "6": 24,
+              "7": 16,
+              "8": 18
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 629609,
+              "rank_1024_from_enqueue_us": 824777,
+              "rank_1_from_enqueue_us": 12174,
+              "rank_512_from_enqueue_us": 401245,
+              "rank_64_from_enqueue_us": 66675
+            },
+            "second": {
+              "middle_820_us": 629808,
+              "rank_1024_from_enqueue_us": 825413,
+              "rank_1_from_enqueue_us": 14079,
+              "rank_512_from_enqueue_us": 402648,
+              "rank_64_from_enqueue_us": 67255
+            }
+          }
+        }
+      }
+    },
+    "2": {
+      "canonical_eight_grouped": {
+        "busiest_writer_statement_floor_in_observed_run_ms": 91.63,
+        "claim_statements": {
+          "mesh_jobs.claim_batch_bounded_v1(": {
+            "calls": 385,
+            "execution_ms": 9182.872,
+            "rows": 1155
+          },
+          "mesh_jobs.claim_batch_set_v1(": {
+            "calls": 0,
+            "execution_ms": 0,
+            "rows": 0
+          }
+        },
+        "drain_us": 1354573,
+        "elf_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+        "last_write_to_terminal_us": 5720,
+        "mean_terminal_statement_ms": 1.792284,
+        "middle_occupancy": {
+          "claim_to_entry": {
+            "mean": 4.864,
+            "peak": 16
+          },
+          "claim_to_terminal": {
+            "mean": 20.253,
+            "peak": 34
+          },
+          "entry_to_first": {
+            "mean": 4.985,
+            "peak": 15
+          },
+          "first_to_second": {
+            "mean": 1.804,
+            "peak": 6
+          },
+          "second_to_terminal": {
+            "mean": 8.599,
+            "peak": 19
+          }
+        },
+        "peak_claim_to_terminal": 55,
+        "raw_sha256": "7eda6d9d041466eb6b4ab3cb6a4f7addcc24990ada439618aaddd2abcf4d6ba7",
+        "runners": 8,
+        "submit_us": 1606377,
+        "terminal_statement_total_ms": 733.044,
+        "terminal_statements": {
+          "grouped": {
+            "calls": 318,
+            "execution_ms": 604.401,
+            "rows": 933
+          },
+          "scalar": {
+            "calls": 91,
+            "execution_ms": 128.643,
+            "rows": 91
+          }
+        },
+        "terminal_widths": {
+          "1": 91,
+          "2": 122,
+          "3": 133,
+          "4": 32,
+          "5": 25,
+          "6": 5,
+          "7": 1
+        },
+        "terminal_xids": 409,
+        "width_by_runner": {
+          "3101773": {
+            "1": 6,
+            "2": 15,
+            "3": 23,
+            "4": 2,
+            "5": 2
+          },
+          "3101778": {
+            "1": 14,
+            "2": 20,
+            "3": 14,
+            "4": 3,
+            "5": 1,
+            "6": 2,
+            "7": 1
+          },
+          "3101787": {
+            "1": 9,
+            "2": 10,
+            "3": 20,
+            "4": 4,
+            "5": 3
+          },
+          "3101802": {
+            "1": 13,
+            "2": 25,
+            "3": 10,
+            "4": 3,
+            "5": 2,
+            "6": 1
+          },
+          "3101808": {
+            "1": 11,
+            "2": 10,
+            "3": 20,
+            "4": 4,
+            "5": 4
+          },
+          "3101813": {
+            "1": 9,
+            "2": 9,
+            "3": 22,
+            "4": 4,
+            "5": 3
+          },
+          "3101830": {
+            "1": 16,
+            "2": 11,
+            "3": 14,
+            "4": 6,
+            "5": 6
+          },
+          "3101843": {
+            "1": 13,
+            "2": 22,
+            "3": 10,
+            "4": 6,
+            "5": 4,
+            "6": 2
+          }
+        },
+        "writes": {
+          "first": {
+            "middle_820_us": 1039975,
+            "rank_1024_from_enqueue_us": 1343729,
+            "rank_1_from_enqueue_us": 22053,
+            "rank_512_from_enqueue_us": 686308,
+            "rank_64_from_enqueue_us": 119050
+          },
+          "second": {
+            "middle_820_us": 1037642,
+            "rank_1024_from_enqueue_us": 1348853,
+            "rank_1_from_enqueue_us": 22949,
+            "rank_512_from_enqueue_us": 687040,
+            "rank_64_from_enqueue_us": 127657
+          }
+        }
+      },
+      "scalar": {
+        "single-four": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 337.162,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 79,
+              "execution_ms": 754.256,
+              "rows": 1039
+            }
+          },
+          "drain_us": 1307039,
+          "elf_sha256": "c9f029a001e2f8d058a00c0af8a376bc283304bff7ed9156baf299455c622cb9",
+          "last_write_to_terminal_us": 6552,
+          "mean_terminal_statement_ms": 0.32926,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 15.637,
+              "peak": 31
+            },
+            "claim_to_terminal": {
+              "mean": 26.972,
+              "peak": 43
+            },
+            "entry_to_first": {
+              "mean": 5.02,
+              "peak": 16
+            },
+            "first_to_second": {
+              "mean": 0.944,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 5.37,
+              "peak": 17
+            }
+          },
+          "peak_claim_to_terminal": 43,
+          "raw_sha256": "f87612e6dfd8251a7da805bcf151bee0937ed9a1c86c9972c8650f0eefe1e481",
+          "runners": 1,
+          "submit_us": 1464588,
+          "terminal_statement_total_ms": 337.162,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 337.162,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "2902187": {
+              "1": 1024
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 997288,
+              "rank_1024_from_enqueue_us": 1300065,
+              "rank_1_from_enqueue_us": 15256,
+              "rank_512_from_enqueue_us": 645841,
+              "rank_64_from_enqueue_us": 100333
+            },
+            "second": {
+              "middle_820_us": 997351,
+              "rank_1024_from_enqueue_us": 1300487,
+              "rank_1_from_enqueue_us": 19797,
+              "rank_512_from_enqueue_us": 646253,
+              "rank_64_from_enqueue_us": 100684
+            }
+          }
+        },
+        "stock-a": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 226.082,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 117,
+              "execution_ms": 1348.85,
+              "rows": 1060
+            }
+          },
+          "drain_us": 1256328,
+          "elf_sha256": "c9f029a001e2f8d058a00c0af8a376bc283304bff7ed9156baf299455c622cb9",
+          "last_write_to_terminal_us": 927,
+          "mean_terminal_statement_ms": 0.441565,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 26.337,
+              "peak": 46
+            },
+            "claim_to_terminal": {
+              "mean": 42.644,
+              "peak": 60
+            },
+            "entry_to_first": {
+              "mean": 8.493,
+              "peak": 24
+            },
+            "first_to_second": {
+              "mean": 1.508,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 6.306,
+              "peak": 16
+            }
+          },
+          "peak_claim_to_terminal": 63,
+          "raw_sha256": "51ec234dc5efddf350e7201ad267180aad013864fb5ae04ec4e057c4a53a6be3",
+          "runners": 2,
+          "submit_us": 1435300,
+          "terminal_statement_total_ms": 452.163,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 452.163,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "2902449": {
+              "1": 502
+            },
+            "2902454": {
+              "1": 522
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 966532,
+              "rank_1024_from_enqueue_us": 1254984,
+              "rank_1_from_enqueue_us": 13332,
+              "rank_512_from_enqueue_us": 660487,
+              "rank_64_from_enqueue_us": 94481
+            },
+            "second": {
+              "middle_820_us": 965078,
+              "rank_1024_from_enqueue_us": 1255401,
+              "rank_1_from_enqueue_us": 18645,
+              "rank_512_from_enqueue_us": 661309,
+              "rank_64_from_enqueue_us": 96359
+            }
+          }
+        },
+        "stock-b": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 209.76,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 122,
+              "execution_ms": 1265.786,
+              "rows": 1059
+            }
+          },
+          "drain_us": 1188248,
+          "elf_sha256": "c9f029a001e2f8d058a00c0af8a376bc283304bff7ed9156baf299455c622cb9",
+          "last_write_to_terminal_us": 1775,
+          "mean_terminal_statement_ms": 0.409687,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 25.062,
+              "peak": 42
+            },
+            "claim_to_terminal": {
+              "mean": 42.614,
+              "peak": 62
+            },
+            "entry_to_first": {
+              "mean": 8.569,
+              "peak": 33
+            },
+            "first_to_second": {
+              "mean": 1.452,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 7.53,
+              "peak": 19
+            }
+          },
+          "peak_claim_to_terminal": 62,
+          "raw_sha256": "a8ac0bc930be9756dd78f9d69a6c4389ce3c1acf5efc06a1bccd50559b787692",
+          "runners": 2,
+          "submit_us": 1345790,
+          "terminal_statement_total_ms": 419.519,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 419.519,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "2901670": {
+              "1": 527
+            },
+            "2901675": {
+              "1": 497
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 893577,
+              "rank_1024_from_enqueue_us": 1186109,
+              "rank_1_from_enqueue_us": 18748,
+              "rank_512_from_enqueue_us": 590341,
+              "rank_64_from_enqueue_us": 100587
+            },
+            "second": {
+              "middle_820_us": 891204,
+              "rank_1024_from_enqueue_us": 1186473,
+              "rank_1_from_enqueue_us": 20492,
+              "rank_512_from_enqueue_us": 593111,
+              "rank_64_from_enqueue_us": 104827
+            }
+          }
+        }
+      },
+      "serial_statement_budget": {
+        "historical_scalar_stock_gate_improvement_ms": {
+          "drain_us": 186.871,
+          "submit_us": 208.308
+        },
+        "max_mean_ms_per_cohort_at_128_xids_to_clear_scalar_drain_gate_from_sql_alone": 1.174148,
+        "projected_serial_statement_reclaim_at_128_xids_and_same_mean_price_ms": 137.218,
+        "projected_serial_statement_reclaim_at_public_group_count_ms": 43.494,
+        "reclaim_needed_to_match_public_grouped_drain_ms": 273.275,
+        "reclaim_needed_to_match_public_grouped_submit_ms": 244.297,
+        "remaining_gap_after_removing_all_scalar_terminal_statement_ms": -63.887
+      },
+      "transfer": {
+        "A1": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 203.507,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 114,
+              "execution_ms": 1386.329,
+              "rows": 1059
+            }
+          },
+          "drain_us": 1218982,
+          "elf_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+          "last_write_to_terminal_us": 1477,
+          "mean_terminal_statement_ms": 0.397476,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 26.44,
+              "peak": 43
+            },
+            "claim_to_terminal": {
+              "mean": 43.363,
+              "peak": 60
+            },
+            "entry_to_first": {
+              "mean": 8.593,
+              "peak": 33
+            },
+            "first_to_second": {
+              "mean": 1.334,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 6.996,
+              "peak": 18
+            }
+          },
+          "peak_claim_to_terminal": 60,
+          "raw_sha256": "6f49ae7bd5ec12ce5aec3a6dfaf2338244934172b58ec0f39f3ac9feab867f34",
+          "runners": 2,
+          "submit_us": 1381181,
+          "terminal_statement_total_ms": 407.015,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 407.015,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "3085261": {
+              "1": 520
+            },
+            "3085266": {
+              "1": 504
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 953048,
+              "rank_1024_from_enqueue_us": 1216951,
+              "rank_1_from_enqueue_us": 17916,
+              "rank_512_from_enqueue_us": 603496,
+              "rank_64_from_enqueue_us": 88216
+            },
+            "second": {
+              "middle_820_us": 953348,
+              "rank_1024_from_enqueue_us": 1217505,
+              "rank_1_from_enqueue_us": 23233,
+              "rank_512_from_enqueue_us": 605755,
+              "rank_64_from_enqueue_us": 89048
+            }
+          }
+        },
+        "A2": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 207.206,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 124,
+              "execution_ms": 1307.206,
+              "rows": 1062
+            }
+          },
+          "drain_us": 1209068,
+          "elf_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+          "last_write_to_terminal_us": 1075,
+          "mean_terminal_statement_ms": 0.404698,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 26.621,
+              "peak": 43
+            },
+            "claim_to_terminal": {
+              "mean": 43.018,
+              "peak": 62
+            },
+            "entry_to_first": {
+              "mean": 8.277,
+              "peak": 29
+            },
+            "first_to_second": {
+              "mean": 1.452,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 6.667,
+              "peak": 16
+            }
+          },
+          "peak_claim_to_terminal": 62,
+          "raw_sha256": "53cb83b7e73d8ecc7255453ee32daa7cd95a9efa5c67418367665a050ebd4861",
+          "runners": 2,
+          "submit_us": 1369829,
+          "terminal_statement_total_ms": 414.411,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "scalar": {
+              "calls": 1024,
+              "execution_ms": 414.411,
+              "rows": 1024
+            }
+          },
+          "terminal_widths": {
+            "1": 1024
+          },
+          "terminal_xids": 1024,
+          "width_by_runner": {
+            "3084417": {
+              "1": 517
+            },
+            "3084422": {
+              "1": 507
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 937814,
+              "rank_1024_from_enqueue_us": 1205576,
+              "rank_1_from_enqueue_us": 23611,
+              "rank_512_from_enqueue_us": 607003,
+              "rank_64_from_enqueue_us": 109562
+            },
+            "second": {
+              "middle_820_us": 937379,
+              "rank_1024_from_enqueue_us": 1207993,
+              "rank_1_from_enqueue_us": 27311,
+              "rank_512_from_enqueue_us": 609102,
+              "rank_64_from_enqueue_us": 110974
+            }
+          }
+        },
+        "B": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 146.834,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 220,
+              "execution_ms": 580.124,
+              "rows": 1064
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            }
+          },
+          "drain_us": 1033764,
+          "elf_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+          "last_write_to_terminal_us": 6946,
+          "mean_terminal_statement_ms": 1.562064,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 32.885,
+              "peak": 51
+            },
+            "claim_to_terminal": {
+              "mean": 59.86,
+              "peak": 64
+            },
+            "entry_to_first": {
+              "mean": 16.057,
+              "peak": 44
+            },
+            "first_to_second": {
+              "mean": 1.888,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 9.031,
+              "peak": 22
+            }
+          },
+          "peak_claim_to_terminal": 64,
+          "raw_sha256": "0fdf39c427dd752694bb0270a6b385e96c782753ccaa306bfd1305e5e7a32568",
+          "runners": 2,
+          "submit_us": 1220291,
+          "terminal_statement_total_ms": 293.668,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 186,
+              "execution_ms": 282.877,
+              "rows": 1022
+            },
+            "scalar": {
+              "calls": 2,
+              "execution_ms": 10.791,
+              "rows": 2
+            }
+          },
+          "terminal_widths": {
+            "1": 2,
+            "2": 7,
+            "3": 17,
+            "4": 22,
+            "5": 50,
+            "6": 32,
+            "7": 37,
+            "8": 21
+          },
+          "terminal_xids": 188,
+          "width_by_runner": {
+            "3084987": {
+              "1": 1,
+              "2": 5,
+              "3": 9,
+              "4": 8,
+              "5": 19,
+              "6": 19,
+              "7": 20,
+              "8": 12
+            },
+            "3084991": {
+              "1": 1,
+              "2": 2,
+              "3": 8,
+              "4": 14,
+              "5": 31,
+              "6": 13,
+              "7": 17,
+              "8": 9
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 769561,
+              "rank_1024_from_enqueue_us": 1026411,
+              "rank_1_from_enqueue_us": 18415,
+              "rank_512_from_enqueue_us": 552624,
+              "rank_64_from_enqueue_us": 98055
+            },
+            "second": {
+              "middle_820_us": 770064,
+              "rank_1024_from_enqueue_us": 1026818,
+              "rank_1_from_enqueue_us": 19949,
+              "rank_512_from_enqueue_us": 554274,
+              "rank_64_from_enqueue_us": 100829
+            }
+          }
+        },
+        "C": {
+          "busiest_writer_statement_floor_in_observed_run_ms": 127.593,
+          "claim_statements": {
+            "mesh_jobs.claim_batch_bounded_v1(": {
+              "calls": 0,
+              "execution_ms": 0,
+              "rows": 0
+            },
+            "mesh_jobs.claim_batch_set_v1(": {
+              "calls": 193,
+              "execution_ms": 542.131,
+              "rows": 1063
+            }
+          },
+          "drain_us": 825455,
+          "elf_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+          "last_write_to_terminal_us": 4519,
+          "mean_terminal_statement_ms": 1.575216,
+          "middle_occupancy": {
+            "claim_to_entry": {
+              "mean": 30.163,
+              "peak": 49
+            },
+            "claim_to_terminal": {
+              "mean": 58.015,
+              "peak": 64
+            },
+            "entry_to_first": {
+              "mean": 14.931,
+              "peak": 40
+            },
+            "first_to_second": {
+              "mean": 1.906,
+              "peak": 4
+            },
+            "second_to_terminal": {
+              "mean": 11.015,
+              "peak": 27
+            }
+          },
+          "peak_claim_to_terminal": 64,
+          "raw_sha256": "743427cad9fc553d716fa1d4a614a4462002344da78968bda1c371f5ff2071de",
+          "runners": 2,
+          "submit_us": 995411,
+          "terminal_statement_total_ms": 255.185,
+          "terminal_statements": {
+            "grouped": {
+              "calls": 161,
+              "execution_ms": 253.195,
+              "rows": 1023
+            },
+            "scalar": {
+              "calls": 1,
+              "execution_ms": 1.99,
+              "rows": 1
+            }
+          },
+          "terminal_widths": {
+            "1": 1,
+            "2": 4,
+            "3": 6,
+            "4": 15,
+            "5": 16,
+            "6": 33,
+            "7": 37,
+            "8": 50
+          },
+          "terminal_xids": 162,
+          "width_by_runner": {
+            "3084706": {
+              "1": 1,
+              "2": 3,
+              "3": 2,
+              "4": 9,
+              "5": 6,
+              "6": 17,
+              "7": 20,
+              "8": 22
+            },
+            "3084711": {
+              "2": 1,
+              "3": 4,
+              "4": 6,
+              "5": 10,
+              "6": 16,
+              "7": 17,
+              "8": 28
+            }
+          },
+          "writes": {
+            "first": {
+              "middle_820_us": 616370,
+              "rank_1024_from_enqueue_us": 820535,
+              "rank_1_from_enqueue_us": 11262,
+              "rank_512_from_enqueue_us": 402959,
+              "rank_64_from_enqueue_us": 66176
+            },
+            "second": {
+              "middle_820_us": 616084,
+              "rank_1024_from_enqueue_us": 820936,
+              "rank_1_from_enqueue_us": 12955,
+              "rank_512_from_enqueue_us": 404225,
+              "rank_64_from_enqueue_us": 68003
+            }
+          }
+        }
+      }
+    }
+  },
+  "public_bounded_claim_body_sha256": "ecf89d59b8ffcfa3b07aea4b2c1533d329795f366ced63b7e4221a1b40040044",
+  "releases": {
+    "canonical_eight": "2026-11-25-public-dense-8x8-path-recovery-pilot",
+    "scalar": "2026-11-25-dense-single-dispatch",
+    "transfer": "2026-11-25-public-dense-3c4032d-transfer-logger-off-recovery-pilot"
+  }
+}
