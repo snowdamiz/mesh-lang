@@ -52,6 +52,12 @@
     "raw_bytes": 1048599,
     "status": "fallback"
   },
+  "receipt_share_lock": {
+    "cursor_grants": 16,
+    "failed_in_layout_table_lock": true,
+    "postlock_guard_sqlstate": "55P03",
+    "stock_status": "fallback"
+  },
   "revoked_helper": {
     "cursor_error": "42501",
     "guarded_status": "fallback",

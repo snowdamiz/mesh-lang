@@ -2,6 +2,37 @@
 import subprocess
 
 
+def receipt_lock(command, stock_function, candidate_function, cursor_function, arguments):
+    """Keep an unrelated receipt-table SHARE lock through both claim routes."""
+    def query(statement):
+        return subprocess.check_output(command, input=statement, text=True).strip()
+
+    with subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as holder:
+        try:
+            holder.stdin.write("BEGIN; LOCK TABLE ONLY mesh_jobs.receipts IN SHARE MODE; SELECT 'held';\n")
+            holder.stdin.flush()
+            if holder.stdout.readline().strip() != "held":
+                raise RuntimeError("receipt-table holder did not acquire its lock")
+            fallback = query(f"BEGIN; SELECT status FROM {stock_function}{arguments}; ROLLBACK;")
+            granted = query(f"BEGIN; SELECT count(*) FROM {cursor_function}{arguments}; ROLLBACK;")
+            # Use PL/pgSQL's structured diagnostics so a different SQL error fails the proof.
+            outcome = query(f"""BEGIN; CREATE TEMP TABLE proof_lock_error(code text, detail text);
+                DO $$ DECLARE ctx text; BEGIN
+                    PERFORM * FROM {candidate_function}{arguments};
+                EXCEPTION WHEN lock_not_available THEN
+                    GET STACKED DIAGNOSTICS ctx = PG_EXCEPTION_CONTEXT;
+                    INSERT INTO proof_lock_error VALUES (SQLSTATE, ctx);
+                END $$;
+                SELECT code, position('ONLY mesh_jobs.receipts' IN detail)>0
+                    FROM proof_lock_error; ROLLBACK;""")
+            if (fallback, granted, outcome) != ("fallback", "16", "55P03|t"):
+                raise AssertionError((fallback, granted, outcome))
+            return {"stock_status": fallback, "cursor_grants": int(granted),
+                    "postlock_guard_sqlstate": "55P03", "failed_in_layout_table_lock": True}
+        finally:
+            holder.communicate("ROLLBACK;", timeout=5)
+
+
 def run(command, claim_function, arguments, cursor_function):
     def sql(statement):
         return subprocess.check_output(command, input=statement, text=True).strip()

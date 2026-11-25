@@ -204,6 +204,7 @@ def main():
             key = guarded["pending_claim_reply"]
             assert key.endswith("/1") and key[:-2] + "/2" == stock["subsequent_cursor_key"]
             result["concurrent_replacement"] = {"stock": stock, "prelock_guard": guarded, "postlock_guard": post_lock}
+            result["receipt_share_lock"] = layout_race.receipt_lock(command, SET_CLAIM, POST_LOCK, CURSOR, ARGS)
             print(json.dumps(result, sort_keys=True, indent=2))
         finally:
             output([bindir/"pg_ctl","-D",data,"-m","fast","-w","stop"])
