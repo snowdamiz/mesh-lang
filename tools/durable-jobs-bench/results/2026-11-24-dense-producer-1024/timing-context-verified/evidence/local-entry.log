@@ -1,0 +1,30 @@
+Traceback (most recent call last):
+  File "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet-timing-context-verified/entry_probe.py", line 114, in <module>
+    main()
+  File "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet-timing-context-verified/entry_probe.py", line 110, in main
+    scope["main"]()
+  File "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet-timing-splice/adapter.py", line 134, in main
+    arm.main()
+  File "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet-timing-context-verified/entry_probe.py", line 101, in entered
+    exercise(scope, arm, Path(temp), bool(args.archived_asset_digests))
+  File "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet-timing-context-verified/entry_probe.py", line 52, in exercise
+    with subject.warm_producer(env, evidence, time.monotonic() + 15) as enqueue:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/contextlib.py", line 137, in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+  File "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet-timing-splice/adapter.py", line 74, in warm_producer
+    with super().warm_producer(env, evidence, deadline) as enqueue:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/contextlib.py", line 137, in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+  File "/var/lib/durable-jobs-bench/native/source-bulk-enqueue-3b09dc3d0e23/ordinary-v2/tools/durable-jobs-bench/native/arm.py", line 172, in warm_producer
+    with super().warm_producer(env, evidence, deadline) as enqueue:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/contextlib.py", line 137, in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+TypeError: '_GeneratorContextManager' object is not an iterator
+{"adapter": "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet-timing-context-verified/adapter.py", "adapter_sha256": "04f99bff970eb0e9d40bbaf963e32929f3d183415c0b5193b97ae82a560b136d", "context": "synthetic-broker", "cpus": [0, 1], "gid": 65534, "harness": "/var/lib/durable-jobs-bench/native/source-bulk-enqueue-3b09dc3d0e23/ordinary-v2/tools/durable-jobs-bench/native/arm.py", "harness_sha256": "d9f984dad988e2380b22e971ae5abf122619f246bf592a9402720d49996685ad", "no_jobs_submitted": true, "uid": 65534, "width": "128"}
+{"adapter": "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet-timing-context-verified/adapter.py", "adapter_sha256": "04f99bff970eb0e9d40bbaf963e32929f3d183415c0b5193b97ae82a560b136d", "context": "synthetic-broker", "cpus": [0, 1], "gid": 65534, "harness": "/var/lib/durable-jobs-bench/native/source-bulk-enqueue-3b09dc3d0e23/ordinary-v2/tools/durable-jobs-bench/native/arm.py", "harness_sha256": "d9f984dad988e2380b22e971ae5abf122619f246bf592a9402720d49996685ad", "no_jobs_submitted": true, "uid": 65534, "width": "1024"}
