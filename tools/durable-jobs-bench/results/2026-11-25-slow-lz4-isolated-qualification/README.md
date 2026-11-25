@@ -15,7 +15,7 @@ The historical transfer owner was `native-slow-storage-compiled-transfer-v1`. Th
 - [First sealed attempt](controller-packet.json) released exit 1 after matching all five stock binaries. The check treated a leading space printed by stock `pg_config` as a flag difference. It stopped before building or running diagnostics. [Readback and release](evidence/native/setup)
 - [First recovery seal](recovery/controller-packet.json) tokenizes the configure readback and allows surrounding whitespace. The controller held it before registration after Darwin exposed Apalis's private-build extension dependency.
 - [Extension-complete recovery](recovery-2/controller-packet.json) passed stock identity and configure checks, then released exit 1 when the Linux launcher could not locate `runuser`. It stopped before compilation and diagnostics. [Release and raw archive](evidence/native/recovery-2/setup)
-- [Launcher recovery](recovery-3/controller-packet.json) binds both native failures and the held attempt. It uses the explicit Ubuntu `runuser` path and requests the raw device ID from `findmnt`. The workload and Apalis extension build carry forward.
+- [Launcher recovery](recovery-3/controller-packet.json) binds both native failures and the held attempt. It uses the explicit Ubuntu `runuser` path and requests the raw device ID from `findmnt`. The workload and Apalis extension build carry forward. It released exit 0 with all eight diagnostic arms. [Controller release and raw evidence](evidence/native/recovery-3/setup)
 
 ## Darwin rehearsal
 
@@ -23,13 +23,17 @@ The real private build and logical bridge passed. Twelve full functional arms co
 
 The stored ledgers and physical readbacks regenerate the same summary, including deliberate all-uncompressed, mixed and corrupted-payload controls. [Replay archive](evidence/local/functional-replay.tar.gz)
 
+## Linux qualification
+
+All eight diagnostics replayed on PostgreSQL SHA-256 `3f273b467aa57364f603a6758de24f1937098bddfcd5ef8b65c90df9caaec4b8` on the original disk and boot. The stock and private bridges report GCC 13.3.0 from Ubuntu package `13.3.0-6ubuntu2~24.04.1`. Each LZ4 arm physically compressed all 512 payloads. Each PGLZ arm left all 512 uncompressed. Every arm verified its canonical payload hashes and the application and settlement transactions. Negative controls rejected corrupted and relabeled receipts for every engine. [Native replay](evidence/native/recovery-3/setup/independent-replay.json) · [Native negative controls](evidence/native/recovery-3/setup/codec-negative-controls.json)
+
 ## Evidence and timing gate
 
 The setup scorer checks the original ledger, per-arm clocks, independent writes, and exact input. It also checks live PostgreSQL identity, TLS, role and database limits, durable server settings, stock payload DDL, and the applied compression. All 512 rows must be physically LZ4-compressed in each LZ4 arm. All 512 must be uncompressed in each PGLZ arm. Apalis is checked using the stored `bytea` column and decoded logical payload. River follows the previously proven export repair. The Linux adapter owns its stock `ledger.json` write. The Darwin branch explicitly writes the verified ledger when the Linux RSS sampler is unavailable. [Previous River export and scorer evidence](../2026-11-24-slow-external-compat-scorer-input/README.md)
 
-The matched timing inventory can be sealed only after the controller releases a successful SETUP and all eight native raw archives replay. The timing request uses the five original orders with one warmup and measured arm per engine-policy cell in each order, for 80 arms total. Its replay checks the canonical timing release, rejects arm reuse, records PGLZ minus LZ4 within each engine, and reports Mesh minus River, Oban and Apalis within each block under each codec on both settlement clocks. It also reports first, 64th, and final first-application-commit landmarks. Historical DEFAULT and EXTERNAL estimates keep their own sources and identities.
+The [matched timing inventory](recovery-3/matched-inventory.json) and [separate timing packet](recovery-3/timing-packet.json) bind the successful SETUP release and all eight replayed archive hashes. The timing request uses the five original orders with one warmup and measured arm per engine-policy cell in each order, for 80 arms total. Its replay checks the canonical timing release, rejects arm reuse, records PGLZ minus LZ4 within each engine, and reports Mesh minus River, Oban and Apalis within each block under each codec on both settlement clocks. It also reports first, 64th, and final first-application-commit landmarks. Historical DEFAULT and EXTERNAL estimates keep their own sources and identities.
 
-The portable packet uses the existing in-checkout frozen archive and harness. The source and stage tar files are task-owned under `target/slow-lz4-isolated-qualification`. The controller owns the inbox and journal. Do not invoke host-facing commands from an implementation thread.
+The portable packet uses the existing in-checkout frozen archive and harness. The latest stage tar under `target/slow-lz4-isolated-qualification` retains both pinned source archives. Earlier stage seals remain recorded in their respective requests. The controller owns the inbox and journal. Do not invoke host-facing commands from an implementation thread.
 
 ```sh
 p=tools/durable-jobs-bench/results/2026-11-25-slow-lz4-isolated-qualification

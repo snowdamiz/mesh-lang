@@ -1,0 +1,28 @@
+{
+  "diagnostic_arms_requested": 8,
+  "exit_status": 0,
+  "grant": {
+    "end": "2026-11-25T17:55:13Z",
+    "id": "2026-11-25-slow-lz4-isolated-qualification-recovery-3",
+    "request_sha256": "19172b745a552aa78ef1157c749752da2f3a2b70915e1c06f9e78f384363df23",
+    "start": "2026-11-25T17:20:13Z"
+  },
+  "id": "2026-11-25-slow-lz4-isolated-qualification-recovery-3",
+  "phase": "setup",
+  "raw_sha256": {
+    "00-slow/diagnostic-apalis-lz4/diagnostic-rust/raw.tar.gz": "86461834c306983e4fa419e0d1cb00409209bfc9a36653ad5000d309e1b61f59",
+    "00-slow/diagnostic-apalis-pglz/diagnostic-rust/raw.tar.gz": "0fbe38699e0c10a5fa70662a294e342afdeb099247137d00eefde1b99cd8db99",
+    "00-slow/diagnostic-bulk-lz4/diagnostic-mesh/raw.tar.gz": "75c7db0f74f43ed5431db44665309531ac5e4987126107b5d9798de1e395a4a0",
+    "00-slow/diagnostic-bulk-pglz/diagnostic-mesh/raw.tar.gz": "a39c22a878c54ea490d119105df574ec7e400685196fd6c0b56e4d5006c6b9cb",
+    "00-slow/diagnostic-oban-lz4/diagnostic-oban/raw.tar.gz": "293e41cf4d8019c2f0e5c591fbfb02695e95fc64df68db959a15784c5247a7d7",
+    "00-slow/diagnostic-oban-pglz/diagnostic-oban/raw.tar.gz": "05205de2b82dd20b9c064f1d7794584edd4c800e9fba57037b0563077cb0deb9",
+    "00-slow/diagnostic-river-lz4/diagnostic-go/raw.tar.gz": "ec07ff2ba48319478b4eedc13ebb657b87c418062ac008020125ff1363d021aa",
+    "00-slow/diagnostic-river-pglz/diagnostic-go/raw.tar.gz": "794eb17f6ffe86f70d0bae6999006870f5e92a6ccae00e25288bc8e9c517420b",
+    "build.tar.gz": "70414ae518542ebc8ec514e56ee6a3961e4f8ce5a04ae6c01733e8f5a414c774"
+  },
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-isolated-qualification/evidence/native/recovery-3/setup",
+  "released_at": "2026-11-25T17:24:53.797097+00:00",
+  "request_sha256": "19172b745a552aa78ef1157c749752da2f3a2b70915e1c06f9e78f384363df23",
+  "stage_sha256": "4861621a5aa623c27eedce95197677c1f36a137d2ad95ffd2b178bb19213fbd4",
+  "started": "2026-11-25T17:20:13.904100+00:00"
+}

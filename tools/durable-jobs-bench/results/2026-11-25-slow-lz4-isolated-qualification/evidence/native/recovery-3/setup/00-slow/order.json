@@ -1,0 +1,16 @@
+{
+  "group": 0,
+  "order": [
+    "bulk-pglz",
+    "river-lz4",
+    "apalis-pglz",
+    "oban-pglz",
+    "oban-lz4",
+    "apalis-lz4",
+    "river-pglz",
+    "bulk-lz4"
+  ],
+  "phases": [
+    "diagnostic"
+  ]
+}
