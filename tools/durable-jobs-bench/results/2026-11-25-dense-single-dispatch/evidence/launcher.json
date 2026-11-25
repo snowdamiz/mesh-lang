@@ -1,0 +1,62 @@
+{
+  "environment": "Linux ARM64",
+  "image": "sha256:3dc01f342e31ad8de39338d14ab12de0090c9102b34f75ca9774ff1f4f5e904e",
+  "lanes": [
+    {
+      "broker_workers": 2,
+      "cpus": [
+        0,
+        1
+      ],
+      "profile": [
+        2,
+        64,
+        16,
+        96,
+        2,
+        "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a"
+      ],
+      "runner_workers": 2,
+      "uid": 65534
+    },
+    {
+      "broker_workers": 2,
+      "cpus": [
+        0,
+        1
+      ],
+      "profile": [
+        1,
+        64,
+        32,
+        96,
+        2,
+        "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a"
+      ],
+      "runner_workers": 4,
+      "uid": 65534
+    },
+    {
+      "broker_workers": 2,
+      "cpus": [
+        0,
+        1
+      ],
+      "profile": [
+        1,
+        64,
+        32,
+        96,
+        2,
+        "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a"
+      ],
+      "runner_workers": 2,
+      "uid": 65534
+    }
+  ],
+  "sha256": {
+    "native-topology.sh": "4729e9858978f0dad3daab38351e6659e8e65ace35f1a5a09abbf227bf6ea1d8",
+    "topology.py": "959e40ec71012e7ef97bcf85b842abbc0cbbb8ec3f8fffe0607a88468f15b399"
+  },
+  "workload_ran": false
+}
