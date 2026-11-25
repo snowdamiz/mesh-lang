@@ -1,0 +1,12 @@
+{
+  "group": 1,
+  "order": [
+    "gate-stock",
+    "stock",
+    "candidate"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "noop"
+}
