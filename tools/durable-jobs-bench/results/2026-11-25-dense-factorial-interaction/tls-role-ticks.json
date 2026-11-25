@@ -66,7 +66,7 @@
             "ticks": 49
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 5869,
         "terminal_lag_us": 93999,
         "total_stable_ticks": 113,
@@ -137,7 +137,7 @@
             "ticks": 84
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 3200,
         "terminal_lag_us": 42466,
         "total_stable_ticks": 148,
@@ -208,7 +208,7 @@
             "ticks": 75
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 4751,
         "terminal_lag_us": 96592,
         "total_stable_ticks": 142,
@@ -279,7 +279,7 @@
             "ticks": 109
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 3662,
         "terminal_lag_us": 123907,
         "total_stable_ticks": 177,
@@ -350,7 +350,7 @@
             "ticks": 109
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 4924,
         "terminal_lag_us": 138989,
         "total_stable_ticks": 174,
@@ -423,7 +423,7 @@
             "ticks": 48
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 3090,
         "terminal_lag_us": 90352,
         "total_stable_ticks": 113,
@@ -494,7 +494,7 @@
             "ticks": 88
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 8073,
         "terminal_lag_us": 132657,
         "total_stable_ticks": 157,
@@ -565,7 +565,7 @@
             "ticks": 79
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 3081,
         "terminal_lag_us": 45855,
         "total_stable_ticks": 143,
@@ -636,7 +636,7 @@
             "ticks": 112
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 3145,
         "terminal_lag_us": 33890,
         "total_stable_ticks": 178,
@@ -707,7 +707,7 @@
             "ticks": 112
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 3561,
         "terminal_lag_us": 102247,
         "total_stable_ticks": 176,
@@ -849,7 +849,7 @@
             "ticks": 48
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 5439,
         "terminal_lag_us": 59016,
         "total_stable_ticks": 114,
@@ -993,7 +993,7 @@
             "ticks": 49
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 2876,
         "terminal_lag_us": 80813,
         "total_stable_ticks": 113,
@@ -1066,7 +1066,7 @@
             "ticks": 56
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 2952,
         "terminal_lag_us": 135002,
         "total_stable_ticks": 122,
@@ -1141,7 +1141,7 @@
             "ticks": 52
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 3277,
         "terminal_lag_us": 55072,
         "total_stable_ticks": 116,
@@ -1214,7 +1214,7 @@
             "ticks": 54
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 4615,
         "terminal_lag_us": 112545,
         "total_stable_ticks": 120,
@@ -1287,7 +1287,7 @@
             "ticks": 54
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 4775,
         "terminal_lag_us": 84586,
         "total_stable_ticks": 123,
@@ -1360,7 +1360,7 @@
             "ticks": 57
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 4750,
         "terminal_lag_us": 141206,
         "total_stable_ticks": 123,
@@ -1433,7 +1433,7 @@
             "ticks": 71
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 6287,
         "terminal_lag_us": 88544,
         "total_stable_ticks": 140,
@@ -1506,7 +1506,7 @@
             "ticks": 52
           }
         },
-        "roster_complete": false,
+        "roster_complete": true,
         "submit_lead_us": 2747,
         "terminal_lag_us": 106068,
         "total_stable_ticks": 112,

@@ -1,0 +1,104 @@
+[
+  {
+    "app_backend_ticks": 51,
+    "backends_with_ticks": 4,
+    "credit_us": 78189,
+    "excess_after_insert_credit_us": 37043,
+    "excess_over_two_cpu_peer_capacity_us": 115232,
+    "group": 1,
+    "host_work_floor_us": 561804,
+    "insert_executor_ms": {
+      "attempts": 44.99523900000005,
+      "effects": 33.19280099999999
+    },
+    "mesh_middle_us": 385654,
+    "mesh_raw_sha256": "23b68390b78dd37080f6b8290aa4a1d0063dbed2664670e71651664c7c77f19a",
+    "river_raw_sha256": "92cf7a7058e0cfa3deee1069beef14e99b8c11a13b06d755713d614b1853ad5b",
+    "warm_river_middle_us": 223286
+  },
+  {
+    "app_backend_ticks": 51,
+    "backends_with_ticks": 4,
+    "credit_us": 75269,
+    "excess_after_insert_credit_us": 67199,
+    "excess_over_two_cpu_peer_capacity_us": 142468,
+    "group": 2,
+    "host_work_floor_us": 569020,
+    "insert_executor_ms": {
+      "attempts": 40.67828700000005,
+      "effects": 34.590705
+    },
+    "mesh_middle_us": 379946,
+    "mesh_raw_sha256": "46909cbd230f43ebef4068696e78cd4967aeeb41e076eb99c3aad3b1054c265c",
+    "river_raw_sha256": "ec51c1bdab4767b970a3e9acfe078a169050871bf3ae0780c0cc02eca267b045",
+    "warm_river_middle_us": 213276
+  },
+  {
+    "app_backend_ticks": 52,
+    "backends_with_ticks": 4,
+    "credit_us": 80246,
+    "excess_after_insert_credit_us": 34370,
+    "excess_over_two_cpu_peer_capacity_us": 114616,
+    "group": 3,
+    "host_work_floor_us": 557556,
+    "insert_executor_ms": {
+      "attempts": 38.10536799999994,
+      "effects": 42.140551999999985
+    },
+    "mesh_middle_us": 363355,
+    "mesh_raw_sha256": "c8aba3e1d13290a172070f460312a5a8f67e2911f03f0c7ec57c962ade9accb2",
+    "river_raw_sha256": "7564529c9e98831c63e4ce6aa1b6cb2b08b31eaca58ca7add6953d86bb74da9a",
+    "warm_river_middle_us": 221470
+  },
+  {
+    "app_backend_ticks": 52,
+    "backends_with_ticks": 4,
+    "credit_us": 79483,
+    "excess_after_insert_credit_us": 74247,
+    "excess_over_two_cpu_peer_capacity_us": 153730,
+    "group": 4,
+    "host_work_floor_us": 565710,
+    "insert_executor_ms": {
+      "attempts": 46.455650000000006,
+      "effects": 33.02703400000002
+    },
+    "mesh_middle_us": 409400,
+    "mesh_raw_sha256": "bb2c7612819e6e1c6f30b7b113d380f6a50c06b22a3b5da7828ae2a2f0884443",
+    "river_raw_sha256": "28fffbb6d9169e163d731792bb7d11ed9f2262d3b3a62563ec706016775fc30a",
+    "warm_river_middle_us": 205990
+  },
+  {
+    "app_backend_ticks": 54,
+    "backends_with_ticks": 4,
+    "credit_us": 77858,
+    "excess_after_insert_credit_us": 236790,
+    "excess_over_two_cpu_peer_capacity_us": 314648,
+    "group": 5,
+    "host_work_floor_us": 733412,
+    "insert_executor_ms": {
+      "attempts": 43.24829699999994,
+      "effects": 34.60947100000001
+    },
+    "mesh_middle_us": 726274,
+    "mesh_raw_sha256": "6eca28ea2cc3561e88422c044c75a1a68cb9b6675ad56c1e695fe0f5e8e8cd30",
+    "river_raw_sha256": "cbd33ccf1d703d60ea169dfb5c59c036112cbb936b2dbf9d0097f263ca743926",
+    "warm_river_middle_us": 209382
+  },
+  {
+    "app_backend_ticks": 48,
+    "backends_with_ticks": 4,
+    "credit_us": 67500,
+    "excess_after_insert_credit_us": 13954,
+    "excess_over_two_cpu_peer_capacity_us": 81454,
+    "group": 6,
+    "host_work_floor_us": 536014,
+    "insert_executor_ms": {
+      "attempts": 38.42297499999998,
+      "effects": 29.076554000000016
+    },
+    "mesh_middle_us": 365351,
+    "mesh_raw_sha256": "6abe4b3431e0d69da91ad8fbea840fc363e891c1991b3c50397f8ff01e9c716f",
+    "river_raw_sha256": "2f26656611f97a78d09f7feda63cc49c8d48a37556fb50949bb4a7946fc875c3",
+    "warm_river_middle_us": 227280
+  }
+]

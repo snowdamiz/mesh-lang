@@ -37,8 +37,8 @@ def summarize(raw):
     assert roles.keys() <= stable.keys() and str(parent) in stable
     buckets = {}
     for role in TLS_COUNTS:
-        counts = [stable[p] for p in roles if roles[p] == role]
-        buckets[role] = dict(ticks=sum(counts), per_backend_ticks=sorted(counts, reverse=True))
+        backend_ticks = [stable[p] for p in roles if roles[p] == role]
+        buckets[role] = dict(ticks=sum(backend_ticks), per_backend_ticks=sorted(backend_ticks, reverse=True))
     # At either endpoint the sum of the two published counters can omit
     # less than two ticks. All out-of-window work shares the two CPUs.
     slack_us = submit - first["begin_us"] + last["end_us"] - terminal
