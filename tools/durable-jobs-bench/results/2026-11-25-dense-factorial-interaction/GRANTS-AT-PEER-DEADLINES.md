@@ -39,3 +39,21 @@ At River’s 768th effect, its own database had recorded only 464–548 terminal
 At Oban’s corresponding durations, Mesh had already reached 856–890 effects in four rotations. In rotation 2 it had reached 619, including 617 settled. This pattern survives alignment at the 256th write. The counts describe the recorded schedules and give no causal estimate of the feedback from a faster settlement or scheduler.
 
 The [middle-window counts and raw hashes](middle-refill-capacity.json) include both peers and grant timestamp bounds. Reproduce them with `python3 -B middle_refill_capacity.py`.
+
+### First and second writes in the same middle window
+
+The loss to River was already visible in the first durable application write. At the aligned deadline, only 1–4 Mesh jobs had a first commit pending their second. Even letting every stamped job complete both writes immediately, with grant times held fixed, leaves 168–288 jobs missing from rank 768. A faster application write or terminal receipt could still move subsequent grants earlier by freeing seats.
+
+| Rotation | Additional time for Mesh first writes 256→768 vs River (ms) | Additional time for second writes (ms) | Mesh jobs with claim stamps by deadline | Entered | First write committed | Second write committed |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 196.0 | 191.1 | 592–600 | 591 | 578 | 574 |
+| 2 | 938.1 | 947.0 | 480 | 470 | 458 | 454 |
+| 3 | 222.3 | 227.4 | 566 | 557 | 546 | 545 |
+| 4 | 264.1 | 257.9 | 540 | 531 | 523 | 521 |
+| 5 | 230.4 | 238.5 | 553 | 547 | 540 | 537 |
+
+Ranks sort first and second commits independently. The difference of the two span deficits therefore measures how the spacing between ranked first and second commits changed from rank 256 to 768 in each engine. It ranged from −6.3 to +8.9 ms across the paired rotations. On the full submit clock, Mesh's final first write landed 85–1,190 ms after River had settled its final job. At Oban's middle-window pace Mesh had already passed 768 second writes in four rotations. In rotation 2, it reached 624 first writes and 619 second writes at that deadline.
+
+Each raw ledger reconciles 1,024 jobs, two distinct application XIDs per job, the durable enqueue and the last settlement. The replay matches payload hashes across the six measured lanes in each rotation. Claim stamps have millisecond precision and precede client confirmation. These counts locate the deficit in the flow of work. They leave the causes of later grants open, including application service time, scheduler availability, and the time to receive and apply terminal acknowledgements.
+
+[All thirty raw hashes and per-arm counts](first-write-cadence.json) · [Archive arithmetic](first_write_cadence.py)
