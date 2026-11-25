@@ -1,0 +1,1044 @@
+{
+  "archives": [
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 111,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 113
+      },
+      "group": "1",
+      "lane": "mesh-off-a",
+      "phase": "warmup",
+      "raw_sha256": "5effca7d09ea4349b9d21afe7b4706fdc6ac221a6494ab9fd5202101a0c64746"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 103,
+        "observer": 16,
+        "settle": 14,
+        "transaction": 24
+      },
+      "group": "1",
+      "lane": "river-off-a",
+      "phase": "warmup",
+      "raw_sha256": "1db49fdde09f0be89e03e399247c1af2f5d1f2912397f8f332c15a8847304c4e"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 120,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 122
+      },
+      "group": "1",
+      "lane": "mesh-on",
+      "phase": "warmup",
+      "raw_sha256": "8559d6ead6a22ee321c0d38a35027098d70c48f94e1ee9f075dd62ebd83f073f"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 100,
+        "observer": 14,
+        "settle": 11,
+        "transaction": 24
+      },
+      "group": "1",
+      "lane": "river-on",
+      "phase": "warmup",
+      "raw_sha256": "f50d01e641a29fbb978e39a3f45b32cdd56f0dc56b3bd1e0c6206625f4403957"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 121,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 123
+      },
+      "group": "1",
+      "lane": "mesh-off-b",
+      "phase": "warmup",
+      "raw_sha256": "92fed54b4b6c134f24dbcb9666add0b147a838da1272eb86b32cc50feb6eb503"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 101,
+        "observer": 16,
+        "settle": 14,
+        "transaction": 24
+      },
+      "group": "1",
+      "lane": "river-off-b",
+      "phase": "warmup",
+      "raw_sha256": "d8f0cc4cdf4e4f87aeeae0869c9fed2a352859b2a84efda0db2573be0603e423"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 122,
+        "observer": 30,
+        "settle": 1024,
+        "transaction": 124
+      },
+      "group": "1",
+      "lane": "mesh-off-a",
+      "phase": "measured",
+      "raw_sha256": "7e243d9651cdd2f6ad159815bfbe7f4cf63a694142ba8960cd1281774e3e4654"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 101,
+        "observer": 16,
+        "settle": 12,
+        "transaction": 24
+      },
+      "group": "1",
+      "lane": "river-off-a",
+      "phase": "measured",
+      "raw_sha256": "bd7be3efee496f98fcc465a40a0aa69ae534dde320ca4bd92007ea188363d4a0"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 121,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 123
+      },
+      "group": "1",
+      "lane": "mesh-on",
+      "phase": "measured",
+      "raw_sha256": "e1ec825aacc4d80eb4aace87745689ce983309a762afeeefcb8edaa824b632e3"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 103,
+        "observer": 15,
+        "settle": 12,
+        "transaction": 24
+      },
+      "group": "1",
+      "lane": "river-on",
+      "phase": "measured",
+      "raw_sha256": "893ce344e40ce10246ed620266142a57696501ccbc0a259655c9bcc6d30a5bfe"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 118,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 120
+      },
+      "group": "1",
+      "lane": "mesh-off-b",
+      "phase": "measured",
+      "raw_sha256": "3ba8f78bd4e286fa4c609c0c854996f22a80b28e96eb19d76eeffb271389b3fe"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 105,
+        "observer": 16,
+        "settle": 14,
+        "transaction": 24
+      },
+      "group": "1",
+      "lane": "river-off-b",
+      "phase": "measured",
+      "raw_sha256": "4ed7f56a4866db10270aa7fe38320f9b765f29ff2a725d8868309b4545eb2b25"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 97,
+        "observer": 15,
+        "settle": 13,
+        "transaction": 24
+      },
+      "group": "2",
+      "lane": "river-off-b",
+      "phase": "warmup",
+      "raw_sha256": "131938648d7b3034adeb5f86c812877eb87cad50f3da1b9c48a433d13fb65ec7"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 114,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 116
+      },
+      "group": "2",
+      "lane": "mesh-off-b",
+      "phase": "warmup",
+      "raw_sha256": "532841d53d2a5b374a789ad78e22b98065344cb4a8be0424ae0c354461bde5be"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 102,
+        "observer": 16,
+        "settle": 14,
+        "transaction": 24
+      },
+      "group": "2",
+      "lane": "river-on",
+      "phase": "warmup",
+      "raw_sha256": "d093431c99094756b38287f10f40b0b77a77d9e8423526192e7cec79ba74775b"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 114,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 116
+      },
+      "group": "2",
+      "lane": "mesh-on",
+      "phase": "warmup",
+      "raw_sha256": "278f87ec7eeb4dac17f6b6d0f92b6501fec42d6f6c65270af4afbe8b7d62fdfb"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 109,
+        "observer": 15,
+        "settle": 13,
+        "transaction": 24
+      },
+      "group": "2",
+      "lane": "river-off-a",
+      "phase": "warmup",
+      "raw_sha256": "9dc02884edddf42ce44fb70d071900be68317a9f97c97147149a7e0d79c21ba2"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 113,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 115
+      },
+      "group": "2",
+      "lane": "mesh-off-a",
+      "phase": "warmup",
+      "raw_sha256": "0335537f24b8647bfd75704b87aba4cfb58cbfdba1cf4fcf6b4f22d19830c831"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 98,
+        "observer": 15,
+        "settle": 12,
+        "transaction": 24
+      },
+      "group": "2",
+      "lane": "river-off-b",
+      "phase": "measured",
+      "raw_sha256": "7dfbbd5749d628a7e1aeee9d5c5943fe8fd5ed5f5c86492e2f9c9abad2cd0720"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 113,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 115
+      },
+      "group": "2",
+      "lane": "mesh-off-b",
+      "phase": "measured",
+      "raw_sha256": "f969c1cc70dd2bf005e429c98c3194eef2ccf98328ab0858f3d723a8c6505410"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 105,
+        "observer": 16,
+        "settle": 14,
+        "transaction": 24
+      },
+      "group": "2",
+      "lane": "river-on",
+      "phase": "measured",
+      "raw_sha256": "e101ee2c25190db140ad6e1c781da93c591ec6da5f1508b777c26490c41affd4"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 117,
+        "observer": 27,
+        "settle": 1024,
+        "transaction": 119
+      },
+      "group": "2",
+      "lane": "mesh-on",
+      "phase": "measured",
+      "raw_sha256": "523b29b7a4e8129449f221e1f15097cd107a45952f9c17bf02c765194fa4ec45"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 98,
+        "observer": 16,
+        "settle": 14,
+        "transaction": 24
+      },
+      "group": "2",
+      "lane": "river-off-a",
+      "phase": "measured",
+      "raw_sha256": "90dd69e1464f577b9ffe8b506669dd4df6d80617e0d506a2750c358735a38f84"
+    },
+    {
+      "calls": {
+        "application-write": 2048,
+        "enqueue": 8,
+        "grant": 142,
+        "observer": 32,
+        "settle": 1024,
+        "transaction": 144
+      },
+      "group": "2",
+      "lane": "mesh-off-a",
+      "phase": "measured",
+      "raw_sha256": "0602b4a866d0472d964f9648599ca9b241e8b1d6a0c81db56427791811bd5941"
+    }
+  ],
+  "attribution_eligible": false,
+  "historical_required_cpu_ns": [
+    427789000,
+    512005000,
+    351333333,
+    337208333,
+    410311666,
+    503717333
+  ],
+  "measured": {
+    "1": {
+      "mesh-off-a": {
+        "cluster_id": "7711931361421054530",
+        "drain_ns": 1692130000,
+        "host_busy_ns": 7470000000,
+        "host_lower_ns": 7410000000,
+        "host_minus_sampled_postgres_ns": 3375548000,
+        "host_upper_ns": 7570000000,
+        "interval": [
+          125714845949873,
+          125723789235993
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {},
+          "hook_cpu_ns": 0,
+          "other_reaped_cpu_ns": 208152644,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 4094452000,
+          "postmaster": 2859597,
+          "postmaster_cpu_ns": 74246000,
+          "session_cpu_ns": 3812053356,
+          "session_residual_ns": 3812053356,
+          "sessions": 75
+        },
+        "raw_sha256": "7e243d9651cdd2f6ad159815bfbe7f4cf63a694142ba8960cd1281774e3e4654",
+        "submit_ns": 1855172000,
+        "total_duration_ns": 8943286120
+      },
+      "mesh-off-b": {
+        "cluster_id": "7711931515058386515",
+        "drain_ns": 1198169000,
+        "host_busy_ns": 7130000000,
+        "host_lower_ns": 7070000000,
+        "host_minus_sampled_postgres_ns": 3445710000,
+        "host_upper_ns": 7230000000,
+        "interval": [
+          125750591466773,
+          125759393126108
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {},
+          "hook_cpu_ns": 0,
+          "other_reaped_cpu_ns": 203072695,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 3684290000,
+          "postmaster": 2860638,
+          "postmaster_cpu_ns": 75784000,
+          "session_cpu_ns": 3405433305,
+          "session_residual_ns": 3405433305,
+          "sessions": 75
+        },
+        "raw_sha256": "3ba8f78bd4e286fa4c609c0c854996f22a80b28e96eb19d76eeffb271389b3fe",
+        "submit_ns": 1359639000,
+        "total_duration_ns": 8801659335
+      },
+      "mesh-on": {
+        "cluster_id": "7711931438331696206",
+        "drain_ns": 1267734000,
+        "host_busy_ns": 7050000000,
+        "host_lower_ns": 6990000000,
+        "host_minus_sampled_postgres_ns": 3209732000,
+        "host_upper_ns": 7150000000,
+        "interval": [
+          125732747660211,
+          125741421888916
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {
+            "application-write": 100798680,
+            "enqueue": 120715950,
+            "grant": 622108834,
+            "observer": 909114702,
+            "other": 49797823,
+            "settle": 358945135,
+            "transaction": 543680,
+            "unmapped": 145781693
+          },
+          "hook_cpu_ns": 2307806497,
+          "other_reaped_cpu_ns": 215754702,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 3840268000,
+          "postmaster": 2860121,
+          "postmaster_cpu_ns": 75912000,
+          "session_cpu_ns": 3548601298,
+          "session_residual_ns": 1240794801,
+          "sessions": 75
+        },
+        "raw_sha256": "e1ec825aacc4d80eb4aace87745689ce983309a762afeeefcb8edaa824b632e3",
+        "submit_ns": 1464319000,
+        "total_duration_ns": 8674228705,
+        "workload_hook_rows": [
+          {
+            "calls": 121,
+            "family": "grant",
+            "full_session_hook_cpu_ns": 622108834,
+            "login": "parity_subject",
+            "query": "8762970956571263497",
+            "sql_sha256": "42c4a2b960d50b2c48e646ab46382aec1b68f26d92cf0786d44848b9f8047438"
+          },
+          {
+            "calls": 1024,
+            "family": "settle",
+            "full_session_hook_cpu_ns": 358945135,
+            "login": "parity_subject",
+            "query": "-7725573251209787463",
+            "sql_sha256": "393997a338604a24f102a97e4664c3b4c405cab3b1e1878388e345fb172f6939"
+          },
+          {
+            "calls": 8,
+            "family": "enqueue",
+            "full_session_hook_cpu_ns": 120715950,
+            "login": "parity_producer",
+            "query": "8628430080062740121",
+            "sql_sha256": "fd4805b6732db263a902751e9bdccf88691001456309709390c6ebd447e1f52b"
+          },
+          {
+            "calls": 1024,
+            "family": "application-write",
+            "full_session_hook_cpu_ns": 54868571,
+            "login": "compiled_caller",
+            "query": "4331543937336954591",
+            "sql_sha256": "591a8ea4117e12b57355306ba8f44a9120f72eac9951b5217e783b8a111de537"
+          },
+          {
+            "calls": 1024,
+            "family": "application-write",
+            "full_session_hook_cpu_ns": 45930109,
+            "login": "compiled_caller",
+            "query": "-6310544917033927081",
+            "sql_sha256": "b3557f1f5eb2316fe319e38ca390022182c35b97bcba8ac8296a8e4835198d5b"
+          }
+        ]
+      },
+      "river-off-a": {
+        "cluster_id": "7711931406394987346",
+        "drain_ns": 945381000,
+        "host_busy_ns": 3710000000,
+        "host_lower_ns": 3650000000,
+        "host_minus_sampled_postgres_ns": 2115534000,
+        "host_upper_ns": 3810000000,
+        "interval": [
+          125725286953983,
+          125731584083744
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {},
+          "hook_cpu_ns": 0,
+          "other_reaped_cpu_ns": 192411823,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 1594466000,
+          "postmaster": 2859869,
+          "postmaster_cpu_ns": 73447000,
+          "session_cpu_ns": 1328607177,
+          "session_residual_ns": 1328607177,
+          "sessions": 77
+        },
+        "raw_sha256": "bd7be3efee496f98fcc465a40a0aa69ae534dde320ca4bd92007ea188363d4a0",
+        "submit_ns": 1018764000,
+        "total_duration_ns": 6297129761
+      },
+      "river-off-b": {
+        "cluster_id": "7711931557919541083",
+        "drain_ns": 954263000,
+        "host_busy_ns": 3790000000,
+        "host_lower_ns": 3730000000,
+        "host_minus_sampled_postgres_ns": 2152802000,
+        "host_upper_ns": 3890000000,
+        "interval": [
+          125760581174218,
+          125766939968891
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {},
+          "hook_cpu_ns": 0,
+          "other_reaped_cpu_ns": 194455550,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 1637198000,
+          "postmaster": 2860902,
+          "postmaster_cpu_ns": 73253000,
+          "session_cpu_ns": 1369489450,
+          "session_residual_ns": 1369489450,
+          "sessions": 77
+        },
+        "raw_sha256": "4ed7f56a4866db10270aa7fe38320f9b765f29ff2a725d8868309b4545eb2b25",
+        "submit_ns": 1026438000,
+        "total_duration_ns": 6358794673
+      },
+      "river-on": {
+        "cluster_id": "7711931480549344597",
+        "drain_ns": 936406000,
+        "host_busy_ns": 4280000000,
+        "host_lower_ns": 4220000000,
+        "host_minus_sampled_postgres_ns": 2636845000,
+        "host_upper_ns": 4380000000,
+        "interval": [
+          125742573654433,
+          125749315491150
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {
+            "application-write": 119919370,
+            "enqueue": 20801751,
+            "grant": 74546976,
+            "observer": 31052293,
+            "other": 33250297,
+            "settle": 48566467,
+            "transaction": 175680,
+            "unmapped": 74231898
+          },
+          "hook_cpu_ns": 402544732,
+          "other_reaped_cpu_ns": 190297863,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 1643155000,
+          "postmaster": 2860384,
+          "postmaster_cpu_ns": 73003000,
+          "session_cpu_ns": 1379854137,
+          "session_residual_ns": 977309405,
+          "sessions": 77
+        },
+        "raw_sha256": "893ce344e40ce10246ed620266142a57696501ccbc0a259655c9bcc6d30a5bfe",
+        "submit_ns": 1022105000,
+        "total_duration_ns": 6741836717,
+        "workload_hook_rows": [
+          {
+            "calls": 103,
+            "family": "grant",
+            "full_session_hook_cpu_ns": 74546976,
+            "login": "parity_subject",
+            "query": "-4887853837538731801",
+            "sql_sha256": "988d39dfcf0f637fec015f1d1be26c3d6178fb1c1316e3edd9fc51f1ec8077a1"
+          },
+          {
+            "calls": 12,
+            "family": "settle",
+            "full_session_hook_cpu_ns": 48566467,
+            "login": "parity_subject",
+            "query": "2580955410167747472",
+            "sql_sha256": "ae492ae3e176bb6dfbdbcfd1449daa58b6822c1bb88e62b532a2e899aacf4f4d"
+          },
+          {
+            "calls": 8,
+            "family": "enqueue",
+            "full_session_hook_cpu_ns": 20801751,
+            "login": "parity_subject",
+            "query": "-2570171143776069797",
+            "sql_sha256": "3812dccd0870b03be9f8f9ba0f82800b7377c3e2939aeb2fb113b29a1cf6e151"
+          },
+          {
+            "calls": 1024,
+            "family": "application-write",
+            "full_session_hook_cpu_ns": 62164501,
+            "login": "parity_subject",
+            "query": "-1949381558818313412",
+            "sql_sha256": "fd7ed7e7aa5d596557dec8c93269dddf1ccc46e2ee1d1d1b7a482e5bc4e8b5c5"
+          },
+          {
+            "calls": 1024,
+            "family": "application-write",
+            "full_session_hook_cpu_ns": 57754869,
+            "login": "parity_subject",
+            "query": "-7076469445544250907",
+            "sql_sha256": "df569f9c90958b061978c076ab1783b0aebe22f1a932d1ffe299bea9ae5de828"
+          }
+        ]
+      }
+    },
+    "2": {
+      "mesh-off-a": {
+        "cluster_id": "7711932002964648827",
+        "drain_ns": 1816555000,
+        "host_busy_ns": 7390000000,
+        "host_lower_ns": 7330000000,
+        "host_minus_sampled_postgres_ns": 3487157000,
+        "host_upper_ns": 7490000000,
+        "interval": [
+          125864178389013,
+          125873524873316
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {},
+          "hook_cpu_ns": 0,
+          "other_reaped_cpu_ns": 208049540,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 3902843000,
+          "postmaster": 2864006,
+          "postmaster_cpu_ns": 72160000,
+          "session_cpu_ns": 3622633460,
+          "session_residual_ns": 3622633460,
+          "sessions": 75
+        },
+        "raw_sha256": "0602b4a866d0472d964f9648599ca9b241e8b1d6a0c81db56427791811bd5941",
+        "submit_ns": 1989447000,
+        "total_duration_ns": 9346484303
+      },
+      "mesh-off-b": {
+        "cluster_id": "7711931847802257258",
+        "drain_ns": 1227105000,
+        "host_busy_ns": 6670000000,
+        "host_lower_ns": 6610000000,
+        "host_minus_sampled_postgres_ns": 2960235000,
+        "host_upper_ns": 6770000000,
+        "interval": [
+          125828102317914,
+          125836476264824
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {},
+          "hook_cpu_ns": 0,
+          "other_reaped_cpu_ns": 199276937,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 3709765000,
+          "postmaster": 2862965,
+          "postmaster_cpu_ns": 73164000,
+          "session_cpu_ns": 3437324063,
+          "session_residual_ns": 3437324063,
+          "sessions": 75
+        },
+        "raw_sha256": "f969c1cc70dd2bf005e429c98c3194eef2ccf98328ab0858f3d723a8c6505410",
+        "submit_ns": 1420092000,
+        "total_duration_ns": 8373946910
+      },
+      "mesh-on": {
+        "cluster_id": "7711931923131277680",
+        "drain_ns": 1228797000,
+        "host_busy_ns": 6950000000,
+        "host_lower_ns": 6890000000,
+        "host_minus_sampled_postgres_ns": 3252672000,
+        "host_upper_ns": 7050000000,
+        "interval": [
+          125845610557729,
+          125854184055790
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {
+            "application-write": 96882000,
+            "enqueue": 104733580,
+            "grant": 574350079,
+            "observer": 892860205,
+            "other": 46563641,
+            "settle": 340168794,
+            "transaction": 487610,
+            "unmapped": 143427274
+          },
+          "hook_cpu_ns": 2199473183,
+          "other_reaped_cpu_ns": 202809573,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 3697328000,
+          "postmaster": 2863483,
+          "postmaster_cpu_ns": 76330000,
+          "session_cpu_ns": 3418188427,
+          "session_residual_ns": 1218715244,
+          "sessions": 75
+        },
+        "raw_sha256": "523b29b7a4e8129449f221e1f15097cd107a45952f9c17bf02c765194fa4ec45",
+        "submit_ns": 1400812000,
+        "total_duration_ns": 8573498061,
+        "workload_hook_rows": [
+          {
+            "calls": 117,
+            "family": "grant",
+            "full_session_hook_cpu_ns": 574350079,
+            "login": "parity_subject",
+            "query": "8762970956571263497",
+            "sql_sha256": "42c4a2b960d50b2c48e646ab46382aec1b68f26d92cf0786d44848b9f8047438"
+          },
+          {
+            "calls": 1024,
+            "family": "settle",
+            "full_session_hook_cpu_ns": 340168794,
+            "login": "parity_subject",
+            "query": "-7725573251209787463",
+            "sql_sha256": "393997a338604a24f102a97e4664c3b4c405cab3b1e1878388e345fb172f6939"
+          },
+          {
+            "calls": 8,
+            "family": "enqueue",
+            "full_session_hook_cpu_ns": 104733580,
+            "login": "parity_producer",
+            "query": "8628430080062740121",
+            "sql_sha256": "fd4805b6732db263a902751e9bdccf88691001456309709390c6ebd447e1f52b"
+          },
+          {
+            "calls": 1024,
+            "family": "application-write",
+            "full_session_hook_cpu_ns": 52300810,
+            "login": "compiled_caller",
+            "query": "4331543937336954591",
+            "sql_sha256": "591a8ea4117e12b57355306ba8f44a9120f72eac9951b5217e783b8a111de537"
+          },
+          {
+            "calls": 1024,
+            "family": "application-write",
+            "full_session_hook_cpu_ns": 44581190,
+            "login": "compiled_caller",
+            "query": "-6310544917033927081",
+            "sql_sha256": "b3557f1f5eb2316fe319e38ca390022182c35b97bcba8ac8296a8e4835198d5b"
+          }
+        ]
+      },
+      "river-off-a": {
+        "cluster_id": "7711931966442250880",
+        "drain_ns": 952760000,
+        "host_busy_ns": 4820000000,
+        "host_lower_ns": 4760000000,
+        "host_minus_sampled_postgres_ns": 3214390000,
+        "host_upper_ns": 4920000000,
+        "interval": [
+          125855708297371,
+          125863029110022
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {},
+          "hook_cpu_ns": 0,
+          "other_reaped_cpu_ns": 195806837,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 1605610000,
+          "postmaster": 2863755,
+          "postmaster_cpu_ns": 71214000,
+          "session_cpu_ns": 1338589163,
+          "session_residual_ns": 1338589163,
+          "sessions": 76
+        },
+        "raw_sha256": "90dd69e1464f577b9ffe8b506669dd4df6d80617e0d506a2750c358735a38f84",
+        "submit_ns": 1024405000,
+        "total_duration_ns": 7320812651
+      },
+      "river-off-b": {
+        "cluster_id": "7711931816683499115",
+        "drain_ns": 946744000,
+        "host_busy_ns": 3650000000,
+        "host_lower_ns": 3590000000,
+        "host_minus_sampled_postgres_ns": 2029643000,
+        "host_upper_ns": 3750000000,
+        "interval": [
+          125820847637299,
+          125827001147926
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {},
+          "hook_cpu_ns": 0,
+          "other_reaped_cpu_ns": 188303462,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 1620357000,
+          "postmaster": 2862710,
+          "postmaster_cpu_ns": 73276000,
+          "session_cpu_ns": 1358777538,
+          "session_residual_ns": 1358777538,
+          "sessions": 77
+        },
+        "raw_sha256": "7dfbbd5749d628a7e1aeee9d5c5943fe8fd5ed5f5c86492e2f9c9abad2cd0720",
+        "submit_ns": 1020421000,
+        "total_duration_ns": 6153510627
+      },
+      "river-on": {
+        "cluster_id": "7711931888984490097",
+        "drain_ns": 998344000,
+        "host_busy_ns": 4290000000,
+        "host_lower_ns": 4230000000,
+        "host_minus_sampled_postgres_ns": 2615413000,
+        "host_upper_ns": 4390000000,
+        "interval": [
+          125837679689624,
+          125844505453107
+        ],
+        "phase": "measured",
+        "postgres": {
+          "families": {
+            "application-write": 124775427,
+            "enqueue": 23326742,
+            "grant": 70282090,
+            "observer": 32472883,
+            "other": 35535628,
+            "settle": 52721126,
+            "transaction": 203590,
+            "unmapped": 81763330
+          },
+          "hook_cpu_ns": 421080816,
+          "other_reaped_cpu_ns": 197596034,
+          "parallel_seen": false,
+          "postgres_cpu_sample_ns": 1674587000,
+          "postmaster": 2863228,
+          "postmaster_cpu_ns": 72171000,
+          "session_cpu_ns": 1404819966,
+          "session_residual_ns": 983739150,
+          "sessions": 77
+        },
+        "raw_sha256": "e101ee2c25190db140ad6e1c781da93c591ec6da5f1508b777c26490c41affd4",
+        "submit_ns": 1075168000,
+        "total_duration_ns": 6825763483,
+        "workload_hook_rows": [
+          {
+            "calls": 105,
+            "family": "grant",
+            "full_session_hook_cpu_ns": 70282090,
+            "login": "parity_subject",
+            "query": "-4887853837538731801",
+            "sql_sha256": "2016348e81770eb71adeeb71db938c6b1fed0fbacc725f28b40d4803502b078c"
+          },
+          {
+            "calls": 14,
+            "family": "settle",
+            "full_session_hook_cpu_ns": 52721126,
+            "login": "parity_subject",
+            "query": "2580955410167747472",
+            "sql_sha256": "8f30d64110df2102a0bf4c6a306fa35b784e59eaa4fecf5da2a50d1ddfe36d53"
+          },
+          {
+            "calls": 8,
+            "family": "enqueue",
+            "full_session_hook_cpu_ns": 23326742,
+            "login": "parity_subject",
+            "query": "-2570171143776069797",
+            "sql_sha256": "0ebf44e771ad8f374e8fd72d8e3ccd7c3ba324cabd4efa1b824761a581a6b25b"
+          },
+          {
+            "calls": 1024,
+            "family": "application-write",
+            "full_session_hook_cpu_ns": 63186491,
+            "login": "parity_subject",
+            "query": "-1949381558818313412",
+            "sql_sha256": "092edd07605e0f99eeaeaf9d0c1644d8fbe373526aae9412c54a8fa461f7d1bb"
+          },
+          {
+            "calls": 1024,
+            "family": "application-write",
+            "full_session_hook_cpu_ns": 61588936,
+            "login": "parity_subject",
+            "query": "-7076469445544250907",
+            "sql_sha256": "77f0ea2bc9f8b73e86ad92a3d6e33e7ab19d369687c01a63f89ac6f1eb2be614"
+          }
+        ]
+      }
+    }
+  },
+  "mesh_minus_river_hook_ns": {},
+  "parallel_worker_seen": false,
+  "provenance": {
+    "original_failures": {
+      "01": "expected workload statements missing: {'unmapped': 3761}",
+      "02": "expected workload statements missing: {'unmapped': 2309}"
+    },
+    "original_release": {
+      "exit_status": 1,
+      "id": "2026-11-25-dense-statement-cpu-timing",
+      "released_at": "2026-11-25T02:35:03.312948+00:00",
+      "request_sha256": "65ce68720e702d8992063197528df530f55f275b0c5bfa03ded684d8bbc48f52",
+      "started_at": "2026-11-25T02:31:24.643315+00:00"
+    },
+    "original_release_sha256": "ac8b3ce60584e55248c502981bc298da0d8544b63796e714f6ade757e946f9a5",
+    "original_setup_sha256": "ad37c64a4f093d6f78fe18d2bec48c7a8a13c55b4859f942ecd3ffa3dd54adc1",
+    "request_sha256": "65ce68720e702d8992063197528df530f55f275b0c5bfa03ded684d8bbc48f52",
+    "timing_log_sha256": "369ea584e354d24e62d85c3ce7695654a561f6c86b0dd6b3ea38cf3846166612"
+  },
+  "screens": {
+    "1": {
+      "mesh": {
+        "drain_ns": {
+          "duplicate_spread": 493961000,
+          "off_mid": 1445149500.0,
+          "on_minus_off_mid": -177415500.0,
+          "passes": false
+        },
+        "host_busy_ns": {
+          "duplicate_spread": 340000000,
+          "off_mid": 7300000000.0,
+          "on_minus_off_mid": -250000000.0,
+          "passes": true
+        },
+        "submit_ns": {
+          "duplicate_spread": 495533000,
+          "off_mid": 1607405500.0,
+          "on_minus_off_mid": -143086500.0,
+          "passes": false
+        },
+        "total_duration_ns": {
+          "duplicate_spread": 141626785,
+          "off_mid": 8872472727.5,
+          "on_minus_off_mid": -198244022.5,
+          "passes": true
+        }
+      },
+      "river": {
+        "drain_ns": {
+          "duplicate_spread": 8882000,
+          "off_mid": 949822000.0,
+          "on_minus_off_mid": -13416000.0,
+          "passes": true
+        },
+        "host_busy_ns": {
+          "duplicate_spread": 80000000,
+          "off_mid": 3750000000.0,
+          "on_minus_off_mid": 530000000.0,
+          "passes": false
+        },
+        "submit_ns": {
+          "duplicate_spread": 7674000,
+          "off_mid": 1022601000.0,
+          "on_minus_off_mid": -496000.0,
+          "passes": true
+        },
+        "total_duration_ns": {
+          "duplicate_spread": 61664912,
+          "off_mid": 6327962217.0,
+          "on_minus_off_mid": 413874500.0,
+          "passes": false
+        }
+      }
+    },
+    "2": {
+      "mesh": {
+        "drain_ns": {
+          "duplicate_spread": 589450000,
+          "off_mid": 1521830000.0,
+          "on_minus_off_mid": -293033000.0,
+          "passes": false
+        },
+        "host_busy_ns": {
+          "duplicate_spread": 720000000,
+          "off_mid": 7030000000.0,
+          "on_minus_off_mid": -80000000.0,
+          "passes": false
+        },
+        "submit_ns": {
+          "duplicate_spread": 569355000,
+          "off_mid": 1704769500.0,
+          "on_minus_off_mid": -303957500.0,
+          "passes": false
+        },
+        "total_duration_ns": {
+          "duplicate_spread": 972537393,
+          "off_mid": 8860215606.5,
+          "on_minus_off_mid": -286717545.5,
+          "passes": false
+        }
+      },
+      "river": {
+        "drain_ns": {
+          "duplicate_spread": 6016000,
+          "off_mid": 949752000.0,
+          "on_minus_off_mid": 48592000.0,
+          "passes": false
+        },
+        "host_busy_ns": {
+          "duplicate_spread": 1170000000,
+          "off_mid": 4235000000.0,
+          "on_minus_off_mid": 55000000.0,
+          "passes": false
+        },
+        "submit_ns": {
+          "duplicate_spread": 3984000,
+          "off_mid": 1022413000.0,
+          "on_minus_off_mid": 52755000.0,
+          "passes": false
+        },
+        "total_duration_ns": {
+          "duplicate_spread": 1167302024,
+          "off_mid": 6737161639.0,
+          "on_minus_off_mid": 88601844.0,
+          "passes": false
+        }
+      }
+    }
+  },
+  "statement_only_changes": {
+    "pure_wait_overlap": {
+      "excludes_smallest_gap": true,
+      "reduction_ns": 0
+    }
+  },
+  "warmup_raw_sha256": [
+    "5effca7d09ea4349b9d21afe7b4706fdc6ac221a6494ab9fd5202101a0c64746",
+    "1db49fdde09f0be89e03e399247c1af2f5d1f2912397f8f332c15a8847304c4e",
+    "8559d6ead6a22ee321c0d38a35027098d70c48f94e1ee9f075dd62ebd83f073f",
+    "f50d01e641a29fbb978e39a3f45b32cdd56f0dc56b3bd1e0c6206625f4403957",
+    "92fed54b4b6c134f24dbcb9666add0b147a838da1272eb86b32cc50feb6eb503",
+    "d8f0cc4cdf4e4f87aeeae0869c9fed2a352859b2a84efda0db2573be0603e423",
+    "131938648d7b3034adeb5f86c812877eb87cad50f3da1b9c48a433d13fb65ec7",
+    "532841d53d2a5b374a789ad78e22b98065344cb4a8be0424ae0c354461bde5be",
+    "d093431c99094756b38287f10f40b0b77a77d9e8423526192e7cec79ba74775b",
+    "278f87ec7eeb4dac17f6b6d0f92b6501fec42d6f6c65270af4afbe8b7d62fdfb",
+    "9dc02884edddf42ce44fb70d071900be68317a9f97c97147149a7e0d79c21ba2",
+    "0335537f24b8647bfd75704b87aba4cfb58cbfdba1cf4fcf6b4f22d19830c831"
+  ]
+}
