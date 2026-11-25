@@ -1,0 +1,54 @@
+{
+  "1": {
+    "pglz": {
+      "raw_sha256": "4424578f0b1394d2a47a9c17c3314e5e5c5ff42edb4267ceccd6489d56ec4474",
+      "cursor_calls": 125,
+      "cursor_rows": 532,
+      "contention_hints": 20,
+      "max_productive_calls": 105,
+      "minimum_time_between_locked_row_stamps_us": 103055,
+      "minimum_between_locked_stamps_in_middle_us": 68270,
+      "minimum_in_middle_with_eight_peer_slots_outside_stamps_us": 0,
+      "maximum_in_middle_with_eight_peer_slots_outside_stamps_us": 48840,
+      "summed_cursor_executor_ms": 321.682092
+    },
+    "lz4": {
+      "raw_sha256": "b23de0342abcec5f1c1cc9eee3db2587296272968c8a9926727731000c22cc1a",
+      "cursor_calls": 123,
+      "cursor_rows": 535,
+      "contention_hints": 23,
+      "max_productive_calls": 100,
+      "minimum_time_between_locked_row_stamps_us": 102068,
+      "minimum_between_locked_stamps_in_middle_us": 71058,
+      "minimum_in_middle_with_eight_peer_slots_outside_stamps_us": 22,
+      "maximum_in_middle_with_eight_peer_slots_outside_stamps_us": 104861,
+      "summed_cursor_executor_ms": 334.7017399999997
+    }
+  },
+  "2": {
+    "pglz": {
+      "raw_sha256": "510e7d8b0cd7b9257030493d685aa58bc0c1da7264f7ad45fdabbcf34d730ec7",
+      "cursor_calls": 127,
+      "cursor_rows": 531,
+      "contention_hints": 19,
+      "max_productive_calls": 108,
+      "minimum_time_between_locked_row_stamps_us": 107068,
+      "minimum_between_locked_stamps_in_middle_us": 63060,
+      "minimum_in_middle_with_eight_peer_slots_outside_stamps_us": 0,
+      "maximum_in_middle_with_eight_peer_slots_outside_stamps_us": 26162,
+      "summed_cursor_executor_ms": 339.02258100000006
+    },
+    "lz4": {
+      "raw_sha256": "2f1e53893432d5b0a2160cc6eced3267fcdf2c904cfe61c66e10a374ddc88122",
+      "cursor_calls": 128,
+      "cursor_rows": 533,
+      "contention_hints": 21,
+      "max_productive_calls": 107,
+      "minimum_time_between_locked_row_stamps_us": 104060,
+      "minimum_between_locked_stamps_in_middle_us": 64051,
+      "minimum_in_middle_with_eight_peer_slots_outside_stamps_us": 19,
+      "maximum_in_middle_with_eight_peer_slots_outside_stamps_us": 151300,
+      "summed_cursor_executor_ms": 340.57676799999996
+    }
+  }
+}
