@@ -24,3 +24,13 @@ From this directory, replay the native counters offline and run the untimed geom
 python3 -B native_claim_wal.py | cmp - native-claims.json
 python3 -B inspect_layout.py /opt/homebrew/opt/postgresql@17/bin | cmp - layout.json
 ```
+
+## Full bulk input with the default column storage
+
+The stock PG17.11 writer admitted all 1,024 archived DENSE jobs in eight calls under one outer transaction. Two fresh heaps then received those same rows in position order, using the default column storage and either the default table options or `toast_tuple_target=512`. Page inspection found 1,110 inline argument bytes and 1,285 tuple bytes for every row in both heaps. Each heap occupied 1,400,832 bytes and had zero TOAST chunks. A larger positive control produced five chunks in each heap. Applying the table option to the real jobs table inside a rolled-back transaction also made the stock layout guard return false.
+
+This checks available rows after bulk enqueue. The earlier 16-row witness above covers the subsequent claim and settlement states. Reproduce the full input receipt from this directory with PostgreSQL 17.11 and the checkout's existing `target/` directory.
+
+```sh
+python3 -B bulk_target.py --pg-bin /opt/homebrew/opt/postgresql@17/bin | cmp - bulk-target.json
+```

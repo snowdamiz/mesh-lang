@@ -1,0 +1,26 @@
+{
+  "low": {
+    "dense": {
+      "args_max": 1110,
+      "args_min": 1110,
+      "heap_bytes": 1400832,
+      "rows": 1024,
+      "toast_chunks": 0,
+      "tuple_max": 1285,
+      "tuple_min": 1285
+    },
+    "positive_control_chunks": 5
+  },
+  "stock": {
+    "dense": {
+      "args_max": 1110,
+      "args_min": 1110,
+      "heap_bytes": 1400832,
+      "rows": 1024,
+      "toast_chunks": 0,
+      "tuple_max": 1285,
+      "tuple_min": 1285
+    },
+    "positive_control_chunks": 5
+  }
+}
