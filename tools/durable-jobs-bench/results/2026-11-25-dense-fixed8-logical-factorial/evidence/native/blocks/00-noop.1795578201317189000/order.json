@@ -1,0 +1,11 @@
+{
+  "group": 0,
+  "order": [
+    "smoke-stock",
+    "smoke-combined"
+  ],
+  "phases": [
+    "diagnostic"
+  ],
+  "profile": "noop"
+}
