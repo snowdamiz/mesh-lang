@@ -1,0 +1,153 @@
+{
+  "fixed8_groups": {
+    "1": {
+      "cohort_counts": {
+        "2": 5,
+        "4": 9,
+        "5": 24,
+        "6": 43,
+        "7": 24,
+        "8": 54
+      },
+      "grouped_calls": 159,
+      "inclusive_sql_ms": 289.5180130000001,
+      "raw_sha256": "23b68390b78dd37080f6b8290aa4a1d0063dbed2664670e71651664c7c77f19a",
+      "river_raw_sha256": "92cf7a7058e0cfa3deee1069beef14e99b8c11a13b06d755713d614b1853ad5b",
+      "scalar_calls": 0,
+      "warm_river_drain_lead_us": 122242
+    },
+    "2": {
+      "cohort_counts": {
+        "1": 1,
+        "2": 2,
+        "3": 13,
+        "4": 17,
+        "5": 19,
+        "6": 33,
+        "7": 29,
+        "8": 52
+      },
+      "grouped_calls": 165,
+      "inclusive_sql_ms": 309.856784,
+      "raw_sha256": "46909cbd230f43ebef4068696e78cd4967aeeb41e076eb99c3aad3b1054c265c",
+      "river_raw_sha256": "ec51c1bdab4767b970a3e9acfe078a169050871bf3ae0780c0cc02eca267b045",
+      "scalar_calls": 1,
+      "warm_river_drain_lead_us": 168080
+    },
+    "3": {
+      "cohort_counts": {
+        "1": 1,
+        "2": 8,
+        "3": 1,
+        "4": 13,
+        "5": 23,
+        "6": 31,
+        "7": 29,
+        "8": 56
+      },
+      "grouped_calls": 161,
+      "inclusive_sql_ms": 267.5258960000001,
+      "raw_sha256": "c8aba3e1d13290a172070f460312a5a8f67e2911f03f0c7ec57c962ade9accb2",
+      "river_raw_sha256": "7564529c9e98831c63e4ce6aa1b6cb2b08b31eaca58ca7add6953d86bb74da9a",
+      "scalar_calls": 1,
+      "warm_river_drain_lead_us": 149712
+    },
+    "4": {
+      "cohort_counts": {
+        "1": 1,
+        "2": 3,
+        "3": 8,
+        "4": 10,
+        "5": 38,
+        "6": 32,
+        "7": 29,
+        "8": 46
+      },
+      "grouped_calls": 166,
+      "inclusive_sql_ms": 297.287465,
+      "raw_sha256": "bb2c7612819e6e1c6f30b7b113d380f6a50c06b22a3b5da7828ae2a2f0884443",
+      "river_raw_sha256": "28fffbb6d9169e163d731792bb7d11ed9f2262d3b3a62563ec706016775fc30a",
+      "scalar_calls": 1,
+      "warm_river_drain_lead_us": 194746
+    },
+    "5": {
+      "cohort_counts": {
+        "1": 7,
+        "2": 24,
+        "3": 43,
+        "4": 56,
+        "5": 38,
+        "6": 37,
+        "7": 20,
+        "8": 8
+      },
+      "grouped_calls": 226,
+      "inclusive_sql_ms": 326.63277700000003,
+      "raw_sha256": "6eca28ea2cc3561e88422c044c75a1a68cb9b6675ad56c1e695fe0f5e8e8cd30",
+      "river_raw_sha256": "cbd33ccf1d703d60ea169dfb5c59c036112cbb936b2dbf9d0097f263ca743926",
+      "scalar_calls": 7,
+      "warm_river_drain_lead_us": 635662
+    },
+    "6": {
+      "cohort_counts": {
+        "3": 8,
+        "4": 11,
+        "5": 20,
+        "6": 39,
+        "7": 34,
+        "8": 48
+      },
+      "grouped_calls": 160,
+      "inclusive_sql_ms": 272.1774310000001,
+      "raw_sha256": "6abe4b3431e0d69da91ad8fbea840fc363e891c1991b3c50397f8ff01e9c716f",
+      "river_raw_sha256": "2f26656611f97a78d09f7feda63cc49c8d48a37556fb50949bb4a7946fc875c3",
+      "scalar_calls": 0,
+      "warm_river_drain_lead_us": 102349
+    }
+  },
+  "sampled_plans": {
+    "plan-key": {
+      "raw_sha256": "4ed0038921df73f613f738f7a99b1ec71ab9dbb8ca3444873d6bcc611f7137f4",
+      "session_pids": [
+        2912375,
+        2912403
+      ],
+      "totals": {
+        "held_scan_rows": 1279,
+        "held_scan_shared_hits": 1083,
+        "sample_elapsed_us": 20857,
+        "settled_rows": 86,
+        "update_lookup_rows": 86,
+        "update_lookup_shared_hits": 313
+      },
+      "width_counts": {
+        "2": 18,
+        "3": 6,
+        "4": 2,
+        "5": 2,
+        "7": 2
+      }
+    },
+    "plan-stock": {
+      "raw_sha256": "7ca9cd1f0d78e1f8b70d648f75f822ce01cf038fbb46f5f07e85e0a1e76a5473",
+      "session_pids": [
+        2911981,
+        2912009
+      ],
+      "totals": {
+        "held_scan_rows": 980,
+        "held_scan_shared_hits": 531,
+        "sample_elapsed_us": 23267,
+        "settled_rows": 81,
+        "update_lookup_rows": 81,
+        "update_lookup_shared_hits": 276
+      },
+      "width_counts": {
+        "2": 21,
+        "3": 7,
+        "4": 2,
+        "5": 2
+      }
+    }
+  }
+}
