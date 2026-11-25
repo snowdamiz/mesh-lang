@@ -1,0 +1,53 @@
+Darwin Andreys-MBP.lan 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:06:40 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6050 arm64
+uid=501(andreyyurlov) gid=20(staff) groups=20(staff),12(everyone),61(localaccounts),79(_appserverusr),80(admin),81(_appserveradm),701(com.apple.sharepoint.group.1),33(_appstore),98(_lpadmin),100(_lpoperator),204(_developer),250(_analyticsusers),395(com.apple.access_ftp),398(com.apple.access_screensharing),399(com.apple.access_ssh),400(com.apple.access_remote_ae)
+Apple clang version 21.0.0 (clang-2100.4.1.1)
+Target: arm64-apple-darwin27.0.0
+Thread model: posix
+InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin
+arm64-apple-darwin27.0.0
+GNU Make 3.81
+Copyright (C) 2006  Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.
+There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.
+
+This program built for i386-apple-darwin11.3.0
+@(#)PROGRAM:ld PROJECT:ld-27106.1
+BUILD 19:06:34 Oct 19 2026
+configured to support archs: armv6 armv7 armv7s arm64 arm64e arm64_32 i386 x86_64 x86_64h armv6m armv7k armv7m armv7em armv8m.main armv8.1m.main
+LTO support using: LLVM version 21.0.0 (static support for 30, runtime is 30)
+TAPI support using: Apple TAPI version 21.0.0 (tapi-2100.3.8.1)
+bison (GNU Bison) 2.3
+Written by Robert Corbett and Richard Stallman.
+
+Copyright (C) 2006 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+flex 2.6.4
+
+This is perl 5, version 34, subversion 1 (v5.34.1) built for darwin-thread-multi-2level
+(with 2 registered patches, see perl -V for more detail)
+
+Copyright 1987-2022, Larry Wall
+
+Perl may be copied only under the terms of either the Artistic License or the
+GNU General Public License, which may be found in the Perl 5 source kit.
+
+Complete documentation for Perl, including FAQ lists, should be found on
+this system using "man perl" or "perldoc perl".  If you have access to the
+Internet, point your browser at http://www.perl.org/, the Perl Home Page.
+
+3.0.7
+OpenSSL 4.1.0 23 Oct 2026 (Library: OpenSSL 4.1.0 23 Oct 2026)
+built on: Fri Oct 23 12:16:44 2026 UTC
+platform: darwin64-arm64-cc
+options:  bn(64,64)
+compiler: clang -fPIC -arch arm64 -O3 -Wall -DL_ENDIAN -DOPENSSL_PIC -D_REENTRANT -DNDEBUG
+OPENSSLDIR: "/opt/homebrew/etc/openssl@4"
+MODULESDIR: "/opt/homebrew/Cellar/openssl@4/4.1.0/lib/ossl-modules"
+Seeding source: os-specific
+CPUINFO: OPENSSL_armcap=0x987d
+78.3
+78.3
+3.6.5
+1.2.12

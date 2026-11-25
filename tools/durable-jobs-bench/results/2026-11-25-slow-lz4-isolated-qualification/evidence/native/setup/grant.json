@@ -1,0 +1,7 @@
+{
+  "from_utc": "2026-11-25T17:10:23Z",
+  "id": "2026-11-25-slow-lz4-isolated-qualification",
+  "kind": "SETUP",
+  "packet_sha256": "c977c5940910a7952697338d418c054970291ea1d16d8f9cb3a53050351818a8",
+  "until_utc": "2026-11-25T17:45:23Z"
+}

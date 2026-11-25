@@ -1,0 +1,429 @@
+{
+  "arms": {
+    "isolated-go-lz4": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "lz4": 512
+      },
+      "engine_artifact_sha256": "0fed4b5b274bbd1ea996958841c81c3634722dc6080b6eb58be2aa3ff77b0005",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "8d6d5bc360e60c23196269ce463a81e9d2b7d5c051fb658f2a1abfc8ff942943",
+      "physical_column_type": "jsonb",
+      "postgres_sha256": "85428d62bff0c1a2cd183521dff95f0ce7a620b3e8d9ef74a72bfd26835d811e",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "parity_producer": {
+            "connection_limit": -1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": -1,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "unavailable on Darwin",
+      "storage_receipt_sha256": "3d49022d6ab53ba6d4a4c77b39dc196e8e6113a04ce8afe1af74312766158c59",
+      "stored_column_bytes": 8171728
+    },
+    "isolated-go-pglz": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "uncompressed": 512
+      },
+      "engine_artifact_sha256": "0fed4b5b274bbd1ea996958841c81c3634722dc6080b6eb58be2aa3ff77b0005",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "c1eeb5240636de33cb6c5342bb75e0c03892aed867ff53dbeecad8230b87f051",
+      "physical_column_type": "jsonb",
+      "postgres_sha256": "85428d62bff0c1a2cd183521dff95f0ce7a620b3e8d9ef74a72bfd26835d811e",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "parity_producer": {
+            "connection_limit": -1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": -1,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "unavailable on Darwin",
+      "storage_receipt_sha256": "438c16896b0d9ce3b6975917c409c9d1b239911f0ed893fc513ccbc9431e780a",
+      "stored_column_bytes": 8431616
+    },
+    "isolated-mesh-lz4": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "lz4": 512
+      },
+      "engine_artifact_sha256": "65ae886ca2f48b993a0f1d30a0a46fd9abeaf5b18e33bc1c4748e1c570f24e51",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "1f9539945d52470d39f15c3146ea37aa67a58e2dbb11379a4005c3a5ba5304ee",
+      "physical_column_type": "jsonb",
+      "postgres_sha256": "85428d62bff0c1a2cd183521dff95f0ce7a620b3e8d9ef74a72bfd26835d811e",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "compiled_caller": {
+            "connection_limit": 8,
+            "login": true,
+            "superuser": false
+          },
+          "compiled_definer": {
+            "connection_limit": -1,
+            "login": false,
+            "superuser": false
+          },
+          "parity_producer": {
+            "connection_limit": 1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": 4,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "available",
+      "storage_receipt_sha256": "c629cfcc0db2ec45a21550868d48e14be4a5a5ba46ed3dc8c52d0b88b65f7913",
+      "stored_column_bytes": 8171728
+    },
+    "isolated-mesh-pglz": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "uncompressed": 512
+      },
+      "engine_artifact_sha256": "65ae886ca2f48b993a0f1d30a0a46fd9abeaf5b18e33bc1c4748e1c570f24e51",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "bfedfc671af289aa1955077923aba78b504547dbf58a2635a07443b49cebf6a8",
+      "physical_column_type": "jsonb",
+      "postgres_sha256": "85428d62bff0c1a2cd183521dff95f0ce7a620b3e8d9ef74a72bfd26835d811e",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "compiled_caller": {
+            "connection_limit": 8,
+            "login": true,
+            "superuser": false
+          },
+          "compiled_definer": {
+            "connection_limit": -1,
+            "login": false,
+            "superuser": false
+          },
+          "parity_producer": {
+            "connection_limit": 1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": 4,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "available",
+      "storage_receipt_sha256": "db7361dde8ff2b108aa8de65252205aba1749f6abdf589f3ba39c631972c8b24",
+      "stored_column_bytes": 8431616
+    },
+    "isolated-oban-lz4": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "lz4": 512
+      },
+      "engine_artifact_sha256": "fb2c8f9a96d4813b5f1d712874869a3b6aaa88c67b4b27463601973a82cf6f60",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "83f58d9dae491e356f5a130665b9c4228651865eafc18aaa28b7f412ced8cb5b",
+      "physical_column_type": "jsonb",
+      "postgres_sha256": "85428d62bff0c1a2cd183521dff95f0ce7a620b3e8d9ef74a72bfd26835d811e",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "parity_producer": {
+            "connection_limit": 1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": 66,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "available",
+      "storage_receipt_sha256": "df7aef4248d6ae36e505143bebc6963706ba859cacb45ce0f79b60f2bbf49a44",
+      "stored_column_bytes": 8171728
+    },
+    "isolated-oban-pglz": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "uncompressed": 512
+      },
+      "engine_artifact_sha256": "fb2c8f9a96d4813b5f1d712874869a3b6aaa88c67b4b27463601973a82cf6f60",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "c25ba85ca8b1869055c94bc0e76aff10d6c0b19d13437d13cda777295fa0f3ea",
+      "physical_column_type": "jsonb",
+      "postgres_sha256": "85428d62bff0c1a2cd183521dff95f0ce7a620b3e8d9ef74a72bfd26835d811e",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "parity_producer": {
+            "connection_limit": 1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": 66,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "available",
+      "storage_receipt_sha256": "2813404d483c66b334d9fc69a0c2adf8f1fdd6bc1bd84eb3ad2e9c7a85c3cb2f",
+      "stored_column_bytes": 8431616
+    },
+    "isolated-rust-lz4": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "lz4": 512
+      },
+      "engine_artifact_sha256": "57f2934df9d65ada31157bd637d7e93c8307e468c0e384e7f56e48c91177a3a1",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "6997860c17bfd60c360f939793edc759b6bb86588cede160aff920e9b5e0f64a",
+      "physical_column_type": "bytea",
+      "postgres_sha256": "85428d62bff0c1a2cd183521dff95f0ce7a620b3e8d9ef74a72bfd26835d811e",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "parity_producer": {
+            "connection_limit": 1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": -1,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "available",
+      "storage_receipt_sha256": "a42fafd8f679e6e41db97a991c776218f387672da0307df580884ba9e089db50",
+      "stored_column_bytes": 8168956
+    },
+    "isolated-rust-pglz": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "uncompressed": 512
+      },
+      "engine_artifact_sha256": "57f2934df9d65ada31157bd637d7e93c8307e468c0e384e7f56e48c91177a3a1",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "4098e47de9b6936e797c5ec2c083823b7de1ecdb595af78ea05b055dd9591c83",
+      "physical_column_type": "bytea",
+      "postgres_sha256": "85428d62bff0c1a2cd183521dff95f0ce7a620b3e8d9ef74a72bfd26835d811e",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "parity_producer": {
+            "connection_limit": 1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": -1,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "available",
+      "storage_receipt_sha256": "9677b3df644526e42c83c344faab0ede0db0f619febdc734c45e70cfa6733cab",
+      "stored_column_bytes": 8422400
+    },
+    "stock-go-pglz": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "uncompressed": 512
+      },
+      "engine_artifact_sha256": "0fed4b5b274bbd1ea996958841c81c3634722dc6080b6eb58be2aa3ff77b0005",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "216a84851114187d261e4c4739581ec7325e7559c9519388517225587478d7b3",
+      "physical_column_type": "jsonb",
+      "postgres_sha256": "9d1930da02e11e446b42f9d79cf2e6bce307a6decb6a089591f8726d0f49b6f2",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "parity_producer": {
+            "connection_limit": -1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": -1,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "unavailable on Darwin",
+      "storage_receipt_sha256": "9be13fc32eb0c05df25468e81ec02ff724b7b53e22e495bc72fe096121a4bb06",
+      "stored_column_bytes": 8431616
+    },
+    "stock-mesh-pglz": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "uncompressed": 512
+      },
+      "engine_artifact_sha256": "65ae886ca2f48b993a0f1d30a0a46fd9abeaf5b18e33bc1c4748e1c570f24e51",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "b52a3d3b0c4864b5289c4117ac9865c844903148334c7a9b0948abff82d8af79",
+      "physical_column_type": "jsonb",
+      "postgres_sha256": "9d1930da02e11e446b42f9d79cf2e6bce307a6decb6a089591f8726d0f49b6f2",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "compiled_caller": {
+            "connection_limit": 8,
+            "login": true,
+            "superuser": false
+          },
+          "compiled_definer": {
+            "connection_limit": -1,
+            "login": false,
+            "superuser": false
+          },
+          "parity_producer": {
+            "connection_limit": 1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": 4,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "available",
+      "storage_receipt_sha256": "8f07a01c77a8f90b63c3b0ed733099d0b060494120beb4fd20ccbc5c84a7cf86",
+      "stored_column_bytes": 8431616
+    },
+    "stock-oban-pglz": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "uncompressed": 512
+      },
+      "engine_artifact_sha256": "fb2c8f9a96d4813b5f1d712874869a3b6aaa88c67b4b27463601973a82cf6f60",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "79e06a55622819e9195c35bf5accac0635f52cf77ef66196e710b6f2a31e3cd2",
+      "physical_column_type": "jsonb",
+      "postgres_sha256": "9d1930da02e11e446b42f9d79cf2e6bce307a6decb6a089591f8726d0f49b6f2",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "parity_producer": {
+            "connection_limit": 1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": 66,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "available",
+      "storage_receipt_sha256": "fad18a716fd8e50dbc1e499c4a889936f0222d1da7557c479d118dc8c026f83e",
+      "stored_column_bytes": 8431616
+    },
+    "stock-rust-pglz": {
+      "canonical_jobs": 512,
+      "compression_counts": {
+        "uncompressed": 512
+      },
+      "engine_artifact_sha256": "57f2934df9d65ada31157bd637d7e93c8307e468c0e384e7f56e48c91177a3a1",
+      "independent_application_transactions": 1024,
+      "ledger_sha256": "e5cd285e8897479badb62f8dd892e16e847e631b119c0777a7f9c148b4da10e9",
+      "physical_column_type": "bytea",
+      "postgres_sha256": "9d1930da02e11e446b42f9d79cf2e6bce307a6decb6a089591f8726d0f49b6f2",
+      "role_and_tls_readback": {
+        "codec_overrides": 0,
+        "database_limit": 68,
+        "observer_tls": true,
+        "roles": {
+          "parity_producer": {
+            "connection_limit": 1,
+            "login": true,
+            "superuser": false
+          },
+          "parity_subject": {
+            "connection_limit": -1,
+            "login": true,
+            "superuser": false
+          }
+        }
+      },
+      "runner_rss_sampler": "available",
+      "storage_receipt_sha256": "4ae0f808a92bd28569045a0084b97786394a9e60aab1d19fa9d29d4df61eb54c",
+      "stored_column_bytes": 8422400
+    }
+  },
+  "negative_controls": {
+    "go": {
+      "lz4_payload_digest_corrupted": "go: payload or terminal receipt differs for job_000000",
+      "one_lz4_row_relabeled_as_uncompressed": "go/lz4: expected {'lz4': 512}, observed {None: 1, 'lz4': 511}",
+      "uncompressed_arm_relabeled_as_lz4": "go/lz4: expected {'lz4': 512}, observed {None: 512}"
+    },
+    "mesh": {
+      "lz4_payload_digest_corrupted": "mesh: payload or terminal receipt differs for job_000000",
+      "one_lz4_row_relabeled_as_uncompressed": "mesh/lz4: expected {'lz4': 512}, observed {None: 1, 'lz4': 511}",
+      "uncompressed_arm_relabeled_as_lz4": "mesh/lz4: expected {'lz4': 512}, observed {None: 512}"
+    },
+    "oban": {
+      "lz4_payload_digest_corrupted": "oban: payload or terminal receipt differs for job_000000",
+      "one_lz4_row_relabeled_as_uncompressed": "oban/lz4: expected {'lz4': 512}, observed {None: 1, 'lz4': 511}",
+      "uncompressed_arm_relabeled_as_lz4": "oban/lz4: expected {'lz4': 512}, observed {None: 512}"
+    },
+    "rust": {
+      "lz4_payload_digest_corrupted": "rust: payload or terminal receipt differs for job_000000",
+      "one_lz4_row_relabeled_as_uncompressed": "rust/lz4: expected {'lz4': 512}, observed {None: 1, 'lz4': 511}",
+      "uncompressed_arm_relabeled_as_lz4": "rust/lz4: expected {'lz4': 512}, observed {None: 512}"
+    }
+  },
+  "scope": "Darwin functional only"
+}

@@ -1,0 +1,20 @@
+{
+  "diagnostic_arms_requested": 8,
+  "exit_status": 1,
+  "grant": {
+    "end": "2026-11-25T17:52:17Z",
+    "id": "2026-11-25-slow-lz4-isolated-qualification-recovery-2",
+    "request_sha256": "0a81c2afa50374b9c2cadc334a97bade8fb1b950f2277299dfe2f5bddeb28b39",
+    "start": "2026-11-25T17:17:17Z"
+  },
+  "id": "2026-11-25-slow-lz4-isolated-qualification-recovery-2",
+  "phase": "setup",
+  "raw_sha256": {
+    "build.tar.gz": "a8d723ae6209c37a16f75292e80ee9a203204a05615bf10e14abdbb469fdbd3d"
+  },
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-isolated-qualification/evidence/native/recovery-2/setup",
+  "released_at": "2026-11-25T17:17:24.144526+00:00",
+  "request_sha256": "0a81c2afa50374b9c2cadc334a97bade8fb1b950f2277299dfe2f5bddeb28b39",
+  "stage_sha256": "e051cba4f111bc13830bc8eeefd77c7e72043d4674e94bc2f1972b647fb4fe9d",
+  "started": "2026-11-25T17:17:17.762847+00:00"
+}
