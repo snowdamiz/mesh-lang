@@ -1,0 +1,187 @@
+[
+  {
+    "product": {
+      "elapsed": {
+        "enqueue_us": 511009,
+        "first_64_effects_us": 211483,
+        "last_64_effects_us": 134163,
+        "middle_384_effects_us": 961789,
+        "terminal_tail_us": 6272
+      },
+      "middle_slot_us": {
+        "above_required_hold": 1481649,
+        "claim_stamp_to_entry": 8022444,
+        "effect_to_terminal": 2109376,
+        "entry_to_first": 1496630,
+        "outside_claim_stamp_to_terminal": 8551342,
+        "outside_entry_to_effect": 18683162,
+        "required_hold": 39893055
+      },
+      "raw_sha256": "1bb9b1ebaff4dd32d40eded1b2d8acfe117d4902c5483178cd28f2b79e6b2fec"
+    },
+    "river": {
+      "elapsed": {
+        "enqueue_us": 453206,
+        "first_64_effects_us": 416964,
+        "last_64_effects_us": 104437,
+        "middle_384_effects_us": 701659,
+        "terminal_tail_us": 53541
+      },
+      "middle_slot_us": {
+        "above_required_hold": 776205,
+        "entry_to_first": 210080,
+        "outside_entry_to_effect": 4545255,
+        "required_hold": 39374636
+      },
+      "raw_sha256": "29eaa3c062ceea63deec983bb6bf3e639a4c42b9f384c92ce7b385903127c954"
+    }
+  },
+  {
+    "product": {
+      "elapsed": {
+        "enqueue_us": 530503,
+        "first_64_effects_us": 211187,
+        "last_64_effects_us": 174181,
+        "middle_384_effects_us": 1038683,
+        "terminal_tail_us": 3873
+      },
+      "middle_slot_us": {
+        "above_required_hold": 1250421,
+        "claim_stamp_to_entry": 8546470,
+        "effect_to_terminal": 2198901,
+        "entry_to_first": 1465894,
+        "outside_claim_stamp_to_terminal": 11745227,
+        "outside_entry_to_effect": 22490598,
+        "required_hold": 41268799
+      },
+      "raw_sha256": "36002095f10d79441701c30bb5688aaee611760e0c4478cce26e8c8762bb6044"
+    },
+    "river": {
+      "elapsed": {
+        "enqueue_us": 497426,
+        "first_64_effects_us": 413089,
+        "last_64_effects_us": 115831,
+        "middle_384_effects_us": 738750,
+        "terminal_tail_us": 10125
+      },
+      "middle_slot_us": {
+        "above_required_hold": 973897,
+        "entry_to_first": 298777,
+        "outside_entry_to_effect": 6263435,
+        "required_hold": 39743891
+      },
+      "raw_sha256": "919ff265c2e3d727aef9ed579ce0169632dbf466b7742b1ac5b1b79ed3e4c811"
+    }
+  },
+  {
+    "product": {
+      "elapsed": {
+        "enqueue_us": 545308,
+        "first_64_effects_us": 238892,
+        "last_64_effects_us": 143265,
+        "middle_384_effects_us": 1051046,
+        "terminal_tail_us": 3093
+      },
+      "middle_slot_us": {
+        "above_required_hold": 1252083,
+        "claim_stamp_to_entry": 8090377,
+        "effect_to_terminal": 2571558,
+        "entry_to_first": 1630974,
+        "outside_claim_stamp_to_terminal": 12001334,
+        "outside_entry_to_effect": 22663269,
+        "required_hold": 41720618
+      },
+      "raw_sha256": "67f2eb0fb93566e909d2b314a22a3c67025788a7b52cf68bf0db396b2165e169"
+    },
+    "river": {
+      "elapsed": {
+        "enqueue_us": 491885,
+        "first_64_effects_us": 529816,
+        "last_64_effects_us": 122292,
+        "middle_384_effects_us": 789148,
+        "terminal_tail_us": 60410
+      },
+      "middle_slot_us": {
+        "above_required_hold": 2014730,
+        "entry_to_first": 392723,
+        "outside_entry_to_effect": 8892510,
+        "required_hold": 39205509
+      },
+      "raw_sha256": "74fb102138aec47cb34bb939348312259e64616bf435e873beb9a9eea942f7ba"
+    }
+  },
+  {
+    "product": {
+      "elapsed": {
+        "enqueue_us": 557384,
+        "first_64_effects_us": 232945,
+        "last_64_effects_us": 113463,
+        "middle_384_effects_us": 1047366,
+        "terminal_tail_us": 1342
+      },
+      "middle_slot_us": {
+        "above_required_hold": 1413041,
+        "claim_stamp_to_entry": 7985352,
+        "effect_to_terminal": 2525592,
+        "entry_to_first": 1635631,
+        "outside_claim_stamp_to_terminal": 11219456,
+        "outside_entry_to_effect": 21730400,
+        "required_hold": 42252352
+      },
+      "raw_sha256": "8b8865186215595d85ff3ba9fc258d60d4696943fd0d41f27b54cb871f1001cc"
+    },
+    "river": {
+      "elapsed": {
+        "enqueue_us": 491185,
+        "first_64_effects_us": 438945,
+        "last_64_effects_us": 115635,
+        "middle_384_effects_us": 772313,
+        "terminal_tail_us": 206828
+      },
+      "middle_slot_us": {
+        "above_required_hold": 1115118,
+        "entry_to_first": 300710,
+        "outside_entry_to_effect": 7166812,
+        "required_hold": 40845392
+      },
+      "raw_sha256": "6aa11fd61af2925e1d03397d2cb4e58a23a769ee43191077d003168e01853f8f"
+    }
+  },
+  {
+    "product": {
+      "elapsed": {
+        "enqueue_us": 509916,
+        "first_64_effects_us": 227649,
+        "last_64_effects_us": 126661,
+        "middle_384_effects_us": 1009641,
+        "terminal_tail_us": 4036
+      },
+      "middle_slot_us": {
+        "above_required_hold": 1563524,
+        "claim_stamp_to_entry": 9066666,
+        "effect_to_terminal": 2898452,
+        "entry_to_first": 1827567,
+        "outside_claim_stamp_to_terminal": 9243918,
+        "outside_entry_to_effect": 21209036,
+        "required_hold": 40016897
+      },
+      "raw_sha256": "329f3c01d40924050c31fb561763345dd6521dd86553bc9d0664a07d969a1322"
+    },
+    "river": {
+      "elapsed": {
+        "enqueue_us": 471896,
+        "first_64_effects_us": 420019,
+        "last_64_effects_us": 113830,
+        "middle_384_effects_us": 719512,
+        "terminal_tail_us": 56077
+      },
+      "middle_slot_us": {
+        "above_required_hold": 995845,
+        "entry_to_first": 252837,
+        "outside_entry_to_effect": 5180182,
+        "required_hold": 39619904
+      },
+      "raw_sha256": "187b02393e1a37a0023fa9ec8b330b952936babb04b777e9f52ab89d5273c52a"
+    }
+  }
+]
