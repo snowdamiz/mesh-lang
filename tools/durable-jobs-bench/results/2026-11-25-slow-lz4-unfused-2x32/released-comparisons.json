@@ -1,0 +1,844 @@
+{
+  "clock_order": [
+    "submit_to_terminal",
+    "commit_to_terminal"
+  ],
+  "equal_cap71_phase_summary_ms_river_minus_mesh": [
+    {
+      "max": 263.158,
+      "median": 232.219,
+      "min": 211.21200000000002
+    },
+    {
+      "max": -125.81700000000012,
+      "median": -187.31600000000003,
+      "min": -283.08399999999995
+    },
+    {
+      "max": 241.638,
+      "median": 151.0475,
+      "min": 15.927
+    }
+  ],
+  "equal_cap71_stock": {
+    "01-slow.1795494359734596000": {
+      "mesh_minus_peer_ms": {
+        "apalis": [
+          548.4190000000001,
+          277.86900000000014
+        ],
+        "oban": [
+          -126.77799999999979,
+          -178.78999999999996
+        ],
+        "river": [
+          -67.00199999999995,
+          -188.0469999999998
+        ]
+      },
+      "mesh_river_phase_inputs": {
+        "go": {
+          "idle_tls_clients": [
+            7,
+            7
+          ],
+          "in_load_peak": 69,
+          "phases_ms": [
+            368.983,
+            965.014,
+            214.459
+          ],
+          "raw_sha256": "5c3208bf944a9a31ad38428e237e99a84caff2ef502ee541594379bcbdfc2084"
+        },
+        "mesh": {
+          "phases_ms": [
+            105.825,
+            1248.098,
+            6.486
+          ],
+          "raw_sha256": "1480887213a538af3d033e90fdfad3aee9af3fab64f7d507c7fdfcddfe8e391e"
+        }
+      },
+      "river_minus_mesh_phases_ms": [
+        263.158,
+        -283.08399999999995,
+        207.973
+      ]
+    },
+    "02-slow.1795494444431525000": {
+      "mesh_minus_peer_ms": {
+        "apalis": [
+          423.0820000000001,
+          217.47599999999989
+        ],
+        "oban": [
+          -43.809999999999945,
+          -50.899000000000115
+        ],
+        "river": [
+          107.33000000000015,
+          19.251999999999953
+        ]
+      },
+      "mesh_river_phase_inputs": {
+        "go": {
+          "idle_tls_clients": [
+            7,
+            7
+          ],
+          "in_load_peak": 69,
+          "phases_ms": [
+            308.761,
+            977.732,
+            21.125
+          ],
+          "raw_sha256": "466148aa7d8a15a64f44773d20d1a3733a405396a2eec0c193209f82ac7440cb"
+        },
+        "mesh": {
+          "phases_ms": [
+            70.516,
+            1251.156,
+            5.198
+          ],
+          "raw_sha256": "22e2ea00980f70591a5c904535212a312ee68b2a3c04d070ef8c3d913e954460"
+        }
+      },
+      "river_minus_mesh_phases_ms": [
+        238.245,
+        -273.424,
+        15.927
+      ]
+    },
+    "03-slow.1795494565755267000": {
+      "mesh_minus_peer_ms": {
+        "apalis": [
+          324.01300000000015,
+          84.22199999999998
+        ],
+        "oban": [
+          -127.82999999999993,
+          -207.38800000000015
+        ],
+        "river": [
+          -137.4509999999998,
+          -209.18000000000006
+        ]
+      },
+      "mesh_river_phase_inputs": {
+        "go": {
+          "idle_tls_clients": [
+            7,
+            7
+          ],
+          "in_load_peak": 69,
+          "phases_ms": [
+            337.892,
+            1052.909,
+            123.496
+          ],
+          "raw_sha256": "3424b870095c4e1d028666bc6db8d9325bbef8bf80dd87fed3c4581bd73c747d"
+        },
+        "mesh": {
+          "phases_ms": [
+            106.117,
+            1196.505,
+            2.495
+          ],
+          "raw_sha256": "07cb08c2284612db17e7d1e2d7d13755b4f857cda53bb52207fdbb2c43e8ce7b"
+        }
+      },
+      "river_minus_mesh_phases_ms": [
+        231.77499999999998,
+        -143.596,
+        121.00099999999999
+      ]
+    },
+    "04-slow.1795494653146244000": {
+      "mesh_minus_peer_ms": {
+        "apalis": [
+          351.63300000000004,
+          174.0530000000001
+        ],
+        "oban": [
+          -60.177999999999884,
+          -92.28800000000001
+        ],
+        "river": [
+          -256.39300000000003,
+          -293.58399999999983
+        ]
+      },
+      "mesh_river_phase_inputs": {
+        "go": {
+          "idle_tls_clients": [
+            7,
+            7
+          ],
+          "in_load_peak": 68,
+          "phases_ms": [
+            294.949,
+            993.354,
+            243.219
+          ],
+          "raw_sha256": "8caf55410382b70c30e852235b20806c29be1a45018c5442b0d625788283ef5f"
+        },
+        "mesh": {
+          "phases_ms": [
+            83.737,
+            1152.62,
+            1.581
+          ],
+          "raw_sha256": "7e872b16dd565f1cfab786fb65b34637423308166afc646fe0c98bb8e5a24115"
+        }
+      },
+      "river_minus_mesh_phases_ms": [
+        211.21200000000002,
+        -159.26599999999985,
+        241.638
+      ]
+    },
+    "05-slow.1795494765432294000": {
+      "mesh_minus_peer_ms": {
+        "apalis": [
+          337.8180000000002,
+          156.68700000000013
+        ],
+        "oban": [
+          -121.85499999999979,
+          -130.66999999999985
+        ],
+        "river": [
+          -221.0139999999999,
+          -247.9559999999999
+        ]
+      },
+      "mesh_river_phase_inputs": {
+        "go": {
+          "idle_tls_clients": [
+            7,
+            7
+          ],
+          "in_load_peak": 69,
+          "phases_ms": [
+            323.627,
+            1011.984,
+            182.199
+          ],
+          "raw_sha256": "5802b33b521334eb4f33ab45dcd0e4087c96f5b28c9471e04cbc7fff137537ae"
+        },
+        "mesh": {
+          "phases_ms": [
+            90.964,
+            1177.785,
+            1.105
+          ],
+          "raw_sha256": "5c99216bec8e998539738d2761c65c25095b4315872b1b4cef6a12c025d5eab0"
+        }
+      },
+      "river_minus_mesh_phases_ms": [
+        232.663,
+        -165.80100000000004,
+        181.09400000000002
+      ]
+    },
+    "06-slow.1795494852215404000": {
+      "mesh_minus_peer_ms": {
+        "apalis": [
+          281.855,
+          115.82900000000018
+        ],
+        "oban": [
+          -119.65100000000007,
+          -160.03199999999993
+        ],
+        "river": [
+          -267.83500000000004,
+          -337.3319999999999
+        ]
+      },
+      "mesh_river_phase_inputs": {
+        "go": {
+          "idle_tls_clients": [
+            7,
+            7
+          ],
+          "in_load_peak": 69,
+          "phases_ms": [
+            298.918,
+            1022.948,
+            240.289
+          ],
+          "raw_sha256": "b1e8d628e2c261869e45669de1cf4bda235a5b846d2952eca9382524d58c9d79"
+        },
+        "mesh": {
+          "phases_ms": [
+            67.449,
+            1148.765,
+            8.609
+          ],
+          "raw_sha256": "d21776065c6e40c09a04cef3c803cbe96e59605a289dbdce0ade4c878eed550b"
+        }
+      },
+      "river_minus_mesh_phases_ms": [
+        231.469,
+        -125.81700000000012,
+        231.67999999999998
+      ]
+    },
+    "07-slow.1795494937610203000": {
+      "mesh_minus_peer_ms": {
+        "apalis": [
+          337.96900000000005,
+          90.13400000000001
+        ],
+        "oban": [
+          -245.25099999999975,
+          -297.49599999999987
+        ],
+        "river": [
+          42.15000000000009,
+          -50.238999999999805
+        ]
+      },
+      "mesh_river_phase_inputs": {
+        "go": {
+          "idle_tls_clients": [
+            7,
+            7
+          ],
+          "in_load_peak": 69,
+          "phases_ms": [
+            324.889,
+            925.471,
+            39.99
+          ],
+          "raw_sha256": "e1b2d6114514e9307a50d8be9897a72b2fa091cba3cb210ee87762b5e06da007"
+        },
+        "mesh": {
+          "phases_ms": [
+            70.971,
+            1167.142,
+            1.998
+          ],
+          "raw_sha256": "2f4be39b96a9090f2bcc1f0f0a66c17726c232ca493ab9a84106fb2471d708ac"
+        }
+      },
+      "river_minus_mesh_phases_ms": [
+        253.918,
+        -241.67100000000005,
+        37.992000000000004
+      ]
+    },
+    "08-slow.1795495022596496000": {
+      "mesh_minus_peer_ms": {
+        "apalis": [
+          335.202,
+          105.44200000000001
+        ],
+        "oban": [
+          -135.12000000000012,
+          -237.61899999999991
+        ],
+        "river": [
+          -5.326000000000022,
+          -116.54500000000007
+        ]
+      },
+      "mesh_river_phase_inputs": {
+        "go": {
+          "idle_tls_clients": [
+            7,
+            7
+          ],
+          "in_load_peak": 69,
+          "phases_ms": [
+            307.898,
+            901.228,
+            97.736
+          ],
+          "raw_sha256": "d304d2e0636f2796cf4a3b82619610adb44273177de559d3e956ea38168c2f24"
+        },
+        "mesh": {
+          "phases_ms": [
+            78.562,
+            1110.059,
+            1.696
+          ],
+          "raw_sha256": "f81f07835ebe12f387ed03a9be00842e8cb732a85c235d02adfc9ea62043b407"
+        }
+      },
+      "river_minus_mesh_phases_ms": [
+        229.336,
+        -208.83100000000002,
+        96.04
+      ]
+    }
+  },
+  "mixed_cap68_stock_mesh_minus_peer_ms": {
+    "01-slow.1795486035331275000": {
+      "apalis": [
+        440.4280000000001,
+        215.25299999999993
+      ],
+      "oban": [
+        -304.6519999999998,
+        -334.37200000000007
+      ],
+      "river": [
+        -214.97000000000003,
+        -301.529
+      ]
+    },
+    "02-slow.1795486170815500000": {
+      "apalis": [
+        324.028,
+        122.84599999999978
+      ],
+      "oban": [
+        -285.6410000000001,
+        -284.7510000000002
+      ],
+      "river": [
+        -202.03600000000006,
+        -265.1830000000002
+      ]
+    },
+    "03-slow.1795491235398314000": {
+      "apalis": [
+        414.6600000000001,
+        180.26999999999998
+      ],
+      "oban": [
+        -237.7729999999999,
+        -283.5350000000001
+      ],
+      "river": [
+        -117.33300000000008,
+        -214.31899999999996
+      ]
+    },
+    "04-slow.1795491373786577000": {
+      "apalis": [
+        426.9660000000001,
+        164.03199999999993
+      ],
+      "oban": [
+        -351.394,
+        -394.55600000000004
+      ],
+      "river": [
+        -145.192,
+        -241.365
+      ]
+    },
+    "05-slow.1795491509144104000": {
+      "apalis": [
+        849.961,
+        661.316
+      ],
+      "oban": [
+        263.4300000000003,
+        220.64700000000016
+      ],
+      "river": [
+        566.7460000000001,
+        505.3660000000002
+      ]
+    },
+    "06-slow.1795491641590582000": {
+      "apalis": [
+        325.068,
+        137.45299999999997
+      ],
+      "oban": [
+        -322.0830000000001,
+        -340.3209999999999
+      ],
+      "river": [
+        -162.87300000000005,
+        -224.02800000000002
+      ]
+    }
+  },
+  "phase_order": [
+    "commit_to_64th_first",
+    "64th_first_to_last_effect",
+    "last_effect_to_terminal"
+  ],
+  "same_image_one_by_64_codec": {
+    "mesh_minus_peer_ms": {
+      "1": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 152.43100000000004,
+            "submit_to_last_settlement_ms": 347.0459999999998
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -13.478000000000065,
+            "submit_to_last_settlement_ms": 31.832999999999856
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 20.54600000000005,
+            "submit_to_last_settlement_ms": 71.36999999999989
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 258.1089999999999,
+            "submit_to_last_settlement_ms": 401.25699999999983
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -211.02200000000016,
+            "submit_to_last_settlement_ms": -189.64900000000011
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 108.00499999999988,
+            "submit_to_last_settlement_ms": 126.30299999999988
+          }
+        }
+      },
+      "2": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 299.67700000000013,
+            "submit_to_last_settlement_ms": 445.11800000000017
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -117.84299999999985,
+            "submit_to_last_settlement_ms": -90.95100000000002
+          },
+          "river": {
+            "commit_to_last_settlement_ms": -21.70699999999988,
+            "submit_to_last_settlement_ms": -25.579999999999927
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 262.2520000000002,
+            "submit_to_last_settlement_ms": 392.53
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -174.08199999999988,
+            "submit_to_last_settlement_ms": -232.6400000000001
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 81.79300000000012,
+            "submit_to_last_settlement_ms": 96.75
+          }
+        }
+      },
+      "3": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 291.424,
+            "submit_to_last_settlement_ms": 491.674
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -40.75199999999995,
+            "submit_to_last_settlement_ms": -41.975999999999885
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 6.1400000000001,
+            "submit_to_last_settlement_ms": 60.56899999999996
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 501.9549999999999,
+            "submit_to_last_settlement_ms": 788.723
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -50.06600000000003,
+            "submit_to_last_settlement_ms": 88.42799999999988
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 41.1909999999998,
+            "submit_to_last_settlement_ms": 123.22199999999998
+          }
+        }
+      },
+      "4": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 296.49800000000005,
+            "submit_to_last_settlement_ms": 488.72399999999993
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -87.48800000000006,
+            "submit_to_last_settlement_ms": -56.84400000000005
+          },
+          "river": {
+            "commit_to_last_settlement_ms": -60.32999999999993,
+            "submit_to_last_settlement_ms": -12.009999999999991
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 375.2640000000001,
+            "submit_to_last_settlement_ms": 546.365
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -151.07399999999984,
+            "submit_to_last_settlement_ms": -137.72000000000025
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 105.92100000000005,
+            "submit_to_last_settlement_ms": 134.5719999999999
+          }
+        }
+      },
+      "5": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 764.4490000000001,
+            "submit_to_last_settlement_ms": 945.012
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": 280.46299999999997,
+            "submit_to_last_settlement_ms": 312.0909999999999
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 363.79099999999994,
+            "submit_to_last_settlement_ms": 376.3710000000001
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 654.2930000000001,
+            "submit_to_last_settlement_ms": 841.8520000000001
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": 151.66800000000012,
+            "submit_to_last_settlement_ms": 219.5329999999999
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 432.16700000000014,
+            "submit_to_last_settlement_ms": 492.2930000000001
+          }
+        }
+      }
+    },
+    "pglz_minus_lz4_ms": {
+      "1": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": 49.20799999999997,
+          "commit_to_64th_first_application_commit_ms": 12.685999999999993,
+          "commit_to_final_first_application_commit_ms": 61.89400000000012,
+          "commit_to_first_application_commit_ms": 0.5599999999999952,
+          "commit_to_last_settlement_ms": -188.6479999999999,
+          "first_submit_to_commit_ms": 189.78200000000004,
+          "producer_ack_ms": 186.284,
+          "submit_to_last_settlement_ms": 1.1340000000000146
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": -61.83899999999994,
+          "commit_to_64th_first_application_commit_ms": -27.808000000000007,
+          "commit_to_final_first_application_commit_ms": -89.64699999999993,
+          "commit_to_first_application_commit_ms": -11.634999999999998,
+          "commit_to_last_settlement_ms": -82.97000000000003,
+          "first_submit_to_commit_ms": 138.315,
+          "producer_ack_ms": 131.06900000000002,
+          "producer_sql_exec_ms": 153.313716,
+          "submit_to_last_settlement_ms": 55.34500000000003
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": 23.825000000000045,
+          "commit_to_64th_first_application_commit_ms": 84.71200000000002,
+          "commit_to_final_first_application_commit_ms": 108.53700000000003,
+          "commit_to_first_application_commit_ms": 85.54699999999997,
+          "commit_to_last_settlement_ms": 114.57400000000007,
+          "first_submit_to_commit_ms": 162.253,
+          "producer_ack_ms": 167.77499999999998,
+          "submit_to_last_settlement_ms": 276.827
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": 24.097999999999956,
+          "commit_to_64th_first_application_commit_ms": 0.575999999999965,
+          "commit_to_final_first_application_commit_ms": 24.673999999999978,
+          "commit_to_first_application_commit_ms": -11.780999999999999,
+          "commit_to_last_settlement_ms": -170.42899999999986,
+          "first_submit_to_commit_ms": 170.841,
+          "producer_ack_ms": 173.474,
+          "submit_to_last_settlement_ms": 0.41200000000003456
+        }
+      },
+      "2": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": 33.839000000000055,
+          "commit_to_64th_first_application_commit_ms": -27.554000000000002,
+          "commit_to_final_first_application_commit_ms": 6.284999999999968,
+          "commit_to_first_application_commit_ms": -8.418,
+          "commit_to_last_settlement_ms": 1.308999999999969,
+          "first_submit_to_commit_ms": 177.763,
+          "producer_ack_ms": 171.062,
+          "submit_to_last_settlement_ms": 179.07200000000012
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": -31.169999999999845,
+          "commit_to_64th_first_application_commit_ms": 16.596000000000004,
+          "commit_to_final_first_application_commit_ms": -14.57400000000007,
+          "commit_to_first_application_commit_ms": -0.8870000000000005,
+          "commit_to_last_settlement_ms": -36.115999999999985,
+          "first_submit_to_commit_ms": 162.60000000000002,
+          "producer_ack_ms": 153.43899999999996,
+          "producer_sql_exec_ms": 161.58945799999998,
+          "submit_to_last_settlement_ms": 126.48399999999992
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": 25.455000000000155,
+          "commit_to_64th_first_application_commit_ms": -3.6380000000000052,
+          "commit_to_final_first_application_commit_ms": 21.817000000000007,
+          "commit_to_first_application_commit_ms": -9.021000000000015,
+          "commit_to_last_settlement_ms": 20.123000000000047,
+          "first_submit_to_commit_ms": 248.05,
+          "producer_ack_ms": 251.897,
+          "submit_to_last_settlement_ms": 268.173
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": 15.350999999999999,
+          "commit_to_64th_first_application_commit_ms": -21.300999999999988,
+          "commit_to_final_first_application_commit_ms": -5.9500000000000455,
+          "commit_to_first_application_commit_ms": -2.946000000000005,
+          "commit_to_last_settlement_ms": -139.61599999999999,
+          "first_submit_to_commit_ms": 143.76999999999998,
+          "producer_ack_ms": 147.906,
+          "submit_to_last_settlement_ms": 4.153999999999996
+        }
+      },
+      "3": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": -136.8649999999999,
+          "commit_to_64th_first_application_commit_ms": 16.378,
+          "commit_to_final_first_application_commit_ms": -120.48700000000008,
+          "commit_to_first_application_commit_ms": 6.796999999999997,
+          "commit_to_last_settlement_ms": -129.82400000000007,
+          "first_submit_to_commit_ms": 159.282,
+          "producer_ack_ms": 166.122,
+          "submit_to_last_settlement_ms": 29.457999999999856
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": 104.96199999999999,
+          "commit_to_64th_first_application_commit_ms": -13.123999999999995,
+          "commit_to_final_first_application_commit_ms": 91.83799999999997,
+          "commit_to_first_application_commit_ms": -21.5,
+          "commit_to_last_settlement_ms": 80.70699999999988,
+          "first_submit_to_commit_ms": 245.8,
+          "producer_ack_ms": 215.28700000000003,
+          "producer_sql_exec_ms": 232.56205,
+          "submit_to_last_settlement_ms": 326.50699999999983
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": -77.7990000000002,
+          "commit_to_64th_first_application_commit_ms": 168.83200000000002,
+          "commit_to_final_first_application_commit_ms": 91.03300000000013,
+          "commit_to_first_application_commit_ms": 169.35599999999997,
+          "commit_to_last_settlement_ms": 90.02099999999996,
+          "first_submit_to_commit_ms": 106.082,
+          "producer_ack_ms": 90.13900000000001,
+          "submit_to_last_settlement_ms": 196.10300000000007
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": 153.0959999999999,
+          "commit_to_64th_first_application_commit_ms": 32.884000000000015,
+          "commit_to_final_first_application_commit_ms": 185.98000000000002,
+          "commit_to_first_application_commit_ms": 15.796,
+          "commit_to_last_settlement_ms": 45.656000000000176,
+          "first_submit_to_commit_ms": 218.19800000000004,
+          "producer_ack_ms": 217.15999999999997,
+          "submit_to_last_settlement_ms": 263.8539999999998
+        }
+      },
+      "4": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": -62.173,
+          "commit_to_64th_first_application_commit_ms": 1.5700000000000074,
+          "commit_to_final_first_application_commit_ms": -60.603000000000065,
+          "commit_to_first_application_commit_ms": 4.270000000000003,
+          "commit_to_last_settlement_ms": -59.06700000000001,
+          "first_submit_to_commit_ms": 163.32100000000003,
+          "producer_ack_ms": 165.84599999999998,
+          "submit_to_last_settlement_ms": 104.2539999999999
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": -16.826000000000022,
+          "commit_to_64th_first_application_commit_ms": 31.400999999999996,
+          "commit_to_final_first_application_commit_ms": 14.575000000000045,
+          "commit_to_first_application_commit_ms": 29.433,
+          "commit_to_last_settlement_ms": 19.69900000000007,
+          "first_submit_to_commit_ms": 142.19600000000003,
+          "producer_ack_ms": 173.58599999999996,
+          "producer_sql_exec_ms": 150.48127199999996,
+          "submit_to_last_settlement_ms": 161.89499999999998
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": 31.345000000000027,
+          "commit_to_64th_first_application_commit_ms": 51.835999999999984,
+          "commit_to_final_first_application_commit_ms": 83.18100000000004,
+          "commit_to_first_application_commit_ms": 70.29600000000002,
+          "commit_to_last_settlement_ms": 83.28499999999985,
+          "first_submit_to_commit_ms": 159.486,
+          "producer_ack_ms": 149.555,
+          "submit_to_last_settlement_ms": 242.77100000000019
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": 50.05899999999997,
+          "commit_to_64th_first_application_commit_ms": 9.538000000000011,
+          "commit_to_final_first_application_commit_ms": 59.59699999999998,
+          "commit_to_first_application_commit_ms": -39.135000000000005,
+          "commit_to_last_settlement_ms": -146.5519999999999,
+          "first_submit_to_commit_ms": 161.865,
+          "producer_ack_ms": 165.16700000000003,
+          "submit_to_last_settlement_ms": 15.313000000000102
+        }
+      },
+      "5": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": 55.823999999999955,
+          "commit_to_64th_first_application_commit_ms": -11.801000000000002,
+          "commit_to_final_first_application_commit_ms": 44.023000000000025,
+          "commit_to_first_application_commit_ms": -1.2349999999999994,
+          "commit_to_last_settlement_ms": 44.71900000000005,
+          "first_submit_to_commit_ms": 184.323,
+          "producer_ack_ms": 187.97100000000003,
+          "submit_to_last_settlement_ms": 229.04199999999992
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": -51.246000000000095,
+          "commit_to_64th_first_application_commit_ms": 24.539999999999992,
+          "commit_to_final_first_application_commit_ms": -26.705999999999904,
+          "commit_to_first_application_commit_ms": 6.545000000000002,
+          "commit_to_last_settlement_ms": -65.4369999999999,
+          "first_submit_to_commit_ms": 191.31899999999996,
+          "producer_ack_ms": 188.08100000000002,
+          "producer_sql_exec_ms": 176.47514500000003,
+          "submit_to_last_settlement_ms": 125.88200000000006
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": -25.289999999999964,
+          "commit_to_64th_first_application_commit_ms": 96.83900000000003,
+          "commit_to_final_first_application_commit_ms": 71.54899999999998,
+          "commit_to_first_application_commit_ms": 98.90899999999999,
+          "commit_to_last_settlement_ms": 63.35799999999995,
+          "first_submit_to_commit_ms": 155.082,
+          "producer_ack_ms": 153.14099999999996,
+          "submit_to_last_settlement_ms": 218.44000000000005
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": -5.169000000000096,
+          "commit_to_64th_first_application_commit_ms": -3.0,
+          "commit_to_final_first_application_commit_ms": -8.169000000000096,
+          "commit_to_first_application_commit_ms": 8.698000000000008,
+          "commit_to_last_settlement_ms": -133.8130000000001,
+          "first_submit_to_commit_ms": 143.77299999999997,
+          "producer_ack_ms": 146.54000000000002,
+          "submit_to_last_settlement_ms": 9.960000000000036
+        }
+      }
+    }
+  },
+  "source_sha256": {
+    "2026-11-23-ordinary-slow-runner-concentration/evidence/native-import-retry/native-followup-replay.json": "d05e7873ce7bd1a8eef660b5183722bfac44e95c6f85c18978ee8c744e3a40b0",
+    "2026-11-24-ordinary-slow-equal-topology-cap71/evidence/native-analysis/timing-replay.json": "c7dbdfe6c36e2a24f87c9be82061fb0fd4b070aefc7984400702f3d61a7de512",
+    "2026-11-25-slow-lz4-isolated-qualification/evidence/native/recovery-3/timing-continuation/independent-replay.json": "5e239e7d734b4d7d95f52266aeaf83abb0bd9797dd8d81cdf2366545b98a940d"
+  }
+}

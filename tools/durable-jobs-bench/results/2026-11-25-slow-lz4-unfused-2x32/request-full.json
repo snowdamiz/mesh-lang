@@ -1,0 +1,119 @@
+{
+  "arms": 96,
+  "build": false,
+  "bundle_sha256": {
+    "adapter.py": "2f6b43654ea19a593d5534adf28c739ceb98d5b0d19cba8e3311504a51e80f3f",
+    "cap71_adapter.py": "31ec825ef073668d279cce9eda193aa8f016027aacfc3077fb2f75bde7ce8ad0",
+    "native-run.sh": "9e58cf96eb9b9640f808b1e589de53b4170e4d3d3b6de54bb722eadfb440d347",
+    "overlay.py": "c7867f714ef6f85fc34366582340ee2f48119c96946f6e13749de1eaf2b4fca3",
+    "slow-river.sql": "ba0f572751f4c1b3d4fd25edeaa769fde80cdef9d848b7bfe5bad9c832f26275",
+    "storage.py": "4c3769dc6c87cb232275348fbd494195cc5c3f8e8c382aa7ec77e3ff016b922c",
+    "strict.py": "50d1bbf017fc3f4be18ea32a24db7e629a60c3b7b08c1fe774fe00cc97b3d62c"
+  },
+  "command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/controller.py full",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/evidence/full",
+  "groups": [
+    3,
+    4,
+    5,
+    6
+  ],
+  "hold_ms": 100,
+  "id": "2026-11-25-slow-lz4-unfused-2x32-full",
+  "input_size": 512,
+  "inventory_sha256": "e4ce0a0a888d6efde4f06155647865f9fe224dfda1fc6984a3c4eb87f3c68696",
+  "kind": "TIMING",
+  "offline_check_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/controller.py check",
+  "orders": {
+    "3": [
+      "two-oban-pglz",
+      "one-river-pglz",
+      "two-bulk-lz4",
+      "two-apalis-pglz",
+      "one-bulk-pglz",
+      "two-oban-lz4",
+      "two-river-pglz",
+      "one-apalis-pglz",
+      "two-bulk-pglz",
+      "two-river-lz4",
+      "one-oban-pglz",
+      "two-apalis-lz4"
+    ],
+    "4": [
+      "two-apalis-lz4",
+      "one-oban-pglz",
+      "two-river-lz4",
+      "two-bulk-pglz",
+      "one-apalis-pglz",
+      "two-river-pglz",
+      "two-oban-lz4",
+      "one-bulk-pglz",
+      "two-apalis-pglz",
+      "two-bulk-lz4",
+      "one-river-pglz",
+      "two-oban-pglz"
+    ],
+    "5": [
+      "one-bulk-pglz",
+      "two-oban-lz4",
+      "two-river-pglz",
+      "one-apalis-pglz",
+      "two-bulk-pglz",
+      "two-river-lz4",
+      "one-oban-pglz",
+      "two-apalis-lz4",
+      "two-oban-pglz",
+      "one-river-pglz",
+      "two-bulk-lz4",
+      "two-apalis-pglz"
+    ],
+    "6": [
+      "two-apalis-pglz",
+      "two-bulk-lz4",
+      "one-river-pglz",
+      "two-oban-pglz",
+      "two-apalis-lz4",
+      "one-oban-pglz",
+      "two-river-lz4",
+      "two-bulk-pglz",
+      "one-apalis-pglz",
+      "two-river-pglz",
+      "two-oban-lz4",
+      "one-bulk-pglz"
+    ]
+  },
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "replay_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/controller.py replay-full",
+  "requested_window_minutes": 55,
+  "requires": [
+    "2026-11-25-slow-lz4-unfused-2x32-proof",
+    "2026-11-25-slow-lz4-unfused-2x32-pilot"
+  ],
+  "runner_policy": "stock unfused; River stock lazy; no explicit warming",
+  "source_sha256": {
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/replay/native.py": "33d048812b59f075dc6e146ddc11d065316c0ec0a606d964af3bf891d466641b",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/replay/slow-river.sql": "ba0f572751f4c1b3d4fd25edeaa769fde80cdef9d848b7bfe5bad9c832f26275",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/replay/storage.py": "4c3769dc6c87cb232275348fbd494195cc5c3f8e8c382aa7ec77e3ff016b922c",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-equal-topology-cap71/evidence/native/sql-retry-timing/series.json": "a06aac5913202d54ab9de658f0534fe2c9c48fcdf7be41bc48d10390b672554a",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-equal-topology-cap71/qualification.py": "b0765d596d43d3b7e9a4bced95d2431def673843638df91c5c8148ee21081f67",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-equal-topology-cap71/request-sql-retry-timing.json": "7941df7ee3102380067e19183acb4d1e76d224d785c2759aea3e76ee362cd9bc",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-equal-topology-cap71/sql-audit-retry/adapter.py": "31ec825ef073668d279cce9eda193aa8f016027aacfc3077fb2f75bde7ce8ad0",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-isolated-qualification/evidence/native/recovery-3/timing-continuation/controller-release.json": "df10b1281820b51170405ef9654c3bcbf8026220ac4ea0b3c212fceb42fddfb0",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-isolated-qualification/overlay.py": "c7867f714ef6f85fc34366582340ee2f48119c96946f6e13749de1eaf2b4fca3",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-isolated-qualification/packet.py": "c0a0cb31b412b58bec392c3a2210d352729368ebac2e4bffbf60ead7ca88ce4c",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-isolated-qualification/recovery-3/matched-inventory.json": "eb080eb901ff7140f0e553e3c1400d9655f1948ec5406ac0b22c8a85b0def233",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-isolated-qualification/strict.py": "50d1bbf017fc3f4be18ea32a24db7e629a60c3b7b08c1fe774fe00cc97b3d62c",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/adapter.py": "2f6b43654ea19a593d5534adf28c739ceb98d5b0d19cba8e3311504a51e80f3f",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/controller.py": "58e509e5c4cc1825adea33ff98f360d6f9ddaeac68d45b7251efad1ae000e464",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/history.py": "a926a5258f48d9b099bb9e1000e4ef259541a7c57c89689f79214aee6b9229c4",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/native-run.sh": "9e58cf96eb9b9640f808b1e589de53b4170e4d3d3b6de54bb722eadfb440d347",
+    "tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/released-comparisons.json": "dad8854383aa03ff5f6f24aa07789b5c389723c75adccfb2d12cc17fd9566111",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  }
+}
