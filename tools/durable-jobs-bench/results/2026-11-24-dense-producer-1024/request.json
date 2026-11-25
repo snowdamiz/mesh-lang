@@ -1,0 +1,100 @@
+{
+  "base_revision": "1e70f18d624a841740d3bbb3d0fd09b269257f68",
+  "benchmark_revision": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "connection_cap": 96,
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "gate": {
+    "max_drain_fraction": 0.02,
+    "max_drain_us": 10000,
+    "min_enqueue_fraction": 0.05,
+    "min_enqueue_us": 10000
+  },
+  "host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "id": "2026-11-24-dense-producer-1024",
+  "input": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "peers_orders": [
+    [
+      "128-a",
+      "river-2x32",
+      "1024",
+      "oban-2x32",
+      "apalis-2x32",
+      "128-b"
+    ],
+    [
+      "128-b",
+      "apalis-2x32",
+      "oban-2x32",
+      "1024",
+      "river-2x32",
+      "128-a"
+    ]
+  ],
+  "pilot_orders": [
+    [
+      "128-a",
+      "1024",
+      "128-b"
+    ],
+    [
+      "128-b",
+      "1024",
+      "128-a"
+    ]
+  ],
+  "pins": {
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/equal.json": "0694806a3ddb1a056c9acbb4f4414e21a64b48fb4ad0de8a19d76263bbf7aaae",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/equal.py": "1a822e40648a2394015564497427be1df6846604ca9a91c13acfc0287ecdccd2",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/matrix.py": "dffaa6d936cd0010f2f4377106d5b2846bdaa2cc6f9c431338a776e1d63c84bb",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/qualification.py": "97a48e0b96532710fba3fade20bd96e8bebcde3d15529de6dc6f23ca1da799ee",
+    "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue/native/bulk-enqueue-ce5e551d079e.tar.gz": "542925005370032c71db1a2aa488c2d35d16f14f9fdc8f54ee0afbb81f80fc82",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/README.md": "0a90ab517e6738c24573a3aaa8b9a97b4e59a7ab22e6d2d89b8c45b5ce07ddb0",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/adapter.py": "1306fc158bc78d16b749286b8419a44b566cd16ff7f663dd9f7b4afb26a0682c",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/backend.py": "f2a897601d10f8c30b6bad30358ed1a88a8f688b54068095237ae1160ac7cea1",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/controller.py": "40e2804d4b24239d4ba230cdd85b8badc257a93edef2a91af6879faf07ddf879",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/evidence/local-build.json": "4e9a92772b8a311726887f04808aa151383f78ea29dcdbe71a75dc084a199836",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/evidence/local-failures.tar.gz": "7a5eec6ef4e4c11cb5531fdf74f7c9b57189edf779ebd51728285a726db1387b",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/evidence/local-proof-raw.tar.gz": "fbd4c3cc6d2c4e52ac02f239b434229d14edd3c0677932cfc035ad95438ddb63",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/evidence/local-proof.json": "0b2eb0df496e44e8e390053b33ed4cf2785449e248d33beb6e0cd7a886e76131",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/fixture/main.mpl": "9fffb6bdfb3afb5d50068ef0e4db25415be3f195aa9cab5ad62179bad1f5b3c3",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/fixture/worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/fixture/worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/fixture/writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/install-writer.sql": "f88f7dac1b322902950b00877af4699e1b1016ce165feb7768f8cbe216ccd140",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/link.sh": "5280deb0126eb251c5529c01a672bec65dc46260f3edabf30baed816220da2f3",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/native-run": "00f67a5ceb1ea31093614efd31e05e2b503e91b3d4ff20bb5e7f1225d68737b5",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/native-setup.sh": "e736c9209f6cac8ee713317ad200e759f84f24de05d761fa2469695498763b14",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/probe/main.mpl": "37801c53995c2f8c4e8febc24e6033c6d8084df93344c882c539077e4410ff5d",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/prove.py": "48ef7e35ffa2034d293f179e31353519a42469ba87355ff1263b71c6ff0c20e1",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/runtime.patch": "533525a669901a8564d04ac2a05cd4ed19d82035674eb50690e8417b36558c21",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/wire.py": "03b0929e1274a1349189a92168faa2d489d7f3e75123cd5ea0d1bf931ef1eca9",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/closure-retry/amendment.py": "272a0aaf230d54aa4eab599a52e65e7b8cd2a81e41e9ad9a6c93bbdcc7275acf",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/final-replay.json": "e8cc47b34253ea19ae9a1f03b63dabd6e1ff5dba814a468b5bbce9ebe6f70d42",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/plan.json": "9c91122eeb5aca677b1ebad9152ec96f2b7bd741f88fa1c5746a9025a54d79a3",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/transfer.py": "43cf1e9017ca66a7f77ba744770908f736142e3587bd9bc3cdcc10be48593475",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/native-score.py": "894013b9b1b342b851436dd1c6dd99d55d93cd712e9262644e429ab0c845c214",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "postgres": "17.11",
+  "ready": true,
+  "revision": "edd5145572c9e0c94a6c28099356474f1cf5d197",
+  "runner_elf": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+  "runner_manifest": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+  "runners": 2,
+  "slots_per_runner": 32,
+  "source": "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/source.tar.gz",
+  "source_sha256": "09b9395cf5c6e2c4a82e174b4bed39f7d90ed9ab92167b2988f02d8a3d0a18fb",
+  "stage_id": "09b9395cf5c6"
+}

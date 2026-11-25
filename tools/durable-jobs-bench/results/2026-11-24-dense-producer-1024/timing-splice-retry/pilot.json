@@ -1,0 +1,17 @@
+{
+  "build_free": true,
+  "controller": "linode-native-stepchange-controller-v1",
+  "evidence_destination": "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/timing-splice-retry/evidence/pilot",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-dense-producer-1024-pilot-splice-retry",
+  "intake_sha256": "e821601495a2fef6e1e2e5dffda79c1782e8ac00360db607402027bf557a6e47",
+  "offline_check_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/timing-splice-retry/retry.py check",
+  "prerequisites": "Sole fenced controller. Preserve prior bookings. Require both retry pilots to qualify and release before peers.",
+  "ready": true,
+  "requested_window_minutes": 12,
+  "summarize_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/timing-splice-retry/retry.py replay pilot",
+  "timing_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/timing-splice-retry/retry.py dispatch pilot"
+}

@@ -1,0 +1,17 @@
+{
+  "command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/controller.py timing peers",
+  "controller": "linode-native-stepchange-controller-v1",
+  "evidence_destination": "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/evidence/peers",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-dense-producer-1024-peers",
+  "offline_check_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/controller.py check",
+  "packet_sha256": "5158c1be62991ba75146fec00107b16bd589ab7ba9bd0be287da8de6f5713b26",
+  "prerequisites": "Preserve previous bookings. Sole fenced controller only. Require a successful SETUP release and exact native proof before running. Keep off the inbox until both strict reversed pilots qualify and release.",
+  "ready": true,
+  "requested_window_minutes": 20,
+  "summarize_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/controller.py replay peers",
+  "timing_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/controller.py timing peers"
+}

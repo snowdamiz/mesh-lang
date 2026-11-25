@@ -1,0 +1,240 @@
+diff --git a/compiler/mesh-rt/src/jobs/mod.rs b/compiler/mesh-rt/src/jobs/mod.rs
+index 7c5a4f0df..eb10f716e 100644
+--- a/compiler/mesh-rt/src/jobs/mod.rs
++++ b/compiler/mesh-rt/src/jobs/mod.rs
+@@ -94,7 +94,7 @@ pub extern "C" fn mesh_jobs_enqueue_in(
+             if !db.in_transaction() {
+                 return Err("Jobs.enqueue_in requires an active PostgreSQL transaction".into());
+             }
+-            store::enqueue(db, namespace, specs)
++            store::enqueue_in_experiment(db, namespace, specs)
+         })
+     };
+     text_result(result)
+diff --git a/compiler/mesh-rt/src/jobs/store.rs b/compiler/mesh-rt/src/jobs/store.rs
+index 6b5d8654c..d554af0e9 100644
+--- a/compiler/mesh-rt/src/jobs/store.rs
++++ b/compiler/mesh-rt/src/jobs/store.rs
+@@ -105,6 +105,10 @@ impl Settlement {
+ 
+ const MAX_INPUT: usize = 1024 * 1024;
+ const MAX_BATCH: usize = 128;
++const DENSE_BATCH: usize = 1024;
++const DENSE_INPUT_BYTES: usize = 2 * 1024 * 1024;
++const DENSE_BIND_BYTES: usize = 1_800_000;
++const DENSE_RECEIPT_BYTES: usize = 512;
+ // The layout check and extra request outweigh the scalar savings on tiny batches.
+ const MIN_SET_BASED_BATCH: usize = 16;
+ const MAX_DURATION_MS: u64 = 365 * 24 * 60 * 60 * 1000;
+@@ -578,16 +582,49 @@ pub(super) fn enqueue_with(
+     namespace: &str,
+     specs: &str,
+     set_based: bool,
++) -> Result<String, String> {
++    enqueue_with_width(db, namespace, specs, set_based, false)
++}
++
++pub(super) fn enqueue_in_experiment(
++    db: &mut impl Database,
++    namespace: &str,
++    specs: &str,
++) -> Result<String, String> {
++    let set_based = set_based_enqueue_requested();
++    let dense = set_based && std::env::var("MESH_JOBS_DENSE_PRODUCER_1024").as_deref() == Ok("1");
++    enqueue_with_width(db, namespace, specs, set_based, dense)
++}
++
++fn enqueue_with_width(
++    db: &mut impl Database,
++    namespace: &str,
++    specs: &str,
++    set_based: bool,
++    dense: bool,
+ ) -> Result<String, String> {
+     if !db.in_transaction() {
+         return Err("mesh jobs enqueue requires an outer transaction".into());
+     }
+     name(namespace, "namespace")?;
+-    let (batch, specs) = match decode(specs)? {
++    let decoded = if dense {
++        if specs.len() > DENSE_INPUT_BYTES {
++            return Err("mesh jobs private enqueue JSON exceeds 2 MiB".into());
++        }
++        serde_json::from_str(specs).map_err(|error| error.to_string())?
++    } else {
++        decode(specs)?
++    };
++    let input_bytes = specs.len();
++    let (batch, specs) = match decoded {
+         Enqueue::Single(spec) => (false, vec![*spec]),
+         Enqueue::Batch(specs) => (true, specs),
+     };
+-    if specs.is_empty() || specs.len() > MAX_BATCH {
++    let dense = dense && specs.len() == DENSE_BATCH;
++    if !dense && input_bytes > MAX_INPUT {
++        return Err("mesh jobs JSON exceeds 1 MiB".into());
++    }
++    if !dense && (specs.is_empty() || specs.len() > MAX_BATCH) {
+         return Err("mesh jobs enqueue requires 1 to 128 specs".into());
+     }
+     let admissions = specs
+@@ -602,7 +639,7 @@ pub(super) fn enqueue_with(
+             && admissions
+                 .iter()
+                 .all(|a| a.independent && !a.spec.contains(r"\u0000"))
+-            && set_based_enqueue_available(db)?;
++            && set_based_enqueue_available(db, dense)?;
+         // Broad uniqueness policies can match any insert in this namespace. A new
+         // row version also forces a retry when an outer repeatable-read snapshot is stale.
+         db.query(
+@@ -611,14 +648,21 @@ pub(super) fn enqueue_with(
+             &[namespace],
+         )?;
+         let receipts = if set_based {
+-            set_based_enqueue(db, namespace, &admissions)?
++            set_based_enqueue(db, namespace, &admissions, dense)?
+         } else {
+             None
+         };
+         let mut receipts = match receipts {
+             Some(receipts) => receipts,
+-            None => ordered_enqueue(db, namespace, &admissions)?,
++            None => ordered_enqueue(db, namespace, &admissions, dense)?,
+         };
++        if dense
++            && receipts
++                .iter()
++                .any(|receipt| receipt.len() > DENSE_RECEIPT_BYTES)
++        {
++            return Err("mesh jobs oversized private enqueue receipt".into());
++        }
+         db.simple("RELEASE SAVEPOINT mesh_jobs_enqueue")?;
+         Ok(if batch {
+             format!("[{}]", receipts.join(","))
+@@ -635,12 +679,10 @@ pub(super) fn enqueue_with(
+     })
+ }
+ 
+-fn set_based_enqueue_available(db: &mut impl Database) -> Result<bool, String> {
++fn set_based_enqueue_available(db: &mut impl Database, dense: bool) -> Result<bool, String> {
+     // Check on this connection before issuing either writer. The shared
+     // migration lock keeps the versioned functions stable until commit.
+-    response(
+-        db,
+-        "SELECT CASE WHEN pg_catalog.current_setting('server_version_num')::int / 10000 = 17
++    let sql = "SELECT CASE WHEN pg_catalog.current_setting('server_version_num')::int / 10000 = 17
+                      AND pg_catalog.current_setting('transaction_isolation') = 'read committed'
+                      AND pg_catalog.has_function_privilege(
+                            pg_catalog.to_regprocedure('mesh_jobs.enqueue_batch_v1(text,jsonb)'), 'EXECUTE')
+@@ -651,30 +693,47 @@ fn set_based_enqueue_available(db: &mut impl Database) -> Result<bool, String> {
+                      AND pg_catalog.has_table_privilege(
+                            pg_catalog.to_regclass('mesh_jobs.receipts'), 'INSERT')
+                  THEN pg_catalog.pg_try_advisory_xact_lock_shared(1782495102, 1)::text
+-                 ELSE 'false' END",
+-        &[],
+-    )
+-    .map(|available| available == "true")
++                 ELSE 'false' END";
++    let private_sql;
++    let sql = if dense {
++        private_sql = sql.replace("enqueue_batch_v1", "enqueue_dense_private_v1");
++        &private_sql
++    } else {
++        sql
++    };
++    response(db, sql, &[]).map(|available| available == "true")
+ }
+ 
+ fn ordered_enqueue(
+     db: &mut impl Database,
+     namespace: &str,
+     admissions: &[Admission],
++    dense: bool,
+ ) -> Result<Vec<String>, String> {
++    let receipt_limit = DENSE_RECEIPT_BYTES.to_string();
+     admissions
+         .iter()
+         .map(|admission| {
+-            response(
+-                db,
+-                "SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt",
+-                &[
+-                    namespace,
+-                    &admission.spec,
+-                    &admission.request_key,
+-                    &admission.fingerprint,
+-                ],
+-            )
++            let all_params = [
++                namespace,
++                &admission.spec,
++                &admission.request_key,
++                &admission.fingerprint,
++                &receipt_limit,
++            ];
++            let mut params = all_params.as_slice();
++            let sql = if dense {
++                "SELECT CASE WHEN octet_length(receipt) <= $5::int THEN receipt ELSE '' END
++                 FROM (SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt) AS written"
++            } else {
++                params = &params[..4];
++                "SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt"
++            };
++            let receipt = response(db, sql, params)?;
++            if dense && receipt.is_empty() {
++                return Err("mesh jobs oversized private enqueue receipt".into());
++            }
++            Ok(receipt)
+         })
+         .collect()
+ }
+@@ -683,6 +742,7 @@ fn set_based_enqueue(
+     db: &mut impl Database,
+     namespace: &str,
+     admissions: &[Admission],
++    dense: bool,
+ ) -> Result<Option<Vec<String>>, String> {
+     use std::fmt::Write;
+ 
+@@ -692,6 +752,12 @@ fn set_based_enqueue(
+             batch.push(',');
+         }
+         let key = serde_json::to_string(&admission.request_key).map_err(|err| err.to_string())?;
++        if dense
++            && batch.len() + admission.spec.len() + key.len() + admission.fingerprint.len() + 48
++                > DENSE_BIND_BYTES
++        {
++            return Ok(None);
++        }
+         write!(
+             batch,
+             r#"{{"spec":{},"request_key":{},"fingerprint":"{}"}}"#,
+@@ -703,11 +769,23 @@ fn set_based_enqueue(
+     if batch.len() > crate::db::pg::MAX_DB_VALUE_BYTES {
+         return Ok(None);
+     }
+-    let rows = db.query(
+-        "SELECT ordinal, receipt FROM mesh_jobs.enqueue_batch_v1($1, $2::jsonb)
+-         ORDER BY ordinal::integer",
+-        &[namespace, &batch],
+-    )?;
++    let rows = if dense {
++        let limit = (DENSE_BATCH + 1).to_string();
++        let max_receipt = DENSE_RECEIPT_BYTES.to_string();
++        db.query(
++            "SELECT CASE WHEN octet_length(ordinal) <= 4 THEN ordinal ELSE '' END AS ordinal,
++                    CASE WHEN octet_length(receipt) <= $3::int THEN receipt ELSE '' END AS receipt
++             FROM mesh_jobs.enqueue_dense_private_v1($1, $2::jsonb)
++             ORDER BY CASE WHEN ordinal ~ '^[0-9]{1,4}$' THEN ordinal::integer END LIMIT $4::int",
++            &[namespace, &batch, &max_receipt, &limit],
++        )?
++    } else {
++        db.query(
++            "SELECT ordinal, receipt FROM mesh_jobs.enqueue_batch_v1($1, $2::jsonb)
++             ORDER BY ordinal::integer",
++            &[namespace, &batch],
++        )?
++    };
+ 
+     if let [row] = rows.as_slice() {
+         if let [(_, ordinal), (_, disposition)] = row.as_slice() {

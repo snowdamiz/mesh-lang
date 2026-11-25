@@ -1,0 +1,57 @@
+{
+  "gates": {
+    "build": {
+      "completed_test_targets": 0,
+      "exit_status": 0,
+      "ignored": 0,
+      "passed": 0,
+      "path": "target/dense-producer-1024/build.log",
+      "sha256": "ef10866c0acc97cae1ab7dd70879b25f7b300b6c62ff2975771d4d23518392e8"
+    },
+    "fmt": {
+      "completed_test_targets": 0,
+      "exit_status": 0,
+      "ignored": 0,
+      "passed": 0,
+      "path": "target/dense-producer-1024/fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "pg-proof": {
+      "completed_test_targets": 7,
+      "exit_status": 0,
+      "ignored": 6,
+      "passed": 130,
+      "path": "target/dense-producer-1024/pg-proof.log",
+      "sha256": "0b16f51a218b0ca395705bbc50f2df0998467d688d1f8254a44ccbd57b38ca0e"
+    },
+    "rebuild": {
+      "completed_test_targets": 0,
+      "exit_status": 0,
+      "ignored": 0,
+      "passed": 0,
+      "path": "target/dense-producer-1024/rebuild.log",
+      "sha256": "6b71b42f8c862afc8b23f2fcece1fff46412b263af7d91fc9500385d27565171"
+    },
+    "store-focused": {
+      "completed_test_targets": 1,
+      "exit_status": 0,
+      "ignored": 29,
+      "passed": 3,
+      "path": "target/dense-producer-1024/store-focused.log",
+      "sha256": "313ddfb7bb7e6eb0df211c4e67252033de9b50b18c98a17cdc2fd686c3f7329a"
+    },
+    "workspace-correctness": {
+      "completed_test_targets": 123,
+      "exit_status": 0,
+      "ignored": 71,
+      "passed": 4825,
+      "path": "target/dense-producer-1024/workspace-correctness.log",
+      "sha256": "d34393bb2c80ce1dd4eb90a6b03917526a855b5bafd836d8a04fe13efe2b819d"
+    }
+  },
+  "revision": "edd5145572c9e0c94a6c28099356474f1cf5d197",
+  "workspace_excluded": [
+    "e2e_performance",
+    "the_performance_gate_measures_and_reports"
+  ]
+}
