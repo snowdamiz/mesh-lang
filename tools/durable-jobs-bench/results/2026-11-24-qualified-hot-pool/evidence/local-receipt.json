@@ -1,0 +1,188 @@
+{
+  "excluded": [
+    "standalone compiler performance gate",
+    "e2e_performance compile timing test",
+    "Linux native qualification"
+  ],
+  "files": {
+    "compiler/mesh-rt/src/db/pg.rs": "29cbd481532c8720cabc7d38cd00c227064ea4dcc438d572ede05eb32391f884",
+    "compiler/mesh-rt/src/db/pool.rs": "4ebcffb439f54493cc899f581ed2eca769d5d36b0f81cd8a40a49e331e19cddd",
+    "website/docs/docs/databases/index.md": "075e8357cedbcf09060ebe7640bbafc17db6d1fe8dad2fcebf955c08116c9fc8"
+  },
+  "gates": [
+    {
+      "exit": null,
+      "log_sha256": "5794a9ca46344f21e3a3e16b9d264fc0cf819df4f55f844d53a1cc02173323eb",
+      "name": "build-pg-18.7"
+    },
+    {
+      "exit": null,
+      "log_sha256": "5d46be59c6244522eb1277af557fa157b29bb930207337cc0ce38f76b13f6ce5",
+      "name": "build-pg-19.0"
+    },
+    {
+      "exit": 0,
+      "log_sha256": "90a971e4a2c8b5f6edb01c66bac6b4921c17732f7fbd80443a3e3140569358c8",
+      "name": "fence-18.7",
+      "server_version": "18.7"
+    },
+    {
+      "exit": 0,
+      "log_sha256": "ee3fcfa3776c55b63d3490c763af618af794d3f87387c9119559a78d5e504962",
+      "name": "fence-19.0",
+      "server_version": "19.0"
+    },
+    {
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "name": "format"
+    },
+    {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 6,
+      "log_sha256": "9da17e5224ebd8201a329a4cd64e15546532c17242579c98729b89d3b78600be",
+      "name": "pg-18.7-retry",
+      "passed": 130,
+      "role_databases": [
+        "jobs_role_fresh",
+        "jobs_role_upgrade"
+      ],
+      "server_version": "18.7"
+    },
+    {
+      "exit": 101,
+      "failed": 1,
+      "ignored": 0,
+      "log_sha256": "eaec372d37d58e7a903934d252000f2073801649c3e848e43fabdbb1f556cba7",
+      "name": "pg-18.7",
+      "passed": 0,
+      "role_databases": [
+        "jobs_role_fresh",
+        "jobs_role_upgrade"
+      ],
+      "server_version": "17.11"
+    },
+    {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 6,
+      "log_sha256": "45340f33940ca7491cb2388a2fcfa4754fdf7dbe6fc0881c5afdeabd1f6aef8b",
+      "name": "pg-19.0-retry",
+      "passed": 130,
+      "role_databases": [
+        "jobs_role_fresh",
+        "jobs_role_upgrade"
+      ],
+      "server_version": "19.0"
+    },
+    {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 6,
+      "log_sha256": "80bb1d3b48a8d569894883388aceec22ad56c2c41fe8d2c2cac7da55bcc4ec04",
+      "name": "pg-wire",
+      "passed": 39
+    },
+    {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 6,
+      "log_sha256": "05c3c260e438f379c4bc2fe02a7f870fa1765769300660cbc8f977f3f855f8d8",
+      "name": "pg17",
+      "passed": 130,
+      "server_version": "17.11"
+    },
+    {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 4,
+      "log_sha256": "66e2d6dccff5bf84538ff7dd30a51ebaccd24eac0188c5343c53de16c6839db1",
+      "name": "pool",
+      "passed": 13
+    },
+    {
+      "exit": 0,
+      "log_sha256": "4e6503881e21e68a8fcb3e8dd20946c12e21dda44a16fc9c8ef110f6098cd877",
+      "name": "postgres-fence",
+      "server_version": "17.11"
+    },
+    {
+      "exit": 0,
+      "log_sha256": "7f1b9e244f5c8e24939942af0e261db1f4009210b0f829f77c7841d3de508d90",
+      "name": "workspace-build"
+    },
+    {
+      "exit": 101,
+      "failed": 1,
+      "ignored": 62,
+      "log_sha256": "6d735a604d287ed793071ab47de67c00b92681bd5bcbead3ef72bb7e86490051",
+      "name": "workspace-correctness",
+      "passed": 4152
+    },
+    {
+      "exit": 1,
+      "log_sha256": "5f90c795c67420330039fdc675bea47f67ea7c96e3b00f2079209597139c5e03",
+      "name": "workspace-remainder-setup-attempt1"
+    },
+    {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 9,
+      "log_sha256": "2123521dd2c3623d99271474e7e3bc8e57aadd117671564fdfe030a1da6cb21c",
+      "name": "workspace-remainder",
+      "passed": 672
+    }
+  ],
+  "integrated_product": "916cfe532d76616ea28856ff9ca8a5132fecc556",
+  "matching_product_paths": [
+    "Cargo.toml",
+    "Cargo.lock",
+    ".cargo",
+    "compiler",
+    "scripts",
+    "docs",
+    "examples",
+    "packages",
+    "proof",
+    "tests",
+    "website/docs/docs/databases"
+  ],
+  "postgres_source_builds": {
+    "18.7": {
+      "archive": "postgresql-18.7.tar.bz2",
+      "archive_sha256": "441dfae4280cae3e0425e5f876f80559fb0731c140f1aae22b3e5a54d0411bfd",
+      "install_version_confirmed": true
+    },
+    "19.0": {
+      "archive": "postgresql-19.0.tar.bz2",
+      "archive_sha256": "a89fd70efbad6a08c7dbed8d4872e3af30170d9e5ca9dc7906523be95b4e692d",
+      "install_version_confirmed": true
+    }
+  },
+  "required_gates": {
+    "fence-18.7": 0,
+    "fence-19.0": 0,
+    "format": 0,
+    "pg-18.7-retry": 0,
+    "pg-19.0-retry": 0,
+    "pg-wire": 0,
+    "pg17": 0,
+    "pool": 0,
+    "postgres-fence": 0,
+    "workspace-build": 0,
+    "workspace-correctness": 101
+  },
+  "scope": "macOS ARM64 local correctness",
+  "scripts_sha256": {
+    "build-postgres.sh": "7eddcb1fdcc99d6fd5d7fa4a704266be1e6603c5e4e3ab80d78cc5d9c65c9931",
+    "compat-rebuilt.sh": "c1bd054cef1b949c8e13cbb9dbad53167d4606cd45db4c8b04728733588d02c4",
+    "compat.sh": "37642d7dd5fc9ef038f7bf3166a672458d1e5065acbd09d504767f7199f7ec23",
+    "gates.sh": "a52dff66c2f4aeef99789f1c8a9d14ecc1fec4533a151f3eda68eb5181f80a48"
+  },
+  "source": "1e70f18d624a841740d3bbb3d0fd09b269257f68",
+  "status_sha256": "b270aac846f785fd2b921fa8378c599360ec3f3936c1f84717374a623153fc6f",
+  "toolchain_sha256": "9540c81dd3278b18ae84ea4eb0935b2b9098ce5cbb0de70cd0415e15b9659d26",
+  "workspace_remainder_exit": 0,
+  "workspace_remainder_script_sha256": "4282458f50602097010194840a100faa5924550a60824f7d710cc90a4e38469c"
+}

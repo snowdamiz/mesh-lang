@@ -1,0 +1,14 @@
+format 0
+pool 0
+pg-wire 0
+pg17 0
+postgres-fence 0
+workspace-build 0
+pg-18.7 101
+workspace-correctness 101
+workspace-remainder-setup-attempt1 1
+pg-18.7-retry 0
+fence-18.7 0
+pg-19.0-retry 0
+fence-19.0 0
+workspace-remainder 0
