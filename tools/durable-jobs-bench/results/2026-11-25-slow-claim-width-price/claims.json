@@ -1,0 +1,388 @@
+{
+  "recent-1-inline-a": {
+    "disjoint_normalized_slot_us": 39171.875,
+    "first_four": [
+      {
+        "first_entry_us": 20288,
+        "stamp_us": 3156,
+        "width": 16
+      },
+      {
+        "first_entry_us": 38204,
+        "stamp_us": 24156,
+        "width": 16
+      },
+      {
+        "first_entry_us": 57440,
+        "stamp_us": 40156,
+        "width": 16
+      },
+      {
+        "first_entry_us": 75406,
+        "stamp_us": 63156,
+        "width": 16
+      }
+    ],
+    "full_with_room_and_following": 19,
+    "fully_absorbable_disjoint_pairs": 8,
+    "raw_sha256": "28c1914792a432a0db7fce535c8780ce2f72096705042b295daab9e88acee5c3",
+    "stamped_groups": 50,
+    "width_counts": {
+      "1": 9,
+      "2": 2,
+      "3": 1,
+      "4": 2,
+      "5": 1,
+      "6": 3,
+      "7": 2,
+      "8": 2,
+      "10": 1,
+      "13": 1,
+      "14": 1,
+      "15": 2,
+      "16": 23
+    }
+  },
+  "recent-1-inline-b": {
+    "disjoint_normalized_slot_us": 39437.5,
+    "first_four": [
+      {
+        "first_entry_us": 54063,
+        "stamp_us": 32684,
+        "width": 16
+      },
+      {
+        "first_entry_us": 76731,
+        "stamp_us": 58684,
+        "width": 16
+      },
+      {
+        "first_entry_us": 94405,
+        "stamp_us": 78684,
+        "width": 16
+      },
+      {
+        "first_entry_us": 109993,
+        "stamp_us": 96684,
+        "width": 16
+      }
+    ],
+    "full_with_room_and_following": 17,
+    "fully_absorbable_disjoint_pairs": 8,
+    "raw_sha256": "855640c6c95d988ca8ce110e3505c02c99ec3f0dae2eb3dd75326c7421c453f5",
+    "stamped_groups": 48,
+    "width_counts": {
+      "1": 8,
+      "2": 2,
+      "3": 1,
+      "4": 1,
+      "6": 1,
+      "7": 5,
+      "8": 2,
+      "9": 1,
+      "13": 1,
+      "15": 2,
+      "16": 24
+    }
+  },
+  "recent-2-inline-a": {
+    "disjoint_normalized_slot_us": 50781.25,
+    "first_four": [
+      {
+        "first_entry_us": 20452,
+        "stamp_us": 3703,
+        "width": 16
+      },
+      {
+        "first_entry_us": 39884,
+        "stamp_us": 26703,
+        "width": 16
+      },
+      {
+        "first_entry_us": 57683,
+        "stamp_us": 41703,
+        "width": 16
+      },
+      {
+        "first_entry_us": 74869,
+        "stamp_us": 59703,
+        "width": 16
+      }
+    ],
+    "full_with_room_and_following": 22,
+    "fully_absorbable_disjoint_pairs": 12,
+    "raw_sha256": "4f7e47a253e37be60a3cf3186b3decf2d178edd0c29e2f2af1f64381c4f92b41",
+    "stamped_groups": 54,
+    "width_counts": {
+      "1": 7,
+      "2": 10,
+      "3": 4,
+      "5": 1,
+      "6": 1,
+      "7": 1,
+      "10": 3,
+      "11": 1,
+      "14": 1,
+      "16": 25
+    }
+  },
+  "recent-2-inline-b": {
+    "disjoint_normalized_slot_us": 40562.5,
+    "first_four": [
+      {
+        "first_entry_us": 23565,
+        "stamp_us": 5370,
+        "width": 16
+      },
+      {
+        "first_entry_us": 41515,
+        "stamp_us": 25370,
+        "width": 16
+      },
+      {
+        "first_entry_us": 64843,
+        "stamp_us": 44370,
+        "width": 16
+      },
+      {
+        "first_entry_us": 86391,
+        "stamp_us": 68370,
+        "width": 16
+      }
+    ],
+    "full_with_room_and_following": 16,
+    "fully_absorbable_disjoint_pairs": 7,
+    "raw_sha256": "0ce25ae29976e95355fba40abb37c3e516e9f558b94284681c5af691b711ac4c",
+    "stamped_groups": 57,
+    "width_counts": {
+      "1": 7,
+      "2": 7,
+      "3": 3,
+      "4": 4,
+      "5": 2,
+      "6": 2,
+      "7": 2,
+      "8": 2,
+      "9": 4,
+      "13": 1,
+      "15": 3,
+      "16": 20
+    }
+  },
+  "stock-1": {
+    "disjoint_normalized_slot_us": 34296.875,
+    "first_four": [
+      {
+        "first_entry_us": 45204,
+        "stamp_us": 30753,
+        "width": 16
+      },
+      {
+        "first_entry_us": 67190,
+        "stamp_us": 48753,
+        "width": 16
+      },
+      {
+        "first_entry_us": 83969,
+        "stamp_us": 68753,
+        "width": 16
+      },
+      {
+        "first_entry_us": 102195,
+        "stamp_us": 87753,
+        "width": 16
+      }
+    ],
+    "full_with_room_and_following": 15,
+    "fully_absorbable_disjoint_pairs": 6,
+    "raw_sha256": "1bb9b1ebaff4dd32d40eded1b2d8acfe117d4902c5483178cd28f2b79e6b2fec",
+    "stamped_groups": 67,
+    "width_counts": {
+      "1": 20,
+      "2": 5,
+      "3": 4,
+      "4": 3,
+      "6": 2,
+      "7": 2,
+      "8": 4,
+      "10": 3,
+      "11": 1,
+      "12": 1,
+      "14": 1,
+      "15": 3,
+      "16": 18
+    }
+  },
+  "stock-2": {
+    "disjoint_normalized_slot_us": 53703.125,
+    "first_four": [
+      {
+        "first_entry_us": 42825,
+        "stamp_us": 26405,
+        "width": 16
+      },
+      {
+        "first_entry_us": 63858,
+        "stamp_us": 47405,
+        "width": 16
+      },
+      {
+        "first_entry_us": 81079,
+        "stamp_us": 66405,
+        "width": 16
+      },
+      {
+        "first_entry_us": 97251,
+        "stamp_us": 83405,
+        "width": 16
+      }
+    ],
+    "full_with_room_and_following": 19,
+    "fully_absorbable_disjoint_pairs": 9,
+    "raw_sha256": "36002095f10d79441701c30bb5688aaee611760e0c4478cce26e8c8762bb6044",
+    "stamped_groups": 55,
+    "width_counts": {
+      "1": 10,
+      "2": 8,
+      "3": 1,
+      "4": 1,
+      "5": 3,
+      "7": 1,
+      "9": 2,
+      "11": 2,
+      "12": 1,
+      "13": 1,
+      "14": 4,
+      "16": 21
+    }
+  },
+  "stock-3": {
+    "disjoint_normalized_slot_us": 57609.375,
+    "first_four": [
+      {
+        "first_entry_us": 61189,
+        "stamp_us": 36632,
+        "width": 16
+      },
+      {
+        "first_entry_us": 86773,
+        "stamp_us": 66632,
+        "width": 16
+      },
+      {
+        "first_entry_us": 107825,
+        "stamp_us": 89632,
+        "width": 16
+      },
+      {
+        "first_entry_us": 124553,
+        "stamp_us": 109632,
+        "width": 16
+      }
+    ],
+    "full_with_room_and_following": 17,
+    "fully_absorbable_disjoint_pairs": 10,
+    "raw_sha256": "67f2eb0fb93566e909d2b314a22a3c67025788a7b52cf68bf0db396b2165e169",
+    "stamped_groups": 56,
+    "width_counts": {
+      "1": 10,
+      "2": 5,
+      "3": 3,
+      "4": 2,
+      "5": 3,
+      "6": 1,
+      "7": 3,
+      "10": 1,
+      "11": 2,
+      "12": 3,
+      "14": 1,
+      "15": 1,
+      "16": 21
+    }
+  },
+  "stock-4": {
+    "disjoint_normalized_slot_us": 47968.75,
+    "first_four": [
+      {
+        "first_entry_us": 59875,
+        "stamp_us": 35491,
+        "width": 16
+      },
+      {
+        "first_entry_us": 88389,
+        "stamp_us": 67491,
+        "width": 16
+      },
+      {
+        "first_entry_us": 107490,
+        "stamp_us": 92491,
+        "width": 16
+      },
+      {
+        "first_entry_us": 123467,
+        "stamp_us": 110491,
+        "width": 16
+      }
+    ],
+    "full_with_room_and_following": 19,
+    "fully_absorbable_disjoint_pairs": 7,
+    "raw_sha256": "8b8865186215595d85ff3ba9fc258d60d4696943fd0d41f27b54cb871f1001cc",
+    "stamped_groups": 61,
+    "width_counts": {
+      "1": 15,
+      "2": 2,
+      "3": 7,
+      "4": 1,
+      "5": 4,
+      "6": 2,
+      "8": 2,
+      "10": 2,
+      "11": 1,
+      "13": 3,
+      "15": 2,
+      "16": 20
+    }
+  },
+  "stock-5": {
+    "disjoint_normalized_slot_us": 44000.0,
+    "first_four": [
+      {
+        "first_entry_us": 55124,
+        "stamp_us": 33115,
+        "width": 16
+      },
+      {
+        "first_entry_us": 73101,
+        "stamp_us": 58115,
+        "width": 16
+      },
+      {
+        "first_entry_us": 90272,
+        "stamp_us": 75115,
+        "width": 16
+      },
+      {
+        "first_entry_us": 112825,
+        "stamp_us": 95115,
+        "width": 16
+      }
+    ],
+    "full_with_room_and_following": 17,
+    "fully_absorbable_disjoint_pairs": 8,
+    "raw_sha256": "329f3c01d40924050c31fb561763345dd6521dd86553bc9d0664a07d969a1322",
+    "stamped_groups": 55,
+    "width_counts": {
+      "1": 16,
+      "2": 1,
+      "3": 1,
+      "4": 3,
+      "5": 1,
+      "6": 2,
+      "9": 2,
+      "10": 1,
+      "11": 2,
+      "15": 4,
+      "16": 22
+    }
+  }
+}
