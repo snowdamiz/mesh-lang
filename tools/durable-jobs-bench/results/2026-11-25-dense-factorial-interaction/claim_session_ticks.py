@@ -4,13 +4,14 @@ from hashlib import sha256
 import io
 import json
 import tarfile
+from argparse import ArgumentParser
 
 from grant_capacity_frontier import EVIDENCE, SEAL
 from late_capacity_io import queue_timeout_records
 
 
-def measure(block, score):
-    raw = (block / "measured-B/measured-mesh/raw.tar.gz").read_bytes()
+def measure(block, score, lane="measured-B"):
+    raw = (block / lane / "measured-mesh/raw.tar.gz").read_bytes()
     assert sha256(raw).hexdigest() == score["raw_sha256"]
     with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
         def read(name):
@@ -60,18 +61,26 @@ def measure(block, score):
     return result
 
 
-def replay():
+def replay(controls=False):
     release = json.loads((EVIDENCE / "controller-release.json").read_bytes())
     assert release["request_sha256"] == SEAL and release["exit_status"] == 0
     scores = json.loads((EVIDENCE / "scored-before-release.json").read_bytes())["groups"]
+    lanes = ("B", "A1", "A2", "reference") if controls else ("B",)
     results = {}
     for n in range(1, 6):
         block = EVIDENCE / "blocks" / f"{n:02}-noop"
-        score = scores[str(n)]["measured-B"]
-        assert score == json.loads((block / "reconciled.json").read_bytes())["measured-B"]
-        results[n] = measure(block, score)
+        reconciled = json.loads((block / "reconciled.json").read_bytes())
+        rows = {}
+        for lane in lanes:
+            arm = "measured-" + lane
+            score = scores[str(n)][arm]
+            assert score == reconciled[arm]
+            rows[lane] = measure(block, score, arm)
+        results[n] = rows if controls else rows["B"]
     return results
 
 
 if __name__ == "__main__":
-    print(json.dumps(replay(), indent=2, sort_keys=True))
+    parser = ArgumentParser(description=__doc__)
+    parser.add_argument("--controls", action="store_true", help="Include both OFFs and the reference")
+    print(json.dumps(replay(parser.parse_args().controls), indent=2, sort_keys=True))

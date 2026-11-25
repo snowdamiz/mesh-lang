@@ -1,0 +1,294 @@
+{
+  "1": {
+    "A1": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "2b9a4197c4f2fb93e17bc299b978083e5d2a346050275f01905a524b201a4bce",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 51,
+        "parity_producer": 15,
+        "parity_subject": 94
+      },
+      "timeouts": {}
+    },
+    "A2": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "da82d812c7a4b6d60f7cceb3458a932b691c18c623f04fa0970538b8d88b3b26",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 53,
+        "parity_producer": 15,
+        "parity_subject": 104
+      },
+      "timeouts": {}
+    },
+    "B": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 51,
+        "parity_producer": 13,
+        "parity_subject": 79
+      },
+      "timeouts": {}
+    },
+    "reference": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "1b79a6817cab5d6ee9afc823319af1c7b64a10dc23a5f2e8e6d0589c6c594ef1",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 51,
+        "parity_producer": 14,
+        "parity_subject": 97
+      },
+      "timeouts": {}
+    }
+  },
+  "2": {
+    "A1": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "a69250d841005240d36e96e7efba723d5dcfcb774083a4c0f8a2f6f10747f986",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 52,
+        "parity_producer": 15,
+        "parity_subject": 100
+      },
+      "timeouts": {}
+    },
+    "A2": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "3dd829d482d421bf3af4bc6cf5cdfe0f7503986413d0421b14784f883782930a",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 52,
+        "parity_producer": 14,
+        "parity_subject": 102
+      },
+      "timeouts": {}
+    },
+    "B": {
+      "claim_cpu_within_submit_to_settle_lower_us": 132166,
+      "claim_cpu_within_submit_to_settle_upper_us": 610000,
+      "claim_session_ticks": 45,
+      "early_census": 65,
+      "identified_claim_backends": 8,
+      "other_queue_ticks": 68,
+      "outside_submit_to_settle_us": 78917,
+      "per_backend": {
+        "3184097": {
+          "ticks": 6,
+          "timeouts": 1
+        },
+        "3184120": {
+          "ticks": 6,
+          "timeouts": 3
+        },
+        "3184137": {
+          "ticks": 4,
+          "timeouts": 3
+        },
+        "3184156": {
+          "ticks": 6,
+          "timeouts": 4
+        },
+        "3184170": {
+          "ticks": 6,
+          "timeouts": 3
+        },
+        "3184186": {
+          "ticks": 6,
+          "timeouts": 2
+        },
+        "3184196": {
+          "ticks": 5,
+          "timeouts": 3
+        },
+        "3184204": {
+          "ticks": 6,
+          "timeouts": 3
+        }
+      },
+      "raw_sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 58,
+        "parity_producer": 15,
+        "parity_subject": 113
+      },
+      "timeouts": {
+        "bounded_claim": 2,
+        "prelock": 20
+      }
+    },
+    "reference": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "38167d80e6343e43eaef59b3d64ad10a403ec2a453525fe1de98e76aad2d8ab8",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 50,
+        "parity_producer": 14,
+        "parity_subject": 98
+      },
+      "timeouts": {}
+    }
+  },
+  "3": {
+    "A1": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "fcf638a68a652c8da03e991d4b3d863b2ec729308815b249fdf801c6d7d4976e",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 52,
+        "parity_producer": 14,
+        "parity_subject": 103
+      },
+      "timeouts": {}
+    },
+    "A2": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "4ee7b86623dfd0963f641c93897c8b125c09a0bffd3e545a230c586d911aedf1",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 53,
+        "parity_producer": 14,
+        "parity_subject": 93
+      },
+      "timeouts": {}
+    },
+    "B": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 53,
+        "parity_producer": 17,
+        "parity_subject": 82
+      },
+      "timeouts": {}
+    },
+    "reference": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "9a87ce0130b261d4c752494af328f66325fe925b9c81b68d4986e2d2133420f4",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 52,
+        "parity_producer": 16,
+        "parity_subject": 97
+      },
+      "timeouts": {}
+    }
+  },
+  "4": {
+    "A1": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "978118e93f2f734b1df9690608b3ed27e913e9d7e6813085488b39e235312860",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 56,
+        "parity_producer": 14,
+        "parity_subject": 94
+      },
+      "timeouts": {}
+    },
+    "A2": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "df1d5ee48d8c52d9b3bb29e9b07ab5caa8acf403a30b6d05dcba3b77bdf0824d",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 52,
+        "parity_producer": 14,
+        "parity_subject": 107
+      },
+      "timeouts": {}
+    },
+    "B": {
+      "early_census": 63,
+      "identified_claim_backends": 0,
+      "raw_sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 51,
+        "parity_producer": 18,
+        "parity_subject": 84
+      },
+      "timeouts": {}
+    },
+    "reference": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "1c485f1c86422355daef1c2a31c80d748bc637cae8564311b401cd0923b1ca75",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 55,
+        "parity_producer": 14,
+        "parity_subject": 103
+      },
+      "timeouts": {}
+    }
+  },
+  "5": {
+    "A1": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "8131d66a50a3e91bb14ca9ffdf1ebaea9698ca54ecdd00c377a73cabb7c1daac",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 52,
+        "parity_producer": 13,
+        "parity_subject": 99
+      },
+      "timeouts": {}
+    },
+    "A2": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "c06f1ab7f24c8ba03ec599f08dbec271138c84fe8f2524b95809ce6df0bfe472",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 57,
+        "parity_producer": 15,
+        "parity_subject": 120
+      },
+      "timeouts": {}
+    },
+    "B": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 49,
+        "parity_producer": 16,
+        "parity_subject": 86
+      },
+      "timeouts": {}
+    },
+    "reference": {
+      "early_census": 65,
+      "identified_claim_backends": 0,
+      "raw_sha256": "0a22aef8912f74e1ed22987b2e7a6910f343e68d6c4ce3fe1c37d96203e64a06",
+      "ready_census": 65,
+      "role_cpu_ticks": {
+        "compiled_caller": 49,
+        "parity_producer": 14,
+        "parity_subject": 96
+      },
+      "timeouts": {}
+    }
+  }
+}
