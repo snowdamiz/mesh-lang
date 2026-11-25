@@ -1,0 +1,21 @@
+# Native overlap pilot outcome
+
+The hot warmup's one checked cursor query returned a **contention sentinel and zero grants**. The actual cursor invocation still violated the sealed zero-cursor qualification rule. The controller stopped at that first failure and released exit 1 at 03:41:02 UTC. Four warmup archives survive, with zero qualified rotations and no measured arms. The recorded pilot decision remains `incomplete` and the series is closed at this release. The native SETUP held-receipt proof still establishes overlap under the deliberately withheld acknowledgment. This pilot supplies no throughput comparison. [First controller failure](controller/timing-68d526da8594-1.log) · [Release](controller-release.json) · [Native SETUP](../setup/README.md)
+
+## Classifying the one row
+
+The hot archive `f2826ce7…` records 111 calls to `claim_batch_set_v1` returning 1,060 SQL rows, one real checked `claim_batch_v1` call returning one SQL row, and 112 matching BEGIN and COMMIT calls with zero rollbacks. The checked-A warmup records 114 set calls, zero cursor calls and zero hints. Both completed 1,024 jobs with two independent application writes and one successful scalar terminal call and XID per job. The exact same native ELF and pinned patch bind both archives to public source `1e70f18d`. [Raw warmups](native/blocks) · [Replayed counts](cursor-proof.json)
+
+The checked cursor's outer SELECT anchors on one row and left-joins the actual function. When the function produces no rows and the outer predicate still sees an active queue, apparent capacity, and eligible work, the SELECT can return one `contention_hint` row with null grant fields. A real grant instead returns an ordinal, job ID, context and lease token. The raw statement counter counts either shape as one row and omits the field values. [Exact wrapper and decoder in the public source bundle](../../../../2026-11-24-qualified-hot-pool/source.tar.gz)
+
+Runner 0 reported exactly one `batch_contention_hints` increment and runner 1 reported zero. The shared reply consumer only increments it for an empty, flagged batch. The other route to that flag is the checked driver's `55P03` path, which rolls back. All 112 checked SELECTs are accounted for by 112 BEGIN/COMMIT pairs and both runners joined cleanly with no last error. The harness reads the full worker-role statement counters after stopping the runners. The sole cursor reply therefore supplied the flag without a rollback. Its one output row was the padded sentinel. An independent count agrees. The 1,060 set rows account for 1,024 grants, 35 empty-marker due probes, and the one fallback marker. That leaves 75 productive set calls, matching 75 distinct runner and claim-stamp groups in the ledger. [Reconciliation](replay-cursor.py)
+
+## Why the cursor ran
+
+In the sealed warmup configuration, the only path from set-based admission to the checked cursor is a validated `fallback` marker from the set SELECT. The following single `next_due_ms` probe corroborates that path. The exact checked claim driver starts READ COMMITTED transactions, the cluster harness initializes UTF-8, and the driver requests UTF-8. The remaining source path is the trailing eligible-work probe after a set statement makes no grants. It can find work skipped by the row-locking pick, work newly visible to the later command snapshot, or work the conservative render or reply-size guard declined. The canonical input uses 1 KiB payloads and ordinary metadata, so the size guard is an unlikely explanation. The warmup raw has aggregate SQL counts and final job state, without the per-call eligibility snapshot, tuple storage attributes or a lock owner. It does not establish which condition caused this fallback or whether the launch switch caused it. After the fallback the cursor took a new transaction and returned zero function rows on its own turn. A competing claim holding the queue lock is one way for the cursor to skip while its outer snapshot still shows eligible work. [Sealed source patch](../../../archive/claim-lane.patch) · [Public schema and driver bundle](../../../../2026-11-24-qualified-hot-pool/source.tar.gz)
+
+The reducer reads the retained warmup archives and original receipts offline.
+
+```sh
+python3 -B replay-cursor.py | cmp - cursor-proof.json
+```
