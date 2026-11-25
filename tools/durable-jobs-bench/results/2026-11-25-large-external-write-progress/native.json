@@ -1,0 +1,249 @@
+{
+  "blocks": {
+    "1": {
+      "apalis": {
+        "raw_sha256": "cc9e74aeff30eb2087841f0030e044d38b99a51999fed314535520f53465cec2",
+        "stages_us": {
+          "after_56th": 14222,
+          "commit_to_eighth": 92140,
+          "eighth_to_56th": 82030,
+          "enqueue": 677743
+        },
+        "submit_us": 866135
+      },
+      "file": {
+        "raw_sha256": "e8cfeb321b9eab9aaefc760aaf90399a1b46553973332943a7d377a7d3c837b8",
+        "stages_us": {
+          "after_56th": 77626,
+          "commit_to_eighth": 126605,
+          "eighth_to_56th": 485065,
+          "enqueue": 730541
+        },
+        "submit_us": 1419837
+      },
+      "oban": {
+        "raw_sha256": "d3afea1e3751a5d281dedc42ed6e8d792a3e605c3e2c1a4bd5cb15781462b653",
+        "stages_us": {
+          "after_56th": 17553,
+          "commit_to_eighth": 89984,
+          "eighth_to_56th": 384153,
+          "enqueue": 1160194
+        },
+        "submit_us": 1651884
+      },
+      "river": {
+        "raw_sha256": "571a685ac5abe5e4abc6062c7534ba6d761ecb1ba87c8c64db68dc81f6b18bf1",
+        "stages_us": {
+          "after_56th": 197385,
+          "commit_to_eighth": 345288,
+          "eighth_to_56th": 308761,
+          "enqueue": 1443207
+        },
+        "submit_us": 2294641
+      }
+    },
+    "2": {
+      "apalis": {
+        "raw_sha256": "60d58862ed4d480a888278d96cb2dc6ae008b4f093b81424c2a028ae7f0b6384",
+        "stages_us": {
+          "after_56th": 18173,
+          "commit_to_eighth": 123422,
+          "eighth_to_56th": 82569,
+          "enqueue": 671467
+        },
+        "submit_us": 895631
+      },
+      "file": {
+        "raw_sha256": "f501507714e50cc3c6932fcc4437b00430fc0d352c71dc8ae341ca3da9afb503",
+        "stages_us": {
+          "after_56th": 48778,
+          "commit_to_eighth": 113226,
+          "eighth_to_56th": 486839,
+          "enqueue": 714099
+        },
+        "submit_us": 1362942
+      },
+      "oban": {
+        "raw_sha256": "40b3dfb2944d7a70f28082ab5e7e1f3606ce0998abad92f3514a74a7d7f96f4f",
+        "stages_us": {
+          "after_56th": 15610,
+          "commit_to_eighth": 156054,
+          "eighth_to_56th": 313956,
+          "enqueue": 1154207
+        },
+        "submit_us": 1639827
+      },
+      "river": {
+        "raw_sha256": "4817a4fa4d8d6e592096800e8b01f8fe76bbf450f9a463193e4210ce5b1373b1",
+        "stages_us": {
+          "after_56th": 245566,
+          "commit_to_eighth": 302150,
+          "eighth_to_56th": 383010,
+          "enqueue": 1465490
+        },
+        "submit_us": 2396216
+      }
+    },
+    "3": {
+      "apalis": {
+        "raw_sha256": "ca51f63b29d2c8e45c6e0512ec6797442d8917bdbeeb8557a5b33563d7cf89ba",
+        "stages_us": {
+          "after_56th": 13215,
+          "commit_to_eighth": 83206,
+          "eighth_to_56th": 100738,
+          "enqueue": 626237
+        },
+        "submit_us": 823396
+      },
+      "file": {
+        "raw_sha256": "72bb4a0aa69392bc737a0f0a817911daa9121f3630d065b531eb3a7732b25fba",
+        "stages_us": {
+          "after_56th": 45976,
+          "commit_to_eighth": 162631,
+          "eighth_to_56th": 426529,
+          "enqueue": 686224
+        },
+        "submit_us": 1321360
+      },
+      "oban": {
+        "raw_sha256": "5d761c14ec7a96fb0bb65273ed611266b0846aea6a3d0fafb6b288652bba4e93",
+        "stages_us": {
+          "after_56th": 28243,
+          "commit_to_eighth": 81201,
+          "eighth_to_56th": 402310,
+          "enqueue": 1233491
+        },
+        "submit_us": 1745245
+      },
+      "river": {
+        "raw_sha256": "1449a4538562af2d7ebc749673f88121e00edbde0c3a271c66d047732ac38b4a",
+        "stages_us": {
+          "after_56th": 256545,
+          "commit_to_eighth": 286528,
+          "eighth_to_56th": 367250,
+          "enqueue": 1564603
+        },
+        "submit_us": 2474926
+      }
+    },
+    "4": {
+      "apalis": {
+        "raw_sha256": "621b1acd50f0d0bcccb7bee23d8f9867de6b07aa929115c4ecc268085dbde893",
+        "stages_us": {
+          "after_56th": 16285,
+          "commit_to_eighth": 89617,
+          "eighth_to_56th": 95015,
+          "enqueue": 650029
+        },
+        "submit_us": 850946
+      },
+      "file": {
+        "raw_sha256": "cd65c7217b7c7e29ee9a79bee501ebe40ca5811245f113f539ddd3e63c9d5e4e",
+        "stages_us": {
+          "after_56th": 78500,
+          "commit_to_eighth": 115987,
+          "eighth_to_56th": 668037,
+          "enqueue": 778244
+        },
+        "submit_us": 1640768
+      },
+      "oban": {
+        "raw_sha256": "c0c1a1bf9b51dfc0bcf3b5e495973e991453d22b3ae3ca60a908ca4fe29ab327",
+        "stages_us": {
+          "after_56th": 29405,
+          "commit_to_eighth": 253657,
+          "eighth_to_56th": 225024,
+          "enqueue": 1155090
+        },
+        "submit_us": 1663176
+      },
+      "river": {
+        "raw_sha256": "17c171e625a3b5e0a1a769004270654647e74a2d9816d281e323820fbdd6af73",
+        "stages_us": {
+          "after_56th": 153214,
+          "commit_to_eighth": 171256,
+          "eighth_to_56th": 505250,
+          "enqueue": 1454845
+        },
+        "submit_us": 2284565
+      }
+    },
+    "5": {
+      "apalis": {
+        "raw_sha256": "3355b98e516920e0fbc54621d59a9221e42afab8a652ced6bd5ebb02f9c2802d",
+        "stages_us": {
+          "after_56th": 16614,
+          "commit_to_eighth": 114478,
+          "eighth_to_56th": 37217,
+          "enqueue": 705898
+        },
+        "submit_us": 874207
+      },
+      "file": {
+        "raw_sha256": "884a041449fa1f19b93c9d65e1de83a3d49262f1aaf7461d70318ce8d5d23c5a",
+        "stages_us": {
+          "after_56th": 58996,
+          "commit_to_eighth": 167699,
+          "eighth_to_56th": 432438,
+          "enqueue": 666173
+        },
+        "submit_us": 1325306
+      },
+      "oban": {
+        "raw_sha256": "13c0be9139ad2342af6621bdfd2e8537617f25adbb80090c1908e533f3d11896",
+        "stages_us": {
+          "after_56th": 32432,
+          "commit_to_eighth": 85077,
+          "eighth_to_56th": 418717,
+          "enqueue": 1213979
+        },
+        "submit_us": 1750205
+      },
+      "river": {
+        "raw_sha256": "62f72db2d49203aadbfc6b3a4e82e7605741ca9a19a065aefb971d25112fbe27",
+        "stages_us": {
+          "after_56th": 217517,
+          "commit_to_eighth": 394041,
+          "eighth_to_56th": 253741,
+          "enqueue": 1456872
+        },
+        "submit_us": 2322171
+      }
+    }
+  },
+  "peers": {
+    "apalis": {
+      "at_least_20_percent_faster": 0,
+      "file_minus_peer_paired_median_us": {
+        "after_56th": 42382,
+        "commit_to_eighth": 34465,
+        "eighth_to_56th": 403035,
+        "enqueue": 52798
+      },
+      "file_submit_throughput_ratio_median": 0.6231428225464672,
+      "wins": 0
+    },
+    "oban": {
+      "at_least_20_percent_faster": 3,
+      "file_minus_peer_paired_median_us": {
+        "after_56th": 33168,
+        "commit_to_eighth": 36621,
+        "eighth_to_56th": 100912,
+        "enqueue": -440108
+      },
+      "file_submit_throughput_ratio_median": 1.2031524452251086,
+      "wins": 5
+    },
+    "river": {
+      "at_least_20_percent_faster": 5,
+      "file_minus_peer_paired_median_us": {
+        "after_56th": -158521,
+        "commit_to_eighth": -188924,
+        "eighth_to_56th": 162787,
+        "enqueue": -751391
+      },
+      "file_submit_throughput_ratio_median": 1.752177233031466,
+      "wins": 5
+    }
+  }
+}
