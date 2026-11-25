@@ -1,0 +1,711 @@
+{
+  "combined": [
+    {
+      "comparisons": {
+        "apalis": [
+          {
+            "after": {
+              "attempt_committed_us": 64,
+              "claimed_us": 64,
+              "effect_committed_us": 64,
+              "entered_us": 64,
+              "settled_us": 64
+            },
+            "deadline_us": 156993,
+            "min_effect_advance_us": 374638
+          },
+          {
+            "after": {
+              "attempt_committed_us": 64,
+              "claimed_us": 64,
+              "effect_committed_us": 64,
+              "entered_us": 64,
+              "settled_us": 64
+            },
+            "deadline_us": 186803,
+            "min_effect_advance_us": 344828
+          },
+          {
+            "after": {
+              "attempt_committed_us": 64,
+              "claimed_us": 64,
+              "effect_committed_us": 64,
+              "entered_us": 64,
+              "settled_us": 64
+            },
+            "deadline_us": 164299,
+            "min_effect_advance_us": 367332
+          },
+          {
+            "after": {
+              "attempt_committed_us": 64,
+              "claimed_us": 64,
+              "effect_committed_us": 64,
+              "entered_us": 64,
+              "settled_us": 64
+            },
+            "deadline_us": 167430,
+            "min_effect_advance_us": 364201
+          },
+          {
+            "after": {
+              "attempt_committed_us": 64,
+              "claimed_us": 64,
+              "effect_committed_us": 64,
+              "entered_us": 64,
+              "settled_us": 64
+            },
+            "deadline_us": 140257,
+            "min_effect_advance_us": 391374
+          }
+        ],
+        "oban": [
+          {
+            "after": {
+              "attempt_committed_us": 24,
+              "claimed_us": 15,
+              "effect_committed_us": 25,
+              "entered_us": 20,
+              "settled_us": 43
+            },
+            "deadline_us": 409741,
+            "min_effect_advance_us": 121890
+          },
+          {
+            "after": {
+              "attempt_committed_us": 24,
+              "claimed_us": 15,
+              "effect_committed_us": 26,
+              "entered_us": 21,
+              "settled_us": 47
+            },
+            "deadline_us": 404683,
+            "min_effect_advance_us": 126948
+          },
+          {
+            "after": {
+              "attempt_committed_us": 22,
+              "claimed_us": 10,
+              "effect_committed_us": 23,
+              "entered_us": 17,
+              "settled_us": 32
+            },
+            "deadline_us": 426461,
+            "min_effect_advance_us": 105170
+          },
+          {
+            "after": {
+              "attempt_committed_us": 22,
+              "claimed_us": 13,
+              "effect_committed_us": 24,
+              "entered_us": 18,
+              "settled_us": 34
+            },
+            "deadline_us": 423405,
+            "min_effect_advance_us": 108226
+          },
+          {
+            "after": {
+              "attempt_committed_us": 18,
+              "claimed_us": 7,
+              "effect_committed_us": 21,
+              "entered_us": 12,
+              "settled_us": 25
+            },
+            "deadline_us": 446855,
+            "min_effect_advance_us": 84776
+          }
+        ],
+        "river": [
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 709528,
+            "min_effect_advance_us": 0
+          },
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 775605,
+            "min_effect_advance_us": 0
+          },
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 758602,
+            "min_effect_advance_us": 0
+          },
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 691433,
+            "min_effect_advance_us": 0
+          },
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 721082,
+            "min_effect_advance_us": 0
+          }
+        ]
+      },
+      "drain_us": 542803,
+      "group": 1,
+      "last_from_commit_us": {
+        "attempt_committed_us": 523038,
+        "claimed_us": 460890,
+        "effect_committed_us": 531631,
+        "entered_us": 513236,
+        "settled_us": 542803
+      },
+      "raw_sha256": "5c6d7e28d2f209452d380b4d7f498d42aae73a9f4020500bf75eed1f6da5ad60"
+    },
+    {
+      "comparisons": {
+        "apalis": [
+          {
+            "after": {
+              "attempt_committed_us": 58,
+              "claimed_us": 56,
+              "effect_committed_us": 63,
+              "entered_us": 56,
+              "settled_us": 64
+            },
+            "deadline_us": 156993,
+            "min_effect_advance_us": 366114
+          },
+          {
+            "after": {
+              "attempt_committed_us": 56,
+              "claimed_us": 56,
+              "effect_committed_us": 56,
+              "entered_us": 56,
+              "settled_us": 63
+            },
+            "deadline_us": 186803,
+            "min_effect_advance_us": 336304
+          },
+          {
+            "after": {
+              "attempt_committed_us": 57,
+              "claimed_us": 56,
+              "effect_committed_us": 60,
+              "entered_us": 56,
+              "settled_us": 64
+            },
+            "deadline_us": 164299,
+            "min_effect_advance_us": 358808
+          },
+          {
+            "after": {
+              "attempt_committed_us": 56,
+              "claimed_us": 56,
+              "effect_committed_us": 60,
+              "entered_us": 56,
+              "settled_us": 64
+            },
+            "deadline_us": 167430,
+            "min_effect_advance_us": 355677
+          },
+          {
+            "after": {
+              "attempt_committed_us": 62,
+              "claimed_us": 56,
+              "effect_committed_us": 64,
+              "entered_us": 58,
+              "settled_us": 64
+            },
+            "deadline_us": 140257,
+            "min_effect_advance_us": 382850
+          }
+        ],
+        "oban": [
+          {
+            "after": {
+              "attempt_committed_us": 25,
+              "claimed_us": 15,
+              "effect_committed_us": 28,
+              "entered_us": 21,
+              "settled_us": 39
+            },
+            "deadline_us": 409741,
+            "min_effect_advance_us": 113366
+          },
+          {
+            "after": {
+              "attempt_committed_us": 27,
+              "claimed_us": 16,
+              "effect_committed_us": 28,
+              "entered_us": 24,
+              "settled_us": 41
+            },
+            "deadline_us": 404683,
+            "min_effect_advance_us": 118424
+          },
+          {
+            "after": {
+              "attempt_committed_us": 24,
+              "claimed_us": 11,
+              "effect_committed_us": 25,
+              "entered_us": 18,
+              "settled_us": 34
+            },
+            "deadline_us": 426461,
+            "min_effect_advance_us": 96646
+          },
+          {
+            "after": {
+              "attempt_committed_us": 24,
+              "claimed_us": 13,
+              "effect_committed_us": 26,
+              "entered_us": 19,
+              "settled_us": 36
+            },
+            "deadline_us": 423405,
+            "min_effect_advance_us": 99702
+          },
+          {
+            "after": {
+              "attempt_committed_us": 21,
+              "claimed_us": 7,
+              "effect_committed_us": 24,
+              "entered_us": 11,
+              "settled_us": 30
+            },
+            "deadline_us": 446855,
+            "min_effect_advance_us": 76252
+          }
+        ],
+        "river": [
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 709528,
+            "min_effect_advance_us": 0
+          },
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 775605,
+            "min_effect_advance_us": 0
+          },
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 758602,
+            "min_effect_advance_us": 0
+          },
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 691433,
+            "min_effect_advance_us": 0
+          },
+          {
+            "after": {
+              "attempt_committed_us": 0,
+              "claimed_us": 0,
+              "effect_committed_us": 0,
+              "entered_us": 0,
+              "settled_us": 0
+            },
+            "deadline_us": 721082,
+            "min_effect_advance_us": 0
+          }
+        ]
+      },
+      "drain_us": 532397,
+      "group": 2,
+      "last_from_commit_us": {
+        "attempt_committed_us": 514250,
+        "claimed_us": 473236,
+        "effect_committed_us": 523107,
+        "entered_us": 500368,
+        "settled_us": 532397
+      },
+      "raw_sha256": "942e3329fdad6ae4ecd52fb6caf5ddda24cb58ca1e58123920a0daaa9e9012a2"
+    }
+  ],
+  "controls": [
+    {
+      "commit_to_ack_us": 2835,
+      "drain_us": 708918,
+      "group": 1,
+      "lane": "bridge",
+      "phase": "warmup",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 706474,
+        "idle_ms": 130,
+        "idle_percent": 29.55,
+        "observed_us": 236167,
+        "raw_sha256": "14fa30ee496b02b0468e32e4a4e1d805ad2696699d87fd4d13020a86d3af3ec5",
+        "ticks": [
+          18,
+          0,
+          13,
+          13,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1166
+    },
+    {
+      "commit_to_ack_us": 5992,
+      "drain_us": 625128,
+      "group": 1,
+      "lane": "off-a",
+      "phase": "warmup",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 796425,
+        "idle_ms": 130,
+        "idle_percent": 30.95,
+        "observed_us": 224692,
+        "raw_sha256": "3a27888f3e7cc5e3f64cf678b4a0a8f3781cf25b2591b01d5980747e2de61caf",
+        "ticks": [
+          16,
+          0,
+          12,
+          13,
+          0,
+          0,
+          1,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1220
+    },
+    {
+      "commit_to_ack_us": 6700,
+      "drain_us": 655737,
+      "group": 1,
+      "lane": "off-b",
+      "phase": "warmup",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 695770,
+        "idle_ms": 160,
+        "idle_percent": 35.56,
+        "observed_us": 236353,
+        "raw_sha256": "70e612ef7265d749eec89043c0672fd1c81dda233a3e7f6ea25d9eeda80d2ca0",
+        "ticks": [
+          16,
+          0,
+          12,
+          16,
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1223
+    },
+    {
+      "commit_to_ack_us": 15766,
+      "drain_us": 702520,
+      "group": 1,
+      "lane": "bridge",
+      "phase": "measured",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 712581,
+        "idle_ms": 130,
+        "idle_percent": 27.66,
+        "observed_us": 235505,
+        "raw_sha256": "5e774847fa9786c64f6888845261db83ae063785eb4be0dc1f136208de358ae8",
+        "ticks": [
+          19,
+          0,
+          12,
+          13,
+          1,
+          0,
+          2,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1224
+    },
+    {
+      "commit_to_ack_us": 15816,
+      "drain_us": 656510,
+      "group": 1,
+      "lane": "off-a",
+      "phase": "measured",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 711302,
+        "idle_ms": 150,
+        "idle_percent": 33.33,
+        "observed_us": 235557,
+        "raw_sha256": "f0cdb641cf17b428170d9d19ed36f73069ff24f6af0474bdb52cc2a58b1c46cc",
+        "ticks": [
+          16,
+          0,
+          11,
+          15,
+          1,
+          0,
+          2,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1187
+    },
+    {
+      "commit_to_ack_us": 11322,
+      "drain_us": 687641,
+      "group": 1,
+      "lane": "off-b",
+      "phase": "measured",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 701599,
+        "idle_ms": 160,
+        "idle_percent": 34.04,
+        "observed_us": 236625,
+        "raw_sha256": "b39e0b73014a957f023913a4f7a661d26e9325da314def5fda56e180c66f63ad",
+        "ticks": [
+          16,
+          0,
+          13,
+          16,
+          1,
+          0,
+          1,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1192
+    },
+    {
+      "commit_to_ack_us": 20130,
+      "drain_us": 661718,
+      "group": 2,
+      "lane": "bridge",
+      "phase": "warmup",
+      "producer_window": {
+        "eligible_samples": 3,
+        "enqueue_us": 731039,
+        "idle_ms": 300,
+        "idle_percent": 32.97,
+        "observed_us": 471516,
+        "raw_sha256": "e478cb8eb85ff5b7fcf303a4e3bb6f55f3b632aa168b0b729b99815d4b295e65",
+        "ticks": [
+          34,
+          0,
+          25,
+          30,
+          1,
+          0,
+          1,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1147
+    },
+    {
+      "commit_to_ack_us": 5513,
+      "drain_us": 615319,
+      "group": 2,
+      "lane": "off-a",
+      "phase": "warmup",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 723698,
+        "idle_ms": 170,
+        "idle_percent": 36.17,
+        "observed_us": 236852,
+        "raw_sha256": "7486a66eed2f34e2fb4f977c9a5e995b8a77c0dc4068d3f6d4915e864fa07b74",
+        "ticks": [
+          15,
+          0,
+          13,
+          17,
+          1,
+          0,
+          1,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1143
+    },
+    {
+      "commit_to_ack_us": 17574,
+      "drain_us": 649749,
+      "group": 2,
+      "lane": "off-b",
+      "phase": "warmup",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 704492,
+        "idle_ms": 160,
+        "idle_percent": 35.56,
+        "observed_us": 234956,
+        "raw_sha256": "1a6a59bcbf7466e571feefd7b95a66c427baad483c698175bdbc92663a08e5a9",
+        "ticks": [
+          17,
+          0,
+          11,
+          16,
+          0,
+          0,
+          1,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1173
+    },
+    {
+      "commit_to_ack_us": 12477,
+      "drain_us": 665965,
+      "group": 2,
+      "lane": "bridge",
+      "phase": "measured",
+      "producer_window": {
+        "eligible_samples": 3,
+        "enqueue_us": 812637,
+        "idle_ms": 240,
+        "idle_percent": 27.91,
+        "observed_us": 449661,
+        "raw_sha256": "b6d344c3cf7d80fedba12b4e69b8a5d81b28f18a79654be252e679a39c771617",
+        "ticks": [
+          34,
+          0,
+          25,
+          24,
+          2,
+          0,
+          1,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1288
+    },
+    {
+      "commit_to_ack_us": 18390,
+      "drain_us": 661402,
+      "group": 2,
+      "lane": "off-a",
+      "phase": "measured",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 691590,
+        "idle_ms": 160,
+        "idle_percent": 35.56,
+        "observed_us": 234581,
+        "raw_sha256": "0e89efb27457f122854da204bb210868ebfdf1644eeab6bb244ec74243ae160a",
+        "ticks": [
+          14,
+          0,
+          13,
+          16,
+          2,
+          0,
+          0,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1157
+    },
+    {
+      "commit_to_ack_us": 17324,
+      "drain_us": 661979,
+      "group": 2,
+      "lane": "off-b",
+      "phase": "measured",
+      "producer_window": {
+        "eligible_samples": 2,
+        "enqueue_us": 679854,
+        "idle_ms": 160,
+        "idle_percent": 36.36,
+        "observed_us": 236141,
+        "raw_sha256": "240eef07f869e98998140fbde8f5dd56f2afe4735a65bffaebf6414abe3ce9e0",
+        "ticks": [
+          16,
+          0,
+          11,
+          16,
+          1,
+          0,
+          0,
+          0
+        ]
+      },
+      "runner_lifetime_cpu_ms": 1132
+    }
+  ],
+  "historical_drain_deadlines_us": {
+    "apalis": [
+      156993,
+      186803,
+      164299,
+      167430,
+      140257
+    ],
+    "oban": [
+      409741,
+      404683,
+      426461,
+      423405,
+      446855
+    ],
+    "river": [
+      709528,
+      775605,
+      758602,
+      691433,
+      721082
+    ]
+  }
+}

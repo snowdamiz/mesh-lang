@@ -37,3 +37,22 @@ The replay checks 22 measured raw hashes. Supply the pilot evidence directory fr
 ```sh
 python3 -B producer_window.py "$pilot_evidence" | cmp - producer-window.json
 ```
+
+## Where the EXTERNAL factorial still needs earlier writes
+
+The EXTERNAL pilot at `39f7fae80` closed after the reverse stock FILE bridge missed calibration. The measured bridge spent 812.637 ms before durable commit. Its two same-image OFF references spent 691.590 and 679.854 ms. The bridge's 126.915 ms enqueue excess accounted for all but 4.275 ms of its 131.190 ms full-submit excess. Its commit acknowledgement arrived 12.477 ms after commit, outside the enqueue interval. The reverse warmup bridge took 731 ms to enqueue. The corresponding warmup OFFs took 724 and 704 ms. The raw CPU counters cover only portions of each enqueue window and lack per-process attribution.
+
+The five historical Oban drains imply deadlines of **404.683–446.855 ms** for a 20% throughput lead on 64 jobs. The table applies the most permissive deadline to each released combined Mesh arm. These are design targets across two series. The pilot supplied no fresh matched peer result.
+
+| Combined Mesh rotation | Last claim stamp after commit | Jobs with a later claim stamp than 446.855 ms | Jobs still missing their second durable write at 446.855 ms | Minimum last-effect advance even with immediate final settlement |
+|---|---:|---:|---:|---:|
+| Forward | 460.890 ms | 7 | 21 | 84.776 ms |
+| Reverse | 473.236 ms | 7 | 24 | 76.252 ms |
+
+At the tightest deadline, the minimum last-effect advances rise to 126.948 and 118.424 ms. The observed final settlement tails were 11.172 and 9.290 ms. A producer-only improvement can advance submit-to-settlement. To reach these drain deadlines, work between durable enqueue and the last application write also needs to finish earlier. The claim timestamp is recorded inside the transaction and floored to milliseconds. Later stamps give a lower bound on claims still outstanding.
+
+Replay the 20 matched historical archives and 16 factorial captures with the archived EXTERNAL pilot evidence directory as the argument. The script verifies the release, sealed score and raw hashes and checks the measured clocks against each ledger.
+
+```sh
+python3 -B factorial_deadlines.py "$external_pilot_evidence" | cmp - factorial-deadlines.json
+```
