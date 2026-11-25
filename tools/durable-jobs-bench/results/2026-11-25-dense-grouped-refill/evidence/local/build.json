@@ -1,0 +1,50 @@
+{
+  "fixture": {
+    "architecture": "arm64",
+    "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "cc": "Apple clang version 21.0.0 (clang-2100.4.1.1)\nTarget: arm64-apple-darwin27.0.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+    "compiler_sha256": "71ac687c493294eda6e15f1413f7430bfed4762c3ca3e44db75c7be67adea433",
+    "execution_contract": "ordinary-trusted-shared-process-v2",
+    "files": {
+      "libworker_identity.a": "7720a07c42000ed7592979395a4f62ba12aab5180fb565c006abdf364b27e630",
+      "main.mpl": "6928aedd4b937ce8008c7c3dd724ed91a4e0c324accd55e098cecf287cdeea69",
+      "mesh": "4626e285a775dd84ec27dfe1b7c1ebdd00462ae42f499126baa0a93f048a1656",
+      "mesh.toml": "d4df6bab59b6f1a662fafe11fe81fd2819ce2232bb2a8cf3fa26195278ecce9d",
+      "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+      "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+      "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+    },
+    "meshc": "meshc 0.1.8",
+    "runtime_sha256": "af5c06da9f7fa4dcb29e1d087c873a978c9b50b6447823c0ce41e41601591372",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "source_sha256": "d8cb8b913a886a8662f9fe12b489add63178c9611eef964abc8d5109b6c5e820",
+    "system": "Darwin",
+    "version": "b3557273d72be3802bf189b284e7caaf5f3caa0f"
+  },
+  "postgres": "postgres (PostgreSQL) 17.11 (Homebrew)",
+  "purpose": "untimed correctness",
+  "witness": {
+    "architecture": "arm64",
+    "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "cc": "Apple clang version 21.0.0 (clang-2100.4.1.1)\nTarget: arm64-apple-darwin27.0.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+    "compiler_sha256": "71ac687c493294eda6e15f1413f7430bfed4762c3ca3e44db75c7be67adea433",
+    "execution_contract": "ordinary-trusted-shared-process-v2",
+    "files": {
+      "libworker_identity.a": "3789498441a5f5ef3b36493729a576c894e9ce615194f6c93048d56933cab622",
+      "main.mpl": "04367b5788190716a0ac4c2ff36607a5023bc8ea0a5f0ac87f094fd30997df7f",
+      "mesh": "64d7c2fc2072bc191c837fa57da7a4de8cbf75699c1e6d8367962f7e856af966",
+      "mesh.toml": "c684c88d6a14fabb5bdbed45291dafd00bc271147f846a48b620044910559046",
+      "worker_identity.c": "fe8b7b2cb1bde5ec25c857750608e244795c9336a1b2aeb0c8b51486504e10c7",
+      "worker_identity.mpl": "3d3abf052591ea1309b5c06f94436980a252ba25eb929f7cf7887aaec9f4466c",
+      "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+    },
+    "meshc": "meshc 0.1.8",
+    "runtime_sha256": "af5c06da9f7fa4dcb29e1d087c873a978c9b50b6447823c0ce41e41601591372",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "source_sha256": "d8cb8b913a886a8662f9fe12b489add63178c9611eef964abc8d5109b6c5e820",
+    "system": "Darwin",
+    "version": "b3557273d72be3802bf189b284e7caaf5f3caa0f"
+  }
+}

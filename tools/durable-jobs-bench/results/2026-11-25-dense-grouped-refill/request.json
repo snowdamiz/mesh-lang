@@ -1,0 +1,142 @@
+{
+  "after_existing_bookings": true,
+  "build_free_timing": true,
+  "commands": {
+    "bind": "python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/pilot.py bind target/dense-grouped-refill-packet/source.tar.gz target/linode-jobs-stepchange/requests/2026-11-25-dense-grouped-refill-setup.released.json tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup/raw.tar.gz",
+    "check": "python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/pilot.py check",
+    "peer_replay": "python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/pilot.py peer-replay target/dense-grouped-refill-packet/source.tar.gz target/linode-jobs-stepchange/requests/2026-11-25-dense-grouped-refill-setup.released.json tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup/raw.tar.gz tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-peers target/linode-jobs-stepchange/requests/2026-11-25-dense-grouped-refill-pilot.released.json tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-pilot",
+    "peer_timing": "python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/pilot.py peer-timing target/dense-grouped-refill-packet/source.tar.gz target/linode-jobs-stepchange/requests/2026-11-25-dense-grouped-refill-setup.released.json tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup/raw.tar.gz tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-peers target/linode-jobs-stepchange/requests/2026-11-25-dense-grouped-refill-pilot.released.json tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-pilot",
+    "replay": "python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/pilot.py replay target/dense-grouped-refill-packet/source.tar.gz target/linode-jobs-stepchange/requests/2026-11-25-dense-grouped-refill-setup.released.json tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup/raw.tar.gz tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-pilot",
+    "setup_spec": "python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/pilot.py setup-spec target/dense-grouped-refill-packet/source.tar.gz",
+    "timing": "python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/pilot.py timing target/dense-grouped-refill-packet/source.tar.gz target/linode-jobs-stepchange/requests/2026-11-25-dense-grouped-refill-setup.released.json tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup/raw.tar.gz tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-pilot"
+  },
+  "controller": "native-controller-complete-post-wal-queue",
+  "evidence": {
+    "peers": "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-peers",
+    "setup": "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup",
+    "timing": "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-pilot"
+  },
+  "gate": {
+    "minimum_faster_control_elapsed_fraction": 0.05,
+    "minimum_terminal_xid_fraction": 0.05,
+    "require_beyond_duplicate_spread": true,
+    "require_both_groups": true,
+    "require_prior_last_effect": true,
+    "reserve_peers_only_after_release_and_pass": true
+  },
+  "id": "2026-11-25-dense-grouped-refill",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/equal.json": "0694806a3ddb1a056c9acbb4f4414e21a64b48fb4ad0de8a19d76263bbf7aaae",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/matrix.py": "dffaa6d936cd0010f2f4377106d5b2846bdaa2cc6f9c431338a776e1d63c84bb",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/qualification.py": "97a48e0b96532710fba3fade20bd96e8bebcde3d15529de6dc6f23ca1da799ee",
+    "tools/durable-jobs-bench/results/2026-11-24-bulk-d2-short-peers/short.json": "be33d238748dd544e21f13857ac8aaa99e95f7b37c51572dcc20e6123ca51041",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/transfer.py": "43cf1e9017ca66a7f77ba744770908f736142e3587bd9bc3cdcc10be48593475",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/backend.py": "f2a897601d10f8c30b6bad30358ed1a88a8f688b54068095237ae1160ac7cea1",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/candidate.patch": "5db360e44ae2b74e96bc955da222cd02f20c0afe5aff776942e4e5f2e8a2e4a3",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/build.json": "ed6ac644e49af84ee777c3847ffd54c39faf994eaf4e44d1472f4f7383534db9",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/cancellation.json": "1b6fb4b25b418a73786c11f5b11f8f61de9c34ff7b0bb0130a47c36576f2f64b",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/forced-teardown.json": "4b35efaac844f58d78a72e2706ad9c8f799f4a2dd236da1d74a61d347241ebf7",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/held-teardown.json": "5c6f63bc5066e1058a85a98edd5bc36d575ac906a34d1e3f4af873f29b719d2c",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/held-terminal.json": "04963f1e89f829f6919d488d1982864b3a77203ecbf5406c8d108cab814a7043",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/lost-bulk.json": "487c676a2dd491fbfdb54b5b68d48c25d48d27b6baa8ac8b606aaadb50042f58",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/lost-terminal.json": "282e1abfd95f92eadb369b4e65c0a4651078e0f27cbb8b9f658985c3b83f0235",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/sql-cut.json": "b9ec68765c0201c184d680dd87ea139b4fb5a92c052bd8024e860cd8e0c6eb8a",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/stop-partial.json": "7859759305e10d511451cf474b1b1d263d4fcee8758660c662bdeffca1abc094",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/test-results.json": "135a95cff1305fa21c076bf6b9236a4411ccb58ff2e7677250f6f480a7caac7a",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/package.py": "2464b8fa1387ee9732659a78b3a6171f5ee95f78b77bdae1c4d87d923d583740",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/pilot.py": "b6998c9eb3af4c7386c0c3d7f581a351a57cac416f53c5da63b1f03433107ee2",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/verify_candidate.py": "966cf650e687fdc207bd3386cfe7c3a2e6e82109b8fc4d1eb44b3e14e4717f3f",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "minutes": {
+    "peers": 18,
+    "setup": 14,
+    "timing": 18
+  },
+  "modes": {
+    "fixed8": "product-d2",
+    "hot": "product-d2",
+    "stock-a": "product-d2",
+    "stock-b": "product-d2",
+    "zero": "product-d2"
+  },
+  "operator_id": "dense-grouped-refill-implementation",
+  "peer_schedule": [
+    {
+      "group": 1,
+      "order": [
+        "stock-a",
+        "river-2x32",
+        "hot",
+        "oban-2x32",
+        "apalis-2x32"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 2,
+      "order": [
+        "apalis-2x32",
+        "oban-2x32",
+        "hot",
+        "river-2x32",
+        "stock-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "phase_ids": {
+    "peers": "2026-11-25-dense-grouped-refill-peers",
+    "setup": "2026-11-25-dense-grouped-refill-setup",
+    "timing": "2026-11-25-dense-grouped-refill-pilot"
+  },
+  "ready": true,
+  "recovery": "Retain exact failed and partial raw exports. Confirm pinned host, outstanding children and all three locks before any follow-up assignment. Only the sole controller records grants and releases.",
+  "schedule": [
+    {
+      "group": 1,
+      "order": [
+        "stock-a",
+        "zero",
+        "hot",
+        "fixed8",
+        "stock-b"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 2,
+      "order": [
+        "stock-b",
+        "fixed8",
+        "hot",
+        "zero",
+        "stock-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "scope": "Native x86-64 PostgreSQL 17.11 SETUP proof, then two reverse dense grouped pilots. 2x32, 32 warmed app sessions, 4 scheduler workers, 2 pinned CPUs, 1024 jobs.",
+  "source_archive": "target/dense-grouped-refill-packet/source.tar.gz",
+  "source_archive_sha256": "deb2a3bc49feae7df985fe895209c3db7d725cd4c9c1b9c8ba49c93a650dd6d8",
+  "source_sha": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "use_only_controller": true
+}

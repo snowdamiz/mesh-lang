@@ -1,0 +1,20 @@
+{
+  "focused": [
+    "test result: ok. 20 passed; 0 failed; 5 ignored; 0 measured; 1639 filtered out; finished in 0.02s"
+  ],
+  "offline_inventory": "Five same-image Mesh and three peer inventory shapes validated. Historical grouped committed occupancy replay passed.",
+  "postgres_jobs": [
+    "test result: ok. 39 passed; 0 failed; 6 ignored; 0 measured; 1619 filtered out; finished in 0.39s",
+    "test result: ok. 81 passed; 0 failed; 0 ignored; 0 measured; 1583 filtered out; finished in 8.82s",
+    "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 96.83s"
+  ],
+  "runtime": [
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1663 filtered out; finished in 0.01s",
+    "test result: ok. 1606 passed; 0 failed; 58 ignored; 0 measured; 0 filtered out; finished in 30.45s",
+    "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+  ],
+  "workspace_build": [
+    "Finished `dev` profile [unoptimized + debuginfo] target(s) in 56.26s"
+  ]
+}

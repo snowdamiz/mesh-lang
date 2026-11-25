@@ -1,0 +1,27 @@
+{
+  "cancel": {
+    "attempt": 1,
+    "attempts": [
+      "760"
+    ],
+    "effect": null,
+    "expiry": null,
+    "key": "cancel",
+    "state": "cancelled",
+    "token": null,
+    "xid": "778"
+  },
+  "retry": {
+    "attempt": 2,
+    "attempts": [
+      "761",
+      "766"
+    ],
+    "effect": "767",
+    "expiry": null,
+    "key": "retry",
+    "state": "completed",
+    "token": null,
+    "xid": "768"
+  }
+}

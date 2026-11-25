@@ -1,0 +1,83 @@
+{
+  "attempted_bulk": 1,
+  "available_while_held": 3,
+  "capacity": 4,
+  "drop": true,
+  "independent_app_xids": 10,
+  "renewal_before": 1795573918888,
+  "renewal_while_held": 1795573919389,
+  "settled": {
+    "first": {
+      "attempt": 1,
+      "attempts": [
+        "760"
+      ],
+      "effect": "761",
+      "expiry": null,
+      "key": "first",
+      "state": "completed",
+      "token": null,
+      "xid": "762"
+    },
+    "other0": {
+      "attempt": 1,
+      "attempts": [
+        "767"
+      ],
+      "effect": "787",
+      "expiry": null,
+      "key": "other0",
+      "state": "completed",
+      "token": null,
+      "xid": "790"
+    },
+    "other1": {
+      "attempt": 1,
+      "attempts": [
+        "768"
+      ],
+      "effect": "789",
+      "expiry": null,
+      "key": "other1",
+      "state": "completed",
+      "token": null,
+      "xid": "792"
+    },
+    "other2": {
+      "attempt": 1,
+      "attempts": [
+        "769"
+      ],
+      "effect": "788",
+      "expiry": null,
+      "key": "other2",
+      "state": "completed",
+      "token": null,
+      "xid": "792"
+    },
+    "other3": {
+      "attempt": 1,
+      "attempts": [
+        "774"
+      ],
+      "effect": "804",
+      "expiry": null,
+      "key": "other3",
+      "state": "completed",
+      "token": null,
+      "xid": "805"
+    }
+  },
+  "started_while_held": [
+    "other0",
+    "other1",
+    "other2"
+  ],
+  "terminal_xids": 4,
+  "wire": {
+    "command": "SELECT 1",
+    "idle": true,
+    "receipt_dropped": true,
+    "rows": 1
+  }
+}
