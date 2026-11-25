@@ -1,0 +1,332 @@
+{
+  "bytes": 9125015,
+  "files": {
+    "cache/download/github.com/davecgh/go-spew/@v/v1.1.0.mod": {
+      "sha256": "bcb29393251237b79a17b6c19bf29134f43e8f438c3198988fcd461a1cdf05cc",
+      "size": 34
+    },
+    "cache/download/github.com/jackc/pgerrcode/@v/v0.0.0-20240316143900-6e2875d9b438.mod": {
+      "sha256": "75f89f035088432632664b2d9c2fdb602c6a85444d029dc81182b98d7719e4bb",
+      "size": 43
+    },
+    "cache/download/github.com/jackc/pgpassfile/@v/v1.0.0.mod": {
+      "sha256": "8ea95fa2499f4c600f7fd1f0afe745ecc0ae25121a3c823408f4a2961a05ee48",
+      "size": 88
+    },
+    "cache/download/github.com/jackc/pgpassfile/@v/v1.0.0.zip": {
+      "sha256": "1cc79fb0b80f54b568afd3f4648dd1c349f746ad7c379df8d7f9e0eb1cac938b",
+      "size": 4375
+    },
+    "cache/download/github.com/jackc/pgpassfile/@v/v1.0.0.ziphash": {
+      "sha256": "16420c78e63ca55db8ea76f36f457f3c2835f4a1e5be6eda106b4cf081c694da",
+      "size": 47
+    },
+    "cache/download/github.com/jackc/pgservicefile/@v/v0.0.0-20240606120523-5a60cdf6a761.mod": {
+      "sha256": "5f70111b892c17eecec6f97e0cd961cc3922b5daece59c099c855e1062ed0277",
+      "size": 91
+    },
+    "cache/download/github.com/jackc/pgservicefile/@v/v0.0.0-20240606120523-5a60cdf6a761.zip": {
+      "sha256": "c9e31c91aebf96eb246bd410d1849cc7666d955a1e20ca2eba1c30b4eb89335f",
+      "size": 4880
+    },
+    "cache/download/github.com/jackc/pgservicefile/@v/v0.0.0-20240606120523-5a60cdf6a761.ziphash": {
+      "sha256": "2199051ebd2488426884cce5e601e21023b3b59d5410d744dc80d0120777f6d7",
+      "size": 47
+    },
+    "cache/download/github.com/jackc/pgx/v5/@v/v5.13.0.mod": {
+      "sha256": "87910b34ffe509e2bab3e82b717e3c4b1d3853831f9735c397b8b2ee61ff35f5",
+      "size": 538
+    },
+    "cache/download/github.com/jackc/pgx/v5/@v/v5.13.0.zip": {
+      "sha256": "b87acef7be8c955e52f2ce01d606f345102c6f1b631d6e23b32b9114e768618a",
+      "size": 819704
+    },
+    "cache/download/github.com/jackc/pgx/v5/@v/v5.13.0.ziphash": {
+      "sha256": "ee6627c9dab3ff054dde6eb8710f94df188806308a3c2d80fa5ed0ecb3e1eb17",
+      "size": 47
+    },
+    "cache/download/github.com/jackc/puddle/v2/@v/v2.2.3.mod": {
+      "sha256": "b2be8f437fdf5c550522c8bca62194c2c1afb221b29bbf984db0599d33c55224",
+      "size": 265
+    },
+    "cache/download/github.com/jackc/puddle/v2/@v/v2.2.3.zip": {
+      "sha256": "f81a4ed00dd075d8d2952a424e82a34c417d3da9e82fa614f2da358fd3922aab",
+      "size": 25528
+    },
+    "cache/download/github.com/jackc/puddle/v2/@v/v2.2.3.ziphash": {
+      "sha256": "788521fb2685e4f2736d9a008c735f5a1734b23ec8db1ca1b4fa55ec16f0379d",
+      "size": 47
+    },
+    "cache/download/github.com/pmezard/go-difflib/@v/v1.0.0.mod": {
+      "sha256": "74b2e766eb215377864d587badf57e95521f692d2a7860b3c7759093f9c9bec2",
+      "size": 37
+    },
+    "cache/download/github.com/riverqueue/river/@v/v0.51.2.mod": {
+      "sha256": "c2bb2547d8f8824be7d198d98b8ea34ed2c64c77fa2077d28508f802cb2f6e77",
+      "size": 928
+    },
+    "cache/download/github.com/riverqueue/river/@v/v0.51.2.zip": {
+      "sha256": "ba991fe9e146bca1145d544976df277c54df2ea168e73e06b1038dd7682520a5",
+      "size": 557885
+    },
+    "cache/download/github.com/riverqueue/river/@v/v0.51.2.ziphash": {
+      "sha256": "a3e4a5a3ff3e1beec3ae2a36bb4489efdeae8d91d2768d2c2b977155d5383816",
+      "size": 47
+    },
+    "cache/download/github.com/riverqueue/river/riverdriver/@v/v0.51.2.mod": {
+      "sha256": "b3d2455ba70dc32e524394264300c8f7407e7afff2debb911d924f0a54a48acb",
+      "size": 222
+    },
+    "cache/download/github.com/riverqueue/river/riverdriver/@v/v0.51.2.zip": {
+      "sha256": "f1ceb527175fa83891fdd594719d7177abaeb6fbac2245e6d25e5f3a31711ce3",
+      "size": 24516
+    },
+    "cache/download/github.com/riverqueue/river/riverdriver/@v/v0.51.2.ziphash": {
+      "sha256": "c63e2b3f64b9e995f35f14bc70e7a53596390e98312f50f7fbf6f85035867394",
+      "size": 47
+    },
+    "cache/download/github.com/riverqueue/river/riverdriver/riverpgxv5/@v/v0.51.2.mod": {
+      "sha256": "8a1bb3b75940e82069ae17cc9cf403dbde4662ac9b46d283c2d4907a69f74e78",
+      "size": 609
+    },
+    "cache/download/github.com/riverqueue/river/riverdriver/riverpgxv5/@v/v0.51.2.zip": {
+      "sha256": "b2f5becdc1d2c28002a349f07bc5237a4bbcc7bead20ff974d6fcdba9caca6dd",
+      "size": 71676
+    },
+    "cache/download/github.com/riverqueue/river/riverdriver/riverpgxv5/@v/v0.51.2.ziphash": {
+      "sha256": "97c913e0ddb81775e4293fe2a1b933e365e967ac6dd0c0245d83b81fd736aab3",
+      "size": 47
+    },
+    "cache/download/github.com/riverqueue/river/rivershared/@v/v0.51.2.mod": {
+      "sha256": "8d3914d517bf07a3443061cbad9f444be81b5a5cea48be082c098dc6120f279b",
+      "size": 836
+    },
+    "cache/download/github.com/riverqueue/river/rivershared/@v/v0.51.2.zip": {
+      "sha256": "eff82e3c077bd725722070dd8addf5dc792a51a25a18be48f790f0d371c5179a",
+      "size": 95491
+    },
+    "cache/download/github.com/riverqueue/river/rivershared/@v/v0.51.2.ziphash": {
+      "sha256": "96a632e9aceb1ffc79d1d25e5b16ab2c2ebb22ec9200414653713369ef17f9b6",
+      "size": 47
+    },
+    "cache/download/github.com/riverqueue/river/rivertype/@v/v0.51.2.mod": {
+      "sha256": "7e12d7a4c0c1430acf805a588900536675251f25e7a4bfcd3b8d51d4f1776976",
+      "size": 168
+    },
+    "cache/download/github.com/riverqueue/river/rivertype/@v/v0.51.2.zip": {
+      "sha256": "c46f03a6f854070e4ed4b15e33a4b481cbeb662a88969e5dba2cf1c99acc0a17",
+      "size": 17870
+    },
+    "cache/download/github.com/riverqueue/river/rivertype/@v/v0.51.2.ziphash": {
+      "sha256": "5d68d5487b286931c15b95b3b5d03359e93e6bf9e236a4ab9e105c62c5e947ac",
+      "size": 47
+    },
+    "cache/download/github.com/robfig/cron/v3/@v/v3.0.1.mod": {
+      "sha256": "f895601ed42554966d2979f56420f655966b079254d92205b53828422298244f",
+      "size": 42
+    },
+    "cache/download/github.com/stretchr/objx/@v/v0.1.0.mod": {
+      "sha256": "1350354d52d2287a62336ecc0d56232d4c47699af9bba49c67c2b48254da98f1",
+      "size": 32
+    },
+    "cache/download/github.com/stretchr/testify/@v/v1.12.1.mod": {
+      "sha256": "a6aa921ea6dedc1cbb384d3c1b79c58b6e5d6ce26d13b786ec60a99809ae1daa",
+      "size": 216
+    },
+    "cache/download/github.com/stretchr/testify/@v/v1.3.0.mod": {
+      "sha256": "ab063d5154a8e8730bced4c52698e5770eb50bfae347bebc35eca488b8e3f6e3",
+      "size": 154
+    },
+    "cache/download/github.com/stretchr/testify/@v/v1.7.0.mod": {
+      "sha256": "fff8168d98e6a07156c454a1b6e925509f3177e96c155516d7f96b4079cca3bf",
+      "size": 216
+    },
+    "cache/download/github.com/tidwall/gjson/@v/v1.14.2.mod": {
+      "sha256": "d94eecd8050cffc957b99bed8a308efeaa669ac13854290d081a2ded5478af93",
+      "size": 121
+    },
+    "cache/download/github.com/tidwall/gjson/@v/v1.20.0.mod": {
+      "sha256": "22020a837a3000290937b1795ea2505a97de8ebf0ec6bd7b8e56bd3c9be66e28",
+      "size": 121
+    },
+    "cache/download/github.com/tidwall/gjson/@v/v1.20.0.zip": {
+      "sha256": "04ffbd1edb224bfe8c68ca083aaea06837c5e211bd047a238e01f9bd3ef69af7",
+      "size": 83961
+    },
+    "cache/download/github.com/tidwall/gjson/@v/v1.20.0.ziphash": {
+      "sha256": "b0a1fd561f6a4d330451dfa477272739528d3a5692478eb60a1198d6ad47c8da",
+      "size": 47
+    },
+    "cache/download/github.com/tidwall/match/@v/v1.1.1.mod": {
+      "sha256": "02364e515327d9988d1f6bd37af9c584f8b98d3b4f43f9e1f18e26d76aec0f44",
+      "size": 41
+    },
+    "cache/download/github.com/tidwall/match/@v/v1.2.0.mod": {
+      "sha256": "02364e515327d9988d1f6bd37af9c584f8b98d3b4f43f9e1f18e26d76aec0f44",
+      "size": 41
+    },
+    "cache/download/github.com/tidwall/match/@v/v1.2.0.zip": {
+      "sha256": "f35502f3dd450fa84ddc7b028310f7fecc86c8112f2397fe7ff7941c5afbcbc1",
+      "size": 7160
+    },
+    "cache/download/github.com/tidwall/match/@v/v1.2.0.ziphash": {
+      "sha256": "987ad63408dc35af598e474959f1eb52e417dbd58805f913e7ca297fbc98a307",
+      "size": 47
+    },
+    "cache/download/github.com/tidwall/pretty/@v/v1.2.0.mod": {
+      "sha256": "6e5c5fa493d8f18e8974b38ed63e8c71863cce59e659d98d0ef8417bf81e3ecf",
+      "size": 42
+    },
+    "cache/download/github.com/tidwall/pretty/@v/v1.2.1.mod": {
+      "sha256": "6e5c5fa493d8f18e8974b38ed63e8c71863cce59e659d98d0ef8417bf81e3ecf",
+      "size": 42
+    },
+    "cache/download/github.com/tidwall/pretty/@v/v1.2.1.zip": {
+      "sha256": "9327579bf9e610de753eeb7c35c8cf1e3f56e6e5623cbf65e47bc8076023d1ab",
+      "size": 12501
+    },
+    "cache/download/github.com/tidwall/pretty/@v/v1.2.1.ziphash": {
+      "sha256": "6d92688f8c779f8e400d3e5bd75de9b214eea389046585854b1b699f8604214e",
+      "size": 47
+    },
+    "cache/download/github.com/tidwall/sjson/@v/v1.2.5.mod": {
+      "sha256": "38b09323ab8ef8f803b3d86bae2c94765d3815a2d5b751fd4f07039f4551cc6f",
+      "size": 122
+    },
+    "cache/download/github.com/tidwall/sjson/@v/v1.2.5.zip": {
+      "sha256": "fc40fda87c7de55362f6386e069d674772f25c9d76411ee823acb9ac78b20565",
+      "size": 28719
+    },
+    "cache/download/github.com/tidwall/sjson/@v/v1.2.5.ziphash": {
+      "sha256": "2843caa72473372905491ed238cc7d16ce03e411a6fd7dcdab9043ba5a92bca8",
+      "size": 47
+    },
+    "cache/download/go.uber.org/goleak/@v/v1.3.0.mod": {
+      "sha256": "3f15dc6354aae8fe42d3cbd130230731d5c6aae6aa651ca6a73f4c646cda8fec",
+      "size": 333
+    },
+    "cache/download/go.yaml.in/yaml/v3/@v/v3.0.5.mod": {
+      "sha256": "4bf9de8891d4d71507d92568022f8241fb828d8d0a6c9204c130bf030f3e3b2f",
+      "size": 275
+    },
+    "cache/download/golang.org/x/sync/@v/v0.24.0.mod": {
+      "sha256": "febf4fed5dc12c0de24528f7065bf071cc74a2424070194aaf24617b91066cda",
+      "size": 36
+    },
+    "cache/download/golang.org/x/sync/@v/v0.24.0.zip": {
+      "sha256": "ca3fcf3ea8259e75891f7947e1a816a5b89402c542d45d8bbbd9e061b0c58019",
+      "size": 26232
+    },
+    "cache/download/golang.org/x/sync/@v/v0.24.0.ziphash": {
+      "sha256": "27d65a5b61725fcc691c4155b31cb9be0b8ae14132c3269121a86e2e4ae05a30",
+      "size": 47
+    },
+    "cache/download/golang.org/x/text/@v/v0.43.0.mod": {
+      "sha256": "63270b8ca6290a720212e1d6e58b8d12a8aa315a1cb960411d7ec2998c0aab59",
+      "size": 190
+    },
+    "cache/download/golang.org/x/text/@v/v0.43.0.zip": {
+      "sha256": "b75131f628f6e2e4892fd638d33127e952a5027775e0162b94ba069cb4e13863",
+      "size": 7337809
+    },
+    "cache/download/golang.org/x/text/@v/v0.43.0.ziphash": {
+      "sha256": "ec00e06bb017d164d2fc1bac5b9b35e84bd58f45f96dd07388bc1d2b61e5956f",
+      "size": 47
+    },
+    "cache/download/gopkg.in/check.v1/@v/v0.0.0-20161208181325-20d25e280405.mod": {
+      "sha256": "5c306e0d633cd66a11b40e2e5fbbc6da42110db7d72ea3c1524ceb45ee40c33f",
+      "size": 25
+    },
+    "cache/download/gopkg.in/yaml.v3/@v/v3.0.0-20200313102051-9f266ea9e77c.mod": {
+      "sha256": "21579860a20306fcf43b1bd234d1fba319499c77611b71c05f9bf3ba90dab939",
+      "size": 95
+    }
+  },
+  "frozen_source_sha256": {
+    "db.go": "5b46edba58b4bbf318759cef2b5fc5540aae4f5f15b2df9083b875525c89ba85",
+    "evidence.go": "9dc4522dd46ff8787d10d1413528284986d419a091271f0cc8cc0d660f754621",
+    "go.mod": "b50f560f8a406715b0796e6729837fa21b14595a897a33560afd7c590ca840da",
+    "go.sum": "d0b5ac110be4112c71271ad2d3f126667f185f41cff7db605e99a5eb4b3d8f4b",
+    "main.go": "0e9c26aed160e6313e30c7ee8562a14d14cde94f89f1bf0756fad68e26128da0",
+    "worker.go": "6c0f7b8e817a5cd05e98a72af57e48f0c9b5f4bcf283c057e246a9f8fa1e6d69"
+  },
+  "go_mod_entries": 30,
+  "linked_modules": [
+    {
+      "h1": "h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=",
+      "module": "github.com/jackc/pgpassfile",
+      "version": "v1.0.0"
+    },
+    {
+      "h1": "h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=",
+      "module": "github.com/jackc/pgservicefile",
+      "version": "v0.0.0-20240606120523-5a60cdf6a761"
+    },
+    {
+      "h1": "h1:Hl08k64maU0nrRyVUEbwCnK6/gT0EhMrtAqBHz9/gA4=",
+      "module": "github.com/jackc/pgx/v5",
+      "version": "v5.13.0"
+    },
+    {
+      "h1": "h1:f8HoREISb3l5eO9coPgK7U3hKLhWGokOFVcThl5jrao=",
+      "module": "github.com/jackc/puddle/v2",
+      "version": "v2.2.3"
+    },
+    {
+      "h1": "h1:lCFmF8zlKftfjDEW6zCtcRamXmCgOFk6XjeJ82gAEh8=",
+      "module": "github.com/riverqueue/river",
+      "version": "v0.51.2"
+    },
+    {
+      "h1": "h1:hIDg+sRD7h3Xcjy2ozlbDBnjsyLVDbLnB2cWgTR1SoU=",
+      "module": "github.com/riverqueue/river/riverdriver",
+      "version": "v0.51.2"
+    },
+    {
+      "h1": "h1:vLucKpDFLu/w6m8/jQl4NV4bxu1U8iiM835pfPooJ+U=",
+      "module": "github.com/riverqueue/river/riverdriver/riverpgxv5",
+      "version": "v0.51.2"
+    },
+    {
+      "h1": "h1:d4MU7Az6iMQb9ADhgi9GEoO1ThB7Ou1Oe2EtvRaRIoA=",
+      "module": "github.com/riverqueue/river/rivershared",
+      "version": "v0.51.2"
+    },
+    {
+      "h1": "h1:2GIvVH6cRJcXtIlba8bHmZDvlcydtND0PZQBHCRyEsw=",
+      "module": "github.com/riverqueue/river/rivertype",
+      "version": "v0.51.2"
+    },
+    {
+      "h1": "h1:+agJ3rEzKcCXKDKo0ml26UROcpcAlnZyjq+TjbY5Fto=",
+      "module": "github.com/tidwall/gjson",
+      "version": "v1.20.0"
+    },
+    {
+      "h1": "h1:0pt8FlkOwjN2fPt4bIl4BoNxb98gGHN2ObFEDkrfZnM=",
+      "module": "github.com/tidwall/match",
+      "version": "v1.2.0"
+    },
+    {
+      "h1": "h1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4=",
+      "module": "github.com/tidwall/pretty",
+      "version": "v1.2.1"
+    },
+    {
+      "h1": "h1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY=",
+      "module": "github.com/tidwall/sjson",
+      "version": "v1.2.5"
+    },
+    {
+      "h1": "h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=",
+      "module": "golang.org/x/sync",
+      "version": "v0.24.0"
+    },
+    {
+      "h1": "h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=",
+      "module": "golang.org/x/text",
+      "version": "v0.43.0"
+    }
+  ],
+  "source_commit": "1617e257f26ec7eb3b5996406d0993918d482226"
+}

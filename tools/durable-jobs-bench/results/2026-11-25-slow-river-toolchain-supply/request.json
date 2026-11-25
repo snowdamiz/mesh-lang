@@ -1,0 +1,19 @@
+{
+  "id": "2026-11-25-slow-river-toolchain-supply",
+  "kind": "SETUP",
+  "requested_window_minutes": 20,
+  "build": true,
+  "arms": 0,
+  "groups": [],
+  "phases": [],
+  "timing": false,
+  "source_manifest_sha256": "3197a5faf9def0bc17fc59913a3504c5edf8c136d3af5f4380816f84eb85f1eb",
+  "proof_request_sha256": "80546f35b75be008244d515bb257592b9ed7ef252b2bc6fe2e13f13799a3f545",
+  "inventory_sha256": "8e2340013afd07802f60d4a1a742155ead155b1d368233158bfa6bd8d494f0b8",
+  "sdk_pin_sha256": "d43aabbdd83799d4b5a8293e6e27ba514427876e0213186ddde0d323e6faef2e",
+  "sdk_required": "go1.26.4.linux-amd64.tar.gz",
+  "native_scope": "SDK and allowlisted cache, offline exact stock SLOW build, no adapter arms",
+  "offline_check_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-toolchain-supply/controller.py check",
+  "command_prefix": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-toolchain-supply/controller.py stage --sdk",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/controller-receipts/2026-11-25-slow-river-toolchain-supply"
+}
