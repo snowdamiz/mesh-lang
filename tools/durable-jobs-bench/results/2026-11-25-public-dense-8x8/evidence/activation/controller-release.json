@@ -1,0 +1,15 @@
+{
+  "exit_status": 1,
+  "grant": {
+    "end": "2026-11-25T05:44:24Z",
+    "id": "2026-11-25-public-dense-8x8-activation",
+    "request_sha256": "581b7af161978a9728bb85cf028a19ba2f1afa3aeae395314d274277d9a70c12",
+    "start": "2026-11-25T05:34:24Z"
+  },
+  "id": "2026-11-25-public-dense-8x8-activation",
+  "phase": "setup",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-8d8cfda0/tools/durable-jobs-bench/results/2026-11-25-public-dense-8x8/evidence/activation",
+  "released_at": "2026-11-25T05:34:31.944801+00:00",
+  "request_sha256": "581b7af161978a9728bb85cf028a19ba2f1afa3aeae395314d274277d9a70c12",
+  "started": "2026-11-25T05:34:24.716890+00:00"
+}

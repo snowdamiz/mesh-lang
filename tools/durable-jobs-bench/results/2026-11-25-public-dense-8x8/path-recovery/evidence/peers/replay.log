@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-8d8cfda0/tools/durable-jobs-bench/results/2026-11-25-public-dense-8x8/path-recovery/recovery.py", line 130, in <module>
+    main()
+    ~~~~^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-8d8cfda0/tools/durable-jobs-bench/results/2026-11-25-public-dense-8x8/path-recovery/recovery.py", line 124, in main
+    print(json.dumps(driver()["replay"](args.phase, qualified), indent=2, sort_keys=True))
+                     ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-8d8cfda0/tools/durable-jobs-bench/results/2026-11-25-public-dense-8x8/controller.py", line 204, in replay
+    assert receipt["exit_status"] == 0, f"{action} has no successful release"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: peers has no successful release

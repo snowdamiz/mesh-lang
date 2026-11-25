@@ -1,0 +1,666 @@
+{
+  "arms": {
+    "1": {
+      "measured-A1": {
+        "checkout_probes": 16,
+        "drain_us": 1733041,
+        "effect_to_last_settlement_us": 4129,
+        "host_cpu_ms": 3740.0,
+        "last_effect_from_commit_us": 1728912,
+        "last_effect_from_submit_us": 1895970,
+        "peak_connections": 65,
+        "pg_cpu_ms": 2260,
+        "raw_sha256": "0bccd46ef3c89295b59d9e976dc83f61afe41965699aaea5a00742a1ba7fc948",
+        "runner_cpu_ms": 1376.731,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1900099,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "measured-A2": {
+        "checkout_probes": 16,
+        "drain_us": 1761269,
+        "effect_to_last_settlement_us": 5465,
+        "host_cpu_ms": 3580.0,
+        "last_effect_from_commit_us": 1755804,
+        "last_effect_from_submit_us": 1928778,
+        "peak_connections": 65,
+        "pg_cpu_ms": 2240,
+        "raw_sha256": "04a2ff1e645f94de407e41323b9f79d789ac0abe5078105c0eb6286cad871962",
+        "runner_cpu_ms": 1388.03,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1934243,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "measured-B": {
+        "checkout_probes": 16,
+        "drain_us": 1322198,
+        "effect_to_last_settlement_us": 11965,
+        "host_cpu_ms": 2650.0,
+        "last_effect_from_commit_us": 1310233,
+        "last_effect_from_submit_us": 1489963,
+        "peak_connections": 65,
+        "pg_cpu_ms": 1540,
+        "raw_sha256": "5982e2c4dc525e7f3677f7267fe3e85a49d328dcd1db0959fdc9baacd4108449",
+        "runner_cpu_ms": 1300.6299999999997,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1501928,
+        "terminal_xids": 420,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "measured-apalis": {
+        "checkout_probes": null,
+        "drain_us": 826796,
+        "effect_to_last_settlement_us": 8134,
+        "host_cpu_ms": 1760.0,
+        "last_effect_from_commit_us": 818662,
+        "last_effect_from_submit_us": 856011,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "6de4a334ee08581bc3b8aacdf487dbf0abeed954b10aae1d87bf30a51e1e9e21",
+        "runner_cpu_ms": 588.482,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 864145,
+        "terminal_xids": 164,
+        "warm_tls": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      },
+      "measured-oban": {
+        "checkout_probes": null,
+        "drain_us": 1439306,
+        "effect_to_last_settlement_us": 4692,
+        "host_cpu_ms": 3060.0,
+        "last_effect_from_commit_us": 1434614,
+        "last_effect_from_submit_us": 1579386,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "0a0f550a5ec43ac11831c2f16795d33f9a557522c33aba6ea9fb80c457dcdc9f",
+        "runner_cpu_ms": 9927.942,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1584078,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      },
+      "measured-river": {
+        "checkout_probes": null,
+        "drain_us": 1181803,
+        "effect_to_last_settlement_us": 158443,
+        "host_cpu_ms": 2220.0,
+        "last_effect_from_commit_us": 1023360,
+        "last_effect_from_submit_us": 1118140,
+        "peak_connections": 80,
+        "pg_cpu_ms": null,
+        "raw_sha256": "a7634a03e8a606d80fe84b424dca49462f460e2831c3c256fa0589fb769ff3bd",
+        "runner_cpu_ms": 846.9100000000002,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1276583,
+        "terminal_xids": 36,
+        "warm_tls": {
+          "all_roles": 25
+        }
+      },
+      "warmup-A1": {
+        "checkout_probes": 16,
+        "drain_us": 1771833,
+        "effect_to_last_settlement_us": 2513,
+        "host_cpu_ms": 3950.0,
+        "last_effect_from_commit_us": 1769320,
+        "last_effect_from_submit_us": 1971131,
+        "peak_connections": 65,
+        "pg_cpu_ms": 2420,
+        "raw_sha256": "0593abe9ae48d6329bfc2b7f36d765282d794234b307447ddb4ecf77d5953f99",
+        "runner_cpu_ms": 1448.801,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1973644,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "warmup-A2": {
+        "checkout_probes": 16,
+        "drain_us": 1802544,
+        "effect_to_last_settlement_us": 942,
+        "host_cpu_ms": 3610.0,
+        "last_effect_from_commit_us": 1801602,
+        "last_effect_from_submit_us": 1968303,
+        "peak_connections": 65,
+        "pg_cpu_ms": 2300,
+        "raw_sha256": "884342491b01d5241a106d425a70d47d46e70376fa863eacc417788b6842cfc7",
+        "runner_cpu_ms": 1408.604,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1969245,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "warmup-B": {
+        "checkout_probes": 16,
+        "drain_us": 1269027,
+        "effect_to_last_settlement_us": 4963,
+        "host_cpu_ms": 2680.0,
+        "last_effect_from_commit_us": 1264064,
+        "last_effect_from_submit_us": 1447235,
+        "peak_connections": 65,
+        "pg_cpu_ms": 1560,
+        "raw_sha256": "1e6703ae9903eaad589529ee7f65f77fabaec8e642758d65871c3267c860bfeb",
+        "runner_cpu_ms": 1289.774,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1452198,
+        "terminal_xids": 396,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "warmup-apalis": {
+        "checkout_probes": null,
+        "drain_us": 846398,
+        "effect_to_last_settlement_us": 8253,
+        "host_cpu_ms": 1750.0,
+        "last_effect_from_commit_us": 838145,
+        "last_effect_from_submit_us": 881967,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "d8633e5bf4c6d35c359ec99f2350e9b690ffc24e0d2f1b076d70fde2b66ca63b",
+        "runner_cpu_ms": 599.226,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 890220,
+        "terminal_xids": 180,
+        "warm_tls": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      },
+      "warmup-oban": {
+        "checkout_probes": null,
+        "drain_us": 1468055,
+        "effect_to_last_settlement_us": 3846,
+        "host_cpu_ms": 3140.0,
+        "last_effect_from_commit_us": 1464209,
+        "last_effect_from_submit_us": 1625054,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "d547cb3c0e0d2f525fca183c7ad6e8442b5b2abdebb3b4170b84bba5f3bbe0a4",
+        "runner_cpu_ms": 10343.532,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1628900,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      },
+      "warmup-river": {
+        "checkout_probes": null,
+        "drain_us": 1229866,
+        "effect_to_last_settlement_us": 225515,
+        "host_cpu_ms": 2100.0,
+        "last_effect_from_commit_us": 1004351,
+        "last_effect_from_submit_us": 1079454,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "919eff8b12dc716086ea46a13fd515d3f844fde75b90379d8d7728518c8222b2",
+        "runner_cpu_ms": 839.546,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1304969,
+        "terminal_xids": 38,
+        "warm_tls": {
+          "all_roles": 25
+        }
+      }
+    },
+    "2": {
+      "measured-A1": {
+        "checkout_probes": 16,
+        "drain_us": 2023139,
+        "effect_to_last_settlement_us": 5668,
+        "host_cpu_ms": 4160.0,
+        "last_effect_from_commit_us": 2017471,
+        "last_effect_from_submit_us": 2205315,
+        "peak_connections": 65,
+        "pg_cpu_ms": 2470,
+        "raw_sha256": "1cbe445fe536fb3e215825a43748b53888e8c6a357da36a319b78fa01a59c67f",
+        "runner_cpu_ms": 1493.483,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 2210983,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "measured-A2": {
+        "checkout_probes": 16,
+        "drain_us": 1754854,
+        "effect_to_last_settlement_us": 747,
+        "host_cpu_ms": 3730.0,
+        "last_effect_from_commit_us": 1754107,
+        "last_effect_from_submit_us": 1938038,
+        "peak_connections": 65,
+        "pg_cpu_ms": 2340,
+        "raw_sha256": "3fa297daba09370a9555986e69b994c24f2af6677931facd2119354043f4d22a",
+        "runner_cpu_ms": 1411.616,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1938785,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "measured-B": {
+        "checkout_probes": 16,
+        "drain_us": 1241713,
+        "effect_to_last_settlement_us": 8589,
+        "host_cpu_ms": 2700.0,
+        "last_effect_from_commit_us": 1233124,
+        "last_effect_from_submit_us": 1414355,
+        "peak_connections": 65,
+        "pg_cpu_ms": 1600,
+        "raw_sha256": "3a90d67cc72f2eae16d58d818ea05bd4b412fe14e2b7116aa06dbe1ce077d69d",
+        "runner_cpu_ms": 1286.9899999999998,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1422944,
+        "terminal_xids": 389,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "measured-apalis": {
+        "checkout_probes": null,
+        "drain_us": 864150,
+        "effect_to_last_settlement_us": 10505,
+        "host_cpu_ms": 1900.0,
+        "last_effect_from_commit_us": 853645,
+        "last_effect_from_submit_us": 894272,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "4bf42a50f7e8b4e2a43b619c2ec9ff5e12738a02d459f8eb933bec7f0ee7ce87",
+        "runner_cpu_ms": 603.1,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 904777,
+        "terminal_xids": 181,
+        "warm_tls": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      },
+      "measured-oban": {
+        "checkout_probes": null,
+        "drain_us": 1475565,
+        "effect_to_last_settlement_us": 3918,
+        "host_cpu_ms": 3050.0,
+        "last_effect_from_commit_us": 1471647,
+        "last_effect_from_submit_us": 1627103,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "fd53310ab6d603b591ffb4f504638284b95a8d0d10d1fd45faaaf7acbd248d8b",
+        "runner_cpu_ms": 9931.051,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1631021,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      },
+      "measured-river": {
+        "checkout_probes": null,
+        "drain_us": 1117691,
+        "effect_to_last_settlement_us": 205868,
+        "host_cpu_ms": 2010.0,
+        "last_effect_from_commit_us": 911823,
+        "last_effect_from_submit_us": 995024,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "ffa9f3075b177ba6bb621c657fb5b89b9c4869ff8a195296dab31f9f89efd29f",
+        "runner_cpu_ms": 788.096,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1200892,
+        "terminal_xids": 35,
+        "warm_tls": {
+          "all_roles": 25
+        }
+      },
+      "warmup-A1": {
+        "checkout_probes": 16,
+        "drain_us": 1828355,
+        "effect_to_last_settlement_us": 5155,
+        "host_cpu_ms": 3910.0,
+        "last_effect_from_commit_us": 1823200,
+        "last_effect_from_submit_us": 1993623,
+        "peak_connections": 65,
+        "pg_cpu_ms": 2330,
+        "raw_sha256": "dc6818be256781edc83a20876acf1b89464627ae0616e65475b3171533f0fb6d",
+        "runner_cpu_ms": 1408.8590000000002,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1998778,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "warmup-A2": {
+        "checkout_probes": 16,
+        "drain_us": 1871934,
+        "effect_to_last_settlement_us": 1138,
+        "host_cpu_ms": 3770.0,
+        "last_effect_from_commit_us": 1870796,
+        "last_effect_from_submit_us": 2038940,
+        "peak_connections": 65,
+        "pg_cpu_ms": 2420,
+        "raw_sha256": "5752f9b4707d0dca390de57cd5709ba290138a43155547597777c4dbc60f1348",
+        "runner_cpu_ms": 1449.234,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 2040078,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "warmup-B": {
+        "checkout_probes": 16,
+        "drain_us": 1637549,
+        "effect_to_last_settlement_us": 14526,
+        "host_cpu_ms": 3110.0,
+        "last_effect_from_commit_us": 1623023,
+        "last_effect_from_submit_us": 1811027,
+        "peak_connections": 65,
+        "pg_cpu_ms": 1830,
+        "raw_sha256": "13a331f9003a08864aee2bfea35b749426dd75521951cd034109f47a3143aa31",
+        "runner_cpu_ms": 1436.5589999999997,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1825553,
+        "terminal_xids": 487,
+        "warm_tls": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        }
+      },
+      "warmup-apalis": {
+        "checkout_probes": null,
+        "drain_us": 901284,
+        "effect_to_last_settlement_us": 5860,
+        "host_cpu_ms": 1800.0,
+        "last_effect_from_commit_us": 895424,
+        "last_effect_from_submit_us": 943104,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "941e37b470e19e47d92f7d8dc2a5fe6fef83088baba34789ed61474b1ddc1a7d",
+        "runner_cpu_ms": 599.235,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 948964,
+        "terminal_xids": 183,
+        "warm_tls": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      },
+      "warmup-oban": {
+        "checkout_probes": null,
+        "drain_us": 1531064,
+        "effect_to_last_settlement_us": 4732,
+        "host_cpu_ms": 3430.0,
+        "last_effect_from_commit_us": 1526332,
+        "last_effect_from_submit_us": 1698397,
+        "peak_connections": 81,
+        "pg_cpu_ms": null,
+        "raw_sha256": "0e6ac325c6573ca573ca5334331514ec89199db1a1d22cde7498562d7b008f5e",
+        "runner_cpu_ms": 10481.645,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1703129,
+        "terminal_xids": 1024,
+        "warm_tls": {
+          "parity_producer": 1,
+          "parity_subject": 80
+        }
+      },
+      "warmup-river": {
+        "checkout_probes": null,
+        "drain_us": 1090309,
+        "effect_to_last_settlement_us": 239967,
+        "host_cpu_ms": 2060.0,
+        "last_effect_from_commit_us": 850342,
+        "last_effect_from_submit_us": 923677,
+        "peak_connections": 79,
+        "pg_cpu_ms": null,
+        "raw_sha256": "22185345417c870f47b5dfdfa053b4e43da508ffcdaf80dcafc52310cd9f7103",
+        "runner_cpu_ms": 793.344,
+        "scheduler_workers_per_runner": 2,
+        "submit_us": 1163644,
+        "terminal_xids": 33,
+        "warm_tls": {
+          "all_roles": 25
+        }
+      }
+    }
+  },
+  "counts": {
+    "excluded_interrupted_reverse": 7,
+    "forward": 12,
+    "reverse": 12
+  },
+  "matched": {
+    "apalis": {
+      "outcome": "apalis",
+      "paired": [
+        {
+          "candidate_resource_bounds": true,
+          "clocks": {
+            "drain_us": {
+              "margin": 41339.8,
+              "peer_minus_mesh": -495402
+            },
+            "submit_us": {
+              "margin": 43207.25,
+              "peer_minus_mesh": -637783
+            }
+          },
+          "mesh_connections": 65,
+          "mesh_host_ms": 2650.0,
+          "mesh_pg_ms": 1540,
+          "mesh_runner_ms": 1300.6299999999997,
+          "peer_connections": 81,
+          "peer_host_ms": 1760.0,
+          "peer_runner_ms": 588.482
+        },
+        {
+          "candidate_resource_bounds": true,
+          "clocks": {
+            "drain_us": {
+              "margin": 268285,
+              "peer_minus_mesh": -377563
+            },
+            "submit_us": {
+              "margin": 272198,
+              "peer_minus_mesh": -518167
+            }
+          },
+          "mesh_connections": 65,
+          "mesh_host_ms": 2700.0,
+          "mesh_pg_ms": 1600,
+          "mesh_runner_ms": 1286.9899999999998,
+          "peer_connections": 81,
+          "peer_host_ms": 1900.0,
+          "peer_runner_ms": 603.1
+        }
+      ]
+    },
+    "oban": {
+      "outcome": "inconclusive",
+      "paired": [
+        {
+          "candidate_resource_bounds": true,
+          "clocks": {
+            "drain_us": {
+              "margin": 71965.3,
+              "peer_minus_mesh": 117108
+            },
+            "submit_us": {
+              "margin": 79203.90000000001,
+              "peer_minus_mesh": 82150
+            }
+          },
+          "mesh_connections": 65,
+          "mesh_host_ms": 2650.0,
+          "mesh_pg_ms": 1540,
+          "mesh_runner_ms": 1300.6299999999997,
+          "peer_connections": 81,
+          "peer_host_ms": 3060.0,
+          "peer_runner_ms": 9927.942
+        },
+        {
+          "candidate_resource_bounds": true,
+          "clocks": {
+            "drain_us": {
+              "margin": 268285,
+              "peer_minus_mesh": 233852
+            },
+            "submit_us": {
+              "margin": 272198,
+              "peer_minus_mesh": 208077
+            }
+          },
+          "mesh_connections": 65,
+          "mesh_host_ms": 2700.0,
+          "mesh_pg_ms": 1600,
+          "mesh_runner_ms": 1286.9899999999998,
+          "peer_connections": 81,
+          "peer_host_ms": 3050.0,
+          "peer_runner_ms": 9931.051
+        }
+      ]
+    },
+    "river": {
+      "outcome": "inconclusive",
+      "paired": [
+        {
+          "candidate_resource_bounds": true,
+          "clocks": {
+            "drain_us": {
+              "margin": 59090.15,
+              "peer_minus_mesh": -140395
+            },
+            "submit_us": {
+              "margin": 63829.15,
+              "peer_minus_mesh": -225345
+            }
+          },
+          "mesh_connections": 65,
+          "mesh_host_ms": 2650.0,
+          "mesh_pg_ms": 1540,
+          "mesh_runner_ms": 1300.6299999999997,
+          "peer_connections": 80,
+          "peer_host_ms": 2220.0,
+          "peer_runner_ms": 846.9100000000002
+        },
+        {
+          "candidate_resource_bounds": true,
+          "clocks": {
+            "drain_us": {
+              "margin": 268285,
+              "peer_minus_mesh": -124022
+            },
+            "submit_us": {
+              "margin": 272198,
+              "peer_minus_mesh": -222052
+            }
+          },
+          "mesh_connections": 65,
+          "mesh_host_ms": 2700.0,
+          "mesh_pg_ms": 1600,
+          "mesh_runner_ms": 1286.9899999999998,
+          "peer_connections": 81,
+          "peer_host_ms": 2010.0,
+          "peer_runner_ms": 788.096
+        }
+      ]
+    }
+  },
+  "pilot_hot_cold": {
+    "1": {
+      "measured-B": {
+        "checkout_probes": 16,
+        "drain_us": 1278874,
+        "last_effect_us": 1272265,
+        "physical_tls_by_role": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        },
+        "submit_us": 1461455
+      },
+      "measured-C": {
+        "checkout_probes": 2048,
+        "drain_us": 1444744,
+        "last_effect_us": 1433122,
+        "physical_tls_by_role": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        },
+        "submit_us": 1639814
+      }
+    },
+    "2": {
+      "measured-B": {
+        "checkout_probes": 16,
+        "drain_us": 1354573,
+        "last_effect_us": 1348853,
+        "physical_tls_by_role": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        },
+        "submit_us": 1606377
+      },
+      "measured-C": {
+        "checkout_probes": 2048,
+        "drain_us": 1471891,
+        "last_effect_us": 1464820,
+        "physical_tls_by_role": {
+          "compiled_caller": 32,
+          "parity_producer": 1,
+          "parity_subject": 32
+        },
+        "submit_us": 1654554
+      }
+    }
+  },
+  "prior_failed_release_sha256": "7305729f442d8d6a72d96c0ff0f30a7b24ea5d37a43e4dd72dc20086e40d52d8",
+  "reverse_release_sha256": "d20bb15c23029191e9eb64de68d566a0133ed4cebadde1ba1e145cc2d2a0f2af"
+}

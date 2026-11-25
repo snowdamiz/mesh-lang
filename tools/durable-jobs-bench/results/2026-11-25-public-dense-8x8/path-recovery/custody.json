@@ -1,0 +1,288 @@
+{
+  "cases": {
+    "blocked_traversal": {
+      "after": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/path-recovery-negative": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/path-recovery-negative/checked-individual": [
+          0,
+          0,
+          "0700"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/path-recovery-negative/checked-individual/raw": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/path-recovery-negative/checked-individual/raw/0123456789abcdef0123456789abcdef": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/path-recovery-negative/checked-individual/raw/0123456789abcdef0123456789abcdef/adapter": [
+          65534,
+          65534,
+          "0700"
+        ]
+      },
+      "before": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/path-recovery-negative": [
+          0,
+          0,
+          "0700"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/path-recovery-negative/checked-individual": [
+          0,
+          0,
+          "0700"
+        ]
+      },
+      "exit_status": 13,
+      "outcome": "lstat denied"
+    },
+    "original": {
+      "after": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8": [
+          0,
+          0,
+          "0700"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8/activation": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8/activation/checked-individual": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8/activation/checked-individual/raw": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8/activation/checked-individual/raw/0123456789abcdef0123456789abcdef": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8/activation/checked-individual/raw/0123456789abcdef0123456789abcdef/adapter": [
+          65534,
+          65534,
+          "0700"
+        ]
+      },
+      "before": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8": [
+          0,
+          0,
+          "0700"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8/activation": [
+          0,
+          0,
+          "0700"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8/activation/checked-individual": [
+          0,
+          0,
+          "0700"
+        ]
+      },
+      "exit_status": 13,
+      "outcome": "lstat denied"
+    },
+    "recovery_activation": {
+      "after": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-activation": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-activation/checked-individual": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-activation/checked-individual/raw": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-activation/checked-individual/raw/0123456789abcdef0123456789abcdef": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-activation/checked-individual/raw/0123456789abcdef0123456789abcdef/adapter": [
+          65534,
+          65534,
+          "0700"
+        ]
+      },
+      "before": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-activation": [
+          0,
+          0,
+          "0700"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-activation/checked-individual": [
+          0,
+          0,
+          "0700"
+        ]
+      },
+      "exit_status": 0,
+      "outcome": "private write succeeded"
+    },
+    "recovery_pilot": {
+      "after": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-pilot": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-pilot/bounded-grouped-hot": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-pilot/bounded-grouped-hot/raw": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-pilot/bounded-grouped-hot/raw/0123456789abcdef0123456789abcdef": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-pilot/bounded-grouped-hot/raw/0123456789abcdef0123456789abcdef/adapter": [
+          65534,
+          65534,
+          "0700"
+        ]
+      },
+      "before": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-pilot": [
+          0,
+          0,
+          "0700"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-8x8-path-recovery-pilot/bounded-grouped-hot": [
+          0,
+          0,
+          "0700"
+        ]
+      },
+      "exit_status": 0,
+      "outcome": "private write succeeded"
+    },
+    "released_layout": {
+      "after": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-3c4032d-transfer": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-3c4032d-transfer/checked-individual": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-3c4032d-transfer/checked-individual/raw": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-3c4032d-transfer/checked-individual/raw/0123456789abcdef0123456789abcdef": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-3c4032d-transfer/checked-individual/raw/0123456789abcdef0123456789abcdef/adapter": [
+          65534,
+          65534,
+          "0700"
+        ]
+      },
+      "before": {
+        "/var/tmp/mesh-durable-jobs-matrix": [
+          0,
+          0,
+          "0711"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-3c4032d-transfer": [
+          0,
+          0,
+          "0700"
+        ],
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-public-dense-3c4032d-transfer/checked-individual": [
+          0,
+          0,
+          "0700"
+        ]
+      },
+      "exit_status": 0,
+      "outcome": "private write succeeded"
+    }
+  },
+  "launcher_sha256": "9c05b5d5b9465204372cd8e7769521b8d62c03b8874ca2ee8481e84bd3e2e3a0",
+  "machine": "aarch64",
+  "python": "3.12.16",
+  "runner": [
+    65534,
+    65534
+  ],
+  "system": "Linux",
+  "worker_sha256": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+}
