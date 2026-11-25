@@ -1,0 +1,402 @@
+{
+  "1": {
+    "raw_sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d",
+    "clocks_us": {
+      "submit": 1309143,
+      "drain": 1132590
+    },
+    "terminal_transactions": 352,
+    "scalar_calls": 62,
+    "batch_calls": 290,
+    "scalar_sql_elapsed_ms": 141.41682400000002,
+    "batch_sql_elapsed_ms": 654.9418420000002,
+    "disjoint_pairs_by_stream_commit_spacing_and_readiness_delay_us": {
+      "all_eight": {
+        "250": {
+          "0": 13,
+          "250": 13,
+          "1000": 13
+        },
+        "1000": {
+          "0": 62,
+          "250": 62,
+          "1000": 62
+        },
+        "4000": {
+          "0": 133,
+          "250": 133,
+          "1000": 132
+        }
+      },
+      "four_pairs_by_pid": {
+        "250": {
+          "0": 1,
+          "250": 1,
+          "1000": 1
+        },
+        "1000": {
+          "0": 11,
+          "250": 11,
+          "1000": 11
+        },
+        "4000": {
+          "0": 50,
+          "250": 50,
+          "1000": 49
+        }
+      }
+    },
+    "matched_peers": {
+      "river": {
+        "raw_sha256": "1ad05f965ef66c9722999a1715047115bc82c6846db439ee648c6da020fa4d10",
+        "clocks_us": {
+          "submit": 1215260,
+          "drain": 1137957
+        },
+        "mesh_minus_peer_us": {
+          "submit": 93883,
+          "drain": -5367
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 296427,
+          "drain": 184293
+        }
+      },
+      "oban": {
+        "raw_sha256": "4f28b627c0b4863d637eaf0520cfd386746df9105a1b20db0c16c9bdac8fb0df",
+        "clocks_us": {
+          "submit": 1635075,
+          "drain": 1495985
+        },
+        "mesh_minus_peer_us": {
+          "submit": -325932,
+          "drain": -363395
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 0,
+          "drain": 0
+        }
+      }
+    }
+  },
+  "2": {
+    "raw_sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61",
+    "clocks_us": {
+      "submit": 2429068,
+      "drain": 2249419
+    },
+    "terminal_transactions": 552,
+    "scalar_calls": 249,
+    "batch_calls": 303,
+    "scalar_sql_elapsed_ms": 254.08795299999989,
+    "batch_sql_elapsed_ms": 626.349280999999,
+    "disjoint_pairs_by_stream_commit_spacing_and_readiness_delay_us": {
+      "all_eight": {
+        "250": {
+          "0": 43,
+          "250": 43,
+          "1000": 43
+        },
+        "1000": {
+          "0": 130,
+          "250": 130,
+          "1000": 130
+        },
+        "4000": {
+          "0": 223,
+          "250": 223,
+          "1000": 222
+        }
+      },
+      "four_pairs_by_pid": {
+        "250": {
+          "0": 5,
+          "250": 5,
+          "1000": 5
+        },
+        "1000": {
+          "0": 29,
+          "250": 29,
+          "1000": 29
+        },
+        "4000": {
+          "0": 82,
+          "250": 82,
+          "1000": 82
+        }
+      }
+    },
+    "matched_peers": {
+      "river": {
+        "raw_sha256": "9d2edd45d65c08ea3fea527c4a4e793a192c22cfd6dbd539efa0c40936a5bdef",
+        "clocks_us": {
+          "submit": 1232467,
+          "drain": 1153322
+        },
+        "mesh_minus_peer_us": {
+          "submit": 1196601,
+          "drain": 1096097
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 1402013,
+          "drain": 1288318
+        }
+      },
+      "oban": {
+        "raw_sha256": "a09d715b652dacd4c8f95641f852a7d99b6e86d26259ee144a892df7fe5bb8f4",
+        "clocks_us": {
+          "submit": 1671131,
+          "drain": 1519294
+        },
+        "mesh_minus_peer_us": {
+          "submit": 757937,
+          "drain": 730125
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 1036459,
+          "drain": 983341
+        }
+      }
+    }
+  },
+  "3": {
+    "raw_sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3",
+    "clocks_us": {
+      "submit": 1353490,
+      "drain": 1139331
+    },
+    "terminal_transactions": 375,
+    "scalar_calls": 87,
+    "batch_calls": 288,
+    "scalar_sql_elapsed_ms": 190.12133599999993,
+    "batch_sql_elapsed_ms": 764.9829950000001,
+    "disjoint_pairs_by_stream_commit_spacing_and_readiness_delay_us": {
+      "all_eight": {
+        "250": {
+          "0": 17,
+          "250": 17,
+          "1000": 17
+        },
+        "1000": {
+          "0": 60,
+          "250": 60,
+          "1000": 60
+        },
+        "4000": {
+          "0": 146,
+          "250": 146,
+          "1000": 146
+        }
+      },
+      "four_pairs_by_pid": {
+        "250": {
+          "0": 2,
+          "250": 2,
+          "1000": 2
+        },
+        "1000": {
+          "0": 13,
+          "250": 13,
+          "1000": 13
+        },
+        "4000": {
+          "0": 55,
+          "250": 55,
+          "1000": 54
+        }
+      }
+    },
+    "matched_peers": {
+      "river": {
+        "raw_sha256": "7118aa8cdf7b11a55137cc55e04d5ebd6c1843a27e225b2ca89a3a22b1e04578",
+        "clocks_us": {
+          "submit": 1200193,
+          "drain": 1120333
+        },
+        "mesh_minus_peer_us": {
+          "submit": 153297,
+          "drain": 18998
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 353330,
+          "drain": 205721
+        }
+      },
+      "oban": {
+        "raw_sha256": "b2ce1ae8e442520ffe0ee40a3002664efd1027cce1ff48cbbfe74daff4381091",
+        "clocks_us": {
+          "submit": 1687868,
+          "drain": 1546235
+        },
+        "mesh_minus_peer_us": {
+          "submit": -334378,
+          "drain": -406904
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 0,
+          "drain": 0
+        }
+      }
+    }
+  },
+  "4": {
+    "raw_sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598",
+    "clocks_us": {
+      "submit": 1422600,
+      "drain": 1184739
+    },
+    "terminal_transactions": 375,
+    "scalar_calls": 88,
+    "batch_calls": 287,
+    "scalar_sql_elapsed_ms": 122.39031400000003,
+    "batch_sql_elapsed_ms": 666.9760249999997,
+    "disjoint_pairs_by_stream_commit_spacing_and_readiness_delay_us": {
+      "all_eight": {
+        "250": {
+          "0": 17,
+          "250": 17,
+          "1000": 16
+        },
+        "1000": {
+          "0": 69,
+          "250": 69,
+          "1000": 69
+        },
+        "4000": {
+          "0": 145,
+          "250": 145,
+          "1000": 145
+        }
+      },
+      "four_pairs_by_pid": {
+        "250": {
+          "0": 6,
+          "250": 6,
+          "1000": 6
+        },
+        "1000": {
+          "0": 18,
+          "250": 18,
+          "1000": 18
+        },
+        "4000": {
+          "0": 53,
+          "250": 53,
+          "1000": 53
+        }
+      }
+    },
+    "matched_peers": {
+      "river": {
+        "raw_sha256": "46344afee41bc4b14aae8e9d01f678c14bbc4d4104c57c724150dd83f3506cf8",
+        "clocks_us": {
+          "submit": 1206001,
+          "drain": 1129132
+        },
+        "mesh_minus_peer_us": {
+          "submit": 216599,
+          "drain": 55607
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 417600,
+          "drain": 243796
+        }
+      },
+      "oban": {
+        "raw_sha256": "4717674f927f06cd14fff7b2bc34db75274234cf3eff814d0c97255ecfa6664a",
+        "clocks_us": {
+          "submit": 1650727,
+          "drain": 1499214
+        },
+        "mesh_minus_peer_us": {
+          "submit": -228127,
+          "drain": -314475
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 46995,
+          "drain": 0
+        }
+      }
+    }
+  },
+  "5": {
+    "raw_sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175",
+    "clocks_us": {
+      "submit": 1400065,
+      "drain": 1195132
+    },
+    "terminal_transactions": 381,
+    "scalar_calls": 80,
+    "batch_calls": 301,
+    "scalar_sql_elapsed_ms": 123.99373200000001,
+    "batch_sql_elapsed_ms": 759.8722280000002,
+    "disjoint_pairs_by_stream_commit_spacing_and_readiness_delay_us": {
+      "all_eight": {
+        "250": {
+          "0": 20,
+          "250": 20,
+          "1000": 20
+        },
+        "1000": {
+          "0": 71,
+          "250": 71,
+          "1000": 71
+        },
+        "4000": {
+          "0": 150,
+          "250": 150,
+          "1000": 147
+        }
+      },
+      "four_pairs_by_pid": {
+        "250": {
+          "0": 4,
+          "250": 4,
+          "1000": 4
+        },
+        "1000": {
+          "0": 23,
+          "250": 23,
+          "1000": 23
+        },
+        "4000": {
+          "0": 63,
+          "250": 63,
+          "1000": 62
+        }
+      }
+    },
+    "matched_peers": {
+      "river": {
+        "raw_sha256": "b35594b0d3455275962b9e6fd5b01b3ba5ddad0f4c073d7e044a79abead1840a",
+        "clocks_us": {
+          "submit": 1143638,
+          "drain": 1070498
+        },
+        "mesh_minus_peer_us": {
+          "submit": 256427,
+          "drain": 124634
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 447034,
+          "drain": 303051
+        }
+      },
+      "oban": {
+        "raw_sha256": "da327771f7dd3e8d19e9045b33d12534ea2511fbb2219846286f325546c9796d",
+        "clocks_us": {
+          "submit": 1585813,
+          "drain": 1435137
+        },
+        "mesh_minus_peer_us": {
+          "submit": -185748,
+          "drain": -240005
+        },
+        "saving_needed_for_20pct_throughput_lead_us": {
+          "submit": 78555,
+          "drain": 0
+        }
+      }
+    }
+  }
+}
