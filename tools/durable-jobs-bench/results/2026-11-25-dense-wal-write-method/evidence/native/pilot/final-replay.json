@@ -1,0 +1,327 @@
+{
+  "advance_to_pricing": false,
+  "gates": {
+    "1": {
+      "drain_ms": {
+        "control_spread_ms": 416.9759999999999,
+        "gain_ms": -16.638999999999896,
+        "historical_spread_ms": 39.414999999999964,
+        "passes": false,
+        "required_gain_ms": 416.9759999999999
+      },
+      "middle_write_ms": {
+        "control_spread_ms": 318.4219999999999,
+        "gain_ms": -12.472999999999956,
+        "historical_spread_ms": 47.351,
+        "passes": false,
+        "required_gain_ms": 318.4219999999999
+      },
+      "submit_ms": {
+        "control_spread_ms": 432.173,
+        "gain_ms": -13.065000000000055,
+        "historical_spread_ms": 30.774999999999864,
+        "passes": false,
+        "required_gain_ms": 432.173
+      }
+    },
+    "2": {
+      "drain_ms": {
+        "control_spread_ms": 14.607000000000198,
+        "gain_ms": -16.644000000000005,
+        "historical_spread_ms": 39.414999999999964,
+        "passes": false,
+        "required_gain_ms": 59.6012
+      },
+      "middle_write_ms": {
+        "control_spread_ms": 0.7519999999999527,
+        "gain_ms": 12.48700000000008,
+        "historical_spread_ms": 47.351,
+        "passes": false,
+        "required_gain_ms": 47.351
+      },
+      "submit_ms": {
+        "control_spread_ms": 28.614000000000033,
+        "gain_ms": -48.243999999999915,
+        "historical_spread_ms": 30.774999999999864,
+        "passes": false,
+        "required_gain_ms": 67.7274
+      }
+    }
+  },
+  "rounds": {
+    "1": {
+      "candidate": {
+        "d2-on": {
+          "device": {
+            "fields": [
+              "completed_flushes",
+              "flush_time_ms",
+              "completed_writes",
+              "written_sectors",
+              "write_time_ms"
+            ],
+            "inner": [
+              991,
+              74,
+              1982,
+              21024,
+              174
+            ],
+            "outer": [
+              1581,
+              129,
+              3178,
+              71080,
+              327
+            ],
+            "outer_may_include_shutdown": false,
+            "quantum_ms": 1,
+            "scope": "whole ext4 device across enqueue commit to settlement"
+          },
+          "drain_ms": 1181.398,
+          "middle_write_ms": 903.718,
+          "postgres_wal": {
+            "wal_buffers_full": 0,
+            "wal_bytes": 6363597,
+            "wal_fpi": 1,
+            "wal_records": 31450,
+            "wal_sync": 0,
+            "wal_sync_time": 0,
+            "wal_write": 1612,
+            "wal_write_plus_sync_ms": 856.293,
+            "wal_write_time": 856.293
+          },
+          "raw_sha256": "cfbf1579371b50be53df82cdb25bcfbf0836ef2c57391812105ad66cbefc0772",
+          "submit_ms": 1341.7
+        }
+      },
+      "stock-a": {
+        "d2-on": {
+          "device": {
+            "fields": [
+              "completed_flushes",
+              "flush_time_ms",
+              "completed_writes",
+              "written_sectors",
+              "write_time_ms"
+            ],
+            "inner": [
+              1015,
+              71,
+              2030,
+              21488,
+              174
+            ],
+            "outer": [
+              1635,
+              114,
+              3285,
+              71976,
+              310
+            ],
+            "outer_may_include_shutdown": false,
+            "quantum_ms": 1,
+            "scope": "whole ext4 device across enqueue commit to settlement"
+          },
+          "drain_ms": 1164.759,
+          "middle_write_ms": 891.245,
+          "postgres_wal": {
+            "wal_buffers_full": 0,
+            "wal_bytes": 6394549,
+            "wal_fpi": 1,
+            "wal_records": 31471,
+            "wal_sync": 1669,
+            "wal_sync_time": 811.7410000000001,
+            "wal_write": 1670,
+            "wal_write_plus_sync_ms": 842.5810000000001,
+            "wal_write_time": 30.839999999999996
+          },
+          "raw_sha256": "fc85cd18e1b2518711335ac919d863d76aa66aef5e4eb5122e77f95693da4705",
+          "submit_ms": 1328.635
+        }
+      },
+      "stock-b": {
+        "d2-on": {
+          "device": {
+            "fields": [
+              "completed_flushes",
+              "flush_time_ms",
+              "completed_writes",
+              "written_sectors",
+              "write_time_ms"
+            ],
+            "inner": [
+              1043,
+              314,
+              2086,
+              23192,
+              636
+            ],
+            "outer": [
+              1414,
+              410,
+              2844,
+              68224,
+              854
+            ],
+            "outer_may_include_shutdown": false,
+            "quantum_ms": 1,
+            "scope": "whole ext4 device across enqueue commit to settlement"
+          },
+          "drain_ms": 1581.735,
+          "middle_write_ms": 1209.667,
+          "postgres_wal": {
+            "wal_buffers_full": 0,
+            "wal_bytes": 6272788,
+            "wal_fpi": 1,
+            "wal_records": 31548,
+            "wal_sync": 1447,
+            "wal_sync_time": 1287.346,
+            "wal_write": 1448,
+            "wal_write_plus_sync_ms": 1313.192,
+            "wal_write_time": 25.846
+          },
+          "raw_sha256": "671dd176077d375135b1407449c5efe1523bfaddabe2e16ad5b824fa2ccd17f1",
+          "submit_ms": 1760.808
+        }
+      }
+    },
+    "2": {
+      "candidate": {
+        "d2-on": {
+          "device": {
+            "fields": [
+              "completed_flushes",
+              "flush_time_ms",
+              "completed_writes",
+              "written_sectors",
+              "write_time_ms"
+            ],
+            "inner": [
+              1018,
+              69,
+              2035,
+              21296,
+              167
+            ],
+            "outer": [
+              1639,
+              116,
+              3295,
+              72296,
+              357
+            ],
+            "outer_may_include_shutdown": false,
+            "quantum_ms": 1,
+            "scope": "whole ext4 device across enqueue commit to settlement"
+          },
+          "drain_ms": 1208.668,
+          "middle_write_ms": 903.266,
+          "postgres_wal": {
+            "wal_buffers_full": 0,
+            "wal_bytes": 6477541,
+            "wal_fpi": 1,
+            "wal_records": 31459,
+            "wal_sync": 0,
+            "wal_sync_time": 0,
+            "wal_write": 1672,
+            "wal_write_plus_sync_ms": 890.6790000000001,
+            "wal_write_time": 890.6790000000001
+          },
+          "raw_sha256": "80f077cba866ba733579836a3d5f549972d7fa6a11c7e5cbf941d5e6602a7554",
+          "submit_ms": 1402.792
+        }
+      },
+      "stock-a": {
+        "d2-on": {
+          "device": {
+            "fields": [
+              "completed_flushes",
+              "flush_time_ms",
+              "completed_writes",
+              "written_sectors",
+              "write_time_ms"
+            ],
+            "inner": [
+              986,
+              71,
+              1972,
+              20944,
+              175
+            ],
+            "outer": [
+              1649,
+              120,
+              3314,
+              72392,
+              338
+            ],
+            "outer_may_include_shutdown": false,
+            "quantum_ms": 1,
+            "scope": "whole ext4 device across enqueue commit to settlement"
+          },
+          "drain_ms": 1206.631,
+          "middle_write_ms": 916.505,
+          "postgres_wal": {
+            "wal_buffers_full": 0,
+            "wal_bytes": 6467325,
+            "wal_fpi": 1,
+            "wal_records": 31485,
+            "wal_sync": 1683,
+            "wal_sync_time": 844.1469999999999,
+            "wal_write": 1684,
+            "wal_write_plus_sync_ms": 871.204,
+            "wal_write_time": 27.057
+          },
+          "raw_sha256": "253a8c044cb75899bae03e7e87b55102d1be8d9b0306355d51dd6c393074f265",
+          "submit_ms": 1383.162
+        }
+      },
+      "stock-b": {
+        "d2-on": {
+          "device": {
+            "fields": [
+              "completed_flushes",
+              "flush_time_ms",
+              "completed_writes",
+              "written_sectors",
+              "write_time_ms"
+            ],
+            "inner": [
+              1024,
+              70,
+              2055,
+              26776,
+              173
+            ],
+            "outer": [
+              1700,
+              114,
+              3424,
+              78528,
+              318
+            ],
+            "outer_may_include_shutdown": false,
+            "quantum_ms": 1,
+            "scope": "whole ext4 device across enqueue commit to settlement"
+          },
+          "drain_ms": 1192.024,
+          "middle_write_ms": 915.753,
+          "postgres_wal": {
+            "wal_buffers_full": 0,
+            "wal_bytes": 6515062,
+            "wal_fpi": 1,
+            "wal_records": 31469,
+            "wal_sync": 1731,
+            "wal_sync_time": 828.9459999999999,
+            "wal_write": 1732,
+            "wal_write_plus_sync_ms": 855.3889999999999,
+            "wal_write_time": 26.442999999999998
+          },
+          "raw_sha256": "7f9a21a3cab47606e279eb6d63022ed1a42371621f91ada227b2f9f2ea43d385",
+          "submit_ms": 1354.548
+        }
+      }
+    }
+  }
+}

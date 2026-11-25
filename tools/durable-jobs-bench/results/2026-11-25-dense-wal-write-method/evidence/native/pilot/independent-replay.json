@@ -1,0 +1,620 @@
+{
+  "advance_to_pricing": false,
+  "controller_release_sha256": "9bf057d0f3ae4df588c3f9387c852f5777cd8689fc7ccb68ab55957d0557396f",
+  "controller_replay_sha256": "adde2b152b29f491ddb64689f8a0c207871d630ea3138c4edf9c71066cfb261e",
+  "gates": {
+    "1": {
+      "drain_ms": {
+        "control_spread_ms": 416.9759999999999,
+        "gain_ms": -16.638999999999896,
+        "historical_spread_ms": 39.414999999999964,
+        "passes": false,
+        "required_gain_ms": 416.9759999999999
+      },
+      "middle_write_ms": {
+        "control_spread_ms": 318.4219999999999,
+        "gain_ms": -12.472999999999956,
+        "historical_spread_ms": 47.351,
+        "passes": false,
+        "required_gain_ms": 318.4219999999999
+      },
+      "submit_ms": {
+        "control_spread_ms": 432.173,
+        "gain_ms": -13.065000000000055,
+        "historical_spread_ms": 30.774999999999864,
+        "passes": false,
+        "required_gain_ms": 432.173
+      }
+    },
+    "2": {
+      "drain_ms": {
+        "control_spread_ms": 14.607000000000198,
+        "gain_ms": -16.644000000000005,
+        "historical_spread_ms": 39.414999999999964,
+        "passes": false,
+        "required_gain_ms": 59.60119999999999
+      },
+      "middle_write_ms": {
+        "control_spread_ms": 0.7519999999999527,
+        "gain_ms": 12.48700000000008,
+        "historical_spread_ms": 47.351,
+        "passes": false,
+        "required_gain_ms": 47.351
+      },
+      "submit_ms": {
+        "control_spread_ms": 28.614000000000033,
+        "gain_ms": -48.243999999999915,
+        "historical_spread_ms": 30.774999999999864,
+        "passes": false,
+        "required_gain_ms": 67.7274
+      }
+    }
+  },
+  "request_sha256": "34cfcd5fc450d2a25ea79c24b8ba259d6b95744297740bb172a77d09b319d236",
+  "subblocks": {
+    "1-candidate": {
+      "measured": {
+        "cluster_id": "7711918784350312669",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            991,
+            74,
+            1982,
+            21024,
+            174
+          ],
+          "outer": [
+            1581,
+            129,
+            3178,
+            71080,
+            327
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1181.398,
+        "middle_write_ms": 903.718,
+        "postgres_bracket_us": [
+          1795571016032387,
+          1795571022616365
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6363597,
+          "wal_fpi": 1,
+          "wal_records": 31450,
+          "wal_sync": 0,
+          "wal_sync_time": 0,
+          "wal_write": 1612,
+          "wal_write_plus_sync_ms": 856.293,
+          "wal_write_time": 856.293
+        },
+        "raw_sha256": "cfbf1579371b50be53df82cdb25bcfbf0836ef2c57391812105ad66cbefc0772",
+        "submit_ms": 1341.7
+      },
+      "warmup": {
+        "cluster_id": "7711918739116701638",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            1012,
+            71,
+            2024,
+            21616,
+            170
+          ],
+          "outer": [
+            1606,
+            112,
+            3227,
+            71600,
+            304
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1139.248,
+        "middle_write_ms": 869.323,
+        "postgres_bracket_us": [
+          1795571005686278,
+          1795571012262942
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6448722,
+          "wal_fpi": 1,
+          "wal_records": 31524,
+          "wal_sync": 0,
+          "wal_sync_time": 0,
+          "wal_write": 1638,
+          "wal_write_plus_sync_ms": 829.764,
+          "wal_write_time": 829.764
+        },
+        "raw_sha256": "89901cf71b8cd8e6eb1bb4b4df67a2276906b1a1954cdfbf15690a611b46a0c2",
+        "submit_ms": 1305.617
+      }
+    },
+    "1-stock-a": {
+      "measured": {
+        "cluster_id": "7711918673385604148",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            1015,
+            71,
+            2030,
+            21488,
+            174
+          ],
+          "outer": [
+            1635,
+            114,
+            3285,
+            71976,
+            310
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1164.759,
+        "middle_write_ms": 891.245,
+        "postgres_bracket_us": [
+          1795570990291555,
+          1795570996906965
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6394549,
+          "wal_fpi": 1,
+          "wal_records": 31471,
+          "wal_sync": 1669,
+          "wal_sync_time": 811.7410000000001,
+          "wal_write": 1670,
+          "wal_write_plus_sync_ms": 842.5810000000001,
+          "wal_write_time": 30.839999999999996
+        },
+        "raw_sha256": "fc85cd18e1b2518711335ac919d863d76aa66aef5e4eb5122e77f95693da4705",
+        "submit_ms": 1328.635
+      },
+      "warmup": {
+        "cluster_id": "7711918631159223077",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            1059,
+            74,
+            2118,
+            22224,
+            177
+          ],
+          "outer": [
+            1658,
+            114,
+            3332,
+            72288,
+            312
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1155.061,
+        "middle_write_ms": 885.598,
+        "postgres_bracket_us": [
+          1795570980273223,
+          1795570986770953
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6351272,
+          "wal_fpi": 1,
+          "wal_records": 31458,
+          "wal_sync": 1691,
+          "wal_sync_time": 810.0329999999999,
+          "wal_write": 1692,
+          "wal_write_plus_sync_ms": 835.9979999999999,
+          "wal_write_time": 25.965
+        },
+        "raw_sha256": "806310458e2a97fb4b7d97c4e651b92a4885ac0dd13193021509f0ae1ae209bb",
+        "submit_ms": 1311.202
+      }
+    },
+    "1-stock-b": {
+      "measured": {
+        "cluster_id": "7711918894229179773",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            1043,
+            314,
+            2086,
+            23192,
+            636
+          ],
+          "outer": [
+            1414,
+            410,
+            2844,
+            68224,
+            854
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1581.735,
+        "middle_write_ms": 1209.667,
+        "postgres_bracket_us": [
+          1795571041518314,
+          1795571048549947
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6272788,
+          "wal_fpi": 1,
+          "wal_records": 31548,
+          "wal_sync": 1447,
+          "wal_sync_time": 1287.346,
+          "wal_write": 1448,
+          "wal_write_plus_sync_ms": 1313.192,
+          "wal_write_time": 25.846
+        },
+        "raw_sha256": "671dd176077d375135b1407449c5efe1523bfaddabe2e16ad5b824fa2ccd17f1",
+        "submit_ms": 1760.808
+      },
+      "warmup": {
+        "cluster_id": "7711918849879420015",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            997,
+            85,
+            1993,
+            21136,
+            183
+          ],
+          "outer": [
+            1628,
+            130,
+            3272,
+            72016,
+            353
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1198.656,
+        "middle_write_ms": 915.228,
+        "postgres_bracket_us": [
+          1795571031540405,
+          1795571038176928
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6457063,
+          "wal_fpi": 1,
+          "wal_records": 31482,
+          "wal_sync": 1659,
+          "wal_sync_time": 842.918,
+          "wal_write": 1660,
+          "wal_write_plus_sync_ms": 871.736,
+          "wal_write_time": 28.817999999999998
+        },
+        "raw_sha256": "1b9efc504df01eb7da5370ee1824ca9b8d62b948a52e631f79a43df7e7d76903",
+        "submit_ms": 1364.423
+      }
+    },
+    "2-candidate": {
+      "measured": {
+        "cluster_id": "7711919110785390279",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            1018,
+            69,
+            2035,
+            21296,
+            167
+          ],
+          "outer": [
+            1639,
+            116,
+            3295,
+            72296,
+            357
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1208.668,
+        "middle_write_ms": 903.266,
+        "postgres_bracket_us": [
+          1795571092018534,
+          1795571098686007
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6477541,
+          "wal_fpi": 1,
+          "wal_records": 31459,
+          "wal_sync": 0,
+          "wal_sync_time": 0,
+          "wal_write": 1672,
+          "wal_write_plus_sync_ms": 890.6790000000001,
+          "wal_write_time": 890.6790000000001
+        },
+        "raw_sha256": "80f077cba866ba733579836a3d5f549972d7fa6a11c7e5cbf941d5e6602a7554",
+        "submit_ms": 1402.792
+      },
+      "warmup": {
+        "cluster_id": "7711919066359129529",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            1006,
+            66,
+            2012,
+            21368,
+            164
+          ],
+          "outer": [
+            1695,
+            121,
+            3405,
+            73416,
+            331
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1258.193,
+        "middle_write_ms": 911.531,
+        "postgres_bracket_us": [
+          1795571081752716,
+          1795571088508929
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6556716,
+          "wal_fpi": 1,
+          "wal_records": 31506,
+          "wal_sync": 0,
+          "wal_sync_time": 0,
+          "wal_write": 1728,
+          "wal_write_plus_sync_ms": 886.164,
+          "wal_write_time": 886.164
+        },
+        "raw_sha256": "a21e8b4119cb7ad179729cb9579b1d01a382e22a17903bf99765955bb5a27bed",
+        "submit_ms": 1454.287
+      }
+    },
+    "2-stock-a": {
+      "measured": {
+        "cluster_id": "7711919219558230890",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            986,
+            71,
+            1972,
+            20944,
+            175
+          ],
+          "outer": [
+            1649,
+            120,
+            3314,
+            72392,
+            338
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1206.631,
+        "middle_write_ms": 916.505,
+        "postgres_bracket_us": [
+          1795571117428292,
+          1795571124101967
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6467325,
+          "wal_fpi": 1,
+          "wal_records": 31485,
+          "wal_sync": 1683,
+          "wal_sync_time": 844.1469999999999,
+          "wal_write": 1684,
+          "wal_write_plus_sync_ms": 871.204,
+          "wal_write_time": 27.057
+        },
+        "raw_sha256": "253a8c044cb75899bae03e7e87b55102d1be8d9b0306355d51dd6c393074f265",
+        "submit_ms": 1383.162
+      },
+      "warmup": {
+        "cluster_id": "7711919176540469852",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            951,
+            74,
+            1941,
+            21352,
+            221
+          ],
+          "outer": [
+            1641,
+            119,
+            3336,
+            73184,
+            391
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1175.818,
+        "middle_write_ms": 885.71,
+        "postgres_bracket_us": [
+          1795571107169746,
+          1795571113814467
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6456654,
+          "wal_fpi": 1,
+          "wal_records": 31494,
+          "wal_sync": 1673,
+          "wal_sync_time": 828.115,
+          "wal_write": 1674,
+          "wal_write_plus_sync_ms": 857.285,
+          "wal_write_time": 29.17
+        },
+        "raw_sha256": "2948290bf60adc288273c42b37e4444724336cf3ddb342409ba07bcc5d27fd66",
+        "submit_ms": 1341.748
+      }
+    },
+    "2-stock-b": {
+      "measured": {
+        "cluster_id": "7711919002411586078",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            1024,
+            70,
+            2055,
+            26776,
+            173
+          ],
+          "outer": [
+            1700,
+            114,
+            3424,
+            78528,
+            318
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1192.024,
+        "middle_write_ms": 915.753,
+        "postgres_bracket_us": [
+          1795571066565424,
+          1795571073229652
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6515062,
+          "wal_fpi": 1,
+          "wal_records": 31469,
+          "wal_sync": 1731,
+          "wal_sync_time": 828.9459999999999,
+          "wal_write": 1732,
+          "wal_write_plus_sync_ms": 855.3889999999999,
+          "wal_write_time": 26.442999999999998
+        },
+        "raw_sha256": "7f9a21a3cab47606e279eb6d63022ed1a42371621f91ada227b2f9f2ea43d385",
+        "submit_ms": 1354.548
+      },
+      "warmup": {
+        "cluster_id": "7711918959287374095",
+        "device": {
+          "fields": [
+            "completed_flushes",
+            "flush_time_ms",
+            "completed_writes",
+            "written_sectors",
+            "write_time_ms"
+          ],
+          "inner": [
+            970,
+            64,
+            1939,
+            20704,
+            153
+          ],
+          "outer": [
+            1612,
+            106,
+            3240,
+            71872,
+            291
+          ],
+          "outer_may_include_shutdown": false
+        },
+        "drain_ms": 1168.874,
+        "middle_write_ms": 882.561,
+        "postgres_bracket_us": [
+          1795571056801247,
+          1795571063346956
+        ],
+        "postgres_wal": {
+          "wal_buffers_full": 0,
+          "wal_bytes": 6468901,
+          "wal_fpi": 1,
+          "wal_records": 31488,
+          "wal_sync": 1643,
+          "wal_sync_time": 821.529,
+          "wal_write": 1644,
+          "wal_write_plus_sync_ms": 844.385,
+          "wal_write_time": 22.855999999999998
+        },
+        "raw_sha256": "7889de353e6751ef5720b9f3b51fdf0d347f99b5cc99ff1bb5f466a4655afd92",
+        "submit_ms": 1330.621
+      }
+    }
+  }
+}
