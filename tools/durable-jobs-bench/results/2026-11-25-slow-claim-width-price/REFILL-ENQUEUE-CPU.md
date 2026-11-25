@@ -4,7 +4,7 @@ The full-refill arms had about one idle CPU across a middle portion of the produ
 
 | Full-refill rotation | First read after submit | Last read after submit | Time between reads | Idle ticks |
 |---|---:|---:|---:|---:|
-| Forward | 121–142 ms | 339–362 ms | 198–241 ms | 19 |
+| Forward | 120–142 ms | 339–362 ms | 198–241 ms | 19 |
 | Reverse | 110–131 ms | 328–360 ms | 198–249 ms | 21 |
 
 The sealed worker reads CPU counters before it stamps a frame. Every intermediate frame follows a timed-out 200 ms wait for the same live adapter process. The replay pins those exact worker bytes, excludes the final post-exit frame, and brackets each read between the previous stamp plus the wait and its own stamp. It allows 1 ms either way for clock alignment and checks consecutive realtime and monotonic frame deltas. The bounds assume no unobserved realtime step and reversal within one interval. Quantization limits the CPU counts. The table rounds the time bounds outward to whole milliseconds.
