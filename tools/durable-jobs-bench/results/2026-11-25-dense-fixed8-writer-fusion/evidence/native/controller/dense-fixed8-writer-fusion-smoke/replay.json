@@ -1,0 +1,76 @@
+{
+  "groups": {
+    "0": {
+      "diagnostic": {
+        "positive": {
+          "raw_sha256": "d0f7e9c9856d8103a16bf246aa3011132e485a9cd7af763200c0f1865bf855c1",
+          "completed": 1024,
+          "peaks": {
+            "3009359": 32,
+            "3009364": 32,
+            "total": 64
+          },
+          "grant_contract": {
+            "checks": {
+              "admin_fence": true,
+              "context_and_ordinality": true,
+              "isolated_namespace": true,
+              "legacy_capacity": true,
+              "namespace_and_trigger_fence": true,
+              "ordered_rows": [
+                "c81e728d-9d4c-2f63-6f06-7f89cc14862c",
+                "eccbc87e-4b5c-e2fe-2830-8fd9f2a7baf3",
+                "c4ca4238-a0b9-2382-0dcc-509a6f75849b"
+              ],
+              "oversized_and_isolation_fallback": true,
+              "rollback": true,
+              "skip_locked": true,
+              "worker_tls": [
+                "parity_subject",
+                "parity_subject",
+                true
+              ]
+            },
+            "contraction": {
+              "executing_after_contraction": 2,
+              "grants_after_release": 1,
+              "grants_at_or_above_cap": 0,
+              "held_contraction_sqlstate": "55P03",
+              "new_capacity": 1,
+              "old_capacity": 2
+            },
+            "overlay": {
+              "baseline_body_sha256": "f2d4720701661a141bc3f8d6591b76dd607a19fb60a9c46826766d99df168f6c",
+              "body_sha256": "ecf89d59b8ffcfa3b07aea4b2c1533d329795f366ced63b7e4221a1b40040044",
+              "metadata": {
+                "acl": [
+                  "parity_migrator=X/parity_migrator",
+                  "parity_subject=X/parity_migrator"
+                ],
+                "app_execute": false,
+                "configuration": [
+                  "search_path=pg_catalog, pg_temp",
+                  "lock_timeout=100ms"
+                ],
+                "owner": "parity_migrator",
+                "producer_execute": false,
+                "security_definer": false,
+                "worker_execute": true
+              }
+            }
+          },
+          "fused_seats": 960,
+          "fused_turns": 135,
+          "ordinary_grant_turns": 4,
+          "total_grant_turns": 139,
+          "fused_with_pending": 9
+        }
+      }
+    }
+  },
+  "failures": {},
+  "complete": true,
+  "archives": {
+    "blocks/00-noop.1795580942987418000/diagnostic-positive/diagnostic-mesh/raw.tar.gz": "d0f7e9c9856d8103a16bf246aa3011132e485a9cd7af763200c0f1865bf855c1"
+  }
+}

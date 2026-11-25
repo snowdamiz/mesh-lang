@@ -1,0 +1,177 @@
+{
+  "after_existing_bookings": true,
+  "controller": "native-controller-complete-post-wal-queue",
+  "cpus": [
+    0,
+    1
+  ],
+  "d388_sha256": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence",
+  "id": "dense-fixed8-writer-fusion",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "local_sha256": {
+    "target/dense-fixed8-writer-fusion/packet/README.md": "0e21a0145588265a6b5f61d8089776dc1ee6a82ac4231d95a1a82f967463f2b5",
+    "target/dense-fixed8-writer-fusion/packet/candidate.sql": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+    "target/dense-fixed8-writer-fusion/packet/contract.py": "c45ce2a527c23a5f7f497ffee790baeacccbdbb7be2df199dc54a53de14b21bd",
+    "target/dense-fixed8-writer-fusion/packet/drive.py": "d5b614492ee346a1bdbffb64826fb4b93b50ce5328a7ce3cf62bfb22ac2df2fb",
+    "target/dense-fixed8-writer-fusion/packet/factorial_arm.py": "7ea43588fefd692e6082e83fe3dbd18d266f241f0ac51a4f31154bbdb8674082",
+    "target/dense-fixed8-writer-fusion/packet/fusion_score.py": "8acc38e72a7f22551440cb540c3a7858c91d64e97943467a8d23a137b9849d16",
+    "target/dense-fixed8-writer-fusion/packet/launch.sh": "d48b2771c4efe446db686f0219bc7d6749bb76b0c9e160f1f1a5cc7fa5c66d54",
+    "target/dense-fixed8-writer-fusion/packet/render.py": "adc81cf2813c79913a54501be485df49b6051d00a9310848d081dbb2f92d1418",
+    "target/dense-fixed8-writer-fusion/packet/seal.py": "fd0d56f1a08235d1c952ac4b4fd65647573cf194fba3407ca452fab6f75d01cd",
+    "target/dense-fixed8-writer-fusion/packet/source.tar.gz": "bb743fc3a12d709c4e87c920bbeddf4627b7a45c2541382c521d6fd125907e97",
+    "target/dense-fixed8-writer-fusion/packet/stock.sql": "31597202cdd0c8d03c8472e51362f0cfc6a988ca28a8e6e29fb1c69825c8ec1a",
+    "target/dense-grouped-refill-packet/source.tar.gz": "deb2a3bc49feae7df985fe895209c3db7d725cd4c9c1b9c8ba49c93a650dd6d8",
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/controller-packet-retry.json": "5d97e99284e97944c6dc3b838a8b899a9d7ef24b7c01a0e92cd51c18b2ee7ab7",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/controller.py": "fde51389a818bf6bcc085438dbeab68724b12f58c27bd5f3b1ff2b287f9eca68",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/score.py": "71f514fc94ff9eea9041a463bb9c89004aa4a7c94f14247635f5391cf36b105e",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "native_host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "offline_check_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/packet/drive.py check",
+  "ready": true,
+  "replay_commands": {
+    "dense-fixed8-writer-fusion-peers": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/packet/drive.py replay dense-fixed8-writer-fusion-peers /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/raw.tar.gz /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/controller-release.json",
+    "dense-fixed8-writer-fusion-pilots": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/packet/drive.py replay dense-fixed8-writer-fusion-pilots /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/raw.tar.gz /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/controller-release.json",
+    "dense-fixed8-writer-fusion-smoke": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/packet/drive.py replay dense-fixed8-writer-fusion-smoke /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/raw.tar.gz /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/controller-release.json"
+  },
+  "requested_window_minutes": 16,
+  "schedule": {
+    "dense-fixed8-writer-fusion-peers": [
+      {
+        "group": 3,
+        "order": [
+          "fused",
+          "river-2x32",
+          "apalis-2x32",
+          "oban-2x32"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop"
+      },
+      {
+        "group": 4,
+        "order": [
+          "river-2x32",
+          "oban-2x32",
+          "fused",
+          "apalis-2x32"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop"
+      },
+      {
+        "group": 5,
+        "order": [
+          "oban-2x32",
+          "apalis-2x32",
+          "river-2x32",
+          "fused"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop"
+      },
+      {
+        "group": 6,
+        "order": [
+          "apalis-2x32",
+          "fused",
+          "oban-2x32",
+          "river-2x32"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop"
+      },
+      {
+        "group": 7,
+        "order": [
+          "oban-2x32",
+          "apalis-2x32",
+          "river-2x32",
+          "fused"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop"
+      }
+    ],
+    "dense-fixed8-writer-fusion-pilots": [
+      {
+        "group": 1,
+        "order": [
+          "off-a",
+          "fused",
+          "bridge",
+          "off-b"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop"
+      },
+      {
+        "group": 2,
+        "order": [
+          "off-b",
+          "bridge",
+          "fused",
+          "off-a"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop"
+      }
+    ],
+    "dense-fixed8-writer-fusion-smoke": [
+      {
+        "group": 0,
+        "order": [
+          "positive"
+        ],
+        "phases": [
+          "diagnostic"
+        ],
+        "profile": "noop"
+      }
+    ]
+  },
+  "setup_grant_id": "dense-fixed8-writer-fusion-setup",
+  "setup_spec_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/packet/drive.py setup-spec",
+  "source_archive_sha256": "bb743fc3a12d709c4e87c920bbeddf4627b7a45c2541382c521d6fd125907e97",
+  "source_sha": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "timing_commands": {
+    "dense-fixed8-writer-fusion-peers": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/packet/drive.py dispatch dense-fixed8-writer-fusion-peers /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/raw.tar.gz /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/controller-release.json",
+    "dense-fixed8-writer-fusion-pilots": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/packet/drive.py dispatch dense-fixed8-writer-fusion-pilots /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/raw.tar.gz /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/controller-release.json",
+    "dense-fixed8-writer-fusion-smoke": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/packet/drive.py dispatch dense-fixed8-writer-fusion-smoke /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/raw.tar.gz /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/controller-release.json"
+  },
+  "timing_window_minutes": {
+    "dense-fixed8-writer-fusion-peers": 26,
+    "dense-fixed8-writer-fusion-pilots": 16,
+    "dense-fixed8-writer-fusion-smoke": 5
+  },
+  "verification_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/packet/drive.py bind /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/raw.tar.gz /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup/controller-release.json",
+  "winner_elf_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a"
+}

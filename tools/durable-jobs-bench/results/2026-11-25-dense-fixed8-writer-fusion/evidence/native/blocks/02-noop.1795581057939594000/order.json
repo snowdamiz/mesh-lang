@@ -1,0 +1,14 @@
+{
+  "group": 2,
+  "order": [
+    "off-b",
+    "bridge",
+    "fused",
+    "off-a"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}

@@ -1,0 +1,15 @@
+{
+  "exit_status": 0,
+  "grant": {
+    "end": "2026-11-25T04:40:37Z",
+    "id": "dense-fixed8-writer-fusion-setup",
+    "request_sha256": "2abeedcf4cbbcb6d8ff29827ca221b71e564bd5ceae61cc6e0fd35932ca77aaf",
+    "start": "2026-11-25T04:24:37Z"
+  },
+  "id": "dense-fixed8-writer-fusion-setup",
+  "phase": "setup",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-fixed8-writer-fusion/evidence/setup",
+  "released_at": "2026-11-25T04:28:55.598665+00:00",
+  "request_sha256": "2abeedcf4cbbcb6d8ff29827ca221b71e564bd5ceae61cc6e0fd35932ca77aaf",
+  "started": "2026-11-25T04:24:37.804603+00:00"
+}

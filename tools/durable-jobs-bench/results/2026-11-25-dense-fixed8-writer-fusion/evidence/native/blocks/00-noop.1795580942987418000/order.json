@@ -1,0 +1,10 @@
+{
+  "group": 0,
+  "order": [
+    "positive"
+  ],
+  "phases": [
+    "diagnostic"
+  ],
+  "profile": "noop"
+}

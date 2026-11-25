@@ -1,0 +1,40 @@
+{
+  "build": {
+    "architecture": "x86_64",
+    "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "cc": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+    "compiler_sha256": "e023d5944764878969ca40b7edb59c779498a435b44d308776076f4c7f2e8c19",
+    "execution_contract": "ordinary-trusted-shared-process-v2",
+    "files": {
+      "libworker_identity.a": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+      "main.mpl": "e4dfde887d16261d8ac074bbb3c6bff5b3bc58d340db9cccc69b3b9da787fdbc",
+      "mesh": "ef6d785c741abd05560ba7cdbb2e90bcf7484f735f85224be30d818ad7811c2b",
+      "mesh.toml": "64bbe65a533a942753a2bfe8fa5fd4e025a1fa9f4a8dbf25d82ad22ad4137325",
+      "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+      "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+      "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+    },
+    "meshc": "meshc 0.1.8",
+    "runtime_sha256": "5131e1ef3ce91ba779a17437d66cd59038d3cfe09dd6d8eac440db7fbb2c1034",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "source_sha256": "bb743fc3a12d709c4e87c920bbeddf4627b7a45c2541382c521d6fd125907e97",
+    "system": "Linux",
+    "version": "b3557273d72be3802bf189b284e7caaf5f3caa0f"
+  },
+  "manifest_sha256": "935dcee1f091e129e85370e937c987cfaa5b98e98f7ae066248f0f1cd9fd4a17",
+  "attempt": "trusted-jobs-product-bb743fc3a12d",
+  "source_sha256": "bb743fc3a12d709c4e87c920bbeddf4627b7a45c2541382c521d6fd125907e97",
+  "setup_raw_sha256": "2678141bfb5ea69ebcd0109b4f1785d4eb6e794dfa390b80e39ff8ffa6e0ae5a",
+  "release_sha256": "ba90702bfeaa9759bfb553a39bd367aebcb33ba56e9156371347fb3d83b100a4",
+  "faults": [
+    "sql-cut",
+    "confirm-commit",
+    "malformed-grant",
+    "lost-commit",
+    "stop-at-commit",
+    "pending-ordinary",
+    "teardown-release",
+    "teardown-kill"
+  ]
+}
