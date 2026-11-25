@@ -1,0 +1,17 @@
+{
+  "group": 5,
+  "order": [
+    "apalis",
+    "file",
+    "inline-b",
+    "river",
+    "inline-a",
+    "product",
+    "oban"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "large"
+}
