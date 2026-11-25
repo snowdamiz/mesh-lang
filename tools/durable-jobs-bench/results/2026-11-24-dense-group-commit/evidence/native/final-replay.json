@@ -1,0 +1,355 @@
+{
+  "gates": {
+    "1": {
+      "apalis-2x32": {
+        "clocks": {
+          "commit_jobs_per_s": {
+            "control_spread_ms": 15.485000000000014,
+            "gain_ms": 5.567000000000007,
+            "passes": false
+          },
+          "middle_write_ms": {
+            "control_spread_ms": 15.137,
+            "gain_ms": 6.8040000000000305,
+            "passes": false
+          },
+          "submit_jobs_per_s": {
+            "control_spread_ms": 15.244000000000028,
+            "gain_ms": 6.6860000000000355,
+            "passes": false
+          }
+        },
+        "fewer_syncs": true
+      },
+      "d2-on": {
+        "clocks": {
+          "commit_jobs_per_s": {
+            "control_spread_ms": 39.414999999999964,
+            "gain_ms": -48.74800000000005,
+            "passes": false
+          },
+          "middle_write_ms": {
+            "control_spread_ms": 25.07299999999998,
+            "gain_ms": -34.25300000000004,
+            "passes": false
+          },
+          "submit_jobs_per_s": {
+            "control_spread_ms": 30.774999999999864,
+            "gain_ms": -69.52199999999993,
+            "passes": false
+          }
+        },
+        "fewer_syncs": true
+      },
+      "oban-2x32": {
+        "clocks": {
+          "commit_jobs_per_s": {
+            "control_spread_ms": 98.45399999999995,
+            "gain_ms": -49.549000000000206,
+            "passes": false
+          },
+          "middle_write_ms": {
+            "control_spread_ms": 29.815999999999917,
+            "gain_ms": -16.646999999999935,
+            "passes": false
+          },
+          "submit_jobs_per_s": {
+            "control_spread_ms": 98.14599999999996,
+            "gain_ms": -60.61500000000001,
+            "passes": false
+          }
+        },
+        "fewer_syncs": true
+      },
+      "river-2x32": {
+        "clocks": {
+          "commit_jobs_per_s": {
+            "control_spread_ms": 0.07399999999995543,
+            "gain_ms": 2.816000000000031,
+            "passes": false
+          },
+          "middle_write_ms": {
+            "control_spread_ms": 35.15900000000005,
+            "gain_ms": -8.708000000000027,
+            "passes": false
+          },
+          "submit_jobs_per_s": {
+            "control_spread_ms": 3.384999999999991,
+            "gain_ms": -3.02800000000002,
+            "passes": false
+          }
+        },
+        "fewer_syncs": true
+      }
+    },
+    "2": {
+      "apalis-2x32": {
+        "clocks": {
+          "commit_jobs_per_s": {
+            "control_spread_ms": 91.43900000000008,
+            "gain_ms": -52.351999999999975,
+            "passes": false
+          },
+          "middle_write_ms": {
+            "control_spread_ms": 31.732999999999947,
+            "gain_ms": -29.947000000000003,
+            "passes": false
+          },
+          "submit_jobs_per_s": {
+            "control_spread_ms": 92.77599999999995,
+            "gain_ms": -53.277000000000044,
+            "passes": false
+          }
+        },
+        "fewer_syncs": true
+      },
+      "d2-on": {
+        "clocks": {
+          "commit_jobs_per_s": {
+            "control_spread_ms": 7.061000000000149,
+            "gain_ms": -36.21400000000017,
+            "passes": false
+          },
+          "middle_write_ms": {
+            "control_spread_ms": 47.351,
+            "gain_ms": -40.891000000000076,
+            "passes": false
+          },
+          "submit_jobs_per_s": {
+            "control_spread_ms": 11.305000000000064,
+            "gain_ms": -57.333000000000084,
+            "passes": false
+          }
+        },
+        "fewer_syncs": true
+      },
+      "oban-2x32": {
+        "clocks": {
+          "commit_jobs_per_s": {
+            "control_spread_ms": 29.894999999999982,
+            "gain_ms": -10.481999999999971,
+            "passes": false
+          },
+          "middle_write_ms": {
+            "control_spread_ms": 3.102999999999952,
+            "gain_ms": 24.027000000000044,
+            "passes": false
+          },
+          "submit_jobs_per_s": {
+            "control_spread_ms": 38.577999999999975,
+            "gain_ms": -12.009999999999991,
+            "passes": false
+          }
+        },
+        "fewer_syncs": true
+      },
+      "river-2x32": {
+        "clocks": {
+          "commit_jobs_per_s": {
+            "control_spread_ms": 4.046000000000163,
+            "gain_ms": -20.268000000000143,
+            "passes": false
+          },
+          "middle_write_ms": {
+            "control_spread_ms": 21.77000000000004,
+            "gain_ms": -19.254999999999995,
+            "passes": false
+          },
+          "submit_jobs_per_s": {
+            "control_spread_ms": 5.480000000000018,
+            "gain_ms": -6.587999999999965,
+            "passes": false
+          }
+        },
+        "fewer_syncs": true
+      }
+    }
+  },
+  "material_in_both_rotations": false,
+  "rounds": {
+    "1": {
+      "delay": {
+        "apalis-2x32": {
+          "commit_jobs_per_s": 1523.8253969907425,
+          "middle_write_ms": 489.181,
+          "raw_sha256": "bbf7a03c968416bae0e5d578f228de24db4cfb6f8bdb4dad7b586930b07a0825",
+          "submit_jobs_per_s": 1445.34982688266,
+          "wal_sync": 405
+        },
+        "d2-on": {
+          "commit_jobs_per_s": 878.4210381838645,
+          "middle_write_ms": 885.509,
+          "raw_sha256": "0ec4495f4bbe5339a3676e12f50b4a28c5dc93647a21e39479947b946380c2b0",
+          "submit_jobs_per_s": 754.9534605105521,
+          "wal_sync": 1151
+        },
+        "oban-2x32": {
+          "commit_jobs_per_s": 860.3755068569575,
+          "middle_write_ms": 870.011,
+          "raw_sha256": "d568f3bf27853855aa3e727664378156a85ee1964e6fbea1c3c50f2b8b51694e",
+          "submit_jobs_per_s": 763.3422762657951,
+          "wal_sync": 706
+        },
+        "river-2x32": {
+          "commit_jobs_per_s": 1082.721394849672,
+          "middle_write_ms": 333.007,
+          "raw_sha256": "9d802c2af325069b5766d64e6b0f3711b74063ef6f1c6ee07caa1d59418b6946",
+          "submit_jobs_per_s": 1001.8020697387292,
+          "wal_sync": 352
+        }
+      },
+      "stock-a": {
+        "apalis-2x32": {
+          "commit_jobs_per_s": 1477.537533637787,
+          "middle_write_ms": 495.985,
+          "raw_sha256": "5012e4d0f85cac819b543930f68a401205adab006c9bf245a87523f9caffd1c9",
+          "submit_jobs_per_s": 1401.9542475517142,
+          "wal_sync": 519
+        },
+        "d2-on": {
+          "commit_jobs_per_s": 916.7576859030601,
+          "middle_write_ms": 851.256,
+          "raw_sha256": "9d903c3df91d552d1ff3bfc995024196a07515bfe190b4143f8f67ae150e8f7e",
+          "submit_jobs_per_s": 795.7396843306889,
+          "wal_sync": 1635
+        },
+        "oban-2x32": {
+          "commit_jobs_per_s": 826.4176007579799,
+          "middle_write_ms": 883.18,
+          "raw_sha256": "0ad139e03f06c4632e49b4aad2662c6a3f9f63f28f9a2f60e95f8ec4272fce9a",
+          "submit_jobs_per_s": 742.5670775924583,
+          "wal_sync": 1034
+        },
+        "river-2x32": {
+          "commit_jobs_per_s": 1079.422972524258,
+          "middle_write_ms": 359.458,
+          "raw_sha256": "60d04ac379e71026218937fb8c4198b79a98f2f7b59e7e978a0b10efe1a0ea61",
+          "submit_jobs_per_s": 1001.4523014332308,
+          "wal_sync": 511
+        }
+      },
+      "stock-b": {
+        "apalis-2x32": {
+          "commit_jobs_per_s": 1511.3052718578429,
+          "middle_write_ms": 511.122,
+          "raw_sha256": "c4b5c509b9de7fb600f1e30e15cde7e83a5ae16ec50a7b0d6fbaf6ad899cb4d7",
+          "submit_jobs_per_s": 1431.8374081505667,
+          "wal_sync": 518
+        },
+        "d2-on": {
+          "commit_jobs_per_s": 885.5105738091223,
+          "middle_write_ms": 876.329,
+          "raw_sha256": "49c2ce229e19825113d3e9b6d911f6b924b446f3c6f0ad67215cacbe127bc617",
+          "submit_jobs_per_s": 777.1540981217764,
+          "wal_sync": 1726
+        },
+        "oban-2x32": {
+          "commit_jobs_per_s": 897.7502763825925,
+          "middle_write_ms": 853.364,
+          "raw_sha256": "c3a1385114c167589bda7847cd0172025cc76d3ca564e168224dafecd25badc7",
+          "submit_jobs_per_s": 799.4666058738935,
+          "wal_sync": 906
+        },
+        "river-2x32": {
+          "commit_jobs_per_s": 1079.5071796715304,
+          "middle_write_ms": 324.299,
+          "raw_sha256": "3575a705f081773cc4c1cfebe31645dd00b4e7f1510190c909d8b26a8fb836f7",
+          "submit_jobs_per_s": 1004.7785856563931,
+          "wal_sync": 491
+        }
+      }
+    },
+    "2": {
+      "delay": {
+        "apalis-2x32": {
+          "commit_jobs_per_s": 1423.6300341448766,
+          "middle_write_ms": 520.244,
+          "raw_sha256": "ed2b3a9a12a800e42889a8f831ea59a8a34ecff1bbbf16dc5cab1e6366bd0ea8",
+          "submit_jobs_per_s": 1353.1245416356685,
+          "wal_sync": 456
+        },
+        "d2-on": {
+          "commit_jobs_per_s": 822.1426128398765,
+          "middle_write_ms": 915.57,
+          "raw_sha256": "9ab2edb1fb796515ba4d6a59899943b1086826545ed634c26f8cae15b15c8723",
+          "submit_jobs_per_s": 708.4671510626315,
+          "wal_sync": 1233
+        },
+        "oban-2x32": {
+          "commit_jobs_per_s": 867.484168837495,
+          "middle_write_ms": 826.751,
+          "raw_sha256": "6f531a3af71328e24502bd3637d20dff70a35718315c9579f7a44b8abc86992d",
+          "submit_jobs_per_s": 774.3643066452406,
+          "wal_sync": 675
+        },
+        "river-2x32": {
+          "commit_jobs_per_s": 1076.3459316961803,
+          "middle_write_ms": 355.417,
+          "raw_sha256": "4139434624ed7ff58ccf44d790c4001efb5de5eb3223f3a5c81750babf174b70",
+          "submit_jobs_per_s": 1002.1815064236507,
+          "wal_sync": 408
+        }
+      },
+      "stock-a": {
+        "apalis-2x32": {
+          "commit_jobs_per_s": 1535.379706598534,
+          "middle_write_ms": 490.297,
+          "raw_sha256": "7d79e832c286985971f1075511145ea95809bce5ceccddd87c6de62e30596b1d",
+          "submit_jobs_per_s": 1455.5999374546902,
+          "wal_sync": 508
+        },
+        "d2-on": {
+          "commit_jobs_per_s": 841.8470321192594,
+          "middle_write_ms": 922.03,
+          "raw_sha256": "e152eaba21697113a64333a49ee04f33a2611f60439dae92884582e5f2d77f0f",
+          "submit_jobs_per_s": 737.7303696360555,
+          "wal_sync": 1707
+        },
+        "oban-2x32": {
+          "commit_jobs_per_s": 875.2563159059886,
+          "middle_write_ms": 853.881,
+          "raw_sha256": "a20c927ef3f1f00e1e0ca18c26fadbb44368221b715936d36843bf09db6d3397",
+          "submit_jobs_per_s": 781.4616538140136,
+          "wal_sync": 1002
+        },
+        "river-2x32": {
+          "commit_jobs_per_s": 1095.0173502504958,
+          "middle_write_ms": 336.162,
+          "raw_sha256": "e5aef2a6d88aae03c66e87f01b795a89f4eee89ee0b2dd77f00193bc380230b5",
+          "submit_jobs_per_s": 1008.6851336163037,
+          "wal_sync": 476
+        }
+      },
+      "stock-b": {
+        "apalis-2x32": {
+          "commit_jobs_per_s": 1350.255480468106,
+          "middle_write_ms": 522.03,
+          "raw_sha256": "afc1c4cb5864140a4bff640b3db0ea42ecbdb7e761910da5ed004ddb7f3a8afd",
+          "submit_jobs_per_s": 1286.0024162779775,
+          "wal_sync": 523
+        },
+        "d2-on": {
+          "commit_jobs_per_s": 846.7624566695774,
+          "middle_write_ms": 874.679,
+          "raw_sha256": "3bcc6153d49571ac7c2831e72721f484753e2aceb9f89e81a7da6c55d3eee25d",
+          "submit_jobs_per_s": 731.770412749956,
+          "wal_sync": 1668
+        },
+        "oban-2x32": {
+          "commit_jobs_per_s": 853.4485488874332,
+          "middle_write_ms": 850.778,
+          "raw_sha256": "394dabb8d077c5fcb55d25a3ce79d347ed41c0ede35e3a8626b7ce834399a61a",
+          "submit_jobs_per_s": 759.1128757849665,
+          "wal_sync": 993
+        },
+        "river-2x32": {
+          "commit_jobs_per_s": 1099.775641473141,
+          "middle_write_ms": 357.932,
+          "raw_sha256": "118c85b6a4eac137478391ec4e52128a16bf8845b70874d423d4b523aa05462b",
+          "submit_jobs_per_s": 1003.269443489183,
+          "wal_sync": 535
+        }
+      }
+    }
+  }
+}

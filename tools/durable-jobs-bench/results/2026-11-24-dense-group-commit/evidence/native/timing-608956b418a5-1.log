@@ -1,0 +1,54 @@
+warmup-d2-on warmup mesh: 0
+warmup-river-2x32 warmup go: 0
+warmup-oban-2x32 warmup oban: 0
+warmup-apalis-2x32 warmup rust: 0
+measured-d2-on measured mesh: 0
+measured-river-2x32 measured go: 0
+measured-oban-2x32 measured oban: 0
+measured-apalis-2x32 measured rust: 0
+/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-group-commit/evidence/native/1-stock-a/summary-1795567586692769000.json
+warmup-d2-on warmup mesh: 0
+warmup-river-2x32 warmup go: 0
+warmup-oban-2x32 warmup oban: 0
+warmup-apalis-2x32 warmup rust: 0
+measured-d2-on measured mesh: 0
+measured-river-2x32 measured go: 0
+measured-oban-2x32 measured oban: 0
+measured-apalis-2x32 measured rust: 0
+/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-group-commit/evidence/native/1-delay/summary-1795567684579199000.json
+warmup-d2-on warmup mesh: 0
+warmup-river-2x32 warmup go: 0
+warmup-oban-2x32 warmup oban: 0
+warmup-apalis-2x32 warmup rust: 0
+measured-d2-on measured mesh: 0
+measured-river-2x32 measured go: 0
+measured-oban-2x32 measured oban: 0
+measured-apalis-2x32 measured rust: 0
+/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-group-commit/evidence/native/1-stock-b/summary-1795567781009425000.json
+warmup-apalis-2x32 warmup rust: 0
+warmup-oban-2x32 warmup oban: 0
+warmup-river-2x32 warmup go: 0
+warmup-d2-on warmup mesh: 0
+measured-apalis-2x32 measured rust: 0
+measured-oban-2x32 measured oban: 0
+measured-river-2x32 measured go: 0
+measured-d2-on measured mesh: 0
+/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-group-commit/evidence/native/2-stock-b/summary-1795567882335564000.json
+warmup-apalis-2x32 warmup rust: 0
+warmup-oban-2x32 warmup oban: 0
+warmup-river-2x32 warmup go: 0
+warmup-d2-on warmup mesh: 0
+measured-apalis-2x32 measured rust: 0
+measured-oban-2x32 measured oban: 0
+measured-river-2x32 measured go: 0
+measured-d2-on measured mesh: 0
+/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-group-commit/evidence/native/2-delay/summary-1795567979247964000.json
+warmup-apalis-2x32 warmup rust: 0
+warmup-oban-2x32 warmup oban: 0
+warmup-river-2x32 warmup go: 0
+warmup-d2-on warmup mesh: 0
+measured-apalis-2x32 measured rust: 0
+measured-oban-2x32 measured oban: 0
+measured-river-2x32 measured go: 0
+measured-d2-on measured mesh: 0
+/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-group-commit/evidence/native/2-stock-a/summary-1795568076431114000.json
