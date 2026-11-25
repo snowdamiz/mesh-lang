@@ -1,0 +1,16 @@
+{
+  "group": 5,
+  "order": [
+    "checked-b",
+    "apalis-2x32",
+    "oban-2x32",
+    "checked-a",
+    "hot",
+    "river-2x32"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}
