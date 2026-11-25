@@ -1,0 +1,156 @@
+{
+  "short_observed": [
+    {
+      "group": 1,
+      "mode": "client",
+      "sha256": "0168c3b3eb29949106ed84d74a452027de4de1bf3a67062a18c60628e84937d4",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 4404516,
+        "admission_ready_to_bulk_send": 1138335
+      },
+      "seven_times_both_windows_ns": 38799957
+    },
+    {
+      "group": 1,
+      "mode": "nested",
+      "sha256": "27a8f4b9fb8ddbab1b0e2d12c898ba0e54ea030abaf31420c1839f25c7de5cc8",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 2804701,
+        "admission_ready_to_bulk_send": 740264
+      },
+      "seven_times_both_windows_ns": 24814755
+    },
+    {
+      "group": 2,
+      "mode": "client",
+      "sha256": "a267bbe5b1531c49d99d71356977a88c500bea92dc7f35ec38ab947d5b720e27",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 4275616,
+        "admission_ready_to_bulk_send": 1025635
+      },
+      "seven_times_both_windows_ns": 37108757
+    },
+    {
+      "group": 2,
+      "mode": "nested",
+      "sha256": "c51e13ff5bbdbbdb21eaf94c7ccc42800cc7c77569484a54a74bc756eede5998",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 2843050,
+        "admission_ready_to_bulk_send": 908153
+      },
+      "seven_times_both_windows_ns": 26258421
+    },
+    {
+      "group": 3,
+      "mode": "client",
+      "sha256": "d7e10405a09e387e88e8aa17476a3c49b65f0213e8d02cbba7e15a002f8314d7",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 4497475,
+        "admission_ready_to_bulk_send": 1170532
+      },
+      "seven_times_both_windows_ns": 39676049
+    },
+    {
+      "group": 3,
+      "mode": "nested",
+      "sha256": "13aa6a858959fe5c271dc784957046cc1fa968dedf283649e608a3b79d1d8976",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 4659916,
+        "admission_ready_to_bulk_send": 1134791
+      },
+      "seven_times_both_windows_ns": 40562949
+    },
+    {
+      "group": 4,
+      "mode": "client",
+      "sha256": "0fd6583bf68925e44b7bc7a22a8c319ed1f64216b833915ab5cdd14de4029577",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 3988675,
+        "admission_ready_to_bulk_send": 1597222
+      },
+      "seven_times_both_windows_ns": 39101279
+    },
+    {
+      "group": 4,
+      "mode": "nested",
+      "sha256": "c3572660a62374821406105d267643aacd96d05e985babc555f8a26ede33ecf2",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 4339555,
+        "admission_ready_to_bulk_send": 1031601
+      },
+      "seven_times_both_windows_ns": 37598092
+    },
+    {
+      "group": 5,
+      "mode": "client",
+      "sha256": "0538e0ba597f6ca798f1d290c72f766ce177bf218cb9b39705367f355f111227",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 3017993,
+        "admission_ready_to_bulk_send": 697151
+      },
+      "seven_times_both_windows_ns": 26006008
+    },
+    {
+      "group": 5,
+      "mode": "nested",
+      "sha256": "16156c7943ccfaf87e1a9c9486709e808aa1729981b645fefe08ec59284cfc3d",
+      "windows_ns": {
+        "product_ready_to_savepoint_send": 2886294,
+        "admission_ready_to_bulk_send": 680670
+      },
+      "seven_times_both_windows_ns": 24968748
+    }
+  ],
+  "seven_times_stock_component_wall_ms": {
+    "stock-a": {
+      "max": 7.320038541666667,
+      "median": 7.070790161458333,
+      "min": 6.957416520833334
+    },
+    "stock-b": {
+      "max": 7.443238322916667,
+      "median": 7.039008520833334,
+      "min": 7.013757260416667
+    }
+  },
+  "dense_measured": [
+    {
+      "group": 1,
+      "sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d",
+      "enqueue_us": 176553,
+      "interior_sample_offsets_us": [
+        4856
+      ]
+    },
+    {
+      "group": 2,
+      "sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61",
+      "enqueue_us": 179649,
+      "interior_sample_offsets_us": []
+    },
+    {
+      "group": 3,
+      "sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3",
+      "enqueue_us": 214159,
+      "interior_sample_offsets_us": [
+        168709
+      ]
+    },
+    {
+      "group": 4,
+      "sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598",
+      "enqueue_us": 237861,
+      "interior_sample_offsets_us": [
+        93257
+      ]
+    },
+    {
+      "group": 5,
+      "sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175",
+      "enqueue_us": 204933,
+      "interior_sample_offsets_us": [
+        45289
+      ]
+    }
+  ]
+}
