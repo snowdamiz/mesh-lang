@@ -261,6 +261,43 @@ If Mesh kept each first application commit at its observed time and finished eac
 | River | 286.87 | 347.54 | 3/5 | 5/5 |
 | Apalis | 401.49 | 452.36 | 0/5 | 0/5 |
 
+## Slow jobs on isolated PostgreSQL 17.11 with PGLZ and LZ4
+
+All eight lanes use the same isolated PostgreSQL 17.11 executable on CPUs 0 and 1. Each lane completes 512 jobs with 100 ms holds and two independent application commits per job. Mesh uses the frozen V1 bulk producer and `claim_batch_v1` cursor. PGLZ stored the payloads uncompressed. LZ4 stored all 512 payloads compressed in every arm. [Interactive results](chart.html#slow-isolated-codecs) · [Released results and custody](../2026-11-25-slow-lz4-isolated-qualification/RESULTS.md)
+
+Rotations 1–2 use the complete blocks from the original grant. Fresh rotations 3–5 use the exit-0 continuation. The series includes all 80 warmup and measured arms. Nine interrupted captures remain archived outside the comparison.
+
+### Isolated PGLZ peer comparison
+
+5/5 matched rotations. Rates and paired throughput changes are medians. Wins compare Mesh against peers within this codec.
+
+| Lane | Submit jobs/s | Drain jobs/s | Mesh paired submit change (wins) | Mesh paired drain change (wins) |
+|---|---:|---:|---:|---:|
+| Mesh V1 bulk | 266.46 | 361.04 | — | — |
+| Go River | 286.53 | 391.29 | -6.64% (0/5) | -7.47% (0/5) |
+| Elixir Oban | 246.76 | 323.34 | +7.17% (3/5) | +10.65% (4/5) |
+| Rust Apalis | 356.21 | 473.71 | -28.43% (0/5) | -26.46% (0/5) |
+
+### Isolated LZ4 peer comparison
+
+5/5 matched rotations. Rates and paired throughput changes are medians. Wins compare Mesh against peers within this codec.
+
+| Lane | Submit jobs/s | Drain jobs/s | Mesh paired submit change (wins) | Mesh paired drain change (wins) |
+|---|---:|---:|---:|---:|
+| Mesh V1 bulk | 278.74 | 348.18 | — | — |
+| Go River | 288.25 | 350.98 | -3.30% (2/5) | -0.42% (2/5) |
+| Elixir Oban | 278.08 | 338.79 | +2.29% (3/5) | +2.77% (4/5) |
+| Rust Apalis | 391.66 | 454.41 | -26.77% (0/5) | -21.01% (0/5) |
+
+The paired median elapsed-time changes below are PGLZ minus LZ4. Positive values favor LZ4. Parentheses give the number of LZ4 wins.
+
+| Engine | Submit difference (ms) | Drain difference (ms) |
+|---|---:|---:|
+| Mesh V1 bulk | +126.5 (5/5) | -36.1 (2/5) |
+| Go River | +10.0 (5/5) | -139.6 (1/5) |
+| Elixir Oban | +242.8 (5/5) | +83.3 (5/5) |
+| Rust Apalis | +104.3 (5/5) | -59.1 (2/5) |
+
 ## Slow jobs with grouped successes
 
 2/5 matched rotations. This pilot stopped after two opposite orders. The V2 lanes can settle up to eight successes together. V1 keeps one terminal transaction per job. Both policies used the same 512-job input and 100 ms hold. [Extension decision](../2026-11-23-bulk-enqueue-v2-slow/README.md)

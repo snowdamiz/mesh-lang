@@ -33062,6 +33062,1817 @@
     "manifest_sha256": "a06aac5913202d54ab9de658f0534fe2c9c48fcdf7be41bc48d10390b672554a",
     "title": "Slow jobs \u00b7 equal 2 \u00d7 32, 71 PostgreSQL sessions"
   },
+  "slow-isolated-codecs": {
+    "blocks": [
+      {
+        "attempt": "01-slow",
+        "group": 1,
+        "order": [
+          "bulk-pglz",
+          "river-lz4",
+          "apalis-pglz",
+          "oban-pglz",
+          "oban-lz4",
+          "apalis-lz4",
+          "river-pglz",
+          "bulk-lz4"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis-lz4/measured-rust": "b0fc8db84cb1456ce68c459a523acf04bb482a606a4a8d922659e26c41def3a7",
+          "measured-apalis-pglz/measured-rust": "cc1e0ff29e362ebc749e689d4410fa336e0da833e0022b78176d9f017f10006e",
+          "measured-bulk-lz4/measured-mesh": "56e4fa475dc47b7d83c9dd13d316fa91bbdddff8092d7aeccadcfdb3a4207994",
+          "measured-bulk-pglz/measured-mesh": "e5e1d55bdb2ff415aecd1ac15c15b54429ffd9da74d1cca5ab5a4e9fb9c9d398",
+          "measured-oban-lz4/measured-oban": "92f9c22df209d3119e6d75cb2270ba01c814ac8ffb1d305929fbd8a9af23bb11",
+          "measured-oban-pglz/measured-oban": "28af67af2666f6b1df9a73ac78b41f82b0b3a1093898b75e72cdc3049bab11b9",
+          "measured-river-lz4/measured-go": "e32abf842b7576090a17f5d5ae8bae26daa3c341a4cd6ed84416fbcfcaf450d6",
+          "measured-river-pglz/measured-go": "1f78a5ea4b48cf18533bad5419c3bda509e5073ee49e088957860fec884ebef7",
+          "warmup-apalis-lz4/warmup-rust": "67df2e25fb36ba72d9723bc9d18f38edb230055861eb62e6b201ec4f4d19e36a",
+          "warmup-apalis-pglz/warmup-rust": "892f3e602c4c9b3a046f00ffdc33e74dcf51a84e4a1c13b0e7c384ef546e13e9",
+          "warmup-bulk-lz4/warmup-mesh": "7ca2b7ce0ca7b8e88e6d3a53db93a608e4e5bf8f3d278630ccf48f763b7488e1",
+          "warmup-bulk-pglz/warmup-mesh": "89bf106eb21edd1bbb61220859fd75996ada441cad8d67b2556706acc9f1cb96",
+          "warmup-oban-lz4/warmup-oban": "ed2b56d6c832cb43ca50303be87df31e4d8fa8111cffbb76ccd26997555634d7",
+          "warmup-oban-pglz/warmup-oban": "50af7b4795c68e7189a544fe054f54e2528c2744afa67113cc41d839342e74d9",
+          "warmup-river-lz4/warmup-go": "aa703eb64b8b8ecb1f0619ccab3304f5f7eda97560ef63c919aa07149188c3bf",
+          "warmup-river-pglz/warmup-go": "899c31ac75f2904066985a4e301d8a4c919f0d8982c371bec76abc36c0d97bcc"
+        },
+        "release": "original",
+        "scores": {
+          "apalis-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 383.3431415269935,
+            "commit_to_last_settlement_ms": 1335.618,
+            "commit_to_pickup_p99_ms": 962.818,
+            "commit_to_settlement_p99_ms": 1335.618,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.554016620498615,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 164.878,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 12926976,
+            "runner_cpu_ms_per_job": 0.494970703125,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 341.22050308697925,
+            "submit_to_last_settlement_ms": 1500.496,
+            "submit_to_settlement_p50_ms": 787.388,
+            "submit_to_settlement_p99_ms": 1500.496
+          },
+          "apalis-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 446.39354124345016,
+            "commit_to_last_settlement_ms": 1146.97,
+            "commit_to_pickup_p99_ms": 1029.434,
+            "commit_to_settlement_p99_ms": 1146.97,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.2770083102493075,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 354.66,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 13336576,
+            "runner_cpu_ms_per_job": 0.48585156249999994,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 340.96282040183,
+            "submit_to_last_settlement_ms": 1501.63,
+            "submit_to_settlement_p50_ms": 1012.764,
+            "submit_to_settlement_p99_ms": 1501.63
+          },
+          "bulk-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 344.0746910888015,
+            "commit_to_last_settlement_ms": 1488.049,
+            "commit_to_pickup_p99_ms": 1360.199,
+            "commit_to_settlement_p99_ms": 1484.314,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 1.8648018648018647,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 359.493,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 15155200,
+            "runner_cpu_ms_per_job": 0.78816796875,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 277.1249584583192,
+            "submit_to_last_settlement_ms": 1847.542,
+            "submit_to_settlement_p50_ms": 1165.009,
+            "submit_to_settlement_p99_ms": 1843.807
+          },
+          "bulk-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 364.3923224245754,
+            "commit_to_last_settlement_ms": 1405.079,
+            "commit_to_pickup_p99_ms": 1277.58,
+            "commit_to_settlement_p99_ms": 1401.352,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 2.2831050228310503,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 497.808,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 15994880,
+            "runner_cpu_ms_per_job": 0.75155859375,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 269.064847255775,
+            "submit_to_last_settlement_ms": 1902.887,
+            "submit_to_settlement_p50_ms": 1242.87,
+            "submit_to_settlement_p99_ms": 1899.16
+          },
+          "oban-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 340.98620937219243,
+            "commit_to_last_settlement_ms": 1501.527,
+            "commit_to_pickup_p99_ms": 1387.764,
+            "commit_to_settlement_p99_ms": 1499.995,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.9685230024213075,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 314.182,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 136511488,
+            "runner_cpu_ms_per_job": 3.88730859375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 281.98351167505365,
+            "submit_to_last_settlement_ms": 1815.709,
+            "submit_to_settlement_p50_ms": 1210.3139999999999,
+            "submit_to_settlement_p99_ms": 1814.177
+          },
+          "oban-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 316.8118824256652,
+            "commit_to_last_settlement_ms": 1616.101,
+            "commit_to_pickup_p99_ms": 1496.511,
+            "commit_to_settlement_p99_ms": 1614.253,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.6593406593406593,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 476.435,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 128548864,
+            "runner_cpu_ms_per_job": 3.901416015625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 244.67918353614942,
+            "submit_to_last_settlement_ms": 2092.536,
+            "submit_to_settlement_p50_ms": 1454.853,
+            "submit_to_settlement_p99_ms": 2090.688
+          },
+          "river-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 348.8919613792953,
+            "commit_to_last_settlement_ms": 1467.503,
+            "commit_to_pickup_p99_ms": 1159.43,
+            "commit_to_settlement_p99_ms": 1467.503,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.9950248756218906,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 308.669,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 37113856,
+            "runner_cpu_ms_per_job": 0.879572265625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 288.2603711802686,
+            "submit_to_last_settlement_ms": 1776.172,
+            "submit_to_settlement_p50_ms": 1285.263,
+            "submit_to_settlement_p99_ms": 1776.172
+          },
+          "river-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 394.7346103614751,
+            "commit_to_last_settlement_ms": 1297.074,
+            "commit_to_pickup_p99_ms": 1185.913,
+            "commit_to_settlement_p99_ms": 1297.074,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.8379888268156425,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 479.51,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 36470784,
+            "runner_cpu_ms_per_job": 0.86238671875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 288.1935219499894,
+            "submit_to_last_settlement_ms": 1776.584,
+            "submit_to_settlement_p50_ms": 1290.319,
+            "submit_to_settlement_p99_ms": 1776.584
+          }
+        }
+      },
+      {
+        "attempt": "02-slow",
+        "group": 2,
+        "order": [
+          "river-pglz",
+          "oban-lz4",
+          "bulk-lz4",
+          "apalis-pglz",
+          "apalis-lz4",
+          "bulk-pglz",
+          "oban-pglz",
+          "river-lz4"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis-lz4/measured-rust": "11e0e7e4d76dbbd669eb12ff2d721e4a67df31ffd52722ca33495d23c7dabe9a",
+          "measured-apalis-pglz/measured-rust": "4e35cc5e330a35be60e72b17996162a54c66e64994ea9bbb6ec330e412a0093f",
+          "measured-bulk-lz4/measured-mesh": "93fe4467a63890ff0a84fa28dfc8aa5a0ac3e479534ca8cfab51f84b66697d83",
+          "measured-bulk-pglz/measured-mesh": "b77b19fe429d384359da3cf0f588983faf9dc0a3051091da3ed5f19f9e942df9",
+          "measured-oban-lz4/measured-oban": "4b732001e134be32afcf06aeadc78ddd7ad45f610dd7f293ce1e72994688167b",
+          "measured-oban-pglz/measured-oban": "0bd731e3d304cb53bb85b44da5a352ad9453c0d8a394ac563952562d9f474af1",
+          "measured-river-lz4/measured-go": "93fb3a83b5a6c350f027b833305e935d2972308e076f2b1d657656298808f573",
+          "measured-river-pglz/measured-go": "7089538554ad9014bfbe73e1979c95178b4516f0d8301723e859192d408fc037",
+          "warmup-apalis-lz4/warmup-rust": "21e7e2d510ebd2ce135baaf6be3b20d9ee8ed3c870ab8bf40508a738caf50f89",
+          "warmup-apalis-pglz/warmup-rust": "c7bbd34e1f39afab971b8364ad10597627915a73b4c946e4cbf6a198d40acf42",
+          "warmup-bulk-lz4/warmup-mesh": "697a6876d8cbffad090c51b31acb70955e06ec049d7405dcfd13f9ae8b3cb382",
+          "warmup-bulk-pglz/warmup-mesh": "967abf9855aa14ea16212b25cebfb2cae05d2eb74b286e96d5d88b011c25373b",
+          "warmup-oban-lz4/warmup-oban": "f13cb7e9c02d7540a0efea187c3d0db648d61814f6b061d9233ae2a467019fc7",
+          "warmup-oban-pglz/warmup-oban": "3cc8911b2df6c0b2ee9785311ff0025d0aca740d9a7700c20cc1b72e1112acc1",
+          "warmup-river-lz4/warmup-go": "ae335469e61d248655915b6ec48b778aeaaab232188fab112ba65da156e180f9",
+          "warmup-river-pglz/warmup-go": "ea4e32e2a0b6c79f2cc0ac1dd4155e2758cf6df8a44cf91539bb80c1f230931f"
+        },
+        "release": "original",
+        "scores": {
+          "apalis-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 454.4111160319259,
+            "commit_to_last_settlement_ms": 1126.733,
+            "commit_to_pickup_p99_ms": 1005.332,
+            "commit_to_settlement_p99_ms": 1126.733,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.31746031746031744,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 180.53,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 13062144,
+            "runner_cpu_ms_per_job": 0.49193359374999995,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 391.65799077920815,
+            "submit_to_last_settlement_ms": 1307.263,
+            "submit_to_settlement_p50_ms": 818.353,
+            "submit_to_settlement_p99_ms": 1307.263
+          },
+          "apalis-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 453.8838092907888,
+            "commit_to_last_settlement_ms": 1128.042,
+            "commit_to_pickup_p99_ms": 1006.676,
+            "commit_to_settlement_p99_ms": 1128.042,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.27932960893854747,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 358.293,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 13045760,
+            "runner_cpu_ms_per_job": 0.480576171875,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 344.4714684105535,
+            "submit_to_last_settlement_ms": 1486.335,
+            "submit_to_settlement_p50_ms": 985.6395,
+            "submit_to_settlement_p99_ms": 1486.335
+          },
+          "bulk-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 358.94308088137353,
+            "commit_to_last_settlement_ms": 1426.41,
+            "commit_to_pickup_p99_ms": 1293.783,
+            "commit_to_settlement_p99_ms": 1422.425,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 2.525252525252525,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 325.971,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 15032320,
+            "runner_cpu_ms_per_job": 0.722283203125,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 292.17390510396996,
+            "submit_to_last_settlement_ms": 1752.381,
+            "submit_to_settlement_p50_ms": 1074.109,
+            "submit_to_settlement_p99_ms": 1748.396
+          },
+          "bulk-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 368.2674312051983,
+            "commit_to_last_settlement_ms": 1390.294,
+            "commit_to_pickup_p99_ms": 1277.605,
+            "commit_to_settlement_p99_ms": 1386.374,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 2.5380710659898478,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 488.571,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 14835712,
+            "runner_cpu_ms_per_job": 0.803048828125,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 272.5049431438661,
+            "submit_to_last_settlement_ms": 1878.865,
+            "submit_to_settlement_p50_ms": 1220.388,
+            "submit_to_settlement_p99_ms": 1874.945
+          },
+          "oban-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 331.55188948961086,
+            "commit_to_last_settlement_ms": 1544.253,
+            "commit_to_pickup_p99_ms": 1424.097,
+            "commit_to_settlement_p99_ms": 1543.554,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.7352941176470589,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 299.079,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 129744896,
+            "runner_cpu_ms_per_job": 3.8684082031249996,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 277.75788626248556,
+            "submit_to_last_settlement_ms": 1843.332,
+            "submit_to_settlement_p50_ms": 1227.9535,
+            "submit_to_settlement_p99_ms": 1842.633
+          },
+          "oban-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 327.2870460809933,
+            "commit_to_last_settlement_ms": 1564.376,
+            "commit_to_pickup_p99_ms": 1448.685,
+            "commit_to_settlement_p99_ms": 1562.657,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.6578947368421053,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 547.129,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 136138752,
+            "runner_cpu_ms_per_job": 4.0021015625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 242.4810739259438,
+            "submit_to_last_settlement_ms": 2111.505,
+            "submit_to_settlement_p50_ms": 1488.442,
+            "submit_to_settlement_p99_ms": 2109.786
+          },
+          "river-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 353.5625919728862,
+            "commit_to_last_settlement_ms": 1448.117,
+            "commit_to_pickup_p99_ms": 1161.673,
+            "commit_to_settlement_p99_ms": 1448.117,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.75,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 329.844,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 38141952,
+            "runner_cpu_ms_per_job": 0.9397851562499999,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 287.9703210587859,
+            "submit_to_last_settlement_ms": 1777.961,
+            "submit_to_settlement_p50_ms": 1286.86,
+            "submit_to_settlement_p99_ms": 1777.961
+          },
+          "river-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 391.2874350115132,
+            "commit_to_last_settlement_ms": 1308.501,
+            "commit_to_pickup_p99_ms": 1155.626,
+            "commit_to_settlement_p99_ms": 1308.501,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 1.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 473.614,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 38526976,
+            "runner_cpu_ms_per_job": 0.850986328125,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 287.2990800256998,
+            "submit_to_last_settlement_ms": 1782.115,
+            "submit_to_settlement_p50_ms": 1295.986,
+            "submit_to_settlement_p99_ms": 1782.115
+          }
+        }
+      },
+      {
+        "attempt": "03-slow",
+        "group": 3,
+        "order": [
+          "oban-pglz",
+          "apalis-lz4",
+          "river-lz4",
+          "bulk-lz4",
+          "bulk-pglz",
+          "river-pglz",
+          "apalis-pglz",
+          "oban-lz4"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis-lz4/measured-rust": "33cc157fdd36adee3361181523e6a5a975775a52793455e667c0f7e04786a7fc",
+          "measured-apalis-pglz/measured-rust": "d008aebd8b598dc06bd869796a998d51b18a106f95c10b6477fe11c53eda4a85",
+          "measured-bulk-lz4/measured-mesh": "e3463e3078735efbff84e41c99e6d6ab8cd21833b71249f530368ec687649a61",
+          "measured-bulk-pglz/measured-mesh": "cd90157dcf3b48721dd79f92e0f4470c6cb3bcd0b6fc087d2a0e1d7f28fee72f",
+          "measured-oban-lz4/measured-oban": "983139934d4973db9e55b6c4951804a9c4588eaebe8e502580266125b2981ff2",
+          "measured-oban-pglz/measured-oban": "7dd8aeecf39dc43efccffa34678bfd7c2dd1eef584ac40c78190844f3a64f320",
+          "measured-river-lz4/measured-go": "651d819c1c82cabd54bf9b877e995f76b94bd61b78c83e8eff3c65347153387e",
+          "measured-river-pglz/measured-go": "9411d95645684691e2bc63814cdd041a8fab1ba64003314acf8515d8c86898aa",
+          "warmup-apalis-lz4/warmup-rust": "48e19254785f0681bf8cfa748d383500c50f0915d8a5a06ed2fb6f06907fefc6",
+          "warmup-apalis-pglz/warmup-rust": "0e0d518c7a5d8a160a97788a145560ea55710b629248277869ef6353b378ea1d",
+          "warmup-bulk-lz4/warmup-mesh": "489e5efd0bb7c24b535fde01b060756dde2a2f85a9d3af15be16a27e9fc6cea9",
+          "warmup-bulk-pglz/warmup-mesh": "86aa160d22ae205e7637b9e17606822a1f0aeb23fd43ab707784eb0bb2070e59",
+          "warmup-oban-lz4/warmup-oban": "d8440dee730803f9136ce25909f2e27fea02c9f4d60669d6bebee28c0278c213",
+          "warmup-oban-pglz/warmup-oban": "a1983381dd395e804a9aa0984a41bcf86a8e8c899852d40437322e32b99c2827",
+          "warmup-river-lz4/warmup-go": "248a20b539492eaba3aeb4da45b32f6de7b804b2ad43f8efb9a2842084fcf1e1",
+          "warmup-river-pglz/warmup-go": "a4c9783ec21d4e88be0563b0229c455b3c4c23d420dac6e7d10c5fa9c054f813"
+        },
+        "release": "continuation",
+        "scores": {
+          "apalis-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 434.2423869761209,
+            "commit_to_last_settlement_ms": 1179.065,
+            "commit_to_pickup_p99_ms": 1048.731,
+            "commit_to_settlement_p99_ms": 1174.778,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.6349206349206349,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 166.066,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 12845056,
+            "runner_cpu_ms_per_job": 0.4555859375,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 380.6320722665673,
+            "submit_to_last_settlement_ms": 1345.131,
+            "submit_to_settlement_p50_ms": 845.0745,
+            "submit_to_settlement_p99_ms": 1340.844
+          },
+          "apalis-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 487.97178150682254,
+            "commit_to_last_settlement_ms": 1049.241,
+            "commit_to_pickup_p99_ms": 933.156,
+            "commit_to_settlement_p99_ms": 1049.241,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.9375,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 325.348,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 13131776,
+            "runner_cpu_ms_per_job": 0.5066015625,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 372.47497251905844,
+            "submit_to_last_settlement_ms": 1374.589,
+            "submit_to_settlement_p50_ms": 947.9005,
+            "submit_to_settlement_p99_ms": 1374.589
+          },
+          "bulk-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 348.1834954222711,
+            "commit_to_last_settlement_ms": 1470.489,
+            "commit_to_pickup_p99_ms": 1342.507,
+            "commit_to_settlement_p99_ms": 1464.561,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 2.7918781725888326,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 366.316,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 14983168,
+            "runner_cpu_ms_per_job": 0.7683984375,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 278.7448858207594,
+            "submit_to_last_settlement_ms": 1836.805,
+            "submit_to_settlement_p50_ms": 1118.533,
+            "submit_to_settlement_p99_ms": 1830.877
+          },
+          "bulk-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 330.06789599766887,
+            "commit_to_last_settlement_ms": 1551.196,
+            "commit_to_pickup_p99_ms": 1434.664,
+            "commit_to_settlement_p99_ms": 1547.677,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 5.5813953488372094,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 612.116,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 15130624,
+            "runner_cpu_ms_per_job": 0.80708203125,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 236.67413669410607,
+            "submit_to_last_settlement_ms": 2163.312,
+            "submit_to_settlement_p50_ms": 1479.5259999999998,
+            "submit_to_settlement_p99_ms": 2159.793
+          },
+          "oban-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 338.7944080394854,
+            "commit_to_last_settlement_ms": 1511.241,
+            "commit_to_pickup_p99_ms": 1396.406,
+            "commit_to_settlement_p99_ms": 1510.354,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.48426150121065376,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 367.54,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 130662400,
+            "runner_cpu_ms_per_job": 3.966380859375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 272.51712679657714,
+            "submit_to_last_settlement_ms": 1878.781,
+            "submit_to_settlement_p50_ms": 1260.2945,
+            "submit_to_settlement_p99_ms": 1877.894
+          },
+          "oban-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 319.747798923599,
+            "commit_to_last_settlement_ms": 1601.262,
+            "commit_to_pickup_p99_ms": 1487.936,
+            "commit_to_settlement_p99_ms": 1600.063,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.44052863436123346,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 473.622,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 130441216,
+            "runner_cpu_ms_per_job": 3.832185546875,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 246.7607827714706,
+            "submit_to_last_settlement_ms": 2074.884,
+            "submit_to_settlement_p50_ms": 1497.4395,
+            "submit_to_settlement_p99_ms": 2073.685
+          },
+          "river-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 349.6434251670879,
+            "commit_to_last_settlement_ms": 1464.349,
+            "commit_to_pickup_p99_ms": 1165.218,
+            "commit_to_settlement_p99_ms": 1464.349,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 1.1019283746556474,
+            "cpu_steal_percent": 0.27548209366391185,
+            "engine": "go",
+            "first_submit_to_commit_ms": 311.887,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 34807808,
+            "runner_cpu_ms_per_job": 0.8962480468749999,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 288.2499847993172,
+            "submit_to_last_settlement_ms": 1776.236,
+            "submit_to_settlement_p50_ms": 1300.263,
+            "submit_to_settlement_p99_ms": 1776.236
+          },
+          "river-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 339.07172492806313,
+            "commit_to_last_settlement_ms": 1510.005,
+            "commit_to_pickup_p99_ms": 1367.296,
+            "commit_to_settlement_p99_ms": 1510.005,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.8948545861297539,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 530.085,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 34181120,
+            "runner_cpu_ms_per_job": 0.92092578125,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 250.96931998098123,
+            "submit_to_last_settlement_ms": 2040.09,
+            "submit_to_settlement_p50_ms": 1540.656,
+            "submit_to_settlement_p99_ms": 2040.09
+          }
+        }
+      },
+      {
+        "attempt": "04-slow",
+        "group": 4,
+        "order": [
+          "apalis-pglz",
+          "bulk-pglz",
+          "oban-lz4",
+          "river-lz4",
+          "river-pglz",
+          "oban-pglz",
+          "bulk-lz4",
+          "apalis-lz4"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis-lz4/measured-rust": "129d549ee6b45ced56273ee8a48df082fefe09417a03175072d869496c19b89c",
+          "measured-apalis-pglz/measured-rust": "ff186f883557aa2971c7a45a60e67aa84cc4d7005ea776f00df6b0c8fcd551b1",
+          "measured-bulk-lz4/measured-mesh": "e779cfb4dd195a9612ae93f7cb6b97bd5844546b4980acb304c8ba89cc75b35f",
+          "measured-bulk-pglz/measured-mesh": "293bebb133cf8cb70430a853d772774ff410298393543cc3f72e7a832f5c9525",
+          "measured-oban-lz4/measured-oban": "37be64b5c82ae9503bb6cf76e5e11a89285877e219c4b7bd52b70cbb3a96d9e1",
+          "measured-oban-pglz/measured-oban": "a914342ad51ff7b47b97b877f00bf26929a1128db7968c73fa620d2e3d304811",
+          "measured-river-lz4/measured-go": "30e35c8b3c8a66c828eaf3a28260759559638b471d541ac9415bf00b6ea65bc3",
+          "measured-river-pglz/measured-go": "a26abc2ff057903fbca77ebb48b4a24096a8d9290e8f26e387ac3f7f11b92bd0",
+          "warmup-apalis-lz4/warmup-rust": "1eb5944cac5f50f51f3b95ffc63a41fd0fe34873f375e770961a66067510a33a",
+          "warmup-apalis-pglz/warmup-rust": "fb05891e635afc02f654065fdd85855ba51ce6c97c1c2f0195f982c12a1304bb",
+          "warmup-bulk-lz4/warmup-mesh": "e8310009b185817f595f484dfda0a90b9782343080fc9b5c35f8ffedcc338cf8",
+          "warmup-bulk-pglz/warmup-mesh": "9c2d3977db4f12ce0201d4ad752622d36ebac6d2bd30f21dc17c4d31876bbfd7",
+          "warmup-oban-lz4/warmup-oban": "5def3918638bedcdc65a59cb381c711f5f86dfcdb04f94467b58f06532152e2d",
+          "warmup-oban-pglz/warmup-oban": "1bf9146e272950e4ed1a5f4c7f6bde7606cdcc3751e390d6ad7f5a286878f367",
+          "warmup-river-lz4/warmup-go": "ad648a4342f837e6879bad7f709dcc91f8e32bfc3968b5413d18029e1a246aa9",
+          "warmup-river-pglz/warmup-go": "7e7ec2f5508666640bf8ec62df4fdd672f0e3bbda7b50bf1288c86e1bb317e41"
+        },
+        "release": "continuation",
+        "scores": {
+          "apalis-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 464.64142296435784,
+            "commit_to_last_settlement_ms": 1101.925,
+            "commit_to_pickup_p99_ms": 981.784,
+            "commit_to_settlement_p99_ms": 1101.925,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.7380073800738007,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 168.938,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 12824576,
+            "runner_cpu_ms_per_job": 0.47186328125,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 402.8758410623332,
+            "submit_to_last_settlement_ms": 1270.863,
+            "submit_to_settlement_p50_ms": 787.5035,
+            "submit_to_settlement_p99_ms": 1270.863
+          },
+          "apalis-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 490.95850058205434,
+            "commit_to_last_settlement_ms": 1042.858,
+            "commit_to_pickup_p99_ms": 921.828,
+            "commit_to_settlement_p99_ms": 1042.858,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.9463722397476341,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 332.259,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 12976128,
+            "runner_cpu_ms_per_job": 0.4693984375,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 372.33195429916145,
+            "submit_to_last_settlement_ms": 1375.117,
+            "submit_to_settlement_p50_ms": 935.8544999999999,
+            "submit_to_settlement_p99_ms": 1375.117
+          },
+          "bulk-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 366.1267012913832,
+            "commit_to_last_settlement_ms": 1398.423,
+            "commit_to_pickup_p99_ms": 1270.785,
+            "commit_to_settlement_p99_ms": 1394.381,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 2.7989821882951653,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 361.164,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 15106048,
+            "runner_cpu_ms_per_job": 0.738177734375,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 290.97737139453744,
+            "submit_to_last_settlement_ms": 1759.587,
+            "submit_to_settlement_p50_ms": 1072.011,
+            "submit_to_settlement_p99_ms": 1755.545
+          },
+          "bulk-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 361.04086954436923,
+            "commit_to_last_settlement_ms": 1418.122,
+            "commit_to_pickup_p99_ms": 1282.455,
+            "commit_to_settlement_p99_ms": 1413.48,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 2.050113895216401,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 503.36,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 15032320,
+            "runner_cpu_ms_per_job": 0.73672265625,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 266.4609920883984,
+            "submit_to_last_settlement_ms": 1921.482,
+            "submit_to_settlement_p50_ms": 1272.8715,
+            "submit_to_settlement_p99_ms": 1916.84
+          },
+          "oban-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 344.5697622535939,
+            "commit_to_last_settlement_ms": 1485.911,
+            "commit_to_pickup_p99_ms": 1369.018,
+            "commit_to_settlement_p99_ms": 1483.5,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.24271844660194175,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 330.52,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 130482176,
+            "runner_cpu_ms_per_job": 3.860072265625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 281.8714280916809,
+            "submit_to_last_settlement_ms": 1816.431,
+            "submit_to_settlement_p50_ms": 1204.327,
+            "submit_to_settlement_p99_ms": 1814.02
+          },
+          "oban-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 326.2817391836329,
+            "commit_to_last_settlement_ms": 1569.196,
+            "commit_to_pickup_p99_ms": 1453.64,
+            "commit_to_settlement_p99_ms": 1567.555,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.44150110375275936,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 490.006,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 132116480,
+            "runner_cpu_ms_per_job": 3.7587304687499996,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 248.6400071484002,
+            "submit_to_last_settlement_ms": 2059.202,
+            "submit_to_settlement_p50_ms": 1442.2440000000001,
+            "submit_to_settlement_p99_ms": 2057.561
+          },
+          "river-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 350.9847109140478,
+            "commit_to_last_settlement_ms": 1458.753,
+            "commit_to_pickup_p99_ms": 1100.024,
+            "commit_to_settlement_p99_ms": 1458.753,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.9900990099009901,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 312.844,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 36597760,
+            "runner_cpu_ms_per_job": 0.8852109375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 289.00477930364525,
+            "submit_to_last_settlement_ms": 1771.597,
+            "submit_to_settlement_p50_ms": 1235.163,
+            "submit_to_settlement_p99_ms": 1771.597
+          },
+          "river-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 390.1841257551244,
+            "commit_to_last_settlement_ms": 1312.201,
+            "commit_to_pickup_p99_ms": 1159.817,
+            "commit_to_settlement_p99_ms": 1312.201,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 1.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 474.709,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 33042432,
+            "runner_cpu_ms_per_job": 0.89415625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 286.52814075694914,
+            "submit_to_last_settlement_ms": 1786.91,
+            "submit_to_settlement_p50_ms": 1487.076,
+            "submit_to_settlement_p99_ms": 1786.91
+          }
+        }
+      },
+      {
+        "attempt": "05-slow",
+        "group": 5,
+        "order": [
+          "bulk-lz4",
+          "river-pglz",
+          "apalis-lz4",
+          "oban-lz4",
+          "oban-pglz",
+          "apalis-pglz",
+          "river-lz4",
+          "bulk-pglz"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "slow",
+        "raw_sha256": {
+          "measured-apalis-lz4/measured-rust": "843342e130b6d0c19dce5696c2491b94f877f98fc8022c04fd0679dfaf351fa2",
+          "measured-apalis-pglz/measured-rust": "e88fb3587dcc0047c0f0c96d6ef4d1ec1bba0ea48232f3b41ca6ec2a752c15cf",
+          "measured-bulk-lz4/measured-mesh": "193db476fc516ea7bd6257daa001a379166d61a4fe33e2f4a17f421484707b6a",
+          "measured-bulk-pglz/measured-mesh": "ea8f4b3057137d8ab41add72c1f3c5ba70e06edf7e51d6df035853fff12b01c1",
+          "measured-oban-lz4/measured-oban": "0ce3cd9bd4310778acdef285f49f22d4cf9bac02ee6efd48a0215ab8b7f3cbe7",
+          "measured-oban-pglz/measured-oban": "ee3bb605c4962f3f90da24b94d91b97244dee725e8c22be2e9050341e31c4f92",
+          "measured-river-lz4/measured-go": "acdddd8e38faf1aebc8b7ca978285613ff65e1ce9560f1bd71c8368240b03e0f",
+          "measured-river-pglz/measured-go": "c9a81cff1d73a15a09f2676aafbd4158d3e5487f3e7f911589380fb394135c34",
+          "warmup-apalis-lz4/warmup-rust": "7ebe2b5b6880bdc1589e66825ffd89ffd526d4dbb10fe55324b57aa3f98ba44c",
+          "warmup-apalis-pglz/warmup-rust": "68384493534d8e791a6e03b56a1c6b17861d1f17e21793b0eaa925f37e8ab6c0",
+          "warmup-bulk-lz4/warmup-mesh": "4640804ab173015d2f79261ab0fbef451cf935846669ee294b3b93de7a28f806",
+          "warmup-bulk-pglz/warmup-mesh": "adaefc2bb0fa0b70ff6da404b5ff03f13a1988ec7cc9fb228a707e71411032c9",
+          "warmup-oban-lz4/warmup-oban": "f01f5aaf8dae16fd10847cf27db1779aa85be2586269b6322366bbeb33b4bd99",
+          "warmup-oban-pglz/warmup-oban": "2a8e297dbdd420278e4e2fcd0df1195d108ab4ba5012428d4f90e39225e8b75e",
+          "warmup-river-lz4/warmup-go": "b7ddf133db88b921a07b5c20fa0dc2f27178380a44c4e6e245553b88241c59c3",
+          "warmup-river-pglz/warmup-go": "35af8f9f893c2b057e3f80d678c993befca679fce2ce4c9b59e93256c59d9333"
+        },
+        "release": "continuation",
+        "scores": {
+          "apalis-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 494.1517335363988,
+            "commit_to_last_settlement_ms": 1036.119,
+            "commit_to_pickup_p99_ms": 919.316,
+            "commit_to_settlement_p99_ms": 1032.568,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.6430868167202572,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 172.177,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 13455360,
+            "runner_cpu_ms_per_job": 0.479880859375,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 423.7372299502771,
+            "submit_to_last_settlement_ms": 1208.296,
+            "submit_to_settlement_p50_ms": 775.887,
+            "submit_to_settlement_p99_ms": 1204.745
+          },
+          "apalis-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 473.70651290942766,
+            "commit_to_last_settlement_ms": 1080.838,
+            "commit_to_pickup_p99_ms": 959.137,
+            "commit_to_settlement_p99_ms": 1080.838,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.6493506493506493,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 356.5,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 13238272,
+            "runner_cpu_ms_per_job": 0.55196484375,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 356.214056818925,
+            "submit_to_last_settlement_ms": 1437.338,
+            "submit_to_settlement_p50_ms": 962.8595,
+            "submit_to_settlement_p99_ms": 1437.338
+          },
+          "bulk-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 284.3547147344616,
+            "commit_to_last_settlement_ms": 1800.568,
+            "commit_to_pickup_p99_ms": 1643.074,
+            "commit_to_settlement_p99_ms": 1788.611,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 9.745762711864407,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 352.74,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 14938112,
+            "runner_cpu_ms_per_job": 0.789533203125,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 237.77369517040756,
+            "submit_to_last_settlement_ms": 2153.308,
+            "submit_to_settlement_p50_ms": 1287.01,
+            "submit_to_settlement_p99_ms": 2141.351
+          },
+          "bulk-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 295.0785848446025,
+            "commit_to_last_settlement_ms": 1735.131,
+            "commit_to_pickup_p99_ms": 1617.664,
+            "commit_to_settlement_p99_ms": 1731.336,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 7.93036750483559,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 544.059,
+            "peak_connections": 13,
+            "peak_runner_rss_bytes": 15028224,
+            "runner_cpu_ms_per_job": 0.8249941406250001,
+            "sha256": "e7e895966dcc72ab42a89bd892b1131eb7436561a8b303848355062fbf80946a",
+            "submit_jobs_per_s": 224.64121025452025,
+            "submit_to_last_settlement_ms": 2279.19,
+            "submit_to_settlement_p50_ms": 1479.9085,
+            "submit_to_settlement_p99_ms": 2275.395
+          },
+          "oban-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 336.8188381723631,
+            "commit_to_last_settlement_ms": 1520.105,
+            "commit_to_pickup_p99_ms": 1397.556,
+            "commit_to_settlement_p99_ms": 1517.177,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.7389162561576355,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 321.112,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 135151616,
+            "runner_cpu_ms_per_job": 3.771185546875,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 278.07694584614416,
+            "submit_to_last_settlement_ms": 1841.217,
+            "submit_to_settlement_p50_ms": 1220.8345,
+            "submit_to_settlement_p99_ms": 1838.289
+          },
+          "oban-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 323.3419410494593,
+            "commit_to_last_settlement_ms": 1583.463,
+            "commit_to_pickup_p99_ms": 1475.51,
+            "commit_to_settlement_p99_ms": 1580.845,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.21929824561403508,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 476.194,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 127713280,
+            "runner_cpu_ms_per_job": 3.844921875,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 248.58507994292253,
+            "submit_to_last_settlement_ms": 2059.657,
+            "submit_to_settlement_p50_ms": 1462.161,
+            "submit_to_settlement_p99_ms": 2057.039
+          },
+          "river-lz4": {
+            "codec": "lz4",
+            "commit_jobs_per_s": 356.3531431808833,
+            "commit_to_last_settlement_ms": 1436.777,
+            "commit_to_pickup_p99_ms": 1139.778,
+            "commit_to_settlement_p99_ms": 1436.777,
+            "completed": 512,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "cpu_iowait_percent": 0.7425742574257426,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 340.16,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 34820096,
+            "runner_cpu_ms_per_job": 0.9724609375000001,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 288.13627044740474,
+            "submit_to_last_settlement_ms": 1776.937,
+            "submit_to_settlement_p50_ms": 1293.55,
+            "submit_to_settlement_p99_ms": 1776.937
+          },
+          "river-pglz": {
+            "codec": "pglz",
+            "commit_jobs_per_s": 392.95022732784633,
+            "commit_to_last_settlement_ms": 1302.964,
+            "commit_to_pickup_p99_ms": 1136.4,
+            "commit_to_settlement_p99_ms": 1302.964,
+            "completed": 512,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "cpu_iowait_percent": 0.7389162561576355,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 483.933,
+            "peak_connections": 67,
+            "peak_runner_rss_bytes": 37199872,
+            "runner_cpu_ms_per_job": 0.914353515625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 286.5302253011785,
+            "submit_to_last_settlement_ms": 1786.897,
+            "submit_to_settlement_p50_ms": 1299.064,
+            "submit_to_settlement_p99_ms": 1786.897
+          }
+        }
+      }
+    ],
+    "description": "Five matched rotations compare PGLZ and LZ4 on 512 jobs with 100 ms holds. Mesh uses the frozen V1 bulk producer and claim_batch_v1 cursor. All eight lanes use the same isolated PostgreSQL 17.11 build.",
+    "excluded_original_arms": [
+      "03-slow/measured-oban-pglz/measured-oban/raw.tar.gz",
+      "03-slow/warmup-apalis-lz4/warmup-rust/raw.tar.gz",
+      "03-slow/warmup-apalis-pglz/warmup-rust/raw.tar.gz",
+      "03-slow/warmup-bulk-lz4/warmup-mesh/raw.tar.gz",
+      "03-slow/warmup-bulk-pglz/warmup-mesh/raw.tar.gz",
+      "03-slow/warmup-oban-lz4/warmup-oban/raw.tar.gz",
+      "03-slow/warmup-oban-pglz/warmup-oban/raw.tar.gz",
+      "03-slow/warmup-river-lz4/warmup-go/raw.tar.gz",
+      "03-slow/warmup-river-pglz/warmup-go/raw.tar.gz"
+    ],
+    "manifest_sha256": "eb080eb901ff7140f0e553e3c1400d9655f1948ec5406ac0b22c8a85b0def233",
+    "paired_pglz_minus_lz4": {
+      "apalis": {
+        "64th_to_final_first_application_commit_ms": {
+          "max": 55.823999999999955,
+          "median": 33.839000000000055,
+          "min": -136.8649999999999,
+          "n": 5
+        },
+        "commit_to_64th_first_application_commit_ms": {
+          "max": 16.378,
+          "median": 1.5700000000000074,
+          "min": -27.554000000000002,
+          "n": 5
+        },
+        "commit_to_final_first_application_commit_ms": {
+          "max": 61.89400000000012,
+          "median": 6.284999999999968,
+          "min": -120.48700000000008,
+          "n": 5
+        },
+        "commit_to_first_application_commit_ms": {
+          "max": 6.796999999999997,
+          "median": 0.5599999999999952,
+          "min": -8.418,
+          "n": 5
+        },
+        "commit_to_last_settlement_ms": {
+          "max": 44.71900000000005,
+          "median": -59.06700000000001,
+          "min": -188.6479999999999,
+          "n": 5
+        },
+        "first_submit_to_commit_ms": {
+          "max": 189.78200000000004,
+          "median": 177.763,
+          "min": 159.282,
+          "n": 5
+        },
+        "producer_ack_ms": {
+          "max": 187.97100000000003,
+          "median": 171.062,
+          "min": 165.84599999999998,
+          "n": 5
+        },
+        "submit_to_last_settlement_ms": {
+          "max": 229.04199999999992,
+          "median": 104.2539999999999,
+          "min": 1.1340000000000146,
+          "n": 5
+        }
+      },
+      "bulk": {
+        "64th_to_final_first_application_commit_ms": {
+          "max": 104.96199999999999,
+          "median": -31.169999999999845,
+          "min": -61.83899999999994,
+          "n": 5
+        },
+        "commit_to_64th_first_application_commit_ms": {
+          "max": 31.400999999999996,
+          "median": 16.596000000000004,
+          "min": -27.808000000000007,
+          "n": 5
+        },
+        "commit_to_final_first_application_commit_ms": {
+          "max": 91.83799999999997,
+          "median": -14.57400000000007,
+          "min": -89.64699999999993,
+          "n": 5
+        },
+        "commit_to_first_application_commit_ms": {
+          "max": 29.433,
+          "median": -0.8870000000000005,
+          "min": -21.5,
+          "n": 5
+        },
+        "commit_to_last_settlement_ms": {
+          "max": 80.70699999999988,
+          "median": -36.115999999999985,
+          "min": -82.97000000000003,
+          "n": 5
+        },
+        "first_submit_to_commit_ms": {
+          "max": 245.8,
+          "median": 162.60000000000002,
+          "min": 138.315,
+          "n": 5
+        },
+        "producer_ack_ms": {
+          "max": 215.28700000000003,
+          "median": 173.58599999999996,
+          "min": 131.06900000000002,
+          "n": 5
+        },
+        "producer_sql_exec_ms": {
+          "max": 232.56205,
+          "median": 161.58945799999998,
+          "min": 150.48127199999996,
+          "n": 5
+        },
+        "submit_to_last_settlement_ms": {
+          "max": 326.50699999999983,
+          "median": 126.48399999999992,
+          "min": 55.34500000000003,
+          "n": 5
+        }
+      },
+      "oban": {
+        "64th_to_final_first_application_commit_ms": {
+          "max": 31.345000000000027,
+          "median": 23.825000000000045,
+          "min": -77.7990000000002,
+          "n": 5
+        },
+        "commit_to_64th_first_application_commit_ms": {
+          "max": 168.83200000000002,
+          "median": 84.71200000000002,
+          "min": -3.6380000000000052,
+          "n": 5
+        },
+        "commit_to_final_first_application_commit_ms": {
+          "max": 108.53700000000003,
+          "median": 83.18100000000004,
+          "min": 21.817000000000007,
+          "n": 5
+        },
+        "commit_to_first_application_commit_ms": {
+          "max": 169.35599999999997,
+          "median": 85.54699999999997,
+          "min": -9.021000000000015,
+          "n": 5
+        },
+        "commit_to_last_settlement_ms": {
+          "max": 114.57400000000007,
+          "median": 83.28499999999985,
+          "min": 20.123000000000047,
+          "n": 5
+        },
+        "first_submit_to_commit_ms": {
+          "max": 248.05,
+          "median": 159.486,
+          "min": 106.082,
+          "n": 5
+        },
+        "producer_ack_ms": {
+          "max": 251.897,
+          "median": 153.14099999999996,
+          "min": 90.13900000000001,
+          "n": 5
+        },
+        "submit_to_last_settlement_ms": {
+          "max": 276.827,
+          "median": 242.77100000000019,
+          "min": 196.10300000000007,
+          "n": 5
+        }
+      },
+      "river": {
+        "64th_to_final_first_application_commit_ms": {
+          "max": 153.0959999999999,
+          "median": 24.097999999999956,
+          "min": -5.169000000000096,
+          "n": 5
+        },
+        "commit_to_64th_first_application_commit_ms": {
+          "max": 32.884000000000015,
+          "median": 0.575999999999965,
+          "min": -21.300999999999988,
+          "n": 5
+        },
+        "commit_to_final_first_application_commit_ms": {
+          "max": 185.98000000000002,
+          "median": 24.673999999999978,
+          "min": -8.169000000000096,
+          "n": 5
+        },
+        "commit_to_first_application_commit_ms": {
+          "max": 15.796,
+          "median": -2.946000000000005,
+          "min": -39.135000000000005,
+          "n": 5
+        },
+        "commit_to_last_settlement_ms": {
+          "max": 45.656000000000176,
+          "median": -139.61599999999999,
+          "min": -170.42899999999986,
+          "n": 5
+        },
+        "first_submit_to_commit_ms": {
+          "max": 218.19800000000004,
+          "median": 161.865,
+          "min": 143.76999999999998,
+          "n": 5
+        },
+        "producer_ack_ms": {
+          "max": 217.15999999999997,
+          "median": 165.16700000000003,
+          "min": 146.54000000000002,
+          "n": 5
+        },
+        "submit_to_last_settlement_ms": {
+          "max": 263.8539999999998,
+          "median": 9.960000000000036,
+          "min": 0.41200000000003456,
+          "n": 5
+        }
+      }
+    },
+    "postgres_sha256": "3f273b467aa57364f603a6758de24f1937098bddfcd5ef8b65c90df9caaec4b8",
+    "release_sha256": {
+      "continuation": "df10b1281820b51170405ef9654c3bcbf8026220ac4ea0b3c212fceb42fddfb0",
+      "original": "39ce6ea8646259652b248ae58097d45db0eee7af27a5de3d5f8bddf5dfe450a3"
+    },
+    "replay_sha256": "5e239e7d734b4d7d95f52266aeaf83abb0bd9797dd8d81cdf2366545b98a940d",
+    "title": "Slow jobs \u00b7 isolated PostgreSQL 17.11 PGLZ and LZ4",
+    "within_block_mesh_minus_peer": {
+      "lz4": {
+        "apalis": {
+          "commit_to_last_settlement_ms": {
+            "max": 764.4490000000001,
+            "median": 296.49800000000005,
+            "min": 152.43100000000004,
+            "n": 5
+          },
+          "submit_to_last_settlement_ms": {
+            "max": 945.012,
+            "median": 488.72399999999993,
+            "min": 347.0459999999998,
+            "n": 5
+          }
+        },
+        "oban": {
+          "commit_to_last_settlement_ms": {
+            "max": 280.46299999999997,
+            "median": -40.75199999999995,
+            "min": -117.84299999999985,
+            "n": 5
+          },
+          "submit_to_last_settlement_ms": {
+            "max": 312.0909999999999,
+            "median": -41.975999999999885,
+            "min": -90.95100000000002,
+            "n": 5
+          }
+        },
+        "river": {
+          "commit_to_last_settlement_ms": {
+            "max": 363.79099999999994,
+            "median": 6.1400000000001,
+            "min": -60.32999999999993,
+            "n": 5
+          },
+          "submit_to_last_settlement_ms": {
+            "max": 376.3710000000001,
+            "median": 60.56899999999996,
+            "min": -25.579999999999927,
+            "n": 5
+          }
+        }
+      },
+      "pglz": {
+        "apalis": {
+          "commit_to_last_settlement_ms": {
+            "max": 654.2930000000001,
+            "median": 375.2640000000001,
+            "min": 258.1089999999999,
+            "n": 5
+          },
+          "submit_to_last_settlement_ms": {
+            "max": 841.8520000000001,
+            "median": 546.365,
+            "min": 392.53,
+            "n": 5
+          }
+        },
+        "oban": {
+          "commit_to_last_settlement_ms": {
+            "max": 151.66800000000012,
+            "median": -151.07399999999984,
+            "min": -211.02200000000016,
+            "n": 5
+          },
+          "submit_to_last_settlement_ms": {
+            "max": 219.5329999999999,
+            "median": -137.72000000000025,
+            "min": -232.6400000000001,
+            "n": 5
+          }
+        },
+        "river": {
+          "commit_to_last_settlement_ms": {
+            "max": 432.16700000000014,
+            "median": 105.92100000000005,
+            "min": 41.1909999999998,
+            "n": 5
+          },
+          "submit_to_last_settlement_ms": {
+            "max": 492.2930000000001,
+            "median": 126.30299999999988,
+            "min": 96.75,
+            "n": 5
+          }
+        }
+      }
+    },
+    "within_block_mesh_minus_peer_ms": {
+      "1": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 152.43100000000004,
+            "submit_to_last_settlement_ms": 347.0459999999998
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -13.478000000000065,
+            "submit_to_last_settlement_ms": 31.832999999999856
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 20.54600000000005,
+            "submit_to_last_settlement_ms": 71.36999999999989
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 258.1089999999999,
+            "submit_to_last_settlement_ms": 401.25699999999983
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -211.02200000000016,
+            "submit_to_last_settlement_ms": -189.64900000000011
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 108.00499999999988,
+            "submit_to_last_settlement_ms": 126.30299999999988
+          }
+        }
+      },
+      "2": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 299.67700000000013,
+            "submit_to_last_settlement_ms": 445.11800000000017
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -117.84299999999985,
+            "submit_to_last_settlement_ms": -90.95100000000002
+          },
+          "river": {
+            "commit_to_last_settlement_ms": -21.70699999999988,
+            "submit_to_last_settlement_ms": -25.579999999999927
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 262.2520000000002,
+            "submit_to_last_settlement_ms": 392.53
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -174.08199999999988,
+            "submit_to_last_settlement_ms": -232.6400000000001
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 81.79300000000012,
+            "submit_to_last_settlement_ms": 96.75
+          }
+        }
+      },
+      "3": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 291.424,
+            "submit_to_last_settlement_ms": 491.674
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -40.75199999999995,
+            "submit_to_last_settlement_ms": -41.975999999999885
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 6.1400000000001,
+            "submit_to_last_settlement_ms": 60.56899999999996
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 501.9549999999999,
+            "submit_to_last_settlement_ms": 788.723
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -50.06600000000003,
+            "submit_to_last_settlement_ms": 88.42799999999988
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 41.1909999999998,
+            "submit_to_last_settlement_ms": 123.22199999999998
+          }
+        }
+      },
+      "4": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 296.49800000000005,
+            "submit_to_last_settlement_ms": 488.72399999999993
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -87.48800000000006,
+            "submit_to_last_settlement_ms": -56.84400000000005
+          },
+          "river": {
+            "commit_to_last_settlement_ms": -60.32999999999993,
+            "submit_to_last_settlement_ms": -12.009999999999991
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 375.2640000000001,
+            "submit_to_last_settlement_ms": 546.365
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": -151.07399999999984,
+            "submit_to_last_settlement_ms": -137.72000000000025
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 105.92100000000005,
+            "submit_to_last_settlement_ms": 134.5719999999999
+          }
+        }
+      },
+      "5": {
+        "lz4": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 764.4490000000001,
+            "submit_to_last_settlement_ms": 945.012
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": 280.46299999999997,
+            "submit_to_last_settlement_ms": 312.0909999999999
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 363.79099999999994,
+            "submit_to_last_settlement_ms": 376.3710000000001
+          }
+        },
+        "pglz": {
+          "apalis": {
+            "commit_to_last_settlement_ms": 654.2930000000001,
+            "submit_to_last_settlement_ms": 841.8520000000001
+          },
+          "oban": {
+            "commit_to_last_settlement_ms": 151.66800000000012,
+            "submit_to_last_settlement_ms": 219.5329999999999
+          },
+          "river": {
+            "commit_to_last_settlement_ms": 432.16700000000014,
+            "submit_to_last_settlement_ms": 492.2930000000001
+          }
+        }
+      }
+    },
+    "within_block_pglz_minus_lz4": {
+      "1": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": 49.20799999999997,
+          "commit_to_64th_first_application_commit_ms": 12.685999999999993,
+          "commit_to_final_first_application_commit_ms": 61.89400000000012,
+          "commit_to_first_application_commit_ms": 0.5599999999999952,
+          "commit_to_last_settlement_ms": -188.6479999999999,
+          "first_submit_to_commit_ms": 189.78200000000004,
+          "producer_ack_ms": 186.284,
+          "submit_to_last_settlement_ms": 1.1340000000000146
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": -61.83899999999994,
+          "commit_to_64th_first_application_commit_ms": -27.808000000000007,
+          "commit_to_final_first_application_commit_ms": -89.64699999999993,
+          "commit_to_first_application_commit_ms": -11.634999999999998,
+          "commit_to_last_settlement_ms": -82.97000000000003,
+          "first_submit_to_commit_ms": 138.315,
+          "producer_ack_ms": 131.06900000000002,
+          "producer_sql_exec_ms": 153.313716,
+          "submit_to_last_settlement_ms": 55.34500000000003
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": 23.825000000000045,
+          "commit_to_64th_first_application_commit_ms": 84.71200000000002,
+          "commit_to_final_first_application_commit_ms": 108.53700000000003,
+          "commit_to_first_application_commit_ms": 85.54699999999997,
+          "commit_to_last_settlement_ms": 114.57400000000007,
+          "first_submit_to_commit_ms": 162.253,
+          "producer_ack_ms": 167.77499999999998,
+          "submit_to_last_settlement_ms": 276.827
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": 24.097999999999956,
+          "commit_to_64th_first_application_commit_ms": 0.575999999999965,
+          "commit_to_final_first_application_commit_ms": 24.673999999999978,
+          "commit_to_first_application_commit_ms": -11.780999999999999,
+          "commit_to_last_settlement_ms": -170.42899999999986,
+          "first_submit_to_commit_ms": 170.841,
+          "producer_ack_ms": 173.474,
+          "submit_to_last_settlement_ms": 0.41200000000003456
+        }
+      },
+      "2": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": 33.839000000000055,
+          "commit_to_64th_first_application_commit_ms": -27.554000000000002,
+          "commit_to_final_first_application_commit_ms": 6.284999999999968,
+          "commit_to_first_application_commit_ms": -8.418,
+          "commit_to_last_settlement_ms": 1.308999999999969,
+          "first_submit_to_commit_ms": 177.763,
+          "producer_ack_ms": 171.062,
+          "submit_to_last_settlement_ms": 179.07200000000012
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": -31.169999999999845,
+          "commit_to_64th_first_application_commit_ms": 16.596000000000004,
+          "commit_to_final_first_application_commit_ms": -14.57400000000007,
+          "commit_to_first_application_commit_ms": -0.8870000000000005,
+          "commit_to_last_settlement_ms": -36.115999999999985,
+          "first_submit_to_commit_ms": 162.60000000000002,
+          "producer_ack_ms": 153.43899999999996,
+          "producer_sql_exec_ms": 161.58945799999998,
+          "submit_to_last_settlement_ms": 126.48399999999992
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": 25.455000000000155,
+          "commit_to_64th_first_application_commit_ms": -3.6380000000000052,
+          "commit_to_final_first_application_commit_ms": 21.817000000000007,
+          "commit_to_first_application_commit_ms": -9.021000000000015,
+          "commit_to_last_settlement_ms": 20.123000000000047,
+          "first_submit_to_commit_ms": 248.05,
+          "producer_ack_ms": 251.897,
+          "submit_to_last_settlement_ms": 268.173
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": 15.350999999999999,
+          "commit_to_64th_first_application_commit_ms": -21.300999999999988,
+          "commit_to_final_first_application_commit_ms": -5.9500000000000455,
+          "commit_to_first_application_commit_ms": -2.946000000000005,
+          "commit_to_last_settlement_ms": -139.61599999999999,
+          "first_submit_to_commit_ms": 143.76999999999998,
+          "producer_ack_ms": 147.906,
+          "submit_to_last_settlement_ms": 4.153999999999996
+        }
+      },
+      "3": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": -136.8649999999999,
+          "commit_to_64th_first_application_commit_ms": 16.378,
+          "commit_to_final_first_application_commit_ms": -120.48700000000008,
+          "commit_to_first_application_commit_ms": 6.796999999999997,
+          "commit_to_last_settlement_ms": -129.82400000000007,
+          "first_submit_to_commit_ms": 159.282,
+          "producer_ack_ms": 166.122,
+          "submit_to_last_settlement_ms": 29.457999999999856
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": 104.96199999999999,
+          "commit_to_64th_first_application_commit_ms": -13.123999999999995,
+          "commit_to_final_first_application_commit_ms": 91.83799999999997,
+          "commit_to_first_application_commit_ms": -21.5,
+          "commit_to_last_settlement_ms": 80.70699999999988,
+          "first_submit_to_commit_ms": 245.8,
+          "producer_ack_ms": 215.28700000000003,
+          "producer_sql_exec_ms": 232.56205,
+          "submit_to_last_settlement_ms": 326.50699999999983
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": -77.7990000000002,
+          "commit_to_64th_first_application_commit_ms": 168.83200000000002,
+          "commit_to_final_first_application_commit_ms": 91.03300000000013,
+          "commit_to_first_application_commit_ms": 169.35599999999997,
+          "commit_to_last_settlement_ms": 90.02099999999996,
+          "first_submit_to_commit_ms": 106.082,
+          "producer_ack_ms": 90.13900000000001,
+          "submit_to_last_settlement_ms": 196.10300000000007
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": 153.0959999999999,
+          "commit_to_64th_first_application_commit_ms": 32.884000000000015,
+          "commit_to_final_first_application_commit_ms": 185.98000000000002,
+          "commit_to_first_application_commit_ms": 15.796,
+          "commit_to_last_settlement_ms": 45.656000000000176,
+          "first_submit_to_commit_ms": 218.19800000000004,
+          "producer_ack_ms": 217.15999999999997,
+          "submit_to_last_settlement_ms": 263.8539999999998
+        }
+      },
+      "4": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": -62.173,
+          "commit_to_64th_first_application_commit_ms": 1.5700000000000074,
+          "commit_to_final_first_application_commit_ms": -60.603000000000065,
+          "commit_to_first_application_commit_ms": 4.270000000000003,
+          "commit_to_last_settlement_ms": -59.06700000000001,
+          "first_submit_to_commit_ms": 163.32100000000003,
+          "producer_ack_ms": 165.84599999999998,
+          "submit_to_last_settlement_ms": 104.2539999999999
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": -16.826000000000022,
+          "commit_to_64th_first_application_commit_ms": 31.400999999999996,
+          "commit_to_final_first_application_commit_ms": 14.575000000000045,
+          "commit_to_first_application_commit_ms": 29.433,
+          "commit_to_last_settlement_ms": 19.69900000000007,
+          "first_submit_to_commit_ms": 142.19600000000003,
+          "producer_ack_ms": 173.58599999999996,
+          "producer_sql_exec_ms": 150.48127199999996,
+          "submit_to_last_settlement_ms": 161.89499999999998
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": 31.345000000000027,
+          "commit_to_64th_first_application_commit_ms": 51.835999999999984,
+          "commit_to_final_first_application_commit_ms": 83.18100000000004,
+          "commit_to_first_application_commit_ms": 70.29600000000002,
+          "commit_to_last_settlement_ms": 83.28499999999985,
+          "first_submit_to_commit_ms": 159.486,
+          "producer_ack_ms": 149.555,
+          "submit_to_last_settlement_ms": 242.77100000000019
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": 50.05899999999997,
+          "commit_to_64th_first_application_commit_ms": 9.538000000000011,
+          "commit_to_final_first_application_commit_ms": 59.59699999999998,
+          "commit_to_first_application_commit_ms": -39.135000000000005,
+          "commit_to_last_settlement_ms": -146.5519999999999,
+          "first_submit_to_commit_ms": 161.865,
+          "producer_ack_ms": 165.16700000000003,
+          "submit_to_last_settlement_ms": 15.313000000000102
+        }
+      },
+      "5": {
+        "apalis": {
+          "64th_to_final_first_application_commit_ms": 55.823999999999955,
+          "commit_to_64th_first_application_commit_ms": -11.801000000000002,
+          "commit_to_final_first_application_commit_ms": 44.023000000000025,
+          "commit_to_first_application_commit_ms": -1.2349999999999994,
+          "commit_to_last_settlement_ms": 44.71900000000005,
+          "first_submit_to_commit_ms": 184.323,
+          "producer_ack_ms": 187.97100000000003,
+          "submit_to_last_settlement_ms": 229.04199999999992
+        },
+        "bulk": {
+          "64th_to_final_first_application_commit_ms": -51.246000000000095,
+          "commit_to_64th_first_application_commit_ms": 24.539999999999992,
+          "commit_to_final_first_application_commit_ms": -26.705999999999904,
+          "commit_to_first_application_commit_ms": 6.545000000000002,
+          "commit_to_last_settlement_ms": -65.4369999999999,
+          "first_submit_to_commit_ms": 191.31899999999996,
+          "producer_ack_ms": 188.08100000000002,
+          "producer_sql_exec_ms": 176.47514500000003,
+          "submit_to_last_settlement_ms": 125.88200000000006
+        },
+        "oban": {
+          "64th_to_final_first_application_commit_ms": -25.289999999999964,
+          "commit_to_64th_first_application_commit_ms": 96.83900000000003,
+          "commit_to_final_first_application_commit_ms": 71.54899999999998,
+          "commit_to_first_application_commit_ms": 98.90899999999999,
+          "commit_to_last_settlement_ms": 63.35799999999995,
+          "first_submit_to_commit_ms": 155.082,
+          "producer_ack_ms": 153.14099999999996,
+          "submit_to_last_settlement_ms": 218.44000000000005
+        },
+        "river": {
+          "64th_to_final_first_application_commit_ms": -5.169000000000096,
+          "commit_to_64th_first_application_commit_ms": -3.0,
+          "commit_to_final_first_application_commit_ms": -8.169000000000096,
+          "commit_to_first_application_commit_ms": 8.698000000000008,
+          "commit_to_last_settlement_ms": -133.8130000000001,
+          "first_submit_to_commit_ms": 143.77299999999997,
+          "producer_ack_ms": 146.54000000000002,
+          "submit_to_last_settlement_ms": 9.960000000000036
+        }
+      }
+    }
+  },
   "slow-stock-topology": {
     "blocks": [
       {

@@ -90,6 +90,12 @@ function median(xs) {const x=xs.slice().sort((a,b)=>a-b),i=Math.floor(x.length/2
 const number=new Intl.NumberFormat("en-US",{maximumFractionDigits:2});
 const fileLanes={file:"Mesh · file","inline-a":"Mesh · inline A","inline-b":"Mesh · inline B",product:"Mesh · public stock"};
 const seriesNames={
+ "slow-isolated-codecs":{
+  "bulk-pglz":"Mesh V1 bulk · PGLZ","bulk-lz4":"Mesh V1 bulk · LZ4",
+  "river-pglz":"Go River · PGLZ","river-lz4":"Go River · LZ4",
+  "oban-pglz":"Elixir Oban · PGLZ","oban-lz4":"Elixir Oban · LZ4",
+  "apalis-pglz":"Rust Apalis · PGLZ","apalis-lz4":"Rust Apalis · LZ4"
+ },
  "public-large-file-session":fileLanes,
  "public-large-file-external":fileLanes,
  "dense-fixed8-logical-peers":{combined:"Mesh · fixed8 + d388","river-2x32":"Go River · stock, opens sessions during drain"},
@@ -121,6 +127,8 @@ function draw() {
  get("note").textContent=blocks.length+(blocks.length===1?" matched rotation. Single observation. ":" matched rotations. Bars show the median. ")+measures[key][2];
  get("paired").hidden=!higherIsBetter;
  if(higherIsBetter) {
+   const withinCodec=series.value==="slow-isolated-codecs";
+   get("paired").querySelector("summary").textContent=withinCodec?"Head-to-head throughput within codec":"Head-to-head throughput";
    const opponent=get("opponent"), previous=opponent.value;
    opponent.replaceChildren(...lanes.map(l=>option(l,laneName(l))));
    opponent.value=lanes.includes(previous)?previous:lanes.find(l=>l.startsWith("oban"))??lanes[0];
@@ -129,6 +137,7 @@ function draw() {
    table.replaceChildren(header);
    for(const {l} of rows) {
      if(l===opponent.value)continue;
+     if(withinCodec&&blocks[0].scores[l].codec!==blocks[0].scores[opponent.value].codec)continue;
      const changes=blocks.map(b=>100*(value(b,l)/value(b,opponent.value)-1));
      const change=median(changes),line=element("tr");
      line.append(element("td",laneName(l)),element("td",changes.filter(x=>x>0).length+" / "+changes.length),

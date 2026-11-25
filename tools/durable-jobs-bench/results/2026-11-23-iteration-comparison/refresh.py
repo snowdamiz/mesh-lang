@@ -581,6 +581,76 @@ def capture_public_large_file_external(retry):
                 qualification=report["qualification"], blocks=blocks)
 
 
+def capture_slow_isolated_codecs(campaign):
+    native = campaign / "evidence/native/recovery-3"
+    original = native / "timing"
+    continuation = native / "timing-continuation"
+    source = continuation / "independent-replay.json"
+    report = run.read_json(source)
+    releases = {key: run.read_json(path / "controller-release.json")
+                for key, path in (("original", original), ("continuation", continuation))}
+    release_hashes = {key: run.digest(path / "controller-release.json")
+                      for key, path in (("original", original), ("continuation", continuation))}
+    inventory_path = campaign / "recovery-3/matched-inventory.json"
+    inventory = run.read_json(inventory_path)
+    packet_path = campaign / "recovery-3/timing-continuation-packet.json"
+    packet = run.read_json(packet_path)
+    run.require((releases["original"]["exit_status"], releases["original"]["completed_groups"],
+                 releases["continuation"]["exit_status"], releases["continuation"]["groups"])
+                == (1, [1, 2], 0, [3, 4, 5])
+                and all(report[f"{key}_release_sha256"] == value for key, value in release_hashes.items())
+                and releases["continuation"]["original_release_sha256"] == release_hashes["original"]
+                and releases["continuation"]["request_sha256"] == run.digest(packet_path)
+                and packet["inventory_sha256"] == run.digest(inventory_path), "codec release or inventory differs")
+    run.require(report["full_comparison_eligible"] and report["completed_groups"] == list(range(1, 6))
+                and report["selected_arm_count"] == 80 and report["original_partial_arms"] == 9,
+                "codec replay is incomplete")
+    blocks, selected = [], {"original": set(), "continuation": set()}
+    for group, order in enumerate(inventory["orders"], 1):
+        kind, directory = ("original", original) if group <= 2 else ("continuation", continuation)
+        folder = directory / f"{group:02d}-slow"
+        block = run.read_json(folder / "order.json")
+        rows = report["rows"][str(group)]
+        run.require(block == dict(group=group, order=order, phases=["warmup", "measured"])
+                    and run.read_json(folder / "reconciled.json") == rows, f"{folder}: released rows differ")
+        scores, archives = {}, {}
+        for phase in block["phases"]:
+            for label in order:
+                lane = inventory["lanes"][label]
+                engine = lane["engine"]
+                arm = f"{phase}-{label}/{phase}-{engine}"
+                member = f"{folder.name}/{arm}/raw.tar.gz"
+                row = rows[f"{phase}-{label}"]
+                sha = releases[kind]["raw_sha256"][member]
+                compression = "lz4" if label.endswith("-lz4") else "uncompressed"
+                run.require((row["raw_sha256"], row["completed"], row["ordered_independent_writes"],
+                             row["failed"], row["affinity"], row["compression_counts"])
+                            == (sha, 512, 512, 0, [0, 1], {compression: 512}),
+                            f"{folder}/{arm}: released archive or workload differs")
+                selected[kind].add(member)
+                archives[arm] = sha
+                if phase == "measured":
+                    score = {key: row[key] for key in METRICS}
+                    score.update(engine=engine, completed=row["completed"], codec=label.rsplit("-", 1)[1],
+                                 sha256=lane["inventory"]["engines"][engine]["artifact_sha256"],
+                                 **{key: row[key] for key in ("submit_to_last_settlement_ms",
+                                     "commit_to_last_settlement_ms", "compression_counts", "peak_connections")})
+                    scores[label] = score
+        blocks.append(dict(**block, profile="slow", attempt=folder.name, release=kind, raw_sha256=archives, scores=scores))
+    omitted = releases["original"]["raw_sha256"].keys() - selected["original"]
+    run.require(len(selected["original"]) == 32 and len(selected["continuation"]) == 48
+                and selected["continuation"] == releases["continuation"]["raw_sha256"].keys()
+                and releases["continuation"]["raw_sha256"] == report["continuation_raw_sha256"]
+                and len(omitted) == 9 and all(member.startswith("03-slow/") for member in omitted)
+                and len({sha for block in blocks for sha in block["raw_sha256"].values()}) == 80,
+                "codec archive custody differs")
+    return dict(manifest_sha256=run.digest(inventory_path), replay_sha256=run.digest(source),
+                release_sha256=release_hashes, postgres_sha256=inventory["postgres"]["installed"]["bin/postgres"],
+                excluded_original_arms=sorted(omitted), blocks=blocks,
+                **{key: report[key] for key in ("paired_pglz_minus_lz4", "within_block_pglz_minus_lz4",
+                                               "within_block_mesh_minus_peer", "within_block_mesh_minus_peer_ms")})
+
+
 def capture_slow_storage(packet):
     sys.path.insert(0, str(packet / "replay"))
     import native as storage_run
@@ -792,13 +862,13 @@ def text_json(value):
     return json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
-def add_policy_table(lines, series, title, detail, lanes, planned=5, paired=None):
+def add_policy_table(lines, series, title, detail, lanes, planned=5, paired=None, heading_level=2):
     blocks = series.get("blocks", [])
     if not blocks:
         return
     comparison = (f"| {paired} paired submit change (wins) | {paired} paired drain change (wins) |" if paired
                   else "| Candidate wins from submit | Candidate wins from commit |")
-    lines.extend([f"## {title}", "", f"{len(blocks)}/{planned} matched rotations. {detail}", "",
+    lines.extend([f"{'#' * heading_level} {title}", "", f"{len(blocks)}/{planned} matched rotations. {detail}", "",
                   f"| Lane | Submit jobs/s | Drain jobs/s {comparison}", "|---|---:|---:|---:|---:|"])
     candidate = lanes[0][0]
     for key, label in lanes:
@@ -967,6 +1037,38 @@ def add_public_dense_late_capacity(lines, series):
                   "public grouped-hot bridge. Both pilot gates passed. The peer table uses the five fresh rotations. "
                   "[Pilot and proof](../2026-11-25-public-dense-late-capacity/README.md) · "
                   "[Peer release and archive summary](../2026-11-25-public-dense-late-capacity/peer-comparison/evidence/summary.json)", ""])
+
+
+def add_slow_isolated_codecs(lines, series):
+    if not series:
+        return
+    engines = (("bulk", "Mesh V1 bulk"), ("river", "Go River"), ("oban", "Elixir Oban"), ("apalis", "Rust Apalis"))
+    title = "Slow jobs on isolated PostgreSQL 17.11 with PGLZ and LZ4"
+    lines.extend([f"## {title}", "",
+                  "All eight lanes use the same isolated PostgreSQL 17.11 executable on CPUs 0 and 1. "
+                  "Each lane completes 512 jobs with 100 ms holds and two independent application commits per job. "
+                  "Mesh uses the frozen V1 bulk producer and `claim_batch_v1` cursor. PGLZ stored the payloads "
+                  "uncompressed. LZ4 stored all 512 payloads compressed in every arm. "
+                  "[Interactive results](chart.html#slow-isolated-codecs) · "
+                  "[Released results and custody](../2026-11-25-slow-lz4-isolated-qualification/RESULTS.md)", "",
+                  "Rotations 1–2 use the complete blocks from the original grant. Fresh rotations 3–5 use the "
+                  "exit-0 continuation. The series includes all 80 warmup and measured arms. Nine interrupted "
+                  "captures remain archived outside the comparison.", ""])
+    for codec in ("pglz", "lz4"):
+        add_policy_table(lines, series, f"Isolated {codec.upper()} peer comparison",
+                         "Rates and paired throughput changes are medians. Wins compare Mesh against peers within this codec.",
+                         [(f"{lane}-{codec}", label) for lane, label in engines], paired="Mesh", heading_level=3)
+    lines.extend(["The paired median elapsed-time changes below are PGLZ minus LZ4. Positive values favor LZ4. "
+                  "Parentheses give the number of LZ4 wins.", "",
+                  "| Engine | Submit difference (ms) | Drain difference (ms) |", "|---|---:|---:|"])
+    for lane, label in engines:
+        cells = []
+        for metric in ("submit_to_last_settlement_ms", "commit_to_last_settlement_ms"):
+            difference = series["paired_pglz_minus_lz4"][lane][metric]["median"]
+            wins = sum(row[lane][metric] > 0 for row in series["within_block_pglz_minus_lz4"].values())
+            cells.append(f"{difference:+.1f} ({wins}/5)")
+        lines.append("| " + " | ".join([label, *cells]) + " |")
+    lines.append("")
 
 
 def write_scorecard(data):
@@ -1149,6 +1251,7 @@ def write_scorecard(data):
                          "All four engines use one 64-slot runner and two CPUs shared with PostgreSQL. "
                          "Mesh uses set-based enqueue and individual terminal commits.",
                          [(f"bulk-{policy}", "Trusted Mesh"), *((f"{key}-{policy}", label) for key, label in peers)])
+    add_slow_isolated_codecs(lines, data.get("slow-isolated-codecs", {}))
     add_policy_table(lines, data.get("bulk-v2-slow", {}), "Slow jobs with grouped successes",
                      "This pilot stopped after two opposite orders. The V2 lanes can settle up to eight successes "
                      "together. V1 keeps one terminal transaction per job. Both policies used the same 512-job "
@@ -1433,6 +1536,8 @@ def refresh(collect, selected=()):
                 current = capture_public_large_file_external(archived)
             elif name == "slow-storage":
                 current = capture_slow_storage(archived)
+            elif name == "slow-isolated-codecs":
+                current = capture_slow_isolated_codecs(archived)
             elif name == "public-dense-hot-checkout":
                 current = capture_public_dense_checkout(archived)
             elif name == "public-dense-individual-hot-checkout":
