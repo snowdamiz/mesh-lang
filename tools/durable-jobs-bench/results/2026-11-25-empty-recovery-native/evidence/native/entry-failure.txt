@@ -1,0 +1,27 @@
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+  File "/var/tmp/empty-recovery-native.v0OiAQq8/contract.py", line 7, in <module>
+    ROOT = HERE.parents[3]
+           ~~~~~~~~~~~~^^^
+  File "/usr/lib/python3.12/pathlib.py", line 281, in __getitem__
+    raise IndexError(idx)
+IndexError: 3
+Error in sys.excepthook:
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 228, in partial_apport_excepthook
+    return apport_excepthook(binary, exc_type, exc_obj, exc_tb)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 114, in apport_excepthook
+    report["ExecutableTimestamp"] = str(int(os.stat(binary).st_mtime))
+                                            ^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/var/tmp/mesh-durable-jobs-matrix/2026-11-25-empty-recovery-native-gate-stock/raw/77dfadcc833b41c1add53ea30efd3be9/adapter/-'
+
+Original exception was:
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+  File "/var/tmp/empty-recovery-native.v0OiAQq8/contract.py", line 7, in <module>
+    ROOT = HERE.parents[3]
+           ~~~~~~~~~~~~^^^
+  File "/usr/lib/python3.12/pathlib.py", line 281, in __getitem__
+    raise IndexError(idx)
+IndexError: 3

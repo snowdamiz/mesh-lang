@@ -1,0 +1,28 @@
+measured-gate-stock measured mesh: 1
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-empty-recovery-native/controller.py", line 311, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-empty-recovery-native/controller.py", line 303, in main
+    return timing(cfg, action == "advance")
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-empty-recovery-native/controller.py", line 287, in timing
+    return matrix.dispatch(OUT, cfg, groups)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py", line 258, in dispatch
+    results = [dispatch_block(directory, manifest, block)
+               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-empty-recovery-native/controller.py", line 275, in assigned
+    return dispatch(*args)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py", line 215, in dispatch_block
+    run.dispatch_arm(folder.parent, run.REMOTE / manifest["remote"][label],
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     block, phase, config["lanes"][label]["engine"])
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-empty-recovery-native/controller.py", line 281, in gated
+    need((folder / "raw.tar.gz").is_file() and run.read_json(folder / "dispatch.json").get("exit_code") == 0,
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         f"first incomplete dispatch retained in {folder}")
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/verify.py", line 27, in require
+    raise ValueError(message)
+ValueError: first incomplete dispatch retained in /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-empty-recovery-native/evidence/native/blocks/01-noop.1795570968718692000/measured-gate-stock/measured-mesh
