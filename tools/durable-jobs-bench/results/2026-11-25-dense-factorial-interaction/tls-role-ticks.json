@@ -1,0 +1,1517 @@
+{
+  "factorial": {
+    "1": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          210264,
+          650000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "15ddcb61ef5877fbde3f714527b1a90fe39fb22b4f18e1f811a9cfb1abca2add",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              13,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 51
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              13
+            ],
+            "ticks": 13
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              14,
+              14,
+              11,
+              10,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 49
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 5869,
+        "terminal_lag_us": 93999,
+        "total_stable_ticks": 113,
+        "unpaired_pids": []
+      },
+      "fixed8": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          668668,
+          1000000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "5771d4ba74f77522b420b7dbfe9bc1f7959cdac0d79053e97b6ac246180c6cd0",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              13,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 51
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              13
+            ],
+            "ticks": 13
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              31,
+              31,
+              11,
+              11,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 84
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 3200,
+        "terminal_lag_us": 42466,
+        "total_stable_ticks": 148,
+        "unpaired_pids": []
+      },
+      "key": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          457314,
+          910000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "ebb75af8d08d4fcffaa601840f18311ac5f9827f81152b205f48af6e04744b3a",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              12,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 50
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              17
+            ],
+            "ticks": 17
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              24,
+              23,
+              14,
+              13,
+              1,
+              0,
+              0,
+              0
+            ],
+            "ticks": 75
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 4751,
+        "terminal_lag_us": 96592,
+        "total_stable_ticks": 142,
+        "unpaired_pids": []
+      },
+      "stock-a": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          744862,
+          1250000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "45b24039d94fbf9ce2bcab08059aeb89a56955a4ab8bce4d9d574b8c0bbb2acf",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              15,
+              13,
+              13,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 53
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              15
+            ],
+            "ticks": 15
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              30,
+              30,
+              24,
+              24,
+              1,
+              0,
+              0,
+              0
+            ],
+            "ticks": 109
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 3662,
+        "terminal_lag_us": 123907,
+        "total_stable_ticks": 177,
+        "unpaired_pids": []
+      },
+      "stock-b": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          712174,
+          1250000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "3492b06ace9344dfc1f7db1d4be1a9f9b05afb760067c670f7a139d9753cc153",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              14,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 52
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              13
+            ],
+            "ticks": 13
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              31,
+              28,
+              25,
+              24,
+              1,
+              0,
+              0,
+              0
+            ],
+            "ticks": 109
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 4924,
+        "terminal_lag_us": 138989,
+        "total_stable_ticks": 174,
+        "unpaired_pids": []
+      }
+    },
+    "2": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          213116,
+          640000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "35ecc9f1653c0da0af2a690116917746575a4c9e6c4113757d7e29f1b3f8a321",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              13,
+              13,
+              11,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 51
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              14
+            ],
+            "ticks": 14
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              14,
+              13,
+              11,
+              10,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 48
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 3090,
+        "terminal_lag_us": 90352,
+        "total_stable_ticks": 113,
+        "unpaired_pids": []
+      },
+      "fixed8": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          508540,
+          1040000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "83e0a23738af1300c092fc8bbdc17231f75535f4447c6f73bbbcdb2eceee30ed",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              15,
+              14,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 53
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              16
+            ],
+            "ticks": 16
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              33,
+              31,
+              12,
+              11,
+              1,
+              0,
+              0,
+              0
+            ],
+            "ticks": 88
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 8073,
+        "terminal_lag_us": 132657,
+        "total_stable_ticks": 157,
+        "unpaired_pids": []
+      },
+      "key": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          602128,
+          950000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "38f7d49c93bb549a255e16795d5fc67ef08492783c90575a21c2a0df686f64eb",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              13,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 51
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              13
+            ],
+            "ticks": 13
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              26,
+              24,
+              14,
+              14,
+              1,
+              0,
+              0,
+              0
+            ],
+            "ticks": 79
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 3081,
+        "terminal_lag_us": 45855,
+        "total_stable_ticks": 143,
+        "unpaired_pids": []
+      },
+      "stock-a": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          965930,
+          1280000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "16b63f8d5ead43d3fcdb66ed4e0934d98e228c40cbc902725617b0777ebc59be",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              14,
+              13,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 53
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              13
+            ],
+            "ticks": 13
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              32,
+              31,
+              25,
+              24,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 112
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 3145,
+        "terminal_lag_us": 33890,
+        "total_stable_ticks": 178,
+        "unpaired_pids": []
+      },
+      "stock-b": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          818384,
+          1280000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "3c10aefb252b79aa93d07c1812d17bd71332bd1b9b26a09938828dcd59a357d3",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              13,
+              12,
+              11,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 50
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              14
+            ],
+            "ticks": 14
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              30,
+              29,
+              26,
+              26,
+              1,
+              0,
+              0,
+              0
+            ],
+            "ticks": 112
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 3561,
+        "terminal_lag_us": 102247,
+        "total_stable_ticks": 176,
+        "unpaired_pids": []
+      }
+    },
+    "3": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          0,
+          290000
+        ],
+        "other_stable_ticks": 29,
+        "raw_sha256": "2b1301b3995554f363bc728a5ac0270ea871c58a8514c77c6203db6447d30fcb",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              15,
+              12,
+              12,
+              11,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 50
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              14
+            ],
+            "ticks": 14
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              11,
+              10,
+              0,
+              0
+            ],
+            "ticks": 21
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 3312,
+        "terminal_lag_us": 102872,
+        "total_stable_ticks": 114,
+        "unpaired_pids": []
+      }
+    },
+    "4": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          271090,
+          640000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "bcfbcaa72434cca4b7b48946e6f80faee19a4c4eb859737f8ecbb298e5283e6f",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              15,
+              13,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 52
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              14
+            ],
+            "ticks": 14
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              14,
+              14,
+              10,
+              10,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 48
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 5439,
+        "terminal_lag_us": 59016,
+        "total_stable_ticks": 114,
+        "unpaired_pids": []
+      }
+    },
+    "5": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          132934,
+          500000
+        ],
+        "other_stable_ticks": 16,
+        "raw_sha256": "d10a9894de34bb4a9033820b88e24e970383395726fd8130da0d41e552912a05",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              12,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 50
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              14
+            ],
+            "ticks": 14
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              16,
+              11,
+              11,
+              0,
+              0,
+              0
+            ],
+            "ticks": 38
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 3221,
+        "terminal_lag_us": 90312,
+        "total_stable_ticks": 118,
+        "unpaired_pids": []
+      }
+    },
+    "6": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          242622,
+          650000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "adc87db146dc1985a538f025fafbc46863b814728705bafce5d900c092b6ff12",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              15,
+              12,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 51
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              13
+            ],
+            "ticks": 13
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              14,
+              14,
+              11,
+              10,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 49
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 2876,
+        "terminal_lag_us": 80813,
+        "total_stable_ticks": 113,
+        "unpaired_pids": []
+      }
+    },
+    "7": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          194092,
+          720000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "fa27e1e774e74e072baaec6b72ab74d9c5ffd4d6a7f5b13185c48babfbd9f127",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              15,
+              13,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 52
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              14
+            ],
+            "ticks": 14
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              16,
+              15,
+              12,
+              12,
+              1,
+              0,
+              0,
+              0
+            ],
+            "ticks": 56
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 2952,
+        "terminal_lag_us": 135002,
+        "total_stable_ticks": 122,
+        "unpaired_pids": []
+      }
+    }
+  },
+  "readiness": {
+    "1": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          323302,
+          680000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "23b68390b78dd37080f6b8290aa4a1d0063dbed2664670e71651664c7c77f19a",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              13,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 51
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              13
+            ],
+            "ticks": 13
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              15,
+              15,
+              11,
+              11,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 52
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 3277,
+        "terminal_lag_us": 55072,
+        "total_stable_ticks": 116,
+        "unpaired_pids": []
+      }
+    },
+    "2": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          215680,
+          700000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "46909cbd230f43ebef4068696e78cd4967aeeb41e076eb99c3aad3b1054c265c",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              13,
+              13,
+              13,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 51
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              15
+            ],
+            "ticks": 15
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              16,
+              14,
+              12,
+              11,
+              1,
+              0,
+              0,
+              0
+            ],
+            "ticks": 54
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 4615,
+        "terminal_lag_us": 112545,
+        "total_stable_ticks": 120,
+        "unpaired_pids": []
+      }
+    },
+    "3": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          261278,
+          700000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "c8aba3e1d13290a172070f460312a5a8f67e2911f03f0c7ec57c962ade9accb2",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              14,
+              13,
+              13,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 52
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              17
+            ],
+            "ticks": 17
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              15,
+              15,
+              11,
+              11,
+              1,
+              1,
+              0,
+              0
+            ],
+            "ticks": 54
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 4775,
+        "terminal_lag_us": 84586,
+        "total_stable_ticks": 123,
+        "unpaired_pids": []
+      }
+    },
+    "4": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          198088,
+          730000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "bb2c7612819e6e1c6f30b7b113d380f6a50c06b22a3b5da7828ae2a2f0884443",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              16,
+              12,
+              12,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 52
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              14
+            ],
+            "ticks": 14
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              17,
+              15,
+              13,
+              12,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 57
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 4750,
+        "terminal_lag_us": 141206,
+        "total_stable_ticks": 123,
+        "unpaired_pids": []
+      }
+    },
+    "5": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          430338,
+          870000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "6eca28ea2cc3561e88422c044c75a1a68cb9b6675ad56c1e695fe0f5e8e8cd30",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              16,
+              13,
+              13,
+              12,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 54
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              15
+            ],
+            "ticks": 15
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              20,
+              20,
+              15,
+              15,
+              1,
+              0,
+              0,
+              0
+            ],
+            "ticks": 71
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 6287,
+        "terminal_lag_us": 88544,
+        "total_stable_ticks": 140,
+        "unpaired_pids": []
+      }
+    },
+    "6": {
+      "combined": {
+        "census_queue_submit_to_settle_cpu_bounds_us": [
+          222370,
+          680000
+        ],
+        "other_stable_ticks": 0,
+        "raw_sha256": "6abe4b3431e0d69da91ad8fbea840fc363e891c1991b3c50397f8ff01e9c716f",
+        "roles": {
+          "compiled_caller": {
+            "per_backend_ticks": [
+              13,
+              12,
+              12,
+              11,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 48
+          },
+          "parity_producer": {
+            "per_backend_ticks": [
+              12
+            ],
+            "ticks": 12
+          },
+          "parity_subject": {
+            "per_backend_ticks": [
+              17,
+              14,
+              11,
+              10,
+              0,
+              0,
+              0,
+              0
+            ],
+            "ticks": 52
+          }
+        },
+        "roster_complete": false,
+        "submit_lead_us": 2747,
+        "terminal_lag_us": 106068,
+        "total_stable_ticks": 112,
+        "unpaired_pids": []
+      }
+    }
+  }
+}
