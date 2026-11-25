@@ -14,6 +14,10 @@ Each number below is Mesh elapsed minus River elapsed in milliseconds for the sa
 
 Matching River’s enqueue duration alone, with each observed drain held fixed, would put Mesh ahead on submit only in rotation 1. Even an instantaneous Mesh enqueue would leave deficits of about 1,017 ms and 51 ms in rotations 2 and 5. These counterfactuals hold the downstream schedule fixed. The second rotation had 22 Mesh contention hints, compared with zero in each other rotation. Its excess elapsed time was concentrated between effects 64 and 768. The cause remains unresolved.
 
+## The slow second rotation
+
+The PostgreSQL server log places all 22 observed queue-lock timeouts within the drain. Twenty occurred in the preliminary queue-row lock and two in the bounded claim function’s own queue-row SELECT. The nine host-sample intervals wholly inside that drain cover 2.149 s and 969 durable effects. Device 8:0 accumulated 1,483 ms busy during those intervals, and the two pinned CPUs recorded 73 of 416 ticks as I/O wait. The corresponding device-busy shares were 69.0% for Mesh B, 17.3% for A1 and 17.3% for A2. Each other B rotation had zero queue-lock timeouts. These device counters cover all work on the device. They establish that the stalls coincided with elevated I/O and leave the initiating cause open. [Interval-by-interval replay](late-capacity-io.json)
+
 ## Work waiting before its first write
 
 During effects 256–768, Mesh had a time-average of at least 7.47 jobs that had entered a handler and had yet to receive their first PostgreSQL transaction ID in every block. River’s upper bound stayed at or below 2.20. The observed Mesh interval was 507–1,238 ms, against River’s 280–316 ms. XID assignment follows a globally ordered sequence within each fresh cluster, which lets the ledger bracket it between observed events. Overlap measures jobs waiting concurrently. It does not identify the share spent in pool lookup, runnable queues, SQL processing, or lock waits. The earlier two-runner direct-pool experiment also showed that removing a wait after entry can move it before entry. [Method and prior controls](BEFORE-FIRST-XID.md)
@@ -25,4 +29,5 @@ From this directory, run the offline checks against the Git-tracked evidence.
 ```sh
 python3 -B test_xid_bounds.py
 python3 -B late_capacity_peer_phases.py ../2026-11-25-public-dense-late-capacity/peer-comparison/evidence | cmp - late-capacity-peer-phases.json
+python3 -B late_capacity_io.py ../2026-11-25-public-dense-late-capacity/peer-comparison/evidence | cmp - late-capacity-io.json
 ```
