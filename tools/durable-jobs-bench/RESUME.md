@@ -2,6 +2,12 @@
 
 Open the existing Mesh worktree on branch `t3/9a80aabe` on the workstation that owns the benchmark. Its path is `/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe`. The Git history, local controller journal, staged binaries, and SSH configuration are available there. Other owners have changes in the Git index and working tree.
 
+## November 25 after the 06:46 UTC releases
+
+Dense public 8×8 late-capacity passed both mirrored Linode pilots on ELF `839c4f32…`. Crediting newly confirmed local exits to an already pending request reduced positive grants to 139 and 137 per 1,024 jobs. Against the faster same-image control the candidate saved 150 and 188 ms from first submit and 146 and 195 ms from enqueue commit. Runner, PostgreSQL and host CPU fell against both control duplicates in both blocks. During the middle 512 durable effects, the time-average number of runners with an entered job still awaiting its second write rose to 3.77 and 3.27 of eight, versus 2.56–2.89 on the same-image controls. The owner is preparing the separate fresh matched peer comparison. [Pilot occupancy replay](results/2026-11-25-dense-factorial-interaction/late_capacity_progress.py) · [Eight measured arms](results/2026-11-25-dense-factorial-interaction/late-capacity-progress.json) · [Controller journal](../../target/linode-jobs-stepchange/requests/STATUS.md)
+
+Canonical SLOW width 32 passed the independent receipt proof. Both timing blocks then missed their gates. Relative to the fastest controls, width 32 took 295 and 278 ms longer from submit and 280 and 276 ms longer on drain. Keep the width-16 public control. A separate price review is testing whether narrower grants could start enough additional 100 ms holds to justify a width-8 screen. The fixed-8-ms SLOW settlement and shared-capacity dense admission ideas closed before booking. The cap-71 fused hold continues. [SLOW settlement backlog](results/2026-11-25-slow-claim-width-price/SETTLEMENT-BACKLOG.md)
+
 ## November 25 after the 06:15 UTC public peer release
 
 Public dense 8×8 on ELF `4924b588…` passed both reversed pilots. Bounded grants, grouped success and hot checkout saved 523 and 347 ms from submit, and 540 and 415 ms from enqueue commit against the faster individual control. PostgreSQL, runner and host CPU fell in both. Read the released pilot with `git show dad83049a:tools/durable-jobs-bench/results/2026-11-25-public-dense-8x8/path-recovery/evidence/pilot/replay.json`.
