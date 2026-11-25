@@ -1,0 +1,42 @@
+{
+  "1": {
+    "key": {
+      "disjoint_certain_pairs": 177,
+      "raw_sha256": "06d6270a527de3d2230e595ede87d44ba39f391ad50aa492b1a2a0fdcda39b02",
+      "with_certain_neighbor": 392,
+      "without_possible_neighbor": 50
+    },
+    "stock-a": {
+      "disjoint_certain_pairs": 305,
+      "raw_sha256": "b2fc9831fdc64e800466da690fcebc288ec85aa05f013c37859e89308b1d2916",
+      "with_certain_neighbor": 678,
+      "without_possible_neighbor": 33
+    },
+    "stock-b": {
+      "disjoint_certain_pairs": 282,
+      "raw_sha256": "38e5a5db93a805aa2526ce05d75992382d941b118f2a4282ce57bead36cb1fe4",
+      "with_certain_neighbor": 645,
+      "without_possible_neighbor": 59
+    }
+  },
+  "2": {
+    "key": {
+      "disjoint_certain_pairs": 155,
+      "raw_sha256": "bf5255880b5613c248ff53d375747b84d8c31e81cf42d381c99d7d8803839eb9",
+      "with_certain_neighbor": 349,
+      "without_possible_neighbor": 40
+    },
+    "stock-a": {
+      "disjoint_certain_pairs": 248,
+      "raw_sha256": "cc0a3aedc55251a380ccfd7d025af7c06718b6a8db58a3374bfa7c6fb5ee1e31",
+      "with_certain_neighbor": 568,
+      "without_possible_neighbor": 60
+    },
+    "stock-b": {
+      "disjoint_certain_pairs": 253,
+      "raw_sha256": "b6046c0942f0117828871e2f655d1a2d8e041780dfb73db969b540c8e7a8e08c",
+      "with_certain_neighbor": 566,
+      "without_possible_neighbor": 76
+    }
+  }
+}
