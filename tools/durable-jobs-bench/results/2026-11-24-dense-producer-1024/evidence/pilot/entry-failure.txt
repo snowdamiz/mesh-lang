@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet/adapter.py", line 134, in <module>
+    main()
+  File "/var/lib/durable-jobs-bench/native/source-dense-producer-1024-09b9395cf5c6/packet/adapter.py", line 126, in main
+    begin = source.index('    if engine == "mesh":\n        statements = ')
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: substring not found

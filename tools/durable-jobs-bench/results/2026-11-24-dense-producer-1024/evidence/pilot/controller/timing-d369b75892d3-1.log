@@ -1,0 +1,15 @@
+warmup-128-a warmup mesh: 1
+warmup-1024 warmup mesh: 1
+warmup-128-b warmup mesh: 1
+measured-128-a measured mesh: 1
+measured-1024 measured mesh: 1
+measured-128-b measured mesh: 1
+01-noop.1795570892424396000 failed qualification: arm failed or wrong invocation
+warmup-128-b warmup mesh: 1
+warmup-1024 warmup mesh: 1
+warmup-128-a warmup mesh: 1
+measured-128-b measured mesh: 1
+measured-1024 measured mesh: 1
+measured-128-a measured mesh: 1
+02-noop.1795570900078184000 failed qualification: arm failed or wrong invocation
+/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/evidence/pilot/summary-1795570908179955000.json
