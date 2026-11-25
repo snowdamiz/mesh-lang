@@ -13,5 +13,5 @@ and [first raw failure](failure.json). The fail-fast packet calls
 for one attempt.
 
 ```bash
-tar -xOzf blocks/01-noop/measured-off-a/measured-mesh/raw.tar.gz adapter/failure.json
+tar -xOzf blocks/01-noop/off-a/measured-mesh/raw.tar.gz adapter/failure.json
 ```
