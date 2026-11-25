@@ -1,0 +1,15 @@
+{
+  "attempts": [
+    1
+  ],
+  "exit_status": 1,
+  "group_command": "timing_command",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-dense-producer-1024-pilot-splice-retry",
+  "receipt": "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/timing-splice-retry/evidence/pilot",
+  "released_at": "2026-11-25T01:56:54.858530+00:00",
+  "started": "2026-11-25T01:56:08.364821+00:00"
+}

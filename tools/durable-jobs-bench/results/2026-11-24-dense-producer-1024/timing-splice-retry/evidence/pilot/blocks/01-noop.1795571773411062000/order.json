@@ -1,0 +1,13 @@
+{
+  "group": 1,
+  "order": [
+    "128-a",
+    "1024",
+    "128-b"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}
