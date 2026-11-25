@@ -35,6 +35,22 @@
     "diagnostic_final_effect_to_terminal_ms": 24.105,
     "distinct_claim_milliseconds": 37,
     "jobs_with_last_claim_stamp": 9,
+    "post_select_windows": {
+      "distinct_whole_settlements": {
+        "lock_filtered": 12138,
+        "lock_plus_update_diagnostic_ms": 43.873,
+        "transactions": 103,
+        "update_filtered": 52633
+      },
+      "groups_with_whole_older_settlement": 6,
+      "ledger_stamp_to_first_entry_normalized_slot_ms": 95.181,
+      "max_whole_settlements_per_group": 47,
+      "post_select_to_first_entry_normalized_slot_ms": [
+        28.864,
+        36.712
+      ],
+      "productive_selects": 37
+    },
     "raw_sha256": "3a65f96121ec0119f519bb16c42e0500500bbd45dcc6fab740194415a5c4c5cd",
     "terminal_commits_after_last_claim_stamp_millisecond": {
       "lock_filtered": 1466,
@@ -92,6 +108,22 @@
     "diagnostic_final_effect_to_terminal_ms": 16.998,
     "distinct_claim_milliseconds": 48,
     "jobs_with_last_claim_stamp": 4,
+    "post_select_windows": {
+      "distinct_whole_settlements": {
+        "lock_filtered": 65821,
+        "lock_plus_update_diagnostic_ms": 88.484,
+        "transactions": 228,
+        "update_filtered": 116508
+      },
+      "groups_with_whole_older_settlement": 17,
+      "ledger_stamp_to_first_entry_normalized_slot_ms": 168.188,
+      "max_whole_settlements_per_group": 54,
+      "post_select_to_first_entry_normalized_slot_ms": [
+        39.685,
+        47.266
+      ],
+      "productive_selects": 48
+    },
     "raw_sha256": "d69e3b7ae5af51b220cc06a0db894c5b8f1f30523b24668d93af42ee24be8cb7",
     "terminal_commits_after_last_claim_stamp_millisecond": {
       "lock_filtered": 1642,

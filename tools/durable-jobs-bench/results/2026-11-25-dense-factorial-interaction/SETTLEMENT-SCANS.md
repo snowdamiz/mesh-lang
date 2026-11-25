@@ -40,3 +40,12 @@ In both diagnostic arms, over 92% of the filtered rows belonged to transactions 
 The lock filtered roughly 57,000 rows across the first 128 settlements and about 8,100 across the last 128. The UPDATE filtered exactly 65,408 in **each** quarter of both arms. The elapsed figures include the actual tuple lock or durable UPDATE and observer overhead. Neither capture isolates search time. The d388 treatment changed the grant statement only.
 
 Run `python3 -B slow_settlement_timeline.py | cmp - slow-settlement-timeline.json` from this directory. The replay pairs all 512 lock, UPDATE and outer calls per arm with their 512 distinct terminal commits in order on one lifecycle backend. It checks log sequence and commit brackets and puts the entire final claim millisecond in a separate bucket. Neither arm had a terminal commit in that bucket. The claim stamp comes from the jobs ledger and precedes confirmation on the client. Counting transactions that had already committed at that stamp gives a conservative boundary.
+
+The same captures distinguish the PostgreSQL log for the outer grant SELECT from the first handler entry for that grant. Every productive nested grant CTE matched one outer SELECT on the claim backend and one ledger group of exactly the same width in the same order. A settlement qualifies below only if its *preceding* terminal transaction had already committed after the latest possible SELECT log timestamp and its own terminal transaction committed before the first new handler entered. Counting each settlement once across windows gives a conservative overlap.
+
+| SLOW grant | Productive grants with a whole older settlement in that window | Distinct older settlements | Rows filtered in those settlements | Diagnostic lock + UPDATE elapsed |
+|---|---:|---:|---:|---:|
+| Stock | 17 / 48 | 228 | 182,329 | 88.484 ms |
+| d388 | 6 / 37 | 103 | 64,771 | 43.873 ms |
+
+Weighted by batch width and divided by 64 seats, the post-SELECT-log interval before first entry was 39.685–47.266 ms on stock and 28.864–36.712 ms on d388. The full ledger stamp-to-first-entry intervals were 168.188 and 95.181 normalized ms. The ranges cover the millisecond precision of the log. They measure seat occupancy on these two diagnostic timelines. The client could still have been receiving rows or waiting for COMMIT while older jobs settled. Neither the SQL elapsed nor the occupancy establishes how much wall time faster settlement would recover.

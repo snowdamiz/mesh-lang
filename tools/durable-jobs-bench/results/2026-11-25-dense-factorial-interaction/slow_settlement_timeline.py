@@ -1,4 +1,5 @@
 """Place each scalar settlement scan on the native SLOW plan-capture timeline."""
+from collections import defaultdict
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -14,6 +15,62 @@ def report_group(rows):
         "lock_filtered": sum(r["lock_filtered"] for r in rows),
         "update_filtered": sum(r["update_filtered"] for r in rows),
         "lock_plus_update_diagnostic_ms": round(sum(r["nested_ms"] for r in rows), 3),
+    }
+
+
+
+def post_select_windows(plans, jobs, rows):
+    groups = defaultdict(list)
+    for job in jobs:
+        groups[job["claimed_us"]].append(job)
+    selects = sorted(
+        (p for p in plans if str(p["query_id"]) == "8762970956571263497"),
+        key=lambda p: p["log_line"],
+    )
+    ctes = sorted(
+        (p for p in plans if "WITH picked AS MATERIALIZED" in p["query"]),
+        key=lambda p: p["log_line"],
+    )
+    assert len({p["pid"] for p in selects + ctes}) == 1
+    assert len(selects) == len(ctes)
+    productive = []
+    for i, (cte, result) in enumerate(zip(ctes, selects)):
+        assert cte["log_line"] < result["log_line"]
+        assert i == 0 or selects[i-1]["log_line"] < cte["log_line"]
+        if cte["plan"]["Actual Rows"] > 0:
+            assert cte["plan"]["Actual Rows"] == result["plan"]["Actual Rows"]
+            productive.append(result)
+    stamps = sorted(groups)
+    assert len(productive) == len(stamps)
+    covered = set()
+    group_counts = []
+    weighted_us = 0
+    weighted_upper_us = 0
+    stamp_to_entry_us = 0
+    for stamp, result in zip(stamps, productive):
+        group = groups[stamp]
+        first_entry = min(j["entered_us"] for j in group)
+        assert result["plan"]["Actual Rows"] == len(group)
+        assert stamp <= result["end_us"] <= first_entry
+        after_log = result["end_us"] + 1000
+        # A scalar call began after its predecessor committed on this single backend.
+        # Retain only whole transactions strictly between the log and first entry.
+        inside = {i for i in range(1, len(rows)) if
+                  after_log <= rows[i-1]["commit_us"] and rows[i]["commit_us"] < first_entry}
+        covered.update(inside)
+        group_counts.append(len(inside))
+        weighted_us += len(group) * max(0, first_entry - after_log)
+        weighted_upper_us += len(group) * (first_entry - result["end_us"])
+        stamp_to_entry_us += len(group) * (first_entry - stamp)
+    return {
+        "productive_selects": len(productive),
+        "groups_with_whole_older_settlement": sum(n > 0 for n in group_counts),
+        "max_whole_settlements_per_group": max(group_counts),
+        "distinct_whole_settlements": report_group([rows[i] for i in sorted(covered)]),
+        "post_select_to_first_entry_normalized_slot_ms": [
+            round(weighted_us / 64000, 3), round(weighted_upper_us / 64000, 3)
+        ],
+        "ledger_stamp_to_first_entry_normalized_slot_ms": round(stamp_to_entry_us / 64000, 3),
     }
 
 
@@ -51,6 +108,7 @@ def timeline(raw):
     during = [r for r in rows if last_stamp <= r["commit_us"] < last_stamp + 1000]
     after = [r for r in rows if r["commit_us"] >= last_stamp + 1000]
     return {
+        "post_select_windows": post_select_windows(plans, jobs, rows),
         "by_128_terminal_commits": [report_group(rows[i:i+128]) for i in range(0, 512, 128)],
         "terminal_commits_before_last_claim_stamp": report_group(before),
         "terminal_commits_in_last_claim_stamp_millisecond": report_group(during),
