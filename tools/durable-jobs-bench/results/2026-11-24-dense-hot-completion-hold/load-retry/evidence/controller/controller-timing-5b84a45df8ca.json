@@ -1,0 +1,15 @@
+{
+  "attempts": [
+    0
+  ],
+  "exit_status": 0,
+  "group_command": "dispatch",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-dense-hot-completion-hold-load-retry",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-hot-completion-hold/load-retry/evidence",
+  "released_at": "2026-11-25T00:43:46.925508+00:00",
+  "started": "2026-11-25T00:38:45.201632+00:00"
+}
