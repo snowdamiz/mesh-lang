@@ -1,0 +1,152 @@
+{
+  "default": [
+    {
+      "raw_sha256": "1a1b3830cc54e028bd2fa11fc4a43c90aa853053bf13aedd7fb22fe040cf4a88",
+      "cursor_calls": 60,
+      "contention_hints": 51,
+      "grant_sizes": [
+        8,
+        8,
+        8,
+        8,
+        1,
+        8,
+        8,
+        8,
+        7
+      ],
+      "fixed_stamp_pipeline_credit_ceiling_us": 142400,
+      "positive_post_render_to_execute_end_union_us": [
+        90991,
+        109009
+      ],
+      "last_grant_post_render_to_commit_start_us": [
+        7987,
+        9989
+      ],
+      "positive_post_render_to_commit_start_union_us": [
+        127901,
+        145919
+      ],
+      "last_grant_post_execute_us": [
+        2987,
+        4989
+      ],
+      "positive_post_execute_union_us": [
+        28384,
+        45919
+      ]
+    },
+    {
+      "raw_sha256": "723f45b0885212c66f4fe649a064399aeecaa63883785611357ecf14ee7416dd",
+      "cursor_calls": 63,
+      "contention_hints": 55,
+      "grant_sizes": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "fixed_stamp_pipeline_credit_ceiling_us": 151587,
+      "positive_post_render_to_execute_end_union_us": [
+        95992,
+        112008
+      ],
+      "last_grant_post_render_to_commit_start_us": [
+        20184,
+        22186
+      ],
+      "positive_post_render_to_commit_start_union_us": [
+        135571,
+        151587
+      ],
+      "last_grant_post_execute_us": [
+        8184,
+        10186
+      ],
+      "positive_post_execute_union_us": [
+        31571,
+        47587
+      ]
+    }
+  ],
+  "external-4m": [
+    {
+      "raw_sha256": "bb47e37d98ff28658dc7d6848192afabada7e034a73f08b93adeaadc0036cc65",
+      "cursor_calls": 65,
+      "contention_hints": 56,
+      "grant_sizes": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        3,
+        8,
+        8,
+        5
+      ],
+      "fixed_stamp_pipeline_credit_ceiling_us": 139965,
+      "positive_post_render_to_execute_end_union_us": [
+        90991,
+        109009
+      ],
+      "last_grant_post_render_to_commit_start_us": [
+        4819,
+        6821
+      ],
+      "positive_post_render_to_commit_start_union_us": [
+        122042,
+        140060
+      ],
+      "last_grant_post_execute_us": [
+        819,
+        2821
+      ],
+      "positive_post_execute_union_us": [
+        22042,
+        40060
+      ]
+    },
+    {
+      "raw_sha256": "32940892404d28efa52745dabfeeea25dc8b7623254c3784f807da848dbacdb8",
+      "cursor_calls": 62,
+      "contention_hints": 54,
+      "grant_sizes": [
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8,
+        8
+      ],
+      "fixed_stamp_pipeline_credit_ceiling_us": 150103,
+      "positive_post_render_to_execute_end_union_us": [
+        99992,
+        116008
+      ],
+      "last_grant_post_render_to_commit_start_us": [
+        13216,
+        15218
+      ],
+      "positive_post_render_to_commit_start_union_us": [
+        134434,
+        150450
+      ],
+      "last_grant_post_execute_us": [
+        1216,
+        3218
+      ],
+      "positive_post_execute_union_us": [
+        26434,
+        42450
+      ]
+    }
+  ]
+}
