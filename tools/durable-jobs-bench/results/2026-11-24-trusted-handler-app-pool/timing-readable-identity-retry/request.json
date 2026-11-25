@@ -1,0 +1,23 @@
+{
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/timing-readable-identity-retry/evidence",
+  "helper_failure": "baa42e6ed7fac23db88800a5efc99893fc156fbec3b33447e51cd55735404bd7",
+  "helper_failure_release": "8f9fe53e7456b92594c3c3c27ad5a6269bb802571943df0f61ff15c3b8f25637",
+  "id": "2026-11-24-trusted-handler-app-pool-timing-readable-identity-retry",
+  "import_amendment": "4eb4b5f9cd6a12ee503f75134fb14a9d631661cb614ac5b03c6ca7240a18baaa",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-24-dense-individual-hot-pool/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/timing-identity-retry/native-arm.py": "a5217d8656f367b575a8e879ea9effdc3fbdf6fc1b612424e2b66ec13d14b998",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/timing-readable-identity-retry/controller.py": "44bb02aa4d9535cf4bf77e4805823f0d3ac7b5ca60e498b1286c87175ba12ae8",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/timing-readable-identity-retry/native-arm.sh": "d71b1e84ac2e367588cf7f0ab698fcc78f55295a786e40640cf20b6898555aae"
+  },
+  "prior_arm": "83699195f332db1b2068c3f6a5214d893bdb6507ff152d5343f3b9a60e07a3b7",
+  "prior_identity_request": "09192087cedcd94f7c26818e84e9ca7650f89ed593172bbfa56d0f2d96814602",
+  "prior_release": "d5b47eb1558c076f36d56aeccd9ecc9182f6fa7fc8008112e6d773403152a59a",
+  "qualified_setup": "f96da8758e645e11b00858c48757376465a2c4ae08a9fce4fbb64b7788b62764",
+  "ready": true,
+  "source_sha": "db5937e7e8988f935e9be16b68a2561c2250cc27"
+}
