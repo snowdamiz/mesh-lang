@@ -28,7 +28,16 @@
         "river_connections": {
           "idle_min": 7,
           "idle_max": 7,
-          "peak": 69
+          "peak": 69,
+          "runner_startup": {
+            "authorizations_before_commit": 6,
+            "received_and_authorized_after_commit": 62,
+            "unresolved_at_commit": 0,
+            "first_post_authorization_offset_us_lower": 189323,
+            "first_post_authorization_offset_us_upper": 190322,
+            "by_first_64_min": 60,
+            "by_first_64_max": 60
+          }
         }
       }
     },
@@ -69,7 +78,16 @@
         "river_connections": {
           "idle_min": 7,
           "idle_max": 7,
-          "peak": 69
+          "peak": 69,
+          "runner_startup": {
+            "authorizations_before_commit": 6,
+            "received_and_authorized_after_commit": 62,
+            "unresolved_at_commit": 0,
+            "first_post_authorization_offset_us_lower": 56214,
+            "first_post_authorization_offset_us_upper": 57213,
+            "by_first_64_min": 60,
+            "by_first_64_max": 60
+          }
         }
       }
     },
@@ -110,7 +128,16 @@
         "river_connections": {
           "idle_min": 7,
           "idle_max": 7,
-          "peak": 69
+          "peak": 69,
+          "runner_startup": {
+            "authorizations_before_commit": 6,
+            "received_and_authorized_after_commit": 62,
+            "unresolved_at_commit": 0,
+            "first_post_authorization_offset_us_lower": 187272,
+            "first_post_authorization_offset_us_upper": 188271,
+            "by_first_64_min": 60,
+            "by_first_64_max": 60
+          }
         }
       }
     },
@@ -151,7 +178,16 @@
         "river_connections": {
           "idle_min": 7,
           "idle_max": 7,
-          "peak": 68
+          "peak": 68,
+          "runner_startup": {
+            "authorizations_before_commit": 6,
+            "received_and_authorized_after_commit": 61,
+            "unresolved_at_commit": 0,
+            "first_post_authorization_offset_us_lower": 100302,
+            "first_post_authorization_offset_us_upper": 101301,
+            "by_first_64_min": 59,
+            "by_first_64_max": 59
+          }
         }
       }
     },
@@ -192,7 +228,16 @@
         "river_connections": {
           "idle_min": 7,
           "idle_max": 7,
-          "peak": 69
+          "peak": 69,
+          "runner_startup": {
+            "authorizations_before_commit": 6,
+            "received_and_authorized_after_commit": 62,
+            "unresolved_at_commit": 0,
+            "first_post_authorization_offset_us_lower": 123375,
+            "first_post_authorization_offset_us_upper": 124374,
+            "by_first_64_min": 60,
+            "by_first_64_max": 60
+          }
         }
       }
     },
@@ -233,7 +278,16 @@
         "river_connections": {
           "idle_min": 7,
           "idle_max": 7,
-          "peak": 69
+          "peak": 69,
+          "runner_startup": {
+            "authorizations_before_commit": 6,
+            "received_and_authorized_after_commit": 62,
+            "unresolved_at_commit": 0,
+            "first_post_authorization_offset_us_lower": 122136,
+            "first_post_authorization_offset_us_upper": 123135,
+            "by_first_64_min": 59,
+            "by_first_64_max": 59
+          }
         }
       }
     },
@@ -274,7 +328,16 @@
         "river_connections": {
           "idle_min": 7,
           "idle_max": 7,
-          "peak": 69
+          "peak": 69,
+          "runner_startup": {
+            "authorizations_before_commit": 6,
+            "received_and_authorized_after_commit": 62,
+            "unresolved_at_commit": 0,
+            "first_post_authorization_offset_us_lower": 91732,
+            "first_post_authorization_offset_us_upper": 92731,
+            "by_first_64_min": 58,
+            "by_first_64_max": 59
+          }
         }
       }
     },
@@ -315,7 +378,16 @@
         "river_connections": {
           "idle_min": 7,
           "idle_max": 7,
-          "peak": 69
+          "peak": 69,
+          "runner_startup": {
+            "authorizations_before_commit": 6,
+            "received_and_authorized_after_commit": 62,
+            "unresolved_at_commit": 0,
+            "first_post_authorization_offset_us_lower": 116010,
+            "first_post_authorization_offset_us_upper": 117009,
+            "by_first_64_min": 60,
+            "by_first_64_max": 60
+          }
         }
       }
     },
