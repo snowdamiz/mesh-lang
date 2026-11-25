@@ -1,0 +1,45 @@
+{
+  "batch_sha256": "d9c91f63e1962cbd1a6c92c0a5f9154d2bec171058e38b997a8987b73ea86f8d",
+  "custom_effect_key": {
+    "cursor": "custom/15bc8849-1a1b-7abf-abe2-640fd83bf318",
+    "experimental": "15bc8849-1a1b-7abf-abe2-640fd83bf318/1",
+    "guarded_status": "fallback"
+  },
+  "layouts": {
+    "lz4": {
+      "matched_contexts": 512,
+      "ordered_context_manifest": "5b643714231601e3658aaa8691d9ded3e88a207e550c1aee157fabc276b06c35",
+      "sizes": {
+        "compressed": 512,
+        "max_raw": 16472,
+        "min_raw": 16472,
+        "stored_bytes": 8171728,
+        "total": 512
+      },
+      "stock_first_status": "fallback"
+    },
+    "pglz": {
+      "matched_contexts": 512,
+      "ordered_context_manifest": "5b643714231601e3658aaa8691d9ded3e88a207e550c1aee157fabc276b06c35",
+      "sizes": {
+        "compressed": 0,
+        "max_raw": 16472,
+        "min_raw": 16472,
+        "stored_bytes": 8431616,
+        "total": 512
+      },
+      "stock_first_status": "claimed"
+    }
+  },
+  "oversized": {
+    "physical_bytes": 4146,
+    "raw_bytes": 1048599,
+    "status": "fallback"
+  },
+  "revoked_helper": {
+    "cursor_error": "42501",
+    "guarded_status": "fallback",
+    "layout_matches": true
+  },
+  "source": "b3557273d72be3802bf189b284e7caaf5f3caa0f"
+}
