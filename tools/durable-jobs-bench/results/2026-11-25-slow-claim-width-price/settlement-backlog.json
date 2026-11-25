@@ -1,0 +1,96 @@
+{
+  "1": {
+    "key": {
+      "drain": {
+        "eight_or_more_us": 310945,
+        "longest_eight_or_more_us": 51279,
+        "pending_job_us": 6481703,
+        "span_us": 1326795
+      },
+      "middle": {
+        "eight_or_more_us": 257115,
+        "longest_eight_or_more_us": 51279,
+        "pending_job_us": 5322558,
+        "span_us": 990985
+      },
+      "raw_sha256": "2703f92cabbd2c879768ac945ba095c9f6a56df3cd1a158c972e2a9299413f0c"
+    },
+    "stock-a": {
+      "drain": {
+        "eight_or_more_us": 170619,
+        "longest_eight_or_more_us": 46646,
+        "pending_job_us": 3397049,
+        "span_us": 1407892
+      },
+      "middle": {
+        "eight_or_more_us": 116757,
+        "longest_eight_or_more_us": 34318,
+        "pending_job_us": 2518629,
+        "span_us": 1034219
+      },
+      "raw_sha256": "4cc1527f1956979d42d65f0e10b12e3ed1b31e4766f973267bea45aef84c2800"
+    },
+    "stock-b": {
+      "drain": {
+        "eight_or_more_us": 176978,
+        "longest_eight_or_more_us": 37721,
+        "pending_job_us": 3517547,
+        "span_us": 1386251
+      },
+      "middle": {
+        "eight_or_more_us": 127240,
+        "longest_eight_or_more_us": 37721,
+        "pending_job_us": 2699349,
+        "span_us": 1048832
+      },
+      "raw_sha256": "0d1211d4e04ca678bd5fb5d73dd432afc102af8d26931478d7010a3d7dbeea73"
+    }
+  },
+  "2": {
+    "key": {
+      "drain": {
+        "eight_or_more_us": 365827,
+        "longest_eight_or_more_us": 65371,
+        "pending_job_us": 8171940,
+        "span_us": 1363117
+      },
+      "middle": {
+        "eight_or_more_us": 267703,
+        "longest_eight_or_more_us": 49795,
+        "pending_job_us": 6058094,
+        "span_us": 1005471
+      },
+      "raw_sha256": "5cc7894872f07cfe03740091017ad0fe808dc24b746a490863bb0d070e2491b4"
+    },
+    "stock-a": {
+      "drain": {
+        "eight_or_more_us": 157405,
+        "longest_eight_or_more_us": 50390,
+        "pending_job_us": 3342234,
+        "span_us": 1357996
+      },
+      "middle": {
+        "eight_or_more_us": 120433,
+        "longest_eight_or_more_us": 39983,
+        "pending_job_us": 2455944,
+        "span_us": 1043082
+      },
+      "raw_sha256": "07f274fb591fb192a9b335b1dc65e2e75601c16878240cb4628a665d44dbdea6"
+    },
+    "stock-b": {
+      "drain": {
+        "eight_or_more_us": 125630,
+        "longest_eight_or_more_us": 42994,
+        "pending_job_us": 3165103,
+        "span_us": 1415062
+      },
+      "middle": {
+        "eight_or_more_us": 64792,
+        "longest_eight_or_more_us": 13930,
+        "pending_job_us": 2051059,
+        "span_us": 1070193
+      },
+      "raw_sha256": "bdc6040596bce8f15eb269cab690bf95ccd9e5b66d026fc137fe8f93f829bc56"
+    }
+  }
+}
