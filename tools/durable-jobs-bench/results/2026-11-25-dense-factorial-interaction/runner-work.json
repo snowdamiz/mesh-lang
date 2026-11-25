@@ -1,0 +1,269 @@
+{
+  "eight_runner": [
+    {
+      "A1": {
+        "active_runner_elapsed_us": {
+          "0": 99066,
+          "1": 386198,
+          "2": 299595,
+          "3": 82937,
+          "4": 1016
+        },
+        "later_claimed_jobs": 246,
+        "middle_us": 868812,
+        "raw_sha256": "c2ce068fab0ec7e806900b216aebb4b7af2f766a2ffea205046cd20a04389605",
+        "runner_us": {
+          "end_of_claim_ms": {
+            "entered_work": 1238263,
+            "no_stamped_job_awaiting_settlement": 4551082,
+            "only_post_effect_with_spare_seats": 458128,
+            "only_stamped_or_post_effect": 703023
+          },
+          "start_of_claim_ms": {
+            "entered_work": 1238263,
+            "no_stamped_job_awaiting_settlement": 4428205,
+            "only_post_effect_with_spare_seats": 458065,
+            "only_stamped_or_post_effect": 825963
+          }
+        }
+      },
+      "A2": {
+        "active_runner_elapsed_us": {
+          "0": 134460,
+          "1": 380375,
+          "2": 301044,
+          "3": 66165
+        },
+        "later_claimed_jobs": 251,
+        "middle_us": 882044,
+        "raw_sha256": "b4a10baa5e49f372f7f980df87437d27af0e160ec0f1194a7ba8bda1ec040798",
+        "runner_us": {
+          "end_of_claim_ms": {
+            "entered_work": 1180958,
+            "no_stamped_job_awaiting_settlement": 4628147,
+            "only_post_effect_with_spare_seats": 512340,
+            "only_stamped_or_post_effect": 734907
+          },
+          "start_of_claim_ms": {
+            "entered_work": 1180958,
+            "no_stamped_job_awaiting_settlement": 4505270,
+            "only_post_effect_with_spare_seats": 512340,
+            "only_stamped_or_post_effect": 857784
+          }
+        }
+      },
+      "B": {
+        "active_runner_elapsed_us": {
+          "0": 4844,
+          "1": 63189,
+          "2": 180400,
+          "3": 223901,
+          "4": 98263,
+          "5": 18983,
+          "6": 1755
+        },
+        "later_claimed_jobs": 240,
+        "middle_us": 591335,
+        "raw_sha256": "b69272140653f3ce374d3b555c4e00f3bef4951adedef2b2b25739e9446a8efe",
+        "runner_us": {
+          "end_of_claim_ms": {
+            "entered_work": 1594189,
+            "full_runner_after_effect": 331,
+            "no_stamped_job_awaiting_settlement": 1547542,
+            "only_post_effect_with_spare_seats": 1111861,
+            "only_stamped_or_post_effect": 476757
+          },
+          "start_of_claim_ms": {
+            "entered_work": 1594189,
+            "full_runner_after_effect": 331,
+            "no_stamped_job_awaiting_settlement": 1439512,
+            "only_post_effect_with_spare_seats": 1102009,
+            "only_stamped_or_post_effect": 594639
+          }
+        }
+      },
+      "C": {
+        "active_runner_elapsed_us": {
+          "0": 5606,
+          "1": 75615,
+          "2": 240145,
+          "3": 263001,
+          "4": 85634,
+          "5": 20899,
+          "6": 3873
+        },
+        "later_claimed_jobs": 234,
+        "middle_us": 694773,
+        "raw_sha256": "6fc656ded4222877e45487043b16bc9eaa3c8db45374e936a79bfa96cd75ea25",
+        "runner_us": {
+          "end_of_claim_ms": {
+            "entered_work": 1815177,
+            "no_stamped_job_awaiting_settlement": 2135553,
+            "only_post_effect_with_spare_seats": 1080197,
+            "only_stamped_or_post_effect": 527257
+          },
+          "start_of_claim_ms": {
+            "entered_work": 1815177,
+            "no_stamped_job_awaiting_settlement": 2029101,
+            "only_post_effect_with_spare_seats": 1074498,
+            "only_stamped_or_post_effect": 639408
+          }
+        }
+      }
+    },
+    {
+      "A1": {
+        "active_runner_elapsed_us": {
+          "0": 113007,
+          "1": 379684,
+          "2": 318093,
+          "3": 75648,
+          "4": 8424,
+          "5": 1145
+        },
+        "later_claimed_jobs": 242,
+        "middle_us": 896001,
+        "raw_sha256": "f1452668854a99a760106ba5c9d5f8e025e526592e62c15a3a31d7a11dff4533",
+        "runner_us": {
+          "end_of_claim_ms": {
+            "entered_work": 1282235,
+            "no_stamped_job_awaiting_settlement": 4650699,
+            "only_post_effect_with_spare_seats": 466728,
+            "only_stamped_or_post_effect": 768346
+          },
+          "start_of_claim_ms": {
+            "entered_work": 1282235,
+            "no_stamped_job_awaiting_settlement": 4528843,
+            "only_post_effect_with_spare_seats": 464240,
+            "only_stamped_or_post_effect": 892690
+          }
+        }
+      },
+      "A2": {
+        "active_runner_elapsed_us": {
+          "0": 83007,
+          "1": 376621,
+          "2": 314918,
+          "3": 76715,
+          "4": 4659
+        },
+        "later_claimed_jobs": 248,
+        "middle_us": 855920,
+        "raw_sha256": "f1f35d785b7aa7830892578e308680d528561eb02c9fbbdb83334d833ce93532",
+        "runner_us": {
+          "end_of_claim_ms": {
+            "entered_work": 1255238,
+            "no_stamped_job_awaiting_settlement": 4424777,
+            "only_post_effect_with_spare_seats": 458088,
+            "only_stamped_or_post_effect": 709257
+          },
+          "start_of_claim_ms": {
+            "entered_work": 1255238,
+            "no_stamped_job_awaiting_settlement": 4303898,
+            "only_post_effect_with_spare_seats": 458088,
+            "only_stamped_or_post_effect": 830136
+          }
+        }
+      },
+      "B": {
+        "active_runner_elapsed_us": {
+          "0": 8879,
+          "1": 97276,
+          "2": 185829,
+          "3": 226305,
+          "4": 86898,
+          "5": 24635,
+          "6": 1080
+        },
+        "later_claimed_jobs": 240,
+        "middle_us": 630902,
+        "raw_sha256": "7eda6d9d041466eb6b4ab3cb6a4f7addcc24990ada439618aaddd2abcf4d6ba7",
+        "runner_us": {
+          "end_of_claim_ms": {
+            "entered_work": 1625096,
+            "full_runner_after_effect": 721,
+            "no_stamped_job_awaiting_settlement": 1857781,
+            "only_post_effect_with_spare_seats": 1034776,
+            "only_stamped_or_post_effect": 528842
+          },
+          "start_of_claim_ms": {
+            "entered_work": 1625096,
+            "full_runner_after_effect": 721,
+            "no_stamped_job_awaiting_settlement": 1750585,
+            "only_post_effect_with_spare_seats": 1023221,
+            "only_stamped_or_post_effect": 647593
+          }
+        }
+      },
+      "C": {
+        "active_runner_elapsed_us": {
+          "0": 11133,
+          "1": 51429,
+          "2": 170875,
+          "3": 207706,
+          "4": 151019,
+          "5": 54883,
+          "6": 35008,
+          "7": 6369
+        },
+        "later_claimed_jobs": 242,
+        "middle_us": 688422,
+        "raw_sha256": "c1b7bf6fe82add176eb10ba6f052698d79ecb67b6342c8c4250bad81f1bc6ee3",
+        "runner_us": {
+          "end_of_claim_ms": {
+            "entered_work": 2149419,
+            "full_runner_after_effect": 24882,
+            "no_stamped_job_awaiting_settlement": 1639309,
+            "only_post_effect_with_spare_seats": 1204908,
+            "only_stamped_or_post_effect": 488858
+          },
+          "start_of_claim_ms": {
+            "entered_work": 2149419,
+            "full_runner_after_effect": 24882,
+            "no_stamped_job_awaiting_settlement": 1544826,
+            "only_post_effect_with_spare_seats": 1194496,
+            "only_stamped_or_post_effect": 593753
+          }
+        }
+      }
+    }
+  ],
+  "two_runner": [
+    {
+      "active_runner_elapsed_us": {
+        "2": 389749
+      },
+      "later_claimed_jobs": 208,
+      "middle_us": 389749,
+      "raw_sha256": "6defbd1ac8db62bb2399b081447e4b8d48bdd07f65cfb06d08705ac6e760447e",
+      "runner_us": {
+        "end_of_claim_ms": {
+          "entered_work": 779498,
+          "no_stamped_job_awaiting_settlement": 0
+        },
+        "start_of_claim_ms": {
+          "entered_work": 779498,
+          "no_stamped_job_awaiting_settlement": 0
+        }
+      }
+    },
+    {
+      "active_runner_elapsed_us": {
+        "2": 476269
+      },
+      "later_claimed_jobs": 203,
+      "middle_us": 476269,
+      "raw_sha256": "0fdf39c427dd752694bb0270a6b385e96c782753ccaa306bfd1305e5e7a32568",
+      "runner_us": {
+        "end_of_claim_ms": {
+          "entered_work": 952538,
+          "no_stamped_job_awaiting_settlement": 0
+        },
+        "start_of_claim_ms": {
+          "entered_work": 952538,
+          "no_stamped_job_awaiting_settlement": 0
+        }
+      }
+    }
+  ]
+}
