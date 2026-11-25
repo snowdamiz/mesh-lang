@@ -1,0 +1,14 @@
+{
+  "group": 2,
+  "order": [
+    "immediate-b",
+    "refill",
+    "fixed",
+    "immediate-a"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "short"
+}

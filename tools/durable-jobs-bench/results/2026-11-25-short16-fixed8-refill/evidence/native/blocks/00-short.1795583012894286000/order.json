@@ -1,0 +1,12 @@
+{
+  "group": 0,
+  "order": [
+    "proof-immediate",
+    "proof-fixed",
+    "proof-refill"
+  ],
+  "phases": [
+    "diagnostic"
+  ],
+  "profile": "short"
+}
