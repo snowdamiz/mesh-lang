@@ -1,0 +1,258 @@
+{
+  "dense": {
+    "jobs": 1024,
+    "rotations": [
+      {
+        "block": "01-noop",
+        "control_minus_treatment_us": {
+          "river": 99250
+        },
+        "measured": {
+          "B": {
+            "enqueue_us": 176553,
+            "raw_sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d"
+          },
+          "river": {
+            "enqueue_us": 77303,
+            "raw_sha256": "1ad05f965ef66c9722999a1715047115bc82c6846db439ee648c6da020fa4d10"
+          }
+        }
+      },
+      {
+        "block": "02-noop",
+        "control_minus_treatment_us": {
+          "river": 100504
+        },
+        "measured": {
+          "B": {
+            "enqueue_us": 179649,
+            "raw_sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61"
+          },
+          "river": {
+            "enqueue_us": 79145,
+            "raw_sha256": "9d2edd45d65c08ea3fea527c4a4e793a192c22cfd6dbd539efa0c40936a5bdef"
+          }
+        }
+      },
+      {
+        "block": "03-noop",
+        "control_minus_treatment_us": {
+          "river": 134299
+        },
+        "measured": {
+          "B": {
+            "enqueue_us": 214159,
+            "raw_sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3"
+          },
+          "river": {
+            "enqueue_us": 79860,
+            "raw_sha256": "7118aa8cdf7b11a55137cc55e04d5ebd6c1843a27e225b2ca89a3a22b1e04578"
+          }
+        }
+      },
+      {
+        "block": "04-noop",
+        "control_minus_treatment_us": {
+          "river": 160992
+        },
+        "measured": {
+          "B": {
+            "enqueue_us": 237861,
+            "raw_sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598"
+          },
+          "river": {
+            "enqueue_us": 76869,
+            "raw_sha256": "46344afee41bc4b14aae8e9d01f678c14bbc4d4104c57c724150dd83f3506cf8"
+          }
+        }
+      },
+      {
+        "block": "05-noop",
+        "control_minus_treatment_us": {
+          "river": 131793
+        },
+        "measured": {
+          "B": {
+            "enqueue_us": 204933,
+            "raw_sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175"
+          },
+          "river": {
+            "enqueue_us": 73140,
+            "raw_sha256": "b35594b0d3455275962b9e6fd5b01b3ba5ddad0f4c073d7e044a79abead1840a"
+          }
+        }
+      }
+    ],
+    "submitted_payload_bytes": 1048576
+  },
+  "large": {
+    "jobs": 64,
+    "rotations": [
+      {
+        "block": "01-large.1795566210104137000",
+        "control_minus_treatment_us": {
+          "file": 290167
+        },
+        "measured": {
+          "file": {
+            "enqueue_us": 1506152,
+            "raw_sha256": "19c9ec4aa53036cc701a93e5cd337173236e0efb20a2bddb43398436a502f2b6"
+          },
+          "inline-a": {
+            "enqueue_us": 1796319,
+            "raw_sha256": "a0c64b2dc1b2cbab4c0534d2f59ce2df2845dfaa04cf0050e00279544e85b724"
+          },
+          "inline-b": {
+            "enqueue_us": 1872757,
+            "raw_sha256": "0d5da4fc5e1dde3493c7103bbdc4fc4c74e90e437e6d2eb0383412a1c5106005"
+          }
+        }
+      },
+      {
+        "block": "02-large.1795566381128215000",
+        "control_minus_treatment_us": {
+          "file": 259776
+        },
+        "measured": {
+          "file": {
+            "enqueue_us": 1545966,
+            "raw_sha256": "35c47eacb42161772a35f6ea6a20e744b1eba56801938b561475ee01473d1ae1"
+          },
+          "inline-a": {
+            "enqueue_us": 1805742,
+            "raw_sha256": "2556ddc7fee49f9c42a17cf2c561edd2e2e21311325c659e5bca1656476fdaba"
+          },
+          "inline-b": {
+            "enqueue_us": 1812578,
+            "raw_sha256": "36afc96989f1f36c32373ae2504a250af186ab13ed5b4cea7bea603de5bb50a5"
+          }
+        }
+      },
+      {
+        "block": "03-large.1795566555490485000",
+        "control_minus_treatment_us": {
+          "file": 188116
+        },
+        "measured": {
+          "file": {
+            "enqueue_us": 1581292,
+            "raw_sha256": "82e9875881f2fa2b539ab2342943639190a6d851a1a3c796cefc334ad5bb2c3e"
+          },
+          "inline-a": {
+            "enqueue_us": 1791907,
+            "raw_sha256": "12ada7611442e1b4e764902d1f96fb59d3128800f9b970477bf5e4846035458a"
+          },
+          "inline-b": {
+            "enqueue_us": 1769408,
+            "raw_sha256": "b236483ab0964d2463c3eed568569542a09c9232b6fdfa6e242ef20d8970372c"
+          }
+        }
+      },
+      {
+        "block": "04-large.1795566729765865000",
+        "control_minus_treatment_us": {
+          "file": 354488
+        },
+        "measured": {
+          "file": {
+            "enqueue_us": 1462082,
+            "raw_sha256": "60c33c4b02d867d4609c5112f20100614ce3ea18eb13cb1d95db2b0ec8b529e8"
+          },
+          "inline-a": {
+            "enqueue_us": 1816570,
+            "raw_sha256": "838f849951e18fca7b9828d098cb164fb4af5351ba65e34298ab75d2315e56b4"
+          },
+          "inline-b": {
+            "enqueue_us": 1818583,
+            "raw_sha256": "af127e2970f4c8878ec8c1991fcc797b5a1358b7ad041bff48c2904c1cf0e884"
+          }
+        }
+      },
+      {
+        "block": "05-large.1795566926636135000",
+        "control_minus_treatment_us": {
+          "file": 332403
+        },
+        "measured": {
+          "file": {
+            "enqueue_us": 1484119,
+            "raw_sha256": "01063242d6b263ba29d6f1b6005a8c118cdafaaf6aff6bc7ef128f6d3ed82f11"
+          },
+          "inline-a": {
+            "enqueue_us": 1879429,
+            "raw_sha256": "146217faffd35b7d0b77ce39454dcd24cb60611c8c3604fac8eb08f2bbf1a1b9"
+          },
+          "inline-b": {
+            "enqueue_us": 1816522,
+            "raw_sha256": "d03eb326a70b95441b923fb6fdf2d0aba940a49abb7482a8e7869d853904dd72"
+          }
+        }
+      }
+    ],
+    "submitted_payload_bytes": 33554432
+  },
+  "slow": {
+    "jobs": 512,
+    "rotations": [
+      {
+        "block": "01-slow.1795581456147404000",
+        "control_minus_treatment_us": {
+          "file": 8612,
+          "split-file": 69577
+        },
+        "measured": {
+          "file": {
+            "enqueue_us": 500449,
+            "raw_sha256": "1035d5bda2dabfad9f3d68952654ba0925fd7e8cd77f69854222ee4f543c9998"
+          },
+          "inline-a": {
+            "enqueue_us": 555203,
+            "raw_sha256": "28c1914792a432a0db7fce535c8780ce2f72096705042b295daab9e88acee5c3"
+          },
+          "inline-b": {
+            "enqueue_us": 509061,
+            "raw_sha256": "855640c6c95d988ca8ce110e3505c02c99ec3f0dae2eb3dd75326c7421c453f5"
+          },
+          "split-file": {
+            "enqueue_us": 483941,
+            "raw_sha256": "38ae7acd62c5b325325ce757dd365fee99ba1b1e2e88ab3c9d7a7504e7ac7944"
+          },
+          "split-inline": {
+            "enqueue_us": 553518,
+            "raw_sha256": "ab74d3216b2160cb5158f1b293da862a9def3034439a0149e2c1663b44abbb35"
+          }
+        }
+      },
+      {
+        "block": "02-slow.1795581576117587000",
+        "control_minus_treatment_us": {
+          "file": 24184,
+          "split-file": 95400
+        },
+        "measured": {
+          "file": {
+            "enqueue_us": 513687,
+            "raw_sha256": "b98b5fdead9ca8f54836b0484f916f9ef220cf43b458d8e5089ccb73386dff8d"
+          },
+          "inline-a": {
+            "enqueue_us": 541508,
+            "raw_sha256": "4f7e47a253e37be60a3cf3186b3decf2d178edd0c29e2f2af1f64381c4f92b41"
+          },
+          "inline-b": {
+            "enqueue_us": 537871,
+            "raw_sha256": "0ce25ae29976e95355fba40abb37c3e516e9f558b94284681c5af691b711ac4c"
+          },
+          "split-file": {
+            "enqueue_us": 453118,
+            "raw_sha256": "a41c0546f15b403243b691e53573427fa9d38756e7284ab6d327d1cd0979b07b"
+          },
+          "split-inline": {
+            "enqueue_us": 548518,
+            "raw_sha256": "585b94122aa15007434977afd66e5deb2bc52ad7091934ec3e735d4aca4a06df"
+          }
+        }
+      }
+    ],
+    "submitted_payload_bytes": 8388608
+  }
+}
