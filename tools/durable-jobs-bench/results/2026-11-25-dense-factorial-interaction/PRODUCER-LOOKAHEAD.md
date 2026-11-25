@@ -20,3 +20,20 @@ The replay checks ten historical raw SHA-256s against the released scorer, recom
 ```sh
 python3 -B producer_lookahead.py | cmp - producer-lookahead.json
 ```
+
+## LARGE FILE has more preparation to overlap
+
+The same native component took **125.9–134.5 ms** of stock wall time for the 64 separately bounded 512 KiB frames together. If all frames cost the same and the preceding database call hid every subsequent preparation, the 63 opportunities would be worth **124.0–132.4 ms** before handoff costs. The earliest frame still precedes the first write. The component includes disposal and excludes the outer FILE producer. It used one CPU. [Released component](../2026-11-24-enqueue-spec-preparation/README.md)
+
+In the five measured default-storage FILE arms, 5% of actual submit-to-settlement elapsed was **105.7–112.3 ms**. Under symmetric EXTERNAL storage it was **66.1–82.0 ms**. These figures indicate the scale of a useful improvement. Differences between fresh duplicate controls would also matter in a prospective trial.
+
+| Inside submit through durable enqueue | Rotation 1 | 2 | 3 | 4 | 5 |
+|---|---:|---:|---:|---:|---:|
+| Default, idle ticks summed over CPUs 0 and 1 | 74 | 62 | 72 | 59 | 59 |
+| EXTERNAL, idle ticks summed over CPUs 0 and 1 | 16 | 16 | insufficient samples | 15 | 13 |
+
+The stock sampler reads CPU counters before stamping its sample. Using the second interior sample through the last interior sample keeps both counter reads inside the producer interval. The counts exclude I/O wait and show idle ticks recorded on the benchmark CPUs during part of submission. The samples cannot locate idle time within any one of the 64 calls or establish that a preparation worker could use it. The default-storage arms provide the clearest reason to test actual concurrency between the compiled producer and its PostgreSQL connection.
+
+```sh
+python3 -B large_producer_headroom.py | cmp - large-producer-headroom.json
+```

@@ -1,0 +1,113 @@
+{
+  "default": [
+    {
+      "group": 1,
+      "raw_sha256": "19c9ec4aa53036cc701a93e5cd337173236e0efb20a2bddb43398436a502f2b6",
+      "enqueue_us": 1506152,
+      "submit_us": 2157912,
+      "interior_samples": 7,
+      "idle_ticks": {
+        "cpu0": 43,
+        "cpu1": 31
+      }
+    },
+    {
+      "group": 2,
+      "raw_sha256": "35c47eacb42161772a35f6ea6a20e744b1eba56801938b561475ee01473d1ae1",
+      "enqueue_us": 1545966,
+      "submit_us": 2240400,
+      "interior_samples": 6,
+      "idle_ticks": {
+        "cpu0": 38,
+        "cpu1": 24
+      }
+    },
+    {
+      "group": 3,
+      "raw_sha256": "82e9875881f2fa2b539ab2342943639190a6d851a1a3c796cefc334ad5bb2c3e",
+      "enqueue_us": 1581292,
+      "submit_us": 2245718,
+      "interior_samples": 7,
+      "idle_ticks": {
+        "cpu0": 37,
+        "cpu1": 35
+      }
+    },
+    {
+      "group": 4,
+      "raw_sha256": "60c33c4b02d867d4609c5112f20100614ce3ea18eb13cb1d95db2b0ec8b529e8",
+      "enqueue_us": 1462082,
+      "submit_us": 2113266,
+      "interior_samples": 6,
+      "idle_ticks": {
+        "cpu0": 27,
+        "cpu1": 32
+      }
+    },
+    {
+      "group": 5,
+      "raw_sha256": "01063242d6b263ba29d6f1b6005a8c118cdafaaf6aff6bc7ef128f6d3ed82f11",
+      "enqueue_us": 1484119,
+      "submit_us": 2207513,
+      "interior_samples": 6,
+      "idle_ticks": {
+        "cpu0": 30,
+        "cpu1": 29
+      }
+    }
+  ],
+  "external": [
+    {
+      "group": 1,
+      "raw_sha256": "e8cfeb321b9eab9aaefc760aaf90399a1b46553973332943a7d377a7d3c837b8",
+      "enqueue_us": 730541,
+      "submit_us": 1419837,
+      "interior_samples": 3,
+      "idle_ticks": {
+        "cpu0": 9,
+        "cpu1": 7
+      }
+    },
+    {
+      "group": 2,
+      "raw_sha256": "f501507714e50cc3c6932fcc4437b00430fc0d352c71dc8ae341ca3da9afb503",
+      "enqueue_us": 714099,
+      "submit_us": 1362942,
+      "interior_samples": 3,
+      "idle_ticks": {
+        "cpu0": 7,
+        "cpu1": 9
+      }
+    },
+    {
+      "group": 3,
+      "raw_sha256": "72bb4a0aa69392bc737a0f0a817911daa9121f3630d065b531eb3a7732b25fba",
+      "enqueue_us": 686224,
+      "submit_us": 1321360,
+      "interior_samples": 2,
+      "idle_ticks": null
+    },
+    {
+      "group": 4,
+      "raw_sha256": "cd65c7217b7c7e29ee9a79bee501ebe40ca5811245f113f539ddd3e63c9d5e4e",
+      "enqueue_us": 778244,
+      "submit_us": 1640768,
+      "interior_samples": 3,
+      "idle_ticks": {
+        "cpu0": 8,
+        "cpu1": 7
+      }
+    },
+    {
+      "group": 5,
+      "raw_sha256": "884a041449fa1f19b93c9d65e1de83a3d49262f1aaf7461d70318ce8d5d23c5a",
+      "enqueue_us": 666173,
+      "submit_us": 1325306,
+      "interior_samples": 3,
+      "idle_ticks": {
+        "cpu0": 6,
+        "cpu1": 7
+      }
+    }
+  ]
+}
