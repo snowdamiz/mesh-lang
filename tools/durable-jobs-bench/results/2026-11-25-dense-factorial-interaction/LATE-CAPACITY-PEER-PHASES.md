@@ -16,7 +16,9 @@ Matching River’s enqueue duration alone, with each observed drain held fixed, 
 
 ## The slow second rotation
 
-The PostgreSQL server log places all 22 observed queue-lock timeouts within the drain. Twenty occurred in the preliminary queue-row lock and two in the bounded claim function’s own queue-row SELECT. The nine host-sample intervals wholly inside that drain cover 2.149 s and 969 durable effects. Device 8:0 accumulated 1,483 ms busy during those intervals, and the two pinned CPUs recorded 73 of 416 ticks as I/O wait. The corresponding device-busy shares were 69.0% for Mesh B, 17.3% for A1 and 17.3% for A2. Each other B rotation had zero queue-lock timeouts. These device counters cover all work on the device. They establish that the stalls coincided with elevated I/O and leave the initiating cause open. [Interval-by-interval replay](late-capacity-io.json)
+The PostgreSQL server log places all 22 queue-lock timeouts inside the drain, 20 in the preliminary queue-row lock and two in the bounded claim. The pinned collector reads CPU counters before the frame timestamp and device counters after it. The original nine-interval calculation treated both reads as simultaneous. Requiring the neighboring frame timestamps to fall inside the drain leaves seven intervals for B. Their frame timestamps span 1.667 s and contain 713 durable effects and 21 of the timeouts. The two pinned CPUs recorded 63 of 322 ticks as I/O wait. [Original frame-based receipt](late-capacity-io.json) · [Corrected read brackets](late-capacity-io-bounded.json)
+
+Device 8:0 accumulated 1,234 busy ms across those seven adjacent counter deltas. The disk reads span 1.428–1.909 s, giving a busy fraction of about 65–86%. The corresponding conservative ranges are 13–40% for A1 and 14–29% for A2. Device activity was higher for B even with uncertainty about the read times. The counters include every process on that device. The captures leave the cause of the stalls unresolved.
 
 ## Work waiting before its first write
 
@@ -29,5 +31,5 @@ From this directory, run the offline checks against the Git-tracked evidence.
 ```sh
 python3 -B test_xid_bounds.py
 python3 -B late_capacity_peer_phases.py ../2026-11-25-public-dense-late-capacity/peer-comparison/evidence | cmp - late-capacity-peer-phases.json
-python3 -B late_capacity_io.py ../2026-11-25-public-dense-late-capacity/peer-comparison/evidence | cmp - late-capacity-io.json
+python3 -B late_capacity_io.py ../2026-11-25-public-dense-late-capacity/peer-comparison/evidence | cmp - late-capacity-io-bounded.json
 ```

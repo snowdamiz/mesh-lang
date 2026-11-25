@@ -1,0 +1,651 @@
+{
+  "1": {
+    "A1": {
+      "disk_elapsed_us_bounds": [
+        240385,
+        723270
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1276529,
+      "intervals": [
+        {
+          "disk_busy_ms": 46,
+          "duration_us": 241682,
+          "earliest_cpu_read_from_commit_us": 140089,
+          "effects": 219,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 863817,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 381750,
+          "total_ticks": 49
+        },
+        {
+          "disk_busy_ms": 41,
+          "duration_us": 240385,
+          "earliest_cpu_read_from_commit_us": 381750,
+          "effects": 199,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 1105020,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 623432,
+          "total_ticks": 47
+        }
+      ],
+      "raw_sha256": "2b9a4197c4f2fb93e17bc299b978083e5d2a346050275f01905a524b201a4bce"
+    },
+    "A2": {
+      "disk_elapsed_us_bounds": [
+        244742,
+        726637
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1368125,
+      "intervals": [
+        {
+          "disk_busy_ms": 57,
+          "duration_us": 240889,
+          "earliest_cpu_read_from_commit_us": 207900,
+          "effects": 201,
+          "iowait_ticks": 2,
+          "latest_disk_read_from_commit_us": 935630,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 449999,
+          "total_ticks": 47
+        },
+        {
+          "disk_busy_ms": 43,
+          "duration_us": 244742,
+          "earliest_cpu_read_from_commit_us": 449999,
+          "effects": 194,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 1176636,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 690888,
+          "total_ticks": 47
+        }
+      ],
+      "raw_sha256": "da82d812c7a4b6d60f7cceb3458a932b691c18c623f04fa0970538b8d88b3b26"
+    },
+    "B": {
+      "disk_elapsed_us_bounds": [
+        241239,
+        724040
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1132590,
+      "intervals": [
+        {
+          "disk_busy_ms": 44,
+          "duration_us": 241316,
+          "earliest_cpu_read_from_commit_us": 62781,
+          "effects": 233,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 787417,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 304862,
+          "total_ticks": 48
+        },
+        {
+          "disk_busy_ms": 53,
+          "duration_us": 241239,
+          "earliest_cpu_read_from_commit_us": 304862,
+          "effects": 253,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 1028902,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 546178,
+          "total_ticks": 47
+        }
+      ],
+      "raw_sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d"
+    }
+  },
+  "2": {
+    "A1": {
+      "disk_elapsed_us_bounds": [
+        239725,
+        720395
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1294310,
+      "intervals": [
+        {
+          "disk_busy_ms": 47,
+          "duration_us": 240651,
+          "earliest_cpu_read_from_commit_us": 98109,
+          "effects": 210,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 818891,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 338515,
+          "total_ticks": 46
+        },
+        {
+          "disk_busy_ms": 48,
+          "duration_us": 239725,
+          "earliest_cpu_read_from_commit_us": 338515,
+          "effects": 218,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 1058910,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 579166,
+          "total_ticks": 48
+        }
+      ],
+      "raw_sha256": "a69250d841005240d36e96e7efba723d5dcfcb774083a4c0f8a2f6f10747f986"
+    },
+    "A2": {
+      "disk_elapsed_us_bounds": [
+        480343,
+        959993
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1343040,
+      "intervals": [
+        {
+          "disk_busy_ms": 44,
+          "duration_us": 239778,
+          "earliest_cpu_read_from_commit_us": 40951,
+          "effects": 205,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 759866,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 280897,
+          "total_ticks": 48
+        },
+        {
+          "disk_busy_ms": 49,
+          "duration_us": 239191,
+          "earliest_cpu_read_from_commit_us": 280897,
+          "effects": 189,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 1001018,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 520675,
+          "total_ticks": 47
+        },
+        {
+          "disk_busy_ms": 45,
+          "duration_us": 241152,
+          "earliest_cpu_read_from_commit_us": 520675,
+          "effects": 195,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 1240890,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 759866,
+          "total_ticks": 46
+        }
+      ],
+      "raw_sha256": "3dd829d482d421bf3af4bc6cf5cdfe0f7503986413d0421b14784f883782930a"
+    },
+    "B": {
+      "disk_elapsed_us_bounds": [
+        1428108,
+        1908535
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 2,
+        "prelock": 20
+      },
+      "drain_us": 2249419,
+      "intervals": [
+        {
+          "disk_busy_ms": 194,
+          "duration_us": 239209,
+          "earliest_cpu_read_from_commit_us": 26787,
+          "effects": 68,
+          "iowait_ticks": 11,
+          "latest_disk_read_from_commit_us": 747399,
+          "queue_timeouts": 4,
+          "start_from_commit_us": 267466,
+          "total_ticks": 47
+        },
+        {
+          "disk_busy_ms": 92,
+          "duration_us": 240724,
+          "earliest_cpu_read_from_commit_us": 267466,
+          "effects": 198,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 986785,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 506675,
+          "total_ticks": 46
+        },
+        {
+          "disk_busy_ms": 148,
+          "duration_us": 239386,
+          "earliest_cpu_read_from_commit_us": 506675,
+          "effects": 146,
+          "iowait_ticks": 7,
+          "latest_disk_read_from_commit_us": 1229906,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 747399,
+          "total_ticks": 49
+        },
+        {
+          "disk_busy_ms": 182,
+          "duration_us": 243121,
+          "earliest_cpu_read_from_commit_us": 747399,
+          "effects": 109,
+          "iowait_ticks": 8,
+          "latest_disk_read_from_commit_us": 1463870,
+          "queue_timeouts": 1,
+          "start_from_commit_us": 986785,
+          "total_ticks": 46
+        },
+        {
+          "disk_busy_ms": 217,
+          "duration_us": 233964,
+          "earliest_cpu_read_from_commit_us": 986785,
+          "effects": 37,
+          "iowait_ticks": 14,
+          "latest_disk_read_from_commit_us": 1698135,
+          "queue_timeouts": 7,
+          "start_from_commit_us": 1229906,
+          "total_ticks": 42
+        },
+        {
+          "disk_busy_ms": 219,
+          "duration_us": 234265,
+          "earliest_cpu_read_from_commit_us": 1229906,
+          "effects": 69,
+          "iowait_ticks": 12,
+          "latest_disk_read_from_commit_us": 1934783,
+          "queue_timeouts": 5,
+          "start_from_commit_us": 1463870,
+          "total_ticks": 45
+        },
+        {
+          "disk_busy_ms": 182,
+          "duration_us": 236648,
+          "earliest_cpu_read_from_commit_us": 1463870,
+          "effects": 86,
+          "iowait_ticks": 10,
+          "latest_disk_read_from_commit_us": 2176001,
+          "queue_timeouts": 4,
+          "start_from_commit_us": 1698135,
+          "total_ticks": 47
+        }
+      ],
+      "raw_sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61"
+    }
+  },
+  "3": {
+    "A1": {
+      "disk_elapsed_us_bounds": [
+        241647,
+        723729
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1314483,
+      "intervals": [
+        {
+          "disk_busy_ms": 51,
+          "duration_us": 240941,
+          "earliest_cpu_read_from_commit_us": 133540,
+          "effects": 201,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 856298,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 373710,
+          "total_ticks": 47
+        },
+        {
+          "disk_busy_ms": 55,
+          "duration_us": 241647,
+          "earliest_cpu_read_from_commit_us": 373710,
+          "effects": 208,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 1097439,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 614651,
+          "total_ticks": 49
+        }
+      ],
+      "raw_sha256": "fcf638a68a652c8da03e991d4b3d863b2ec729308815b249fdf801c6d7d4976e"
+    },
+    "A2": {
+      "disk_elapsed_us_bounds": [
+        480652,
+        960785
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1309556,
+      "intervals": [
+        {
+          "disk_busy_ms": 44,
+          "duration_us": 239724,
+          "earliest_cpu_read_from_commit_us": 92689,
+          "effects": 199,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 813952,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 333409,
+          "total_ticks": 49
+        },
+        {
+          "disk_busy_ms": 50,
+          "duration_us": 240819,
+          "earliest_cpu_read_from_commit_us": 333409,
+          "effects": 205,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 1053785,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 573133,
+          "total_ticks": 46
+        },
+        {
+          "disk_busy_ms": 50,
+          "duration_us": 239833,
+          "earliest_cpu_read_from_commit_us": 573133,
+          "effects": 203,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 1294194,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 813952,
+          "total_ticks": 48
+        }
+      ],
+      "raw_sha256": "4ee7b86623dfd0963f641c93897c8b125c09a0bffd3e545a230c586d911aedf1"
+    },
+    "B": {
+      "disk_elapsed_us_bounds": [
+        0,
+        479301
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1139331,
+      "intervals": [
+        {
+          "disk_busy_ms": 44,
+          "duration_us": 241411,
+          "earliest_cpu_read_from_commit_us": 194213,
+          "effects": 240,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 914244,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 434943,
+          "total_ticks": 46
+        }
+      ],
+      "raw_sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3"
+    }
+  },
+  "4": {
+    "A1": {
+      "disk_elapsed_us_bounds": [
+        241867,
+        724398
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1292838,
+      "intervals": [
+        {
+          "disk_busy_ms": 54,
+          "duration_us": 240797,
+          "earliest_cpu_read_from_commit_us": 131841,
+          "effects": 210,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 855730,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 373066,
+          "total_ticks": 45
+        },
+        {
+          "disk_busy_ms": 49,
+          "duration_us": 241867,
+          "earliest_cpu_read_from_commit_us": 373066,
+          "effects": 193,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 1097464,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 613863,
+          "total_ticks": 48
+        }
+      ],
+      "raw_sha256": "978118e93f2f734b1df9690608b3ed27e913e9d7e6813085488b39e235312860"
+    },
+    "A2": {
+      "disk_elapsed_us_bounds": [
+        481697,
+        963109
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1350551,
+      "intervals": [
+        {
+          "disk_busy_ms": 52,
+          "duration_us": 242828,
+          "earliest_cpu_read_from_commit_us": 33073,
+          "effects": 215,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 766634,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 283328,
+          "total_ticks": 50
+        },
+        {
+          "disk_busy_ms": 34,
+          "duration_us": 240478,
+          "earliest_cpu_read_from_commit_us": 283328,
+          "effects": 194,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 1007853,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 526156,
+          "total_ticks": 46
+        },
+        {
+          "disk_busy_ms": 33,
+          "duration_us": 241219,
+          "earliest_cpu_read_from_commit_us": 526156,
+          "effects": 193,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 1246437,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 766634,
+          "total_ticks": 45
+        }
+      ],
+      "raw_sha256": "df1d5ee48d8c52d9b3bb29e9b07ab5caa8acf403a30b6d05dcba3b77bdf0824d"
+    },
+    "B": {
+      "disk_elapsed_us_bounds": [
+        240898,
+        722295
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1184739,
+      "intervals": [
+        {
+          "disk_busy_ms": 47,
+          "duration_us": 239966,
+          "earliest_cpu_read_from_commit_us": 78482,
+          "effects": 242,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 800143,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 319279,
+          "total_ticks": 45
+        },
+        {
+          "disk_busy_ms": 28,
+          "duration_us": 240898,
+          "earliest_cpu_read_from_commit_us": 319279,
+          "effects": 215,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 1041574,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 559245,
+          "total_ticks": 50
+        }
+      ],
+      "raw_sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598"
+    }
+  },
+  "5": {
+    "A1": {
+      "disk_elapsed_us_bounds": [
+        251856,
+        734392
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1294946,
+      "intervals": [
+        {
+          "disk_busy_ms": 50,
+          "duration_us": 241204,
+          "earliest_cpu_read_from_commit_us": 224179,
+          "effects": 206,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 957911,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 464851,
+          "total_ticks": 45
+        },
+        {
+          "disk_busy_ms": 54,
+          "duration_us": 251856,
+          "earliest_cpu_read_from_commit_us": 464851,
+          "effects": 211,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 1199243,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 706055,
+          "total_ticks": 51
+        }
+      ],
+      "raw_sha256": "8131d66a50a3e91bb14ca9ffdf1ebaea9698ca54ecdd00c377a73cabb7c1daac"
+    },
+    "A2": {
+      "disk_elapsed_us_bounds": [
+        723575,
+        1204397
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1638515,
+      "intervals": [
+        {
+          "disk_busy_ms": 122,
+          "duration_us": 238169,
+          "earliest_cpu_read_from_commit_us": 135899,
+          "effects": 159,
+          "iowait_ticks": 4,
+          "latest_disk_read_from_commit_us": 856324,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 376865,
+          "total_ticks": 47
+        },
+        {
+          "disk_busy_ms": 114,
+          "duration_us": 241290,
+          "earliest_cpu_read_from_commit_us": 376865,
+          "effects": 163,
+          "iowait_ticks": 3,
+          "latest_disk_read_from_commit_us": 1097855,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 615034,
+          "total_ticks": 46
+        },
+        {
+          "disk_busy_ms": 119,
+          "duration_us": 241531,
+          "earliest_cpu_read_from_commit_us": 615034,
+          "effects": 179,
+          "iowait_ticks": 3,
+          "latest_disk_read_from_commit_us": 1338609,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 856324,
+          "total_ticks": 48
+        },
+        {
+          "disk_busy_ms": 137,
+          "duration_us": 240754,
+          "earliest_cpu_read_from_commit_us": 856324,
+          "effects": 140,
+          "iowait_ticks": 2,
+          "latest_disk_read_from_commit_us": 1581262,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 1097855,
+          "total_ticks": 44
+        }
+      ],
+      "raw_sha256": "c06f1ab7f24c8ba03ec599f08dbec271138c84fe8f2524b95809ce6df0bfe472"
+    },
+    "B": {
+      "disk_elapsed_us_bounds": [
+        242069,
+        725340
+      ],
+      "drain_queue_timeouts": {
+        "bounded_claim": 0,
+        "prelock": 0
+      },
+      "drain_us": 1195132,
+      "intervals": [
+        {
+          "disk_busy_ms": 39,
+          "duration_us": 241851,
+          "earliest_cpu_read_from_commit_us": 64545,
+          "effects": 215,
+          "iowait_ticks": 0,
+          "latest_disk_read_from_commit_us": 792460,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 308540,
+          "total_ticks": 47
+        },
+        {
+          "disk_busy_ms": 46,
+          "duration_us": 242069,
+          "earliest_cpu_read_from_commit_us": 308540,
+          "effects": 241,
+          "iowait_ticks": 1,
+          "latest_disk_read_from_commit_us": 1033880,
+          "queue_timeouts": 0,
+          "start_from_commit_us": 550391,
+          "total_ticks": 46
+        }
+      ],
+      "raw_sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175"
+    }
+  }
+}

@@ -63,10 +63,13 @@ def measure(raw, score):
     end = max(job["settled_us"] for job in ledger["jobs"])
     assert len(effects) == 1024 and end - start == score["drain_us"]
     intervals = []
-    for left, right in zip(samples, samples[1:]):
+    for a, b in zip(samples, samples[1:]):
+        assert a["epoch_us"] < b["epoch_us"] and a["monotonic_ns"] < b["monotonic_ns"]
+    # The sealed collector reads CPU before stamping the frame, and disk after.
+    # Use neighboring stamps to enclose both physical reads at each endpoint.
+    for previous, left, right, following in zip(samples, samples[1:], samples[2:], samples[3:]):
         t0, t1 = left["epoch_us"], right["epoch_us"]
-        assert t1 > t0 and right["monotonic_ns"] > left["monotonic_ns"]
-        if t0 < start or t1 > end:
+        if previous["epoch_us"] < start or following["epoch_us"] > end:
             continue
         ticks = [sum(right["cpu"][cpu][i] - left["cpu"][cpu][i] for cpu in ("cpu0", "cpu1"))
                  for i in range(8)]
@@ -74,18 +77,35 @@ def measure(raw, score):
         # The log truncates to ms. Refuse to assign an error to either side of an uncertain edge.
         assert all(not (stamp <= edge < stamp + 999) for stamp, _ in timeouts for edge in (t0, t1))
         intervals.append(dict(start_from_commit_us=t0 - start, duration_us=t1 - t0,
+                              earliest_cpu_read_from_commit_us=previous["epoch_us"] - start,
+                              latest_disk_read_from_commit_us=following["epoch_us"] - start,
                               effects=bisect_right(effects, t1) - bisect_right(effects, t0),
                               disk_busy_ms=device_busy_ms(right) - device_busy_ms(left),
                               iowait_ticks=ticks[4], total_ticks=sum(ticks),
                               queue_timeouts=sum(t0 < stamp <= t1 for stamp, _ in timeouts)))
-    assert intervals
+    disk_elapsed_us = None
+    if intervals:
+        first, last = intervals[0], intervals[-1]
+        first_stamp = first["start_from_commit_us"]
+        last_stamp = last["start_from_commit_us"] + last["duration_us"]
+        # Disk reads follow their own frame stamp and precede the next stamp.
+        disk_elapsed_us = [last_stamp - first_stamp - first["duration_us"],
+                           last["latest_disk_read_from_commit_us"] - first_stamp]
     return dict(drain_us=end - start, raw_sha256=score["raw_sha256"], intervals=intervals,
+                disk_elapsed_us_bounds=disk_elapsed_us,
                 drain_queue_timeouts={site: sum(start < stamp and stamp + 999 <= end and why == site
                                                for stamp, why in timeouts)
                                       for site in ("prelock", "bounded_claim")})
 
 
 def replay(evidence):
+    suite = Path(__file__).resolve().parents[2]
+    digest = sha256((suite / "worker.py").read_bytes()).hexdigest()
+    assert digest == "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+    for lane in ("A1", "B"):
+        inventory = json.loads((evidence.parent / "staging" / lane / "inventory.json").read_bytes())
+        files = inventory["engines"]["mesh"]["verified_files"]
+        assert [value for path, value in files.items() if path.endswith("/worker.py")] == [digest]
     release = json.loads((evidence / "controller-release.json").read_bytes())
     assert release["request_sha256"] == SEAL and release["exit_status"] == 0
     scores = json.loads((evidence / "scored-before-release.json").read_bytes())["groups"]
