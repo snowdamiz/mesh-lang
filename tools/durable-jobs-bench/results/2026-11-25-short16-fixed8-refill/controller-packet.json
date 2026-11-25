@@ -1,0 +1,218 @@
+{
+  "after_existing_bookings": true,
+  "controller": "native-controller-complete-post-wal-queue",
+  "controller_receipt_dir": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/evidence/native/controller",
+  "cpus": [
+    0,
+    1
+  ],
+  "elf_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/evidence/native",
+  "gate": {
+    "actual_refill_required": true,
+    "duplicate_spread": true,
+    "earlier_last_effect": true,
+    "max_cpu": "higher duplicate on each CPU measure",
+    "minimum_fraction": 0.05,
+    "primary": "refill"
+  },
+  "host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "id": "2026-11-25-short16-fixed8-refill",
+  "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+  "logical_grant_sha256": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+  "no_build": true,
+  "offline_check": "python3 -B tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/controller.py check",
+  "peer_command": "python3 -B tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/controller.py peers",
+  "peer_schedule": [
+    {
+      "group": 3,
+      "order": [
+        "refill",
+        "river",
+        "river-warm",
+        "oban",
+        "apalis"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 4,
+      "order": [
+        "river",
+        "river-warm",
+        "oban",
+        "apalis",
+        "refill"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 5,
+      "order": [
+        "river-warm",
+        "oban",
+        "apalis",
+        "refill",
+        "river"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 6,
+      "order": [
+        "oban",
+        "apalis",
+        "refill",
+        "river",
+        "river-warm"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 7,
+      "order": [
+        "apalis",
+        "refill",
+        "river",
+        "river-warm",
+        "oban"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "short"
+    }
+  ],
+  "peer_window_minutes": 23,
+  "peers_id": "2026-11-25-short16-fixed8-refill-peers",
+  "pins": {
+    "target/dense-grouped-refill-packet/source.tar.gz": "deb2a3bc49feae7df985fe895209c3db7d725cd4c9c1b9c8ba49c93a650dd6d8",
+    "target/dense-public-hot-readiness/ordinary-v2/proof/jobs-parity/linux-regression/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+    "target/dense-public-hot-readiness/ordinary-v2/proof/jobs-parity/linux-regression/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+    "target/dense-public-hot-readiness/ordinary-v2/proof/jobs-parity/linux-regression/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+    "target/dense-public-hot-readiness/ordinary-v2/proof/jobs-parity/linux-regression/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+    "target/dense-public-hot-readiness/ordinary-v2/proof/jobs-parity/linux-regression/trial.py": "db8e121ab9b1f6aed2293b26c79a4fbfa8ac8aba6ff228be54b360bd32048a8e",
+    "target/dense-public-hot-readiness/ordinary-v2/proof/jobs-parity/linux-regression/trusted-application.sql": "3d318097587c0baef9182d8abb35b3f9d437a00b4f509798e320a4931085ee41",
+    "target/dense-public-hot-readiness/ordinary-v2/scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+    "target/dense-public-hot-readiness/ordinary-v2/scripts/jobs-parity.py": "09aad1d1c6cb5c0d46408bf314879812bb24fa504cf26a00e728b5f21ad1c5c8",
+    "target/dense-public-hot-readiness/ordinary-v2/tools/durable-jobs-bench/native/arm.py": "d9f984dad988e2380b22e971ae5abf122619f246bf592a9402720d49996685ad",
+    "target/dense-public-hot-readiness/ordinary-v2/tools/durable-jobs-bench/native/ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
+    "target/dense-public-hot-readiness/ordinary-v2/tools/durable-jobs-bench/native/run": "ef23e46a89cca8efb561c70fde73b5568b307b8e0501984a1b3df821b86ae439",
+    "target/linode-jobs-stepchange/requests/2026-11-24-short16-river-readiness-groups-1-2.released.json": "376948932e21c1880c90e777a20254c41a5a0f12ad1fce49c9de63df110cc967",
+    "target/linode-jobs-stepchange/requests/2026-11-24-short16-river-readiness-groups-3-6.released.json": "4129670b2ee6954633c355be38824bc13815e15a51d890877df78d61ecd4e749",
+    "target/linode-jobs-stepchange/requests/2026-11-25-dense-fixed8-logical-factorial-retry-peers-groups-3-7.released.json": "4bff29fe758e51ce42e57b0dc51536058daa29d903055f7ae1a29f644a3cb5d0",
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/matrix.py": "dffaa6d936cd0010f2f4377106d5b2846bdaa2cc6f9c431338a776e1d63c84bb",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/qualification.py": "97a48e0b96532710fba3fade20bd96e8bebcde3d15529de6dc6f23ca1da799ee",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/transfer.py": "43cf1e9017ca66a7f77ba744770908f736142e3587bd9bc3cdcc10be48593475",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/timing/apalis/inventory.json": "50524e8c00e8b99dd550ff120142e6b5873976a4c74ad8a08cae0bbb5def54ef",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/timing/blocks/01-short.1795558031934446000/measured-apalis/measured-rust/raw.tar.gz": "34889444172edd261146842a599ad8cc46d70d3f9f303d11b498f40803eb50dd",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/timing/blocks/01-short.1795558031934446000/measured-oban/measured-oban/raw.tar.gz": "bc89ed989792687099d1a36893daa20c1eb9c099f5335aaf3932cdd0cc5a1707",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/timing/blocks/01-short.1795558031934446000/measured-river-warm/measured-go/raw.tar.gz": "233be24b8713cdc4762a2c70a4618e2c79cc670f5016363b6eb96c01476d8f4c",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/timing/blocks/01-short.1795558031934446000/measured-river/measured-go/raw.tar.gz": "9b6ba71e860b9fca63e1d9fbc3fbb84073311515419a1435cec8321d8d47b9d9",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/timing/oban/inventory.json": "ab33119a5e31d600ba2718b153b21e42415ad1fbcd4c1dba7d38d4886102ce39",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/timing/river-warm/inventory.json": "f7ed5ebaad5e5ca9d938cfdf28d8f029d40ffa031494d12a55d1eca0cc74d188",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/timing/river/inventory.json": "da8442fa0b06701540cc00a854d095dba0126d24ae8c05229c25ecd45d535a88",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/score.py": "acd645008e9e900ee2fca3cea46d1a70d34b54159cbf8045c3a7c29df79ec815",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-factorial-interaction/short-transfer.json": "da0e0c63ac80c5ff8719c6774d3106913c29ca4d54b31a7b9687638bc5553d04",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-factorial-interaction/short_transfer.py": "18f66c5b713efb82e948153176f69ce910e05666c75b7e89f4c2f930f64fccee",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/controller-packet-retry.json": "5d97e99284e97944c6dc3b838a8b899a9d7ef24b7c01a0e92cd51c18b2ee7ab7",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/staging/2026-11-25-dense-fixed8-logical-factorial-retry-peers.1795578687870697000/combined/inventory.json": "052bf45bf6f1fec84fbd300de4305687b79b2409175a9fdf4c226ebed443d4be",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-logical-factorial/launch.sh": "f1a9e3c4a652f15467e3f655898e26a592912414544599540c7ced7e7ae87b4e",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/candidate.patch": "b3c5759a802764eb5fb0408cef2f5d00a5a8bd153a7e52e039378b278fb50e74",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-pilot/series.json": "6a8d4b054b40ac4e439635bf5a086a57ed135e531b78512de44e88f23f3d4c07",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup/binding.json": "69d42d2d790f7c4365d47b492021fd5624d29f68f5e1d1c71eb30bb8add2fa70",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup/controller-release.json": "af07f18ca669597b47ad3aaa6ea25118b36208979bc8644e5f70b5787e072aee",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup/raw.tar.gz": "1d419ec279ebb4ea3d9ba96354606fd0802f49b024dc8c429076cf515cc03639",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/package.py": "2464b8fa1387ee9732659a78b3a6171f5ee95f78b77bdae1c4d87d923d583740",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/pilot.py": "b6998c9eb3af4c7386c0c3d7f581a351a57cac416f53c5da63b1f03433107ee2",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/request.json": "ad2efa756e80dca1e8b442e4d456defb9b2c0028d3bdb3f05a044985ac9b60c8",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-logical-grant-key-native/candidate.sql": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-logical-grant-key-native/contract.py": "c45ce2a527c23a5f7f497ffee790baeacccbdbb7be2df199dc54a53de14b21bd",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-logical-grant-key-native/stock.sql": "31597202cdd0c8d03c8472e51362f0cfc6a988ca28a8e6e29fb1c69825c8ec1a",
+    "tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/README.md": "ba6d9cf5ba016cc55c5b69d0a69f75c67503ed496d97835b63f985f9b1b43f6e",
+    "tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/controller.py": "9a4eb268aaae1bf0108d0e5531060343f89fd6a7f6521d66204bb07cf174b299",
+    "tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/launch.sh": "c3b5f22b061c7cddec016ce0e0ab38203ef10cfba398f7b5424f68ad0c33a0f5",
+    "tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/offline.json": "aacddb435f64137eb4d94f3bb2b22a227b1300bc6a5b05c5aa957c032307b005",
+    "tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/render_short.py": "f57feb3e5e85477e9dbec58043c2a2a433586fc8fdded4bb6b40d5f7e6944a7e",
+    "tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/scoring.py": "1af5225dcfb48d28b01e8b9402e009f4020e4df57e75875c4af11bc2c4acc008",
+    "tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/short_arm.py": "9177d9f726baa6097119a6180f9df646b9c10c695f794d316767448697600040",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "profile": {
+    "app_tls_sessions": 8,
+    "jobs": 128,
+    "postgres_connection_cap": 20,
+    "runners": 1,
+    "slots": 16
+  },
+  "ready": true,
+  "replay_command": "python3 -B tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/controller.py replay",
+  "schedule": [
+    {
+      "group": 0,
+      "order": [
+        "proof-immediate",
+        "proof-fixed",
+        "proof-refill"
+      ],
+      "phases": [
+        "diagnostic"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 1,
+      "order": [
+        "immediate-a",
+        "fixed",
+        "refill",
+        "immediate-b"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 2,
+      "order": [
+        "immediate-b",
+        "refill",
+        "fixed",
+        "immediate-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "short"
+    }
+  ],
+  "timing_command": "python3 -B tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-refill/controller.py timing",
+  "timing_window_minutes": 15
+}
