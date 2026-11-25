@@ -23,3 +23,13 @@ The same pre-submit calculation on the earlier 2×32 Direct4 pilot finds 3.1–6
 Those arms recorded 132–136 SQL calls in the full idle check. The independent 8×8 series changed runner count, login roster and claim traffic along with scheduler supply. The observed CPU difference across deployments cannot be assigned to the worker timer. The candidate needs to count how often an empty worker actually reaches its timed park during enqueue and drain, and measure whether fewer expirations advance durable work. [Two-runner capture hashes and counters](before-submit-two-runner.json)
 
 Run `python3 -B before_submit_cpu.py --two-runner` with Git object `cb4f825c1` available to reproduce the comparison.
+
+## PostgreSQL work before submission
+
+Across all 20 measured Mesh arms, the 32 queue backends had accumulated 350–380 CPU-ms in whole kernel ticks by the pre-submit read. The 32 application backends each showed zero whole ticks, and the producer backend showed one 10 ms tick in every arm. The same-image OFF controls and the earlier Mesh runner had comparable queue totals. These readings cover backend startup and the idle observation. Their last frame ended 5–19 µs before submit.
+
+In rotation 2, the later queue-lock errors identify all eight PostgreSQL claim connections by PID. They already accounted for 29 of B’s 37 queue ticks before the first job was submitted. The subsequent 22 lock timeouts occurred during drain. Other rotations lack the errors needed for this PID attribution. The result identifies a contributor to pre-submit work that a scheduler change cannot eliminate directly.
+
+Each backend reports user and system time at 10 ms resolution, so zero whole ticks can conceal work. The host comparison starts after these sessions were created. Subtracting the lifetime queue totals from that shorter interval would assign the wrong CPU cost to the Mesh runtime. [Per-role tick distributions for all 20 arms](pre-submit-session-ticks.json) · [CPU during the workload](CLAIM-SESSION-CPU.md)
+
+Reproduce the PostgreSQL distributions with `python3 -B claim_session_ticks.py --controls --before-submit`.

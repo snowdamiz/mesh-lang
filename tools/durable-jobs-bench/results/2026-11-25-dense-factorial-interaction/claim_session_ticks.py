@@ -10,7 +10,7 @@ from grant_capacity_frontier import EVIDENCE, SEAL
 from late_capacity_io import queue_timeout_records
 
 
-def measure(block, score, lane="measured-B"):
+def measure(block, score, lane="measured-B", before_submit=False):
     raw = (block / lane / "measured-mesh/raw.tar.gz").read_bytes()
     assert sha256(raw).hexdigest() == score["raw_sha256"]
     with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
@@ -32,9 +32,11 @@ def measure(block, score, lane="measured-B"):
     assert first["end_us"] <= submit <= commit < settled <= last["begin_us"]
     ticks = Counter()
     by_pid = {}
+    lifetime = {}
     for pid, role in roles.items():
         a, b = (frame["rows"][str(pid)] for frame in (first, last))
         assert a[:2] == b[:2] and a[0] == cpu["postmaster"] and b[2] >= a[2]
+        lifetime[pid] = a[2]
         by_pid[pid] = b[2] - a[2]
         ticks[role] += by_pid[pid]
     assert sum(ticks.values()) * 10 == score["pg_cpu_ms"]
@@ -43,6 +45,16 @@ def measure(block, score, lane="measured-B"):
         assert roles[pid] == "parity_subject" and commit <= stamp <= stamp + 999 <= settled
         claims[pid] += 1
     assert len(claims) <= 8
+    if before_submit:
+        histograms = {}
+        for role in sorted(set(roles.values())):
+            histograms[role] = dict(sorted(Counter(
+                lifetime[pid] for pid in roles if roles[pid] == role
+            ).items()))
+        return dict(raw_sha256=score["raw_sha256"], clock_ticks_per_second=cpu["clock_ticks"],
+                    census_end_before_submit_us=submit - first["end_us"],
+                    lifetime_ticks_histograms=histograms,
+                    later_identified_claim_sessions={pid: lifetime[pid] for pid in sorted(claims)})
     result = dict(raw_sha256=score["raw_sha256"], early_census=len(roster), ready_census=len(ready),
                   role_cpu_ticks=dict(ticks),
                   identified_claim_backends=len(claims), timeouts=dict(Counter(site for _, site, _ in records)))
@@ -61,7 +73,7 @@ def measure(block, score, lane="measured-B"):
     return result
 
 
-def replay(controls=False):
+def replay(controls=False, before_submit=False):
     release = json.loads((EVIDENCE / "controller-release.json").read_bytes())
     assert release["request_sha256"] == SEAL and release["exit_status"] == 0
     scores = json.loads((EVIDENCE / "scored-before-release.json").read_bytes())["groups"]
@@ -75,7 +87,7 @@ def replay(controls=False):
             arm = "measured-" + lane
             score = scores[str(n)][arm]
             assert score == reconciled[arm]
-            rows[lane] = measure(block, score, arm)
+            rows[lane] = measure(block, score, arm, before_submit)
         results[n] = rows if controls else rows["B"]
     return results
 
@@ -83,4 +95,6 @@ def replay(controls=False):
 if __name__ == "__main__":
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("--controls", action="store_true", help="Include both OFFs and the reference")
-    print(json.dumps(replay(parser.parse_args().controls), indent=2, sort_keys=True))
+    parser.add_argument("--before-submit", action="store_true", help="Show lifetime CPU ticks at the early census")
+    args = parser.parse_args()
+    print(json.dumps(replay(args.controls, args.before_submit), indent=2, sort_keys=True))
