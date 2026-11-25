@@ -1,0 +1,57 @@
+{
+  "id": "2026-11-25-slow-river-readiness-proof",
+  "kind": "SETUP",
+  "requested_window_minutes": 30,
+  "build": true,
+  "build_location": "fenced native controller, Linux AMD64",
+  "policy": "pglz",
+  "profile": "slow",
+  "input_size": 512,
+  "hold_ms": 100,
+  "cap": 71,
+  "cpus": [
+    0,
+    1
+  ],
+  "runners": 2,
+  "slots_per_runner": 32,
+  "groups": [
+    0
+  ],
+  "phases": [
+    "diagnostic"
+  ],
+  "arms": 7,
+  "orders": {
+    "0": [
+      "mesh",
+      "retained-river",
+      "lazy-a",
+      "warm-river",
+      "lazy-b",
+      "oban",
+      "underready-river"
+    ]
+  },
+  "requires": [
+    "2026-11-25-slow-lz4-unfused-2x32-readable-code-v1-proof"
+  ],
+  "source_manifest_sha256": "c58da20e160be75a95106b3f81eefb8c70ff8c611f21eecbec75f9d261480bfd",
+  "inventory_sha256": "f304df563359b170842a0aafae3ef7c62268e5f105696ac9c9138c40b3ac4458",
+  "codec_proof_release_sha256": "a6fc956ae2db6db4f79abc00fa58fdafeef7f6153a45ef3af8f7f11a0e391118",
+  "bundle_sha256": {
+    "adapter.py": "fb966cb159e7fe3fd3fb083bea6861e0d61948a1c5cd00406c8b901bfde399b0",
+    "cap71_adapter.py": "31ec825ef073668d279cce9eda193aa8f016027aacfc3077fb2f75bde7ce8ad0",
+    "native-run.sh": "22da9375efd872fcdff590c71fcba63e713f50af274ffc3792f31dec824fb311",
+    "overlay.py": "c7867f714ef6f85fc34366582340ee2f48119c96946f6e13749de1eaf2b4fca3",
+    "slow-river.sql": "ba0f572751f4c1b3d4fd25edeaa769fde80cdef9d848b7bfe5bad9c832f26275",
+    "stock_codec.py": "7652f18b6ba8fed3a33c41ebda8c4ed645668403b86c3052d2341b12a9e215b1",
+    "storage.py": "4c3769dc6c87cb232275348fbd494195cc5c3f8e8c382aa7ec77e3ff016b922c",
+    "strict.py": "50d1bbf017fc3f4be18ea32a24db7e629a60c3b7b08c1fe774fe00cc97b3d62c"
+  },
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-readiness/evidence/proof",
+  "offline_check_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-readiness/controller.py check",
+  "command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-readiness/controller.py proof",
+  "replay_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-readiness/controller.py replay-proof",
+  "timing_enrollment": false
+}

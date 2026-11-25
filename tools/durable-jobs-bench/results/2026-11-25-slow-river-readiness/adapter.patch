@@ -1,0 +1,80 @@
+--- a/main.go
++++ b/main.go
+@@ -70,0 +71,3 @@
++		if warmMode(os.Getenv(readinessEnv)) && (runtime.GOOS != "linux" || slots != 32 || index >= 2) {
++			return errors.New("warm readiness requires a SLOW 32-slot Linux worker")
++		}
+@@ -84,0 +88,4 @@
++	if mode := os.Getenv(readinessEnv); mode != "" &&
++		((mode != "cold" && !warmMode(mode)) || *name != "slow" || !*single || *smoke || runtime.GOOS != "linux") {
++		return errors.New("pool readiness requires cold or warm readiness, a single SLOW arm, and Linux")
++	}
+@@ -124,0 +132,8 @@
++	var producerStart time.Time
++	var producerBefore processCPU
++	if os.Getenv(readinessEnv) != "" {
++		if producerBefore, err = readProcessCPU(os.Getpid()); err != nil {
++			return err
++		}
++		producerStart = time.Now()
++	}
+@@ -133,0 +149,12 @@
++	}
++	if !producerStart.IsZero() {
++		elapsed := time.Since(producerStart).Microseconds()
++		after, err := readProcessCPU(os.Getpid())
++		if err != nil {
++			return err
++		}
++		if err := writeJSON(filepath.Join(out, "producer-startup.json"), map[string]any{
++			"elapsed_us": elapsed, "before": producerBefore, "after": after,
++		}); err != nil {
++			return err
++		}
+@@ -235,0 +263,16 @@
++	mode := os.Getenv(readinessEnv)
++	var readiness *startupEvidence
++	if mode != "" {
++		readiness = &startupEvidence{Mode: mode, ProducerPID: os.Getpid()}
++		start := time.Now()
++		defer func() {
++			if runErr != nil {
++				runErr = errors.Join(runErr, writeJSON(filepath.Join(out, "startup-partial.json"), readiness))
++			}
++		}()
++		if err := readiness.capture(ctx, pool, schema, "before_runner", start); err != nil {
++			return err
++		}
++		// Record the origin independently of the census that preceded the fork.
++		readiness.start = time.Now()
++	}
+@@ -257,0 +301,5 @@
++	}
++	if readiness != nil {
++		for _, worker := range runners {
++			readiness.RunnerPIDs = append(readiness.RunnerPIDs, worker.cmd.Process.Pid)
++		}
+@@ -284 +332,5 @@
+-	if err := pause(ctx, idleInterval); err != nil {
++	if readiness == nil {
++		if err := pause(ctx, idleInterval); err != nil {
++			return err
++		}
++	} else if err := readiness.observeIdle(ctx, pool, schema); err != nil {
+@@ -288,0 +341,8 @@
++	}
++	if readiness != nil {
++		if err := readiness.capture(ctx, pool, schema, "before_submit", readiness.start); err != nil {
++			return err
++		}
++		if err := writeJSON(filepath.Join(out, "startup.json"), readiness); err != nil {
++			return err
++		}
+--- a/worker.go
++++ b/worker.go
+@@ -124,0 +125,5 @@
++	if warmMode(os.Getenv(readinessEnv)) {
++		if err := prewarmSharedPool(signals, pool, slots, index, filepath.Dir(readyPath)); err != nil {
++			return err
++		}
++	}
