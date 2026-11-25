@@ -1,0 +1,96 @@
+{
+  "postgres": "17.11",
+  "profile": "noop",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "layouts": {
+    "stock": {
+      "guard": "t",
+      "available": {
+        "rows": 16,
+        "tuple_min": 1285,
+        "tuple_max": 1285,
+        "args_min": 1110,
+        "args_max": 1110,
+        "compressed": 0
+      },
+      "executing": {
+        "rows": 16,
+        "tuple_min": 1317,
+        "tuple_max": 1317,
+        "args_min": 1110,
+        "args_max": 1110,
+        "compressed": 0
+      },
+      "completed": {
+        "rows": 16,
+        "tuple_min": 1301,
+        "tuple_max": 1301,
+        "args_min": 1110,
+        "args_max": 1110,
+        "compressed": 0
+      }
+    },
+    "external": {
+      "guard": "t",
+      "available": {
+        "rows": 16,
+        "tuple_min": 1285,
+        "tuple_max": 1285,
+        "args_min": 1110,
+        "args_max": 1110,
+        "compressed": 0
+      },
+      "executing": {
+        "rows": 16,
+        "tuple_min": 1317,
+        "tuple_max": 1317,
+        "args_min": 1110,
+        "args_max": 1110,
+        "compressed": 0
+      },
+      "completed": {
+        "rows": 16,
+        "tuple_min": 1301,
+        "tuple_max": 1301,
+        "args_min": 1110,
+        "args_max": 1110,
+        "compressed": 0
+      },
+      "oversized_control": {
+        "tuple_bytes": 213,
+        "args_bytes": 18
+      }
+    },
+    "external512": {
+      "guard": "f",
+      "available": {
+        "rows": 16,
+        "tuple_min": 1285,
+        "tuple_max": 1285,
+        "args_min": 1110,
+        "args_max": 1110,
+        "compressed": 0
+      },
+      "executing": {
+        "rows": 16,
+        "tuple_min": 1317,
+        "tuple_max": 1317,
+        "args_min": 1110,
+        "args_max": 1110,
+        "compressed": 0
+      },
+      "completed": {
+        "rows": 16,
+        "tuple_min": 1301,
+        "tuple_max": 1301,
+        "args_min": 1110,
+        "args_max": 1110,
+        "compressed": 0
+      },
+      "oversized_control": {
+        "tuple_bytes": 213,
+        "args_bytes": 18
+      }
+    }
+  }
+}
