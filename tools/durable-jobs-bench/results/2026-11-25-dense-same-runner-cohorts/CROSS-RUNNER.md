@@ -33,3 +33,21 @@ Subtracting drain from submit gives the observed producer window. Holding Mesh d
 | 5 | 204.933 | 73.140 | −51.494 | +124.634 |
 
 Matching River's enqueue time exactly would put Mesh ahead only in rotation 1. Even instantaneous enqueue leaves Mesh short of a 20% submit-throughput lead over River in every rotation. That deadline is River submit divided by 1.2 for the same 1,024 jobs. Against Oban, Mesh already won both clocks in rotations 1, 3, 4 and 5. In rotation 2, Mesh drain alone exceeded Oban's full submit time by 578.288 ms. These budgets retain the original schedules and do not estimate how a changed producer would affect follow-on claims.
+
+## Would a shared terminal receipt arrive too late for the next grant?
+
+For each disjoint pair from the 1 ms search, retain its terminal seats at both owners until the later terminal commit plus a hypothetical delivery delay. Keep the other commitments and grants at their observed times. Check each owner independently against its actual eight seats. The count below identifies pairs for which at least one later grant would require a change in width or timing. Each pair is assessed alone. Unaffected terminal commits get instant local credit, and the calculation uses the latest possible grant timestamp within its millisecond. These choices can hide a conflict. The ledger cannot establish that actors had exited in time to form a real pair.
+
+| Rotation | Pairs | Conflicts at 1 ms | At 4 ms | At 8 ms | At 16 ms |
+|---|---:|---:|---:|---:|---:|
+| 1 | 62 | 0 | 0 | 4 | 16 |
+| 2 | 130 | 0 | 1 | 9 | 17 |
+| 3 | 60 | 0 | 1 | 4 | 21 |
+| 4 | 69 | 0 | 0 | 1 | 15 |
+| 5 | 71 | 0 | 1 | 5 | 19 |
+
+The lost supply is sensitive to receipt latency. One millisecond produced zero forced grant changes under these assumptions. At 8 ms, 23 of 392 pairs crossed an observed seat limit. The public writer's existing 8 ms collection deadline already includes time spent waiting for earlier exits. The calculation gives no basis for granting another 8 ms after handoff.
+
+The same replay integrates ledger states during effects 256–768 in B, both same-image controls and the reference. Slow B rotation 2 spent **1,238 ms** in that window. A time average of **15.05 jobs** had entered their handler and had yet to commit the first write, versus **5.93 and 5.02** in its same-image controls (592 and 628 ms). Only **0.74 of eight runners** on average had exclusively post-effect jobs awaiting settlement, versus **1.75 and 1.79** in the controls. Moving each claim stamp to the latest possible point before entry changes slow B's latter value to 0.75. These are overlapping jobs and runner states. Settlement can affect future admission, but a terminal-only backlog cannot by itself explain the observed slowdown. The SQL and host readbacks independently record queue-lock timeouts and higher device activity in this rotation. [Native phase analysis](../2026-11-25-dense-factorial-interaction/LATE-CAPACITY-PEER-PHASES.md)
+
+The [archive calculation](middle_supply.py) reads 20 hash-bound measured arms. The [per-arm output](middle-supply.json) includes both claim-clock endpoints, the four job stages, and the delay sensitivity.
