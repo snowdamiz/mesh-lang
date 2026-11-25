@@ -1,0 +1,7 @@
+{
+  "from_utc": "2026-11-25T19:03:43Z",
+  "id": "2026-11-25-slow-lz4-unfused-2x32-readable-code-v1-pilot",
+  "kind": "TIMING",
+  "packet_sha256": "38bc08827e3457bfeb2a53f819103643b5c4eef2570316e8e5f217fbab81c866",
+  "until_utc": "2026-11-25T19:38:43Z"
+}

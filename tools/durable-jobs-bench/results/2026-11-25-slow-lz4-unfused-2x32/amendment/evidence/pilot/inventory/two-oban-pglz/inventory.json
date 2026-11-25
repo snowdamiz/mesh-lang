@@ -1,0 +1,180 @@
+{
+  "cpus": [
+    0,
+    1
+  ],
+  "engines": {
+    "go": {
+      "argv": [
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run",
+        "--binary",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/river-bench",
+        "--pg-bin",
+        "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin",
+        "--scratch",
+        "/var/lib/durable-jobs-bench/river/scratch"
+      ],
+      "artifact_sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+      "evidence_globs": [
+        "input.json",
+        "runtime.json",
+        "counters.json",
+        "metrics.json",
+        "river/*",
+        "river/*/*"
+      ],
+      "postgres_storage": "/var/lib/durable-jobs-bench/river/scratch",
+      "run_as": "nobody",
+      "verified_files": {
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/river-bench": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/SHA256SUMS": "20ac691e53f71586c4904fc4455ff83d8b2140a3ba263e63f7ab6228cbb581f1",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/scripts/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/db.go": "5b46edba58b4bbf318759cef2b5fc5540aae4f5f15b2df9083b875525c89ba85",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/evidence.go": "9dc4522dd46ff8787d10d1413528284986d419a091271f0cc8cc0d660f754621",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/go.mod": "b50f560f8a406715b0796e6729837fa21b14595a897a33560afd7c590ca840da",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/go.sum": "d0b5ac110be4112c71271ad2d3f126667f185f41cff7db605e99a5eb4b3d8f4b",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/main.go": "0e9c26aed160e6313e30c7ee8562a14d14cde94f89f1bf0756fad68e26128da0",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/prepare_input.py": "3536fefd1492b22389ab083422739fd30549d33c75f76bc4deb8629ef1d73a7f",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/raw_evidence.py": "94ad94c58e3f8faf63b3c4b06030a53bbd552254f2e87947f65cc1821974bf7e",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run": "0a770416fc9433c76d5f5d5cf2ef87e2af4f20a61d0fa4c7e98d5715d781345d",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run.py": "e97ede452fb9df9c62fc9b12c914dbb2b5c92b2cd64165b7d11ac5e2dcc5d030",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/worker.go": "6c0f7b8e817a5cd05e98a72af57e48f0c9b5f4bcf283c057e246a9f8fa1e6d69",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+        "/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/wrapper-source.tar.gz": "140547e8e8202bdf446c7eaffa575991b3220cbfeef31192b990c91e646e2f8a"
+      },
+      "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4"
+    },
+    "mesh": {
+      "argv": [
+        "/usr/bin/env",
+        "NATIVE_JOBS_ARTIFACTS=/var/lib/durable-jobs-bench/native/builds/mesh-v1",
+        "/var/lib/durable-jobs-bench/native/source-v5/tools/durable-jobs-bench/native/run",
+        "mesh"
+      ],
+      "artifact_sha256": "a562897e895c87251018ec2111e6e61adfb80e822db3a5f19c586581cc7e7dd3",
+      "evidence_globs": [
+        "*.json",
+        "*.log"
+      ],
+      "postgres_storage": "/var/lib/durable-jobs-bench/native/scratch",
+      "verified_files": {
+        "/var/lib/durable-jobs-bench/native/source-v5/proof/jobs-parity/linux-regression/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "/var/lib/durable-jobs-bench/native/source-v5/proof/jobs-parity/linux-regression/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "/var/lib/durable-jobs-bench/native/source-v5/proof/jobs-parity/linux-regression/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+        "/var/lib/durable-jobs-bench/native/source-v5/proof/jobs-parity/linux-regression/trial.py": "da5f0ec52227fb24ec4613a571ec0d201d8a626b9bc7a8986823eb48e1cfb26a",
+        "/var/lib/durable-jobs-bench/native/source-v5/scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "/var/lib/durable-jobs-bench/native/source-v5/scripts/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "/var/lib/durable-jobs-bench/native/source-v5/tools/durable-jobs-bench/native/arm.py": "95766ac87a9f04dfdd253af52a04d83438d970da7d01c6cdadfea682cebb473e",
+        "/var/lib/durable-jobs-bench/native/source-v5/tools/durable-jobs-bench/native/ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
+        "/var/lib/durable-jobs-bench/native/source-v5/tools/durable-jobs-bench/native/run": "49159d1aeb84c335ed8e8e0f7f0f82d4aad7fc32f33bc0544fb11010972d223c"
+      },
+      "version": "3f69b150820fd01ba716d533be4f2eedea25ed27"
+    },
+    "oban": {
+      "argv": [
+        "/bin/bash",
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-lz4-unfused-2x32-b71129616c908cd3-readable-code-v1/native-run.sh",
+        "oban",
+        "pglz",
+        "/var/lib/durable-jobs-bench/native/source-v5/tools/durable-jobs-bench/native/arm.py",
+        "/var/lib/durable-jobs-bench/native/builds/oban-v2",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/bin"
+      ],
+      "artifact_sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+      "evidence_globs": [
+        "*.json",
+        "*.log",
+        "codec-postgres.json",
+        "payload-storage.json",
+        "physical-postgres.log",
+        "startup-clock.json"
+      ],
+      "postgres_storage": "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/scratch",
+      "verified_files": {
+        "/var/lib/durable-jobs-bench/native/builds/oban-v2/oban": "3c6e0761a7980beb1b4eb8b7739afd34959e9ba3ee964b61a05fb6ac59b20c8e",
+        "/var/lib/durable-jobs-bench/native/builds/oban-v2/oban.json": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/stage/bridge.sh": "7e3da33a515be8755cc49471d0a33344bf1c005dedbf226422d4a30cf99a5df1",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/stage/build-pg.sh": "0bd0fe4d2cefe698112bb267024c91f6c2a74f3e712cca92697f897d7acfa16e",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/stage/native-run": "fe17301a3af9cde8d9d48470ea0cfeec948a850e739e5c8368ec20aa433e21fe",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/stage/overlay.py": "c7867f714ef6f85fc34366582340ee2f48119c96946f6e13749de1eaf2b4fca3",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/stage/slow-river.sql": "ba0f572751f4c1b3d4fd25edeaa769fde80cdef9d848b7bfe5bad9c832f26275",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/stage/stock.sha256": "f8551ac6aa7df40095b31047796fa91be179769361c2b723837e093ad3fa57c0",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/stage/storage.py": "4c3769dc6c87cb232275348fbd494195cc5c3f8e8c382aa7ec77e3ff016b922c",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/stage/strict.py": "50d1bbf017fc3f4be18ea32a24db7e629a60c3b7b08c1fe774fe00cc97b3d62c",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/bin/initdb": "5a0513c366431c906475cd793c1517b4c3f46b6b1537d0611024c1eb6d86c6a2",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/bin/pg_config": "005293a7ec7a32ab2d7f9dba403b79029e8b9621afc42f001ea7ea799daf148a",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/bin/pg_ctl": "2727bdbc3b8e27320face66a59ba50ca7bae8049f016f20ee5bf6c2122074f25",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/bin/postgres": "3f273b467aa57364f603a6758de24f1937098bddfcd5ef8b65c90df9caaec4b8",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/bin/psql": "d765c290c53f033fc98d3c020e85bc6818469825c073dca815b8dc4435480fb3",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/lib/hstore.so": "27ad2c7595c899194f44f675d8aa67b5a15de43a556557dc3f15782fd23f02a4",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/lib/pg_stat_statements.so": "eeb73f458e7d6ee4ace5516a69344c81a06186b934d2a305b9addff6455bbdc3",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/lib/pgcrypto.so": "158f3369f30543d1944834446676eb64e76de8225d9bb56eeadc52da1acb53ec",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/hstore--1.1--1.2.sql": "8e166794ad480bd9141f5627b838d9c9076a76f63237c9058b836c36f0600df7",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/hstore--1.2--1.3.sql": "0753c346e86147cb7767f603310b774cff6affb11e65c2d5caf173cf0766ad2c",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/hstore--1.3--1.4.sql": "7e8df8d33964ce7ab39d32be90e94b64f9776588fe43b53e70077a3e58ec95f9",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/hstore--1.4--1.5.sql": "045d0def508a248fd0049f1bf99bbbec9bccff523f31514ffa3f7daf46b11de6",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/hstore--1.4.sql": "bcd0328004e985554dc3831cb0db92da3f45bec48b6501fce962187b7a2c2bbf",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/hstore--1.5--1.6.sql": "957ae4e39efc2841766c59e2ece1bc431d87a8cfe39e8433b70ba08cf3e3b8d5",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/hstore--1.6--1.7.sql": "0d410440dc457b525626b0fd6f5a0262dd233ec6f299e5c3ca7b090d2f9576db",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/hstore--1.7--1.8.sql": "49bbb159d5f67e86ddcb93d11a9d444f6dd70bcb03a8400ce8c3664fbb974dba",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/hstore.control": "1df9f2b3059cd77e38920dd35235161b3ad336fc71198c66120d120262ad086d",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/pg_stat_statements.control": "def533a679b8033cffb2e07949c8f65b13805c3a13de2d4b3218a6404eee51c9",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/pgcrypto--1.0--1.1.sql": "530abf4709c3010f600312b513cafd2c169b8d8810b59f54ad4da5e576689ec3",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/pgcrypto--1.1--1.2.sql": "d33b87d052730a764df864d59f16f09686c0f6c8883184d60784c02702ab1af3",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/pgcrypto--1.2--1.3.sql": "dfc2f4de2ca4eef79c4b24e25562b8d1948f5a6571a916b6b4c81b07d14dfbc6",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/pgcrypto--1.3.sql": "84f8eee1d6b03982fac596988b46bf89d5d5d8790d3133783eedad38bc7d8d38",
+        "/var/lib/durable-jobs-bench/native/slow-lz4-isolated-4861621a5aa623c2/work/pgsql-17.11-lz4-537512904744/share/extension/pgcrypto.control": "2a6c81eef34ae6cee9ff5b557f3b6285db7fdd7bc76ee57798e82c945c61c939",
+        "/var/lib/durable-jobs-bench/native/source-v5/proof/jobs-parity/linux-regression/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "/var/lib/durable-jobs-bench/native/source-v5/proof/jobs-parity/linux-regression/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "/var/lib/durable-jobs-bench/native/source-v5/proof/jobs-parity/linux-regression/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+        "/var/lib/durable-jobs-bench/native/source-v5/proof/jobs-parity/linux-regression/trial.py": "da5f0ec52227fb24ec4613a571ec0d201d8a626b9bc7a8986823eb48e1cfb26a",
+        "/var/lib/durable-jobs-bench/native/source-v5/scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "/var/lib/durable-jobs-bench/native/source-v5/scripts/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "/var/lib/durable-jobs-bench/native/source-v5/tools/durable-jobs-bench/native/arm.py": "95766ac87a9f04dfdd253af52a04d83438d970da7d01c6cdadfea682cebb473e",
+        "/var/lib/durable-jobs-bench/native/source-v5/tools/durable-jobs-bench/native/ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
+        "/var/lib/durable-jobs-bench/native/source-v5/tools/durable-jobs-bench/native/run": "49159d1aeb84c335ed8e8e0f7f0f82d4aad7fc32f33bc0544fb11010972d223c",
+        "/var/lib/durable-jobs-bench/native/toolchain/elixir-1.20.4/bin/elixir": "5cb23d89a78f75589b06fade3097e217b77e63416d61c1800f674579748c4307",
+        "/var/lib/durable-jobs-bench/native/toolchain/otp-29.1.1/lib/erlang/erts-17.1/bin/beam.smp": "921aeaddb61ce696db24621eaece52220b16993d3fe591920a271bf3dd720206",
+        "/var/lib/durable-jobs-bench/native/toolchain/otp-29.1.1/lib/erlang/erts-17.1/bin/erl_child_setup": "03377628cfe60f6e71ce8d41ee6a2b7b7d0428f18023e6053d384bcd4ce9a905",
+        "/var/lib/durable-jobs-bench/native/toolchain/otp-29.1.1/lib/erlang/erts-17.1/bin/inet_gethost": "cac6fa8678a22150dc3eb9e9884954b6da9dbbeac7682b9b8bf280812c7b7efa",
+        "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/initdb": "ea7da2e0c18fc05b667a1ca8a4d6c0f188f0ec5b4512840d573132c562d1667a",
+        "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/pg_ctl": "bf9fff8aa4d1e2ab6b0ca8c7ebaaf1958c7ff66848baf5f2c4a3e26f1aacc171",
+        "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres": "b70863988c4762b6b914ac54d194fa5a1723201100d8155caf7781edba29faa1",
+        "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/psql": "af342c2e1dd43eba72ecd0b04cd056baec744dcff7978742531eb33eb2e85c02",
+        "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/lib/pg_stat_statements.so": "0cb86ff6113361a6e677309642c97a2779d4234d5b615ef8e740d7d9f8a4d637",
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-lz4-unfused-2x32-b71129616c908cd3-readable-code-v1/adapter.py": "7652f18b6ba8fed3a33c41ebda8c4ed645668403b86c3052d2341b12a9e215b1",
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-lz4-unfused-2x32-b71129616c908cd3-readable-code-v1/cap71_adapter.py": "31ec825ef073668d279cce9eda193aa8f016027aacfc3077fb2f75bde7ce8ad0",
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-lz4-unfused-2x32-b71129616c908cd3-readable-code-v1/native-run.sh": "9e58cf96eb9b9640f808b1e589de53b4170e4d3d3b6de54bb722eadfb440d347",
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-lz4-unfused-2x32-b71129616c908cd3-readable-code-v1/overlay.py": "c7867f714ef6f85fc34366582340ee2f48119c96946f6e13749de1eaf2b4fca3",
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-lz4-unfused-2x32-b71129616c908cd3-readable-code-v1/slow-river.sql": "ba0f572751f4c1b3d4fd25edeaa769fde80cdef9d848b7bfe5bad9c832f26275",
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-lz4-unfused-2x32-b71129616c908cd3-readable-code-v1/storage.py": "4c3769dc6c87cb232275348fbd494195cc5c3f8e8c382aa7ec77e3ff016b922c",
+        "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-lz4-unfused-2x32-b71129616c908cd3-readable-code-v1/strict.py": "50d1bbf017fc3f4be18ea32a24db7e629a60c3b7b08c1fe774fe00cc97b3d62c"
+      },
+      "version": "2.24.2"
+    },
+    "rust": {
+      "argv": [
+        "/var/lib/durable-jobs-bench/apalis/source-v1/tools/durable-jobs-bench/rust/run",
+        "--pg-bin",
+        "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin",
+        "--scratch",
+        "/var/lib/durable-jobs-bench/apalis/scratch"
+      ],
+      "artifact_sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+      "evidence_globs": [
+        "*.json",
+        "*.log",
+        "dependencies.txt"
+      ],
+      "postgres_storage": "/var/lib/durable-jobs-bench/apalis/scratch",
+      "run_as": "nobody",
+      "verified_files": {
+        "/var/lib/durable-jobs-bench/apalis/source-v1/tools/durable-jobs-bench/rust/run": "0a770416fc9433c76d5f5d5cf2ef87e2af4f20a61d0fa4c7e98d5715d781345d",
+        "/var/lib/durable-jobs-bench/apalis/source-v1/tools/durable-jobs-bench/rust/run.py": "05c94874455c7c48e0ca6e9204b412aa67d41096b6cf314c0d4a9f3a8fdaf0f7"
+      },
+      "version": "apalis 1.2.0 / apalis-postgres 1.2.0"
+    }
+  }
+}
