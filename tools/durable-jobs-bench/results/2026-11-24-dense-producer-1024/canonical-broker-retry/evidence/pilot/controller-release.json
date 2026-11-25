@@ -1,0 +1,15 @@
+{
+  "attempts": [
+    0
+  ],
+  "exit_status": 0,
+  "group_command": "timing_command",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-dense-producer-1024-pilot-canonical-broker",
+  "receipt": "tools/durable-jobs-bench/results/2026-11-24-dense-producer-1024/canonical-broker-retry/evidence/pilot",
+  "released_at": "2026-11-25T02:56:53.508764+00:00",
+  "started": "2026-11-25T02:54:47.812310+00:00"
+}
