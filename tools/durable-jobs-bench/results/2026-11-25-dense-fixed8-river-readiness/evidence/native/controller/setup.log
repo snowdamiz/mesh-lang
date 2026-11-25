@@ -1,0 +1,4 @@
+diagnostic-combined diagnostic mesh: 0
+diagnostic-river-2x32 diagnostic go: 0
+diagnostic-river-cold diagnostic go: 0
+diagnostic-river-warm diagnostic go: 0

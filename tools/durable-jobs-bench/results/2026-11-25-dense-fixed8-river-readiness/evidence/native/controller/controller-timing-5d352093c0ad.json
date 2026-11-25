@@ -1,0 +1,17 @@
+{
+  "attempts": [
+    0
+  ],
+  "exit_status": 0,
+  "group_command": "dispatch",
+  "groups": [
+    3,
+    4,
+    5,
+    6
+  ],
+  "id": "2026-11-25-dense-fixed8-river-readiness-rest",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-fixed8-river-readiness/evidence/native",
+  "released_at": "2026-11-25T04:22:36.694989+00:00",
+  "started": "2026-11-25T04:18:02.406845+00:00"
+}

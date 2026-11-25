@@ -1,0 +1,14 @@
+{
+  "group": 1,
+  "order": [
+    "combined",
+    "river-2x32",
+    "river-cold",
+    "river-warm"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}

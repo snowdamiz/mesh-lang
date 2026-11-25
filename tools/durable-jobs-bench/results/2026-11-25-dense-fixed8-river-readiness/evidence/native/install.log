@@ -1,0 +1,24 @@
+ 04:14:53 up 1 day, 12:37,  1 user,  load average: 0.67, 1.29, 0.97
+/var/lib/durable-jobs-bench/dense-matched-topology-v1/peer-arm.py: OK
+/var/lib/durable-jobs-bench/dense-matched-topology-v1/river-2x32: OK
+/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/river-bench: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/SHA256SUMS: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/scripts/jobs-parity-profiles.json: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/scripts/jobs-parity.py: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/db.go: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/evidence.go: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/go.mod: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/go.sum: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/main.go: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/prepare_input.py: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/raw_evidence.py: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/run.py: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/go/worker.go: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/source/tools/durable-jobs-bench/verify.py: OK
+/var/lib/durable-jobs-bench/river/builds/river-0.51.2-submit-5db25a75-140547e8/wrapper-source.tar.gz: OK
+/var/tmp/mesh-durable-jobs-matrix/2026-11-25-dense-fixed8-logical-factorial-retry-river-2x32/worker.py: OK
+/var/lib/durable-jobs-bench/river/builds/.river-readiness.NWIDhl/stage.gz: OK
+/var/lib/durable-jobs-bench/river/builds/.river-readiness.NWIDhl/river-bench: OK
+/var/lib/durable-jobs-bench/river/builds/dense-readiness-4a83da4c36774135/river-bench: OK
