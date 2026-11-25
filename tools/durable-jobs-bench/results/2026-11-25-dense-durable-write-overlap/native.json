@@ -1,0 +1,134 @@
+{
+  "observed_direct_handlers": [
+    {
+      "caller_return_floor": 919,
+      "group": 1,
+      "ledger_floor": 634,
+      "raw_sha256": "4a1f7ed83fa5985ae00cfc9125025877a79bd5ee634b2e3644d62e2ddf15f3a3"
+    },
+    {
+      "caller_return_floor": 981,
+      "group": 2,
+      "ledger_floor": 714,
+      "raw_sha256": "16ee9b78d718f68bdacbd116f68235174a4f8cab1c930c669528d23f6f2f5542"
+    },
+    {
+      "caller_return_floor": 816,
+      "group": 3,
+      "ledger_floor": 615,
+      "raw_sha256": "2f4cc5c09b9f40f809fb595f4fe90d5d37fdc47ae5c17308e0f91b5a0380bee3"
+    },
+    {
+      "caller_return_floor": 924,
+      "group": 4,
+      "ledger_floor": 648,
+      "raw_sha256": "3c9b0ec2f066fb3b4ccc2191dd1b9a6a275965c8f381fb413a4ca9a5b5a74009"
+    },
+    {
+      "caller_return_floor": 948,
+      "group": 5,
+      "ledger_floor": 674,
+      "raw_sha256": "086921ebb521ef675e7ecd3eaf3a0544967aa407ec0463acacd16af161c4f67f"
+    },
+    {
+      "caller_return_floor": 918,
+      "group": 6,
+      "ledger_floor": 638,
+      "raw_sha256": "685b123fc22b6f9e6c7982baab9434514993873497694b95722cb80de7537ba7"
+    }
+  ],
+  "wal_measurements": [
+    {
+      "cluster_wal_sync": 1694,
+      "engine": "mesh",
+      "group": 1,
+      "middle_contained_writes": 1625,
+      "middle_ms": 891.492,
+      "middle_two_writers_per_runner_floor": 493,
+      "middle_unrestricted_floor": 403,
+      "raw_sha256": "39ad4331af8d27ab31225671c22370f70819b2ce1730dd81d5606293f635532d",
+      "terminal_xids": 875,
+      "two_writers_per_runner_floor": 623,
+      "unrestricted_floor": 506
+    },
+    {
+      "cluster_wal_sync": 459,
+      "engine": "go",
+      "group": 1,
+      "middle_contained_writes": 1351,
+      "middle_ms": 356.027,
+      "middle_unrestricted_floor": 71,
+      "raw_sha256": "260c65e1c9b563a02a8bf5e9dece3fdfbfa3203c299143933dc3fbf4a68bb84c",
+      "terminal_xids": 13,
+      "unrestricted_floor": 94
+    },
+    {
+      "cluster_wal_sync": 932,
+      "engine": "oban",
+      "group": 1,
+      "middle_contained_writes": 1603,
+      "middle_ms": 873.865,
+      "middle_unrestricted_floor": 126,
+      "raw_sha256": "4076af42b0edf23b45bec29b99be75182a6d08782e655ddf0184542673027a82",
+      "terminal_xids": 1024,
+      "unrestricted_floor": 161
+    },
+    {
+      "cluster_wal_sync": 514,
+      "engine": "rust",
+      "group": 1,
+      "middle_contained_writes": 1608,
+      "middle_ms": 515.596,
+      "middle_unrestricted_floor": 81,
+      "raw_sha256": "059db2c59c78f9d5fa4d8833f5fccdab31f7b20e4e7a41fbf7d9fc10054b3593",
+      "terminal_xids": 54,
+      "unrestricted_floor": 108
+    },
+    {
+      "cluster_wal_sync": 1650,
+      "engine": "mesh",
+      "group": 2,
+      "middle_contained_writes": 1633,
+      "middle_ms": 887.886,
+      "middle_two_writers_per_runner_floor": 487,
+      "middle_unrestricted_floor": 391,
+      "raw_sha256": "302a8298251af4af23092b865d3ea64578d8a5cc697d46e900cb04f4185f8634",
+      "terminal_xids": 858,
+      "two_writers_per_runner_floor": 619,
+      "unrestricted_floor": 503
+    },
+    {
+      "cluster_wal_sync": 513,
+      "engine": "go",
+      "group": 2,
+      "middle_contained_writes": 1397,
+      "middle_ms": 340.476,
+      "middle_unrestricted_floor": 70,
+      "raw_sha256": "8dfe3a4800a59ced4e0013e26dc5cdf06993c7109fe537d020bb5e283a6b3998",
+      "terminal_xids": 12,
+      "unrestricted_floor": 99
+    },
+    {
+      "cluster_wal_sync": 1013,
+      "engine": "oban",
+      "group": 2,
+      "middle_contained_writes": 1621,
+      "middle_ms": 863.444,
+      "middle_unrestricted_floor": 132,
+      "raw_sha256": "7cd9e4815607ef3e17059ff37cdaf0e3cf8fd3c47dcaa57708e96a6e15298433",
+      "terminal_xids": 1024,
+      "unrestricted_floor": 165
+    },
+    {
+      "cluster_wal_sync": 507,
+      "engine": "rust",
+      "group": 2,
+      "middle_contained_writes": 1598,
+      "middle_ms": 495.583,
+      "middle_unrestricted_floor": 79,
+      "raw_sha256": "66c8d452249beb33b631d01a0fdc0bdb9ef007e6359c1f8c2dc3586c4b4729a5",
+      "terminal_xids": 56,
+      "unrestricted_floor": 100
+    }
+  ]
+}
