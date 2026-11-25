@@ -1,0 +1,222 @@
+[
+  {
+    "rotation": 1,
+    "raw_sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d",
+    "terminal_xids": 352,
+    "middle_terminal_xids": 172,
+    "gross_exchanges_saved": [
+      {
+        "span_us": 250,
+        "lag_us": 0,
+        "whole": 0,
+        "middle": 0
+      },
+      {
+        "span_us": 250,
+        "lag_us": 1000,
+        "whole": 0,
+        "middle": 0
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 0,
+        "whole": 5,
+        "middle": 4
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 1000,
+        "whole": 5,
+        "middle": 4
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 0,
+        "whole": 40,
+        "middle": 15
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 1000,
+        "whole": 38,
+        "middle": 14
+      }
+    ]
+  },
+  {
+    "rotation": 2,
+    "raw_sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61",
+    "terminal_xids": 552,
+    "middle_terminal_xids": 294,
+    "gross_exchanges_saved": [
+      {
+        "span_us": 250,
+        "lag_us": 0,
+        "whole": 2,
+        "middle": 1
+      },
+      {
+        "span_us": 250,
+        "lag_us": 1000,
+        "whole": 2,
+        "middle": 1
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 0,
+        "whole": 25,
+        "middle": 17
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 1000,
+        "whole": 25,
+        "middle": 17
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 0,
+        "whole": 126,
+        "middle": 72
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 1000,
+        "whole": 126,
+        "middle": 72
+      }
+    ]
+  },
+  {
+    "rotation": 3,
+    "raw_sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3",
+    "terminal_xids": 375,
+    "middle_terminal_xids": 185,
+    "gross_exchanges_saved": [
+      {
+        "span_us": 250,
+        "lag_us": 0,
+        "whole": 0,
+        "middle": 0
+      },
+      {
+        "span_us": 250,
+        "lag_us": 1000,
+        "whole": 0,
+        "middle": 0
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 0,
+        "whole": 4,
+        "middle": 3
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 1000,
+        "whole": 4,
+        "middle": 3
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 0,
+        "whole": 46,
+        "middle": 23
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 1000,
+        "whole": 46,
+        "middle": 23
+      }
+    ]
+  },
+  {
+    "rotation": 4,
+    "raw_sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598",
+    "terminal_xids": 375,
+    "middle_terminal_xids": 197,
+    "gross_exchanges_saved": [
+      {
+        "span_us": 250,
+        "lag_us": 0,
+        "whole": 0,
+        "middle": 0
+      },
+      {
+        "span_us": 250,
+        "lag_us": 1000,
+        "whole": 0,
+        "middle": 0
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 0,
+        "whole": 4,
+        "middle": 1
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 1000,
+        "whole": 3,
+        "middle": 1
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 0,
+        "whole": 56,
+        "middle": 30
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 1000,
+        "whole": 56,
+        "middle": 30
+      }
+    ]
+  },
+  {
+    "rotation": 5,
+    "raw_sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175",
+    "terminal_xids": 381,
+    "middle_terminal_xids": 189,
+    "gross_exchanges_saved": [
+      {
+        "span_us": 250,
+        "lag_us": 0,
+        "whole": 0,
+        "middle": 0
+      },
+      {
+        "span_us": 250,
+        "lag_us": 1000,
+        "whole": 0,
+        "middle": 0
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 0,
+        "whole": 4,
+        "middle": 2
+      },
+      {
+        "span_us": 1000,
+        "lag_us": 1000,
+        "whole": 4,
+        "middle": 2
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 0,
+        "whole": 53,
+        "middle": 26
+      },
+      {
+        "span_us": 4000,
+        "lag_us": 1000,
+        "whole": 52,
+        "middle": 25
+      }
+    ]
+  }
+]

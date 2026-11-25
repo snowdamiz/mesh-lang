@@ -83,3 +83,21 @@ At the proposed 1 ms election delay, 142 pairs fit the modeled windows. The nati
 Even giving full elapsed credit for both original calls and charging zero for the replacement leaves four of five submit deficits open at those class means. Charging one ordinary batch leaves a deficit in all five. These are sensitivities: the eligible calls may differ from the means, the originals can execute concurrently, and the replacement adds XID readback and receipt handling. The statement measurements exclude the separate transaction completion and any downstream change in claim or handler scheduling. A performance case therefore needs measured changes in those costs or in sustained refill.
 
 The [per-rotation calculation](pair-sql.json) includes the original scalar and batch means, pair composition and three election delays. Reproduce it with `python3 -B offer_windows.py --sql` from this directory.
+
+## Can a third owner pay for the explicit COMMIT?
+
+A local terminal call takes one application-to-database exchange. A combined call takes one exchange to prepare and validate the ordinals, then another to commit. Combining two local calls can eliminate a durable transaction while still requiring two exchanges. Combining three can eliminate one exchange. This distinction matters in the corrected native diagnostic. Its original and OFF arms made 359 and 356 terminal executions. ON made 54 scalar, 67 local grouped, 112 crossed and 112 explicit cross-COMMIT executions, totaling 345. The corrected SETUP exited 1. These counts describe the diagnostic itinerary and do not measure a speedup.
+
+For released B, keep every original terminal cohort intact, require distinct owners, preserve width eight, and credit zero publication, election or receipt cost. Treat original terminal commit times within a specified spacing as candidates for a single turn. All members must have completed their application effects and satisfy the previous same-owner terminal and transaction-order bounds before the earliest selected terminal XID. Among all such subsets, maximize the total exchanges saved without using a transaction twice. Other local transactions can occur between members of a subset. The middle calculation restricts all selected commits to the interval from effect 256 to effect 768.
+
+| Rotation | Original local terminal transactions | Exchanges saved, 1 ms spacing, whole / middle | Exchanges saved, 4 ms spacing, whole / middle |
+|---|---:|---:|---:|
+| 1 | 352 | 5 / 4 | 40 / 15 |
+| 2 | 552 | 25 / 17 | 126 / 72 |
+| 3 | 375 | 4 / 3 | 46 / 23 |
+| 4 | 375 | 4 / 1 | 56 / 30 |
+| 5 | 381 | 4 / 2 | 53 / 26 |
+
+At 1 ms, the four ordinary rotations have only one to four gross exchanges to remove during the middle under this model. At 4 ms there is more arithmetic headroom, but those later offers might miss their owners' original deadlines. Recorded commit spacing is a proxy. Different commit service times can put offers close together even when their eventual commits are far apart, or separate offers whose commits were close. The native observe-only snapshots contained zero or one open publisher at each of five observations. Their frequency cannot establish how often a third offer was available between samples. These archives give no basis to lengthen deadlines or enroll a three-owner variation.
+
+[Five-rotation exchange counts](multi-owner.json) · [Exact subset selection](multi_owner.py)
