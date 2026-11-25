@@ -17,11 +17,13 @@ HERE = Path(__file__).resolve().parent
 RESULTS = HERE.parent
 SUITE = RESULTS.parent
 ROOT = SUITE.parent.parent
-ID = HERE.name
+ORIGINAL_ID = HERE.name
+ID = ORIGINAL_ID + "-retry"
 PEERS_ID = ID + "-peers"
-OUT = HERE / "evidence/native"
+OUT = HERE / "evidence/native-retry"
 QUEUE = ROOT / "target/linode-jobs-stepchange/requests"
-PACKET = HERE / "controller-packet.json"
+PACKET = HERE / "controller-packet-retry.json"
+PREFLIGHT = HERE / "preflight-retry.json"
 GROUPED = RESULTS / "2026-11-25-dense-grouped-refill"
 GROUPED_PILOT = GROUPED / "evidence/native-pilot"
 GROUPED_SETUP = GROUPED / "evidence/native-setup"
@@ -39,7 +41,7 @@ import controller as logical
 from contract import STOCK
 from render import render
 from score import (FLOOR, INCREMENT_US, METRICS, assigned_inventory, contrast, overlay,
-                   peer_pairs, score_arm)
+                   peer_pairs, score_arm, verify_slots)
 
 run, transfer = grouped.run, grouped.public
 PEERS = transfer.PEERS
@@ -102,6 +104,7 @@ def cmd(action):
 
 def packet():
     sources = [*FILES, *HERE.glob("*.py"), HERE / "README.md", SOURCE,
+               HERE / "controller-packet.json", *original_smoke_files(),
                GROUPED / "request.json", GROUPED / "candidate.patch", GROUPED / "package.py", GROUPED / "pilot.py",
                *(GROUPED_SETUP / name for name in ("raw.tar.gz", "controller-release.json", "binding.json")),
                GROUPED_PILOT / "series.json", GROUPED_PILOT / "controller-release.json",
@@ -111,6 +114,8 @@ def packet():
                *(SUITE / name for name in ("interleave.py", "run.py", "verify.py", "worker.py"))]
     return dict(id=ID, ready=True, no_build=True, after_existing_bookings=True,
                 controller="native-controller-complete-post-wal-queue",
+                supersedes_attempt=ORIGINAL_ID,
+                correction="Receipt slots is total seats; runner logs still enforce 32 each.",
                 native_host=logical.HOST, cpus=[0, 1], input_sha256=transfer.INPUT,
                 candidate_sha256=SQL_SHA, elf_sha256=ELF,
                 gate=dict(faster_duplicate_fraction=FLOOR, use_duplicate_spread=True,
@@ -305,10 +310,25 @@ def source_check(cfg):
     return binding
 
 
+def original_smoke_files():
+    prior = HERE / "evidence/native"
+    raw, = (prior / "blocks").glob("00-noop.*/diagnostic-smoke-stock/diagnostic-mesh/raw.tar.gz")
+    inventory, = (prior / "staging").glob("*/smoke-stock/inventory.json")
+    release, = (prior / "controller").glob("controller-timing-*.json")
+    return raw, inventory, release
+
+
 def dry_score(cfg):
     # Reconcile the original writer evidence, the exact SQL/CPU evidence and
     # actual peer inventories independently. These arms test replay only.
     results = {}
+    stock_raw, stock_inventory, release = original_smoke_files()
+    first = run.read_json(release)
+    assert first["id"] == ORIGINAL_ID and first["exit_status"] == 1 and first["released_at"]
+    first_cfg = deepcopy(cfg)
+    first_cfg["lanes"]["smoke-stock"]["inventory"] = run.read_json(stock_inventory)
+    stock = score_arm(stock_raw.parent, "diagnostic", "smoke-stock", first_cfg, grouped, logical, POLICIES)
+    results[str(stock_raw.relative_to(ROOT))] = stock["raw_sha256"]
     for trial in grouped.SCHEDULE:
         original, = (GROUPED_PILOT / "blocks").glob(f"{run.block_prefix(trial)}.*")
         assert run.read_json(original / "order.json") == trial
@@ -317,6 +337,9 @@ def dry_score(cfg):
                 folder = original / f"{phase}-{lane}" / f"{phase}-mesh"
                 raw = folder / "raw.tar.gz"
                 assert raw.read_bytes() == git_bytes("bb79fee6a", raw)
+                with tarfile.open(raw) as archive:
+                    verify_slots(run.file_json(archive, "adapter/ledger.json"),
+                                 run.file_json(archive, "adapter/row.json"))
                 assert run.read_json(folder / "dispatch.json")["exit_code"] == 0
                 inventory = run.read_json(prior_inventory(lane))
                 with assigned_inventory(transfer, inventory):
@@ -370,7 +393,7 @@ def main(args):
         binding = source_check(cfg)
         gate_check()
         custody = dry_score(cfg)
-        run.write_json(HERE / "preflight.json", dict(original_raw_archives=custody, grouped_binding=binding))
+        run.write_json(PREFLIGHT, dict(original_raw_archives=custody, grouped_binding=binding))
         run.write_json(PACKET, expected)
         print(run.digest(PACKET))
         return 0
@@ -378,7 +401,7 @@ def main(args):
     if args == ["check"]:
         binding = source_check(cfg)
         gate_check()
-        assert run.read_json(HERE / "preflight.json") == dict(
+        assert run.read_json(PREFLIGHT) == dict(
             original_raw_archives=dry_score(cfg), grouped_binding=binding)
         print(f"{ID} verified {run.digest(PACKET)}")
         return 0

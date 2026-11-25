@@ -47,6 +47,11 @@ def overlay(meta, lane, expected):
     assert acl["configuration"] == ["search_path=pg_catalog, pg_temp", "lock_timeout=100ms"]
 
 
+def verify_slots(ledger, row):
+    assert ledger["runners"] == row["runners"] == 2
+    assert ledger["slots"] == row["slots"] == 64
+
+
 def score_arm(folder, phase, lane, cfg, grouped, logical, policies):
     transfer, run = grouped.public, grouped.run
     assert run.read_json(folder / "dispatch.json").get("exit_code") == 0
@@ -54,7 +59,11 @@ def score_arm(folder, phase, lane, cfg, grouped, logical, policies):
     with assigned_inventory(transfer, inventory):
         if lane in transfer.PEERS:
             result = transfer.score_arm(folder, phase, lane, cfg, None)
-            return dict(measure(result), pg_cpu_scope="peer inventory supplies host and runner CPU")
+            with tarfile.open(folder / "raw.tar.gz") as raw:
+                ledger = run.file_json(raw, "adapter/ledger.json")
+            terminal_xids = len({transfer.xid(job["settled_xid"], "terminal") for job in ledger["jobs"]})
+            return dict(measure(result), terminal_xids=terminal_xids,
+                        pg_cpu_scope="peer inventory supplies host and runner CPU")
         writer_lane = "fixed8" if policies[lane] else "stock-a"
         result = grouped.score_arm(folder, phase, writer_lane, dict(cfg, lanes={"hot": cfg["lanes"][lane]}), None)
     with tarfile.open(folder / "raw.tar.gz") as raw:
@@ -65,7 +74,7 @@ def score_arm(folder, phase, lane, cfg, grouped, logical, policies):
                 logical.CANDIDATE.read_text() if lane in {"key", "combined", "smoke-combined"} else STOCK)
         assert not {"adapter/grant-plans.json", "adapter/grant-observer.json"} & set(raw.getnames())
         observed, ledger, row = get("raw"), get("ledger"), get("row")
-        assert ledger["slots"] == row["slots"] == 32
+        verify_slots(ledger, row)
         assert observed["idle_seconds"] >= 3 and observed["raw_idle_sql_calls"] > 0
         assert result["physical_tls_by_role"]["compiled_caller"] == 32
         assert result["checkout_probes"] < 32 and result["peak_connections"] <= 41
@@ -109,7 +118,7 @@ def contrast(rows):
 
 
 def peer_pairs(groups, peers):
-    metrics = ("submit_us", "drain_us", "last_effect_from_commit_us", "host_cpu_ms", "runner_cpu_ms")
+    metrics = ("submit_us", "drain_us", "last_effect_from_commit_us", "host_cpu_ms", "runner_cpu_ms", "terminal_xids")
     return {peer: {metric: dict(block_deltas=values, median_delta=median(values))
                    for metric in metrics
                    for values in [[row["measured"][peer][metric] - row["measured"]["combined"][metric]
