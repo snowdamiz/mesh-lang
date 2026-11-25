@@ -1,0 +1,361 @@
+{
+  "arms": {
+    "key": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 2.4154999999999998,
+      "attempt_to_effect_commit_p99_ms": 9.378,
+      "cap": 96,
+      "checked_checkout_probes": 2048,
+      "claim_calls": 281,
+      "claim_to_entry_p50_ms": 6.8475,
+      "claim_to_entry_p99_ms": 34.522,
+      "claim_to_last_settlement_ms": 1541.195,
+      "commit_jobs_per_s": 663.5992482664766,
+      "commit_to_claim_p50_ms": 771.905,
+      "commit_to_claim_p99_ms": 1493.905,
+      "commit_to_pickup_p50_ms": 779.8254999999999,
+      "commit_to_pickup_p99_ms": 1497.322,
+      "commit_to_settlement_p50_ms": 797.3335,
+      "commit_to_settlement_p99_ms": 1522.05,
+      "completed": 1024,
+      "configured_seats": 64,
+      "cpu_iowait_percent": 0.2617801047120419,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 231,
+      "disk_flushes": 1522,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 35995648,
+      "drain_us": 1543100,
+      "effect_commit_to_settlement_p50_ms": 5.083,
+      "effect_commit_to_settlement_p99_ms": 34.855,
+      "effect_from_commit_us": 1535730,
+      "effect_from_submit_us": 1708082,
+      "entry_to_attempt_commit_p50_ms": 7.127000000000001,
+      "entry_to_attempt_commit_p99_ms": 61.9,
+      "failed": 0,
+      "first_claim_from_commit_ms": 1.905,
+      "first_commit_us": 1795583219143095,
+      "first_submit_to_commit_ms": 172.352,
+      "first_submit_us": 1795583218970743,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_cpu_ms": 3360.0,
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1936.211,
+      "host_samples": 9,
+      "last_effect_us": 1795583220678825,
+      "last_settlement_us": 1795583220686195,
+      "lifetime_claim_calls": 389,
+      "lifetime_claim_elapsed_ms": 10351.616731000006,
+      "ordered_independent_writes": 1024,
+      "peak_connections": 65,
+      "peak_executing": 21,
+      "peak_runner_rss_bytes": 78774272,
+      "pg_cpu": {
+        "ms": 1990,
+        "slack_us": 143521,
+        "stable_pids": 71,
+        "unmatched": []
+      },
+      "pg_cpu_ms": 1990,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "queue_lock_timeouts": 0,
+      "raw_sha256": "06d6270a527de3d2230e595ede87d44ba39f391ad50aa492b1a2a0fdcda39b02",
+      "runner_cpu_ms": 1445.551,
+      "runner_cpu_ms_per_job": 1.4116708984375,
+      "runners": [
+        {
+          "hints": 0,
+          "jobs": 132,
+          "pid": 3061067
+        },
+        {
+          "hints": 0,
+          "jobs": 133,
+          "pid": 3061072
+        },
+        {
+          "hints": 0,
+          "jobs": 128,
+          "pid": 3061078
+        },
+        {
+          "hints": 0,
+          "jobs": 122,
+          "pid": 3061086
+        },
+        {
+          "hints": 0,
+          "jobs": 116,
+          "pid": 3061102
+        },
+        {
+          "hints": 0,
+          "jobs": 136,
+          "pid": 3061111
+        },
+        {
+          "hints": 0,
+          "jobs": 122,
+          "pid": 3061126
+        },
+        {
+          "hints": 0,
+          "jobs": 135,
+          "pid": 3061133
+        }
+      ],
+      "submit_jobs_per_s": 596.9272238453772,
+      "submit_to_pickup_p50_ms": 952.1775,
+      "submit_to_pickup_p99_ms": 1669.674,
+      "submit_to_settlement_p50_ms": 969.6855,
+      "submit_to_settlement_p99_ms": 1694.402,
+      "submit_us": 1715452
+    },
+    "stock-a": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 1.5434999999999999,
+      "attempt_to_effect_commit_p99_ms": 7.59,
+      "cap": 96,
+      "checked_checkout_probes": 2048,
+      "claim_calls": 272,
+      "claim_to_entry_p50_ms": 7.859999999999999,
+      "claim_to_entry_p99_ms": 32.447,
+      "claim_to_last_settlement_ms": 1971.467,
+      "commit_jobs_per_s": 518.4377001415072,
+      "commit_to_claim_p50_ms": 987.698,
+      "commit_to_claim_p99_ms": 1919.698,
+      "commit_to_pickup_p50_ms": 994.4745,
+      "commit_to_pickup_p99_ms": 1926.673,
+      "commit_to_settlement_p50_ms": 1004.1695,
+      "commit_to_settlement_p99_ms": 1954.54,
+      "completed": 1024,
+      "configured_seats": 64,
+      "cpu_iowait_percent": 1.0638297872340425,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 362,
+      "disk_flushes": 2156,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 41144320,
+      "drain_us": 1975165,
+      "effect_commit_to_settlement_p50_ms": 3.436,
+      "effect_commit_to_settlement_p99_ms": 29.76,
+      "effect_from_commit_us": 1971727,
+      "effect_from_submit_us": 2183539,
+      "entry_to_attempt_commit_p50_ms": 5.1845,
+      "entry_to_attempt_commit_p99_ms": 31.871,
+      "failed": 0,
+      "first_claim_from_commit_ms": 3.698,
+      "first_commit_us": 1795583208151302,
+      "first_submit_to_commit_ms": 211.812,
+      "first_submit_us": 1795583207939490,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_cpu_ms": 4060.0,
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 2396.693,
+      "host_samples": 11,
+      "last_effect_us": 1795583210123029,
+      "last_settlement_us": 1795583210126467,
+      "lifetime_claim_calls": 380,
+      "lifetime_claim_elapsed_ms": 14248.799650000004,
+      "ordered_independent_writes": 1024,
+      "peak_connections": 65,
+      "peak_executing": 21,
+      "peak_runner_rss_bytes": 78356480,
+      "pg_cpu": {
+        "ms": 2550,
+        "slack_us": 132829,
+        "stable_pids": 71,
+        "unmatched": []
+      },
+      "pg_cpu_ms": 2550,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "queue_lock_timeouts": 4,
+      "raw_sha256": "b2fc9831fdc64e800466da690fcebc288ec85aa05f013c37859e89308b1d2916",
+      "runner_cpu_ms": 1545.1699999999998,
+      "runner_cpu_ms_per_job": 1.5089550781249998,
+      "runners": [
+        {
+          "hints": 1,
+          "jobs": 126,
+          "pid": 3060686
+        },
+        {
+          "hints": 1,
+          "jobs": 123,
+          "pid": 3060691
+        },
+        {
+          "hints": 0,
+          "jobs": 128,
+          "pid": 3060699
+        },
+        {
+          "hints": 1,
+          "jobs": 121,
+          "pid": 3060710
+        },
+        {
+          "hints": 0,
+          "jobs": 135,
+          "pid": 3060722
+        },
+        {
+          "hints": 0,
+          "jobs": 138,
+          "pid": 3060738
+        },
+        {
+          "hints": 1,
+          "jobs": 133,
+          "pid": 3060750
+        },
+        {
+          "hints": 0,
+          "jobs": 120,
+          "pid": 3060759
+        }
+      ],
+      "submit_jobs_per_s": 468.226231917391,
+      "submit_to_pickup_p50_ms": 1206.2865000000002,
+      "submit_to_pickup_p99_ms": 2138.485,
+      "submit_to_settlement_p50_ms": 1215.9814999999999,
+      "submit_to_settlement_p99_ms": 2166.352,
+      "submit_us": 2186977
+    },
+    "stock-b": {
+      "affinity": [
+        0,
+        1
+      ],
+      "attempt_to_effect_commit_p50_ms": 1.5055,
+      "attempt_to_effect_commit_p99_ms": 7.409,
+      "cap": 96,
+      "checked_checkout_probes": 2048,
+      "claim_calls": 278,
+      "claim_to_entry_p50_ms": 7.997,
+      "claim_to_entry_p99_ms": 40.767,
+      "claim_to_last_settlement_ms": 2022.898,
+      "commit_jobs_per_s": 504.921505415579,
+      "commit_to_claim_p50_ms": 1007.64,
+      "commit_to_claim_p99_ms": 1998.14,
+      "commit_to_pickup_p50_ms": 1011.8525,
+      "commit_to_pickup_p99_ms": 2003.112,
+      "commit_to_settlement_p50_ms": 1018.2445,
+      "commit_to_settlement_p99_ms": 2008.525,
+      "completed": 1024,
+      "configured_seats": 64,
+      "cpu_iowait_percent": 1.2765957446808511,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 354,
+      "disk_flushes": 2208,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 41480192,
+      "drain_us": 2028038,
+      "effect_commit_to_settlement_p50_ms": 3.4355,
+      "effect_commit_to_settlement_p99_ms": 21.405,
+      "effect_from_commit_us": 2025772,
+      "effect_from_submit_us": 2204312,
+      "entry_to_attempt_commit_p50_ms": 5.1455,
+      "entry_to_attempt_commit_p99_ms": 38.868,
+      "failed": 0,
+      "first_claim_from_commit_ms": 5.14,
+      "first_commit_us": 1795583229463860,
+      "first_submit_to_commit_ms": 178.54,
+      "first_submit_us": 1795583229285320,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_cpu_ms": 4180.0,
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 2397.719,
+      "host_samples": 11,
+      "last_effect_us": 1795583231489632,
+      "last_settlement_us": 1795583231491898,
+      "lifetime_claim_calls": 385,
+      "lifetime_claim_elapsed_ms": 15062.981432000002,
+      "ordered_independent_writes": 1024,
+      "peak_connections": 65,
+      "peak_executing": 19,
+      "peak_runner_rss_bytes": 78983168,
+      "pg_cpu": {
+        "ms": 2620,
+        "slack_us": 104915,
+        "stable_pids": 71,
+        "unmatched": []
+      },
+      "pg_cpu_ms": 2620,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "queue_lock_timeouts": 1,
+      "raw_sha256": "38e5a5db93a805aa2526ce05d75992382d941b118f2a4282ce57bead36cb1fe4",
+      "runner_cpu_ms": 1552.0369999999998,
+      "runner_cpu_ms_per_job": 1.5156611328124998,
+      "runners": [
+        {
+          "hints": 0,
+          "jobs": 126,
+          "pid": 3061446
+        },
+        {
+          "hints": 0,
+          "jobs": 136,
+          "pid": 3061451
+        },
+        {
+          "hints": 1,
+          "jobs": 124,
+          "pid": 3061460
+        },
+        {
+          "hints": 0,
+          "jobs": 129,
+          "pid": 3061475
+        },
+        {
+          "hints": 0,
+          "jobs": 130,
+          "pid": 3061487
+        },
+        {
+          "hints": 0,
+          "jobs": 127,
+          "pid": 3061506
+        },
+        {
+          "hints": 0,
+          "jobs": 128,
+          "pid": 3061516
+        },
+        {
+          "hints": 0,
+          "jobs": 124,
+          "pid": 3061530
+        }
+      ],
+      "submit_jobs_per_s": 464.0669851688905,
+      "submit_to_pickup_p50_ms": 1190.3925,
+      "submit_to_pickup_p99_ms": 2181.652,
+      "submit_to_settlement_p50_ms": 1196.7845,
+      "submit_to_settlement_p99_ms": 2187.065,
+      "submit_us": 2206578
+    }
+  }
+}
