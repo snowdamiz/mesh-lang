@@ -1,0 +1,17 @@
+{
+  "group": 5,
+  "order": [
+    "bulk-lz4",
+    "river-pglz",
+    "apalis-lz4",
+    "oban-lz4",
+    "oban-pglz",
+    "apalis-pglz",
+    "river-lz4",
+    "bulk-pglz"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ]
+}
