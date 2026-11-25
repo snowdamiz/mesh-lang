@@ -1,0 +1,473 @@
+{
+  "amended_proof": {
+    "groups": {
+      "0": {
+        "eligible": true,
+        "gaps": {},
+        "order_matches": true,
+        "scores": {
+          "diagnostic-two-apalis-lz4": {
+            "adapter_close_after_terminal_wall_us": 857095,
+            "adapter_wall_ns": 7760096202,
+            "attempt_id": "9b4fd2d9c07d48aabb827a93cdd00c31",
+            "commit_to_rank64_us": 80032,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "drain_us": 1084758,
+            "enqueue_us": 176435,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 4661,
+            "mean_committed_holds_rank64_to_rank448": 52.331894742920944,
+            "postgres_start_to_ready_ns": 1480846144,
+            "rank448_to_last_effect_us": 220830,
+            "rank64_to_last_first_write_us": 894983,
+            "rank64_to_rank448_us": 779235,
+            "raw_sha256": "3d4a5e1ec55567b9aed948d0f1bb372349802b92b075d44e04a480ff6298fbab",
+            "ready_to_submit_wall_us": 3109178,
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 7865814328,
+            "runner_dispatch_to_ready_observation_ns": 315806208,
+            "stored_column_bytes": 8168956,
+            "submit_us": 1261193,
+            "submit_window_iowait_pct": 0.6269592476489029,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 876771,
+            "terminal_to_worker_exit_us": 891677,
+            "total_relation_bytes": 9043968
+          },
+          "diagnostic-two-apalis-pglz": {
+            "adapter_close_after_terminal_wall_us": 813568,
+            "adapter_wall_ns": 34122754297,
+            "attempt_id": "6824597b24844e5da323b07f37a3a384",
+            "commit_to_rank64_us": 82054,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "drain_us": 26516798,
+            "enqueue_us": 338594,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 25402317,
+            "mean_committed_holds_rank64_to_rank448": 50.68012251239768,
+            "postgres_start_to_ready_ns": 2248468356,
+            "rank448_to_last_effect_us": 226631,
+            "rank64_to_last_first_write_us": 928654,
+            "rank64_to_rank448_us": 805796,
+            "raw_sha256": "f19ab79838073115a0199c853572f9b9149af203c19cc4c9c80915b75fd71e2d",
+            "ready_to_submit_wall_us": 3105428,
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 34224680074,
+            "runner_dispatch_to_ready_observation_ns": 316209210,
+            "stored_column_bytes": 8422400,
+            "submit_us": 26855392,
+            "submit_window_iowait_pct": 0.03688675765400221,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 836300,
+            "terminal_to_worker_exit_us": 853050,
+            "total_relation_bytes": 9404416
+          },
+          "diagnostic-two-bulk-lz4": {
+            "adapter_close_after_terminal_wall_us": 6418255,
+            "adapter_wall_ns": 13233337260,
+            "attempt_id": "f25305e7587c4ed687f94f1703d2b6b0",
+            "commit_to_rank64_us": 94012,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "drain_us": 1246419,
+            "enqueue_us": 328278,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 2225,
+            "mean_committed_holds_rank64_to_rank448": 46.357295841690245,
+            "postgres_start_to_ready_ns": 1294649169,
+            "producer_sql_exec_ms": 155.876172,
+            "rank448_to_last_effect_us": 239259,
+            "rank64_to_last_first_write_us": 1045620,
+            "rank64_to_rank448_us": 910923,
+            "raw_sha256": "ff2a0feb6ee85d6749da997574879fbf9fc240880826caedad515fda8f337725",
+            "ready_to_submit_wall_us": 3046881,
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 13343370561,
+            "runner_dispatch_to_ready_observation_ns": 128049177,
+            "stored_column_bytes": 8171728,
+            "submit_us": 1574697,
+            "submit_window_iowait_pct": 1.9886363636363635,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 6448718,
+            "terminal_to_worker_exit_us": 6463333,
+            "total_relation_bytes": 9060352
+          },
+          "diagnostic-two-bulk-pglz": {
+            "adapter_close_after_terminal_wall_us": 3284084,
+            "adapter_wall_ns": 10692922253,
+            "attempt_id": "99df0edefc8142408e3c4e7c777e8fe0",
+            "commit_to_rank64_us": 130246,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "drain_us": 1310800,
+            "enqueue_us": 557738,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 5616,
+            "mean_committed_holds_rank64_to_rank448": 45.50644600817542,
+            "postgres_start_to_ready_ns": 1627483155,
+            "producer_sql_exec_ms": 359.43676,
+            "rank448_to_last_effect_us": 243121,
+            "rank64_to_last_first_write_us": 1073381,
+            "rank64_to_rank448_us": 931817,
+            "raw_sha256": "affb5c589505d560ee485226cf4280d7e0eed949971f89b672c6f5de7e8f2954",
+            "ready_to_submit_wall_us": 3050375,
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 10818949583,
+            "runner_dispatch_to_ready_observation_ns": 125978320,
+            "stored_column_bytes": 8431616,
+            "submit_us": 1868538,
+            "submit_window_iowait_pct": 1.7902813299232736,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 3327824,
+            "terminal_to_worker_exit_us": 3342335,
+            "total_relation_bytes": 9428992
+          },
+          "diagnostic-two-oban-lz4": {
+            "adapter_close_after_terminal_wall_us": 1030963,
+            "adapter_wall_ns": 12041145261,
+            "attempt_id": "8cc0a15e3b044c47809d109a05befb63",
+            "commit_to_rank64_us": 178769,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "drain_us": 1431534,
+            "enqueue_us": 330806,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 2161,
+            "mean_committed_holds_rank64_to_rank448": 43.89878115717742,
+            "postgres_start_to_ready_ns": 1439969025,
+            "rank448_to_last_effect_us": 241286,
+            "rank64_to_last_first_write_us": 1143511,
+            "rank64_to_rank448_us": 1009318,
+            "raw_sha256": "0ed00d011f737a02e99285d54d7f12f56894ebba4efa5de35855133cc8d33487",
+            "ready_to_submit_wall_us": 3061619,
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 12136366346,
+            "runner_dispatch_to_ready_observation_ns": 1277658322,
+            "stored_column_bytes": 8171728,
+            "submit_us": 1762340,
+            "submit_window_iowait_pct": 0.4914004914004914,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 1047644,
+            "terminal_to_worker_exit_us": 1062651,
+            "total_relation_bytes": 9535488
+          },
+          "diagnostic-two-oban-pglz": {
+            "adapter_close_after_terminal_wall_us": 963019,
+            "adapter_wall_ns": 12208837233,
+            "attempt_id": "b9de6c58c2b34401b9c8cce64925d316",
+            "commit_to_rank64_us": 267722,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "drain_us": 1541610,
+            "enqueue_us": 573041,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 2481,
+            "mean_committed_holds_rank64_to_rank448": 44.28706531994596,
+            "postgres_start_to_ready_ns": 1284716268,
+            "rank448_to_last_effect_us": 235904,
+            "rank64_to_last_first_write_us": 1162182,
+            "rank64_to_rank448_us": 1035503,
+            "raw_sha256": "dae9be6314156b43503561c7658b18fe8e6d3283159af81328ccdf752aefd241",
+            "ready_to_submit_wall_us": 3065736,
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 12323395169,
+            "runner_dispatch_to_ready_observation_ns": 1271331336,
+            "stored_column_bytes": 8431616,
+            "submit_us": 2114651,
+            "submit_window_iowait_pct": 0.4366812227074236,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 998179,
+            "terminal_to_worker_exit_us": 1012827,
+            "total_relation_bytes": 9953280
+          },
+          "diagnostic-two-river-lz4": {
+            "adapter_close_after_terminal_wall_us": 667711,
+            "adapter_wall_ns": 7578327374,
+            "attempt_id": "16b86bf1cb1f4248895df77d6f5094b5",
+            "commit_to_rank64_us": 322157,
+            "compression_counts": {
+              "lz4": 512
+            },
+            "drain_us": 1437897,
+            "enqueue_us": 341388,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 159678,
+            "mean_committed_holds_rank64_to_rank448": 55.43058397365825,
+            "postgres_start_to_ready_ns": 1444031548,
+            "rank448_to_last_effect_us": 206833,
+            "rank64_to_last_first_write_us": 854541,
+            "rank64_to_rank448_us": 749229,
+            "raw_sha256": "da2dbf68bac31088644d2b04edcde9c04052c14ff997da6af0dea13cddf7d396",
+            "ready_to_submit_wall_us": 2996088,
+            "recorder_steal_pct": 0.06535947712418301,
+            "recorder_wall_ns": 7709827999,
+            "river_idle_tls_clients": [
+              7,
+              7
+            ],
+            "river_peak_sample_clients": 69,
+            "runner_dispatch_to_ready_observation_ns": 146069942,
+            "stored_column_bytes": 8171728,
+            "submit_us": 1779285,
+            "submit_window_iowait_pct": 0.7371007371007371,
+            "submit_window_steal_pct": 0.2457002457002457,
+            "terminal_to_last_sample_us": 716968,
+            "terminal_to_worker_exit_us": 731784,
+            "total_relation_bytes": 9412608
+          },
+          "diagnostic-two-river-pglz": {
+            "adapter_close_after_terminal_wall_us": 649717,
+            "adapter_wall_ns": 7521488791,
+            "attempt_id": "80a4eb5d7c3a4a3b8ed51782f353cd8c",
+            "commit_to_rank64_us": 366707,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "drain_us": 1330919,
+            "enqueue_us": 497435,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 57328,
+            "mean_committed_holds_rank64_to_rank448": 56.142156686688395,
+            "postgres_start_to_ready_ns": 1377693493,
+            "rank448_to_last_effect_us": 210807,
+            "rank64_to_last_first_write_us": 805476,
+            "rank64_to_rank448_us": 696077,
+            "raw_sha256": "48e3fa5b068bf195d3f6405d75c2e460d26ad039462d639fe7a69e8333019d2f",
+            "ready_to_submit_wall_us": 2997325,
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 7645354455,
+            "river_idle_tls_clients": [
+              7,
+              7
+            ],
+            "river_peak_sample_clients": 69,
+            "runner_dispatch_to_ready_observation_ns": 143553605,
+            "stored_column_bytes": 8431616,
+            "submit_us": 1828354,
+            "submit_window_iowait_pct": 0.9900990099009901,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 693709,
+            "terminal_to_worker_exit_us": 708604,
+            "total_relation_bytes": 9699328
+          }
+        },
+        "unscored_archive_arithmetic": {}
+      }
+    },
+    "id": "2026-11-25-slow-lz4-unfused-2x32-readable-code-v1-proof",
+    "planned_arms": 8,
+    "raw_arms": 8,
+    "release_sha256": "a6fc956ae2db6db4f79abc00fa58fdafeef7f6153a45ef3af8f7f11a0e391118",
+    "release_status": 0,
+    "released_at": "2026-11-25T19:03:41.584232+00:00"
+  },
+  "measured_by_lane": {},
+  "original_proof": {
+    "groups": {
+      "0": {
+        "eligible": false,
+        "gaps": {
+          "diagnostic-two-apalis-lz4": {
+            "attempt_id": "19bedb00e3c84989b74fcbe0f496b876",
+            "raw_sha256": "b2142767ae76bada2d5cf07eced693a7760036f2ae5a345aac12cf46c005c278",
+            "reason": "native status, file pins, host or invocation differ",
+            "status": {
+              "exit_code": 1,
+              "finished_us": 1795632530579834
+            }
+          },
+          "diagnostic-two-apalis-pglz": {
+            "attempt_id": "79e1593707294bd4b4bab9fa0f518232",
+            "raw_sha256": "ec5a97b5a395bb359ae3a3a7065f33e87c3ddf29b0e55d37490ecbb366cbf009",
+            "reason": "native status, file pins, host or invocation differ",
+            "status": {
+              "exit_code": 1,
+              "finished_us": 1795632543723578
+            }
+          },
+          "diagnostic-two-bulk-lz4": {
+            "attempt_id": "f165df2b75984737bf14181e3a5d7ef9",
+            "raw_sha256": "b3e12bfcea09a4636064d1c32d482a577bad7616e942ab3e08ac85446df81de3",
+            "reason": "native status, file pins, host or invocation differ",
+            "status": {
+              "exit_code": 1,
+              "finished_us": 1795632542510104
+            }
+          },
+          "diagnostic-two-bulk-pglz": {
+            "attempt_id": "34bed27679d04a27aa979146b5d3d32e",
+            "raw_sha256": "3e12953acc6031dddceae672e7e4f78441d28f91beb6e7642605fb93e3250acf",
+            "reason": "native status, file pins, host or invocation differ",
+            "status": {
+              "exit_code": 1,
+              "finished_us": 1795632513483912
+            }
+          },
+          "diagnostic-two-oban-lz4": {
+            "attempt_id": "9215aca423eb41eca8efbed74cbb2cda",
+            "raw_sha256": "1bbd535ccc64a0ca02cce1a57c1a1cd78eedb6470194436fc93ea366a7428fcc",
+            "reason": "native status, file pins, host or invocation differ",
+            "status": {
+              "exit_code": 1,
+              "finished_us": 1795632557346632
+            }
+          },
+          "diagnostic-two-oban-pglz": {
+            "attempt_id": "9ecc9a9ce81b49c0b5832fde487876cb",
+            "raw_sha256": "f32a019571c380fdff45345616fc987dd2374b75b05ac1ee38200c0c8d6b0540",
+            "reason": "native status, file pins, host or invocation differ",
+            "status": {
+              "exit_code": 1,
+              "finished_us": 1795632532302342
+            }
+          },
+          "diagnostic-two-river-lz4": {
+            "attempt_id": "3d85df8f790a4d918a8b21c8ed6dfa31",
+            "raw_sha256": "810021f7d8632cb3b510f03bdc11f4869fe80b1c80705558958563523da73a96",
+            "reason": "native status, file pins, host or invocation differ",
+            "status": {
+              "exit_code": 1,
+              "finished_us": 1795632515000051
+            }
+          },
+          "diagnostic-two-river-pglz": {
+            "attempt_id": "e646a1ca12f74ed2b27f222c9dcb188f",
+            "raw_sha256": "7ca8ef6c008002ace5be58e97da9440871b5e0a178a51a568406ed231b182ca9",
+            "reason": "native status, file pins, host or invocation differ",
+            "status": {
+              "exit_code": 1,
+              "finished_us": 1795632558736046
+            }
+          }
+        },
+        "order_matches": true,
+        "scores": {
+          "diagnostic-one-apalis-pglz": {
+            "attempt_id": "0020271151a54e398ab915a74e76e313",
+            "commit_to_rank64_us": 95858,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "drain_us": 1096807,
+            "enqueue_us": 323571,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 9092,
+            "mean_committed_holds_rank64_to_rank448": 54.15293833252536,
+            "rank448_to_last_effect_us": 230694,
+            "rank64_to_last_first_write_us": 886270,
+            "rank64_to_rank448_us": 761163,
+            "raw_sha256": "9d6a156d6eceb7303ee2a59da11a1fbd9c6a2829aa1d9e105823a054cb756f5c",
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 7974402364,
+            "stored_column_bytes": 8422400,
+            "submit_us": 1420378,
+            "submit_window_iowait_pct": 0.2770083102493075,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 799108,
+            "terminal_to_worker_exit_us": 813482,
+            "total_relation_bytes": 9502720
+          },
+          "diagnostic-one-bulk-pglz": {
+            "attempt_id": "4475cebafa9246178d8190d3efaa75ee",
+            "commit_to_rank64_us": 55701,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "drain_us": 1464879,
+            "enqueue_us": 550988,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 14950,
+            "mean_committed_holds_rank64_to_rank448": 37.6552472513972,
+            "producer_sql_exec_ms": 370.116983,
+            "rank448_to_last_effect_us": 275023,
+            "rank64_to_last_first_write_us": 1291925,
+            "rank64_to_rank448_us": 1119205,
+            "raw_sha256": "8ce4ce877421c65d5648dd933db9f6aefde0d8a6101d24cb4c08420a4ad06180",
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 10572317800,
+            "stored_column_bytes": 8431616,
+            "submit_us": 2015867,
+            "submit_window_iowait_pct": 2.517162471395881,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 3283750,
+            "terminal_to_worker_exit_us": 3298165,
+            "total_relation_bytes": 9420800
+          },
+          "diagnostic-one-oban-pglz": {
+            "attempt_id": "8ce576d98a4a4981bab434112ba6be2c",
+            "commit_to_rank64_us": 274381,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "drain_us": 1574349,
+            "enqueue_us": 546210,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 1666,
+            "mean_committed_holds_rank64_to_rank448": 43.11055525338871,
+            "rank448_to_last_effect_us": 266863,
+            "rank64_to_last_first_write_us": 1192159,
+            "rank64_to_rank448_us": 1031439,
+            "raw_sha256": "69632e5928f50084e5caceb2fc9491d20328abc3550da85af8efc6dd7d4cfc13",
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 12781367486,
+            "stored_column_bytes": 8431616,
+            "submit_us": 2120559,
+            "submit_window_iowait_pct": 0.44052863436123346,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 1087555,
+            "terminal_to_worker_exit_us": 1102011,
+            "total_relation_bytes": 10035200
+          },
+          "diagnostic-one-river-pglz": {
+            "attempt_id": "d813414f1bac4fbcaafe9f048d5105b8",
+            "commit_to_rank64_us": 322340,
+            "compression_counts": {
+              "uncompressed": 512
+            },
+            "drain_us": 1543207,
+            "enqueue_us": 482349,
+            "exit_sample_steal_pct": 0.0,
+            "last_effect_to_terminal_us": 185501,
+            "mean_committed_holds_rank64_to_rank448": 51.53872992599833,
+            "rank448_to_last_effect_us": 225114,
+            "rank64_to_last_first_write_us": 931596,
+            "rank64_to_rank448_us": 810252,
+            "raw_sha256": "91c86af7ce7e5fe4bc5c06d93b577e3a350a118693bde49ef1d833ed4cfcd4e9",
+            "recorder_steal_pct": 0.0,
+            "recorder_wall_ns": 7520172181,
+            "river_idle_tls_clients": [
+              4,
+              4
+            ],
+            "river_peak_sample_clients": 67,
+            "stored_column_bytes": 8431616,
+            "submit_us": 2025556,
+            "submit_window_iowait_pct": 0.8888888888888888,
+            "submit_window_steal_pct": 0.0,
+            "terminal_to_last_sample_us": 603668,
+            "terminal_to_worker_exit_us": 618384,
+            "total_relation_bytes": 9732096
+          }
+        },
+        "unscored_archive_arithmetic": {}
+      }
+    },
+    "id": "2026-11-25-slow-lz4-unfused-2x32-proof",
+    "planned_arms": 12,
+    "raw_arms": 12,
+    "release_sha256": "6e106799d139c755f4171663fc3ee3ce2c8fabf67bbce45a72456bbf7c16f7a7",
+    "release_status": 1,
+    "released_at": "2026-11-25T18:49:29.802660+00:00"
+  },
+  "paired_distributions": {},
+  "per_order": {},
+  "timing": []
+}
