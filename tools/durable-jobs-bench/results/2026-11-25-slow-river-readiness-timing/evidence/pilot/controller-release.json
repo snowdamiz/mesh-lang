@@ -1,0 +1,47 @@
+{
+  "exit_status": 1,
+  "grant": {
+    "end": "2026-11-25T20:40:37Z",
+    "id": "2026-11-25-slow-river-readiness-timing-pilot",
+    "request_sha256": "9934b4cd80dbfbebc911344ac8cf6a3ce70f16e542820b8aca6734fca3790701",
+    "start": "2026-11-25T20:15:37Z"
+  },
+  "id": "2026-11-25-slow-river-readiness-timing-pilot",
+  "phase": "timing",
+  "raw_sha256": {
+    "01/measured-lazy-a/measured-go/raw.tar.gz": "89bd45fee70ab73347e5ec16f62ceb6f805f31f8dd1174d867f697bdcef8ed23",
+    "01/measured-lazy-b/measured-go/raw.tar.gz": "814c66567ba8cdbbc1df2b59377b716c41fe316308f22559b9326086f7145cab",
+    "01/measured-mesh/measured-mesh/raw.tar.gz": "ddf359d3e0c3bbc3d9cc092725f850eb84ac375f3b552c43f67be9dbf3afff83",
+    "01/measured-oban/measured-oban/raw.tar.gz": "318f8cc93e36b902a5ffcf5f2ec2c47d197639775654fd483b27eba3294fa834",
+    "01/measured-retained-river/measured-go/raw.tar.gz": "532f85073c369fc8892f4c2a59ba397290860b451a3bb5bfe73f3108d027e70d",
+    "01/measured-warm-river/measured-go/raw.tar.gz": "dd90779a86281431731d69cc8b937d2e2fcb9526d7da31f89b2d24a797d67ac0",
+    "01/warmup-lazy-a/warmup-go/raw.tar.gz": "a304f8b22760645a435fcf052301ceb7ddccd91510547eb16f308f3d2159c7b0",
+    "01/warmup-lazy-b/warmup-go/raw.tar.gz": "7d953be7215041568bc74c2a0619fca3dd898f2c7b4ab6f0db2c1a92e0149dad",
+    "01/warmup-mesh/warmup-mesh/raw.tar.gz": "2435362f19f6defad6e56677c6ef063f7a97ec4eaa24e6115cc2f4d54076515a",
+    "01/warmup-oban/warmup-oban/raw.tar.gz": "928b13125dfbdfb277adca159948b920d1ea1bbfb99659681decf52b4478cc78",
+    "01/warmup-retained-river/warmup-go/raw.tar.gz": "199caacf7bf79e5e24e50aa4bdc9b615ad434c4065793d54323b77f88930da3e",
+    "01/warmup-warm-river/warmup-go/raw.tar.gz": "7fddcaa874859395f84905a2c7b59bef212e2bc8f3a601e1ea1662a26b47773f",
+    "02/measured-lazy-a/measured-go/raw.tar.gz": "b7eb43bd1c238f274ad37ccdfca7f00c220e4d7fcca465de1145e5a090b7dc33",
+    "02/measured-lazy-b/measured-go/raw.tar.gz": "39ac0d839e6062582e633367e7db0f859e86939aefad719fe96e5b5c3e77bdce",
+    "02/measured-mesh/measured-mesh/raw.tar.gz": "d3c56caae2858e1b84169a22c5185d4f0110728643c945b64b7bf9dea80030d3",
+    "02/measured-oban/measured-oban/raw.tar.gz": "dabc2469208cdee16a379bf3e01287ee154303ea44e5955a21c8a6e24b025296",
+    "02/measured-retained-river/measured-go/raw.tar.gz": "0793c034ad05f97e2b8f7cd1461a5d19569607b69dd0a4977af335ea97969dba",
+    "02/measured-warm-river/measured-go/raw.tar.gz": "b7480ae1103fadab29ab709486e1d0d91b1285230625324c03c41dd3fa2e0b6d",
+    "02/warmup-lazy-a/warmup-go/raw.tar.gz": "311b491eeb9747d1984cb2e72ef9545d9579c31a63ee8c05fef928689e98bd23",
+    "02/warmup-lazy-b/warmup-go/raw.tar.gz": "9fe8b141c80a8b062236fa5180bffad13b7dcdbfd78dd98b74661f2f2cf57bbd",
+    "02/warmup-mesh/warmup-mesh/raw.tar.gz": "cffdc02e1177def8d50bcd49548f2f8c0a54ed370288719513152fddac82e9ac",
+    "02/warmup-oban/warmup-oban/raw.tar.gz": "094fd711e8d80ba0ecbf17486255adfa9356f76422bfe0a312895b093f00b6c6",
+    "02/warmup-retained-river/warmup-go/raw.tar.gz": "394ccf8e19879f0a172b240c2c704d6ffde98fad5a27e89abd45f7c13fcced38",
+    "02/warmup-warm-river/warmup-go/raw.tar.gz": "7d1a3cfa326d74ad5feb3b0e412c26943686d2d33556ba680a2fc85de5d44028"
+  },
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-river-readiness-timing/evidence/pilot",
+  "released_at": "2026-11-25T20:20:06.090452+00:00",
+  "request_sha256": "9934b4cd80dbfbebc911344ac8cf6a3ce70f16e542820b8aca6734fca3790701",
+  "retained_custody_sha256": {
+    "public-code-access.log": "819f2d78c34704a861096b5d743a31610ff864b7404a913f60dfd8f70db5f89d",
+    "retained-inputs.json": "58e37ae76ab71982b887d2bc08b81bb82509f69fd4bcdfebfa368deff2d3a441",
+    "retained-native-sha256.log": "82f24cf79410e2d452bfcf71257db05b5e986741ab828b50966b53ddd588e5b2"
+  },
+  "source_commit": "76c69f05e29bc50a781c798bd363b38d0460b3c2",
+  "started": "2026-11-25T20:15:37.042923+00:00"
+}
