@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Used by the sole controller's separate TIMING grant.
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd -P)"
+base=/var/lib/durable-jobs-bench/native
+attempt=public-dense-fixed8-jobs-731e1a8413d3
+artifact="$base/builds/$attempt"
+source="$base/source-$attempt/source"
+replay="$source/tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/replay"
+elf=839c4f32eb4bff7559a3d8f76d959f8ae4e0469b86a2db69fca4cc1723c26c1b
+manifest=2223810bdd379e2f6301c4aa3a9f7f0c605edc4c82eb3b1b76c2ffe7fdaee05a
+[[ "$(uname -sm)" == 'Linux x86_64' && "$#" == 4 ]]
+case "$1" in
+    checked-individual) mode=product-checked-hot ;;
+    bounded-grouped-hot|bounded-grouped-cold) mode=product-d2 ;;
+    *) exit 2 ;;
+esac
+lane="$1"
+shift
+[[ "$1" == mesh && "$2" == noop && "$3" == /* && -d "$3" && ! -L "$3" ]]
+printf '%s  %s\n' "$elf" "$artifact/mesh" "$manifest" "$artifact/mesh.json" | sha256sum -c --status
+exec 9<"$base/native.lock"
+flock -n 9
+stage="$(mktemp -d /var/tmp/public-dense-transfer.XXXXXXXX)"
+trap 'rm -f -- "$stage/public_arm.py"; rmdir -- "$stage"' EXIT
+chmod 0711 "$stage"
+install -m 0644 "$here/public_arm.py" "$stage/public_arm.py"
+command=(env -i PATH=/usr/sbin:/usr/bin:/bin LC_ALL=C.UTF-8
+    "PG_BIN_DIR=$base/toolchain/pgsql-17.11/bin" "NATIVE_JOBS_STATE=$base"
+    "PRODUCT_SOURCE=$source" "PRODUCT_COMPOSITION=$mode"
+    JOBS_LATE_CAPACITY=1 PRODUCT_TOPOLOGY=stock PRODUCT_STORAGE=default
+    MESH_SCHEDULER_MIN_WORKERS=2 MESH_SCHEDULER_MAX_WORKERS=2 "PUBLIC_LANE=$lane"
+    "PRODUCT_FROZEN_HARNESS=$base/source-bulk-enqueue-3b09dc3d0e23/ordinary-v2"
+    "PRODUCT_ELF_SHA256=$elf" "PRODUCT_MANIFEST_SHA256=$manifest"
+    "NATIVE_JOBS_ARTIFACTS=$artifact" "DURABLE_JOBS_PHASE=${DURABLE_JOBS_PHASE:-diagnostic}"
+    python3 -B "$stage/public_arm.py" "$replay" "$@")
+cd "$replay"
+if [[ "$(id -u)" == 0 ]]; then
+    [[ -z "$(find "$3" -mindepth 1 -maxdepth 1 -print -quit)" ]]
+    chown nobody:nogroup "$3"
+    chmod 0700 "$3"
+    runuser -u nobody -- "${command[@]}"
+else
+    "${command[@]}"
+fi

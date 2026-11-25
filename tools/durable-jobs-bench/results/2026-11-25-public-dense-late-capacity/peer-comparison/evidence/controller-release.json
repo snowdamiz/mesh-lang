@@ -1,0 +1,15 @@
+{
+  "exit_status": 0,
+  "grant": {
+    "end": "2026-11-25T07:29:49Z",
+    "id": "2026-11-25-public-dense-late-capacity-fresh-peers",
+    "request_sha256": "059ff4a5dc76bc35a434049f50c7a6e6c454c9a174aec25ba747087407d6dce5",
+    "start": "2026-11-25T06:54:49Z"
+  },
+  "id": "2026-11-25-public-dense-late-capacity-fresh-peers",
+  "phase": "timing",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-f88b4198/tools/durable-jobs-bench/results/2026-11-25-public-dense-late-capacity/peer-comparison/evidence",
+  "released_at": "2026-11-25T07:07:56.848434+00:00",
+  "request_sha256": "059ff4a5dc76bc35a434049f50c7a6e6c454c9a174aec25ba747087407d6dce5",
+  "started": "2026-11-25T06:54:49.095721+00:00"
+}

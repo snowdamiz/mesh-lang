@@ -1,0 +1,15 @@
+{
+  "exit_status": 0,
+  "grant": {
+    "end": "2026-11-25T06:57:13Z",
+    "id": "2026-11-25-public-dense-late-capacity-pilot",
+    "request_sha256": "edaec0dfd35a0ebc1bf0df59adc0c8ff436c183163280a8e9d6630231c3f48f4",
+    "start": "2026-11-25T06:43:13Z"
+  },
+  "id": "2026-11-25-public-dense-late-capacity-pilot",
+  "phase": "timing",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-f88b4198/target/late-capacity/bound/evidence",
+  "released_at": "2026-11-25T06:46:03.916003+00:00",
+  "request_sha256": "edaec0dfd35a0ebc1bf0df59adc0c8ff436c183163280a8e9d6630231c3f48f4",
+  "started": "2026-11-25T06:43:13.568190+00:00"
+}

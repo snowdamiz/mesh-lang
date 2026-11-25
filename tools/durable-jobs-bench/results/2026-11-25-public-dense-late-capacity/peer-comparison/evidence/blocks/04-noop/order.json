@@ -1,0 +1,17 @@
+{
+  "group": 4,
+  "order": [
+    "oban",
+    "A1",
+    "apalis",
+    "B",
+    "A2",
+    "reference",
+    "river"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}

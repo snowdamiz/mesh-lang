@@ -1,0 +1,17 @@
+running 1 test
+late_capacity_checkpoint: two confirmed releases, six tracked jobs, one blocked two-seat request
+late_capacity_checkpoint: five confirmed releases, three tracked jobs, same blocked two-seat request
+
+thread 'jobs::runner::tests::postgres_grouped_receipts_free_seats_while_one_checked_claim_waits' (142037275) panicked at compiler/mesh-rt/src/jobs/runner_tests.rs:2234:17:
+assertion `left == right` failed
+  left: "5"
+ right: "2"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test jobs::runner::tests::postgres_grouped_receipts_free_seats_while_one_checked_claim_waits ... FAILED
+
+failures:
+
+failures:
+    jobs::runner::tests::postgres_grouped_receipts_free_seats_while_one_checked_claim_waits
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1665 filtered out.

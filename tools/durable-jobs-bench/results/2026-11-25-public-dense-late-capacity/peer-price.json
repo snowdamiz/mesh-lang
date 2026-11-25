@@ -1,0 +1,82 @@
+{
+  "release": "2026-11-25-public-dense-8x8-peer-reverse-continuation-peers",
+  "rotations": {
+    "1": {
+      "apalis": {
+        "drain_us": {
+          "historical_margin_us": 41339.8,
+          "mesh_minus_peer_us": 495402,
+          "savings_to_pass_historical_margin_us": 536741.8
+        },
+        "submit_us": {
+          "historical_margin_us": 43207.25,
+          "mesh_minus_peer_us": 637783,
+          "savings_to_pass_historical_margin_us": 680990.25
+        }
+      },
+      "oban": {
+        "drain_us": {
+          "historical_margin_us": 71965.3,
+          "mesh_minus_peer_us": -117108,
+          "savings_to_pass_historical_margin_us": 0
+        },
+        "submit_us": {
+          "historical_margin_us": 79203.90000000001,
+          "mesh_minus_peer_us": -82150,
+          "savings_to_pass_historical_margin_us": 0
+        }
+      },
+      "river": {
+        "drain_us": {
+          "historical_margin_us": 59090.15,
+          "mesh_minus_peer_us": 140395,
+          "savings_to_pass_historical_margin_us": 199485.15
+        },
+        "submit_us": {
+          "historical_margin_us": 63829.15,
+          "mesh_minus_peer_us": 225345,
+          "savings_to_pass_historical_margin_us": 289174.15
+        }
+      }
+    },
+    "2": {
+      "apalis": {
+        "drain_us": {
+          "historical_margin_us": 268285,
+          "mesh_minus_peer_us": 377563,
+          "savings_to_pass_historical_margin_us": 645848
+        },
+        "submit_us": {
+          "historical_margin_us": 272198,
+          "mesh_minus_peer_us": 518167,
+          "savings_to_pass_historical_margin_us": 790365
+        }
+      },
+      "oban": {
+        "drain_us": {
+          "historical_margin_us": 268285,
+          "mesh_minus_peer_us": -233852,
+          "savings_to_pass_historical_margin_us": 34433
+        },
+        "submit_us": {
+          "historical_margin_us": 272198,
+          "mesh_minus_peer_us": -208077,
+          "savings_to_pass_historical_margin_us": 64121
+        }
+      },
+      "river": {
+        "drain_us": {
+          "historical_margin_us": 268285,
+          "mesh_minus_peer_us": 124022,
+          "savings_to_pass_historical_margin_us": 392307
+        },
+        "submit_us": {
+          "historical_margin_us": 272198,
+          "mesh_minus_peer_us": 222052,
+          "savings_to_pass_historical_margin_us": 494250
+        }
+      }
+    }
+  },
+  "source": "893710708"
+}

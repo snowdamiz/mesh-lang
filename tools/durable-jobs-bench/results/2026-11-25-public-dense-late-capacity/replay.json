@@ -1,0 +1,592 @@
+{
+  "1": {
+    "advance_sensitivity": {
+      "0": {
+        "earliest": {
+          "normalized_slot_ms": 281.125,
+          "pairs": 112,
+          "seats": 497
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 306.703125,
+          "pairs": 107,
+          "seats": 550
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 290.03125,
+          "pairs": 112,
+          "seats": 517
+        }
+      },
+      "2": {
+        "earliest": {
+          "normalized_slot_ms": 261.96875,
+          "pairs": 110,
+          "seats": 466
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 293.671875,
+          "pairs": 104,
+          "seats": 524
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 279.828125,
+          "pairs": 110,
+          "seats": 505
+        }
+      },
+      "4": {
+        "earliest": {
+          "normalized_slot_ms": 229.3125,
+          "pairs": 106,
+          "seats": 419
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 262.90625,
+          "pairs": 95,
+          "seats": 466
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 233.625,
+          "pairs": 106,
+          "seats": 431
+        }
+      },
+      "6": {
+        "earliest": {
+          "normalized_slot_ms": 216.40625,
+          "pairs": 102,
+          "seats": 396
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 246.265625,
+          "pairs": 95,
+          "seats": 443
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 223.6875,
+          "pairs": 102,
+          "seats": 416
+        }
+      },
+      "8": {
+        "earliest": {
+          "normalized_slot_ms": 203.765625,
+          "pairs": 94,
+          "seats": 368
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 223.203125,
+          "pairs": 90,
+          "seats": 400
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 210.921875,
+          "pairs": 94,
+          "seats": 388
+        }
+      },
+      "12": {
+        "earliest": {
+          "normalized_slot_ms": 159.265625,
+          "pairs": 82,
+          "seats": 297
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 169.46875,
+          "pairs": 78,
+          "seats": 312
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 160.859375,
+          "pairs": 82,
+          "seats": 301
+        }
+      },
+      "16": {
+        "earliest": {
+          "normalized_slot_ms": 123.890625,
+          "pairs": 64,
+          "seats": 214
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 132.03125,
+          "pairs": 61,
+          "seats": 227
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 125.484375,
+          "pairs": 64,
+          "seats": 218
+        }
+      },
+      "24": {
+        "earliest": {
+          "normalized_slot_ms": 43.3125,
+          "pairs": 23,
+          "seats": 74
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 43.3125,
+          "pairs": 23,
+          "seats": 74
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 43.3125,
+          "pairs": 23,
+          "seats": 74
+        }
+      }
+    },
+    "all_bounded_calls": 385,
+    "all_calls_removal_for_extra_exchange_parity": 97,
+    "bounded_server_elapsed_ms": 8671.374,
+    "confirmation_lag_sensitivity_at_4ms": {
+      "0": {
+        "earliest": {
+          "normalized_slot_ms": 229.3125,
+          "pairs": 106,
+          "seats": 419
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 262.90625,
+          "pairs": 95,
+          "seats": 466
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 233.625,
+          "pairs": 106,
+          "seats": 431
+        }
+      },
+      "1": {
+        "earliest": {
+          "normalized_slot_ms": 218.484375,
+          "pairs": 103,
+          "seats": 400
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 248.734375,
+          "pairs": 94,
+          "seats": 443
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 224.5,
+          "pairs": 103,
+          "seats": 418
+        }
+      },
+      "2": {
+        "earliest": {
+          "normalized_slot_ms": 216.40625,
+          "pairs": 102,
+          "seats": 396
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 246.265625,
+          "pairs": 95,
+          "seats": 443
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 223.6875,
+          "pairs": 102,
+          "seats": 416
+        }
+      },
+      "4": {
+        "earliest": {
+          "normalized_slot_ms": 203.765625,
+          "pairs": 94,
+          "seats": 368
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 223.203125,
+          "pairs": 90,
+          "seats": 400
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 210.921875,
+          "pairs": 94,
+          "seats": 388
+        }
+      },
+      "8": {
+        "earliest": {
+          "normalized_slot_ms": 159.265625,
+          "pairs": 82,
+          "seats": 297
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 169.46875,
+          "pairs": 78,
+          "seats": 312
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 160.859375,
+          "pairs": 82,
+          "seats": 301
+        }
+      },
+      "12": {
+        "earliest": {
+          "normalized_slot_ms": 123.890625,
+          "pairs": 64,
+          "seats": 214
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 132.03125,
+          "pairs": 61,
+          "seats": 227
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 125.484375,
+          "pairs": 64,
+          "seats": 218
+        }
+      },
+      "16": {
+        "earliest": {
+          "normalized_slot_ms": 95.5625,
+          "pairs": 44,
+          "seats": 163
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 96.71875,
+          "pairs": 44,
+          "seats": 165
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 96.71875,
+          "pairs": 44,
+          "seats": 165
+        }
+      },
+      "24": {
+        "earliest": {
+          "normalized_slot_ms": 29.15625,
+          "pairs": 14,
+          "seats": 50
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 29.15625,
+          "pairs": 14,
+          "seats": 50
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 29.15625,
+          "pairs": 14,
+          "seats": 50
+        }
+      }
+    },
+    "drain_us": 1278874,
+    "grants": 255,
+    "raw_sha256": "b69272140653f3ce374d3b555c4e00f3bef4951adedef2b2b25739e9446a8efe",
+    "sizes": {
+      "1": 20,
+      "2": 29,
+      "3": 57,
+      "4": 52,
+      "5": 48,
+      "6": 24,
+      "7": 17,
+      "8": 8
+    },
+    "submit_us": 1461455
+  },
+  "2": {
+    "advance_sensitivity": {
+      "0": {
+        "earliest": {
+          "normalized_slot_ms": 285.15625,
+          "pairs": 114,
+          "seats": 489
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 317.859375,
+          "pairs": 108,
+          "seats": 552
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 305.5,
+          "pairs": 114,
+          "seats": 542
+        }
+      },
+      "2": {
+        "earliest": {
+          "normalized_slot_ms": 271.171875,
+          "pairs": 112,
+          "seats": 468
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 300.578125,
+          "pairs": 105,
+          "seats": 524
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 282.203125,
+          "pairs": 112,
+          "seats": 504
+        }
+      },
+      "4": {
+        "earliest": {
+          "normalized_slot_ms": 250.34375,
+          "pairs": 112,
+          "seats": 440
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 277.375,
+          "pairs": 102,
+          "seats": 480
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 253.5625,
+          "pairs": 112,
+          "seats": 452
+        }
+      },
+      "6": {
+        "earliest": {
+          "normalized_slot_ms": 239.65625,
+          "pairs": 105,
+          "seats": 408
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 265.984375,
+          "pairs": 95,
+          "seats": 450
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 243.375,
+          "pairs": 105,
+          "seats": 426
+        }
+      },
+      "8": {
+        "earliest": {
+          "normalized_slot_ms": 231.34375,
+          "pairs": 101,
+          "seats": 386
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 253.515625,
+          "pairs": 95,
+          "seats": 414
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 238.21875,
+          "pairs": 101,
+          "seats": 402
+        }
+      },
+      "12": {
+        "earliest": {
+          "normalized_slot_ms": 208.65625,
+          "pairs": 91,
+          "seats": 336
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 221.296875,
+          "pairs": 89,
+          "seats": 349
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 216.140625,
+          "pairs": 91,
+          "seats": 344
+        }
+      },
+      "16": {
+        "earliest": {
+          "normalized_slot_ms": 154.203125,
+          "pairs": 67,
+          "seats": 242
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 156.078125,
+          "pairs": 66,
+          "seats": 247
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 155.953125,
+          "pairs": 67,
+          "seats": 248
+        }
+      },
+      "24": {
+        "earliest": {
+          "normalized_slot_ms": 67.265625,
+          "pairs": 32,
+          "seats": 104
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 67.265625,
+          "pairs": 32,
+          "seats": 104
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 67.265625,
+          "pairs": 32,
+          "seats": 104
+        }
+      }
+    },
+    "all_bounded_calls": 385,
+    "all_calls_removal_for_extra_exchange_parity": 97,
+    "bounded_server_elapsed_ms": 9182.872,
+    "confirmation_lag_sensitivity_at_4ms": {
+      "0": {
+        "earliest": {
+          "normalized_slot_ms": 250.34375,
+          "pairs": 112,
+          "seats": 440
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 277.375,
+          "pairs": 102,
+          "seats": 480
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 253.5625,
+          "pairs": 112,
+          "seats": 452
+        }
+      },
+      "1": {
+        "earliest": {
+          "normalized_slot_ms": 238.671875,
+          "pairs": 109,
+          "seats": 416
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 268.4375,
+          "pairs": 97,
+          "seats": 458
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 241.890625,
+          "pairs": 109,
+          "seats": 428
+        }
+      },
+      "2": {
+        "earliest": {
+          "normalized_slot_ms": 239.65625,
+          "pairs": 105,
+          "seats": 408
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 265.984375,
+          "pairs": 95,
+          "seats": 450
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 243.375,
+          "pairs": 105,
+          "seats": 426
+        }
+      },
+      "4": {
+        "earliest": {
+          "normalized_slot_ms": 231.34375,
+          "pairs": 101,
+          "seats": 386
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 253.515625,
+          "pairs": 95,
+          "seats": 414
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 238.21875,
+          "pairs": 101,
+          "seats": 402
+        }
+      },
+      "8": {
+        "earliest": {
+          "normalized_slot_ms": 208.65625,
+          "pairs": 91,
+          "seats": 336
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 221.296875,
+          "pairs": 89,
+          "seats": 349
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 216.140625,
+          "pairs": 91,
+          "seats": 344
+        }
+      },
+      "12": {
+        "earliest": {
+          "normalized_slot_ms": 154.203125,
+          "pairs": 67,
+          "seats": 242
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 156.078125,
+          "pairs": 66,
+          "seats": 247
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 155.953125,
+          "pairs": 67,
+          "seats": 248
+        }
+      },
+      "16": {
+        "earliest": {
+          "normalized_slot_ms": 107.671875,
+          "pairs": 47,
+          "seats": 169
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 108.890625,
+          "pairs": 46,
+          "seats": 172
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 108.765625,
+          "pairs": 47,
+          "seats": 173
+        }
+      },
+      "24": {
+        "earliest": {
+          "normalized_slot_ms": 49.828125,
+          "pairs": 21,
+          "seats": 75
+        },
+        "greatest_weight": {
+          "normalized_slot_ms": 49.828125,
+          "pairs": 21,
+          "seats": 75
+        },
+        "greatest_weight_at_maximum_pairs": {
+          "normalized_slot_ms": 49.828125,
+          "pairs": 21,
+          "seats": 75
+        }
+      }
+    },
+    "drain_us": 1354573,
+    "grants": 254,
+    "raw_sha256": "7eda6d9d041466eb6b4ab3cb6a4f7addcc24990ada439618aaddd2abcf4d6ba7",
+    "sizes": {
+      "1": 14,
+      "2": 32,
+      "3": 71,
+      "4": 22,
+      "5": 70,
+      "6": 28,
+      "7": 9,
+      "8": 8
+    },
+    "submit_us": 1606377
+  }
+}

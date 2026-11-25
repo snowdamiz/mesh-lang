@@ -1,0 +1,6 @@
+running 1 test
+late_capacity_checkpoint: two confirmed releases, six tracked jobs, one blocked two-seat request
+late_capacity_checkpoint: five confirmed releases, three tracked jobs, same blocked two-seat request
+test jobs::runner::tests::postgres_grouped_receipts_free_seats_while_one_checked_claim_waits ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1665 filtered out.

@@ -1,0 +1,21 @@
+{
+  "archive_sha256": "731e1a8413d332b9ae4a8fefc68f1e86bc5e9ebadbfbd6ba06c0ca3b25faf226",
+  "arguments": [
+    "public-dense-fixed8-jobs-731e1a8413d3",
+    "456749c4c675043a3b800e9674a4de4bca430806",
+    "731e1a8413d332b9ae4a8fefc68f1e86bc5e9ebadbfbd6ba06c0ca3b25faf226"
+  ],
+  "attempt": "public-dense-fixed8-jobs-731e1a8413d3",
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-f88b4198/target/late-capacity/native-xid-fixtures/evidence",
+  "id": "public-dense-fixed8-jobs-731e1a8413d3-setup",
+  "mode": "jobs",
+  "native_script_sha256": "3c2d602cd7a1b86ca1017138d21c79e86a97ade2f022a75f52b3420fb6b2a683",
+  "ready": true,
+  "remote_evidence": "/var/lib/durable-jobs-bench/native/runs/public-dense-fixed8-jobs-731e1a8413d3",
+  "requested_window_minutes": 45,
+  "source_sha": "456749c4c675043a3b800e9674a4de4bca430806"
+}

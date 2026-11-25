@@ -1,0 +1,18 @@
+{
+  "archive_sha256": "731e1a8413d332b9ae4a8fefc68f1e86bc5e9ebadbfbd6ba06c0ca3b25faf226",
+  "dependencies": {
+    "source/compiler/mesh-rt/src/jobs/cron_schema.sql": "bd9e8ffb87a52c4ee5c4ddc8d594a26dcfe338891bc7cc5e37feaf790de138cd",
+    "source/compiler/mesh-rt/src/jobs/drain_schema.sql": "f5e92423e3c151b995bd0d9c393e8bbed89c4ba87224a776040dd9db42465d3d",
+    "source/compiler/mesh-rt/src/jobs/enqueue_schema.sql": "6b7c5cef45efd0caabb5eabccda0ba9e19ae7ea586c2da7f61b8f2910ade89c6",
+    "source/compiler/mesh-rt/src/jobs/grouped_schema.sql": "d49e192be3ee871a6de59d68a5c93f1bed082bb1c49065f35751a1f9e53d5e68",
+    "source/compiler/mesh-rt/src/jobs/schema.sql": "1f61755af4a38a6eaff6ae049d5b6c314983dc29ee9d2f774d6cf65d2a5b4af0",
+    "source/scripts/fixtures/jobs-set-based-claim-grant.sql": "9400f25f8e3df64f8429ae8404d291d3c476c661642166afe637d7d8b7d93100",
+    "source/tests/vectors/blind-rsa/rfc9474-a3-pss-deterministic.json": "0ac3b9135b3a4b695c926ae4bd0e5cd02139eef1d7e11f6216d4ea14a0a6a3f9",
+    "source/tests/vectors/blind-rsa/rfc9578-type2.json": "0c0380968ee9c69a97da496a6ccf45d04b0df41444e49113b9337260fbc24241",
+    "source/tests/vectors/mlkem/mlkem768-acvp-fips203.json": "5ef36138d0159c4d63b127b8cf4a6c6ed5b0cf7046c4be5249f1803afd56ec82",
+    "source/tests/vectors/mlkem/mlkem768-keygen-acvp-tc26.json": "e7d29772a1c3b09a9e5cda2aaa25b6635dd4329b16bfd9cc3e97d233c0443aa3",
+    "source/tests/vectors/mlkem/mlkem768-openssl.json": "0dd06f7cfd3b219fbc9630f265e6576b7e634b562014f367376796cf9612661d"
+  },
+  "include_sites": 16,
+  "source_sha": "456749c4c675043a3b800e9674a4de4bca430806"
+}

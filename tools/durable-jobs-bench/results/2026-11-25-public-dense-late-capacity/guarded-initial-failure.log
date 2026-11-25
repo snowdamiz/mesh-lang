@@ -1,0 +1,15 @@
+running 1 test
+
+thread 'jobs::runner::tests::postgres_grouped_receipts_free_seats_while_one_checked_claim_waits' (141682360) panicked at compiler/mesh-rt/src/jobs/runner_tests.rs:2203:12:
+called `Result::unwrap()` on an `Err` value: "guarded runner checkpoint was not reached"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test jobs::runner::tests::postgres_grouped_receipts_free_seats_while_one_checked_claim_waits ... FAILED
+
+failures:
+
+failures:
+    jobs::runner::tests::postgres_grouped_receipts_free_seats_while_one_checked_claim_waits
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1665 filtered out; finished in 5.10s
+
+error: test failed, to rerun pass `-p mesh-rt --lib`
