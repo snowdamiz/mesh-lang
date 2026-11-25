@@ -86,11 +86,13 @@ function element(tag,text,cls) {
 }
 function median(xs) {const x=xs.slice().sort((a,b)=>a-b),i=Math.floor(x.length/2);return x.length%2?x[i]:(x[i-1]+x[i])/2;}
 const number=new Intl.NumberFormat("en-US",{maximumFractionDigits:2});
+const seriesNames={
+ "public-large-file-session":{file:"Mesh · file","inline-a":"Mesh · inline A","inline-b":"Mesh · inline B",product:"Mesh · public stock"},
+ "public-dense-individual-hot-checkout":{hot:"Mesh · hot checkout","checked-a":"Mesh · checked A","checked-b":"Mesh · checked B"}
+};
 function draw() {
  const s=db[series.value], blocks=s.blocks.filter(b=>b.profile===profile.value);
- const laneName=l=>series.value==="public-large-file-session"
-   ? ({file:"Mesh · file", "inline-a":"Mesh · inline A", "inline-b":"Mesh · inline B", product:"Mesh · public stock"}[l]??names[l]??l)
-   : (names[l]??l);
+ const laneName=l=>seriesNames[series.value]?.[l]??names[l]??l;
  const key=metric.value, unit=measures[key][1];
  const value=(b,l)=>b.scores[l][key]/(key==="peak_runner_rss_bytes"?1048576:1);
  get("title").textContent=s.title;get("scope").textContent=s.description;

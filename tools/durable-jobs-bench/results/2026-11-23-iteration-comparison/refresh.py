@@ -153,6 +153,53 @@ def capture_public_dense_checkout(directory):
                                    {group["attempt"]: group["scores"] for group in report["blocks"].values()})
 
 
+def capture_public_dense_individual_checkout(directory):
+    retry = directory.parents[1]
+    campaign = "2026-11-24-dense-individual-logger-off-retry"
+    releases = {}
+    for groups in ([1, 2], [3, 4, 5, 6]):
+        suffix = f"{groups[0]}-{groups[-1]}"
+        path = directory / f"{campaign}-groups-{suffix}.released.json"
+        receipt = run.read_json(path)
+        run.require((receipt["id"], receipt["group_command"], receipt["groups"], receipt["exit_status"])
+                    == (campaign, "dispatch", groups, 0), f"{path}: missing successful release")
+        releases[suffix] = run.digest(path)
+    replay = subprocess.check_output([sys.executable, "-B", retry / "retry.py", "replay"])
+    retained = directory.parent / "final-replay.json"
+    run.require(replay == retained.read_bytes(), f"{retained}: differs from fresh archive replay")
+    report = json.loads(replay)
+    run.require(report["qualified_rotations"] == 6 and not report["missing"] and not report["failures"],
+                f"{directory}: expected six clean rotations")
+    manifest = run.read_json(directory / "series.json")
+    config = manifest["config"]
+    lanes = config["lanes"]
+    inventories = {lane: run.read_json(directory / "staging" / lane / "inventory.json")
+                   for lane in lanes}
+    identities = {lane: inventory["engines"][lanes[lane]["engine"]]["artifact_sha256"]
+                  for lane, inventory in inventories.items()}
+    series = collect_topology_blocks(directory, lanes, identities,
+                                     {group["attempt"]: group["scores"] for group in report["blocks"].values()})
+    run.require([block["group"] for block in series["blocks"]] == list(range(1, 7)), "unexpected rotation roster")
+    archives = {f"blocks/{block['attempt']}/{arm}/raw.tar.gz": digest
+                for block in series["blocks"] for arm, digest in block["raw_sha256"].items()}
+    run.require(len(archives) == 72 and archives == report["raw"], "arm hashes differ from native replay")
+    product = config["product"]
+    for block in series["blocks"]:
+        group = report["blocks"][str(block["group"])]
+        block["contrast"] = group["contrast"]
+        for lane, score in block["scores"].items():
+            raw = group["scores"]["measured-" + lane]
+            score.update({key: raw[key] for key in ("application_xids", "terminal_xids")})
+            if score["engine"] == "mesh":
+                score.update(runner_sha256=product["manifest"]["files"]["mesh"],
+                             build_manifest_sha256=product["manifest_sha256"],
+                             checkout_probes=raw["checkout_probes"])
+    series.update(release_sha256=releases, replay_sha256=run.digest(retained),
+                  **{key: report[key] for key in ("elapsed_us", "paired_hot_minus_us", "hot_peer_wins",
+                                                 "paired_hot_vs_faster_control_percent", "qualifying_groups", "advances")})
+    return series
+
+
 def capture_slow_storage(packet):
     sys.path.insert(0, str(packet / "replay"))
     import native as storage_run
@@ -364,13 +411,14 @@ def text_json(value):
     return json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
-def add_policy_table(lines, series, title, detail, lanes, planned=5):
+def add_policy_table(lines, series, title, detail, lanes, planned=5, paired=False):
     blocks = series.get("blocks", [])
     if not blocks:
         return
+    comparison = ("| Hot paired submit change (wins) | Hot paired drain change (wins) |" if paired
+                  else "| Candidate wins from submit | Candidate wins from commit |")
     lines.extend([f"## {title}", "", f"{len(blocks)}/{planned} matched rotations. {detail}", "",
-                  "| Lane | Submit jobs/s | Drain jobs/s | Candidate wins from submit | Candidate wins from commit |",
-                  "|---|---:|---:|---:|---:|"])
+                  f"| Lane | Submit jobs/s | Drain jobs/s {comparison}", "|---|---:|---:|---:|---:|"])
     candidate = lanes[0][0]
     for key, label in lanes:
         rates = []
@@ -378,7 +426,14 @@ def add_policy_table(lines, series, title, detail, lanes, planned=5):
         for metric in ("submit_jobs_per_s", "commit_jobs_per_s"):
             rates.append(f"{median(b['scores'][key][metric] for b in blocks):,.2f}")
             count = sum(b["scores"][candidate][metric] > b["scores"][key][metric] for b in blocks)
-            wins.append("—" if key == candidate else f"{count}/{len(blocks)}")
+            if key == candidate:
+                wins.append("—")
+            elif paired:
+                change = median(100 * (b["scores"][candidate][metric] / b["scores"][key][metric] - 1)
+                                for b in blocks)
+                wins.append(f"{change:+.2f}% ({count}/{len(blocks)})")
+            else:
+                wins.append(f"{count}/{len(blocks)}")
         lines.append("| " + " | ".join([label, *rates, *wins]) + " |")
     lines.append("")
 
@@ -605,6 +660,22 @@ def write_scorecard(data):
                      "All engines use two 32-slot runners. Each Mesh lane runs the same executable with grouped successes.",
                      [("hot", "Mesh hot checkout"), ("checked-a", "Checked A"), ("checked-b", "Checked B"),
                       ("oban-2x32", "Oban"), ("river-2x32", "River"), ("apalis-2x32", "Apalis")], planned=6)
+    individual = data.get("public-dense-individual-hot-checkout", {})
+    add_policy_table(lines, individual, "Public dense jobs with hot checkout and individual settlement",
+                     "Two 32-slot runners per engine complete 1,024 jobs on CPUs 0 and 1. The three Mesh lanes share "
+                     "the logger-off ELF and commit each terminal transition individually. Each job commits two ordered "
+                     "application writes. Rates and paired percentage changes are medians. "
+                     "[Interactive results](chart.html#public-dense-individual-hot-checkout)",
+                     [("hot", "Mesh hot checkout"), ("checked-a", "Mesh checked A"), ("checked-b", "Mesh checked B"),
+                      ("river-2x32", "Go River"), ("oban-2x32", "Elixir Oban"), ("apalis-2x32", "Rust Apalis")],
+                     planned=6, paired=True)
+    if individual:
+        gains = individual["paired_hot_vs_faster_control_percent"]
+        groups = ", ".join(map(str, individual["qualifying_groups"]))
+        lines.extend([f"Against the faster checked duplicate in each rotation, hot checkout gained a median "
+                      f"{gains['submit']['median']:.2f}% from submit and {gains['drain']['median']:.2f}% from enqueue commit. "
+                      f"Rotations {groups} cleared the preregistered margin. "
+                      "[Release receipts and raw replay](../2026-11-24-dense-individual-hot-pool/logger-off-retry/evidence/native/README.md)", ""])
     add_policy_table(lines, data.get("short-fused-refill", {}), "Short jobs with combined settlement and refill",
                      "The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.",
                      [("fused-a", "Fused A"), ("fused-b", "Fused B"), ("group-a", "Grouped control A"),
@@ -818,6 +889,8 @@ def refresh(collect, selected=()):
                 current = capture_slow_storage(archived)
             elif name == "public-dense-hot-checkout":
                 current = capture_public_dense_checkout(archived)
+            elif name == "public-dense-individual-hot-checkout":
+                current = capture_public_dense_individual_checkout(archived)
             elif name == "dense-exit-confirmed":
                 current = capture_dense_checkout(archived)
             elif name == "slow-equal-cap71":

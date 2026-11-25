@@ -270,6 +270,21 @@ If Mesh kept each first application commit at its observed time and finished eac
 | River | 1,001.10 | 1,083.72 | 0/6 | 0/6 |
 | Apalis | 1,360.67 | 1,437.05 | 0/6 | 0/6 |
 
+## Public dense jobs with hot checkout and individual settlement
+
+6/6 matched rotations. Two 32-slot runners per engine complete 1,024 jobs on CPUs 0 and 1. The three Mesh lanes share the logger-off ELF and commit each terminal transition individually. Each job commits two ordered application writes. Rates and paired percentage changes are medians. [Interactive results](chart.html#public-dense-individual-hot-checkout)
+
+| Lane | Submit jobs/s | Drain jobs/s | Hot paired submit change (wins) | Hot paired drain change (wins) |
+|---|---:|---:|---:|---:|
+| Mesh hot checkout | 756.56 | 857.00 | — | — |
+| Mesh checked A | 687.87 | 772.46 | +10.12% (6/6) | +11.57% (6/6) |
+| Mesh checked B | 684.05 | 772.62 | +9.85% (6/6) | +11.47% (6/6) |
+| Go River | 1,006.19 | 1,083.52 | -24.96% (0/6) | -21.38% (0/6) |
+| Elixir Oban | 765.81 | 863.85 | -0.09% (3/6) | +0.97% (4/6) |
+| Rust Apalis | 1,404.75 | 1,479.38 | -47.06% (0/6) | -42.52% (0/6) |
+
+Against the faster checked duplicate in each rotation, hot checkout gained a median 9.61% from submit and 11.25% from enqueue commit. Rotations 1, 3, 4, 6 cleared the preregistered margin. [Release receipts and raw replay](../2026-11-24-dense-individual-hot-pool/logger-off-retry/evidence/native/README.md)
+
 ## Short jobs with combined settlement and refill
 
 2/5 matched rotations. The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.
