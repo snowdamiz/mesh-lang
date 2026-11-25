@@ -12,6 +12,13 @@
       },
       "middle_us": 595431,
       "occupancy": {
+        "client_waiting_job_us": 190069,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 297,
+        "client_waiting_with_at_most_0_entered_job_us": 1188,
+        "client_waiting_with_at_most_0_entered_runner_us": 297,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 8957,
+        "client_waiting_with_at_most_1_entered_job_us": 24263,
+        "client_waiting_with_at_most_1_entered_runner_us": 8957,
         "confirmed_waiting_job_us": 190069,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 297,
         "confirmed_waiting_with_at_most_0_entered_job_us": 1188,
@@ -25,7 +32,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 532158,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 483616,
         "possible_waiting_with_at_most_1_entered_job_us": 2148887,
-        "possible_waiting_with_at_most_1_entered_runner_us": 543963
+        "possible_waiting_with_at_most_1_entered_runner_us": 543963,
+        "visible_waiting_job_us": 267706,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 15201,
+        "visible_waiting_with_at_most_0_entered_job_us": 61579,
+        "visible_waiting_with_at_most_0_entered_runner_us": 15201,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 23861,
+        "visible_waiting_with_at_most_1_entered_job_us": 86018,
+        "visible_waiting_with_at_most_1_entered_runner_us": 23861
       },
       "raw_sha256": "2b9a4197c4f2fb93e17bc299b978083e5d2a346050275f01905a524b201a4bce"
     },
@@ -40,6 +54,13 @@
       },
       "middle_us": 630643,
       "occupancy": {
+        "client_waiting_job_us": 245004,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 705,
+        "client_waiting_with_at_most_0_entered_job_us": 1410,
+        "client_waiting_with_at_most_0_entered_runner_us": 705,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 15446,
+        "client_waiting_with_at_most_1_entered_job_us": 44712,
+        "client_waiting_with_at_most_1_entered_runner_us": 15524,
         "confirmed_waiting_job_us": 243594,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -53,7 +74,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 569168,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 522784,
         "possible_waiting_with_at_most_1_entered_job_us": 2582430,
-        "possible_waiting_with_at_most_1_entered_runner_us": 600171
+        "possible_waiting_with_at_most_1_entered_runner_us": 600171,
+        "visible_waiting_job_us": 380394,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 26361,
+        "visible_waiting_with_at_most_0_entered_job_us": 116059,
+        "visible_waiting_with_at_most_0_entered_runner_us": 26649,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 41293,
+        "visible_waiting_with_at_most_1_entered_job_us": 161365,
+        "visible_waiting_with_at_most_1_entered_runner_us": 41802
       },
       "raw_sha256": "da82d812c7a4b6d60f7cceb3458a932b691c18c623f04fa0970538b8d88b3b26"
     },
@@ -69,6 +97,13 @@
       },
       "middle_us": 507094,
       "occupancy": {
+        "client_waiting_job_us": 832710,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
+        "client_waiting_with_at_most_0_entered_job_us": 0,
+        "client_waiting_with_at_most_0_entered_runner_us": 0,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 3708,
+        "client_waiting_with_at_most_1_entered_job_us": 19532,
+        "client_waiting_with_at_most_1_entered_runner_us": 3708,
         "confirmed_waiting_job_us": 832710,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -82,7 +117,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 454786,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 441013,
         "possible_waiting_with_at_most_1_entered_job_us": 3563734,
-        "possible_waiting_with_at_most_1_entered_runner_us": 463146
+        "possible_waiting_with_at_most_1_entered_runner_us": 463146,
+        "visible_waiting_job_us": 907894,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 9398,
+        "visible_waiting_with_at_most_0_entered_job_us": 75184,
+        "visible_waiting_with_at_most_0_entered_runner_us": 9398,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 13050,
+        "visible_waiting_with_at_most_1_entered_job_us": 94716,
+        "visible_waiting_with_at_most_1_entered_runner_us": 13106
       },
       "raw_sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d"
     }
@@ -101,6 +143,13 @@
       },
       "middle_us": 591800,
       "occupancy": {
+        "client_waiting_job_us": 291557,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 2911,
+        "client_waiting_with_at_most_0_entered_job_us": 8926,
+        "client_waiting_with_at_most_0_entered_runner_us": 2911,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 14450,
+        "client_waiting_with_at_most_1_entered_job_us": 45863,
+        "client_waiting_with_at_most_1_entered_runner_us": 14659,
         "confirmed_waiting_job_us": 291557,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 2911,
         "confirmed_waiting_with_at_most_0_entered_job_us": 8926,
@@ -114,7 +163,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 530641,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 491614,
         "possible_waiting_with_at_most_1_entered_job_us": 2309507,
-        "possible_waiting_with_at_most_1_entered_runner_us": 572940
+        "possible_waiting_with_at_most_1_entered_runner_us": 572940,
+        "visible_waiting_job_us": 485371,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 27089,
+        "visible_waiting_with_at_most_0_entered_job_us": 111639,
+        "visible_waiting_with_at_most_0_entered_runner_us": 27089,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 46485,
+        "visible_waiting_with_at_most_1_entered_job_us": 175859,
+        "visible_waiting_with_at_most_1_entered_runner_us": 47917
       },
       "raw_sha256": "a69250d841005240d36e96e7efba723d5dcfcb774083a4c0f8a2f6f10747f986"
     },
@@ -130,6 +186,13 @@
       },
       "middle_us": 628120,
       "occupancy": {
+        "client_waiting_job_us": 356786,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 12217,
+        "client_waiting_with_at_most_0_entered_job_us": 49678,
+        "client_waiting_with_at_most_0_entered_runner_us": 12217,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 31800,
+        "client_waiting_with_at_most_1_entered_job_us": 105706,
+        "client_waiting_with_at_most_1_entered_runner_us": 32956,
         "confirmed_waiting_job_us": 355006,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 11772,
         "confirmed_waiting_with_at_most_0_entered_job_us": 47898,
@@ -143,7 +206,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 583620,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 533579,
         "possible_waiting_with_at_most_1_entered_job_us": 2518564,
-        "possible_waiting_with_at_most_1_entered_runner_us": 630097
+        "possible_waiting_with_at_most_1_entered_runner_us": 630097,
+        "visible_waiting_job_us": 485628,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 41269,
+        "visible_waiting_with_at_most_0_entered_job_us": 158808,
+        "visible_waiting_with_at_most_0_entered_runner_us": 41269,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 62673,
+        "visible_waiting_with_at_most_1_entered_job_us": 222854,
+        "visible_waiting_with_at_most_1_entered_runner_us": 63963
       },
       "raw_sha256": "3dd829d482d421bf3af4bc6cf5cdfe0f7503986413d0421b14784f883782930a"
     },
@@ -160,6 +230,13 @@
       },
       "middle_us": 1238201,
       "occupancy": {
+        "client_waiting_job_us": 2192008,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
+        "client_waiting_with_at_most_0_entered_job_us": 0,
+        "client_waiting_with_at_most_0_entered_runner_us": 0,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 78923,
+        "client_waiting_with_at_most_1_entered_job_us": 211684,
+        "client_waiting_with_at_most_1_entered_runner_us": 79605,
         "confirmed_waiting_job_us": 2191807,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -173,7 +250,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 758720,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 878345,
         "possible_waiting_with_at_most_1_entered_job_us": 6152619,
-        "possible_waiting_with_at_most_1_entered_runner_us": 941303
+        "possible_waiting_with_at_most_1_entered_runner_us": 941303,
+        "visible_waiting_job_us": 2370738,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 16392,
+        "visible_waiting_with_at_most_0_entered_job_us": 89620,
+        "visible_waiting_with_at_most_0_entered_runner_us": 16459,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 104026,
+        "visible_waiting_with_at_most_1_entered_job_us": 337922,
+        "visible_waiting_with_at_most_1_entered_runner_us": 105144
       },
       "raw_sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61"
     }
@@ -192,6 +276,13 @@
       },
       "middle_us": 604034,
       "occupancy": {
+        "client_waiting_job_us": 188574,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 96,
+        "client_waiting_with_at_most_0_entered_job_us": 384,
+        "client_waiting_with_at_most_0_entered_runner_us": 96,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 16427,
+        "client_waiting_with_at_most_1_entered_job_us": 34712,
+        "client_waiting_with_at_most_1_entered_runner_us": 16427,
         "confirmed_waiting_job_us": 188190,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -205,7 +296,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 553266,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 506036,
         "possible_waiting_with_at_most_1_entered_job_us": 2307624,
-        "possible_waiting_with_at_most_1_entered_runner_us": 588738
+        "possible_waiting_with_at_most_1_entered_runner_us": 588738,
+        "visible_waiting_job_us": 300306,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 21161,
+        "visible_waiting_with_at_most_0_entered_job_us": 85474,
+        "visible_waiting_with_at_most_0_entered_runner_us": 21161,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 37492,
+        "visible_waiting_with_at_most_1_entered_job_us": 119802,
+        "visible_waiting_with_at_most_1_entered_runner_us": 37492
       },
       "raw_sha256": "fcf638a68a652c8da03e991d4b3d863b2ec729308815b249fdf801c6d7d4976e"
     },
@@ -220,6 +318,13 @@
       },
       "middle_us": 597066,
       "occupancy": {
+        "client_waiting_job_us": 222590,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 957,
+        "client_waiting_with_at_most_0_entered_job_us": 2802,
+        "client_waiting_with_at_most_0_entered_runner_us": 957,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 14553,
+        "client_waiting_with_at_most_1_entered_job_us": 43319,
+        "client_waiting_with_at_most_1_entered_runner_us": 14630,
         "confirmed_waiting_job_us": 222590,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 957,
         "confirmed_waiting_with_at_most_0_entered_job_us": 2802,
@@ -233,7 +338,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 533938,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 489929,
         "possible_waiting_with_at_most_1_entered_job_us": 2269225,
-        "possible_waiting_with_at_most_1_entered_runner_us": 556226
+        "possible_waiting_with_at_most_1_entered_runner_us": 556226,
+        "visible_waiting_job_us": 305536,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 19176,
+        "visible_waiting_with_at_most_0_entered_job_us": 77374,
+        "visible_waiting_with_at_most_0_entered_runner_us": 19176,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 33982,
+        "visible_waiting_with_at_most_1_entered_job_us": 122493,
+        "visible_waiting_with_at_most_1_entered_runner_us": 34059
       },
       "raw_sha256": "4ee7b86623dfd0963f641c93897c8b125c09a0bffd3e545a230c586d911aedf1"
     },
@@ -250,6 +362,13 @@
       },
       "middle_us": 525532,
       "occupancy": {
+        "client_waiting_job_us": 887724,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
+        "client_waiting_with_at_most_0_entered_job_us": 0,
+        "client_waiting_with_at_most_0_entered_runner_us": 0,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 8180,
+        "client_waiting_with_at_most_1_entered_job_us": 47909,
+        "client_waiting_with_at_most_1_entered_runner_us": 8418,
         "confirmed_waiting_job_us": 887724,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -263,7 +382,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 415874,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 420158,
         "possible_waiting_with_at_most_1_entered_job_us": 3353966,
-        "possible_waiting_with_at_most_1_entered_runner_us": 433008
+        "possible_waiting_with_at_most_1_entered_runner_us": 433008,
+        "visible_waiting_job_us": 913044,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 3429,
+        "visible_waiting_with_at_most_0_entered_job_us": 25320,
+        "visible_waiting_with_at_most_0_entered_runner_us": 3429,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 11609,
+        "visible_waiting_with_at_most_1_entered_job_us": 73229,
+        "visible_waiting_with_at_most_1_entered_runner_us": 11847
       },
       "raw_sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3"
     }
@@ -281,6 +407,13 @@
       },
       "middle_us": 616294,
       "occupancy": {
+        "client_waiting_job_us": 228832,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
+        "client_waiting_with_at_most_0_entered_job_us": 0,
+        "client_waiting_with_at_most_0_entered_runner_us": 0,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 7899,
+        "client_waiting_with_at_most_1_entered_job_us": 24687,
+        "client_waiting_with_at_most_1_entered_runner_us": 7899,
         "confirmed_waiting_job_us": 228832,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -294,7 +427,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 563032,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 496980,
         "possible_waiting_with_at_most_1_entered_job_us": 2298486,
-        "possible_waiting_with_at_most_1_entered_runner_us": 582900
+        "possible_waiting_with_at_most_1_entered_runner_us": 582900,
+        "visible_waiting_job_us": 377132,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 31722,
+        "visible_waiting_with_at_most_0_entered_job_us": 119660,
+        "visible_waiting_with_at_most_0_entered_runner_us": 31722,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 41940,
+        "visible_waiting_with_at_most_1_entered_job_us": 153839,
+        "visible_waiting_with_at_most_1_entered_runner_us": 41994
       },
       "raw_sha256": "978118e93f2f734b1df9690608b3ed27e913e9d7e6813085488b39e235312860"
     },
@@ -311,6 +451,13 @@
       },
       "middle_us": 605357,
       "occupancy": {
+        "client_waiting_job_us": 248000,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 1018,
+        "client_waiting_with_at_most_0_entered_job_us": 2446,
+        "client_waiting_with_at_most_0_entered_runner_us": 1018,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 23266,
+        "client_waiting_with_at_most_1_entered_job_us": 66118,
+        "client_waiting_with_at_most_1_entered_runner_us": 23340,
         "confirmed_waiting_job_us": 248000,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 1018,
         "confirmed_waiting_with_at_most_0_entered_job_us": 2446,
@@ -324,7 +471,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 585830,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 516268,
         "possible_waiting_with_at_most_1_entered_job_us": 2452911,
-        "possible_waiting_with_at_most_1_entered_runner_us": 616340
+        "possible_waiting_with_at_most_1_entered_runner_us": 616340,
+        "visible_waiting_job_us": 400498,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 30811,
+        "visible_waiting_with_at_most_0_entered_job_us": 131583,
+        "visible_waiting_with_at_most_0_entered_runner_us": 30811,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 55691,
+        "visible_waiting_with_at_most_1_entered_job_us": 205744,
+        "visible_waiting_with_at_most_1_entered_runner_us": 55765
       },
       "raw_sha256": "df1d5ee48d8c52d9b3bb29e9b07ab5caa8acf403a30b6d05dcba3b77bdf0824d"
     },
@@ -341,6 +495,13 @@
       },
       "middle_us": 537845,
       "occupancy": {
+        "client_waiting_job_us": 753459,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
+        "client_waiting_with_at_most_0_entered_job_us": 0,
+        "client_waiting_with_at_most_0_entered_runner_us": 0,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 9229,
+        "client_waiting_with_at_most_1_entered_job_us": 50660,
+        "client_waiting_with_at_most_1_entered_runner_us": 9229,
         "confirmed_waiting_job_us": 753459,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -354,7 +515,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 460782,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 447060,
         "possible_waiting_with_at_most_1_entered_job_us": 3595705,
-        "possible_waiting_with_at_most_1_entered_runner_us": 470011
+        "possible_waiting_with_at_most_1_entered_runner_us": 470011,
+        "visible_waiting_job_us": 849711,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 8723,
+        "visible_waiting_with_at_most_0_entered_job_us": 69784,
+        "visible_waiting_with_at_most_0_entered_runner_us": 8723,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 17952,
+        "visible_waiting_with_at_most_1_entered_job_us": 120444,
+        "visible_waiting_with_at_most_1_entered_runner_us": 17952
       },
       "raw_sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598"
     }
@@ -371,6 +539,13 @@
       },
       "middle_us": 600732,
       "occupancy": {
+        "client_waiting_job_us": 213652,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
+        "client_waiting_with_at_most_0_entered_job_us": 0,
+        "client_waiting_with_at_most_0_entered_runner_us": 0,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 7920,
+        "client_waiting_with_at_most_1_entered_job_us": 23504,
+        "client_waiting_with_at_most_1_entered_runner_us": 7920,
         "confirmed_waiting_job_us": 213652,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -384,7 +559,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 512357,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 472502,
         "possible_waiting_with_at_most_1_entered_job_us": 2235801,
-        "possible_waiting_with_at_most_1_entered_runner_us": 534118
+        "possible_waiting_with_at_most_1_entered_runner_us": 534118,
+        "visible_waiting_job_us": 350438,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 20042,
+        "visible_waiting_with_at_most_0_entered_job_us": 76741,
+        "visible_waiting_with_at_most_0_entered_runner_us": 20042,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 29767,
+        "visible_waiting_with_at_most_1_entered_job_us": 107465,
+        "visible_waiting_with_at_most_1_entered_runner_us": 29767
       },
       "raw_sha256": "8131d66a50a3e91bb14ca9ffdf1ebaea9698ca54ecdd00c377a73cabb7c1daac"
     },
@@ -400,6 +582,13 @@
       },
       "middle_us": 759900,
       "occupancy": {
+        "client_waiting_job_us": 262336,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
+        "client_waiting_with_at_most_0_entered_job_us": 0,
+        "client_waiting_with_at_most_0_entered_runner_us": 0,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 21371,
+        "client_waiting_with_at_most_1_entered_job_us": 62309,
+        "client_waiting_with_at_most_1_entered_runner_us": 21457,
         "confirmed_waiting_job_us": 262336,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -413,7 +602,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 715123,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 653814,
         "possible_waiting_with_at_most_1_entered_job_us": 2846497,
-        "possible_waiting_with_at_most_1_entered_runner_us": 739042
+        "possible_waiting_with_at_most_1_entered_runner_us": 739042,
+        "visible_waiting_job_us": 389496,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 25758,
+        "visible_waiting_with_at_most_0_entered_job_us": 115616,
+        "visible_waiting_with_at_most_0_entered_runner_us": 25758,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 46985,
+        "visible_waiting_with_at_most_1_entered_job_us": 177925,
+        "visible_waiting_with_at_most_1_entered_runner_us": 47215
       },
       "raw_sha256": "c06f1ab7f24c8ba03ec599f08dbec271138c84fe8f2524b95809ce6df0bfe472"
     },
@@ -429,6 +625,13 @@
       },
       "middle_us": 534268,
       "occupancy": {
+        "client_waiting_job_us": 761133,
+        "client_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
+        "client_waiting_with_at_most_0_entered_job_us": 0,
+        "client_waiting_with_at_most_0_entered_runner_us": 0,
+        "client_waiting_with_at_most_1_entered_any_runner_wall_us": 10226,
+        "client_waiting_with_at_most_1_entered_job_us": 47988,
+        "client_waiting_with_at_most_1_entered_runner_us": 10264,
         "confirmed_waiting_job_us": 761133,
         "confirmed_waiting_with_at_most_0_entered_any_runner_wall_us": 0,
         "confirmed_waiting_with_at_most_0_entered_job_us": 0,
@@ -442,7 +645,14 @@
         "possible_waiting_with_at_most_0_entered_runner_us": 440997,
         "possible_waiting_with_at_most_1_entered_any_runner_wall_us": 434601,
         "possible_waiting_with_at_most_1_entered_job_us": 3408613,
-        "possible_waiting_with_at_most_1_entered_runner_us": 456642
+        "possible_waiting_with_at_most_1_entered_runner_us": 456642,
+        "visible_waiting_job_us": 816712,
+        "visible_waiting_with_at_most_0_entered_any_runner_wall_us": 6538,
+        "visible_waiting_with_at_most_0_entered_job_us": 47404,
+        "visible_waiting_with_at_most_0_entered_runner_us": 6538,
+        "visible_waiting_with_at_most_1_entered_any_runner_wall_us": 17146,
+        "visible_waiting_with_at_most_1_entered_job_us": 96538,
+        "visible_waiting_with_at_most_1_entered_runner_us": 17184
       },
       "raw_sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175"
     }

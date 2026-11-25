@@ -1,4 +1,5 @@
 """Bracket confirmed work awaiting handler entry on each dense runner."""
+from bisect import bisect_right
 from collections import Counter, defaultdict
 import json
 
@@ -23,12 +24,25 @@ def account(jobs, positive_grants):
             events[start][owner, name] += 1
             events[finish][owner, name] -= 1
 
+    all_stamps = sorted({stamp for _, stamp in turns})
+    local_stamps = {owner: sorted(s for pid, s in turns if pid == owner) for owner in owners}
+
+    def earlier_witness(stamps, stamp, first_entry):
+        index = bisect_right(stamps, stamp)
+        return min(first_entry, stamps[index] + 999) if index < len(stamps) else first_entry
+
     for (owner, stamp), cohort in turns.items():
         first_entry = min(j["entered_us"] for j in cohort)
         assert stamp <= first_entry
+        # The next claim from this owner requires receipt of the previous COMMIT.
+        # Any later claim on the queue requires its lock to have been released.
+        client = earlier_witness(local_stamps[owner], stamp, first_entry)
+        visible = earlier_witness(all_stamps, stamp, first_entry)
         for job in cohort:
             entry = job["entered_us"]
             record(owner, "possible", stamp, entry)
+            record(owner, "visible", visible, entry)
+            record(owner, "client", client, entry)
             record(owner, "confirmed", first_entry, entry)
             record(owner, "entered", entry, job["effect_committed_us"])
 
@@ -40,7 +54,7 @@ def account(jobs, positive_grants):
         elapsed = now - previous
         active_owners = sum(active[owner, "entered"] > 0 for owner in owners)
         duration[f"{active_owners}_entered_owners"] += elapsed
-        for key in ("confirmed", "possible"):
+        for key in ("confirmed", "client", "visible", "possible"):
             for max_entered in (0, 1):
                 eligible = [owner for owner in owners if active[owner, key] > 0
                             and active[owner, "entered"] <= max_entered]
@@ -50,7 +64,8 @@ def account(jobs, positive_grants):
                 occupancy[prefix + "_any_runner_wall_us"] += bool(eligible) * elapsed
             occupancy[key + "_waiting_job_us"] += sum(active[owner, key] for owner in owners) * elapsed
         for owner in owners:
-            assert 0 <= active[owner, "confirmed"] <= active[owner, "possible"]
+            assert (0 <= active[owner, "confirmed"] <= active[owner, "client"]
+                    <= active[owner, "visible"] <= active[owner, "possible"])
         previous = now
         active.update(delta)
         assert all(value >= 0 for value in active.values())
