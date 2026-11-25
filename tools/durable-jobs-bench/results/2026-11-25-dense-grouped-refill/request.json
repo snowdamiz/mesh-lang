@@ -33,7 +33,7 @@
     "tools/durable-jobs-bench/results/2026-11-24-bulk-d2-short-peers/short.json": "be33d238748dd544e21f13857ac8aaa99e95f7b37c51572dcc20e6123ca51041",
     "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/transfer.py": "43cf1e9017ca66a7f77ba744770908f736142e3587bd9bc3cdcc10be48593475",
     "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/backend.py": "f2a897601d10f8c30b6bad30358ed1a88a8f688b54068095237ae1160ac7cea1",
-    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/candidate.patch": "5db360e44ae2b74e96bc955da222cd02f20c0afe5aff776942e4e5f2e8a2e4a3",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/candidate.patch": "b3c5759a802764eb5fb0408cef2f5d00a5a8bd153a7e52e039378b278fb50e74",
     "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/build.json": "ed6ac644e49af84ee777c3847ffd54c39faf994eaf4e44d1472f4f7383534db9",
     "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/cancellation.json": "1b6fb4b25b418a73786c11f5b11f8f61de9c34ff7b0bb0130a47c36576f2f64b",
     "tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/local/forced-teardown.json": "4b35efaac844f58d78a72e2706ad9c8f799f4a2dd236da1d74a61d347241ebf7",
@@ -102,6 +102,7 @@
   },
   "ready": true,
   "recovery": "Retain exact failed and partial raw exports. Confirm pinned host, outstanding children and all three locks before any follow-up assignment. Only the sole controller records grants and releases.",
+  "reseal_reason": "The pre-commit hook normalized blank patch context. The regenerated source archive is byte-identical.",
   "schedule": [
     {
       "group": 1,
@@ -138,5 +139,6 @@
   "source_archive": "target/dense-grouped-refill-packet/source.tar.gz",
   "source_archive_sha256": "deb2a3bc49feae7df985fe895209c3db7d725cd4c9c1b9c8ba49c93a650dd6d8",
   "source_sha": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "supersedes_inbox_sha256": "d66218982335d32c2f6f34f66192195b8c34451b7bbe76eca0cf96c57d1fb9e1",
   "use_only_controller": true
 }
