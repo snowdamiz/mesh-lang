@@ -1,0 +1,2489 @@
+[
+  {
+    "group": 1,
+    "peers": {
+      "apalis": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              197743,
+              198742
+            ],
+            "unstamped_lower": 173,
+            "unstamped_upper": 173,
+            "yet_to_commit_effect": 193,
+            "yet_to_commit_first": 192,
+            "yet_to_enter": 182,
+            "yet_to_settle": 201
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              800207,
+              801206
+            ],
+            "unstamped_lower": 766,
+            "unstamped_upper": 766,
+            "yet_to_commit_effect": 788,
+            "yet_to_commit_first": 786,
+            "yet_to_enter": 771,
+            "yet_to_settle": 796
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              608237,
+              609236
+            ],
+            "unstamped_lower": 575,
+            "unstamped_upper": 575,
+            "yet_to_commit_effect": 591,
+            "yet_to_commit_first": 588,
+            "yet_to_enter": 584,
+            "yet_to_settle": 610
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              993233,
+              994232
+            ],
+            "unstamped_lower": 944,
+            "unstamped_upper": 944,
+            "yet_to_commit_effect": 967,
+            "yet_to_commit_first": 964,
+            "yet_to_enter": 953,
+            "yet_to_settle": 983
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              397743,
+              398742
+            ],
+            "unstamped_lower": 364,
+            "unstamped_upper": 364,
+            "yet_to_commit_effect": 388,
+            "yet_to_commit_first": 385,
+            "yet_to_enter": 368,
+            "yet_to_settle": 399
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              190073,
+              191072
+            ],
+            "unstamped_lower": 165,
+            "unstamped_upper": 165,
+            "yet_to_commit_effect": 180,
+            "yet_to_commit_first": 177,
+            "yet_to_enter": 170,
+            "yet_to_settle": 197
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              334664,
+              335663
+            ],
+            "unstamped_lower": 303,
+            "unstamped_upper": 311,
+            "yet_to_commit_effect": 320,
+            "yet_to_commit_first": 317,
+            "yet_to_enter": 313,
+            "yet_to_settle": 333
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              937128,
+              938127
+            ],
+            "unstamped_lower": 896,
+            "unstamped_upper": 896,
+            "yet_to_commit_effect": 913,
+            "yet_to_commit_first": 910,
+            "yet_to_enter": 904,
+            "yet_to_settle": 930
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              745158,
+              746157
+            ],
+            "unstamped_lower": 719,
+            "unstamped_upper": 727,
+            "yet_to_commit_effect": 740,
+            "yet_to_commit_first": 740,
+            "yet_to_enter": 735,
+            "yet_to_settle": 750
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1130154,
+              1131153
+            ],
+            "unstamped_lower": 1024,
+            "unstamped_upper": 1024,
+            "yet_to_commit_effect": 1024,
+            "yet_to_commit_first": 1024,
+            "yet_to_enter": 1024,
+            "yet_to_settle": 1024
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              534664,
+              535663
+            ],
+            "unstamped_lower": 511,
+            "unstamped_upper": 511,
+            "yet_to_commit_effect": 535,
+            "yet_to_commit_first": 532,
+            "yet_to_enter": 521,
+            "yet_to_settle": 541
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              326994,
+              327993
+            ],
+            "unstamped_lower": 295,
+            "unstamped_upper": 295,
+            "yet_to_commit_effect": 312,
+            "yet_to_commit_first": 311,
+            "yet_to_enter": 303,
+            "yet_to_settle": 325
+          }
+        }
+      },
+      "oban": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              -381387,
+              -380388
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              611491,
+              612490
+            ],
+            "unstamped_lower": 583,
+            "unstamped_upper": 583,
+            "yet_to_commit_effect": 596,
+            "yet_to_commit_first": 591,
+            "yet_to_enter": 585,
+            "yet_to_settle": 612
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              267264,
+              268263
+            ],
+            "unstamped_lower": 229,
+            "unstamped_upper": 229,
+            "yet_to_commit_effect": 252,
+            "yet_to_commit_first": 250,
+            "yet_to_enter": 245,
+            "yet_to_settle": 265
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              915138,
+              916137
+            ],
+            "unstamped_lower": 880,
+            "unstamped_upper": 880,
+            "yet_to_commit_effect": 899,
+            "yet_to_commit_first": 898,
+            "yet_to_enter": 888,
+            "yet_to_settle": 905
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              -42878,
+              -41879
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -388138,
+              -387139
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              -343924,
+              -342925
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              648954,
+              649953
+            ],
+            "unstamped_lower": 623,
+            "unstamped_upper": 623,
+            "yet_to_commit_effect": 644,
+            "yet_to_commit_first": 642,
+            "yet_to_enter": 633,
+            "yet_to_settle": 653
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              304727,
+              305726
+            ],
+            "unstamped_lower": 263,
+            "unstamped_upper": 263,
+            "yet_to_commit_effect": 295,
+            "yet_to_commit_first": 290,
+            "yet_to_enter": 273,
+            "yet_to_settle": 307
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              952601,
+              953600
+            ],
+            "unstamped_lower": 912,
+            "unstamped_upper": 912,
+            "yet_to_commit_effect": 930,
+            "yet_to_commit_first": 928,
+            "yet_to_enter": 920,
+            "yet_to_settle": 944
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              -5415,
+              -4416
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 13,
+            "yet_to_commit_first": 10,
+            "yet_to_enter": 1,
+            "yet_to_settle": 26
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -350675,
+              -349676
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              211171,
+              212170
+            ],
+            "unstamped_lower": 189,
+            "unstamped_upper": 189,
+            "yet_to_commit_effect": 201,
+            "yet_to_commit_first": 201,
+            "yet_to_enter": 191,
+            "yet_to_settle": 216
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              642487,
+              643486
+            ],
+            "unstamped_lower": 615,
+            "unstamped_upper": 615,
+            "yet_to_commit_effect": 637,
+            "yet_to_commit_first": 634,
+            "yet_to_enter": 625,
+            "yet_to_settle": 647
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              491823,
+              492822
+            ],
+            "unstamped_lower": 463,
+            "unstamped_upper": 463,
+            "yet_to_commit_effect": 487,
+            "yet_to_commit_first": 485,
+            "yet_to_enter": 472,
+            "yet_to_settle": 504
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              937178,
+              938177
+            ],
+            "unstamped_lower": 896,
+            "unstamped_upper": 896,
+            "yet_to_commit_effect": 913,
+            "yet_to_commit_first": 910,
+            "yet_to_enter": 904,
+            "yet_to_settle": 930
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              326508,
+              327507
+            ],
+            "unstamped_lower": 295,
+            "unstamped_upper": 295,
+            "yet_to_commit_effect": 311,
+            "yet_to_commit_first": 310,
+            "yet_to_enter": 297,
+            "yet_to_settle": 325
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -30110,
+              -29111
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              310421,
+              311420
+            ],
+            "unstamped_lower": 271,
+            "unstamped_upper": 271,
+            "yet_to_commit_effect": 300,
+            "yet_to_commit_first": 296,
+            "yet_to_enter": 288,
+            "yet_to_settle": 308
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              741737,
+              742736
+            ],
+            "unstamped_lower": 719,
+            "unstamped_upper": 719,
+            "yet_to_commit_effect": 739,
+            "yet_to_commit_first": 738,
+            "yet_to_enter": 731,
+            "yet_to_settle": 750
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              591073,
+              592072
+            ],
+            "unstamped_lower": 559,
+            "unstamped_upper": 567,
+            "yet_to_commit_effect": 581,
+            "yet_to_commit_first": 579,
+            "yet_to_enter": 570,
+            "yet_to_settle": 588
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1036428,
+              1037427
+            ],
+            "unstamped_lower": 968,
+            "unstamped_upper": 968,
+            "yet_to_commit_effect": 993,
+            "yet_to_commit_first": 991,
+            "yet_to_enter": 976,
+            "yet_to_settle": 1007
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              425758,
+              426757
+            ],
+            "unstamped_lower": 388,
+            "unstamped_upper": 388,
+            "yet_to_commit_effect": 415,
+            "yet_to_commit_first": 411,
+            "yet_to_enter": 400,
+            "yet_to_settle": 427
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              69140,
+              70139
+            ],
+            "unstamped_lower": 65,
+            "unstamped_upper": 65,
+            "yet_to_commit_effect": 77,
+            "yet_to_commit_first": 76,
+            "yet_to_enter": 72,
+            "yet_to_settle": 99
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "B": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d",
+      "apalis": "96d68cf9a3f78a769c6a9a3e01944f898f46d6641ada1a8c334a21bec1b938f5",
+      "oban": "4f28b627c0b4863d637eaf0520cfd386746df9105a1b20db0c16c9bdac8fb0df",
+      "river": "1ad05f965ef66c9722999a1715047115bc82c6846db439ee648c6da020fa4d10"
+    },
+    "timeout_windows": []
+  },
+  {
+    "group": 2,
+    "peers": {
+      "apalis": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              1333998,
+              1334997
+            ],
+            "unstamped_lower": 566,
+            "unstamped_upper": 573,
+            "yet_to_commit_effect": 595,
+            "yet_to_commit_first": 593,
+            "yet_to_enter": 581,
+            "yet_to_settle": 606
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              1951694,
+              1952693
+            ],
+            "unstamped_lower": 905,
+            "unstamped_upper": 905,
+            "yet_to_commit_effect": 932,
+            "yet_to_commit_first": 928,
+            "yet_to_enter": 914,
+            "yet_to_settle": 938
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              1750817,
+              1751816
+            ],
+            "unstamped_lower": 854,
+            "unstamped_upper": 854,
+            "yet_to_commit_effect": 885,
+            "yet_to_commit_first": 879,
+            "yet_to_enter": 862,
+            "yet_to_settle": 889
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              2141133,
+              2142132
+            ],
+            "unstamped_lower": 976,
+            "unstamped_upper": 976,
+            "yet_to_commit_effect": 998,
+            "yet_to_commit_first": 995,
+            "yet_to_enter": 987,
+            "yet_to_settle": 1007
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              1542496,
+              1543495
+            ],
+            "unstamped_lower": 709,
+            "unstamped_upper": 709,
+            "yet_to_commit_effect": 737,
+            "yet_to_commit_first": 733,
+            "yet_to_enter": 719,
+            "yet_to_settle": 751
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              1330046,
+              1331045
+            ],
+            "unstamped_lower": 566,
+            "unstamped_upper": 566,
+            "yet_to_commit_effect": 592,
+            "yet_to_commit_first": 588,
+            "yet_to_enter": 575,
+            "yet_to_settle": 602
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              1476547,
+              1477546
+            ],
+            "unstamped_lower": 645,
+            "unstamped_upper": 645,
+            "yet_to_commit_effect": 670,
+            "yet_to_commit_first": 665,
+            "yet_to_enter": 655,
+            "yet_to_settle": 685
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              2094243,
+              2095242
+            ],
+            "unstamped_lower": 936,
+            "unstamped_upper": 936,
+            "yet_to_commit_effect": 974,
+            "yet_to_commit_first": 966,
+            "yet_to_enter": 947,
+            "yet_to_settle": 989
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              1893366,
+              1894365
+            ],
+            "unstamped_lower": 887,
+            "unstamped_upper": 887,
+            "yet_to_commit_effect": 903,
+            "yet_to_commit_first": 901,
+            "yet_to_enter": 895,
+            "yet_to_settle": 907
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              2283682,
+              2284681
+            ],
+            "unstamped_lower": 1024,
+            "unstamped_upper": 1024,
+            "yet_to_commit_effect": 1024,
+            "yet_to_commit_first": 1024,
+            "yet_to_enter": 1024,
+            "yet_to_settle": 1024
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              1685045,
+              1686044
+            ],
+            "unstamped_lower": 827,
+            "unstamped_upper": 827,
+            "yet_to_commit_effect": 846,
+            "yet_to_commit_first": 843,
+            "yet_to_enter": 835,
+            "yet_to_settle": 860
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              1472595,
+              1473594
+            ],
+            "unstamped_lower": 645,
+            "unstamped_upper": 645,
+            "yet_to_commit_effect": 666,
+            "yet_to_commit_first": 662,
+            "yet_to_enter": 654,
+            "yet_to_settle": 678
+          }
+        }
+      },
+      "oban": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              705008,
+              706007
+            ],
+            "unstamped_lower": 342,
+            "unstamped_upper": 342,
+            "yet_to_commit_effect": 363,
+            "yet_to_commit_first": 362,
+            "yet_to_enter": 346,
+            "yet_to_settle": 373
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              1697346,
+              1698345
+            ],
+            "unstamped_lower": 835,
+            "unstamped_upper": 835,
+            "yet_to_commit_effect": 855,
+            "yet_to_commit_first": 850,
+            "yet_to_enter": 837,
+            "yet_to_settle": 870
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              1354457,
+              1355456
+            ],
+            "unstamped_lower": 581,
+            "unstamped_upper": 581,
+            "yet_to_commit_effect": 606,
+            "yet_to_commit_first": 603,
+            "yet_to_enter": 587,
+            "yet_to_settle": 620
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              2009945,
+              2010944
+            ],
+            "unstamped_lower": 914,
+            "unstamped_upper": 914,
+            "yet_to_commit_effect": 953,
+            "yet_to_commit_first": 947,
+            "yet_to_enter": 926,
+            "yet_to_settle": 960
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              1046691,
+              1047690
+            ],
+            "unstamped_lower": 405,
+            "unstamped_upper": 405,
+            "yet_to_commit_effect": 421,
+            "yet_to_commit_first": 416,
+            "yet_to_enter": 408,
+            "yet_to_settle": 432
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              701213,
+              702212
+            ],
+            "unstamped_lower": 342,
+            "unstamped_upper": 342,
+            "yet_to_commit_effect": 363,
+            "yet_to_commit_first": 362,
+            "yet_to_enter": 346,
+            "yet_to_settle": 371
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              732820,
+              733819
+            ],
+            "unstamped_lower": 343,
+            "unstamped_upper": 343,
+            "yet_to_commit_effect": 371,
+            "yet_to_commit_first": 363,
+            "yet_to_enter": 348,
+            "yet_to_settle": 377
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              1725158,
+              1726157
+            ],
+            "unstamped_lower": 854,
+            "unstamped_upper": 854,
+            "yet_to_commit_effect": 881,
+            "yet_to_commit_first": 877,
+            "yet_to_enter": 857,
+            "yet_to_settle": 887
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              1382269,
+              1383268
+            ],
+            "unstamped_lower": 602,
+            "unstamped_upper": 602,
+            "yet_to_commit_effect": 626,
+            "yet_to_commit_first": 622,
+            "yet_to_enter": 604,
+            "yet_to_settle": 642
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              2037757,
+              2038756
+            ],
+            "unstamped_lower": 914,
+            "unstamped_upper": 914,
+            "yet_to_commit_effect": 953,
+            "yet_to_commit_first": 948,
+            "yet_to_enter": 926,
+            "yet_to_settle": 964
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              1074503,
+              1075502
+            ],
+            "unstamped_lower": 414,
+            "unstamped_upper": 414,
+            "yet_to_commit_effect": 445,
+            "yet_to_commit_first": 441,
+            "yet_to_enter": 421,
+            "yet_to_settle": 458
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              729025,
+              730024
+            ],
+            "unstamped_lower": 343,
+            "unstamped_upper": 343,
+            "yet_to_commit_effect": 371,
+            "yet_to_commit_first": 363,
+            "yet_to_enter": 348,
+            "yet_to_settle": 377
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              1314537,
+              1315536
+            ],
+            "unstamped_lower": 560,
+            "unstamped_upper": 566,
+            "yet_to_commit_effect": 582,
+            "yet_to_commit_first": 579,
+            "yet_to_enter": 568,
+            "yet_to_settle": 588
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              1760172,
+              1761171
+            ],
+            "unstamped_lower": 857,
+            "unstamped_upper": 857,
+            "yet_to_commit_effect": 885,
+            "yet_to_commit_first": 882,
+            "yet_to_enter": 870,
+            "yet_to_settle": 893
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              1619638,
+              1620637
+            ],
+            "unstamped_lower": 780,
+            "unstamped_upper": 780,
+            "yet_to_commit_effect": 798,
+            "yet_to_commit_first": 796,
+            "yet_to_enter": 790,
+            "yet_to_settle": 809
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1993701,
+              1994700
+            ],
+            "unstamped_lower": 913,
+            "unstamped_upper": 913,
+            "yet_to_commit_effect": 948,
+            "yet_to_commit_first": 940,
+            "yet_to_enter": 919,
+            "yet_to_settle": 955
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              1469001,
+              1470000
+            ],
+            "unstamped_lower": 645,
+            "unstamped_upper": 645,
+            "yet_to_commit_effect": 666,
+            "yet_to_commit_first": 662,
+            "yet_to_enter": 654,
+            "yet_to_settle": 672
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              1067185,
+              1068184
+            ],
+            "unstamped_lower": 413,
+            "unstamped_upper": 413,
+            "yet_to_commit_effect": 442,
+            "yet_to_commit_first": 435,
+            "yet_to_enter": 415,
+            "yet_to_settle": 453
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              1415041,
+              1416040
+            ],
+            "unstamped_lower": 625,
+            "unstamped_upper": 625,
+            "yet_to_commit_effect": 646,
+            "yet_to_commit_first": 644,
+            "yet_to_enter": 633,
+            "yet_to_settle": 650
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              1860676,
+              1861675
+            ],
+            "unstamped_lower": 879,
+            "unstamped_upper": 879,
+            "yet_to_commit_effect": 901,
+            "yet_to_commit_first": 897,
+            "yet_to_enter": 888,
+            "yet_to_settle": 903
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              1720142,
+              1721141
+            ],
+            "unstamped_lower": 846,
+            "unstamped_upper": 846,
+            "yet_to_commit_effect": 875,
+            "yet_to_commit_first": 869,
+            "yet_to_enter": 851,
+            "yet_to_settle": 885
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              2094205,
+              2095204
+            ],
+            "unstamped_lower": 936,
+            "unstamped_upper": 936,
+            "yet_to_commit_effect": 974,
+            "yet_to_commit_first": 966,
+            "yet_to_enter": 947,
+            "yet_to_settle": 989
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              1569505,
+              1570504
+            ],
+            "unstamped_lower": 741,
+            "unstamped_upper": 741,
+            "yet_to_commit_effect": 762,
+            "yet_to_commit_first": 759,
+            "yet_to_enter": 751,
+            "yet_to_settle": 770
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              1167689,
+              1168688
+            ],
+            "unstamped_lower": 453,
+            "unstamped_upper": 453,
+            "yet_to_commit_effect": 477,
+            "yet_to_commit_first": 474,
+            "yet_to_enter": 463,
+            "yet_to_settle": 485
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "B": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61",
+      "apalis": "44be01bdeaf24b7cf80c7de5d18abe0ca955183fded88afa618ad451e80554e8",
+      "oban": "a09d715b652dacd4c8f95641f852a7d99b6e86d26259ee144a892df7fe5bb8f4",
+      "river": "9d2edd45d65c08ea3fea527c4a4e793a192c22cfd6dbd539efa0c40936a5bdef"
+    },
+    "timeout_windows": [
+      {
+        "durable_effects": 20,
+        "error_from_commit_us": 244507,
+        "granted_jobs": 15,
+        "granting_runners": 2,
+        "pid": 3184204,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 33,
+        "error_from_commit_us": 377507,
+        "granted_jobs": 34,
+        "granting_runners": 5,
+        "pid": 3184186,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 33,
+        "error_from_commit_us": 380507,
+        "granted_jobs": 29,
+        "granting_runners": 5,
+        "pid": 3184156,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 14,
+        "error_from_commit_us": 418507,
+        "granted_jobs": 24,
+        "granting_runners": 3,
+        "pid": 3184170,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 11,
+        "error_from_commit_us": 480507,
+        "granted_jobs": 17,
+        "granting_runners": 3,
+        "pid": 3184156,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 44,
+        "error_from_commit_us": 1214507,
+        "granted_jobs": 35,
+        "granting_runners": 5,
+        "pid": 3184120,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 37,
+        "error_from_commit_us": 1235507,
+        "granted_jobs": 30,
+        "granting_runners": 4,
+        "pid": 3184204,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 36,
+        "error_from_commit_us": 1238507,
+        "granted_jobs": 23,
+        "granting_runners": 4,
+        "pid": 3184196,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 11,
+        "error_from_commit_us": 1335507,
+        "granted_jobs": 20,
+        "granting_runners": 4,
+        "pid": 3184204,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 11,
+        "error_from_commit_us": 1339507,
+        "granted_jobs": 20,
+        "granting_runners": 4,
+        "pid": 3184196,
+        "site": "bounded_claim"
+      },
+      {
+        "durable_effects": 15,
+        "error_from_commit_us": 1407507,
+        "granted_jobs": 13,
+        "granting_runners": 3,
+        "pid": 3184137,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 14,
+        "error_from_commit_us": 1444507,
+        "granted_jobs": 9,
+        "granting_runners": 3,
+        "pid": 3184156,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 19,
+        "error_from_commit_us": 1449507,
+        "granted_jobs": 17,
+        "granting_runners": 4,
+        "pid": 3184196,
+        "site": "bounded_claim"
+      },
+      {
+        "durable_effects": 19,
+        "error_from_commit_us": 1523507,
+        "granted_jobs": 12,
+        "granting_runners": 2,
+        "pid": 3184097,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 15,
+        "error_from_commit_us": 1546507,
+        "granted_jobs": 17,
+        "granting_runners": 3,
+        "pid": 3184120,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 15,
+        "error_from_commit_us": 1549507,
+        "granted_jobs": 9,
+        "granting_runners": 2,
+        "pid": 3184186,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 18,
+        "error_from_commit_us": 1628507,
+        "granted_jobs": 21,
+        "granting_runners": 3,
+        "pid": 3184170,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 23,
+        "error_from_commit_us": 1658507,
+        "granted_jobs": 21,
+        "granting_runners": 4,
+        "pid": 3184137,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 28,
+        "error_from_commit_us": 1857507,
+        "granted_jobs": 18,
+        "granting_runners": 4,
+        "pid": 3184170,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 30,
+        "error_from_commit_us": 1882507,
+        "granted_jobs": 12,
+        "granting_runners": 3,
+        "pid": 3184156,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 31,
+        "error_from_commit_us": 1903507,
+        "granted_jobs": 13,
+        "granting_runners": 3,
+        "pid": 3184137,
+        "site": "prelock"
+      },
+      {
+        "durable_effects": 35,
+        "error_from_commit_us": 1912507,
+        "granted_jobs": 14,
+        "granting_runners": 3,
+        "pid": 3184120,
+        "site": "prelock"
+      }
+    ]
+  },
+  {
+    "group": 3,
+    "peers": {
+      "apalis": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              253624,
+              254623
+            ],
+            "unstamped_lower": 233,
+            "unstamped_upper": 233,
+            "yet_to_commit_effect": 253,
+            "yet_to_commit_first": 250,
+            "yet_to_enter": 239,
+            "yet_to_settle": 268
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              851920,
+              852919
+            ],
+            "unstamped_lower": 829,
+            "unstamped_upper": 829,
+            "yet_to_commit_effect": 851,
+            "yet_to_commit_first": 850,
+            "yet_to_enter": 835,
+            "yet_to_settle": 860
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              652594,
+              653593
+            ],
+            "unstamped_lower": 622,
+            "unstamped_upper": 622,
+            "yet_to_commit_effect": 647,
+            "yet_to_commit_first": 644,
+            "yet_to_enter": 630,
+            "yet_to_settle": 659
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1011845,
+              1012844
+            ],
+            "unstamped_lower": 960,
+            "unstamped_upper": 960,
+            "yet_to_commit_effect": 981,
+            "yet_to_commit_first": 979,
+            "yet_to_enter": 962,
+            "yet_to_settle": 995
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              431466,
+              432465
+            ],
+            "unstamped_lower": 409,
+            "unstamped_upper": 409,
+            "yet_to_commit_effect": 424,
+            "yet_to_commit_first": 423,
+            "yet_to_enter": 418,
+            "yet_to_settle": 438
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -25692477,
+              -25691478
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              427640,
+              428639
+            ],
+            "unstamped_lower": 401,
+            "unstamped_upper": 401,
+            "yet_to_commit_effect": 422,
+            "yet_to_commit_first": 420,
+            "yet_to_enter": 411,
+            "yet_to_settle": 433
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              1025936,
+              1026935
+            ],
+            "unstamped_lower": 960,
+            "unstamped_upper": 960,
+            "yet_to_commit_effect": 987,
+            "yet_to_commit_first": 986,
+            "yet_to_enter": 974,
+            "yet_to_settle": 1006
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              826610,
+              827609
+            ],
+            "unstamped_lower": 797,
+            "unstamped_upper": 797,
+            "yet_to_commit_effect": 820,
+            "yet_to_commit_first": 819,
+            "yet_to_enter": 806,
+            "yet_to_settle": 839
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1185861,
+              1186860
+            ],
+            "unstamped_lower": 1024,
+            "unstamped_upper": 1024,
+            "yet_to_commit_effect": 1024,
+            "yet_to_commit_first": 1024,
+            "yet_to_enter": 1024,
+            "yet_to_settle": 1024
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              605482,
+              606481
+            ],
+            "unstamped_lower": 582,
+            "unstamped_upper": 582,
+            "yet_to_commit_effect": 602,
+            "yet_to_commit_first": 600,
+            "yet_to_enter": 586,
+            "yet_to_settle": 614
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -25518461,
+              -25517462
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        }
+      },
+      "oban": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              -438272,
+              -437273
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              583747,
+              584746
+            ],
+            "unstamped_lower": 566,
+            "unstamped_upper": 566,
+            "yet_to_commit_effect": 582,
+            "yet_to_commit_first": 582,
+            "yet_to_enter": 567,
+            "yet_to_settle": 599
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              225008,
+              226007
+            ],
+            "unstamped_lower": 201,
+            "unstamped_upper": 209,
+            "yet_to_commit_effect": 227,
+            "yet_to_commit_first": 224,
+            "yet_to_enter": 211,
+            "yet_to_settle": 239
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              965712,
+              966711
+            ],
+            "unstamped_lower": 932,
+            "unstamped_upper": 932,
+            "yet_to_commit_effect": 943,
+            "yet_to_commit_first": 942,
+            "yet_to_enter": 932,
+            "yet_to_settle": 953
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              -86744,
+              -85745
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -441757,
+              -440758
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              -365746,
+              -364747
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              656273,
+              657272
+            ],
+            "unstamped_lower": 629,
+            "unstamped_upper": 629,
+            "yet_to_commit_effect": 650,
+            "yet_to_commit_first": 648,
+            "yet_to_enter": 632,
+            "yet_to_settle": 660
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              297534,
+              298533
+            ],
+            "unstamped_lower": 273,
+            "unstamped_upper": 273,
+            "yet_to_commit_effect": 291,
+            "yet_to_commit_first": 288,
+            "yet_to_enter": 281,
+            "yet_to_settle": 305
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1038238,
+              1039237
+            ],
+            "unstamped_lower": 968,
+            "unstamped_upper": 968,
+            "yet_to_commit_effect": 997,
+            "yet_to_commit_first": 994,
+            "yet_to_enter": 981,
+            "yet_to_settle": 1014
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              -14218,
+              -13219
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 10,
+            "yet_to_commit_first": 7,
+            "yet_to_enter": 0,
+            "yet_to_settle": 23
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -369231,
+              -368232
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              213070,
+              214069
+            ],
+            "unstamped_lower": 194,
+            "unstamped_upper": 194,
+            "yet_to_commit_effect": 211,
+            "yet_to_commit_first": 208,
+            "yet_to_enter": 202,
+            "yet_to_settle": 228
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              634807,
+              635806
+            ],
+            "unstamped_lower": 606,
+            "unstamped_upper": 606,
+            "yet_to_commit_effect": 631,
+            "yet_to_commit_first": 625,
+            "yet_to_enter": 614,
+            "yet_to_settle": 646
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              490683,
+              491682
+            ],
+            "unstamped_lower": 466,
+            "unstamped_upper": 466,
+            "yet_to_commit_effect": 490,
+            "yet_to_commit_first": 485,
+            "yet_to_enter": 476,
+            "yet_to_settle": 499
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              866068,
+              867067
+            ],
+            "unstamped_lower": 851,
+            "unstamped_upper": 851,
+            "yet_to_commit_effect": 860,
+            "yet_to_commit_first": 860,
+            "yet_to_enter": 859,
+            "yet_to_settle": 876
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              336690,
+              337689
+            ],
+            "unstamped_lower": 321,
+            "unstamped_upper": 321,
+            "yet_to_commit_effect": 336,
+            "yet_to_commit_first": 333,
+            "yet_to_enter": 322,
+            "yet_to_settle": 350
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -15855,
+              -14856
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 9,
+            "yet_to_commit_first": 7,
+            "yet_to_enter": 0,
+            "yet_to_settle": 23
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              347369,
+              348368
+            ],
+            "unstamped_lower": 329,
+            "unstamped_upper": 329,
+            "yet_to_commit_effect": 348,
+            "yet_to_commit_first": 345,
+            "yet_to_enter": 338,
+            "yet_to_settle": 365
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              769106,
+              770105
+            ],
+            "unstamped_lower": 737,
+            "unstamped_upper": 737,
+            "yet_to_commit_effect": 756,
+            "yet_to_commit_first": 755,
+            "yet_to_enter": 744,
+            "yet_to_settle": 768
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              624982,
+              625981
+            ],
+            "unstamped_lower": 606,
+            "unstamped_upper": 606,
+            "yet_to_commit_effect": 618,
+            "yet_to_commit_first": 617,
+            "yet_to_enter": 614,
+            "yet_to_settle": 638
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1000367,
+              1001366
+            ],
+            "unstamped_lower": 948,
+            "unstamped_upper": 948,
+            "yet_to_commit_effect": 976,
+            "yet_to_commit_first": 974,
+            "yet_to_enter": 958,
+            "yet_to_settle": 981
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              470989,
+              471988
+            ],
+            "unstamped_lower": 442,
+            "unstamped_upper": 450,
+            "yet_to_commit_effect": 464,
+            "yet_to_commit_first": 462,
+            "yet_to_enter": 451,
+            "yet_to_settle": 475
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              118444,
+              119443
+            ],
+            "unstamped_lower": 127,
+            "unstamped_upper": 127,
+            "yet_to_commit_effect": 139,
+            "yet_to_commit_first": 138,
+            "yet_to_enter": 135,
+            "yet_to_settle": 145
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "B": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3",
+      "apalis": "7b46f4ed9d9cfd087ed914b4fcbf6d600bf3048d8b27f6cceeec3fed5b48dd6a",
+      "oban": "b2ce1ae8e442520ffe0ee40a3002664efd1027cce1ff48cbbfe74daff4381091",
+      "river": "7118aa8cdf7b11a55137cc55e04d5ebd6c1843a27e225b2ca89a3a22b1e04578"
+    },
+    "timeout_windows": []
+  },
+  {
+    "group": 4,
+    "peers": {
+      "apalis": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              290341,
+              291340
+            ],
+            "unstamped_lower": 245,
+            "unstamped_upper": 253,
+            "yet_to_commit_effect": 266,
+            "yet_to_commit_first": 264,
+            "yet_to_enter": 253,
+            "yet_to_settle": 276
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              885075,
+              886074
+            ],
+            "unstamped_lower": 819,
+            "unstamped_upper": 819,
+            "yet_to_commit_effect": 833,
+            "yet_to_commit_first": 829,
+            "yet_to_enter": 819,
+            "yet_to_settle": 843
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              687313,
+              688312
+            ],
+            "unstamped_lower": 639,
+            "unstamped_upper": 639,
+            "yet_to_commit_effect": 648,
+            "yet_to_commit_first": 646,
+            "yet_to_enter": 641,
+            "yet_to_settle": 673
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1065330,
+              1066329
+            ],
+            "unstamped_lower": 968,
+            "unstamped_upper": 968,
+            "yet_to_commit_effect": 984,
+            "yet_to_commit_first": 983,
+            "yet_to_enter": 976,
+            "yet_to_settle": 1000
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              476284,
+              477283
+            ],
+            "unstamped_lower": 422,
+            "unstamped_upper": 422,
+            "yet_to_commit_effect": 436,
+            "yet_to_commit_first": 433,
+            "yet_to_enter": 422,
+            "yet_to_settle": 449
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              283705,
+              284704
+            ],
+            "unstamped_lower": 237,
+            "unstamped_upper": 237,
+            "yet_to_commit_effect": 261,
+            "yet_to_commit_first": 258,
+            "yet_to_enter": 245,
+            "yet_to_settle": 269
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              490630,
+              491629
+            ],
+            "unstamped_lower": 428,
+            "unstamped_upper": 428,
+            "yet_to_commit_effect": 454,
+            "yet_to_commit_first": 449,
+            "yet_to_enter": 437,
+            "yet_to_settle": 469
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              1085364,
+              1086363
+            ],
+            "unstamped_lower": 968,
+            "unstamped_upper": 968,
+            "yet_to_commit_effect": 994,
+            "yet_to_commit_first": 992,
+            "yet_to_enter": 985,
+            "yet_to_settle": 1016
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              887602,
+              888601
+            ],
+            "unstamped_lower": 819,
+            "unstamped_upper": 819,
+            "yet_to_commit_effect": 835,
+            "yet_to_commit_first": 834,
+            "yet_to_enter": 828,
+            "yet_to_settle": 848
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1265619,
+              1266618
+            ],
+            "unstamped_lower": 1024,
+            "unstamped_upper": 1024,
+            "yet_to_commit_effect": 1024,
+            "yet_to_commit_first": 1024,
+            "yet_to_enter": 1024,
+            "yet_to_settle": 1024
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              676573,
+              677572
+            ],
+            "unstamped_lower": 615,
+            "unstamped_upper": 615,
+            "yet_to_commit_effect": 641,
+            "yet_to_commit_first": 639,
+            "yet_to_enter": 627,
+            "yet_to_settle": 649
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              483994,
+              484993
+            ],
+            "unstamped_lower": 428,
+            "unstamped_upper": 428,
+            "yet_to_commit_effect": 445,
+            "yet_to_commit_first": 442,
+            "yet_to_enter": 432,
+            "yet_to_settle": 457
+          }
+        }
+      },
+      "oban": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              -341444,
+              -340445
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              618868,
+              619867
+            ],
+            "unstamped_lower": 546,
+            "unstamped_upper": 554,
+            "yet_to_commit_effect": 570,
+            "yet_to_commit_first": 567,
+            "yet_to_enter": 555,
+            "yet_to_settle": 587
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              283149,
+              284148
+            ],
+            "unstamped_lower": 237,
+            "unstamped_upper": 237,
+            "yet_to_commit_effect": 261,
+            "yet_to_commit_first": 258,
+            "yet_to_enter": 245,
+            "yet_to_settle": 268
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              927124,
+              928123
+            ],
+            "unstamped_lower": 843,
+            "unstamped_upper": 851,
+            "yet_to_commit_effect": 869,
+            "yet_to_commit_first": 869,
+            "yet_to_enter": 859,
+            "yet_to_settle": 876
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              -15861,
+              -14862
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 5,
+            "yet_to_commit_first": 4,
+            "yet_to_enter": 0,
+            "yet_to_settle": 19
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -343057,
+              -342058
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              -255096,
+              -254097
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              705216,
+              706215
+            ],
+            "unstamped_lower": 647,
+            "unstamped_upper": 647,
+            "yet_to_commit_effect": 665,
+            "yet_to_commit_first": 663,
+            "yet_to_enter": 656,
+            "yet_to_settle": 681
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              369497,
+              370496
+            ],
+            "unstamped_lower": 325,
+            "unstamped_upper": 325,
+            "yet_to_commit_effect": 341,
+            "yet_to_commit_first": 338,
+            "yet_to_enter": 335,
+            "yet_to_settle": 349
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1013472,
+              1014471
+            ],
+            "unstamped_lower": 932,
+            "unstamped_upper": 932,
+            "yet_to_commit_effect": 949,
+            "yet_to_commit_first": 945,
+            "yet_to_enter": 940,
+            "yet_to_settle": 959
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              70487,
+              71486
+            ],
+            "unstamped_lower": 71,
+            "unstamped_upper": 79,
+            "yet_to_commit_effect": 89,
+            "yet_to_commit_first": 87,
+            "yet_to_enter": 80,
+            "yet_to_settle": 101
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -256709,
+              -255710
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              272012,
+              273011
+            ],
+            "unstamped_lower": 221,
+            "unstamped_upper": 221,
+            "yet_to_commit_effect": 250,
+            "yet_to_commit_first": 248,
+            "yet_to_enter": 230,
+            "yet_to_settle": 260
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              679566,
+              680565
+            ],
+            "unstamped_lower": 623,
+            "unstamped_upper": 623,
+            "yet_to_commit_effect": 642,
+            "yet_to_commit_first": 642,
+            "yet_to_enter": 634,
+            "yet_to_settle": 655
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              541082,
+              542081
+            ],
+            "unstamped_lower": 492,
+            "unstamped_upper": 492,
+            "yet_to_commit_effect": 505,
+            "yet_to_commit_first": 505,
+            "yet_to_enter": 501,
+            "yet_to_settle": 516
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              935364,
+              936363
+            ],
+            "unstamped_lower": 859,
+            "unstamped_upper": 859,
+            "yet_to_commit_effect": 875,
+            "yet_to_commit_first": 874,
+            "yet_to_enter": 869,
+            "yet_to_settle": 883
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              399573,
+              400572
+            ],
+            "unstamped_lower": 340,
+            "unstamped_upper": 340,
+            "yet_to_commit_effect": 364,
+            "yet_to_commit_first": 358,
+            "yet_to_enter": 347,
+            "yet_to_settle": 373
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              27025,
+              28024
+            ],
+            "unstamped_lower": 31,
+            "unstamped_upper": 31,
+            "yet_to_commit_effect": 54,
+            "yet_to_commit_first": 52,
+            "yet_to_enter": 40,
+            "yet_to_settle": 59
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              433004,
+              434003
+            ],
+            "unstamped_lower": 368,
+            "unstamped_upper": 368,
+            "yet_to_commit_effect": 392,
+            "yet_to_commit_first": 389,
+            "yet_to_enter": 376,
+            "yet_to_settle": 405
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              840558,
+              841557
+            ],
+            "unstamped_lower": 771,
+            "unstamped_upper": 771,
+            "yet_to_commit_effect": 790,
+            "yet_to_commit_first": 789,
+            "yet_to_enter": 780,
+            "yet_to_settle": 802
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              702074,
+              703073
+            ],
+            "unstamped_lower": 639,
+            "unstamped_upper": 639,
+            "yet_to_commit_effect": 662,
+            "yet_to_commit_first": 659,
+            "yet_to_enter": 652,
+            "yet_to_settle": 677
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1096356,
+              1097355
+            ],
+            "unstamped_lower": 976,
+            "unstamped_upper": 976,
+            "yet_to_commit_effect": 1002,
+            "yet_to_commit_first": 999,
+            "yet_to_enter": 986,
+            "yet_to_settle": 1016
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              560565,
+              561564
+            ],
+            "unstamped_lower": 508,
+            "unstamped_upper": 508,
+            "yet_to_commit_effect": 522,
+            "yet_to_commit_first": 519,
+            "yet_to_enter": 510,
+            "yet_to_settle": 531
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              188017,
+              189016
+            ],
+            "unstamped_lower": 159,
+            "unstamped_upper": 163,
+            "yet_to_commit_effect": 172,
+            "yet_to_commit_first": 170,
+            "yet_to_enter": 163,
+            "yet_to_settle": 185
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "B": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598",
+      "apalis": "436765e700659fd5a262c99f65c84306c7688b0bc5818a5420ad5c34d168ec4d",
+      "oban": "4717674f927f06cd14fff7b2bc34db75274234cf3eff814d0c97255ecfa6664a",
+      "river": "46344afee41bc4b14aae8e9d01f678c14bbc4d4104c57c724150dd83f3506cf8"
+    },
+    "timeout_windows": []
+  },
+  {
+    "group": 5,
+    "peers": {
+      "apalis": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              254365,
+              255364
+            ],
+            "unstamped_lower": 231,
+            "unstamped_upper": 231,
+            "yet_to_commit_effect": 248,
+            "yet_to_commit_first": 247,
+            "yet_to_enter": 239,
+            "yet_to_settle": 260
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              845142,
+              846141
+            ],
+            "unstamped_lower": 786,
+            "unstamped_upper": 786,
+            "yet_to_commit_effect": 811,
+            "yet_to_commit_first": 805,
+            "yet_to_enter": 793,
+            "yet_to_settle": 823
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              651712,
+              652711
+            ],
+            "unstamped_lower": 605,
+            "unstamped_upper": 605,
+            "yet_to_commit_effect": 630,
+            "yet_to_commit_first": 629,
+            "yet_to_enter": 614,
+            "yet_to_settle": 644
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1029811,
+              1030810
+            ],
+            "unstamped_lower": 952,
+            "unstamped_upper": 952,
+            "yet_to_commit_effect": 976,
+            "yet_to_commit_first": 975,
+            "yet_to_enter": 955,
+            "yet_to_settle": 988
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              448175,
+              449174
+            ],
+            "unstamped_lower": 429,
+            "unstamped_upper": 429,
+            "yet_to_commit_effect": 444,
+            "yet_to_commit_first": 444,
+            "yet_to_enter": 437,
+            "yet_to_settle": 453
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              245806,
+              246805
+            ],
+            "unstamped_lower": 223,
+            "unstamped_upper": 223,
+            "yet_to_commit_effect": 241,
+            "yet_to_commit_first": 237,
+            "yet_to_enter": 231,
+            "yet_to_settle": 249
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              419336,
+              420335
+            ],
+            "unstamped_lower": 397,
+            "unstamped_upper": 397,
+            "yet_to_commit_effect": 421,
+            "yet_to_commit_first": 418,
+            "yet_to_enter": 406,
+            "yet_to_settle": 431
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              1010113,
+              1011112
+            ],
+            "unstamped_lower": 936,
+            "unstamped_upper": 936,
+            "yet_to_commit_effect": 960,
+            "yet_to_commit_first": 958,
+            "yet_to_enter": 944,
+            "yet_to_settle": 969
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              816683,
+              817682
+            ],
+            "unstamped_lower": 762,
+            "unstamped_upper": 762,
+            "yet_to_commit_effect": 782,
+            "yet_to_commit_first": 779,
+            "yet_to_enter": 770,
+            "yet_to_settle": 791
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1194782,
+              1195781
+            ],
+            "unstamped_lower": 1024,
+            "unstamped_upper": 1024,
+            "yet_to_commit_effect": 1024,
+            "yet_to_commit_first": 1024,
+            "yet_to_enter": 1024,
+            "yet_to_settle": 1024
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              613146,
+              614145
+            ],
+            "unstamped_lower": 578,
+            "unstamped_upper": 578,
+            "yet_to_commit_effect": 594,
+            "yet_to_commit_first": 592,
+            "yet_to_enter": 582,
+            "yet_to_settle": 603
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              410777,
+              411776
+            ],
+            "unstamped_lower": 389,
+            "unstamped_upper": 389,
+            "yet_to_commit_effect": 411,
+            "yet_to_commit_first": 406,
+            "yet_to_enter": 391,
+            "yet_to_settle": 422
+          }
+        }
+      },
+      "oban": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              -291711,
+              -290712
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              695539,
+              696538
+            ],
+            "unstamped_lower": 644,
+            "unstamped_upper": 644,
+            "yet_to_commit_effect": 673,
+            "yet_to_commit_first": 671,
+            "yet_to_enter": 655,
+            "yet_to_settle": 685
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              359713,
+              360712
+            ],
+            "unstamped_lower": 327,
+            "unstamped_upper": 327,
+            "yet_to_commit_effect": 351,
+            "yet_to_commit_first": 348,
+            "yet_to_enter": 335,
+            "yet_to_settle": 365
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              993502,
+              994501
+            ],
+            "unstamped_lower": 914,
+            "unstamped_upper": 914,
+            "yet_to_commit_effect": 947,
+            "yet_to_commit_first": 944,
+            "yet_to_enter": 921,
+            "yet_to_settle": 959
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              54896,
+              55895
+            ],
+            "unstamped_lower": 64,
+            "unstamped_upper": 64,
+            "yet_to_commit_effect": 84,
+            "yet_to_commit_first": 83,
+            "yet_to_enter": 66,
+            "yet_to_settle": 96
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -296339,
+              -295340
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              -237454,
+              -236455
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              749796,
+              750795
+            ],
+            "unstamped_lower": 708,
+            "unstamped_upper": 708,
+            "yet_to_commit_effect": 731,
+            "yet_to_commit_first": 726,
+            "yet_to_enter": 716,
+            "yet_to_settle": 745
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              413970,
+              414969
+            ],
+            "unstamped_lower": 389,
+            "unstamped_upper": 389,
+            "yet_to_commit_effect": 412,
+            "yet_to_commit_first": 412,
+            "yet_to_enter": 399,
+            "yet_to_settle": 425
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1047759,
+              1048758
+            ],
+            "unstamped_lower": 960,
+            "unstamped_upper": 960,
+            "yet_to_commit_effect": 985,
+            "yet_to_commit_first": 982,
+            "yet_to_enter": 973,
+            "yet_to_settle": 998
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              109153,
+              110152
+            ],
+            "unstamped_lower": 114,
+            "unstamped_upper": 114,
+            "yet_to_commit_effect": 127,
+            "yet_to_commit_first": 126,
+            "yet_to_enter": 122,
+            "yet_to_settle": 140
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              -242082,
+              -241083
+            ],
+            "unstamped_lower": 0,
+            "unstamped_upper": 0,
+            "yet_to_commit_effect": 0,
+            "yet_to_commit_first": 0,
+            "yet_to_enter": 0,
+            "yet_to_settle": 0
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              264893,
+              265892
+            ],
+            "unstamped_lower": 239,
+            "unstamped_upper": 239,
+            "yet_to_commit_effect": 257,
+            "yet_to_commit_first": 256,
+            "yet_to_enter": 247,
+            "yet_to_settle": 269
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              678757,
+              679756
+            ],
+            "unstamped_lower": 628,
+            "unstamped_upper": 628,
+            "yet_to_commit_effect": 654,
+            "yet_to_commit_first": 651,
+            "yet_to_enter": 638,
+            "yet_to_settle": 671
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              520260,
+              521259
+            ],
+            "unstamped_lower": 479,
+            "unstamped_upper": 487,
+            "yet_to_commit_effect": 510,
+            "yet_to_commit_first": 507,
+            "yet_to_enter": 493,
+            "yet_to_settle": 522
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              880156,
+              881155
+            ],
+            "unstamped_lower": 829,
+            "unstamped_upper": 829,
+            "yet_to_commit_effect": 847,
+            "yet_to_commit_first": 844,
+            "yet_to_enter": 835,
+            "yet_to_settle": 861
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              383038,
+              384037
+            ],
+            "unstamped_lower": 359,
+            "unstamped_upper": 359,
+            "yet_to_commit_effect": 377,
+            "yet_to_commit_first": 372,
+            "yet_to_enter": 363,
+            "yet_to_settle": 384
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              68300,
+              69299
+            ],
+            "unstamped_lower": 74,
+            "unstamped_upper": 82,
+            "yet_to_commit_effect": 96,
+            "yet_to_commit_first": 96,
+            "yet_to_enter": 84,
+            "yet_to_settle": 107
+          }
+        },
+        "submitted_us": {
+          "effect_1024": {
+            "last_stamp_minus_cutoff_us": [
+              396686,
+              397685
+            ],
+            "unstamped_lower": 367,
+            "unstamped_upper": 367,
+            "yet_to_commit_effect": 394,
+            "yet_to_commit_first": 389,
+            "yet_to_enter": 378,
+            "yet_to_settle": 405
+          },
+          "effect_256": {
+            "last_stamp_minus_cutoff_us": [
+              810550,
+              811549
+            ],
+            "unstamped_lower": 762,
+            "unstamped_upper": 762,
+            "yet_to_commit_effect": 777,
+            "yet_to_commit_first": 776,
+            "yet_to_enter": 770,
+            "yet_to_settle": 788
+          },
+          "effect_512": {
+            "last_stamp_minus_cutoff_us": [
+              652053,
+              653052
+            ],
+            "unstamped_lower": 605,
+            "unstamped_upper": 613,
+            "yet_to_commit_effect": 630,
+            "yet_to_commit_first": 630,
+            "yet_to_enter": 614,
+            "yet_to_settle": 644
+          },
+          "effect_64": {
+            "last_stamp_minus_cutoff_us": [
+              1011949,
+              1012948
+            ],
+            "unstamped_lower": 936,
+            "unstamped_upper": 936,
+            "yet_to_commit_effect": 962,
+            "yet_to_commit_first": 958,
+            "yet_to_enter": 944,
+            "yet_to_settle": 972
+          },
+          "effect_768": {
+            "last_stamp_minus_cutoff_us": [
+              514831,
+              515830
+            ],
+            "unstamped_lower": 479,
+            "unstamped_upper": 479,
+            "yet_to_commit_effect": 505,
+            "yet_to_commit_first": 501,
+            "yet_to_enter": 482,
+            "yet_to_settle": 519
+          },
+          "settled": {
+            "last_stamp_minus_cutoff_us": [
+              200093,
+              201092
+            ],
+            "unstamped_lower": 176,
+            "unstamped_upper": 176,
+            "yet_to_commit_effect": 191,
+            "yet_to_commit_first": 189,
+            "yet_to_enter": 184,
+            "yet_to_settle": 206
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "B": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175",
+      "apalis": "27a02c8667aeaeb7c4c441499064c675539c519c49e3f4ff77c748ea242611c9",
+      "oban": "da327771f7dd3e8d19e9045b33d12534ea2511fbb2219846286f325546c9796d",
+      "river": "b35594b0d3455275962b9e6fd5b01b3ba5ddad0f4c073d7e044a79abead1840a"
+    },
+    "timeout_windows": []
+  }
+]
