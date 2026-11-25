@@ -69,3 +69,13 @@ For equal batches of 64 jobs, a 20% throughput gain requires FILE to finish by f
 d=tools/durable-jobs-bench/results/2026-11-25-public-large-claim-gap
 python3 -B "$d/peer_deadlines.py" | cmp - "$d/peer-deadlines.json"
 ```
+
+## When the combined path overtook producer lookahead alone
+
+The released experiment used the same producer for the combined and producer-only cells. Starting at first submit, the combined path reached each of the first **34** durable effects later in rotation 1. It reached effects **35–64** earlier. In reverse, the first **38** were later and **39–64** were earlier. These ranks count completed jobs across all eight runners. The two arms can finish different job IDs at the same rank.
+
+Against the faster full-submit OFF duplicate, the combined path reached all 64 effect ranks earlier in rotation 1. In reverse, only ranks 1–8 arrived later. Producer lookahead paid for most of the early delay in that comparison. The same-producer comparison above exposes the delay a smaller initial prepared request would need to reduce while preserving the later gains.
+
+Both combined cells finished 244–259 ms earlier than the faster OFF duplicate and passed the drain, last-confirmed-grant and resource gates. Only the forward rotation qualified overall. In reverse the OFF duplicates differed by 134.232 ms to enqueue and 190.362 ms to settlement. The 83.466 ms combined enqueue saving and the 182.603 ms full-submit saving over producer-only missed those thresholds. The peer stage closed.
+
+Run `factorial_progress.py` with the pilot evidence directory exported from owner commit `34b4403224f4880dad4710934801183189346e49`. It verifies the release and score binding, all 12 measured raw hashes, and the 8th and 64th effect timestamps on both clocks, then prints the paired difference at every rank. [Pilot release and score](../../../../../t3-09dc428a/tools/durable-jobs-bench/results/2026-11-25-public-large-file-factorial/evidence/pilot)
