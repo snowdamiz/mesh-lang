@@ -21,3 +21,21 @@ Run from this directory to reproduce all counts, including the Oban and Apalis m
 ```sh
 python3 -B peer_grant_progress.py | cmp - peer-grant-progress.json
 ```
+
+## Equal start at the 256th durable effect
+
+Align each engine at its own 256th committed second write. This removes the producer and first 256 effects from the comparison. River completed the next 512 effects in 280–316 ms. Giving Mesh the same time in each rotation yields the counts below. Each Mesh job keeps a seat through its terminal receipt. With 64 seats, at least 704 of the first 768 effect-complete jobs must already have settled for Mesh to reach that milestone. The database settlement counts give Mesh credit immediately at the commit timestamp, ahead of client receipt.
+
+| Rotation | Mesh effects | Mesh settled | Completed effects available to settle immediately | Additional Mesh effects needed even to reach 704 settlements |
+|---|---:|---:|---:|---:|
+| 1 | 574 | 555 | 19 | 130 |
+| 2 | 454 | 447 | 7 | 250 |
+| 3 | 545 | 533 | 12 | 159 |
+| 4 | 521 | 511 | 10 | 183 |
+| 5 | 537 | 518 | 19 | 167 |
+
+At River’s 768th effect, its own database had recorded only 464–548 terminal settlements. Its separation of application completion from terminal persistence matters when comparing engine throughput. Mesh would need 149–257 more settlements at these deadlines. Settling all 7–19 already-completed effects at the deadline would still leave the deficits in the last column. To close the gap, cheaper settlement would have to free seats earlier **throughout** the middle window so that more replacements commit their application writes.
+
+At Oban’s corresponding durations, Mesh had already reached 856–890 effects in four rotations. In rotation 2 it had reached 619, including 617 settled. This pattern survives alignment at the 256th write. The counts describe the recorded schedules and give no causal estimate of the feedback from a faster settlement or scheduler.
+
+The [middle-window counts and raw hashes](middle-refill-capacity.json) include both peers and grant timestamp bounds. Reproduce them with `python3 -B middle_refill_capacity.py`.

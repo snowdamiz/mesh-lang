@@ -1,0 +1,257 @@
+{
+  "1": {
+    "mesh_raw_sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d",
+    "oban": {
+      "additional_effects_needed_even_for_704_settlements": 0,
+      "additional_settlements_needed": 0,
+      "finished_effects_awaiting_settlement": 11,
+      "mesh_at_cutoff": {
+        "effects": 887,
+        "settled": 876
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 240
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        907,
+        907
+      ],
+      "mesh_middle_us": 507094,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 763
+      },
+      "peer_middle_us": 654369,
+      "raw_sha256": "4f28b627c0b4863d637eaf0520cfd386746df9105a1b20db0c16c9bdac8fb0df"
+    },
+    "river": {
+      "additional_effects_needed_even_for_704_settlements": 130,
+      "additional_settlements_needed": 149,
+      "finished_effects_awaiting_settlement": 19,
+      "mesh_at_cutoff": {
+        "effects": 574,
+        "settled": 555
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 240
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        592,
+        600
+      ],
+      "mesh_middle_us": 507094,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 511
+      },
+      "peer_middle_us": 315979,
+      "raw_sha256": "1ad05f965ef66c9722999a1715047115bc82c6846db439ee648c6da020fa4d10"
+    }
+  },
+  "2": {
+    "mesh_raw_sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61",
+    "oban": {
+      "additional_effects_needed_even_for_704_settlements": 85,
+      "additional_settlements_needed": 87,
+      "finished_effects_awaiting_settlement": 2,
+      "mesh_at_cutoff": {
+        "effects": 619,
+        "settled": 617
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 243
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        650,
+        650
+      ],
+      "mesh_middle_us": 1238201,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 759
+      },
+      "peer_middle_us": 650655,
+      "raw_sha256": "a09d715b652dacd4c8f95641f852a7d99b6e86d26259ee144a892df7fe5bb8f4"
+    },
+    "river": {
+      "additional_effects_needed_even_for_704_settlements": 250,
+      "additional_settlements_needed": 257,
+      "finished_effects_awaiting_settlement": 7,
+      "mesh_at_cutoff": {
+        "effects": 454,
+        "settled": 447
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 243
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        480,
+        480
+      ],
+      "mesh_middle_us": 1238201,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 509
+      },
+      "peer_middle_us": 291171,
+      "raw_sha256": "9d2edd45d65c08ea3fea527c4a4e793a192c22cfd6dbd539efa0c40936a5bdef"
+    }
+  },
+  "3": {
+    "mesh_raw_sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3",
+    "oban": {
+      "additional_effects_needed_even_for_704_settlements": 0,
+      "additional_settlements_needed": 0,
+      "finished_effects_awaiting_settlement": 7,
+      "mesh_at_cutoff": {
+        "effects": 890,
+        "settled": 883
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 242
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        905,
+        905
+      ],
+      "mesh_middle_us": 525532,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 757
+      },
+      "peer_middle_us": 670491,
+      "raw_sha256": "b2ce1ae8e442520ffe0ee40a3002664efd1027cce1ff48cbbfe74daff4381091"
+    },
+    "river": {
+      "additional_effects_needed_even_for_704_settlements": 159,
+      "additional_settlements_needed": 171,
+      "finished_effects_awaiting_settlement": 12,
+      "mesh_at_cutoff": {
+        "effects": 545,
+        "settled": 533
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 242
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        566,
+        566
+      ],
+      "mesh_middle_us": 525532,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 548
+      },
+      "peer_middle_us": 298117,
+      "raw_sha256": "7118aa8cdf7b11a55137cc55e04d5ebd6c1843a27e225b2ca89a3a22b1e04578"
+    }
+  },
+  "4": {
+    "mesh_raw_sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598",
+    "oban": {
+      "additional_effects_needed_even_for_704_settlements": 0,
+      "additional_settlements_needed": 0,
+      "finished_effects_awaiting_settlement": 9,
+      "mesh_at_cutoff": {
+        "effects": 857,
+        "settled": 848
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 244
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        865,
+        865
+      ],
+      "mesh_middle_us": 537845,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 762
+      },
+      "peer_middle_us": 634729,
+      "raw_sha256": "4717674f927f06cd14fff7b2bc34db75274234cf3eff814d0c97255ecfa6664a"
+    },
+    "river": {
+      "additional_effects_needed_even_for_704_settlements": 183,
+      "additional_settlements_needed": 193,
+      "finished_effects_awaiting_settlement": 10,
+      "mesh_at_cutoff": {
+        "effects": 521,
+        "settled": 511
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 244
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        540,
+        540
+      ],
+      "mesh_middle_us": 537845,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 527
+      },
+      "peer_middle_us": 279993,
+      "raw_sha256": "46344afee41bc4b14aae8e9d01f678c14bbc4d4104c57c724150dd83f3506cf8"
+    }
+  },
+  "5": {
+    "mesh_raw_sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175",
+    "oban": {
+      "additional_effects_needed_even_for_704_settlements": 0,
+      "additional_settlements_needed": 0,
+      "finished_effects_awaiting_settlement": 3,
+      "mesh_at_cutoff": {
+        "effects": 856,
+        "settled": 853
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 242
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        880,
+        880
+      ],
+      "mesh_middle_us": 534268,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 760
+      },
+      "peer_middle_us": 640643,
+      "raw_sha256": "da327771f7dd3e8d19e9045b33d12534ea2511fbb2219846286f325546c9796d"
+    },
+    "river": {
+      "additional_effects_needed_even_for_704_settlements": 167,
+      "additional_settlements_needed": 186,
+      "finished_effects_awaiting_settlement": 19,
+      "mesh_at_cutoff": {
+        "effects": 537,
+        "settled": 518
+      },
+      "mesh_at_rank_256": {
+        "effects": 256,
+        "settled": 242
+      },
+      "mesh_granted_at_cutoff_bounds": [
+        553,
+        553
+      ],
+      "mesh_middle_us": 534268,
+      "peer_at_rank_768": {
+        "effects": 768,
+        "settled": 464
+      },
+      "peer_middle_us": 295719,
+      "raw_sha256": "b35594b0d3455275962b9e6fd5b01b3ba5ddad0f4c073d7e044a79abead1840a"
+    }
+  }
+}
