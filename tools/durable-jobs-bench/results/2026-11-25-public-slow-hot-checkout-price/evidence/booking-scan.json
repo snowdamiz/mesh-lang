@@ -1,0 +1,22 @@
+{
+  "lexical_slow_hot_hits": {
+    "archive": {
+      "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/all-profile-plans.json": {
+        "actual_hot_option_literal": false,
+        "document_type": "dict",
+        "exact_public_artifact_reference": false
+      }
+    },
+    "inbox": {
+      "target/linode-jobs-stepchange/requests/public-campaign-pause-20261124T055129Z.json": {
+        "actual_hot_option_literal": false,
+        "document_type": "dict",
+        "exact_public_artifact_reference": false
+      }
+    }
+  },
+  "scanned_documents": {
+    "archive": 4243,
+    "inbox": 354
+  }
+}

@@ -1,0 +1,1154 @@
+{
+  "canonical_slow": [
+    {
+      "combined_app_interval_slot_normalized_ms": 56.2064375,
+      "first_write_rank_64_to_512_ms": 1096.636,
+      "first_write_service_slot_normalized_ms": 27.4214375,
+      "group": 1,
+      "held_producer_fixed_required_drain_saving_ms": 94.909,
+      "hold_floor_ms": 800.0,
+      "last_effect_to_last_settlement_ms": 6.272000000000162,
+      "over_hold_slot_normalized_ms": 28.785,
+      "probe": {
+        "calls": 1024,
+        "execution_ms": 2.7066810000000037
+      },
+      "rank_step": 64,
+      "raw_sha256": "1bb9b1ebaff4dd32d40eded1b2d8acfe117d4902c5483178cd28f2b79e6b2fec",
+      "required_saving_per_wave_ms": 11.863625,
+      "required_us_per_probe_if_all_removed": 92.6845703125,
+      "river_gap_ms": {
+        "drain_ms": 37.106,
+        "enqueue_ms": 57.803,
+        "last_effect_ms": 84.375,
+        "late_refill_ms": 287.468,
+        "submit_ms": 94.909
+      },
+      "submit_gap_after_best_projection_ms": 23.338213307240707,
+      "warm_application_sessions": 8,
+      "wave_offsets_ms": {
+        "attempt_committed_us": [
+          108.899,
+          315.071,
+          468.181,
+          655.088,
+          812.049,
+          952.043,
+          1069.446,
+          1205.535
+        ],
+        "claimed_us": [
+          87.753,
+          287.753,
+          456.753,
+          629.753,
+          773.753,
+          928.753,
+          1060.753,
+          1191.753
+        ],
+        "effect_committed_us": [
+          211.483,
+          426.843,
+          569.811,
+          758.15,
+          920.409,
+          1055.167,
+          1173.272,
+          1307.435
+        ],
+        "entered_us": [
+          104.467,
+          308.27,
+          464.921,
+          650.94,
+          808.118,
+          951.68,
+          1068.533,
+          1203.978
+        ],
+        "settled_us": [
+          227.598,
+          434.15,
+          580.198,
+          763.372,
+          924.178,
+          1056.834,
+          1174.455,
+          1313.707
+        ]
+      }
+    },
+    {
+      "combined_app_interval_slot_normalized_ms": 59.13421875,
+      "first_write_rank_64_to_512_ms": 1217.153,
+      "first_write_service_slot_normalized_ms": 27.36275,
+      "group": 2,
+      "held_producer_fixed_required_drain_saving_ms": 183.206,
+      "hold_floor_ms": 800.0,
+      "last_effect_to_last_settlement_ms": 3.8730000000000473,
+      "over_hold_slot_normalized_ms": 31.77146875,
+      "probe": {
+        "calls": 1024,
+        "execution_ms": 2.5295460000000007
+      },
+      "rank_step": 64,
+      "raw_sha256": "36002095f10d79441701c30bb5688aaee611760e0c4478cce26e8c8762bb6044",
+      "required_saving_per_wave_ms": 22.90075,
+      "required_us_per_probe_if_all_removed": 178.912109375,
+      "river_gap_ms": {
+        "drain_ms": 150.129,
+        "enqueue_ms": 33.077,
+        "last_effect_ms": 156.381,
+        "late_refill_ms": 355.645,
+        "submit_ms": 183.206
+      },
+      "submit_gap_after_best_projection_ms": 111.63521330724069,
+      "warm_application_sessions": 8,
+      "wave_offsets_ms": {
+        "attempt_committed_us": [
+          103.514,
+          297.243,
+          457.726,
+          638.947,
+          819.567,
+          979.956,
+          1144.043,
+          1320.667
+        ],
+        "claimed_us": [
+          83.405,
+          270.405,
+          438.405,
+          618.405,
+          794.405,
+          955.405,
+          1118.405,
+          1263.405
+        ],
+        "effect_committed_us": [
+          211.187,
+          410.911,
+          558.644,
+          742.327,
+          923.01,
+          1085.001,
+          1249.87,
+          1424.051
+        ],
+        "entered_us": [
+          100.617,
+          295.693,
+          450.523,
+          636.281,
+          817.023,
+          969.448,
+          1135.752,
+          1314.816
+        ],
+        "settled_us": [
+          225.655,
+          419.597,
+          574.086,
+          749.618,
+          929.084,
+          1089.364,
+          1257.311,
+          1427.924
+        ]
+      }
+    },
+    {
+      "combined_app_interval_slot_normalized_ms": 57.62853125,
+      "first_write_rank_64_to_512_ms": 1198.913,
+      "first_write_service_slot_normalized_ms": 29.77921875,
+      "group": 3,
+      "held_producer_fixed_required_drain_saving_ms": 0,
+      "hold_floor_ms": 800.0,
+      "last_effect_to_last_settlement_ms": 3.0930000000000746,
+      "over_hold_slot_normalized_ms": 27.8493125,
+      "probe": {
+        "calls": 1024,
+        "execution_ms": 2.730358000000004
+      },
+      "rank_step": 64,
+      "raw_sha256": "67f2eb0fb93566e909d2b314a22a3c67025788a7b52cf68bf0db396b2165e169",
+      "required_saving_per_wave_ms": 0.0,
+      "required_us_per_probe_if_all_removed": 0.0,
+      "river_gap_ms": {
+        "drain_ms": -65.37,
+        "enqueue_ms": 53.423,
+        "last_effect_ms": -8.053,
+        "late_refill_ms": 279.78,
+        "submit_ms": -11.947
+      },
+      "submit_gap_after_best_projection_ms": -83.5177866927593,
+      "warm_application_sessions": 8,
+      "wave_offsets_ms": {
+        "attempt_committed_us": [
+          131.252,
+          313.119,
+          479.486,
+          673.885,
+          851.321,
+          1023.549,
+          1184.721,
+          1330.165
+        ],
+        "claimed_us": [
+          109.632,
+          286.632,
+          461.632,
+          653.632,
+          829.632,
+          997.632,
+          1160.632,
+          1302.632
+        ],
+        "effect_committed_us": [
+          238.892,
+          415.583,
+          582.416,
+          775.007,
+          960.121,
+          1125.292,
+          1289.938,
+          1433.203
+        ],
+        "entered_us": [
+          129.144,
+          309.333,
+          478.755,
+          669.403,
+          850.124,
+          1020.895,
+          1183.64,
+          1327.641
+        ],
+        "settled_us": [
+          250.549,
+          426.052,
+          599.504,
+          783.193,
+          973.622,
+          1133.082,
+          1294.666,
+          1436.296
+        ]
+      }
+    },
+    {
+      "combined_app_interval_slot_normalized_ms": 61.210140625,
+      "first_write_rank_64_to_512_ms": 1162.043,
+      "first_write_service_slot_normalized_ms": 30.095921875,
+      "group": 4,
+      "held_producer_fixed_required_drain_saving_ms": 0,
+      "hold_floor_ms": 800.0,
+      "last_effect_to_last_settlement_ms": 1.3420000000000982,
+      "over_hold_slot_normalized_ms": 31.11421875,
+      "probe": {
+        "calls": 1024,
+        "execution_ms": 3.8856330000000003
+      },
+      "rank_step": 64,
+      "raw_sha256": "8b8865186215595d85ff3ba9fc258d60d4696943fd0d41f27b54cb871f1001cc",
+      "required_saving_per_wave_ms": 0.0,
+      "required_us_per_probe_if_all_removed": 0.0,
+      "river_gap_ms": {
+        "drain_ms": -138.605,
+        "enqueue_ms": 66.199,
+        "last_effect_ms": 66.881,
+        "late_refill_ms": 273.543,
+        "submit_ms": -72.406
+      },
+      "submit_gap_after_best_projection_ms": -143.9767866927593,
+      "warm_application_sessions": 8,
+      "wave_offsets_ms": {
+        "attempt_committed_us": [
+          130.912,
+          302.847,
+          479.227,
+          671.926,
+          830.804,
+          1017.19,
+          1176.791,
+          1292.955
+        ],
+        "claimed_us": [
+          110.491,
+          279.491,
+          468.491,
+          643.491,
+          807.491,
+          998.491,
+          1136.491,
+          1287.491
+        ],
+        "effect_committed_us": [
+          232.945,
+          404.326,
+          581.767,
+          773.117,
+          940.403,
+          1119.168,
+          1280.311,
+          1393.774
+        ],
+        "entered_us": [
+          125.393,
+          300.217,
+          476.707,
+          669.976,
+          827.631,
+          1014.455,
+          1171.326,
+          1291.891
+        ],
+        "settled_us": [
+          244.765,
+          410.964,
+          599.117,
+          777.243,
+          954.967,
+          1122.856,
+          1282.323,
+          1395.116
+        ]
+      }
+    },
+    {
+      "combined_app_interval_slot_normalized_ms": 59.643984375,
+      "first_write_rank_64_to_512_ms": 1140.585,
+      "first_write_service_slot_normalized_ms": 31.532140625,
+      "group": 5,
+      "held_producer_fixed_required_drain_saving_ms": 96.569,
+      "hold_floor_ms": 800.0,
+      "last_effect_to_last_settlement_ms": 4.036000000000058,
+      "over_hold_slot_normalized_ms": 28.11184375,
+      "probe": {
+        "calls": 1024,
+        "execution_ms": 2.6121079999999997
+      },
+      "rank_step": 64,
+      "raw_sha256": "329f3c01d40924050c31fb561763345dd6521dd86553bc9d0664a07d969a1322",
+      "required_saving_per_wave_ms": 12.071125,
+      "required_us_per_probe_if_all_removed": 94.3056640625,
+      "river_gap_ms": {
+        "drain_ms": 58.549,
+        "enqueue_ms": 38.02,
+        "last_effect_ms": 110.59,
+        "late_refill_ms": 303.792,
+        "submit_ms": 96.569
+      },
+      "submit_gap_after_best_projection_ms": 24.998213307240704,
+      "warm_application_sessions": 8,
+      "wave_offsets_ms": {
+        "attempt_committed_us": [
+          119.684,
+          305.463,
+          462.088,
+          666.347,
+          825.789,
+          996.426,
+          1131.734,
+          1260.269
+        ],
+        "claimed_us": [
+          95.115,
+          278.115,
+          437.115,
+          631.115,
+          807.115,
+          956.115,
+          1113.115,
+          1253.115
+        ],
+        "effect_committed_us": [
+          227.649,
+          417.568,
+          564.212,
+          778.09,
+          928.635,
+          1098.063,
+          1237.29,
+          1363.951
+        ],
+        "entered_us": [
+          114.457,
+          300.757,
+          454.377,
+          665.54,
+          823.06,
+          993.956,
+          1129.606,
+          1259.758
+        ],
+        "settled_us": [
+          237.504,
+          435.529,
+          579.781,
+          787.181,
+          931.096,
+          1101.877,
+          1240.024,
+          1367.987
+        ]
+      }
+    }
+  ],
+  "decision": "close without native intake",
+  "opt_in": {
+    "exact_binary_supports_independent_pool_opt_in": true,
+    "executable_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+    "fixture_sha256": "1273ba6b01002d4c0a11a83cf827f7f83b412ff6d7c078cbfe8f21d77e8267e0",
+    "hot_idle_threshold_ms": 500,
+    "manifest_sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+    "native_setup_sha256": "fd14384d833597fe962429e36f2e741730c636f3309f72323859306e015dfae1",
+    "pool_source_sha256": "4ebcffb439f54493cc899f581ed2eca769d5d36b0f81cd8a40a49e331e19cddd",
+    "retained_positive_fault_policy": "success_cohort",
+    "revision": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+    "scalar_hot_native_proof": false,
+    "source_sha256": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+    "url_suffix": "&mesh_pool_hot_checkout=1"
+  },
+  "reason": "All three observed submit losses exceed the best all-probes-removed dense-rate projection.",
+  "recent_cold_pilot": [
+    {
+      "duplicate_spread_ms": {
+        "drain_ms": 28.91899999999987,
+        "enqueue_ms": 46.141999999999996,
+        "last_effect_ms": 26.932000000000016,
+        "late_refill_ms": 0.6610000000000582,
+        "submit_ms": 17.222999999999956
+      },
+      "group": 1,
+      "measured": {
+        "inline-a": {
+          "combined_app_interval_slot_normalized_ms": 64.52125,
+          "first_write_rank_64_to_512_ms": 1174.93,
+          "first_write_service_slot_normalized_ms": 31.70634375,
+          "hold_floor_ms": 800.0,
+          "last_effect_to_last_settlement_ms": 2.7309999999999945,
+          "over_hold_slot_normalized_ms": 32.81490625,
+          "probe": {
+            "calls": 1024,
+            "execution_ms": 2.817844000000004
+          },
+          "rank_step": 64,
+          "raw_sha256": "28c1914792a432a0db7fce535c8780ce2f72096705042b295daab9e88acee5c3",
+          "warm_application_sessions": 8,
+          "wave_offsets_ms": {
+            "attempt_committed_us": [
+              82.711,
+              284.326,
+              450.72,
+              618.097,
+              780.453,
+              939.201,
+              1101.472,
+              1257.641
+            ],
+            "claimed_us": [
+              63.156,
+              259.156,
+              442.156,
+              601.156,
+              764.156,
+              918.156,
+              1054.156,
+              1211.156
+            ],
+            "effect_committed_us": [
+              184.923,
+              405.258,
+              556.012,
+              723.47,
+              893.056,
+              1041.153,
+              1203.661,
+              1364.97
+            ],
+            "entered_us": [
+              77.023,
+              283.254,
+              444.62,
+              615.422,
+              780.086,
+              932.845,
+              1092.446,
+              1247.28
+            ],
+            "settled_us": [
+              207.407,
+              423.915,
+              563.265,
+              728.916,
+              903.41,
+              1046.814,
+              1207.988,
+              1367.701
+            ]
+          }
+        },
+        "inline-b": {
+          "combined_app_interval_slot_normalized_ms": 47.863671875,
+          "first_write_rank_64_to_512_ms": 1174.269,
+          "first_write_service_slot_normalized_ms": 25.927765625,
+          "hold_floor_ms": 800.0,
+          "last_effect_to_last_settlement_ms": 4.717999999999847,
+          "over_hold_slot_normalized_ms": 21.93590625,
+          "probe": {
+            "calls": 1024,
+            "execution_ms": 2.575185000000004
+          },
+          "rank_step": 64,
+          "raw_sha256": "855640c6c95d988ca8ce110e3505c02c99ec3f0dae2eb3dd75326c7421c453f5",
+          "warm_application_sessions": 8,
+          "wave_offsets_ms": {
+            "attempt_committed_us": [
+              116.456,
+              305.391,
+              467.43,
+              626.198,
+              811.192,
+              971.431,
+              1120.212,
+              1290.725
+            ],
+            "claimed_us": [
+              96.684,
+              279.684,
+              443.684,
+              609.684,
+              780.684,
+              952.684,
+              1102.684,
+              1243.684
+            ],
+            "effect_committed_us": [
+              218.849,
+              428.577,
+              569.382,
+              727.444,
+              912.241,
+              1073.468,
+              1224.148,
+              1391.902
+            ],
+            "entered_us": [
+              113.225,
+              301.94,
+              460.502,
+              622.948,
+              809.976,
+              968.644,
+              1119.045,
+              1280.035
+            ],
+            "settled_us": [
+              228.163,
+              441.192,
+              576.419,
+              736.703,
+              920.95,
+              1077.269,
+              1233.278,
+              1396.62
+            ]
+          }
+        }
+      }
+    },
+    {
+      "duplicate_spread_ms": {
+        "drain_ms": 103.80299999999988,
+        "enqueue_ms": 3.6370000000000573,
+        "last_effect_ms": 96.56100000000015,
+        "late_refill_ms": 106.99299999999994,
+        "submit_ms": 107.43999999999983
+      },
+      "group": 2,
+      "measured": {
+        "inline-a": {
+          "combined_app_interval_slot_normalized_ms": 50.427890625,
+          "first_write_rank_64_to_512_ms": 1227.5880000000002,
+          "first_write_service_slot_normalized_ms": 26.429515625,
+          "hold_floor_ms": 800.0,
+          "last_effect_to_last_settlement_ms": 8.94199999999978,
+          "over_hold_slot_normalized_ms": 23.998375,
+          "probe": {
+            "calls": 1024,
+            "execution_ms": 4.44043
+          },
+          "rank_step": 64,
+          "raw_sha256": "4f7e47a253e37be60a3cf3186b3decf2d178edd0c29e2f2af1f64381c4f92b41",
+          "warm_application_sessions": 8,
+          "wave_offsets_ms": {
+            "attempt_committed_us": [
+              82.023,
+              270.898,
+              461.025,
+              636.157,
+              800.099,
+              977.657,
+              1138.995,
+              1309.611
+            ],
+            "claimed_us": [
+              59.703,
+              244.703,
+              439.703,
+              614.703,
+              790.703,
+              954.703,
+              1106.703,
+              1299.703
+            ],
+            "effect_committed_us": [
+              183.829,
+              379.674,
+              569.379,
+              740.457,
+              901.665,
+              1082.952,
+              1247.206,
+              1411.38
+            ],
+            "entered_us": [
+              76.525,
+              269.458,
+              453.404,
+              633.617,
+              796.542,
+              973.629,
+              1128.99,
+              1308.768
+            ],
+            "settled_us": [
+              196.547,
+              384.923,
+              577.166,
+              762.022,
+              914.476,
+              1086.388,
+              1262.645,
+              1420.322
+            ]
+          }
+        },
+        "inline-b": {
+          "combined_app_interval_slot_normalized_ms": 60.06,
+          "first_write_rank_64_to_512_ms": 1120.595,
+          "first_write_service_slot_normalized_ms": 29.629359375,
+          "hold_floor_ms": 800.0,
+          "last_effect_to_last_settlement_ms": 1.7000000000000455,
+          "over_hold_slot_normalized_ms": 30.430640625,
+          "probe": {
+            "calls": 1024,
+            "execution_ms": 3.16531
+          },
+          "rank_step": 64,
+          "raw_sha256": "0ce25ae29976e95355fba40abb37c3e516e9f558b94284681c5af691b711ac4c",
+          "warm_application_sessions": 8,
+          "wave_offsets_ms": {
+            "attempt_committed_us": [
+              93.51,
+              271.531,
+              436.005,
+              607.344,
+              781.95,
+              950.855,
+              1094.557,
+              1214.105
+            ],
+            "claimed_us": [
+              68.37,
+              242.37,
+              414.37,
+              599.37,
+              760.37,
+              929.37,
+              1068.37,
+              1210.37
+            ],
+            "effect_committed_us": [
+              201.892,
+              403.299,
+              548.301,
+              710.417,
+              885.306,
+              1052.046,
+              1195.41,
+              1314.819
+            ],
+            "entered_us": [
+              89.032,
+              266.259,
+              430.682,
+              606.892,
+              780.682,
+              949.101,
+              1093.093,
+              1212.765
+            ],
+            "settled_us": [
+              207.355,
+              412.726,
+              561.013,
+              719.579,
+              888.086,
+              1053.76,
+              1197.33,
+              1316.519
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "same_image_dense": {
+    "blocks": [
+      {
+        "group": 1,
+        "measured": {
+          "checked-a": {
+            "drain_us": 1303252,
+            "last_effect_us": 1302534,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 7.364294999999992
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 606.309,
+            "submit_us": 1472623
+          },
+          "checked-b": {
+            "drain_us": 1357466,
+            "last_effect_us": 1356747,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 6.964831999999996
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 622.8009999999999,
+            "submit_us": 1515840
+          },
+          "hot": {
+            "drain_us": 1208553,
+            "last_effect_us": 1207618,
+            "probe": {
+              "calls": 4,
+              "execution_ms": 0.024689999999999997
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 549.3139999999999,
+            "submit_us": 1368856
+          }
+        },
+        "optimistic_slow_projection_ms": {
+          "drain_us": 47.442160469667314,
+          "last_effect_us": 47.55087279843445,
+          "submit_us": 51.98503326810176
+        },
+        "savings_us": {
+          "drain_us": 94699,
+          "last_effect_us": 94916,
+          "submit_us": 103767
+        },
+        "skipped_probes": 2044,
+        "wall_us_per_skipped_probe": {
+          "drain_us": 46.33023483365949,
+          "last_effect_us": 46.43639921722114,
+          "submit_us": 50.766634050880626
+        }
+      },
+      {
+        "group": 2,
+        "measured": {
+          "checked-a": {
+            "drain_us": 1303980,
+            "last_effect_us": 1302635,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 5.830618000000005
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 600.771,
+            "submit_us": 1458545
+          },
+          "checked-b": {
+            "drain_us": 1323959,
+            "last_effect_us": 1322691,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 8.483207999999967
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 609.2409999999999,
+            "submit_us": 1480225
+          },
+          "hot": {
+            "drain_us": 1180968,
+            "last_effect_us": 1180035,
+            "probe": {
+              "calls": 4,
+              "execution_ms": 0.02498
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 532.7930000000001,
+            "submit_us": 1335484
+          }
+        },
+        "optimistic_slow_projection_ms": {
+          "drain_us": 61.626363992172216,
+          "last_effect_us": 61.41996086105675,
+          "submit_us": 61.65091193737769
+        },
+        "savings_us": {
+          "drain_us": 123012,
+          "last_effect_us": 122600,
+          "submit_us": 123061
+        },
+        "skipped_probes": 2044,
+        "wall_us_per_skipped_probe": {
+          "drain_us": 60.18199608610568,
+          "last_effect_us": 59.980430528375734,
+          "submit_us": 60.2059686888454
+        }
+      },
+      {
+        "group": 3,
+        "measured": {
+          "checked-a": {
+            "drain_us": 2209134,
+            "last_effect_us": 2207112,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 11.246825999999995
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 674.768,
+            "submit_us": 2405656
+          },
+          "checked-b": {
+            "drain_us": 1308848,
+            "last_effect_us": 1307376,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 6.677570999999974
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 610.1529999999999,
+            "submit_us": 1470146
+          },
+          "hot": {
+            "drain_us": 1201200,
+            "last_effect_us": 1199108,
+            "probe": {
+              "calls": 4,
+              "execution_ms": 1.2349350000000001
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 550.774,
+            "submit_us": 1380379
+          }
+        },
+        "optimistic_slow_projection_ms": {
+          "drain_us": 53.929330724070454,
+          "last_effect_us": 54.2399373776908,
+          "submit_us": 44.97133463796478
+        },
+        "savings_us": {
+          "drain_us": 107648,
+          "last_effect_us": 108268,
+          "submit_us": 89767
+        },
+        "skipped_probes": 2044,
+        "wall_us_per_skipped_probe": {
+          "drain_us": 52.66536203522505,
+          "last_effect_us": 52.968688845401175,
+          "submit_us": 43.91731898238748
+        }
+      },
+      {
+        "group": 4,
+        "measured": {
+          "checked-a": {
+            "drain_us": 1296114,
+            "last_effect_us": 1292523,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 6.465790999999985
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 604.478,
+            "submit_us": 1453681
+          },
+          "checked-b": {
+            "drain_us": 1335917,
+            "last_effect_us": 1335136,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 6.795027999999976
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 620.7499999999999,
+            "submit_us": 1530259
+          },
+          "hot": {
+            "drain_us": 1153252,
+            "last_effect_us": 1150919,
+            "probe": {
+              "calls": 4,
+              "execution_ms": 0.02895
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 533.509,
+            "submit_us": 1311760
+          }
+        },
+        "optimistic_slow_projection_ms": {
+          "drain_us": 71.5707866927593,
+          "last_effect_us": 70.94055577299413,
+          "submit_us": 71.09936594911937
+        },
+        "savings_us": {
+          "drain_us": 142862,
+          "last_effect_us": 141604,
+          "submit_us": 141921
+        },
+        "skipped_probes": 2044,
+        "wall_us_per_skipped_probe": {
+          "drain_us": 69.89334637964775,
+          "last_effect_us": 69.27788649706459,
+          "submit_us": 69.43297455968688
+        }
+      },
+      {
+        "group": 5,
+        "measured": {
+          "checked-a": {
+            "drain_us": 1345483,
+            "last_effect_us": 1344252,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 6.753160000000001
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 610.274,
+            "submit_us": 1517088
+          },
+          "checked-b": {
+            "drain_us": 1309102,
+            "last_effect_us": 1307388,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 6.588048999999989
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 614.1569999999999,
+            "submit_us": 1470011
+          },
+          "hot": {
+            "drain_us": 1214326,
+            "last_effect_us": 1213626,
+            "probe": {
+              "calls": 4,
+              "execution_ms": 0.028220000000000002
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 532.168,
+            "submit_us": 1386053
+          }
+        },
+        "optimistic_slow_projection_ms": {
+          "drain_us": 47.48073581213307,
+          "last_effect_us": 46.97274363992172,
+          "submit_us": 42.061150684931505
+        },
+        "savings_us": {
+          "drain_us": 94776,
+          "last_effect_us": 93762,
+          "submit_us": 83958
+        },
+        "skipped_probes": 2044,
+        "wall_us_per_skipped_probe": {
+          "drain_us": 46.3679060665362,
+          "last_effect_us": 45.87181996086105,
+          "submit_us": 41.07534246575342
+        }
+      },
+      {
+        "group": 6,
+        "measured": {
+          "checked-a": {
+            "drain_us": 1320080,
+            "last_effect_us": 1319229,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 5.749753999999989
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 610.077,
+            "submit_us": 1482265
+          },
+          "checked-b": {
+            "drain_us": 1314773,
+            "last_effect_us": 1314069,
+            "probe": {
+              "calls": 2048,
+              "execution_ms": 11.141615999999988
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 8
+            },
+            "runner_lifetime_cpu_ms": 610.811,
+            "submit_us": 1483389
+          },
+          "hot": {
+            "drain_us": 1176664,
+            "last_effect_us": 1173000,
+            "probe": {
+              "calls": 4,
+              "execution_ms": 0.02568
+            },
+            "ready_tls_by_role": {
+              "compiled_caller": 32,
+              "parity_producer": 1,
+              "parity_subject": 7
+            },
+            "runner_lifetime_cpu_ms": 540.543,
+            "submit_us": 1335141
+          }
+        },
+        "optimistic_slow_projection_ms": {
+          "drain_us": 69.1896360078278,
+          "last_effect_us": 70.6725322896282,
+          "submit_us": 73.70595694716243
+        },
+        "savings_us": {
+          "drain_us": 138109,
+          "last_effect_us": 141069,
+          "submit_us": 147124
+        },
+        "skipped_probes": 2044,
+        "wall_us_per_skipped_probe": {
+          "drain_us": 67.56800391389433,
+          "last_effect_us": 69.01614481409003,
+          "submit_us": 71.97847358121331
+        }
+      }
+    ],
+    "dense_effect_ms": {
+      "drain": {
+        "max": 142.862,
+        "median": 115.33,
+        "min": 94.699
+      },
+      "last_effect": {
+        "max": 141.604,
+        "median": 115.434,
+        "min": 93.762
+      },
+      "submit": {
+        "max": 147.124,
+        "median": 113.414,
+        "min": 83.958
+      }
+    },
+    "optimistic_slow_ms": {
+      "drain": {
+        "max": 71.5707866927593,
+        "median": 57.777847358121335,
+        "min": 47.442160469667314
+      },
+      "last_effect": {
+        "max": 70.94055577299413,
+        "median": 57.82994911937378,
+        "min": 46.97274363992172
+      },
+      "submit": {
+        "max": 73.70595694716243,
+        "median": 56.81797260273973,
+        "min": 42.061150684931505
+      }
+    },
+    "proof": {
+      "ambiguous-application-write": "e1c81c0f9fdb64bdbf78a898aa1f021814faaf2a251a330fd45d583a7599a7db",
+      "ambiguous-claim-commit": "143827718f8d265590c00c3beafe444008a65ea369f436f1cd20a46769aa33ba",
+      "ambiguous-group-commit": "129c59d5519dc207b7eb8f0bfb7614a346afc9e5a102fabfdee4cfdbf7493523",
+      "cancel-and-retry": "66080706075cf805847ebab39de296b27c3d7308e51c7c7bd0c8cfc11634c6b8",
+      "public-handler": "8cf2d2f42ac0618803ac5930ef1256645cdb0faa33e902115781a06f00dd5d1c",
+      "sql-cut": "c030fc1d92f99b47e8d6320ca5c77826714099b46d27a65a68aa705c35517cf4",
+      "teardown-kill": "63d9cb1b8fa81f12cb8278cf2b73b004043feb89bdbd88c61ee977e27261c6ee",
+      "teardown-release": "dd7d3ee63c05db83e1b8f4d17cbadb843f70db0b279e24e502ddbafaae7f34e1"
+    },
+    "raw_mesh_arms": 36
+  }
+}
