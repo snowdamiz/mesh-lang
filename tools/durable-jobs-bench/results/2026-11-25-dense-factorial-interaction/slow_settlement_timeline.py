@@ -1,5 +1,5 @@
 """Place each scalar settlement scan on the native SLOW plan-capture timeline."""
-from collections import defaultdict
+from collections import Counter, defaultdict
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -34,9 +34,23 @@ def post_select_windows(plans, jobs, rows):
     assert len({p["pid"] for p in selects + ctes}) == 1
     assert len(selects) == len(ctes)
     productive = []
+    grant_targets = {"productive": Counter(), "empty": Counter()}
     for i, (cte, result) in enumerate(zip(ctes, selects)):
         assert cte["log_line"] < result["log_line"]
         assert i == 0 or selects[i-1]["log_line"] < cte["log_line"]
+        granted, = [node for node in nodes(cte["plan"]) if node.get("Subplan Name") == "CTE granted"]
+        target, = [node for node in nodes(granted) if node.get("Relation Name") == "jobs"
+                   and "Scan" in node["Node Type"] and node["Alias"] == granted["Alias"]]
+        assert target["Node Type"] == "Index Scan" and target["Index Name"] == "jobs_pkey"
+        rows_per_loop = target["Actual Rows"]
+        # An equality on the full physical primary key returns at most one row per probe.
+        # Actual Rows is rounded per loop. Check full-key productive calls against output width.
+        loops = target["Actual Loops"]
+        if loops > 1:
+            assert "id =" in target["Index Cond"] and loops == cte["plan"]["Actual Rows"] and rows_per_loop == 1
+        assert not target.get("Rows Removed by Filter", 0)
+        bucket = grant_targets["productive" if cte["plan"]["Actual Rows"] else "empty"]
+        bucket.update(calls=1, rows=rows_per_loop * loops, shared_hits=target["Shared Hit Blocks"])
         if cte["plan"]["Actual Rows"] > 0:
             assert cte["plan"]["Actual Rows"] == result["plan"]["Actual Rows"]
             productive.append(result)
@@ -64,6 +78,7 @@ def post_select_windows(plans, jobs, rows):
         stamp_to_entry_us += len(group) * (first_entry - stamp)
     return {
         "productive_selects": len(productive),
+        "grant_update_target": grant_targets,
         "groups_with_whole_older_settlement": sum(n > 0 for n in group_counts),
         "max_whole_settlements_per_group": max(group_counts),
         "distinct_whole_settlements": report_group([rows[i] for i in sorted(covered)]),

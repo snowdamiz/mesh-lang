@@ -42,6 +42,18 @@
         "transactions": 103,
         "update_filtered": 52633
       },
+      "grant_update_target": {
+        "empty": {
+          "calls": 22,
+          "rows": 0,
+          "shared_hits": 0
+        },
+        "productive": {
+          "calls": 37,
+          "rows": 512,
+          "shared_hits": 1538
+        }
+      },
       "groups_with_whole_older_settlement": 6,
       "ledger_stamp_to_first_entry_normalized_slot_ms": 95.181,
       "max_whole_settlements_per_group": 47,
@@ -114,6 +126,18 @@
         "lock_plus_update_diagnostic_ms": 88.484,
         "transactions": 228,
         "update_filtered": 116508
+      },
+      "grant_update_target": {
+        "empty": {
+          "calls": 21,
+          "rows": 3584,
+          "shared_hits": 3742
+        },
+        "productive": {
+          "calls": 48,
+          "rows": 24576,
+          "shared_hits": 24739
+        }
       },
       "groups_with_whole_older_settlement": 17,
       "ledger_stamp_to_first_entry_normalized_slot_ms": 168.188,
