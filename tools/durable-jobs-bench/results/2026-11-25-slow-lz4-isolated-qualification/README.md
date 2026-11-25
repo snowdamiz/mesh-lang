@@ -39,5 +39,6 @@ python3 -B "$p/rehearsal.py"
 python3 -B "$p/recovery-3/recover.py" replay-setup
 python3 -B "$p/recovery-3/recover.py" seal-timing
 # After the matched controller TIMING release:
-python3 -B "$p/recovery-3/recover.py" replay-timing
+python3 -B "$p/recovery-3/recover.py" replay-timing > "$p/evidence/native/matched-replay.json"
+python3 -B "$p/report_timing.py" "$p/evidence/native/matched-replay.json"
 ```
