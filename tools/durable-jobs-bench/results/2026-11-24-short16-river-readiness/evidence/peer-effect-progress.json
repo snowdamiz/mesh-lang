@@ -1,0 +1,2234 @@
+[
+  {
+    "group": 1,
+    "mesh_drain_minus_peer_full_submit_us": {
+      "oban": -357451,
+      "river": -99922,
+      "river-warm": 30856
+    },
+    "peers": {
+      "oban": {
+        "committed_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "16": {
+            "effects": 53,
+            "entered": 69,
+            "first_committed": 68,
+            "settled": 53,
+            "stamped_max": 69,
+            "stamped_min": 69
+          },
+          "32": {
+            "effects": 69,
+            "entered": 69,
+            "first_committed": 69,
+            "settled": 68,
+            "stamped_max": 70,
+            "stamped_min": 70
+          },
+          "64": {
+            "effects": 85,
+            "entered": 85,
+            "first_committed": 85,
+            "settled": 83,
+            "stamped_max": 86,
+            "stamped_min": 86
+          },
+          "96": {
+            "effects": 103,
+            "entered": 103,
+            "first_committed": 103,
+            "settled": 98,
+            "stamped_max": 104,
+            "stamped_min": 104
+          },
+          "112": {
+            "effects": 109,
+            "entered": 120,
+            "first_committed": 115,
+            "settled": 108,
+            "stamped_max": 120,
+            "stamped_min": 120
+          },
+          "128": {
+            "effects": 125,
+            "entered": 125,
+            "first_committed": 125,
+            "settled": 117,
+            "stamped_max": 125,
+            "stamped_min": 125
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 41,
+            "entered": 50,
+            "first_committed": 50,
+            "settled": 38,
+            "stamped_max": 53,
+            "stamped_min": 50
+          },
+          "32": {
+            "effects": 52,
+            "entered": 64,
+            "first_committed": 53,
+            "settled": 50,
+            "stamped_max": 66,
+            "stamped_min": 66
+          },
+          "64": {
+            "effects": 69,
+            "entered": 75,
+            "first_committed": 70,
+            "settled": 69,
+            "stamped_max": 85,
+            "stamped_min": 85
+          },
+          "96": {
+            "effects": 86,
+            "entered": 94,
+            "first_committed": 90,
+            "settled": 86,
+            "stamped_max": 102,
+            "stamped_min": 102
+          },
+          "112": {
+            "effects": 100,
+            "entered": 103,
+            "first_committed": 103,
+            "settled": 94,
+            "stamped_max": 104,
+            "stamped_min": 104
+          },
+          "128": {
+            "effects": 104,
+            "entered": 104,
+            "first_committed": 104,
+            "settled": 103,
+            "stamped_max": 119,
+            "stamped_min": 119
+          }
+        }
+      },
+      "river-warm": {
+        "committed_us": {
+          "16": {
+            "effects": 16,
+            "entered": 16,
+            "first_committed": 16,
+            "settled": 13,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "32": {
+            "effects": 24,
+            "entered": 30,
+            "first_committed": 28,
+            "settled": 20,
+            "stamped_max": 32,
+            "stamped_min": 32
+          },
+          "64": {
+            "effects": 43,
+            "entered": 50,
+            "first_committed": 50,
+            "settled": 40,
+            "stamped_max": 53,
+            "stamped_min": 53
+          },
+          "96": {
+            "effects": 69,
+            "entered": 69,
+            "first_committed": 69,
+            "settled": 64,
+            "stamped_max": 70,
+            "stamped_min": 70
+          },
+          "112": {
+            "effects": 69,
+            "entered": 81,
+            "first_committed": 77,
+            "settled": 69,
+            "stamped_max": 85,
+            "stamped_min": 85
+          },
+          "128": {
+            "effects": 81,
+            "entered": 85,
+            "first_committed": 83,
+            "settled": 78,
+            "stamped_max": 86,
+            "stamped_min": 86
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 0,
+            "entered": 3,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "32": {
+            "effects": 16,
+            "entered": 16,
+            "first_committed": 16,
+            "settled": 3,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "64": {
+            "effects": 32,
+            "entered": 32,
+            "first_committed": 32,
+            "settled": 28,
+            "stamped_max": 32,
+            "stamped_min": 32
+          },
+          "96": {
+            "effects": 50,
+            "entered": 52,
+            "first_committed": 51,
+            "settled": 50,
+            "stamped_max": 66,
+            "stamped_min": 53
+          },
+          "112": {
+            "effects": 59,
+            "entered": 69,
+            "first_committed": 69,
+            "settled": 55,
+            "stamped_max": 70,
+            "stamped_min": 69
+          },
+          "128": {
+            "effects": 69,
+            "entered": 70,
+            "first_committed": 69,
+            "settled": 69,
+            "stamped_max": 70,
+            "stamped_min": 70
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "oban": "bc89ed989792687099d1a36893daa20c1eb9c099f5335aaf3932cdd0cc5a1707",
+      "r2-d2": "463b1c2ea5f13f290050a9b0f8959d2ec26d2fe6168d4e9de4fac9f13d782b15",
+      "river": "9b6ba71e860b9fca63e1d9fbc3fbb84073311515419a1435cec8321d8d47b9d9",
+      "river-warm": "233be24b8713cdc4762a2c70a4618e2c79cc670f5016363b6eb96c01476d8f4c"
+    },
+    "terminal_backlog": {
+      "oban": {
+        "at_rank": {
+          "16": 16,
+          "32": 9,
+          "64": 10,
+          "96": 10,
+          "112": 3,
+          "128": 3
+        },
+        "peak": 16,
+        "terminal_xids": 128
+      },
+      "r2-d2": {
+        "at_rank": {
+          "16": 14,
+          "32": 7,
+          "64": 6,
+          "96": 5,
+          "112": 3,
+          "128": 2
+        },
+        "peak": 14,
+        "terminal_xids": 121
+      },
+      "river": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 128
+        },
+        "peak": 128,
+        "terminal_xids": 2
+      },
+      "river-warm": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 128
+        },
+        "peak": 128,
+        "terminal_xids": 1
+      }
+    }
+  },
+  {
+    "group": 2,
+    "mesh_drain_minus_peer_full_submit_us": {
+      "oban": -238051,
+      "river": -8270,
+      "river-warm": 21762
+    },
+    "peers": {
+      "oban": {
+        "committed_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "16": {
+            "effects": 53,
+            "entered": 53,
+            "first_committed": 53,
+            "settled": 52,
+            "stamped_max": 54,
+            "stamped_min": 54
+          },
+          "32": {
+            "effects": 64,
+            "entered": 70,
+            "first_committed": 67,
+            "settled": 57,
+            "stamped_max": 72,
+            "stamped_min": 72
+          },
+          "64": {
+            "effects": 79,
+            "entered": 87,
+            "first_committed": 82,
+            "settled": 75,
+            "stamped_max": 89,
+            "stamped_min": 89
+          },
+          "96": {
+            "effects": 100,
+            "entered": 105,
+            "first_committed": 105,
+            "settled": 97,
+            "stamped_max": 111,
+            "stamped_min": 111
+          },
+          "112": {
+            "effects": 108,
+            "entered": 115,
+            "first_committed": 113,
+            "settled": 106,
+            "stamped_max": 122,
+            "stamped_min": 122
+          },
+          "128": {
+            "effects": 114,
+            "entered": 120,
+            "first_committed": 117,
+            "settled": 110,
+            "stamped_max": 123,
+            "stamped_min": 123
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 36,
+            "entered": 36,
+            "first_committed": 36,
+            "settled": 34,
+            "stamped_max": 50,
+            "stamped_min": 50
+          },
+          "32": {
+            "effects": 52,
+            "entered": 53,
+            "first_committed": 53,
+            "settled": 43,
+            "stamped_max": 54,
+            "stamped_min": 54
+          },
+          "64": {
+            "effects": 61,
+            "entered": 69,
+            "first_committed": 67,
+            "settled": 57,
+            "stamped_max": 72,
+            "stamped_min": 72
+          },
+          "96": {
+            "effects": 79,
+            "entered": 87,
+            "first_committed": 83,
+            "settled": 76,
+            "stamped_max": 89,
+            "stamped_min": 89
+          },
+          "112": {
+            "effects": 89,
+            "entered": 89,
+            "first_committed": 89,
+            "settled": 89,
+            "stamped_max": 95,
+            "stamped_min": 95
+          },
+          "128": {
+            "effects": 93,
+            "entered": 105,
+            "first_committed": 95,
+            "settled": 90,
+            "stamped_max": 105,
+            "stamped_min": 105
+          }
+        }
+      },
+      "river-warm": {
+        "committed_us": {
+          "16": {
+            "effects": 10,
+            "entered": 16,
+            "first_committed": 15,
+            "settled": 1,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "32": {
+            "effects": 16,
+            "entered": 16,
+            "first_committed": 16,
+            "settled": 16,
+            "stamped_max": 32,
+            "stamped_min": 16
+          },
+          "64": {
+            "effects": 36,
+            "entered": 45,
+            "first_committed": 41,
+            "settled": 36,
+            "stamped_max": 52,
+            "stamped_min": 52
+          },
+          "96": {
+            "effects": 54,
+            "entered": 54,
+            "first_committed": 54,
+            "settled": 53,
+            "stamped_max": 69,
+            "stamped_min": 69
+          },
+          "112": {
+            "effects": 66,
+            "entered": 70,
+            "first_committed": 67,
+            "settled": 57,
+            "stamped_max": 72,
+            "stamped_min": 72
+          },
+          "128": {
+            "effects": 68,
+            "entered": 74,
+            "first_committed": 73,
+            "settled": 68,
+            "stamped_max": 84,
+            "stamped_min": 83
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 0,
+            "entered": 0,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 0,
+            "stamped_min": 0
+          },
+          "32": {
+            "effects": 0,
+            "entered": 0,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "64": {
+            "effects": 18,
+            "entered": 32,
+            "first_committed": 21,
+            "settled": 16,
+            "stamped_max": 32,
+            "stamped_min": 32
+          },
+          "96": {
+            "effects": 37,
+            "entered": 46,
+            "first_committed": 42,
+            "settled": 36,
+            "stamped_max": 52,
+            "stamped_min": 52
+          },
+          "112": {
+            "effects": 53,
+            "entered": 53,
+            "first_committed": 53,
+            "settled": 44,
+            "stamped_max": 54,
+            "stamped_min": 54
+          },
+          "128": {
+            "effects": 53,
+            "entered": 54,
+            "first_committed": 54,
+            "settled": 53,
+            "stamped_max": 69,
+            "stamped_min": 54
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "oban": "e973752b42df523607102cc15923c4ae70b196d022083118ce41aebc64189882",
+      "r2-d2": "a860893ce2f25bd714fedfcaaa6ce5cfc6d19bfdd5eef8e0822bf81343d6d838",
+      "river": "0c4f041465a41cbdaafd6e5e29e7884be7eeaac6f4260b319521dd7b218a53e8",
+      "river-warm": "e9e7f6204ba3db1b6fc97ec525856052cfce13825a9f1ecd51655a52db535b8e"
+    },
+    "terminal_backlog": {
+      "oban": {
+        "at_rank": {
+          "16": 16,
+          "32": 12,
+          "64": 9,
+          "96": 4,
+          "112": 4,
+          "128": 8
+        },
+        "peak": 16,
+        "terminal_xids": 128
+      },
+      "r2-d2": {
+        "at_rank": {
+          "16": 12,
+          "32": 6,
+          "64": 7,
+          "96": 1,
+          "112": 4,
+          "128": 3
+        },
+        "peak": 12,
+        "terminal_xids": 116
+      },
+      "river": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 128
+        },
+        "peak": 128,
+        "terminal_xids": 1
+      },
+      "river-warm": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 48,
+          "96": 80,
+          "112": 96,
+          "128": 112
+        },
+        "peak": 112,
+        "terminal_xids": 2
+      }
+    }
+  },
+  {
+    "group": 3,
+    "mesh_drain_minus_peer_full_submit_us": {
+      "oban": -369517,
+      "river": -32831,
+      "river-warm": 61390
+    },
+    "peers": {
+      "oban": {
+        "committed_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "16": {
+            "effects": 52,
+            "entered": 56,
+            "first_committed": 55,
+            "settled": 47,
+            "stamped_max": 57,
+            "stamped_min": 57
+          },
+          "32": {
+            "effects": 58,
+            "entered": 73,
+            "first_committed": 64,
+            "settled": 57,
+            "stamped_max": 73,
+            "stamped_min": 73
+          },
+          "64": {
+            "effects": 80,
+            "entered": 87,
+            "first_committed": 85,
+            "settled": 79,
+            "stamped_max": 95,
+            "stamped_min": 94
+          },
+          "96": {
+            "effects": 104,
+            "entered": 111,
+            "first_committed": 111,
+            "settled": 102,
+            "stamped_max": 112,
+            "stamped_min": 112
+          },
+          "112": {
+            "effects": 116,
+            "entered": 128,
+            "first_committed": 121,
+            "settled": 114,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 126,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 121,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 34,
+            "entered": 34,
+            "first_committed": 34,
+            "settled": 33,
+            "stamped_max": 38,
+            "stamped_min": 38
+          },
+          "32": {
+            "effects": 39,
+            "entered": 49,
+            "first_committed": 45,
+            "settled": 39,
+            "stamped_max": 54,
+            "stamped_min": 54
+          },
+          "64": {
+            "effects": 57,
+            "entered": 57,
+            "first_committed": 57,
+            "settled": 56,
+            "stamped_max": 71,
+            "stamped_min": 71
+          },
+          "96": {
+            "effects": 77,
+            "entered": 77,
+            "first_committed": 77,
+            "settled": 76,
+            "stamped_max": 78,
+            "stamped_min": 78
+          },
+          "112": {
+            "effects": 92,
+            "entered": 95,
+            "first_committed": 94,
+            "settled": 87,
+            "stamped_max": 101,
+            "stamped_min": 101
+          },
+          "128": {
+            "effects": 97,
+            "entered": 111,
+            "first_committed": 101,
+            "settled": 96,
+            "stamped_max": 111,
+            "stamped_min": 111
+          }
+        }
+      },
+      "river-warm": {
+        "committed_us": {
+          "16": {
+            "effects": 2,
+            "entered": 10,
+            "first_committed": 8,
+            "settled": 0,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "32": {
+            "effects": 14,
+            "entered": 16,
+            "first_committed": 16,
+            "settled": 3,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "64": {
+            "effects": 19,
+            "entered": 32,
+            "first_committed": 28,
+            "settled": 18,
+            "stamped_max": 32,
+            "stamped_min": 32
+          },
+          "96": {
+            "effects": 39,
+            "entered": 48,
+            "first_committed": 43,
+            "settled": 38,
+            "stamped_max": 54,
+            "stamped_min": 54
+          },
+          "112": {
+            "effects": 49,
+            "entered": 55,
+            "first_committed": 53,
+            "settled": 43,
+            "stamped_max": 57,
+            "stamped_min": 57
+          },
+          "128": {
+            "effects": 56,
+            "entered": 56,
+            "first_committed": 56,
+            "settled": 54,
+            "stamped_max": 57,
+            "stamped_min": 57
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 0,
+            "entered": 0,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 0,
+            "stamped_min": 0
+          },
+          "32": {
+            "effects": 0,
+            "entered": 0,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 0,
+            "stamped_min": 0
+          },
+          "64": {
+            "effects": 0,
+            "entered": 10,
+            "first_committed": 6,
+            "settled": 0,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "96": {
+            "effects": 17,
+            "entered": 31,
+            "first_committed": 23,
+            "settled": 16,
+            "stamped_max": 32,
+            "stamped_min": 32
+          },
+          "112": {
+            "effects": 31,
+            "entered": 32,
+            "first_committed": 32,
+            "settled": 22,
+            "stamped_max": 38,
+            "stamped_min": 34
+          },
+          "128": {
+            "effects": 34,
+            "entered": 36,
+            "first_committed": 34,
+            "settled": 34,
+            "stamped_max": 38,
+            "stamped_min": 38
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "oban": "0dd0d663d44440f703e525546e18dadf78ecf4eff6e93f57977b16cbc7688eaf",
+      "r2-d2": "9bd6e151975a8c9bafeacb31a693d4e63872220867cb412806d6415a00ed6466",
+      "river": "7f0efc2e963cd6234fa7203948375abc00a16db7b31aa8fb2cb9f9ac6ecf6c41",
+      "river-warm": "6ab6cbdc921857e73236c81bddbad1fce887a2dc026c21330b8c1a9ec37bf21f"
+    },
+    "terminal_backlog": {
+      "oban": {
+        "at_rank": {
+          "16": 13,
+          "32": 7,
+          "64": 3,
+          "96": 7,
+          "112": 6,
+          "128": 1
+        },
+        "peak": 13,
+        "terminal_xids": 128
+      },
+      "r2-d2": {
+        "at_rank": {
+          "16": 12,
+          "32": 10,
+          "64": 2,
+          "96": 1,
+          "112": 5,
+          "128": 7
+        },
+        "peak": 12,
+        "terminal_xids": 120
+      },
+      "river": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 128
+        },
+        "peak": 128,
+        "terminal_xids": 1
+      },
+      "river-warm": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 128
+        },
+        "peak": 128,
+        "terminal_xids": 1
+      }
+    }
+  },
+  {
+    "group": 4,
+    "mesh_drain_minus_peer_full_submit_us": {
+      "oban": -287189,
+      "river": -67551,
+      "river-warm": -70377
+    },
+    "peers": {
+      "oban": {
+        "committed_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "16": {
+            "effects": 48,
+            "entered": 53,
+            "first_committed": 53,
+            "settled": 47,
+            "stamped_max": 59,
+            "stamped_min": 59
+          },
+          "32": {
+            "effects": 58,
+            "entered": 59,
+            "first_committed": 59,
+            "settled": 57,
+            "stamped_max": 69,
+            "stamped_min": 69
+          },
+          "64": {
+            "effects": 75,
+            "entered": 75,
+            "first_committed": 75,
+            "settled": 75,
+            "stamped_max": 75,
+            "stamped_min": 75
+          },
+          "96": {
+            "effects": 85,
+            "entered": 92,
+            "first_committed": 92,
+            "settled": 81,
+            "stamped_max": 97,
+            "stamped_min": 92
+          },
+          "112": {
+            "effects": 92,
+            "entered": 97,
+            "first_committed": 92,
+            "settled": 92,
+            "stamped_max": 108,
+            "stamped_min": 97
+          },
+          "128": {
+            "effects": 98,
+            "entered": 110,
+            "first_committed": 103,
+            "settled": 97,
+            "stamped_max": 113,
+            "stamped_min": 113
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 23,
+            "entered": 32,
+            "first_committed": 32,
+            "settled": 21,
+            "stamped_max": 36,
+            "stamped_min": 36
+          },
+          "32": {
+            "effects": 36,
+            "entered": 36,
+            "first_committed": 36,
+            "settled": 32,
+            "stamped_max": 48,
+            "stamped_min": 48
+          },
+          "64": {
+            "effects": 57,
+            "entered": 59,
+            "first_committed": 59,
+            "settled": 57,
+            "stamped_max": 69,
+            "stamped_min": 69
+          },
+          "96": {
+            "effects": 65,
+            "entered": 72,
+            "first_committed": 69,
+            "settled": 62,
+            "stamped_max": 75,
+            "stamped_min": 75
+          },
+          "112": {
+            "effects": 71,
+            "entered": 75,
+            "first_committed": 75,
+            "settled": 67,
+            "stamped_max": 75,
+            "stamped_min": 75
+          },
+          "128": {
+            "effects": 75,
+            "entered": 79,
+            "first_committed": 75,
+            "settled": 75,
+            "stamped_max": 91,
+            "stamped_min": 91
+          }
+        }
+      },
+      "river-warm": {
+        "committed_us": {
+          "16": {
+            "effects": 14,
+            "entered": 16,
+            "first_committed": 16,
+            "settled": 3,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "32": {
+            "effects": 16,
+            "entered": 16,
+            "first_committed": 16,
+            "settled": 16,
+            "stamped_max": 32,
+            "stamped_min": 32
+          },
+          "64": {
+            "effects": 36,
+            "entered": 36,
+            "first_committed": 36,
+            "settled": 32,
+            "stamped_max": 48,
+            "stamped_min": 48
+          },
+          "96": {
+            "effects": 54,
+            "entered": 59,
+            "first_committed": 57,
+            "settled": 53,
+            "stamped_max": 69,
+            "stamped_min": 69
+          },
+          "112": {
+            "effects": 60,
+            "entered": 71,
+            "first_committed": 67,
+            "settled": 59,
+            "stamped_max": 75,
+            "stamped_min": 75
+          },
+          "128": {
+            "effects": 75,
+            "entered": 75,
+            "first_committed": 75,
+            "settled": 69,
+            "stamped_max": 75,
+            "stamped_min": 75
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 0,
+            "entered": 0,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 0,
+            "stamped_min": 0
+          },
+          "32": {
+            "effects": 0,
+            "entered": 0,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "64": {
+            "effects": 16,
+            "entered": 16,
+            "first_committed": 16,
+            "settled": 13,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "96": {
+            "effects": 32,
+            "entered": 36,
+            "first_committed": 34,
+            "settled": 32,
+            "stamped_max": 48,
+            "stamped_min": 36
+          },
+          "112": {
+            "effects": 40,
+            "entered": 52,
+            "first_committed": 47,
+            "settled": 39,
+            "stamped_max": 53,
+            "stamped_min": 53
+          },
+          "128": {
+            "effects": 56,
+            "entered": 59,
+            "first_committed": 57,
+            "settled": 53,
+            "stamped_max": 69,
+            "stamped_min": 69
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "oban": "8fde091ba32b2175df048edbfb4cf16c0072805e600388ec8972ca6725caa251",
+      "r2-d2": "5bf10ad1c779464bfe1af71c35055d05211a1d03a2feb78a82af6a39b5b4a3b5",
+      "river": "283ca970c64607870bd6fb3526d0ff265ef6951a9dc8edad0c1570518e358f1c",
+      "river-warm": "f5f70d784cd02cb8b6cf966ca1c46dcea8a0fbeb1b5eed213a5634693625462c"
+    },
+    "terminal_backlog": {
+      "oban": {
+        "at_rank": {
+          "16": 9,
+          "32": 6,
+          "64": 9,
+          "96": 8,
+          "112": 8,
+          "128": 7
+        },
+        "peak": 10,
+        "terminal_xids": 128
+      },
+      "r2-d2": {
+        "at_rank": {
+          "16": 13,
+          "32": 7,
+          "64": 2,
+          "96": 4,
+          "112": 7,
+          "128": 8
+        },
+        "peak": 13,
+        "terminal_xids": 113
+      },
+      "river": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 128
+        },
+        "peak": 128,
+        "terminal_xids": 2
+      },
+      "river-warm": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 21
+        },
+        "peak": 126,
+        "terminal_xids": 2
+      }
+    }
+  },
+  {
+    "group": 5,
+    "mesh_drain_minus_peer_full_submit_us": {
+      "oban": -239938,
+      "river": -88793,
+      "river-warm": 36138
+    },
+    "peers": {
+      "oban": {
+        "committed_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "16": {
+            "effects": 56,
+            "entered": 67,
+            "first_committed": 64,
+            "settled": 55,
+            "stamped_max": 70,
+            "stamped_min": 70
+          },
+          "32": {
+            "effects": 66,
+            "entered": 71,
+            "first_committed": 69,
+            "settled": 63,
+            "stamped_max": 73,
+            "stamped_min": 73
+          },
+          "64": {
+            "effects": 89,
+            "entered": 91,
+            "first_committed": 91,
+            "settled": 89,
+            "stamped_max": 105,
+            "stamped_min": 91
+          },
+          "96": {
+            "effects": 118,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 118,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 35,
+            "entered": 42,
+            "first_committed": 39,
+            "settled": 35,
+            "stamped_max": 51,
+            "stamped_min": 51
+          },
+          "32": {
+            "effects": 51,
+            "entered": 51,
+            "first_committed": 51,
+            "settled": 47,
+            "stamped_max": 52,
+            "stamped_min": 52
+          },
+          "64": {
+            "effects": 66,
+            "entered": 71,
+            "first_committed": 69,
+            "settled": 63,
+            "stamped_max": 73,
+            "stamped_min": 73
+          },
+          "96": {
+            "effects": 93,
+            "entered": 107,
+            "first_committed": 99,
+            "settled": 92,
+            "stamped_max": 108,
+            "stamped_min": 107
+          },
+          "112": {
+            "effects": 111,
+            "entered": 111,
+            "first_committed": 111,
+            "settled": 109,
+            "stamped_max": 116,
+            "stamped_min": 116
+          },
+          "128": {
+            "effects": 118,
+            "entered": 128,
+            "first_committed": 126,
+            "settled": 118,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        }
+      },
+      "river-warm": {
+        "committed_us": {
+          "16": {
+            "effects": 2,
+            "entered": 16,
+            "first_committed": 15,
+            "settled": 2,
+            "stamped_max": 18,
+            "stamped_min": 18
+          },
+          "32": {
+            "effects": 18,
+            "entered": 18,
+            "first_committed": 18,
+            "settled": 18,
+            "stamped_max": 34,
+            "stamped_min": 18
+          },
+          "64": {
+            "effects": 34,
+            "entered": 34,
+            "first_committed": 34,
+            "settled": 32,
+            "stamped_max": 35,
+            "stamped_min": 35
+          },
+          "96": {
+            "effects": 55,
+            "entered": 67,
+            "first_committed": 64,
+            "settled": 54,
+            "stamped_max": 70,
+            "stamped_min": 70
+          },
+          "112": {
+            "effects": 65,
+            "entered": 70,
+            "first_committed": 66,
+            "settled": 59,
+            "stamped_max": 73,
+            "stamped_min": 73
+          },
+          "128": {
+            "effects": 71,
+            "entered": 73,
+            "first_committed": 71,
+            "settled": 71,
+            "stamped_max": 73,
+            "stamped_min": 73
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 0,
+            "entered": 0,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 0,
+            "stamped_min": 0
+          },
+          "32": {
+            "effects": 0,
+            "entered": 0,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 16,
+            "stamped_min": 16
+          },
+          "64": {
+            "effects": 18,
+            "entered": 18,
+            "first_committed": 18,
+            "settled": 11,
+            "stamped_max": 18,
+            "stamped_min": 18
+          },
+          "96": {
+            "effects": 35,
+            "entered": 41,
+            "first_committed": 37,
+            "settled": 35,
+            "stamped_max": 51,
+            "stamped_min": 50
+          },
+          "112": {
+            "effects": 47,
+            "entered": 51,
+            "first_committed": 51,
+            "settled": 44,
+            "stamped_max": 52,
+            "stamped_min": 52
+          },
+          "128": {
+            "effects": 52,
+            "entered": 63,
+            "first_committed": 57,
+            "settled": 52,
+            "stamped_max": 68,
+            "stamped_min": 68
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "oban": "735d27911a085bc354e23f0c8fcb02c7a387e0afe6f1b2d70cf5061cdce6d7cc",
+      "r2-d2": "e0301cd0b515f006b7c8facb94fb31490d5a67b37e9d58fc4115af3b1447cc5c",
+      "river": "a4c2add3019ebcb4ce1d8d7992af1daf3832bad583951867c63057c9811c6e8a",
+      "river-warm": "49ae8e8bf194e7d859b4ef6bcca906bef5cfde2476564a2e2891ba7fb7fdbceb"
+    },
+    "terminal_backlog": {
+      "oban": {
+        "at_rank": {
+          "16": 5,
+          "32": 2,
+          "64": 4,
+          "96": 8,
+          "112": 9,
+          "128": 8
+        },
+        "peak": 15,
+        "terminal_xids": 128
+      },
+      "r2-d2": {
+        "at_rank": {
+          "16": 9,
+          "32": 7,
+          "64": 5,
+          "96": 1,
+          "112": 1,
+          "128": 4
+        },
+        "peak": 10,
+        "terminal_xids": 119
+      },
+      "river": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 128
+        },
+        "peak": 128,
+        "terminal_xids": 2
+      },
+      "river-warm": {
+        "at_rank": {
+          "16": 16,
+          "32": 15,
+          "64": 47,
+          "96": 79,
+          "112": 95,
+          "128": 111
+        },
+        "peak": 111,
+        "terminal_xids": 2
+      }
+    }
+  },
+  {
+    "group": 6,
+    "mesh_drain_minus_peer_full_submit_us": {
+      "oban": -261713,
+      "river": -102863,
+      "river-warm": -25774
+    },
+    "peers": {
+      "oban": {
+        "committed_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "32": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "64": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "96": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "112": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          },
+          "128": {
+            "effects": 128,
+            "entered": 128,
+            "first_committed": 128,
+            "settled": 128,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        }
+      },
+      "river": {
+        "committed_us": {
+          "16": {
+            "effects": 48,
+            "entered": 57,
+            "first_committed": 57,
+            "settled": 45,
+            "stamped_max": 60,
+            "stamped_min": 57
+          },
+          "32": {
+            "effects": 57,
+            "entered": 57,
+            "first_committed": 57,
+            "settled": 57,
+            "stamped_max": 73,
+            "stamped_min": 73
+          },
+          "64": {
+            "effects": 77,
+            "entered": 77,
+            "first_committed": 77,
+            "settled": 75,
+            "stamped_max": 78,
+            "stamped_min": 78
+          },
+          "96": {
+            "effects": 99,
+            "entered": 100,
+            "first_committed": 100,
+            "settled": 97,
+            "stamped_max": 113,
+            "stamped_min": 113
+          },
+          "112": {
+            "effects": 105,
+            "entered": 115,
+            "first_committed": 113,
+            "settled": 103,
+            "stamped_max": 117,
+            "stamped_min": 117
+          },
+          "128": {
+            "effects": 120,
+            "entered": 122,
+            "first_committed": 121,
+            "settled": 117,
+            "stamped_max": 128,
+            "stamped_min": 128
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 29,
+            "entered": 35,
+            "first_committed": 32,
+            "settled": 25,
+            "stamped_max": 37,
+            "stamped_min": 37
+          },
+          "32": {
+            "effects": 37,
+            "entered": 38,
+            "first_committed": 37,
+            "settled": 37,
+            "stamped_max": 51,
+            "stamped_min": 51
+          },
+          "64": {
+            "effects": 57,
+            "entered": 73,
+            "first_committed": 61,
+            "settled": 57,
+            "stamped_max": 73,
+            "stamped_min": 73
+          },
+          "96": {
+            "effects": 77,
+            "entered": 78,
+            "first_committed": 78,
+            "settled": 77,
+            "stamped_max": 93,
+            "stamped_min": 93
+          },
+          "112": {
+            "effects": 81,
+            "entered": 96,
+            "first_committed": 93,
+            "settled": 81,
+            "stamped_max": 97,
+            "stamped_min": 97
+          },
+          "128": {
+            "effects": 97,
+            "entered": 100,
+            "first_committed": 99,
+            "settled": 97,
+            "stamped_max": 113,
+            "stamped_min": 100
+          }
+        }
+      },
+      "river-warm": {
+        "committed_us": {
+          "16": {
+            "effects": 14,
+            "entered": 16,
+            "first_committed": 16,
+            "settled": 7,
+            "stamped_max": 18,
+            "stamped_min": 18
+          },
+          "32": {
+            "effects": 32,
+            "entered": 35,
+            "first_committed": 35,
+            "settled": 27,
+            "stamped_max": 37,
+            "stamped_min": 37
+          },
+          "64": {
+            "effects": 60,
+            "entered": 75,
+            "first_committed": 70,
+            "settled": 59,
+            "stamped_max": 75,
+            "stamped_min": 75
+          },
+          "96": {
+            "effects": 81,
+            "entered": 94,
+            "first_committed": 89,
+            "settled": 81,
+            "stamped_max": 97,
+            "stamped_min": 94
+          },
+          "112": {
+            "effects": 96,
+            "entered": 97,
+            "first_committed": 97,
+            "settled": 92,
+            "stamped_max": 100,
+            "stamped_min": 100
+          },
+          "128": {
+            "effects": 100,
+            "entered": 110,
+            "first_committed": 103,
+            "settled": 100,
+            "stamped_max": 115,
+            "stamped_min": 115
+          }
+        },
+        "submitted_us": {
+          "16": {
+            "effects": 0,
+            "entered": 0,
+            "first_committed": 0,
+            "settled": 0,
+            "stamped_max": 0,
+            "stamped_min": 0
+          },
+          "32": {
+            "effects": 16,
+            "entered": 16,
+            "first_committed": 16,
+            "settled": 8,
+            "stamped_max": 18,
+            "stamped_min": 18
+          },
+          "64": {
+            "effects": 45,
+            "entered": 57,
+            "first_committed": 55,
+            "settled": 42,
+            "stamped_max": 57,
+            "stamped_min": 57
+          },
+          "96": {
+            "effects": 61,
+            "entered": 75,
+            "first_committed": 72,
+            "settled": 60,
+            "stamped_max": 76,
+            "stamped_min": 76
+          },
+          "112": {
+            "effects": 76,
+            "entered": 77,
+            "first_committed": 77,
+            "settled": 70,
+            "stamped_max": 78,
+            "stamped_min": 78
+          },
+          "128": {
+            "effects": 78,
+            "entered": 93,
+            "first_committed": 80,
+            "settled": 78,
+            "stamped_max": 94,
+            "stamped_min": 93
+          }
+        }
+      }
+    },
+    "raw_sha256": {
+      "oban": "1ff3ba999017d2b6c145d29236143b704a6491f0e7e2a2019be4c23cd0f3aa4d",
+      "r2-d2": "357081848b040d7d71ef2109432f8d42d304cbca51bc15e2f75139112ba3c7ed",
+      "river": "e68968b975dac6ebfc7e6299ca41bcc7c46a4fc0005da4ff216841e01c4dde34",
+      "river-warm": "cf0dd3e7c593403adc51bbdf3b991665ede5e31a64f953393f80c19171e312f4"
+    },
+    "terminal_backlog": {
+      "oban": {
+        "at_rank": {
+          "16": 16,
+          "32": 9,
+          "64": 7,
+          "96": 6,
+          "112": 4,
+          "128": 2
+        },
+        "peak": 16,
+        "terminal_xids": 128
+      },
+      "r2-d2": {
+        "at_rank": {
+          "16": 9,
+          "32": 6,
+          "64": 3,
+          "96": 4,
+          "112": 8,
+          "128": 4
+        },
+        "peak": 11,
+        "terminal_xids": 115
+      },
+      "river": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 128
+        },
+        "peak": 128,
+        "terminal_xids": 2
+      },
+      "river-warm": {
+        "at_rank": {
+          "16": 16,
+          "32": 32,
+          "64": 64,
+          "96": 96,
+          "112": 112,
+          "128": 128
+        },
+        "peak": 128,
+        "terminal_xids": 1
+      }
+    }
+  }
+]
