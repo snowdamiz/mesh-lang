@@ -2,6 +2,12 @@
 
 Open the existing Mesh worktree on branch `t3/9a80aabe` on the workstation that owns the benchmark. Its path is `/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe`. The Git history, local controller journal, staged binaries, and SSH configuration are available there. Other owners have changes in the Git index and working tree.
 
+## November 25 after the 09:44 UTC LARGE SETUP grant
+
+The sole controller issued the LARGE FILE lookahead SETUP under seal `f0a268bf…`. The SLOW cap68 executable SETUP sibling `b6288a27…` is bound in its original held position and awaits separate user authorization. Its offline check used real archived stock ledgers and a simulated combined identity. The distinct cap71 fused hold continues. [Controller journal](../../target/linode-jobs-stepchange/requests/STATUS.md) · [SLOW executable binding](../../../t3-7956f6c1/tools/durable-jobs-bench/results/2026-11-25-public-slow-receipt-refill/setup/controller-registration.json)
+
+SHORT16 fixed-eight writer fusion closed at offline pricing in `d29caafe3`. The tighter short arm could afford 381 microseconds of extra service per supplying transaction to clear both 5% floors, even crediting each replacement at its parent’s commit. The dense 2×32 wider-cohort replay separately found just two later transactions whose entire membership could fit in earlier full batches on the observed timeline across six warm-River rotations. [SHORT pricing](../../../t3-2af2f83a/tools/durable-jobs-bench/results/2026-11-25-short16-fixed8-writer-fusion-price/README.md) · [Dense cohort evidence](results/2026-11-25-dense-factorial-interaction/READY-SUCCESS-CAPACITY.md)
+
 ## November 25 after the 09:33 UTC SLOW registration
 
 The proposed LARGE FILE producer prepared a complete next job while PostgreSQL held the previous write in an untimed compiled proof. The exact 64-scalar and eight-bulk profiles passed rollback and error-order checks on PostgreSQL 17.11. The owner is preparing the executable Linux SETUP and the conditional default-storage pilot. The 124–132 ms estimate for LARGE covers work that could overlap across 63 boundaries. Native end-to-end savings are pending. [Producer proof](../../../t3-09dc428a/tools/durable-jobs-bench/results/2026-11-25-dense-one-batch-lookahead/README.md)
