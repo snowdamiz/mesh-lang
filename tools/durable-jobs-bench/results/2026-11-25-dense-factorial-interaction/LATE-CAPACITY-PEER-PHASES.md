@@ -33,3 +33,21 @@ python3 -B test_xid_bounds.py
 python3 -B late_capacity_peer_phases.py ../2026-11-25-public-dense-late-capacity/peer-comparison/evidence | cmp - late-capacity-peer-phases.json
 python3 -B late_capacity_io.py ../2026-11-25-public-dense-late-capacity/peer-comparison/evidence | cmp - late-capacity-io-bounded.json
 ```
+
+## What the first handler entry proves about the rest of its grant
+
+During the middle 512 effects, 90.4–97.7% of the **provable waiting job-time after grant confirmation** occurred on a runner where at least two other jobs had already entered their handlers and had yet to commit their second writes. A longer scheduler park targets workers that have become empty. These counts cannot measure their exposure. They show why an entered-handler count or a queue-row timestamp would make a poor substitute for the native scheduler observation.
+
+| Rotation | Mean jobs provably waiting to enter | Share of that wait with ≥2 entered on same runner | Mean runners with entered work, out of 8 | Wall ms with possible backlog on a runner with zero entered |
+|---|---:|---:|---:|---:|
+| 1 | 1.64 | 97.7% | 3.23 | 434.4 |
+| 2 | 1.77 | 90.4% | 5.27 | 733.3 |
+| 3 | 1.69 | 94.6% | 3.65 | 409.3 |
+| 4 | 1.40 | 93.3% | 3.39 | 441.5 |
+| 5 | 1.42 | 93.7% | 3.48 | 423.3 |
+
+Each checked COMMIT precedes the first recorded handler entry from that grant. Every later member still awaiting entry at that point is known to have a confirmed grant. On the other boundary, the millisecond on the database claim is the earliest possible confirmation. Between those edges the status is unknown. In all five B arms the first-entry lower bound gives zero time with a confirmed, unentered member and zero entered handlers on its owner. The generous claim-stamp upper bounds in the last column allow hundreds of milliseconds. The gap concerns the time *before* the first observed entry and cannot distinguish slow COMMIT, slow adoption, or slow initial scheduling. The lower bound can only witness later members, and a first member helps keep its owner's entered count positive until its own second write commits.
+
+An entered handler can be sleeping or awaiting a connection or database result. A confirmed row can still be awaiting actor submission. The table therefore refers to jobs and durable writes, and supports no inference of scheduler thread utilization or runnable queue depth. The two same-ELF OFF controls had 0.31–0.57 provably waiting jobs on average compared with B's 1.40–1.77. This comparison also changes the widths of the actual grants. The slow second rotation had the most runners with entered work even as its durable writes advanced the slowest.
+
+The [15-arm replay](confirmed_entry_supply.py) binds each raw to the controller and reconciled scores. For each PID, the grant buckets reconcile to the number of positive calls, and the ledger gives one entry and two independent application transactions per job. The [interval counts](confirmed-entry-supply.json) report both runner-time and wall-time unions, including the case with at most one entered handler.
