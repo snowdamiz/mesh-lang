@@ -13,7 +13,7 @@ Across the six measured arms of the width-16 logical-key pilot, faster claim SQL
 
 The replay increments the pending count at the durable effect and decrements it at the terminal commit. Simultaneous events share one timestamp. The whole-drain integral must equal the sum of the 512 individual effect-to-terminal durations exactly. The counts bound how many jobs could be ready to settle together. The ledgers do not record when each actor exited or its terminal acknowledgement arrived. An uninterrupted span can include turnover in which jobs are pending.
 
-Both key rotations reduced PostgreSQL CPU and missed the SLOW wall-time gate. The grouped-success trial can establish the number of exit-confirmed jobs that actually share a terminal transaction and whether earlier slot reuse advances durable effects.
+Both key rotations reduced PostgreSQL CPU and missed the SLOW wall-time gate. The separate grouped-success review closed before native booking. In the reverse rotation the last durable effect would still need to advance about 125 ms to clear the 97 ms submit target even with immediate final settlement. This replay leaves the benefit of grouped success on SLOW unmeasured. The review and its price replay are recorded in local commit `5f88ac339`.
 
 Replay from a repository containing the source owner's archive commit `7df5b961c`.
 
