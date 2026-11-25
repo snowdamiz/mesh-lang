@@ -1,0 +1,35 @@
+warmup-checked-a warmup mesh: 0
+warmup-river-2x32 warmup go: 0
+warmup-apalis-2x32 warmup rust: 0
+warmup-hot warmup mesh: 0
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-claim-lane-1e70f18d/archive/campaign.py", line 268, in <module>
+    sys.exit(base.main())
+             ~~~~~~~~~^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-individual-hot-pool/controller.py", line 371, in main
+    matrix.dispatch(directory, cfg, ID, blocks, pins, args.groups)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/matrix.py", line 198, in dispatch
+    run.dispatch_arm(folder.parent, run.REMOTE / remotes[label], block, phase, lane["engine"])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-individual-hot-pool/controller.py", line 368, in checked_dispatch
+    score_arm(folder, phase, path.name.removeprefix(phase + "-"), cfg, remote)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-individual-hot-pool/controller.py", line 254, in score_arm
+    score = mesh(get, lambda name: dense.text(raw, f"adapter/{name}"), phase, label == "hot",
+                 cfg["product"], ARTIFACT / "mesh")
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-claim-lane-1e70f18d/archive/campaign.py", line 142, in measured_mesh
+    return ORIGINAL_MESH(get, log, phase, True, product, executable)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-individual-hot-pool/score.py", line 102, in mesh
+    require(queue["queue_policy"] == ledger["queue_policy"] == row["queue_policy"] == "set_based"
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            and 0 < admitted == queue["admitted_queries"] and queue["terminal_xids"] == terminals
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+            and sum(item["calls"] for item in sql if item["query"].startswith(SETTLE)) == JOBS,
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            "checked set admission or individual settlement changed")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/verify.py", line 27, in require
+    raise ValueError(message)
+ValueError: checked set admission or individual settlement changed
