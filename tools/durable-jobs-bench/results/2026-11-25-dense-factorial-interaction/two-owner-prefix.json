@@ -1,0 +1,1352 @@
+{
+  "1": {
+    "eligible_disjoint_pairs": {
+      "16-0-all": 64,
+      "16-0-middle": 32,
+      "16-4000-all": 60,
+      "16-4000-middle": 30,
+      "16-8000-all": 51,
+      "16-8000-middle": 26,
+      "8-0-all": 0,
+      "8-0-middle": 0,
+      "8-4000-all": 0,
+      "8-4000-middle": 0,
+      "8-8000-all": 0,
+      "8-8000-middle": 0
+    },
+    "middle_full_refills": [
+      {
+        "gap_us": 13080,
+        "other_granted": 15,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 21656,
+        "other_granted": 23,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 27426,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 35312,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 38542,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 15618,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 19970,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 27513,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 13318,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 15087,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 23101,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 7387,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 22086,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 13878,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 22632,
+        "other_granted": 28,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 10656,
+        "other_granted": 12,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 21423,
+        "other_granted": 28,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 31576,
+        "other_granted": 32,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 24453,
+        "other_granted": 12,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 14523,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 35962,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 16264,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 43803,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 35759,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 45231,
+        "other_granted": 40,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 25500,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 27477,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 21264,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 6025,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 14646,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 24612,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 15128,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 11414,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 27821,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 10125,
+        "other_granted": 15,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 18338,
+        "other_granted": 23,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 16556,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 8723,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 27562,
+        "other_granted": 20,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 7768,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 17166,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 8537,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 4499,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 32786,
+        "other_granted": 25,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 29834,
+        "other_granted": 13,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 21309,
+        "other_granted": 12,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 17127,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 20359,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 27392,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 39994,
+        "other_granted": 40,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 18895,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 14343,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 8806,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 36310,
+        "other_granted": 48,
+        "other_turns": 6
+      },
+      {
+        "gap_us": 14744,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 15408,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 21028,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 7560,
+        "other_granted": 2,
+        "other_turns": 1
+      }
+    ],
+    "productive_turns": 134,
+    "raw_sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d",
+    "turns_at_tied_stamps": 0
+  },
+  "2": {
+    "eligible_disjoint_pairs": {
+      "16-0-all": 72,
+      "16-0-middle": 39,
+      "16-4000-all": 68,
+      "16-4000-middle": 35,
+      "16-8000-all": 62,
+      "16-8000-middle": 32,
+      "8-0-all": 8,
+      "8-0-middle": 5,
+      "8-4000-all": 8,
+      "8-4000-middle": 5,
+      "8-8000-all": 8,
+      "8-8000-middle": 5
+    },
+    "middle_full_refills": [
+      {
+        "gap_us": 15703,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 16419,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 24898,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 17526,
+        "other_granted": 21,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 20068,
+        "other_granted": 13,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 17112,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 13135,
+        "other_granted": 13,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 15591,
+        "other_granted": 6,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 33150,
+        "other_granted": 22,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 70245,
+        "other_granted": 20,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 54695,
+        "other_granted": 15,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 65217,
+        "other_granted": 30,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 28210,
+        "other_granted": 10,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 21775,
+        "other_granted": 6,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 22675,
+        "other_granted": 14,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 13937,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 4144,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 24674,
+        "other_granted": 13,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 8977,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 14645,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 18768,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 5161,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 25808,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 27460,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 53085,
+        "other_granted": 6,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 33003,
+        "other_granted": 6,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 157683,
+        "other_granted": 28,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 164033,
+        "other_granted": 20,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 427620,
+        "other_granted": 70,
+        "other_turns": 15
+      },
+      {
+        "gap_us": 7835,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 22403,
+        "other_granted": 11,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 27822,
+        "other_granted": 19,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 66430,
+        "other_granted": 29,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 64965,
+        "other_granted": 29,
+        "other_turns": 4
+      }
+    ],
+    "productive_turns": 159,
+    "raw_sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61",
+    "turns_at_tied_stamps": 0
+  },
+  "3": {
+    "eligible_disjoint_pairs": {
+      "16-0-all": 61,
+      "16-0-middle": 29,
+      "16-4000-all": 57,
+      "16-4000-middle": 28,
+      "16-8000-all": 50,
+      "16-8000-middle": 23,
+      "8-0-all": 1,
+      "8-0-middle": 0,
+      "8-4000-all": 0,
+      "8-4000-middle": 0,
+      "8-8000-all": 0,
+      "8-8000-middle": 0
+    },
+    "middle_full_refills": [
+      {
+        "gap_us": 18520,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 27211,
+        "other_granted": 12,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 31778,
+        "other_granted": 20,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 31345,
+        "other_granted": 20,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 24095,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 21797,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 23626,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 28087,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 15452,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 17676,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 25499,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 23456,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 7762,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 28092,
+        "other_granted": 23,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 32700,
+        "other_granted": 23,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 4984,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 9089,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 13704,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 30363,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 33900,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 29446,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 4171,
+        "other_granted": 7,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 5129,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 4833,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 8946,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 11086,
+        "other_granted": 6,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 14683,
+        "other_granted": 8,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 11687,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 6894,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 4939,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 29737,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 11340,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 14312,
+        "other_granted": 9,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 40212,
+        "other_granted": 33,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 34067,
+        "other_granted": 25,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 49942,
+        "other_granted": 33,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 26711,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 7733,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 40829,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 34006,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 24484,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 29857,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 21571,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 2557,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 2324,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 16159,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 9872,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 12022,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 15495,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 9122,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 14593,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 26311,
+        "other_granted": 21,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 23300,
+        "other_granted": 20,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 28356,
+        "other_granted": 28,
+        "other_turns": 4
+      }
+    ],
+    "productive_turns": 136,
+    "raw_sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3",
+    "turns_at_tied_stamps": 0
+  },
+  "4": {
+    "eligible_disjoint_pairs": {
+      "16-0-all": 65,
+      "16-0-middle": 32,
+      "16-4000-all": 61,
+      "16-4000-middle": 29,
+      "16-8000-all": 54,
+      "16-8000-middle": 23,
+      "8-0-all": 1,
+      "8-0-middle": 1,
+      "8-4000-all": 1,
+      "8-4000-middle": 1,
+      "8-8000-all": 0,
+      "8-8000-middle": 0
+    },
+    "middle_full_refills": [
+      {
+        "gap_us": 10524,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 14283,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 10046,
+        "other_granted": 14,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 31240,
+        "other_granted": 22,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 27635,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 31669,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 20255,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 36835,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 30911,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 30582,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 18316,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 61028,
+        "other_granted": 48,
+        "other_turns": 6
+      },
+      {
+        "gap_us": 15981,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 3683,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 30583,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 15739,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 14356,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 20824,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 12150,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 7427,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 19281,
+        "other_granted": 13,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 11124,
+        "other_granted": 8,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 4487,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 39093,
+        "other_granted": 23,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 12231,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 54697,
+        "other_granted": 31,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 23274,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 25555,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 25163,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 17049,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 16467,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 11062,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 9617,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 23363,
+        "other_granted": 14,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 4108,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 4751,
+        "other_granted": 7,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 34166,
+        "other_granted": 38,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 7379,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 28531,
+        "other_granted": 31,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 21462,
+        "other_granted": 7,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 28404,
+        "other_granted": 15,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 13955,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 9903,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 31622,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 32799,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 8615,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 42446,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 23316,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 3584,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 23219,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 14034,
+        "other_granted": 8,
+        "other_turns": 1
+      }
+    ],
+    "productive_turns": 137,
+    "raw_sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598",
+    "turns_at_tied_stamps": 0
+  },
+  "5": {
+    "eligible_disjoint_pairs": {
+      "16-0-all": 64,
+      "16-0-middle": 31,
+      "16-4000-all": 60,
+      "16-4000-middle": 30,
+      "16-8000-all": 57,
+      "16-8000-middle": 28,
+      "8-0-all": 1,
+      "8-0-middle": 1,
+      "8-4000-all": 1,
+      "8-4000-middle": 1,
+      "8-8000-all": 1,
+      "8-8000-middle": 1
+    },
+    "middle_full_refills": [
+      {
+        "gap_us": 9682,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 26584,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 21873,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 21672,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 31158,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 12126,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 28485,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 14918,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 24482,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 16484,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 14713,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 6564,
+        "other_granted": 0,
+        "other_turns": 0
+      },
+      {
+        "gap_us": 15185,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 30630,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 17034,
+        "other_granted": 15,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 16647,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 16118,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 24277,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 22351,
+        "other_granted": 11,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 20851,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 33420,
+        "other_granted": 19,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 10895,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 33058,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 35375,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 49027,
+        "other_granted": 40,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 34190,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 18536,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 20538,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 15846,
+        "other_granted": 19,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 17694,
+        "other_granted": 19,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 43337,
+        "other_granted": 35,
+        "other_turns": 6
+      },
+      {
+        "gap_us": 20179,
+        "other_granted": 10,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 20676,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 10158,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 19213,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 28080,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 32609,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 32291,
+        "other_granted": 32,
+        "other_turns": 4
+      },
+      {
+        "gap_us": 44033,
+        "other_granted": 40,
+        "other_turns": 5
+      },
+      {
+        "gap_us": 11000,
+        "other_granted": 6,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 20392,
+        "other_granted": 22,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 17049,
+        "other_granted": 16,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 3445,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 18364,
+        "other_granted": 17,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 10459,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 22105,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 25092,
+        "other_granted": 24,
+        "other_turns": 3
+      },
+      {
+        "gap_us": 15963,
+        "other_granted": 16,
+        "other_turns": 2
+      },
+      {
+        "gap_us": 12468,
+        "other_granted": 8,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 12271,
+        "other_granted": 7,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 3908,
+        "other_granted": 6,
+        "other_turns": 1
+      },
+      {
+        "gap_us": 7604,
+        "other_granted": 0,
+        "other_turns": 0
+      }
+    ],
+    "productive_turns": 137,
+    "raw_sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175",
+    "turns_at_tied_stamps": 0
+  }
+}

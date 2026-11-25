@@ -17,3 +17,23 @@ On the public eight-runner deployment, allowing an outstanding request to grow a
 **Correctness constraint.** Asking PostgreSQL for even one extra provisional job and then rolling back changed what a concurrent recovery worker could promote with `SKIP LOCKED`. A trusted retry committed the same two jobs yet left the next job scheduled. Commit `de8eeeae7` preserves the PostgreSQL 17.11 witness. A candidate can use a genuine terminal receipt already processed by the runner to increase its reservation before taking a job lock. The frequency of such receipts at the instant a partial request enters the claim lane remains unknown.
 
 From this directory, run `python3 -B grant_capacity_frontier.py | cmp - grant-capacity-frontier.json`. Replay verifies the release seal, controller scores and archive hashes for 20 measured Mesh arms. Each arm reconciles 1,024 jobs and 2,048 distinct application XIDs. The number of runner-and-stamp groups equals checked calls minus excess marker rows in every arm. That equality rules out two productive grants on one runner sharing a stamp in these captures. [Per-arm measurements](grant-capacity-frontier.json) · [Released peer comparison](../2026-11-25-public-dense-late-capacity/peer-comparison/RESULTS.md)
+
+## Two eight-seat owners at the same claim
+
+Of 249 full refills whose whole gap fell inside the middle 512 effects, 229 saw another runner receive a productive grant between the same owner's last terminal commit and its next grant stamp. In every rotation the median was two intervening turns. The receipts do not timestamp when either client asked for its next grant.
+
+The released SQL and Rust reader accept up to 16 rows. A single owner on this deployment can reserve only eight. The earlier coordination screen at `b344fdb09` limited each combined request to eight total. Here one checked transaction can serve two adjacent owners, each retaining its eight-seat limit. Count a pair only when the later owner's observed width fits its modeled available seats at the earlier stamp. The counts are maximum disjoint pairs on the original grant order. Every stamp was unique across owners.
+
+| Rotation | Positive turns | Whole-run pairs at width 8, 4 ms receipt lag | Whole-run pairs at width 16, 0 / 4 / 8 ms lag | Middle pairs at width 16, 8 ms lag |
+|---|---:|---:|---:|---:|
+| 1 | 134 | 0 | 64 / 60 / 51 | 26 |
+| 2 | 159 | 8 | 72 / 68 / 62 | 32 |
+| 3 | 136 | 0 | 61 / 57 / 50 | 23 |
+| 4 | 137 | 1 | 65 / 61 / 54 | 23 |
+| 5 | 137 | 1 | 64 / 60 / 57 | 28 |
+
+The model credits the earlier owner with its observed grant and moves the later owner's seat check to the earlier stamp. That owner may still have been receiving an acknowledgement or deciding to claim. Even if both requests were ready, the combined transaction would still have to select, validate and update all the rows, then deliver the confirmed grant to both owners.
+
+At 8 ms assumed lag, matching River on submit would require 1.8–4.5 ms of net advance per pair outside rotation 2 and 19.3 ms in rotation 2. Matching River's middle-write pace through this mechanism alone would require 7.4–11.2 ms per middle pair outside rotation 2 and 29.6 ms in rotation 2. The actual saving is unmeasured. The first question for an implementation is whether two compatible reservations are ready when the first claim can run, without delaying a lone request.
+
+The [raw hashes, seat sensitivities and intervening grant counts](two-owner-prefix.json) cover the five B captures. Reproduce them with `python3 -B two_owner_prefix.py`.
