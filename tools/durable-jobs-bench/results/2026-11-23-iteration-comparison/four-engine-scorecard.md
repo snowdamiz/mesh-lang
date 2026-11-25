@@ -353,6 +353,23 @@ River runner launch to readiness took a median 56.4 ms in lazy mode and 314.7 ms
 
 Group 5 remains scored. Mesh recorded 11.71% I/O wait and 0.00% CPU steal in that rotation. [Native result and independent release audit](../2026-11-25-dense-fixed8-river-readiness/NATIVE-RESULTS.md)
 
+## Canonical public dense eight-runner fixed8 and d388
+
+2/2 matched rotations. Each lane runs eight 8-slot runners for 1,024 jobs on CPUs 0 and 1. Mesh B uses the canonical public 4924b588 ELF with d388 grants, fixed8 grouped settlement and hot checkout. A1 and A2 use hot checked-individual settlement on the same ELF. Rates and paired changes are medians. [Interactive results](chart.html#public-dense-8x8-fixed8)
+
+| Lane | Submit jobs/s | Drain jobs/s | Mesh B paired submit change (wins) | Mesh B paired drain change (wins) |
+|---|---:|---:|---:|---:|
+| Public Mesh B | 700.71 | 799.57 | — | — |
+| Public Mesh A1 | 501.03 | 548.51 | +40.95% (2/2) | +47.00% (2/2) |
+| Public Mesh A2 | 528.79 | 582.46 | +32.52% (2/2) | +37.27% (2/2) |
+| Stock Go River | 827.42 | 891.32 | -15.30% (0/2) | -10.30% (0/2) |
+| Stock Elixir Oban | 637.13 | 702.71 | +10.05% (2/2) | +13.85% (2/2) |
+| Stock Rust Apalis | 1,158.38 | 1,211.75 | -39.44% (0/2) | -33.94% (0/2) |
+
+B led Oban on both clocks in both rotations. River and Apalis led B on both clocks in both. The preregistered margin qualified Apalis's lead. The River and Oban comparisons remained inconclusive because the measured gaps fell below the duplicate-control spread in rotation 2.
+
+The mirrored admission pilot used hot checked-individual duplicates A1/A2 and hot candidate B. Pilot C kept application checkout checks on B's grouped route and shared the ELF and warmed session count. Both pilot gates passed. The scored forward peer block came from the 06:04 exit-1 capture. The seven arms from its interrupted reverse block remain archived, including B's warmup flagged for overlapping apt-get. The 06:15:10 exit-0 continuation supplied the entire fresh reverse block. [Pilot and custody](../2026-11-25-public-dense-8x8/path-recovery/README.md) · [Peer clock and roster audit](../2026-11-25-public-dense-8x8/path-recovery/peer-stage-recovery/reverse-continuation/evidence/peers/clock-and-roster.json) · [Reverse continuation and retained failure](../2026-11-25-public-dense-8x8/path-recovery/peer-stage-recovery/reverse-continuation/README.md)
+
 ## Short jobs with combined settlement and refill
 
 2/5 matched rotations. The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.

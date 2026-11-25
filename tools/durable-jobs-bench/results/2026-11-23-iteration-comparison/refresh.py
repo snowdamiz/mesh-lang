@@ -375,6 +375,80 @@ def dense_river_readiness_score(folder, trial, engine, inventory, row):
                 commit_to_last_settlement_ms=row["drain_us"] / 1000)
 
 
+def capture_public_dense_8x8(path):
+    reverse = path / "reverse-continuation"
+    forward_dir = path / "evidence/peers"
+    reverse_dir = reverse / "evidence/peers"
+    packet_path = reverse / "controller-packet.json"
+    packet = run.read_json(packet_path)
+    replay_path = reverse_dir / "independent-replay.json"
+    replay = subprocess.check_output([sys.executable, "-B", reverse / "continuation.py", "replay"])
+    run.require(replay == replay_path.read_bytes(), f"{replay_path}: differs from fresh archive replay")
+    report = json.loads(replay)
+    roster_path = reverse_dir / "clock-and-roster.json"
+    roster = run.read_json(roster_path)
+    run.require(roster["matched"] == report["matched"]
+                and roster["counts"] == dict(forward=12, reverse=12, excluded_interrupted_reverse=7),
+                f"{roster_path}: native custody differs")
+
+    recovery = path.parent
+    pilot_path = recovery / "evidence/pilot/replay.json"
+    pilot_replay = subprocess.check_output([sys.executable, "-B", recovery / "recovery.py", "replay", "pilot"])
+    run.require(pilot_replay == pilot_path.read_bytes(), f"{pilot_path}: differs from fresh pilot replay")
+    pilot = json.loads(pilot_replay)
+    run.require(pilot["advance_to_peers"], "the sealed pilot did not admit peers")
+
+    lanes = {"B": "mesh", "A1": "mesh", "A2": "mesh", "river": "go", "oban": "oban", "apalis": "rust"}
+    forward, = packet["retained"]
+    backward, = packet["schedule"]
+    run.require(forward["order"] == backward["order"][::-1], "the peer rotations are not mirrored")
+    blocks, releases = [], {}
+    for block, directory, status, source, receipt_sha in (
+        (forward, forward_dir, 1, packet["predecessor"], roster["prior_failed_release_sha256"]),
+        (backward, reverse_dir, 0, packet["id"], roster["reverse_release_sha256"]),
+    ):
+        release_path = directory / "controller-release.json"
+        release = run.read_json(release_path)
+        run.require((release["id"], release["phase"], release["exit_status"], run.digest(release_path))
+                    == (source, "timing", status, receipt_sha), f"{release_path}: unexpected release")
+        releases[source] = receipt_sha
+        folder = directory / "blocks" / run.block_prefix(block)
+        rows = report["groups"][str(block["group"])]
+        run.require(run.read_json(folder / "order.json") == block
+                    and run.read_json(folder / "reconciled.json") == rows, f"{folder}: native order or replay differs")
+        archives, scores = {}, {}
+        for phase in block["phases"]:
+            for label in block["order"]:
+                engine = lanes[label]
+                arm = f"{phase}-{label}/{phase}-{engine}"
+                raw = folder / arm / "raw.tar.gz"
+                row = rows[f"{phase}-{label}"]
+                archives[arm] = run.digest(raw)
+                run.require(row["raw_sha256"] == archives[arm] and row["affinity"] == [0, 1]
+                            and (row["completed"], row["ordered_independent_writes"], row["failed"])
+                            == (1024, 1024, 0), f"{raw}: unexpected native outcome")
+                if phase == "measured":
+                    inventory = directory / "staging" / ("A1" if label == "A2" else label) / "inventory.json"
+                    spec = run.read_json(inventory)["engines"][engine]
+                    score = {key: row[key] for key in METRICS}
+                    score.update(engine=engine, completed=row["completed"], sha256=spec["artifact_sha256"],
+                                 submit_to_last_settlement_ms=row["submit_us"] / 1000,
+                                 commit_to_last_settlement_ms=row["drain_us"] / 1000)
+                    if engine == "mesh":
+                        score.update(runner_sha256=packet["public_elf_sha256"], terminal_xids=row["terminal_xids"],
+                                     checkout_probes=row["checkout_probes"])
+                    scores[label] = score
+        blocks.append(dict(**block, attempt=folder.name, release=source, scores=scores, raw_sha256=archives))
+    run.require([block["group"] for block in blocks] == [1, 2]
+                and len({digest for block in blocks for digest in block["raw_sha256"].values()}) == 24,
+                "expected two distinct 12-arm peer rotations")
+    return dict(manifest_sha256=run.digest(packet_path), release_sha256=releases,
+                replay_sha256=run.digest(replay_path), custody_sha256=run.digest(roster_path),
+                pilot_replay_sha256=run.digest(pilot_path), pilot_gates=pilot["gate"],
+                pilot_hot_cold=roster["pilot_hot_cold"], archival_counts=roster["counts"],
+                matched=report["matched"], blocks=blocks)
+
+
 def capture_public_large_file_external(retry):
     directory = retry / "evidence/native"
     report_path = retry / "evidence/replay.json"
@@ -1000,6 +1074,28 @@ def write_scorecard(data):
                       "[Same-image pilot](../2026-11-25-dense-fixed8-logical-factorial/PILOT-RESULTS.md) · "
                       "[Peer release](../2026-11-25-dense-fixed8-logical-factorial/evidence/native-retry/peers-release.json)", ""])
     add_dense_river_readiness(lines, data.get("dense-fixed8-river-readiness", {}))
+    canonical = data.get("public-dense-8x8-fixed8", {})
+    add_policy_table(lines, canonical, "Canonical public dense eight-runner fixed8 and d388",
+                     "Each lane runs eight 8-slot runners for 1,024 jobs on CPUs 0 and 1. Mesh B uses the "
+                     "canonical public 4924b588 ELF with d388 grants, fixed8 grouped settlement and hot checkout. "
+                     "A1 and A2 use hot checked-individual settlement on the same ELF. Rates and paired changes "
+                     "are medians. [Interactive results](chart.html#public-dense-8x8-fixed8)",
+                     [("B", "Public Mesh B"), ("A1", "Public Mesh A1"), ("A2", "Public Mesh A2"),
+                      ("river", "Stock Go River"), ("oban", "Stock Elixir Oban"), ("apalis", "Stock Rust Apalis")],
+                     planned=2, paired="Mesh B")
+    if canonical:
+        lines.extend(["B led Oban on both clocks in both rotations. River and Apalis led B on both clocks in both. "
+                      "The preregistered margin qualified Apalis's lead. The River and Oban comparisons remained "
+                      "inconclusive because the measured gaps fell below the duplicate-control spread in rotation 2.", "",
+                      "The mirrored admission pilot used hot checked-individual duplicates A1/A2 and hot candidate B. "
+                      "Pilot C kept application checkout checks on B's grouped route and shared the ELF and warmed "
+                      "session count. Both pilot gates passed. The scored "
+                      "forward peer block came from the 06:04 exit-1 capture. The seven arms from its interrupted "
+                      "reverse block remain archived, including B's warmup flagged for overlapping apt-get. "
+                      "The 06:15:10 exit-0 continuation supplied the entire fresh reverse block. "
+                      "[Pilot and custody](../2026-11-25-public-dense-8x8/path-recovery/README.md) · "
+                      "[Peer clock and roster audit](../2026-11-25-public-dense-8x8/path-recovery/peer-stage-recovery/reverse-continuation/evidence/peers/clock-and-roster.json) · "
+                      "[Reverse continuation and retained failure](../2026-11-25-public-dense-8x8/path-recovery/peer-stage-recovery/reverse-continuation/README.md)", ""])
     add_policy_table(lines, data.get("short-fused-refill", {}), "Short jobs with combined settlement and refill",
                      "The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.",
                      [("fused-a", "Fused A"), ("fused-b", "Fused B"), ("group-a", "Grouped control A"),
@@ -1221,6 +1317,8 @@ def refresh(collect, selected=()):
                 current = capture_dense_fixed8_peers(archived)
             elif name == "dense-fixed8-river-readiness":
                 current = capture_dense_fixed8_river_readiness(archived)
+            elif name == "public-dense-8x8-fixed8":
+                current = capture_public_dense_8x8(archived)
             elif name == "dense-exit-confirmed":
                 current = capture_dense_checkout(archived)
             elif name == "slow-equal-cap71":

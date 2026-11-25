@@ -17185,6 +17185,596 @@
     "manifest_sha256": "9e5c6b5b005126927d548803d790112c8ed7b72183dde444df2092f9518b52ff",
     "title": "Reusable, supervised worker processes"
   },
+  "public-dense-8x8-fixed8": {
+    "archival_counts": {
+      "excluded_interrupted_reverse": 7,
+      "forward": 12,
+      "reverse": 12
+    },
+    "blocks": [
+      {
+        "attempt": "01-noop",
+        "group": 1,
+        "order": [
+          "A1",
+          "river",
+          "B",
+          "oban",
+          "apalis",
+          "A2"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-A1/measured-mesh": "0bccd46ef3c89295b59d9e976dc83f61afe41965699aaea5a00742a1ba7fc948",
+          "measured-A2/measured-mesh": "04a2ff1e645f94de407e41323b9f79d789ac0abe5078105c0eb6286cad871962",
+          "measured-B/measured-mesh": "5982e2c4dc525e7f3677f7267fe3e85a49d328dcd1db0959fdc9baacd4108449",
+          "measured-apalis/measured-rust": "6de4a334ee08581bc3b8aacdf487dbf0abeed954b10aae1d87bf30a51e1e9e21",
+          "measured-oban/measured-oban": "0a0f550a5ec43ac11831c2f16795d33f9a557522c33aba6ea9fb80c457dcdc9f",
+          "measured-river/measured-go": "a7634a03e8a606d80fe84b424dca49462f460e2831c3c256fa0589fb769ff3bd",
+          "warmup-A1/warmup-mesh": "0593abe9ae48d6329bfc2b7f36d765282d794234b307447ddb4ecf77d5953f99",
+          "warmup-A2/warmup-mesh": "884342491b01d5241a106d425a70d47d46e70376fa863eacc417788b6842cfc7",
+          "warmup-B/warmup-mesh": "1e6703ae9903eaad589529ee7f65f77fabaec8e642758d65871c3267c860bfeb",
+          "warmup-apalis/warmup-rust": "d8633e5bf4c6d35c359ec99f2350e9b690ffc24e0d2f1b076d70fde2b66ca63b",
+          "warmup-oban/warmup-oban": "d547cb3c0e0d2f525fca183c7ad6e8442b5b2abdebb3b4170b84bba5f3bbe0a4",
+          "warmup-river/warmup-go": "919eff8b12dc716086ea46a13fd515d3f844fde75b90379d8d7728518c8222b2"
+        },
+        "release": "2026-11-25-public-dense-8x8-peer-stage-recovery-peers",
+        "scores": {
+          "A1": {
+            "checkout_probes": 16,
+            "commit_jobs_per_s": 590.8688830789347,
+            "commit_to_last_settlement_ms": 1733.041,
+            "commit_to_pickup_p99_ms": 1710.213,
+            "commit_to_settlement_p99_ms": 1719.15,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.7109004739336493,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 167.058,
+            "peak_runner_rss_bytes": 78774272,
+            "runner_cpu_ms_per_job": 1.3444638671875,
+            "runner_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+            "sha256": "f691f2edc80ae054834616e96a66be5f7f794a176f1b15021a6a7f0875acfbdb",
+            "submit_jobs_per_s": 538.9192878897363,
+            "submit_to_last_settlement_ms": 1900.099,
+            "submit_to_settlement_p50_ms": 1040.9015,
+            "submit_to_settlement_p99_ms": 1886.208,
+            "terminal_xids": 1024
+          },
+          "A2": {
+            "checkout_probes": 16,
+            "commit_jobs_per_s": 581.3989799400318,
+            "commit_to_last_settlement_ms": 1761.269,
+            "commit_to_pickup_p99_ms": 1739.799,
+            "commit_to_settlement_p99_ms": 1748.265,
+            "completed": 1024,
+            "cpu_iowait_percent": 1.187648456057007,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 172.974,
+            "peak_runner_rss_bytes": 79298560,
+            "runner_cpu_ms_per_job": 1.355498046875,
+            "runner_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+            "sha256": "f691f2edc80ae054834616e96a66be5f7f794a176f1b15021a6a7f0875acfbdb",
+            "submit_jobs_per_s": 529.4060777265317,
+            "submit_to_last_settlement_ms": 1934.243,
+            "submit_to_settlement_p50_ms": 1085.8445,
+            "submit_to_settlement_p99_ms": 1921.239,
+            "terminal_xids": 1024
+          },
+          "B": {
+            "checkout_probes": 16,
+            "commit_jobs_per_s": 774.4679692451509,
+            "commit_to_last_settlement_ms": 1322.198,
+            "commit_to_pickup_p99_ms": 1290.499,
+            "commit_to_settlement_p99_ms": 1307.78,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.9316770186335404,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 179.73,
+            "peak_runner_rss_bytes": 79298560,
+            "runner_cpu_ms_per_job": 1.2701464843749997,
+            "runner_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+            "sha256": "f691f2edc80ae054834616e96a66be5f7f794a176f1b15021a6a7f0875acfbdb",
+            "submit_jobs_per_s": 681.7903388178395,
+            "submit_to_last_settlement_ms": 1501.928,
+            "submit_to_settlement_p50_ms": 840.595,
+            "submit_to_settlement_p99_ms": 1487.51,
+            "terminal_xids": 420
+          },
+          "apalis": {
+            "commit_jobs_per_s": 1238.5159096076904,
+            "commit_to_last_settlement_ms": 826.796,
+            "commit_to_pickup_p99_ms": 805.022,
+            "commit_to_settlement_p99_ms": 824.803,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 37.349,
+            "peak_runner_rss_bytes": 71434240,
+            "runner_cpu_ms_per_job": 0.574689453125,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 1184.9863159539198,
+            "submit_to_last_settlement_ms": 864.145,
+            "submit_to_settlement_p50_ms": 480.691,
+            "submit_to_settlement_p99_ms": 862.152
+          },
+          "oban": {
+            "commit_jobs_per_s": 711.4539924102311,
+            "commit_to_last_settlement_ms": 1439.306,
+            "commit_to_pickup_p99_ms": 1412.19,
+            "commit_to_settlement_p99_ms": 1430.555,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 144.772,
+            "peak_runner_rss_bytes": 799399936,
+            "runner_cpu_ms_per_job": 9.695255859375,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 646.4328145457483,
+            "submit_to_last_settlement_ms": 1584.078,
+            "submit_to_settlement_p50_ms": 958.4725000000001,
+            "submit_to_settlement_p99_ms": 1575.327
+          },
+          "river": {
+            "commit_jobs_per_s": 866.4726693027518,
+            "commit_to_last_settlement_ms": 1181.803,
+            "commit_to_pickup_p99_ms": 1017.027,
+            "commit_to_settlement_p99_ms": 1181.803,
+            "completed": 1024,
+            "cpu_iowait_percent": 1.079136690647482,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 94.78,
+            "peak_runner_rss_bytes": 129798144,
+            "runner_cpu_ms_per_job": 0.8270605468750002,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 802.1413413777248,
+            "submit_to_last_settlement_ms": 1276.583,
+            "submit_to_settlement_p50_ms": 976.715,
+            "submit_to_settlement_p99_ms": 1276.583
+          }
+        }
+      },
+      {
+        "attempt": "02-noop",
+        "group": 2,
+        "order": [
+          "A2",
+          "apalis",
+          "oban",
+          "B",
+          "river",
+          "A1"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-A1/measured-mesh": "1cbe445fe536fb3e215825a43748b53888e8c6a357da36a319b78fa01a59c67f",
+          "measured-A2/measured-mesh": "3fa297daba09370a9555986e69b994c24f2af6677931facd2119354043f4d22a",
+          "measured-B/measured-mesh": "3a90d67cc72f2eae16d58d818ea05bd4b412fe14e2b7116aa06dbe1ce077d69d",
+          "measured-apalis/measured-rust": "4bf42a50f7e8b4e2a43b619c2ec9ff5e12738a02d459f8eb933bec7f0ee7ce87",
+          "measured-oban/measured-oban": "fd53310ab6d603b591ffb4f504638284b95a8d0d10d1fd45faaaf7acbd248d8b",
+          "measured-river/measured-go": "ffa9f3075b177ba6bb621c657fb5b89b9c4869ff8a195296dab31f9f89efd29f",
+          "warmup-A1/warmup-mesh": "dc6818be256781edc83a20876acf1b89464627ae0616e65475b3171533f0fb6d",
+          "warmup-A2/warmup-mesh": "5752f9b4707d0dca390de57cd5709ba290138a43155547597777c4dbc60f1348",
+          "warmup-B/warmup-mesh": "13a331f9003a08864aee2bfea35b749426dd75521951cd034109f47a3143aa31",
+          "warmup-apalis/warmup-rust": "941e37b470e19e47d92f7d8dc2a5fe6fef83088baba34789ed61474b1ddc1a7d",
+          "warmup-oban/warmup-oban": "0e6ac325c6573ca573ca5334331514ec89199db1a1d22cde7498562d7b008f5e",
+          "warmup-river/warmup-go": "22185345417c870f47b5dfdfa053b4e43da508ffcdaf80dcafc52310cd9f7103"
+        },
+        "release": "2026-11-25-public-dense-8x8-peer-reverse-continuation-peers",
+        "scores": {
+          "A1": {
+            "checkout_probes": 16,
+            "commit_jobs_per_s": 506.14416508208285,
+            "commit_to_last_settlement_ms": 2023.139,
+            "commit_to_pickup_p99_ms": 1937.992,
+            "commit_to_settlement_p99_ms": 1969.591,
+            "completed": 1024,
+            "cpu_iowait_percent": 3.536345776031434,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 187.844,
+            "peak_runner_rss_bytes": 79036416,
+            "runner_cpu_ms_per_job": 1.4584794921875,
+            "runner_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+            "sha256": "f691f2edc80ae054834616e96a66be5f7f794a176f1b15021a6a7f0875acfbdb",
+            "submit_jobs_per_s": 463.1424122211704,
+            "submit_to_last_settlement_ms": 2210.983,
+            "submit_to_settlement_p50_ms": 1099.789,
+            "submit_to_settlement_p99_ms": 2157.435,
+            "terminal_xids": 1024
+          },
+          "A2": {
+            "checkout_probes": 16,
+            "commit_jobs_per_s": 583.5243273799416,
+            "commit_to_last_settlement_ms": 1754.854,
+            "commit_to_pickup_p99_ms": 1732.299,
+            "commit_to_settlement_p99_ms": 1741.546,
+            "completed": 1024,
+            "cpu_iowait_percent": 1.1820330969267139,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 183.931,
+            "peak_runner_rss_bytes": 79376384,
+            "runner_cpu_ms_per_job": 1.37853125,
+            "runner_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+            "sha256": "f691f2edc80ae054834616e96a66be5f7f794a176f1b15021a6a7f0875acfbdb",
+            "submit_jobs_per_s": 528.1658358198563,
+            "submit_to_last_settlement_ms": 1938.785,
+            "submit_to_settlement_p50_ms": 1072.259,
+            "submit_to_settlement_p99_ms": 1925.477,
+            "terminal_xids": 1024
+          },
+          "B": {
+            "checkout_probes": 16,
+            "commit_jobs_per_s": 824.6672137603456,
+            "commit_to_last_settlement_ms": 1241.713,
+            "commit_to_pickup_p99_ms": 1218.918,
+            "commit_to_settlement_p99_ms": 1234.458,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.6153846153846154,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 181.231,
+            "peak_runner_rss_bytes": 79691776,
+            "runner_cpu_ms_per_job": 1.2568261718749998,
+            "runner_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+            "sha256": "f691f2edc80ae054834616e96a66be5f7f794a176f1b15021a6a7f0875acfbdb",
+            "submit_jobs_per_s": 719.6347853464367,
+            "submit_to_last_settlement_ms": 1422.944,
+            "submit_to_settlement_p50_ms": 822.6985,
+            "submit_to_settlement_p99_ms": 1415.689,
+            "terminal_xids": 389
+          },
+          "apalis": {
+            "commit_jobs_per_s": 1184.9794595845628,
+            "commit_to_last_settlement_ms": 864.15,
+            "commit_to_pickup_p99_ms": 842.768,
+            "commit_to_settlement_p99_ms": 864.084,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 40.627,
+            "peak_runner_rss_bytes": 70778880,
+            "runner_cpu_ms_per_job": 0.58896484375,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "submit_jobs_per_s": 1131.770590985403,
+            "submit_to_last_settlement_ms": 904.777,
+            "submit_to_settlement_p50_ms": 538.864,
+            "submit_to_settlement_p99_ms": 904.711
+          },
+          "oban": {
+            "commit_jobs_per_s": 693.9714617790473,
+            "commit_to_last_settlement_ms": 1475.565,
+            "commit_to_pickup_p99_ms": 1443.005,
+            "commit_to_settlement_p99_ms": 1463.138,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.29411764705882354,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 155.456,
+            "peak_runner_rss_bytes": 806293504,
+            "runner_cpu_ms_per_job": 9.6982919921875,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "submit_jobs_per_s": 627.8276000125076,
+            "submit_to_last_settlement_ms": 1631.021,
+            "submit_to_settlement_p50_ms": 1009.24,
+            "submit_to_settlement_p99_ms": 1618.594
+          },
+          "river": {
+            "commit_jobs_per_s": 916.1745061917828,
+            "commit_to_last_settlement_ms": 1117.691,
+            "commit_to_pickup_p99_ms": 860.217,
+            "commit_to_settlement_p99_ms": 1103.136,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.35842293906810035,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 83.201,
+            "peak_runner_rss_bytes": 128507904,
+            "runner_cpu_ms_per_job": 0.769625,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "submit_jobs_per_s": 852.6994933765901,
+            "submit_to_last_settlement_ms": 1200.892,
+            "submit_to_settlement_p50_ms": 905.747,
+            "submit_to_settlement_p99_ms": 1186.337
+          }
+        }
+      }
+    ],
+    "custody_sha256": "d3d7f96c84631cf5f427261346cb1b276961d993787cb355fb7b4c390938b1f5",
+    "description": "Two mirrored rotations of 1,024 dense jobs. Each engine runs eight 8-slot runners on CPUs 0 and 1. Mesh B uses the public 4924b588 ELF, fixed8 grouped settlement, d388 grants and hot checkout. A1 and A2 use hot checked-individual settlement on the same ELF.",
+    "manifest_sha256": "68ca435b808b31a5fa49301939989ccb2e4079ebddce446989163b83b93c67a3",
+    "matched": {
+      "apalis": {
+        "outcome": "apalis",
+        "paired": [
+          {
+            "candidate_resource_bounds": true,
+            "clocks": {
+              "drain_us": {
+                "margin": 41339.8,
+                "peer_minus_mesh": -495402
+              },
+              "submit_us": {
+                "margin": 43207.25,
+                "peer_minus_mesh": -637783
+              }
+            },
+            "mesh_connections": 65,
+            "mesh_host_ms": 2650.0,
+            "mesh_pg_ms": 1540,
+            "mesh_runner_ms": 1300.6299999999997,
+            "peer_connections": 81,
+            "peer_host_ms": 1760.0,
+            "peer_runner_ms": 588.482
+          },
+          {
+            "candidate_resource_bounds": true,
+            "clocks": {
+              "drain_us": {
+                "margin": 268285,
+                "peer_minus_mesh": -377563
+              },
+              "submit_us": {
+                "margin": 272198,
+                "peer_minus_mesh": -518167
+              }
+            },
+            "mesh_connections": 65,
+            "mesh_host_ms": 2700.0,
+            "mesh_pg_ms": 1600,
+            "mesh_runner_ms": 1286.9899999999998,
+            "peer_connections": 81,
+            "peer_host_ms": 1900.0,
+            "peer_runner_ms": 603.1
+          }
+        ]
+      },
+      "oban": {
+        "outcome": "inconclusive",
+        "paired": [
+          {
+            "candidate_resource_bounds": true,
+            "clocks": {
+              "drain_us": {
+                "margin": 71965.3,
+                "peer_minus_mesh": 117108
+              },
+              "submit_us": {
+                "margin": 79203.90000000001,
+                "peer_minus_mesh": 82150
+              }
+            },
+            "mesh_connections": 65,
+            "mesh_host_ms": 2650.0,
+            "mesh_pg_ms": 1540,
+            "mesh_runner_ms": 1300.6299999999997,
+            "peer_connections": 81,
+            "peer_host_ms": 3060.0,
+            "peer_runner_ms": 9927.942
+          },
+          {
+            "candidate_resource_bounds": true,
+            "clocks": {
+              "drain_us": {
+                "margin": 268285,
+                "peer_minus_mesh": 233852
+              },
+              "submit_us": {
+                "margin": 272198,
+                "peer_minus_mesh": 208077
+              }
+            },
+            "mesh_connections": 65,
+            "mesh_host_ms": 2700.0,
+            "mesh_pg_ms": 1600,
+            "mesh_runner_ms": 1286.9899999999998,
+            "peer_connections": 81,
+            "peer_host_ms": 3050.0,
+            "peer_runner_ms": 9931.051
+          }
+        ]
+      },
+      "river": {
+        "outcome": "inconclusive",
+        "paired": [
+          {
+            "candidate_resource_bounds": true,
+            "clocks": {
+              "drain_us": {
+                "margin": 59090.15,
+                "peer_minus_mesh": -140395
+              },
+              "submit_us": {
+                "margin": 63829.15,
+                "peer_minus_mesh": -225345
+              }
+            },
+            "mesh_connections": 65,
+            "mesh_host_ms": 2650.0,
+            "mesh_pg_ms": 1540,
+            "mesh_runner_ms": 1300.6299999999997,
+            "peer_connections": 80,
+            "peer_host_ms": 2220.0,
+            "peer_runner_ms": 846.9100000000002
+          },
+          {
+            "candidate_resource_bounds": true,
+            "clocks": {
+              "drain_us": {
+                "margin": 268285,
+                "peer_minus_mesh": -124022
+              },
+              "submit_us": {
+                "margin": 272198,
+                "peer_minus_mesh": -222052
+              }
+            },
+            "mesh_connections": 65,
+            "mesh_host_ms": 2700.0,
+            "mesh_pg_ms": 1600,
+            "mesh_runner_ms": 1286.9899999999998,
+            "peer_connections": 81,
+            "peer_host_ms": 2010.0,
+            "peer_runner_ms": 788.096
+          }
+        ]
+      }
+    },
+    "pilot_gates": {
+      "1": {
+        "metrics": {
+          "drain_us": {
+            "gain": 539544,
+            "passed": true,
+            "spread": 15251
+          },
+          "host_cpu_ms": {
+            "gain": 820.0,
+            "passed": true,
+            "spread": 150.0
+          },
+          "last_effect_us": {
+            "gain": 545453,
+            "passed": true,
+            "spread": 13237
+          },
+          "pg_cpu_ms": {
+            "gain": 660,
+            "passed": true,
+            "spread": 70
+          },
+          "runner_cpu_ms": {
+            "gain": 67.07400000000007,
+            "passed": true,
+            "spread": 54.95699999999988
+          },
+          "submit_us": {
+            "gain": 523322,
+            "passed": true,
+            "spread": 68042
+          },
+          "terminal_xids": {
+            "gain": 622,
+            "passed": true,
+            "spread": 0
+          }
+        },
+        "passed": true
+      },
+      "2": {
+        "metrics": {
+          "drain_us": {
+            "gain": 415252,
+            "passed": true,
+            "spread": 70916
+          },
+          "host_cpu_ms": {
+            "gain": 460.0,
+            "passed": true,
+            "spread": 60.0
+          },
+          "last_effect_us": {
+            "gain": 419451,
+            "passed": true,
+            "spread": 71119
+          },
+          "pg_cpu_ms": {
+            "gain": 580,
+            "passed": true,
+            "spread": 10
+          },
+          "runner_cpu_ms": {
+            "gain": 43.81099999999992,
+            "passed": true,
+            "spread": 20.771999999999935
+          },
+          "submit_us": {
+            "gain": 346904,
+            "passed": true,
+            "spread": 59518
+          },
+          "terminal_xids": {
+            "gain": 615,
+            "passed": true,
+            "spread": 0
+          }
+        },
+        "passed": true
+      }
+    },
+    "pilot_hot_cold": {
+      "1": {
+        "measured-B": {
+          "checkout_probes": 16,
+          "drain_us": 1278874,
+          "last_effect_us": 1272265,
+          "physical_tls_by_role": {
+            "compiled_caller": 32,
+            "parity_producer": 1,
+            "parity_subject": 32
+          },
+          "submit_us": 1461455
+        },
+        "measured-C": {
+          "checkout_probes": 2048,
+          "drain_us": 1444744,
+          "last_effect_us": 1433122,
+          "physical_tls_by_role": {
+            "compiled_caller": 32,
+            "parity_producer": 1,
+            "parity_subject": 32
+          },
+          "submit_us": 1639814
+        }
+      },
+      "2": {
+        "measured-B": {
+          "checkout_probes": 16,
+          "drain_us": 1354573,
+          "last_effect_us": 1348853,
+          "physical_tls_by_role": {
+            "compiled_caller": 32,
+            "parity_producer": 1,
+            "parity_subject": 32
+          },
+          "submit_us": 1606377
+        },
+        "measured-C": {
+          "checkout_probes": 2048,
+          "drain_us": 1471891,
+          "last_effect_us": 1464820,
+          "physical_tls_by_role": {
+            "compiled_caller": 32,
+            "parity_producer": 1,
+            "parity_subject": 32
+          },
+          "submit_us": 1654554
+        }
+      }
+    },
+    "pilot_replay_sha256": "10ac40965355d930b9363cfdecc111f138d06d3eede05c330bb60f01c8ffc230",
+    "release_sha256": {
+      "2026-11-25-public-dense-8x8-peer-reverse-continuation-peers": "d20bb15c23029191e9eb64de68d566a0133ed4cebadde1ba1e145cc2d2a0f2af",
+      "2026-11-25-public-dense-8x8-peer-stage-recovery-peers": "7305729f442d8d6a72d96c0ff0f30a7b24ea5d37a43e4dd72dc20086e40d52d8"
+    },
+    "replay_sha256": "9f4f852c30d2ffd641f5a863465e117bca07707c8c595bd8af6e48ce1ed27cb0",
+    "title": "Public Mesh \u00b7 canonical eight-runner fixed8 + d388"
+  },
   "public-dense-equal": {
     "blocks": [
       {
