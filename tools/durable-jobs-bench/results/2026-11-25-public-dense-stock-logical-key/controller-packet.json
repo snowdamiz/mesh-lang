@@ -1,0 +1,99 @@
+{
+  "after_existing_bookings": true,
+  "candidate_sha256": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+  "controller": "native-controller-complete-post-wal-queue",
+  "controller_receipt_dir": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/evidence/native/controller",
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/evidence/native",
+  "id": "2026-11-25-public-dense-stock-logical-key",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "local_sha256": {
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py": "d30834fa1ca18030edd5df0de5d760ea1952d2b84aa05fb3eae9d2af13825c52",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/audit.py": "06b7a04d7a5045112874b37a479fc73b727a1467eed58d9eed67e104cfd8470b",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/final-replay.json": "89b9e274d6dde755b961b078a22b4422b015971135df685157573b903b53da14",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/closure-retry/backend.py": "f2a897601d10f8c30b6bad30358ed1a88a8f688b54068095237ae1160ac7cea1",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5-closure-retry/qualification.json": "590a3dc95cf10b3f4ce2586f73de620f90a29d30af4909b986fa6a8b3797d5c0",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5/mesh.json": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/dense-stock/controller-evidence/series.json": "25ba776814ecd9f5ce9be7dae2f9de00a66f8f352eb06136618cba480221374d",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/source.tar.gz": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native/setup-controller-release.json": "55a57971722d07ac4e3ea9de6e4a9434a4eb8397fbf22c88f7d3022fec530325",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native/setup.json": "744afe8516c0973f22bef89279eb76217f5ed5cbd6af916ce07e7e3b90c06b4c",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/launcher.py": "bc9b73c8ea1835d96e031c6f3eecacd37b5826928fb3cef136e4c3a8c515cae4",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/observe.py": "52d08fd3c52ceeaaa21e4dea69912904605abb4e2d6e2fc32ba9ccb54918266d",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/plans.py": "ec9f3e8bbabb9745575b39e141f00241c57e55c2d882db64e1af01fa4410a4f3",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/roster.py": "6991d9bbe7d56b5a6f5e3d4eaad6c6d2197786ce6ca256f1f2eff99df126670f",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/settings.py": "91bf2eb1471d65e9f48ac5722bfed28e193357ab2c7058f6d366cce367bedfcc",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-logical-grant-key-native/candidate.sql": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-logical-grant-key-native/contract.py": "c45ce2a527c23a5f7f497ffee790baeacccbdbb7be2df199dc54a53de14b21bd",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-logical-grant-key-native/evidence/native/final-replay.json": "369cd673095d766d0bc244d2631496b746430a24ce70cfb14c47f8b877517dcd",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-logical-grant-key-native/proof.json": "c8b05c6f4acd356dbc95abc7f889303f6768d1583a127ef23b9ffba177e12fda",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-logical-grant-key-native/stock.sql": "31597202cdd0c8d03c8472e51362f0cfc6a988ca28a8e6e29fb1c69825c8ec1a",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/README.md": "ee4e06326fc859f32fc813bd8e821eaa5f5c0399d29ba14e54366c5db02dedf1",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/controller.py": "99cf53c7e0b447d64611ee500e0ddb2837fa773c7af1ec390f69baf6b8345b1f",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/history.json": "d160bb328aa282e6a26a58211536b4636f4678be54e1cc3cbb6571c7af00c3d5",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/launch.sh": "cb59f873274e3ef2197ecfac92598c91b82ab5b9f383609fc0af91f35f2b3a70",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/local-proof.sh": "e40a46a562173e428f8a209bd68e1b1bc71a36cdf799f1fd083e10749576d590",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/local-stage.txt": "69d2a73af4286a4dd6ff515475fcfd9ef1c0cf5e0a6e0b8050deaff2db980ddb",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/roster8.py": "908da1ac7c28670b900d23839e42deb49a0d50796967a2c00d5669ba3f69994f",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/score.py": "99ecdcbea2f2c9bcc8022664b4f2007ed05d5d454baf57764bee68d79e5aad80",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/stage.py": "cace53ca1dd32cca32693b953cae238bb66a9a51472b5696c859400b5b318bab",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/stage_probe.py": "d1e57709110a2721ffa4c6839aef89b1fddd81611325ee7f8bebcdf7e6df745f",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/stock_arm.py": "3037bb6f857817ceff121ce8ed68ae6e36f57606744f64c42dbfa73457415377",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/test_offline.py": "58479a493484b86cc057381ac4d6f0b76fa479cb122ccf35cbdbe45719a241fd",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "native_host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "no_build": true,
+  "offline_check": "python3 -B tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/controller.py check",
+  "ready": true,
+  "replay_command": "python3 -B tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/controller.py replay",
+  "schedule": [
+    {
+      "group": 0,
+      "order": [
+        "plan-stock",
+        "plan-key"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 1,
+      "order": [
+        "stock-a",
+        "key",
+        "stock-b"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 2,
+      "order": [
+        "stock-b",
+        "key",
+        "stock-a"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "timing_command": "python3 -B tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/controller.py timing",
+  "timing_window_minutes": 14
+}

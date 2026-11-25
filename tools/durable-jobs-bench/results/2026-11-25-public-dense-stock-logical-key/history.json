@@ -1,0 +1,398 @@
+[
+  {
+    "cap": 96,
+    "checked_checkout_probes": 2048,
+    "claim_calls": 276,
+    "configured_seats": 64,
+    "drain_us": 1923651,
+    "effect_from_commit_us": 1920536,
+    "effect_from_submit_us": 2089811,
+    "first_commit_us": 1795560864405240,
+    "first_submit_us": 1795560864235965,
+    "group": 1,
+    "lane": "stock-off-a",
+    "last_effect_us": 1795560866325776,
+    "last_settlement_us": 1795560866328891,
+    "lifetime_claim_calls": 383,
+    "lifetime_claim_elapsed_ms": 14275.217022999988,
+    "path": "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-stock-off-a/measured-mesh/raw.tar.gz",
+    "peak_connections": 65,
+    "peak_executing": 23,
+    "queue_lock_timeouts": 0,
+    "runners": [
+      {
+        "hints": 0,
+        "jobs": 121,
+        "pid": 2571072
+      },
+      {
+        "hints": 0,
+        "jobs": 134,
+        "pid": 2571077
+      },
+      {
+        "hints": 0,
+        "jobs": 130,
+        "pid": 2571086
+      },
+      {
+        "hints": 0,
+        "jobs": 130,
+        "pid": 2571100
+      },
+      {
+        "hints": 0,
+        "jobs": 140,
+        "pid": 2571116
+      },
+      {
+        "hints": 0,
+        "jobs": 120,
+        "pid": 2571129
+      },
+      {
+        "hints": 0,
+        "jobs": 129,
+        "pid": 2571150
+      },
+      {
+        "hints": 0,
+        "jobs": 120,
+        "pid": 2571164
+      }
+    ],
+    "sha256": "77eacdd1dda14e84b21c6ba03c9f369b4e6faeabd32932458a530b5556420080",
+    "submit_us": 2092926
+  },
+  {
+    "cap": 96,
+    "checked_checkout_probes": 2048,
+    "claim_calls": 272,
+    "configured_seats": 64,
+    "drain_us": 1884971,
+    "effect_from_commit_us": 1883157,
+    "effect_from_submit_us": 2068549,
+    "first_commit_us": 1795560886760069,
+    "first_submit_us": 1795560886574677,
+    "group": 1,
+    "lane": "stock-off-b",
+    "last_effect_us": 1795560888643226,
+    "last_settlement_us": 1795560888645040,
+    "lifetime_claim_calls": 379,
+    "lifetime_claim_elapsed_ms": 14248.047163999998,
+    "path": "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-stock-off-b/measured-mesh/raw.tar.gz",
+    "peak_connections": 65,
+    "peak_executing": 22,
+    "queue_lock_timeouts": 0,
+    "runners": [
+      {
+        "hints": 0,
+        "jobs": 125,
+        "pid": 2571766
+      },
+      {
+        "hints": 0,
+        "jobs": 125,
+        "pid": 2571771
+      },
+      {
+        "hints": 0,
+        "jobs": 121,
+        "pid": 2571780
+      },
+      {
+        "hints": 0,
+        "jobs": 125,
+        "pid": 2571795
+      },
+      {
+        "hints": 0,
+        "jobs": 138,
+        "pid": 2571810
+      },
+      {
+        "hints": 0,
+        "jobs": 131,
+        "pid": 2571820
+      },
+      {
+        "hints": 0,
+        "jobs": 130,
+        "pid": 2571833
+      },
+      {
+        "hints": 0,
+        "jobs": 129,
+        "pid": 2571840
+      }
+    ],
+    "sha256": "49f235eb45b3b6233404fb5a03dbf1e61bd8176aacda55bdb82dda38b17408e2",
+    "submit_us": 2070363
+  },
+  {
+    "acquired_claim_wait_lower_bound_ms": 12769.585,
+    "cap": 96,
+    "checked_checkout_probes": 2048,
+    "claim_calls": 272,
+    "configured_seats": 64,
+    "drain_us": 2007836,
+    "effect_from_commit_us": 2005479,
+    "effect_from_submit_us": 2227310,
+    "first_commit_us": 1795560875527736,
+    "first_submit_us": 1795560875305905,
+    "group": 1,
+    "lane": "stock-trace",
+    "last_effect_us": 1795560877533215,
+    "last_settlement_us": 1795560877535572,
+    "lifetime_claim_calls": 376,
+    "lifetime_claim_elapsed_ms": 14695.893463000006,
+    "path": "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-stock-trace/measured-mesh/raw.tar.gz",
+    "peak_connections": 65,
+    "peak_executing": 18,
+    "queue_lock_stmt_elapsed_ms": 12757.340499,
+    "queue_lock_timeouts": 2,
+    "runners": [
+      {
+        "hints": 0,
+        "jobs": 127,
+        "pid": 2571420
+      },
+      {
+        "hints": 0,
+        "jobs": 126,
+        "pid": 2571425
+      },
+      {
+        "hints": 1,
+        "jobs": 129,
+        "pid": 2571430
+      },
+      {
+        "hints": 0,
+        "jobs": 125,
+        "pid": 2571439
+      },
+      {
+        "hints": 0,
+        "jobs": 136,
+        "pid": 2571449
+      },
+      {
+        "hints": 0,
+        "jobs": 136,
+        "pid": 2571464
+      },
+      {
+        "hints": 0,
+        "jobs": 129,
+        "pid": 2571487
+      },
+      {
+        "hints": 1,
+        "jobs": 116,
+        "pid": 2571503
+      }
+    ],
+    "sha256": "b5bc7f25027db0c387196df784a1b5253a407752678e6879cc63dc08a84b52a7",
+    "submit_us": 2229667,
+    "whole_cluster_jobs_index_fetches": 376288
+  },
+  {
+    "cap": 96,
+    "checked_checkout_probes": 2048,
+    "claim_calls": 275,
+    "configured_seats": 64,
+    "drain_us": 1985771,
+    "effect_from_commit_us": 1983932,
+    "effect_from_submit_us": 2160230,
+    "first_commit_us": 1795560921581651,
+    "first_submit_us": 1795560921405353,
+    "group": 2,
+    "lane": "stock-off-a",
+    "last_effect_us": 1795560923565583,
+    "last_settlement_us": 1795560923567422,
+    "lifetime_claim_calls": 383,
+    "lifetime_claim_elapsed_ms": 14448.331669000005,
+    "path": "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-stock-off-a/measured-mesh/raw.tar.gz",
+    "peak_connections": 65,
+    "peak_executing": 18,
+    "queue_lock_timeouts": 2,
+    "runners": [
+      {
+        "hints": 0,
+        "jobs": 122,
+        "pid": 2572869
+      },
+      {
+        "hints": 0,
+        "jobs": 130,
+        "pid": 2572874
+      },
+      {
+        "hints": 0,
+        "jobs": 138,
+        "pid": 2572882
+      },
+      {
+        "hints": 0,
+        "jobs": 127,
+        "pid": 2572895
+      },
+      {
+        "hints": 1,
+        "jobs": 129,
+        "pid": 2572901
+      },
+      {
+        "hints": 1,
+        "jobs": 125,
+        "pid": 2572912
+      },
+      {
+        "hints": 0,
+        "jobs": 129,
+        "pid": 2572930
+      },
+      {
+        "hints": 0,
+        "jobs": 124,
+        "pid": 2572952
+      }
+    ],
+    "sha256": "6405b0029dd28627cd4105a83b06d3dfc22a1a51eaae5f77ca3a516b07af5ad6",
+    "submit_us": 2162069
+  },
+  {
+    "cap": 96,
+    "checked_checkout_probes": 2048,
+    "claim_calls": 273,
+    "configured_seats": 64,
+    "drain_us": 1947111,
+    "effect_from_commit_us": 1940016,
+    "effect_from_submit_us": 2120281,
+    "first_commit_us": 1795560898198196,
+    "first_submit_us": 1795560898017931,
+    "group": 2,
+    "lane": "stock-off-b",
+    "last_effect_us": 1795560900138212,
+    "last_settlement_us": 1795560900145307,
+    "lifetime_claim_calls": 378,
+    "lifetime_claim_elapsed_ms": 14413.204109999997,
+    "path": "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-stock-off-b/measured-mesh/raw.tar.gz",
+    "peak_connections": 65,
+    "peak_executing": 16,
+    "queue_lock_timeouts": 0,
+    "runners": [
+      {
+        "hints": 0,
+        "jobs": 128,
+        "pid": 2572163
+      },
+      {
+        "hints": 0,
+        "jobs": 130,
+        "pid": 2572168
+      },
+      {
+        "hints": 0,
+        "jobs": 120,
+        "pid": 2572176
+      },
+      {
+        "hints": 0,
+        "jobs": 131,
+        "pid": 2572186
+      },
+      {
+        "hints": 0,
+        "jobs": 120,
+        "pid": 2572199
+      },
+      {
+        "hints": 0,
+        "jobs": 131,
+        "pid": 2572213
+      },
+      {
+        "hints": 0,
+        "jobs": 130,
+        "pid": 2572231
+      },
+      {
+        "hints": 0,
+        "jobs": 134,
+        "pid": 2572244
+      }
+    ],
+    "sha256": "f14ef573c47ccffe1c2d984df0f9bb2e88a53988881173256cae015090dc1d1d",
+    "submit_us": 2127376
+  },
+  {
+    "acquired_claim_wait_lower_bound_ms": 16580.022,
+    "cap": 96,
+    "checked_checkout_probes": 2048,
+    "claim_calls": 267,
+    "configured_seats": 64,
+    "drain_us": 2593497,
+    "effect_from_commit_us": 2589412,
+    "effect_from_submit_us": 2758454,
+    "first_commit_us": 1795560909375832,
+    "first_submit_us": 1795560909206790,
+    "group": 2,
+    "lane": "stock-trace",
+    "last_effect_us": 1795560911965244,
+    "last_settlement_us": 1795560911969329,
+    "lifetime_claim_calls": 373,
+    "lifetime_claim_elapsed_ms": 18782.508092000004,
+    "path": "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-stock-trace/measured-mesh/raw.tar.gz",
+    "peak_connections": 65,
+    "peak_executing": 19,
+    "queue_lock_stmt_elapsed_ms": 16524.85548200001,
+    "queue_lock_timeouts": 5,
+    "runners": [
+      {
+        "hints": 0,
+        "jobs": 128,
+        "pid": 2572523
+      },
+      {
+        "hints": 1,
+        "jobs": 128,
+        "pid": 2572527
+      },
+      {
+        "hints": 0,
+        "jobs": 138,
+        "pid": 2572535
+      },
+      {
+        "hints": 0,
+        "jobs": 128,
+        "pid": 2572545
+      },
+      {
+        "hints": 3,
+        "jobs": 129,
+        "pid": 2572559
+      },
+      {
+        "hints": 0,
+        "jobs": 128,
+        "pid": 2572571
+      },
+      {
+        "hints": 1,
+        "jobs": 121,
+        "pid": 2572579
+      },
+      {
+        "hints": 0,
+        "jobs": 124,
+        "pid": 2572587
+      }
+    ],
+    "sha256": "a2875e9f2f112af7a37c3ce242e25133fa53e139aaaaf70a30b7e3bd3129af0c",
+    "submit_us": 2762539,
+    "whole_cluster_jobs_index_fetches": 395933
+  }
+]

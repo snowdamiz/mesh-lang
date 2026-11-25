@@ -1,0 +1,5 @@
+plan-stock Linux uid=65534 PostgreSQL 17.11: exact overlay, scoped observer=True, 8 TLS rosters, 65 sessions, role caps 32/32/1, database and server cap 96
+plan-key Linux uid=65534 PostgreSQL 17.11: exact overlay, scoped observer=True, 8 TLS rosters, 65 sessions, role caps 32/32/1, database and server cap 96
+stock-a Linux uid=65534 PostgreSQL 17.11: exact overlay, scoped observer=False, 8 TLS rosters, 65 sessions, role caps 32/32/1, database and server cap 96
+key Linux uid=65534 PostgreSQL 17.11: exact overlay, scoped observer=False, 8 TLS rosters, 65 sessions, role caps 32/32/1, database and server cap 96
+stock-b Linux uid=65534 PostgreSQL 17.11: exact overlay, scoped observer=False, 8 TLS rosters, 65 sessions, role caps 32/32/1, database and server cap 96

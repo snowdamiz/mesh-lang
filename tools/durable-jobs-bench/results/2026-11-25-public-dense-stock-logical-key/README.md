@@ -1,0 +1,29 @@
+# Public dense checked 8×8 logical-key pilot
+
+The canonical stock lane uses public `b3557273d`, `product-bulk`, stock topology and default storage. It runs the shared producer/observer broker and eight runners with eight seats each on CPUs 0 and 1. PostgreSQL 17.11 has 32 queue-role and 32 checked application TLS seats plus one durable producer session. The role limits are 32/32/1, the database and server limit are 96, and the reserved counts are zero. Each arm requires the original 1,024 no-op inputs, one independent enqueue XID through eight bulk calls, 2,048 checked application calls and distinct application XIDs, and 1,024 individual terminal XIDs. The original poll period is 250 ms. [Canonical inventory and stock series](../2026-11-24-trusted-jobs-product-composition/evidence/native/timing-closure-retry/dense-stock/controller-evidence/series.json)
+
+The six retained stock arms replay through the original inventory-aware verifier and this workload scorer. The two traces recorded 376,288 and 395,933 cluster-wide jobs index fetches, 272 and 267 successful claim calls in the observer bracket, and 12,757 and 16,525 ms of summed claim queue-row-lock statement elapsed. The two traced arms recorded two and five lifetime lock timeouts. Uninstrumented stock duplicates had 272–276 bracketed calls and zero to two lifetime timeouts. The overlapping lock sums include waits. The old wait lower bound covers acquired locks associated with a claim execute and can include several locks or intervals outside the observer bracket. The relation counts cannot give the UPDATE target's heap visits. [Stock history](history.json) · [Original release](../2026-11-24-public-dense-set-claim/NATIVE-RESULTS.md)
+
+The bounded membership and native live-plan grants used 2×32. The exact `d388baa3` native trial also used 2×32, with hot checkout and grouped settlement, and missed its runner CPU gate. The newer fixed8 composition and matched peer series use a different ELF, hot checkout, grouped settlement and the 2×32 layout. The separate public fixed8 correctness grant covers its own executable and settlement change. The TID candidate remains rejected on its concurrent replacement failure. The fresh-snapshot fallback and the original 2×32 resource decision retain their dispositions. [Bounded membership](../2026-11-24-public-dense-bounded-grant/README.md) · [Prior logical-key trial](../2026-11-25-dense-logical-grant-key-native/NATIVE-RESULTS.md) · [Grouped fixed8 peers](../2026-11-25-dense-fixed8-logical-factorial/PEER-RESULTS.md)
+
+## Native sequence
+
+- Group 0 runs stock and the exact prior `d388baa3` SQL on fresh databases. The disposable clone checks real TLS worker semantics, including order, contention, fallback and lease fencing. The only measured-path SQL change is the replacement grant body. Its owner, ACL, invoker mode and configuration are checked after migration.
+- The diagnostic uses the retained native auto_explain module with node timing disabled. Before each serial launch it snapshots the cumulative TLS roster from the real producer. Each process owns its newly added four queue and four application backend identities. Runners must keep those identities across observation frames. The plan scorer binds every sampled backend to the owned process and requires positive drain coverage from all eight runners, at least 768 of 1,024 grants by row count per arm, and empty observations.
+- The plan gate requires broad target access on at least one quarter of observed stock positive claims, a reduction of at least 75% in target work per granted row and bounded positive and zero-visit empty candidate plans. The replay keeps target heap visits, bitmap entries, buffers, join rejections and ordered-pick visits separate, alongside whole-relation counters. The comparison uses the greater of target heap visits or bitmap entries per arm for the gate. It records thresholded acquired queue waits wholly inside committed drain, the summed queue-row-lock statement elapsed in the observer bracket, and lifetime timeout contexts reconciled to all eight runner hint counts. Diagnostic logging can change contention and its clocks are excluded from the performance score.
+- If group 0 qualifies, groups 1 and 2 run A/key/B and B/key/A on fresh clusters with the original uninstrumented SQL observer. Both start-to-last-settlement clocks, commit-to-last-effect, runner lifetime CPU, pinned host CPU and stable-bracket PostgreSQL CPU each have to beat the better duplicate by strictly more than both 5% and the duplicate spread, in both groups. The raw report retains both last-effect edges, observed successful claim calls, lifetime calls, timeouts, all eight runner results, CPU bracket slack, and measured peak occupancy. Configured seats are distinct from observed concurrent execution.
+- A clean release and both rotations must qualify before a separate fair 8×8 peer series can be requested. Intake allocates only the diagnostic and duplicate-control pilot.
+
+## Replay
+
+```sh
+d=tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key
+bash "$d/local-proof.sh"
+python3 -B "$d/test_offline.py"
+python3 -B "$d/controller.py" check
+python3 -B "$d/controller.py" replay
+```
+
+The local test runs the exact staged launcher and closure-retry backend as Linux UID 65534. It verifies the five entry paths, real PostgreSQL 17.11 role settings and overlay installation, and reconstructs each role roster using actual TLS connections. It stops at the frozen harness's entry point before launching a Jobs process. The local extension comes from the installed Docker PostgreSQL 17.11 image. The native packet pins the already-qualified Linode module separately.
+
+Only the sole Linode controller registers the exact packet and invokes `controller.py intake <packet-sha256>` after the booked work. Raw archives, dispatches, grants and releases are retained under the result directory and controller journal.
