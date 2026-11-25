@@ -1,0 +1,392 @@
+[
+  {
+    "group": 1,
+    "mesh_sha256": "463b1c2ea5f13f290050a9b0f8959d2ec26d2fe6168d4e9de4fac9f13d782b15",
+    "observed_mesh_us": {
+      "drain": 171388,
+      "middle112": 151208,
+      "submit": 203625
+    },
+    "observed_river_us": {
+      "drain": 126374,
+      "middle112": 82228,
+      "submit": 140532
+    },
+    "river_sha256": "233be24b8713cdc4762a2c70a4618e2c79cc670f5016363b6eb96c01476d8f4c",
+    "scenarios": {
+      "claim_stamp_early": {
+        "minus_river_us": {
+          "drain": -7859,
+          "middle112": 25107,
+          "submit": 10220
+        },
+        "saved_us": {
+          "drain": 52873,
+          "middle112": 43873,
+          "submit": 52873
+        }
+      },
+      "claim_stamp_late": {
+        "minus_river_us": {
+          "drain": 894,
+          "middle112": 32861,
+          "submit": 18973
+        },
+        "saved_us": {
+          "drain": 44120,
+          "middle112": 36119,
+          "submit": 44120
+        }
+      },
+      "same_stamp_first_entry_early": {
+        "minus_river_us": {
+          "drain": 30349,
+          "middle112": 59751,
+          "submit": 48428
+        },
+        "saved_us": {
+          "drain": 14665,
+          "middle112": 9229,
+          "submit": 14665
+        }
+      },
+      "same_stamp_first_entry_late": {
+        "minus_river_us": {
+          "drain": 30349,
+          "middle112": 59751,
+          "submit": 48428
+        },
+        "saved_us": {
+          "drain": 14665,
+          "middle112": 9229,
+          "submit": 14665
+        }
+      }
+    }
+  },
+  {
+    "group": 2,
+    "mesh_sha256": "a860893ce2f25bd714fedfcaaa6ce5cfc6d19bfdd5eef8e0822bf81343d6d838",
+    "observed_mesh_us": {
+      "drain": 168126,
+      "middle112": 146858,
+      "submit": 203965
+    },
+    "observed_river_us": {
+      "drain": 133220,
+      "middle112": 82757,
+      "submit": 146364
+    },
+    "river_sha256": "e9e7f6204ba3db1b6fc97ec525856052cfce13825a9f1ecd51655a52db535b8e",
+    "scenarios": {
+      "claim_stamp_early": {
+        "minus_river_us": {
+          "drain": -23134,
+          "middle112": 14495,
+          "submit": -439
+        },
+        "saved_us": {
+          "drain": 58040,
+          "middle112": 49606,
+          "submit": 58040
+        }
+      },
+      "claim_stamp_late": {
+        "minus_river_us": {
+          "drain": -11435,
+          "middle112": 25195,
+          "submit": 11260
+        },
+        "saved_us": {
+          "drain": 46341,
+          "middle112": 38906,
+          "submit": 46341
+        }
+      },
+      "same_stamp_first_entry_early": {
+        "minus_river_us": {
+          "drain": 24279,
+          "middle112": 58422,
+          "submit": 46974
+        },
+        "saved_us": {
+          "drain": 10627,
+          "middle112": 5679,
+          "submit": 10627
+        }
+      },
+      "same_stamp_first_entry_late": {
+        "minus_river_us": {
+          "drain": 24309,
+          "middle112": 58452,
+          "submit": 47004
+        },
+        "saved_us": {
+          "drain": 10597,
+          "middle112": 5649,
+          "submit": 10597
+        }
+      }
+    }
+  },
+  {
+    "group": 3,
+    "mesh_sha256": "9bd6e151975a8c9bafeacb31a693d4e63872220867cb412806d6415a00ed6466",
+    "observed_mesh_us": {
+      "drain": 193662,
+      "middle112": 161821,
+      "submit": 242460
+    },
+    "observed_river_us": {
+      "drain": 119185,
+      "middle112": 88738,
+      "submit": 132272
+    },
+    "river_sha256": "6ab6cbdc921857e73236c81bddbad1fce887a2dc026c21330b8c1a9ec37bf21f",
+    "scenarios": {
+      "claim_stamp_early": {
+        "minus_river_us": {
+          "drain": 13661,
+          "middle112": 25957,
+          "submit": 49372
+        },
+        "saved_us": {
+          "drain": 60816,
+          "middle112": 47126,
+          "submit": 60816
+        }
+      },
+      "claim_stamp_late": {
+        "minus_river_us": {
+          "drain": 23527,
+          "middle112": 34824,
+          "submit": 59238
+        },
+        "saved_us": {
+          "drain": 50950,
+          "middle112": 38259,
+          "submit": 50950
+        }
+      },
+      "same_stamp_first_entry_early": {
+        "minus_river_us": {
+          "drain": 60557,
+          "middle112": 68134,
+          "submit": 96268
+        },
+        "saved_us": {
+          "drain": 13920,
+          "middle112": 4949,
+          "submit": 13920
+        }
+      },
+      "same_stamp_first_entry_late": {
+        "minus_river_us": {
+          "drain": 60997,
+          "middle112": 68574,
+          "submit": 96708
+        },
+        "saved_us": {
+          "drain": 13480,
+          "middle112": 4509,
+          "submit": 13480
+        }
+      }
+    }
+  },
+  {
+    "group": 4,
+    "mesh_sha256": "5bf10ad1c779464bfe1af71c35055d05211a1d03a2feb78a82af6a39b5b4a3b5",
+    "observed_mesh_us": {
+      "drain": 204463,
+      "middle112": 175025,
+      "submit": 252625
+    },
+    "observed_river_us": {
+      "drain": 258694,
+      "middle112": 101024,
+      "submit": 274840
+    },
+    "river_sha256": "f5f70d784cd02cb8b6cf966ca1c46dcea8a0fbeb1b5eed213a5634693625462c",
+    "scenarios": {
+      "claim_stamp_early": {
+        "minus_river_us": {
+          "drain": -126188,
+          "middle112": 16780,
+          "submit": -94172
+        },
+        "saved_us": {
+          "drain": 71957,
+          "middle112": 57221,
+          "submit": 71957
+        }
+      },
+      "claim_stamp_late": {
+        "minus_river_us": {
+          "drain": -117198,
+          "middle112": 24771,
+          "submit": -85182
+        },
+        "saved_us": {
+          "drain": 62967,
+          "middle112": 49230,
+          "submit": 62967
+        }
+      },
+      "same_stamp_first_entry_early": {
+        "minus_river_us": {
+          "drain": -77328,
+          "middle112": 61542,
+          "submit": -45312
+        },
+        "saved_us": {
+          "drain": 23097,
+          "middle112": 12459,
+          "submit": 23097
+        }
+      },
+      "same_stamp_first_entry_late": {
+        "minus_river_us": {
+          "drain": -77328,
+          "middle112": 61542,
+          "submit": -45312
+        },
+        "saved_us": {
+          "drain": 23097,
+          "middle112": 12459,
+          "submit": 23097
+        }
+      }
+    }
+  },
+  {
+    "group": 5,
+    "mesh_sha256": "e0301cd0b515f006b7c8facb94fb31490d5a67b37e9d58fc4115af3b1447cc5c",
+    "observed_mesh_us": {
+      "drain": 180064,
+      "middle112": 152262,
+      "submit": 223826
+    },
+    "observed_river_us": {
+      "drain": 128593,
+      "middle112": 94273,
+      "submit": 143926
+    },
+    "river_sha256": "49ae8e8bf194e7d859b4ef6bcca906bef5cfde2476564a2e2891ba7fb7fdbceb",
+    "scenarios": {
+      "claim_stamp_early": {
+        "minus_river_us": {
+          "drain": -1796,
+          "middle112": 9675,
+          "submit": 26633
+        },
+        "saved_us": {
+          "drain": 53267,
+          "middle112": 48314,
+          "submit": 53267
+        }
+      },
+      "claim_stamp_late": {
+        "minus_river_us": {
+          "drain": 8372,
+          "middle112": 18844,
+          "submit": 36801
+        },
+        "saved_us": {
+          "drain": 43099,
+          "middle112": 39145,
+          "submit": 43099
+        }
+      },
+      "same_stamp_first_entry_early": {
+        "minus_river_us": {
+          "drain": 47527,
+          "middle112": 54849,
+          "submit": 75956
+        },
+        "saved_us": {
+          "drain": 3944,
+          "middle112": 3140,
+          "submit": 3944
+        }
+      },
+      "same_stamp_first_entry_late": {
+        "minus_river_us": {
+          "drain": 47770,
+          "middle112": 55092,
+          "submit": 76199
+        },
+        "saved_us": {
+          "drain": 3701,
+          "middle112": 2897,
+          "submit": 3701
+        }
+      }
+    }
+  },
+  {
+    "group": 6,
+    "mesh_sha256": "357081848b040d7d71ef2109432f8d42d304cbca51bc15e2f75139112ba3c7ed",
+    "observed_mesh_us": {
+      "drain": 168714,
+      "middle112": 139937,
+      "submit": 209388
+    },
+    "observed_river_us": {
+      "drain": 178133,
+      "middle112": 115125,
+      "submit": 194488
+    },
+    "river_sha256": "cf0dd3e7c593403adc51bbdf3b991665ede5e31a64f953393f80c19171e312f4",
+    "scenarios": {
+      "claim_stamp_early": {
+        "minus_river_us": {
+          "drain": -51843,
+          "middle112": -11660,
+          "submit": -27524
+        },
+        "saved_us": {
+          "drain": 42424,
+          "middle112": 36472,
+          "submit": 42424
+        }
+      },
+      "claim_stamp_late": {
+        "minus_river_us": {
+          "drain": -42187,
+          "middle112": -3003,
+          "submit": -17868
+        },
+        "saved_us": {
+          "drain": 32768,
+          "middle112": 27815,
+          "submit": 32768
+        }
+      },
+      "same_stamp_first_entry_early": {
+        "minus_river_us": {
+          "drain": -13697,
+          "middle112": 21242,
+          "submit": 10622
+        },
+        "saved_us": {
+          "drain": 4278,
+          "middle112": 3570,
+          "submit": 4278
+        }
+      },
+      "same_stamp_first_entry_late": {
+        "minus_river_us": {
+          "drain": -13697,
+          "middle112": 21242,
+          "submit": 10622
+        },
+        "saved_us": {
+          "drain": 4278,
+          "middle112": 3570,
+          "submit": 4278
+        }
+      }
+    }
+  }
+]
