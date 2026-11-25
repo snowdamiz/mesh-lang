@@ -1,0 +1,15 @@
+{
+  "group": 2,
+  "order": [
+    "inline-b",
+    "split-inline",
+    "split-file",
+    "file",
+    "inline-a"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "slow"
+}
