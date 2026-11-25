@@ -16,7 +16,7 @@ LOCK_ERROR = re.compile(r"^([\d-]+ [\d:.]+) UTC \[(\d+)\] ERROR:  canceling stat
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
-def queue_timeouts(lines):
+def queue_timeout_records(lines):
     stamps = []
     for i, line in enumerate(lines):
         error = LOCK_ERROR.fullmatch(line)
@@ -37,8 +37,12 @@ def queue_timeouts(lines):
         else:
             raise ValueError(f"Unclassified lock timeout in PID {pid} at {stamp}")
         instant = datetime.fromisoformat(stamp).replace(tzinfo=timezone.utc)
-        stamps.append(((instant - EPOCH) // datetime.resolution, site))
+        stamps.append(((instant - EPOCH) // datetime.resolution, site, int(pid)))
     return stamps
+
+
+def queue_timeouts(lines):
+    return [(stamp, site) for stamp, site, _ in queue_timeout_records(lines)]
 
 
 def device_busy_ms(sample):
