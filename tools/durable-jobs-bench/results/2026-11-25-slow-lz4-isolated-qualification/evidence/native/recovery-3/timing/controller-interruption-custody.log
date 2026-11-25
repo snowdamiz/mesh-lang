@@ -1,0 +1,10 @@
+HOST_IDLE boot=90ec1c24-08c8-4bc1-aa28-79b6db1bd13a kernel=6.8.0-149-generic disk=8:0
+stage=/var/tmp/mesh-durable-jobs-matrix/slow-lz4-f8d7d3d4e56d4231b1fdd56f8c3c89ba-oban-pglz
+/var/tmp/mesh-durable-jobs-matrix/slow-lz4-f8d7d3d4e56d4231b1fdd56f8c3c89ba-oban-pglz/worker.py: OK
+/var/tmp/mesh-durable-jobs-matrix/slow-lz4-f8d7d3d4e56d4231b1fdd56f8c3c89ba-oban-pglz/inventory.json: OK
+status={
+  "exit_code": 0,
+  "finished_us": 1795628182367515
+}
+
+matches=1
