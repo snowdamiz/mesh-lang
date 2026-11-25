@@ -1,0 +1,156 @@
+{
+  "after_existing_reservations": true,
+  "check_command": [
+    "python3",
+    "-B",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/controller.py",
+    "check"
+  ],
+  "cpus": [
+    0,
+    1
+  ],
+  "dispatch_command": [
+    "python3",
+    "-B",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/controller.py",
+    "dispatch",
+    "PHASE",
+    "PACKET_SHA256",
+    "--controller-root",
+    "CONTROLLER_CHECKOUT"
+  ],
+  "host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "id": "2026-11-25-public-dense-3c4032d-transfer",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "legacy_activation_dependency": "2026-11-25-dense-fixed8-river-readiness-setup",
+  "legacy_activation_inventory_sha256": "052bf45bf6f1fec84fbd300de4305687b79b2409175a9fdf4c226ebed443d4be",
+  "legacy_activation_raw_sha256": "877e1a76bc33015513f6ea9c4b3277ea442491ff901979e0280bceabae991cb7",
+  "legacy_activation_release_sha256": "17d50b6f356ded7812ceac9f3566be3b49374bf12d87a189cb6b8e98c00ef642",
+  "no_build": true,
+  "phases": {
+    "activation": {
+      "grant": "SETUP",
+      "minutes": 8,
+      "schedule": [
+        {
+          "group": 0,
+          "order": [
+            "checked-individual",
+            "bounded-grouped"
+          ],
+          "phases": [
+            "diagnostic"
+          ],
+          "profile": "noop"
+        }
+      ]
+    },
+    "pilot": {
+      "grant": "TIMING",
+      "minutes": 18,
+      "schedule": [
+        {
+          "group": 1,
+          "order": [
+            "A1",
+            "B",
+            "C",
+            "A2"
+          ],
+          "phases": [
+            "warmup",
+            "measured"
+          ],
+          "profile": "noop"
+        },
+        {
+          "group": 2,
+          "order": [
+            "A2",
+            "C",
+            "B",
+            "A1"
+          ],
+          "phases": [
+            "warmup",
+            "measured"
+          ],
+          "profile": "noop"
+        }
+      ]
+    }
+  },
+  "pilot_dependency": "2026-11-25-public-dense-3c4032d-transfer-activation",
+  "pins": {
+    "proof/jobs-group-success/native.py": "c5a652db5c72c62999e67c8512b4633b61a6d6efe8018dff36e65df55d482e07",
+    "scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+    "scripts/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/README.md": "1240d985082fb1b110e0f83b20c78e04de8e58efb0b8e3c58512c6e0072663b7",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/bounded-grouped.inventory.json": "77909d513bc23f7ab0b8e5fb1dae6238cda0c9434e1e7f4e6605ab451d5f883f",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/bridge-activation/dispatch.json": "e2b6717507b7bd05b698cebf87b9470f09412d43433dca4042ac6b041c0daaa8",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/bridge-activation/inventory.json": "052bf45bf6f1fec84fbd300de4305687b79b2409175a9fdf4c226ebed443d4be",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/bridge-activation/legacy-source.tar.gz": "deb2a3bc49feae7df985fe895209c3db7d725cd4c9c1b9c8ba49c93a650dd6d8",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/bridge-activation/raw.tar.gz": "877e1a76bc33015513f6ea9c4b3277ea442491ff901979e0280bceabae991cb7",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/bridge-activation/request.json": "26c1ec456170589d96fe3e3516ae99ba59ebebd0eacff05a0bea85ed94644082",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/bridge-activation/setup-release.json": "17d50b6f356ded7812ceac9f3566be3b49374bf12d87a189cb6b8e98c00ef642",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/checked-individual.inventory.json": "5a0ff253ed56a2664bff57fe97454699cfd6bbcac472171eec327366b4a7cc87",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/controller.py": "64c3a61d3de5eb0ee62d2d3fbdf5582a1e63a396db1fc32e58e7da213d0f0241",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/compat-17.11.log.gz": "ec50d2a5dd8fa4c587ed896ba3eb25cdd53ebae24eb94347c83ab524cdbd7948",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/compat-18.7.log.gz": "29ace3bcd251e33b35838ebf8c869bf018656801bf3c044233b2a8566d88ce58",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/pre-inventory-validation/SHA256SUMS": "418a399150499038c9e54f1196136da455ce0082633824453bd057e5b9d33ffe",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/pre-inventory-validation/bounded-grouped.inventory.json": "60cd83370e044b12cd8cca41f838c39e7dad1a69664384385703684d5138267b",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/pre-inventory-validation/checked-individual.inventory.json": "e81cf9108d2110279e20df8ef8aa8952c3380f6994b23255017b92092343fc10",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/pre-inventory-validation/legacy.reference.json": "1a25a23f8c9b92aa5791e83abed064181e24382b7d17ed4b104df4e8aa72ccc7",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/pre-lane-validation/SHA256SUMS": "7e6dca3175911663185c8d499309c822ad49176d03b7513dafc97558e22fa55a",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/pre-lane-validation/bounded-grouped.inventory.json": "4e6f63a4be1f5ef46b3002eda96d5fbe90d35a271493eba7b47c1b62aac0cf01",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/pre-lane-validation/checked-individual.inventory.json": "48033504929e7f20cc006925a025b63c36ad4d3c3fa254b2e6c3b706d453b79a",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/pre-lane-validation/legacy.reference.json": "052bf45bf6f1fec84fbd300de4305687b79b2409175a9fdf4c226ebed443d4be",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/pre-role-receipt-packet.json": "77bdeb92c5a98f0daac9108a1bcdc3b46b8535d69308260a01013af1b6fc5462",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/proof-v2.log.gz": "91352f2edc53a4594d1b3de9db207634fe8506fd3ac66b100a41ce76d5cdd827",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/proof-v3.log.gz": "608553216ba494bab1b79dc413e811c23b665f6af6dd32d6e9c386e5b6ea2ad9",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/proof.log.gz": "89f482ef5d7db3e976aa2f26d42a08e74b47b05049aa54b4cc62b332d13f1527",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/original-failures/workspace.log.gz": "528a4c85e56b45c84dc2226617edd0bf8ca53757eed9631f5cbcdc5e5c6943e6",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/controller-release.json": "0de399bb4054e2e33e8d40d04f6ed59149b4ac99b63aef9c62406a45810ff605",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/export.log.gz": "d9bf2248088dacdc4b474f596b1dd0e3d76628ac2ceb670eab8d5d71c7c72d3a",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/grant.json": "0b893d49b6364ff6751385c10a5c3405d64cdd00acdc0ababb2d613254154d76",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/native-status.json": "a9331e3d141eeda7f00dd11c4e869123873c138d9eb7c7f54fba110f86b170f9",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/proof-before-release.json": "762f28a1db2b273396a517a61a53c846b734815a018ad58a440f0d2126a19cb5",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/proof-before-release.json.log.gz": "59869db34853933b239f1e2219cf7d431da006aa919635478511fabbfc8849d2",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/raw.tar.gz": "6963232ab2cf037d0971623453e7a23f06db75462e0fcddbb12f8f88ede6361b",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/setup.log.gz": "53f29099ad7a364b88b0af9440eb45ea7bcc24a77949a0459910f4810c295a6d",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/verified.json": "3991398c8a6a25df949230a24812e0e664946e687f513ba1378c8ede3b8ab547",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/evidence/verified.json.log.gz": "59869db34853933b239f1e2219cf7d431da006aa919635478511fabbfc8849d2",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/jobs.json": "a58ea56abb8fa2ccb11784ddd3bd8a6c988948dcffe6e2eb23709fb2aa769eb9",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/native.sh": "628f5527e8353a52c1b7200325207814d208fcc865226a57fee4af74a55c5a0d",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/qualification/source.tar.gz": "ec82fb2eefcb43e80049a025e441eaae280bb94cfd9e00812e836ceb914ac546",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/score.py": "86f673be8971bfe745f1ac5dad63173848a5a40150d9d1413532480a7e841f0d",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/stage/legacy/candidate.sql": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/stage/legacy/contract.py": "c45ce2a527c23a5f7f497ffee790baeacccbdbb7be2df199dc54a53de14b21bd",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/stage/legacy/factorial_arm.py": "9bf13c86613c2ccc3693837e4da59e4d5688d38a16ab544ee8dcdf4ed78a86fb",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/stage/legacy/launch.sh": "f1a9e3c4a652f15467e3f655898e26a592912414544599540c7ced7e7ae87b4e",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/stage/legacy/render.py": "adc81cf2813c79913a54501be485df49b6051d00a9310848d081dbb2f92d1418",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/stage/legacy/stock.sql": "31597202cdd0c8d03c8472e51362f0cfc6a988ca28a8e6e29fb1c69825c8ec1a",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/stage/public/public-native-run": "76d1634c8785ab1535615e48517ecad016384e16a941ad0643fcc90941ce6ca5",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/stage/public/public_arm.py": "83c0f068c1f8db58310123a1fdc48d13d15686c717accfd455792a1751485ef2",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "public_elf_sha256": "4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058",
+  "ready": true,
+  "replay_command": [
+    "python3",
+    "-B",
+    "tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/controller.py",
+    "replay",
+    "PHASE"
+  ],
+  "retained_legacy_elf_sha256": "d56d0e6112a94ff601bebf6f777061068ed2fe0f2f2da586963dd6e1326a220a",
+  "setup_dependency": "public-dense-fixed8-jobs-ec82fb2eefcb-setup"
+}

@@ -1,0 +1,11 @@
+{
+  "group": 0,
+  "order": [
+    "checked-individual",
+    "bounded-grouped"
+  ],
+  "phases": [
+    "diagnostic"
+  ],
+  "profile": "noop"
+}

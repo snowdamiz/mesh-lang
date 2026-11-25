@@ -1,0 +1,15 @@
+{
+  "exit_status": 1,
+  "grant": {
+    "end": "2026-11-25T05:16:14Z",
+    "id": "2026-11-25-public-dense-3c4032d-transfer-activation",
+    "request_sha256": "aa3154ad8ec0e9082eb2d946352458e2d747cdc92a7777e8919bb2d7daace9f2",
+    "start": "2026-11-25T05:08:14Z"
+  },
+  "id": "2026-11-25-public-dense-3c4032d-transfer-activation",
+  "phase": "setup",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-4f013613/tools/durable-jobs-bench/results/2026-11-25-public-dense-3c4032d-transfer/evidence/activation",
+  "released_at": "2026-11-25T05:08:38.163997+00:00",
+  "request_sha256": "aa3154ad8ec0e9082eb2d946352458e2d747cdc92a7777e8919bb2d7daace9f2",
+  "started": "2026-11-25T05:08:14.994540+00:00"
+}
