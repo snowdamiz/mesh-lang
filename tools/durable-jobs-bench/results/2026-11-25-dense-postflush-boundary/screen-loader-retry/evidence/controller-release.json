@@ -1,0 +1,15 @@
+{
+  "exit_status": 0,
+  "grant": {
+    "end": "2026-11-25T04:03:32Z",
+    "id": "2026-11-25-dense-postflush-boundary-screen-loader-retry",
+    "request_sha256": "03aab8a5ff40da0806b81fab83907066ddfe52d00914a9599f7ddb28f915e83e",
+    "start": "2026-11-25T03:58:32Z"
+  },
+  "id": "2026-11-25-dense-postflush-boundary-screen-loader-retry",
+  "phase": "timing",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-postflush-boundary/screen-loader-retry/evidence",
+  "released_at": "2026-11-25T03:59:56.840209+00:00",
+  "request_sha256": "03aab8a5ff40da0806b81fab83907066ddfe52d00914a9599f7ddb28f915e83e",
+  "started": "2026-11-25T03:58:32.379603+00:00"
+}
