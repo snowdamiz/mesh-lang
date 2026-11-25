@@ -1,0 +1,15 @@
+{
+  "command_finished_at": "2026-11-25T00:12:49.114326+00:00",
+  "export_error": "SSH TCP/22 operation timed out",
+  "grant": {
+    "end": "2026-11-24T23:55:35Z",
+    "key": "2026-11-24-public-large-file-session-resume",
+    "kind": "SETUP",
+    "start": "2026-11-24T23:30:35Z"
+  },
+  "install_ssh_timeout_seconds": 1200,
+  "original_archive_sha256": "733cf94737c97bdb1699a1d5deff1176710988abae6080ea4408f23d2a21801c",
+  "original_export_bytes": 0,
+  "release_pending": true,
+  "release_probe_failed": true
+}
