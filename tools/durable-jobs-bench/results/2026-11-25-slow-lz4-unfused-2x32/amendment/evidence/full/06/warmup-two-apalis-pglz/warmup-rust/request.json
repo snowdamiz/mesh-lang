@@ -1,0 +1,7 @@
+{
+  "attempt": "c90358077c404db094855d1c5d12b028",
+  "created": "2026-11-25T19:29:19.948329+00:00",
+  "engine": "rust",
+  "phase": "warmup",
+  "profile": "slow"
+}
