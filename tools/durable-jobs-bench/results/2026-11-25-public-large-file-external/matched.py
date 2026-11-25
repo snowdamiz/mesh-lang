@@ -26,7 +26,8 @@ EXPERIMENT = ("file", "inline-a", "inline-b")
 CLOCKS = ("enqueue_ms", "submit_ms", "drain_ms")
 
 # Use the checked-in public scorer, including on a fresh checkout.
-sys.path[:0] = [str(SESSION), str(SOURCE / "replay")]
+sys.path[:0] = [str(SESSION), str(SOURCE / "replay"),
+                str(RESULTS / "2026-11-23-bulk-enqueue-v2-short/replay")]
 import intake
 
 prior = runpy.run_path(str(SESSION / "adapter-path-retry/retry.py"))
