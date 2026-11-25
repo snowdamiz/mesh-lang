@@ -20,6 +20,13 @@
     "file": "candidate.patch",
     "sha256": "2ee6e41365e18d6bcf3e9c3f198329bdcf0da95e503b2b441ec382acbb53dc2e"
   },
+  "ignored_checkouts": {
+    "target/2026-11-24-trusted-jobs-product-composition/source": {
+      "commit": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+      "from_bundle": "provenance/candidate-f3b3612d9.bundle",
+      "needed_by": "upstream 2026-11-24-public-large-file-session/audit.py (controller-owned)"
+    }
+  },
   "ignored_target_pins": {
     "target/linode-jobs-stepchange/requests/large-v3-955b356b.json": {
       "copy": "evidence/strict/recovered-intake.json",
@@ -47,6 +54,7 @@
     "file": "request.json",
     "sha256": "c098809a67de34b2818d4bf5b8b10143e05e791e13b4f0290a36240f222bac70"
   },
+  "relocation": "Upstream resume/intake.json records an absolute timing_command under the original checkout; verify-export.py remaps that prefix in memory only.",
   "source_bundle": {
     "file": "source.tar.gz",
     "sha256": "01de6fef884898606039951edd04ffd4ca230156e9a190545e733fbe9046c45d",
