@@ -1,0 +1,83 @@
+{
+  "attempt": "dense-fixed8-pool-supply-3292bdf82b83",
+  "build": {
+    "architecture": "x86_64",
+    "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "cc": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+    "compiler_sha256": "1fd089bf027733df5711a7779722db4a589fceb8a3c7d4da63de39ae5972201c",
+    "execution_contract": "ordinary-trusted-shared-process-v2",
+    "files": {
+      "libworker_identity.a": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+      "main.mpl": "6d0bdc5714952213a9a04776b73d50503f9b331b19afe762800d26c0318366ea",
+      "mesh": "e836b79a2dbd5ee0e10897de8d3d07fbf789ea038e122d2403799b9879bbbaf4",
+      "mesh.toml": "64bbe65a533a942753a2bfe8fa5fd4e025a1fa9f4a8dbf25d82ad22ad4137325",
+      "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+      "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+      "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+    },
+    "meshc": "meshc 0.1.8",
+    "runtime_sha256": "0de06fdf8d374a99f04ebc61e4fcdffa67f27d42ec39a41396d13daec1c086cc",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "source_sha256": "3292bdf82b83d5bab40695effa47cceb3a24198b5781a9f1a298d33d3d840627",
+    "system": "Linux",
+    "version": "3c4032d06b10bc54a47290c673562fb063b47789"
+  },
+  "manifest_sha256": "f9dff9adbf1214c8ec84a2fe1facef23d856b23487070462cf3e6a5b4f54318e",
+  "proofs": {
+    "direct-2": {
+      "ambiguous-application-write": "e1c81c0f9fdb64bdbf78a898aa1f021814faaf2a251a330fd45d583a7599a7db",
+      "ambiguous-claim-commit": "3b6ad04029718a4b0d0fe2e62152ecd82671484d288ac6b024c09355f23e9ee1",
+      "cancellation": "d32129fd90b69ce02bb95b2e482b4958c400e37bd30b70b7ed20ca67fe60e057",
+      "checked-individual": "f657d48a259e22ddf953e29c5adf2fe08ffcfa9287d3200dfce2923bcf2f2c10",
+      "forced-teardown": "b3d74b4d70f7bdeaa94a09e0ecfbf78802a79f452da9e160a29ab36805b9271d",
+      "held-teardown": "621843218d7c8e7abb5f8b19d0aad1ec9cecd3f797e6303fa32b70dd986068fd",
+      "held-terminal": "298f3c03b159e274305ea024f45192ed50916d28e5dd69bcd5458e9a37913b22",
+      "lost-bulk": "0a00432b79e6fe33bff5c87117ac31ff5653fc4e17decde5d8799bf66cada751",
+      "lost-terminal": "807ff0a6ab4116d689174a8c880aec5c102623863972148bf8aeec4a131105af",
+      "sql-cut": "dff908156a7db74a76f96d88cc907dc90439465311fd5d59c18839982f3f8fd9",
+      "stop-partial": "5a8bae240fb4779ad7318e3a619843bda9187c6205283d0697be5aedc3ff71bf"
+    },
+    "direct-4": {
+      "ambiguous-application-write": "e1c81c0f9fdb64bdbf78a898aa1f021814faaf2a251a330fd45d583a7599a7db",
+      "ambiguous-claim-commit": "9228fd991eae4dbab763dfbdc307e9f9475c52456225cdd9417e17c7110ec128",
+      "cancellation": "08e73228fd940efd50eb527679c27b97fbca9295ed39d396ff61bb7c7ba45bd3",
+      "checked-individual": "f657d48a259e22ddf953e29c5adf2fe08ffcfa9287d3200dfce2923bcf2f2c10",
+      "forced-teardown": "5e0fc0ce3fc3e2aa6beca26a34118806055bd58b095bec43952a13464e740d68",
+      "held-teardown": "bd3c858c23ce2267c5d830db7487ddbe779d650e6438a99656505f3f9e6c9297",
+      "held-terminal": "7ce89a17b7c78409682edda0fea54bdb24f7547c1dd0c0f3249283beab80eed7",
+      "lost-bulk": "ad7df5846ac81f0eb366121bc5ba4cf46fc450b0086bbcb31d8881ea1045d1f3",
+      "lost-terminal": "bd8cf25c90456d302365302808b6045d08f34f59ec006f68f1ab2856162c84c3",
+      "sql-cut": "0f05f37e8a1c5256a76e0d51d1a8fae637fd7320b618b0ae7afe0f59165b74ed",
+      "stop-partial": "fbcb258d1153fcbc51cf495e1c518869c657dea54d00a9a76c04bde71d446d85"
+    },
+    "service-2": {
+      "ambiguous-application-write": "e1c81c0f9fdb64bdbf78a898aa1f021814faaf2a251a330fd45d583a7599a7db",
+      "ambiguous-claim-commit": "bd0d2a3b8c4a174ceadee990ce66d70967846b1d8b13b195da316bc380858eef",
+      "cancellation": "26173015086b8d7586d05f04c62be852be7c7ef1220bd693784cc6f3a3644613",
+      "checked-individual": "f657d48a259e22ddf953e29c5adf2fe08ffcfa9287d3200dfce2923bcf2f2c10",
+      "forced-teardown": "04afae00bca3cb0c29db3b0a1cec461c7b2a070dda6ff219ebac8ce034946d0b",
+      "held-teardown": "e1ff7f0e18142bae0ddc647255b49ef3cc7ea5bf3a4da27882a59e5f556408cb",
+      "held-terminal": "03ded5664d370f647e27943b7b5f1eb60c21643c956fca33c57afb93c42a6713",
+      "lost-bulk": "c05692350172265fa2ec5186e995263b00656eb5b62d10a8911eca67526953da",
+      "lost-terminal": "fc8c2e5d7ed070a6fd41614a394885681b07c3f883d5ee517b01530da63af889",
+      "sql-cut": "10f2f78e8b5ec8a6c638630d72d1aeebc91236f2bd77be8936289475bab4d5d7",
+      "stop-partial": "429d6416fd1e7bbe0ba750dcf7cab97e8cc866e7fb86ed0780793bc911beffa2"
+    },
+    "service-4": {
+      "ambiguous-application-write": "e1c81c0f9fdb64bdbf78a898aa1f021814faaf2a251a330fd45d583a7599a7db",
+      "ambiguous-claim-commit": "e3ef2f4c55c3d180a6455efa97eb310dfec165ac223af9fa46f1c2d0abd49a33",
+      "cancellation": "d32129fd90b69ce02bb95b2e482b4958c400e37bd30b70b7ed20ca67fe60e057",
+      "checked-individual": "f657d48a259e22ddf953e29c5adf2fe08ffcfa9287d3200dfce2923bcf2f2c10",
+      "forced-teardown": "519f71a8e2bc297704eeaaddffb6e44b7511fd02f0884c1c7309facc81cf023b",
+      "held-teardown": "7f772713be00ca3c9251829437adf089dbd5e29d1e586f035176f79558a56260",
+      "held-terminal": "e6de2bb7c9fdf0dd711db64e65a81922f35d27f2aa50daf5751ce246bb72b1ca",
+      "lost-bulk": "4da0c658c19239e1a40de9fef9b93c95404862e4f36b1a51d8c3aee5d9a85b9c",
+      "lost-terminal": "ff4105f9635d76b03dea8c492d051f9afba1426daa6c448e4cfa952e83dc9769",
+      "sql-cut": "984073cc1cd3051f6d9d175a7d51503936102d31c6466776be7e80d92d48d0bd",
+      "stop-partial": "544bc468945ba52abafc80041065374723d2e899b7aff190723e360f6ede13e2"
+    }
+  },
+  "raw_sha256": "1ed54139005e7ab5efb7eb33a35724e3babae42c20eca540b74d2e1390ac1206",
+  "release_sha256": "f1da3facac3064d01d31758f6336f0109b524f11b28c420860a5925a4f57adab"
+}
