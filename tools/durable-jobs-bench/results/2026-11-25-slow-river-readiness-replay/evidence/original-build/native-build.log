@@ -1,0 +1,32 @@
+/var/lib/durable-jobs-bench/native/toolchain/slow-river-readiness-go1.26.4-4fecd8ce88115826/go/bin/go: OK
+expected-build-info.txt: OK
+stock/db.go: OK
+stock/evidence.go: OK
+stock/main.go: OK
+stock/worker.go: OK
+stock/go.mod: OK
+stock/go.sum: OK
+candidate/db.go: OK
+candidate/evidence.go: OK
+candidate/main.go: OK
+candidate/worker.go: OK
+candidate/go.mod: OK
+candidate/go.sum: OK
+candidate/readiness.go: OK
+go version go1.26.4 linux/amd64
+all modules verified
+/var/tmp/mesh-durable-jobs-matrix/.slow-readiness-build.gHItC2/stock-elf: OK
+expected-build-info.txt: OK
+stock/db.go: OK
+stock/evidence.go: OK
+stock/main.go: OK
+stock/worker.go: OK
+stock/go.mod: OK
+stock/go.sum: OK
+candidate/db.go: OK
+candidate/evidence.go: OK
+candidate/main.go: OK
+candidate/worker.go: OK
+candidate/go.mod: OK
+candidate/go.sum: OK
+candidate/readiness.go: OK
