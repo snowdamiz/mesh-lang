@@ -1,0 +1,221 @@
+{
+  "archives": {
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-equal-off-a/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "1c8c91a4c33f8b5a344d0a5238e4cf747c2a1186c6f0db7796a04a0167a28d3d",
+      "observer": {
+        "mode": "off",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {}
+      }
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-equal-off-b/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "723a3582e2a25f93d80382e9f101e7bb78eeabde3ab7e2cab20a55c395f339bb",
+      "observer": {
+        "mode": "off",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {}
+      }
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-equal-trace/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "f0b0afa7ff8bcf17c6acede060793902a029f5e615609a9f6ca0c8482a4f1575",
+      "observer": {
+        "mode": "trace",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {
+          "deadlock_timeout": "1ms",
+          "log_lock_waits": "on",
+          "log_min_duration_statement": "0",
+          "log_parameter_max_length": "0",
+          "log_parameter_max_length_on_error": "0",
+          "pg_stat_statements.track": "all",
+          "track_functions": "pl"
+        }
+      },
+      "redacted_query_id": 6827047345048828466,
+      "nested_buffer_hits_in_bracket": 131661
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-stock-off-a/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "b32086d0dd10e063cf900d95ac2b0b326279b7ba80b9b345eb7d294e73dc7e67",
+      "observer": {
+        "mode": "off",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {}
+      }
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-stock-off-b/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "df382ac180ece3cdbf7357d656634ac050763ff16596fce388ca6afd2bf090b4",
+      "observer": {
+        "mode": "off",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {}
+      }
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-stock-trace/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "75e4b035ebfb046279411ebb0e53bbe19ef49c69bd91d77f1e933a6e39c1f52a",
+      "observer": {
+        "mode": "trace",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {
+          "deadlock_timeout": "1ms",
+          "log_lock_waits": "on",
+          "log_min_duration_statement": "0",
+          "log_parameter_max_length": "0",
+          "log_parameter_max_length_on_error": "0",
+          "pg_stat_statements.track": "all",
+          "track_functions": "pl"
+        }
+      }
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-equal-off-a/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "5b33fcbc12a549388ae26f2e535d6d0cb5f6764c375ac1cc235438a8e3778765",
+      "observer": {
+        "mode": "off",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {}
+      }
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-equal-off-b/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "d5ee34c086961184fb3d7aae3fa9a1d7a888a2c0782882e7e8df103e718b5375",
+      "observer": {
+        "mode": "off",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {}
+      }
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-equal-trace/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "ea4d43d9e751a314f925654ea446b81cdc2d8846854a0b173af7df031816d02d",
+      "observer": {
+        "mode": "trace",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {
+          "deadlock_timeout": "1ms",
+          "log_lock_waits": "on",
+          "log_min_duration_statement": "0",
+          "log_parameter_max_length": "0",
+          "log_parameter_max_length_on_error": "0",
+          "pg_stat_statements.track": "all",
+          "track_functions": "pl"
+        }
+      },
+      "redacted_query_id": 6827047345048828466,
+      "nested_buffer_hits_in_bracket": 132080
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-stock-off-a/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "1afb228b40f68e660ef550278a3230407b74afdb861501d9f6733076ca9e8aaf",
+      "observer": {
+        "mode": "off",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {}
+      }
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-stock-off-b/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "46e94d9482fedb49b59e041c8a3bbe08f0fd7b1b336ff89295cf0a84b7eb0e30",
+      "observer": {
+        "mode": "off",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {}
+      }
+    },
+    "2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-stock-trace/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "b58286949fd6f1bb1bd97d6e3227ceeee5f11f19fad30c48dc8c3aa1feebc99f",
+      "observer": {
+        "mode": "trace",
+        "plans_available": false,
+        "plans_sha256": null,
+        "settings": {
+          "deadlock_timeout": "1ms",
+          "log_lock_waits": "on",
+          "log_min_duration_statement": "0",
+          "log_parameter_max_length": "0",
+          "log_parameter_max_length_on_error": "0",
+          "pg_stat_statements.track": "all",
+          "track_functions": "pl"
+        }
+      }
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/01-noop.1795559433627716000/measured-hot/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "d911fde244960522b06083915364c15443278345816293b438b7d9ec7cb288f7"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/01-noop.1795559433627716000/warmup-hot/warmup-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "abe915fcf3d0abf8f9450ac49f352b29fa7cd6f32e4313529038d0837b382309"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/02-noop.1795559555024432000/measured-hot/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "f859e105d5a669798635c809557bca0508ec73721cb34746cf2e3857b299eb85"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/02-noop.1795559555024432000/warmup-hot/warmup-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "9c0e963f4c7e909120804ba4c27d05b2eb747f2b8fbe446b79d2975a960002a0"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/03-noop.1795559687573569000/measured-hot/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "6e55faef42370826c6ca2d01979deab402d81915d1b116556ad3d28d59a936c1"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/03-noop.1795559687573569000/warmup-hot/warmup-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "de38729942b53d662d6f406894b4e4b157049ce75c9739643f170ff612baf816"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/04-noop.1795559810068613000/measured-hot/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "7aacab37586d1c7168b9501e2a98d8934f801e43ca5b1a0b1e76e8199f1c3b7c"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/04-noop.1795559810068613000/warmup-hot/warmup-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "79f4d89e0013435c31aef11961696b8a4d33b338691a84a03d00c16398342258"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/05-noop.1795559931442056000/measured-hot/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "bd44b0504786b0a5601252064a0198d2b06653ed18d41e811a02d96ece312d21"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/05-noop.1795559931442056000/warmup-hot/warmup-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "956d1de2ec3f32575bfc3e7876a1f221199435c5cd9a4e8f68a066bb11819ffe"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/06-noop.1795560052362958000/measured-hot/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "a32a9f8ca0071c6cd751e89467ba777997cb38a76182c5d771719e594fe0a66c"
+    },
+    "2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/06-noop.1795560052362958000/warmup-hot/warmup-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "390c1bd45fc947b2c1a46c838851ce0c8f491a0af607843582742bda271e32e9"
+    },
+    "2026-11-24-dense-wal-cost/evidence/native/blocks/01-noop.1795560646005957000/measured-d2-on/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "011532d60fbc6dc6398799d363d4530f8e6ed7fd51e383e5a83de1f17a293bc4"
+    },
+    "2026-11-24-dense-wal-cost/evidence/native/blocks/02-noop.1795560729584522000/measured-d2-on/measured-mesh/raw.tar.gz": {
+      "plan_markers": 0,
+      "postgres_log_sha256": "f80bfeb53c2f4496d0ca5ab132501d8a3b6bcb2d5082fd014aa9ca2c0b696b86"
+    }
+  },
+  "exact_tree_inventories": 470,
+  "inventories_with_auto_explain_or_pkglibdir": [],
+  "inventory_limit": "Adapter and host inventories are file pins, not complete directory listings.",
+  "old_probe": "Path(PG_BIN_DIR).parent / \"lib/auto_explain.so\"",
+  "seed_release": "exit 1, controls UPDATE visits 16/16; candidate 1024; negative gate retained"
+}

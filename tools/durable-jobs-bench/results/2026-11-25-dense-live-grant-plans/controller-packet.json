@@ -1,0 +1,94 @@
+{
+  "cpus": [
+    0,
+    1
+  ],
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native",
+  "id": "2026-11-25-dense-live-grant-plans",
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "local_sha256": {
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py": "d30834fa1ca18030edd5df0de5d760ea1952d2b84aa05fb3eae9d2af13825c52",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/01-noop.1795559433627716000/measured-hot/measured-mesh/raw.tar.gz": "0c3272ce74bb778a66da443b500482c40db7a8671e260174a85a48e01f8c85df",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/01-noop.1795559433627716000/measured-hot/measured-mesh/request.json": "d34687e945565e51dcc6a37708ee26f351fa11094b491d442382800dad325dee",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/series.json": "6f1de7b22b2c0442a6c15832a15b09b8ce59c9defc7d01f7086a4f4776a83c16",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/staging/hot/inventory.json": "fbb81ed0a609bb397f07eea85cd00afee949a8b57e2d3fcce9e2cef72b1542ae",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/transfer.py": "43cf1e9017ca66a7f77ba744770908f736142e3587bd9bc3cdcc10be48593475",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/plan-gate.json": "bca51a262e3a02c5b4e2509507105e04fbc41377b8fc207d0a92269d32a6b3b5",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/batch_000000.json.gz": "28195c3ee036b760404e9b5f1ea00f7fef5c2ea4d64e3ac124931c5bb0c75904",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/source.tar.gz": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/POSTGRESQL-COPYRIGHT": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/README.md": "fe7cee8c508143237fe5cf1512835be0c4e805f6e9300d1efbdd478fde7f6b75",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/auto_explain.c": "ec87b02dab5e42e465d916f724666ed59e2dce9154a3b3cff8518feecb739416",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/canary.py": "9727ea22eb59b5d7ec8a2a6c237d99dbf58b0e46eccceeb3ae8fda054f1cb7af",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/controller.py": "41d5bac64e63e7c3dc43e3f368ff10e550894f129c254caca68163b5f0a5204d",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/historical-recovery.json": "846a78ffe4af0bfd3a4fe71ab467435145a117962ec9b7e8265e78acbd06fc71",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/local-canary.json": "881b96a0729ddea0c0ff3785982c2a539807cf0c90b3c551eb84ce75d73306d1",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/launch.sh": "02fa935ab09261d59e4a96e59b40ed3fd6eee3da2035da0c553f4cca2224e1bf",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/launcher.py": "bc9b73c8ea1835d96e031c6f3eecacd37b5826928fb3cef136e4c3a8c515cae4",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/observe.py": "52d08fd3c52ceeaaa21e4dea69912904605abb4e2d6e2fc32ba9ccb54918266d",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/plans.py": "ec9f3e8bbabb9745575b39e141f00241c57e55c2d882db64e1af01fa4410a4f3",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/settings.py": "91bf2eb1471d65e9f48ac5722bfed28e193357ab2c7058f6d366cce367bedfcc",
+    "tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/setup.sh": "142f8b03578fb849fbb5d3c63da4b3a65792ce660991220b94df063b4d2f8af4",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "manifest_sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+  "native_host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "no_build_during_timing": true,
+  "no_repoll": true,
+  "offline_check": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/controller.py check",
+  "only_existing_controller": true,
+  "priority": "Behind all current bookings. Keep existing holds. No retry or peer extension.",
+  "private_module": "/var/lib/durable-jobs-bench/native/dense-live-grant-plans-20261125/auto_explain.so",
+  "registration_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/requests/2026-11-25-dense-live-grant-plans.json",
+  "replay_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/controller.py replay",
+  "requested_setup_minutes": 5,
+  "requested_timing_minutes": 12,
+  "resource_bounds": {
+    "arms": 6,
+    "one_arm_at_a_time": true,
+    "pg_cap": 96,
+    "pg_version": "17.11",
+    "runners": 2,
+    "slots_per_runner": 32,
+    "warm_app_tls": 32
+  },
+  "revision": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "schedule": [
+    {
+      "group": 1,
+      "order": [
+        "off-a",
+        "sampled",
+        "off-b"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 2,
+      "order": [
+        "off-b",
+        "sampled",
+        "off-a"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "setup_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/controller.py setup",
+  "setup_reservation": "2026-11-25-dense-live-grant-plans-setup",
+  "state": "sealed-for-sole-controller",
+  "timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/controller.py timing",
+  "timing_reservation": "2026-11-25-dense-live-grant-plans-timing"
+}

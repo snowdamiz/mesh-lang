@@ -1,0 +1,44 @@
+{
+  "controller_packet_sha256": "cff901a29c24f6fe2477a033c5c24f6b8024e7124c3fdc4bd0a739316af2281f",
+  "git_export_inputs": {
+    "scripts/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+    "scripts/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py": "d30834fa1ca18030edd5df0de5d760ea1952d2b84aa05fb3eae9d2af13825c52",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/matrix.py": "dffaa6d936cd0010f2f4377106d5b2846bdaa2cc6f9c431338a776e1d63c84bb",
+    "tools/durable-jobs-bench/results/2026-11-23-dense-matched-topology/qualification.py": "97a48e0b96532710fba3fade20bd96e8bebcde3d15529de6dc6f23ca1da799ee",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/01-noop.1795559433627716000/measured-hot/measured-mesh/raw.tar.gz": "0c3272ce74bb778a66da443b500482c40db7a8671e260174a85a48e01f8c85df",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/blocks/01-noop.1795559433627716000/measured-hot/measured-mesh/request.json": "d34687e945565e51dcc6a37708ee26f351fa11094b491d442382800dad325dee",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/series.json": "6f1de7b22b2c0442a6c15832a15b09b8ce59c9defc7d01f7086a4f4776a83c16",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/evidence/native-closure-retry/staging/hot/inventory.json": "fbb81ed0a609bb397f07eea85cd00afee949a8b57e2d3fcce9e2cef72b1542ae",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-product-d2-transfer/transfer.py": "43cf1e9017ca66a7f77ba744770908f736142e3587bd9bc3cdcc10be48593475",
+    "tools/durable-jobs-bench/results/2026-11-24-dense-two-runner-checkout/native-score.py": "894013b9b1b342b851436dd1c6dd99d55d93cd712e9262644e429ab0c845c214",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/2026-11-24-public-dense-bounded-grant-groups-0-6.released.json": "6f99f8b1f78f0cceaf58cb67f910f41587cf95726bc8d24ecae27b8927ef1fdc",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/dispatch.json": "64f15b2392bfa308f98faa2d8ef22d747e825e8c64c9129f6c2198384379b6bf",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/dispatch.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/download-7f4d24a182a749a7a5c67678691bb21e.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/raw.tar.gz": "3ad3ee1645690c99dbfd18627cbc22a673c9213698c2004098259f492df9f37f",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/measured-qualify/measured-mesh/request.json": "b1381bf74e220d797334ff53d365d8f3a50776222c3fc3e6fa84f0ed4eaab265",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/blocks/00-noop.1795567469063474000/order.json": "3b429703ddf2d8cde0217b034beb243a11a731e50591ad96bbf4db683aa91b28",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-bounded-grant/evidence/native/plan-gate.json": "bca51a262e3a02c5b4e2509507105e04fbc41377b8fc207d0a92269d32a6b3b5",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/batch_000000.json.gz": "28195c3ee036b760404e9b5f1ea00f7fef5c2ea4d64e3ac124931c5bb0c75904",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/01-noop.1795560827541604000/measured-equal-trace/measured-mesh/raw.tar.gz": "834c0347b9ad198261c6ca43b8931cce42fa209f72147be4aa568e2652912fc2",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/native/blocks/02-noop.1795560891926202000/measured-equal-trace/measured-mesh/raw.tar.gz": "8d4c69809a25c2305157296c494e294ef8aadeb35f391fd7a43142759cdaca86",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/original-failure/dispatch.json": "8015118425f2b82c3621dd0679b576a41fb4404fcdfa7ee2502d6c8ef9deb539",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/original-failure/raw.tar.gz": "0eb4b74c11b214f47d5f9cfe049794db4f699893a36e578ce202a0aaed782acd",
+    "tools/durable-jobs-bench/results/2026-11-24-public-dense-set-claim/evidence/original-failure/request.json": "fce038d47b0e40fc427af3a5addc63ff90ff92383f33256fede5cbccb43faecb",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/source.tar.gz": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "parent_snapshot": "26b07dd5260d77bad6fa0217fcf206d7fa059fd4",
+  "upstream": {
+    "members": {
+      "postgresql-17.11/COPYRIGHT": "POSTGRESQL-COPYRIGHT",
+      "postgresql-17.11/contrib/auto_explain/auto_explain.c": "auto_explain.c"
+    },
+    "sha256": "dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979",
+    "url": "https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2"
+  }
+}
