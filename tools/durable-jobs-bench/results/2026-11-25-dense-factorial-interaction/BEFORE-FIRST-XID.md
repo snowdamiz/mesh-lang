@@ -13,6 +13,10 @@ Across six native dense rotations, **at least 79.1–88.5% of Mesh's accumulated
 
 The older dense comparison gives a separate intervention on the lookup performed at handler entry. Passing the application pool directly reduced the **upper** bound for mean jobs awaiting a first XID to below 0.7 in every block. The service controls' lower bounds ranged from 6.4 to 10.2. Direct binding also left 1.15–6.14 more jobs between the claim stamp and handler entry than either duplicate in each block. The middle 512 writes finished 6.4–45.3 ms sooner than the faster duplicate. Removing a visible wait can move a queue earlier in execution. The current fixed8 experiment therefore needs both the handler clocks and durable settlement on its own executable. [Older direct-pool comparison](../2026-11-24-trusted-handler-app-pool/timing-clean-identity-retry/evidence/summary.json)
 
+## How much of the gap can enqueue cover?
+
+Warm River finished enqueue 74.630–126.188 ms earlier than Mesh, with a paired median of 86.844 ms. Holding each arm's observed drain fixed, giving Mesh a zero-cost enqueue would still leave it behind River's full submit-to-settlement time in all six blocks. The remaining gaps in order were 50.093, 87.864, 77.172, 106.525, 549.993 and 31.004 ms. This arithmetic makes the case for working on handler throughput alongside the producer. Faster enqueue can itself change the later schedule.
+
 ## How the bounds work
 
 The benchmark executes two autocommit writes per job. PostgreSQL allocates ordinary XIDs from a cluster-wide sequence. For the first write, handler entry precedes allocation. For the second, the first recorded commit precedes allocation. Each write's allocation precedes its own recorded commit. The replay checks the small non-wrapping XID range independently in each fresh cluster. [PostgreSQL transaction identifiers](https://www.postgresql.org/docs/17/transaction-id.html)

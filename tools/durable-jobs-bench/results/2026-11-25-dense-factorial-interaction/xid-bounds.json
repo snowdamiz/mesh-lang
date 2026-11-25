@@ -3,6 +3,8 @@
     "1": {
       "direct": {
         "claim_stamp_to_entry_job_us": 16123949,
+        "drain_us": 1286013,
+        "enqueue_us": 507379,
         "middle_512_us": 640917,
         "phases_job_us": {
           "first": {
@@ -20,10 +22,13 @@
             "total": 899326
           }
         },
-        "raw_sha256": "f93cf66b48ed1fd01526c6636fe819905265a2fbe56e72510fe5564627199d8a"
+        "raw_sha256": "f93cf66b48ed1fd01526c6636fe819905265a2fbe56e72510fe5564627199d8a",
+        "submit_us": 1793392
       },
       "service-a": {
         "claim_stamp_to_entry_job_us": 13197333,
+        "drain_us": 1334181,
+        "enqueue_us": 543576,
         "middle_512_us": 662306,
         "phases_job_us": {
           "first": {
@@ -41,10 +46,13 @@
             "total": 990800
           }
         },
-        "raw_sha256": "cd59739427878f7442569142d208d0efa5f34d95bf274836f846a6e9dc6479f4"
+        "raw_sha256": "cd59739427878f7442569142d208d0efa5f34d95bf274836f846a6e9dc6479f4",
+        "submit_us": 1877757
       },
       "service-b": {
         "claim_stamp_to_entry_job_us": 14898272,
+        "drain_us": 1350345,
+        "enqueue_us": 565665,
         "middle_512_us": 647287,
         "phases_job_us": {
           "first": {
@@ -62,12 +70,15 @@
             "total": 1009486
           }
         },
-        "raw_sha256": "09f58e399f6feaa2e1d2f23ec39ede165f50e8109d19318d9ebc4b323a6df652"
+        "raw_sha256": "09f58e399f6feaa2e1d2f23ec39ede165f50e8109d19318d9ebc4b323a6df652",
+        "submit_us": 1916010
       }
     },
     "2": {
       "direct": {
         "claim_stamp_to_entry_job_us": 16364693,
+        "drain_us": 1334763,
+        "enqueue_us": 655663,
         "middle_512_us": 648689,
         "phases_job_us": {
           "first": {
@@ -85,10 +96,13 @@
             "total": 895135
           }
         },
-        "raw_sha256": "de2f8ffc78ff664cd7761f3eef8320d25a9538dc84a3725781a88f574277f588"
+        "raw_sha256": "de2f8ffc78ff664cd7761f3eef8320d25a9538dc84a3725781a88f574277f588",
+        "submit_us": 1990426
       },
       "service-a": {
         "claim_stamp_to_entry_job_us": 13691091,
+        "drain_us": 1386233,
+        "enqueue_us": 513185,
         "middle_512_us": 662203,
         "phases_job_us": {
           "first": {
@@ -106,10 +120,13 @@
             "total": 925130
           }
         },
-        "raw_sha256": "fd08d9b681788ffc39f9413b3244ddac7df7e550bac17f6a14a624b61bde3d3e"
+        "raw_sha256": "fd08d9b681788ffc39f9413b3244ddac7df7e550bac17f6a14a624b61bde3d3e",
+        "submit_us": 1899418
       },
       "service-b": {
         "claim_stamp_to_entry_job_us": 12915183,
+        "drain_us": 1394752,
+        "enqueue_us": 502474,
         "middle_512_us": 698811,
         "phases_job_us": {
           "first": {
@@ -127,12 +144,15 @@
             "total": 942123
           }
         },
-        "raw_sha256": "9eb2bb073fe46a05872dbd88119561348c81fef114e1fba459a4d1b56610c5d3"
+        "raw_sha256": "9eb2bb073fe46a05872dbd88119561348c81fef114e1fba459a4d1b56610c5d3",
+        "submit_us": 1897226
       }
     },
     "3": {
       "direct": {
         "claim_stamp_to_entry_job_us": 17938508,
+        "drain_us": 1253757,
+        "enqueue_us": 500494,
         "middle_512_us": 615704,
         "phases_job_us": {
           "first": {
@@ -150,10 +170,13 @@
             "total": 932067
           }
         },
-        "raw_sha256": "154be533c80deb9e6e3d12f10629c8bd209919eb50443ffc20a7298a63b38aab"
+        "raw_sha256": "154be533c80deb9e6e3d12f10629c8bd209919eb50443ffc20a7298a63b38aab",
+        "submit_us": 1754251
       },
       "service-a": {
         "claim_stamp_to_entry_job_us": 14788316,
+        "drain_us": 1324153,
+        "enqueue_us": 513938,
         "middle_512_us": 643140,
         "phases_job_us": {
           "first": {
@@ -171,10 +194,13 @@
             "total": 1020839
           }
         },
-        "raw_sha256": "418674f24bc81b2b223f5e400bb9109d82381dceeffc2e33d4744209ab0a9a72"
+        "raw_sha256": "418674f24bc81b2b223f5e400bb9109d82381dceeffc2e33d4744209ab0a9a72",
+        "submit_us": 1838091
       },
       "service-b": {
         "claim_stamp_to_entry_job_us": 13193905,
+        "drain_us": 1330830,
+        "enqueue_us": 517703,
         "middle_512_us": 645395,
         "phases_job_us": {
           "first": {
@@ -192,12 +218,15 @@
             "total": 963640
           }
         },
-        "raw_sha256": "33c7ac59d649621ab2386f4331e4a5dd83a99905e970dec665ae4845913cd9d2"
+        "raw_sha256": "33c7ac59d649621ab2386f4331e4a5dd83a99905e970dec665ae4845913cd9d2",
+        "submit_us": 1848533
       }
     },
     "4": {
       "direct": {
         "claim_stamp_to_entry_job_us": 16313052,
+        "drain_us": 1248942,
+        "enqueue_us": 509186,
         "middle_512_us": 612842,
         "phases_job_us": {
           "first": {
@@ -215,10 +244,13 @@
             "total": 930656
           }
         },
-        "raw_sha256": "c20b559fdf9c1a73694ecc17c22be119f265314707345d9b38b6406b1497c1f5"
+        "raw_sha256": "c20b559fdf9c1a73694ecc17c22be119f265314707345d9b38b6406b1497c1f5",
+        "submit_us": 1758128
       },
       "service-a": {
         "claim_stamp_to_entry_job_us": 14562631,
+        "drain_us": 1324088,
+        "enqueue_us": 652807,
         "middle_512_us": 648518,
         "phases_job_us": {
           "first": {
@@ -236,10 +268,13 @@
             "total": 1018399
           }
         },
-        "raw_sha256": "8d9bdfe699878165d7a4cd24a9b06886ef523abfac673006024a6f04f55c8e1f"
+        "raw_sha256": "8d9bdfe699878165d7a4cd24a9b06886ef523abfac673006024a6f04f55c8e1f",
+        "submit_us": 1976895
       },
       "service-b": {
         "claim_stamp_to_entry_job_us": 13231567,
+        "drain_us": 1282944,
+        "enqueue_us": 512338,
         "middle_512_us": 636062,
         "phases_job_us": {
           "first": {
@@ -257,12 +292,15 @@
             "total": 949963
           }
         },
-        "raw_sha256": "a9b35406d77cc5c50e6d4d69c5527fc8e83e57e5c12fdfe0d970cd86b48b62a7"
+        "raw_sha256": "a9b35406d77cc5c50e6d4d69c5527fc8e83e57e5c12fdfe0d970cd86b48b62a7",
+        "submit_us": 1795282
       }
     },
     "5": {
       "direct": {
         "claim_stamp_to_entry_job_us": 13749585,
+        "drain_us": 1291828,
+        "enqueue_us": 614943,
         "middle_512_us": 617818,
         "phases_job_us": {
           "first": {
@@ -280,10 +318,13 @@
             "total": 799638
           }
         },
-        "raw_sha256": "8b8582aa598f977c61e346a735158e9a70c24a2d83867dfcbfd4accd2300c4a5"
+        "raw_sha256": "8b8582aa598f977c61e346a735158e9a70c24a2d83867dfcbfd4accd2300c4a5",
+        "submit_us": 1906771
       },
       "service-a": {
         "claim_stamp_to_entry_job_us": 12780408,
+        "drain_us": 1332609,
+        "enqueue_us": 507770,
         "middle_512_us": 663099,
         "phases_job_us": {
           "first": {
@@ -301,10 +342,13 @@
             "total": 919754
           }
         },
-        "raw_sha256": "1478b7b6401d0c4b16361fe9bd6c2148fcca4356660c280af9b17381fd52c2b6"
+        "raw_sha256": "1478b7b6401d0c4b16361fe9bd6c2148fcca4356660c280af9b17381fd52c2b6",
+        "submit_us": 1840379
       },
       "service-b": {
         "claim_stamp_to_entry_job_us": 14274734,
+        "drain_us": 1364259,
+        "enqueue_us": 507309,
         "middle_512_us": 676348,
         "phases_job_us": {
           "first": {
@@ -322,12 +366,15 @@
             "total": 1046369
           }
         },
-        "raw_sha256": "90cc9a7aac28ecd9371a79f687092b81b26d71f97361c7784fa1cf5f2d437528"
+        "raw_sha256": "90cc9a7aac28ecd9371a79f687092b81b26d71f97361c7784fa1cf5f2d437528",
+        "submit_us": 1871568
       }
     },
     "6": {
       "direct": {
         "claim_stamp_to_entry_job_us": 17829487,
+        "drain_us": 1271964,
+        "enqueue_us": 529432,
         "middle_512_us": 611023,
         "phases_job_us": {
           "first": {
@@ -345,10 +392,13 @@
             "total": 947323
           }
         },
-        "raw_sha256": "f21618bc15ae5ee083090bb7869fd5965c42d0e90c6161ec52992170e18f95ce"
+        "raw_sha256": "f21618bc15ae5ee083090bb7869fd5965c42d0e90c6161ec52992170e18f95ce",
+        "submit_us": 1801396
       },
       "service-a": {
         "claim_stamp_to_entry_job_us": 15157861,
+        "drain_us": 1319998,
+        "enqueue_us": 507654,
         "middle_512_us": 624855,
         "phases_job_us": {
           "first": {
@@ -366,10 +416,13 @@
             "total": 978553
           }
         },
-        "raw_sha256": "28f2fe0623d88f9b9aca349ea6f2598a6127848c45e4d1abf969d058db2545ff"
+        "raw_sha256": "28f2fe0623d88f9b9aca349ea6f2598a6127848c45e4d1abf969d058db2545ff",
+        "submit_us": 1827652
       },
       "service-b": {
         "claim_stamp_to_entry_job_us": 14686878,
+        "drain_us": 1312744,
+        "enqueue_us": 512397,
         "middle_512_us": 643581,
         "phases_job_us": {
           "first": {
@@ -387,7 +440,8 @@
             "total": 999399
           }
         },
-        "raw_sha256": "87e6aa3de9a6e027a183daf1465a833f82da9680a4fadbbbc7de8ee43d37cfda"
+        "raw_sha256": "87e6aa3de9a6e027a183daf1465a833f82da9680a4fadbbbc7de8ee43d37cfda",
+        "submit_us": 1825141
       }
     }
   },
@@ -395,6 +449,8 @@
     "1": {
       "combined": {
         "claim_stamp_to_entry_job_us": 11157200,
+        "drain_us": 837373,
+        "enqueue_us": 160249,
         "middle_512_us": 385654,
         "phases_job_us": {
           "first": {
@@ -412,10 +468,13 @@
             "total": 726066
           }
         },
-        "raw_sha256": "23b68390b78dd37080f6b8290aa4a1d0063dbed2664670e71651664c7c77f19a"
+        "raw_sha256": "23b68390b78dd37080f6b8290aa4a1d0063dbed2664670e71651664c7c77f19a",
+        "submit_us": 997622
       },
       "river-warm": {
         "claim_stamp_to_entry_job_us": 4292266,
+        "drain_us": 715131,
+        "enqueue_us": 72149,
         "middle_512_us": 223286,
         "phases_job_us": {
           "first": {
@@ -433,12 +492,15 @@
             "total": 2014283
           }
         },
-        "raw_sha256": "92cf7a7058e0cfa3deee1069beef14e99b8c11a13b06d755713d614b1853ad5b"
+        "raw_sha256": "92cf7a7058e0cfa3deee1069beef14e99b8c11a13b06d755713d614b1853ad5b",
+        "submit_us": 787280
       }
     },
     "2": {
       "combined": {
         "claim_stamp_to_entry_job_us": 12497401,
+        "drain_us": 866388,
+        "enqueue_us": 191826,
         "middle_512_us": 379946,
         "phases_job_us": {
           "first": {
@@ -456,10 +518,13 @@
             "total": 726997
           }
         },
-        "raw_sha256": "46909cbd230f43ebef4068696e78cd4967aeeb41e076eb99c3aad3b1054c265c"
+        "raw_sha256": "46909cbd230f43ebef4068696e78cd4967aeeb41e076eb99c3aad3b1054c265c",
+        "submit_us": 1058214
       },
       "river-warm": {
         "claim_stamp_to_entry_job_us": 3576747,
+        "drain_us": 698308,
+        "enqueue_us": 80216,
         "middle_512_us": 213276,
         "phases_job_us": {
           "first": {
@@ -477,12 +542,15 @@
             "total": 2168585
           }
         },
-        "raw_sha256": "ec51c1bdab4767b970a3e9acfe078a169050871bf3ae0780c0cc02eca267b045"
+        "raw_sha256": "ec51c1bdab4767b970a3e9acfe078a169050871bf3ae0780c0cc02eca267b045",
+        "submit_us": 778524
       }
     },
     "3": {
       "combined": {
         "claim_stamp_to_entry_job_us": 11114178,
+        "drain_us": 847830,
+        "enqueue_us": 198728,
         "middle_512_us": 363355,
         "phases_job_us": {
           "first": {
@@ -500,10 +568,13 @@
             "total": 690639
           }
         },
-        "raw_sha256": "c8aba3e1d13290a172070f460312a5a8f67e2911f03f0c7ec57c962ade9accb2"
+        "raw_sha256": "c8aba3e1d13290a172070f460312a5a8f67e2911f03f0c7ec57c962ade9accb2",
+        "submit_us": 1046558
       },
       "river-warm": {
         "claim_stamp_to_entry_job_us": 3656161,
+        "drain_us": 698118,
+        "enqueue_us": 72540,
         "middle_512_us": 221470,
         "phases_job_us": {
           "first": {
@@ -521,12 +592,15 @@
             "total": 2181785
           }
         },
-        "raw_sha256": "7564529c9e98831c63e4ce6aa1b6cb2b08b31eaca58ca7add6953d86bb74da9a"
+        "raw_sha256": "7564529c9e98831c63e4ce6aa1b6cb2b08b31eaca58ca7add6953d86bb74da9a",
+        "submit_us": 770658
       }
     },
     "4": {
       "combined": {
         "claim_stamp_to_entry_job_us": 11548897,
+        "drain_us": 879434,
+        "enqueue_us": 162851,
         "middle_512_us": 409400,
         "phases_job_us": {
           "first": {
@@ -544,10 +618,13 @@
             "total": 761364
           }
         },
-        "raw_sha256": "bb2c7612819e6e1c6f30b7b113d380f6a50c06b22a3b5da7828ae2a2f0884443"
+        "raw_sha256": "bb2c7612819e6e1c6f30b7b113d380f6a50c06b22a3b5da7828ae2a2f0884443",
+        "submit_us": 1042285
       },
       "river-warm": {
         "claim_stamp_to_entry_job_us": 3794088,
+        "drain_us": 684688,
+        "enqueue_us": 88221,
         "middle_512_us": 205990,
         "phases_job_us": {
           "first": {
@@ -565,12 +642,15 @@
             "total": 2215417
           }
         },
-        "raw_sha256": "28fffbb6d9169e163d731792bb7d11ed9f2262d3b3a62563ec706016775fc30a"
+        "raw_sha256": "28fffbb6d9169e163d731792bb7d11ed9f2262d3b3a62563ec706016775fc30a",
+        "submit_us": 772909
       }
     },
     "5": {
       "combined": {
         "claim_stamp_to_entry_job_us": 21976666,
+        "drain_us": 1330110,
+        "enqueue_us": 170183,
         "middle_512_us": 726274,
         "phases_job_us": {
           "first": {
@@ -588,10 +668,13 @@
             "total": 1364588
           }
         },
-        "raw_sha256": "6eca28ea2cc3561e88422c044c75a1a68cb9b6675ad56c1e695fe0f5e8e8cd30"
+        "raw_sha256": "6eca28ea2cc3561e88422c044c75a1a68cb9b6675ad56c1e695fe0f5e8e8cd30",
+        "submit_us": 1500293
       },
       "river-warm": {
         "claim_stamp_to_entry_job_us": 4315284,
+        "drain_us": 694448,
+        "enqueue_us": 85669,
         "middle_512_us": 209382,
         "phases_job_us": {
           "first": {
@@ -609,12 +692,15 @@
             "total": 2301364
           }
         },
-        "raw_sha256": "cbd33ccf1d703d60ea169dfb5c59c036112cbb936b2dbf9d0097f263ca743926"
+        "raw_sha256": "cbd33ccf1d703d60ea169dfb5c59c036112cbb936b2dbf9d0097f263ca743926",
+        "submit_us": 780117
       }
     },
     "6": {
       "combined": {
         "claim_stamp_to_entry_job_us": 10894640,
+        "drain_us": 815520,
+        "enqueue_us": 156933,
         "middle_512_us": 365351,
         "phases_job_us": {
           "first": {
@@ -632,10 +718,13 @@
             "total": 673962
           }
         },
-        "raw_sha256": "6abe4b3431e0d69da91ad8fbea840fc363e891c1991b3c50397f8ff01e9c716f"
+        "raw_sha256": "6abe4b3431e0d69da91ad8fbea840fc363e891c1991b3c50397f8ff01e9c716f",
+        "submit_us": 972453
       },
       "river-warm": {
         "claim_stamp_to_entry_job_us": 3781639,
+        "drain_us": 713171,
+        "enqueue_us": 71345,
         "middle_512_us": 227280,
         "phases_job_us": {
           "first": {
@@ -653,7 +742,8 @@
             "total": 2532540
           }
         },
-        "raw_sha256": "2f26656611f97a78d09f7feda63cc49c8d48a37556fb50949bb4a7946fc875c3"
+        "raw_sha256": "2f26656611f97a78d09f7feda63cc49c8d48a37556fb50949bb4a7946fc875c3",
+        "submit_us": 784516
       }
     }
   }

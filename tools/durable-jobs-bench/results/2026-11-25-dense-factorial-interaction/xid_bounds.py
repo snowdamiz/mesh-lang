@@ -57,7 +57,10 @@ def measure(path, digest):
         assert counts["before_min"] + counts["after_max"] == counts["total"]
         assert counts["before_max"] + counts["after_min"] == counts["total"]
     claimed_wait = sum(overlap(job["claimed_us"], job["entered_us"]) for job in jobs)
+    settled = max(job["settled_us"] for job in jobs)
     return dict(raw_sha256=digest, middle_512_us=end - begin, phases_job_us=phases,
+                enqueue_us=origin["committed_us"] - origin["submitted_us"],
+                drain_us=settled - origin["committed_us"], submit_us=settled - origin["submitted_us"],
                 claim_stamp_to_entry_job_us=claimed_wait)
 
 
@@ -76,6 +79,7 @@ def replay():
             file, = WARM.glob(f"blocks/{group:02}-*/measured-{lane}/*/raw.tar.gz")
             lanes[lane] = measure(file, row["raw_sha256"])
             assert lanes[lane]["middle_512_us"] == row["progress"]["second_write"]["middle_512_us"]
+            assert all(lanes[lane][k] == row[k] for k in ("enqueue_us", "drain_us", "submit_us"))
         result["warm_series"][group] = lanes
         block, = (b for b in direct["blocks"] if b["profile"] == "noop" and b["group"] == group)
         lanes = {}
