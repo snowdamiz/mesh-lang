@@ -1,0 +1,13 @@
+{
+  "group": 2,
+  "order": [
+    "hot-sync-b",
+    "hot-ready",
+    "hot-sync-a"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}
