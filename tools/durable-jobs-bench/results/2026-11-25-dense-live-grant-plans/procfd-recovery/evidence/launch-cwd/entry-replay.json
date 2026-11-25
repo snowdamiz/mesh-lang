@@ -1,0 +1,31 @@
+{
+  "kind": "offline_stubs_only",
+  "packet_sha256": "1f5acbeef38ee53e6da91b9af424bdf7a31f73245724a50ab1368a2da82dfef2",
+  "wrapper_sha256": "b8b0990d8f579da6a1d94b63575d8476ea5254588e0c12e781352a11e2f8a930",
+  "source_stderr_sha256": "651a2da0455ca4c958e8db4bbaeff2189ed1c836d94c0893c595184d7a0d98a8",
+  "native_failure_release_sha256": "15e80bcf5e168a1d1a0757733fa2b08d6452b2adb46c3149c3bd4ac8561ee2ab",
+  "failed_wrapper_cwd": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe",
+  "sealed_child_working_directory": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery",
+  "child_argument_vector": [
+    "python3",
+    "-B",
+    "controller.py",
+    "timing"
+  ],
+  "failure": "wrapper root-only assertion before child spawn; native child log empty",
+  "predecessor": "2026-11-25-dense-same-page-wal-retention-retry-groups-1-2",
+  "groups": [
+    1,
+    2
+  ],
+  "staged_files": 27,
+  "stubbed_preflight": 1,
+  "first_dispatch": {
+    "group": 1,
+    "phase": "measured",
+    "lane": "off-a",
+    "engine": "mesh"
+  },
+  "live_hosts_accessed": 0,
+  "live_arms_started": 0
+}
