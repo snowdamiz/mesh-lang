@@ -8,7 +8,7 @@ from replay import LANES, SERIES, read_lane
 
 def budgets():
     release = (SERIES.parent / "timing-adapter-path-retry-release.json").read_bytes()
-    score = (SERIES.parent / "score-replay.json").read_bytes()
+    score = (SERIES.parent / "timing-adapter-path-retry-scores.json").read_bytes()
     assert sha256(release).hexdigest() == "6f0f87de9172b30857001e40ba355e91430b80ed94a62821b56ee3deafa9ea5b"
     assert sha256(score).hexdigest() == "2e2fcf74bd587fa15fa5fa5ebbd1b5c09bf1b86648bb700b52addbf427bb7f26"
     assert json.loads(release)["exit_status"] == 0
