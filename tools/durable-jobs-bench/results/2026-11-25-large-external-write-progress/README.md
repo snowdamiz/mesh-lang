@@ -78,3 +78,18 @@ On the released runtime, the PostgreSQL row reader validates UTF-8 and copies th
 ```sh
 python3 -B confirmed_handler.py "$external_pilot_evidence" | cmp - confirmed-handler.json
 ```
+
+## How many runners need to advance on LARGE
+
+On the two EXTERNAL combined arms, moving every job on just the slowest of the eight runners arbitrarily early, while holding the other seven timelines fixed, could shorten drain by at most **12.173 and 10.665 ms**. The second-latest runner settled at 530.630 and 521.732 ms after enqueue. An improvement to prepared context rendering can affect several runners, since all 64 contexts pass through that code.
+
+| Historical Oban comparison | Forward combined | Reverse combined |
+|---|---:|---:|
+| Drain saving required to tie | 6.577–57.183 ms | −3.829 to +46.777 ms |
+| Drain saving required for a 20% throughput lead | 95.948–138.120 ms | 85.542–127.714 ms |
+| Runners with a durable effect after the 20% deadline | 3–4 | 3–4 |
+| Runners with a terminal commit after the 20% deadline | 4–7 | 4–6 |
+
+Each range uses all five historical stock Oban drains. A negative saving means that combined arm had already met that particular historical time. The five blocks and two arms came from different runs. A prospective treatment still needs same-image controls, an eligible original bridge, and fresh matched peers for a competitive result.
+
+Across eight sessions PostgreSQL recorded 1,907 and 1,770 ms for the top-level PREPARE SELECT, including 154 and 162 calls respectively and 64 returned rows in each arm. The aggregate spans polling, SQL, result handling and waits. It cannot assign a latency or CPU saving to removal of an intermediate JSONB object. The [per-deadline replay](render-budget.json) binds the two original combined captures, all eight runner reports in each, the released pilot score, and the historical peer series. Run `python3 -B render_budget.py | cmp - render-budget.json` from this directory with commit `39f7fae80` available locally.
