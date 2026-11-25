@@ -1,0 +1,23 @@
+{
+  "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+  "exit_status": 0,
+  "export_status_sha256": "8f2504a49362f4a4a2a601051d5cee071f26ef37c7227a2e3ae035ec0996cbd2",
+  "grant": {
+    "end": "2026-11-24T23:55:35Z",
+    "key": "2026-11-24-public-large-file-session-resume",
+    "kind": "SETUP",
+    "start": "2026-11-24T23:30:35Z"
+  },
+  "id": "2026-11-24-public-large-file-session-resume",
+  "member_log_sha256": "95a136d0cc8961c91291a4b1885e70347d6c8b7e88b21ed1c848961577701319",
+  "member_pins_sha256": "721c4e2405f356f2598772a6a51b234040b0762fea361e4663b242b9b8407885",
+  "native_setup_completed_at": "2026-11-24T23:34:30+00:00",
+  "original_pending_sha256": "54c0e74a5b0511159bb89f9d3927907e4829e3d963b0f62ede0ee30baea5f61c",
+  "phase": "setup",
+  "qualification": "authenticated-recovery-of-original-setup",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-public-large-file-session/resume/evidence/native/setup-export-recovered",
+  "recovered_raw_sha256": "b3bab4a1dca4e1b94a3794bde41dcfe937f22a7fb1d35b47504e3d6addd1b383",
+  "recovered_timing_sha256": "b0b9ebf9062ca2b9d5653ee343fe6ccc0a0cb830c446207250a80d50a842ee80",
+  "released_at": "2026-11-25T00:19:03.238732+00:00",
+  "runtime_sha256": "4e81280d27d218a3c1eaba8b10b33455f06280ca2297b48ad0563ddf96873584"
+}
