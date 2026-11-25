@@ -1,0 +1,28 @@
+{
+  "origin": "official-17.11-source",
+  "pkglibdir": "/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/lib",
+  "remote": "/var/lib/durable-jobs-bench/native/dense-live-grant-plans-20261125/auto_explain.so",
+  "sha256": "0f454e61b3f17831fb93fea58c882573b51eedf04fb2d48640a99be25b365e01",
+  "canary": {
+    "postgres": "17.11",
+    "dynamic_library_path": "$libdir",
+    "scoped_role": "parity_subject",
+    "nested_query_keys": [
+      {
+        "queryid": -1916646107537298897,
+        "toplevel": false,
+        "query": "UPDATE public.jobs SET state = state + $2 WHERE id = wanted RETURNING id",
+        "role": "owner",
+        "calls": 1
+      },
+      {
+        "queryid": 3056172097153651345,
+        "toplevel": true,
+        "query": "SELECT grant_one($1)",
+        "role": "parity_subject",
+        "calls": 1
+      }
+    ],
+    "unrelated_sql_ran_without_plan": true
+  }
+}

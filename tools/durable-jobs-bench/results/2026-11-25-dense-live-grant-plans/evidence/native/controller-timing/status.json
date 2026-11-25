@@ -1,0 +1,10 @@
+{
+  "command_finished_at": "2026-11-25T01:42:35.289793+00:00",
+  "exit_status": 1,
+  "id": "2026-11-25-dense-live-grant-plans-timing",
+  "phase": "timing",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/evidence/native",
+  "released_at": "2026-11-25T01:42:35.684548+00:00",
+  "request_sha256": "cff901a29c24f6fe2477a033c5c24f6b8024e7124c3fdc4bd0a739316af2281f",
+  "started": "2026-11-25T01:42:21.361984+00:00"
+}
