@@ -1,0 +1,572 @@
+{
+  "1": {
+    "A1": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3040077,
+        "pre_first_xid_max_job_us": 3037086,
+        "pre_first_xid_min_job_us": 2170929,
+        "span_us": 595431
+      },
+      "phases_us": {
+        "enqueue": 192749,
+        "first_64": 117870,
+        "last_256": 318251,
+        "next_704": 835124,
+        "terminal_tail": 5284
+      },
+      "raw_sha256": "2b9a4197c4f2fb93e17bc299b978083e5d2a346050275f01905a524b201a4bce"
+    },
+    "A2": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3694675,
+        "pre_first_xid_max_job_us": 3692518,
+        "pre_first_xid_min_job_us": 2813326,
+        "span_us": 630643
+      },
+      "phases_us": {
+        "enqueue": 190329,
+        "first_64": 119963,
+        "last_256": 354466,
+        "next_704": 883889,
+        "terminal_tail": 9807
+      },
+      "raw_sha256": "da82d812c7a4b6d60f7cceb3458a932b691c18c623f04fa0970538b8d88b3b26"
+    },
+    "B": {
+      "middle": {
+        "entry_to_first_commit_job_us": 4843525,
+        "pre_first_xid_max_job_us": 4843212,
+        "pre_first_xid_min_job_us": 3788142,
+        "span_us": 507094
+      },
+      "phases_us": {
+        "enqueue": 176553,
+        "first_64": 125442,
+        "last_256": 290482,
+        "next_704": 710588,
+        "terminal_tail": 6078
+      },
+      "raw_sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d"
+    },
+    "apalis": {
+      "middle": {
+        "entry_to_first_commit_job_us": 1650455,
+        "pre_first_xid_max_job_us": 1649069,
+        "pre_first_xid_min_job_us": 444639,
+        "span_us": 402464
+      },
+      "phases_us": {
+        "enqueue": 39632,
+        "first_64": 114614,
+        "last_256": 200000,
+        "next_704": 595490,
+        "terminal_tail": 7670
+      },
+      "raw_sha256": "96d68cf9a3f78a769c6a9a3e01944f898f46d6641ada1a8c334a21bec1b938f5"
+    },
+    "oban": {
+      "middle": {
+        "entry_to_first_commit_job_us": 4242884,
+        "pre_first_xid_max_job_us": 4241630,
+        "pre_first_xid_min_job_us": 1941640,
+        "span_us": 654369
+      },
+      "phases_us": {
+        "enqueue": 139090,
+        "first_64": 192709,
+        "last_256": 338509,
+        "next_704": 958016,
+        "terminal_tail": 6751
+      },
+      "raw_sha256": "4f28b627c0b4863d637eaf0520cfd386746df9105a1b20db0c16c9bdac8fb0df"
+    },
+    "reference": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3091761,
+        "pre_first_xid_max_job_us": 3090244,
+        "pre_first_xid_min_job_us": 2226753,
+        "span_us": 623949
+      },
+      "phases_us": {
+        "enqueue": 184990,
+        "first_64": 102845,
+        "last_256": 349131,
+        "next_704": 860441,
+        "terminal_tail": 8459
+      },
+      "raw_sha256": "1b79a6817cab5d6ee9afc823319af1c7b64a10dc23a5f2e8e6d0589c6c594ef1"
+    },
+    "river": {
+      "middle": {
+        "entry_to_first_commit_job_us": 768530,
+        "pre_first_xid_max_job_us": 692019,
+        "pre_first_xid_min_job_us": 353321,
+        "span_us": 315979
+      },
+      "phases_us": {
+        "enqueue": 77303,
+        "first_64": 170669,
+        "last_256": 115337,
+        "next_704": 610670,
+        "terminal_tail": 241281
+      },
+      "raw_sha256": "1ad05f965ef66c9722999a1715047115bc82c6846db439ee648c6da020fa4d10"
+    }
+  },
+  "2": {
+    "A1": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3509222,
+        "pre_first_xid_max_job_us": 3509167,
+        "pre_first_xid_min_job_us": 2630640,
+        "span_us": 591800
+      },
+      "phases_us": {
+        "enqueue": 186724,
+        "first_64": 126425,
+        "last_256": 327648,
+        "next_704": 827275,
+        "terminal_tail": 12962
+      },
+      "raw_sha256": "a69250d841005240d36e96e7efba723d5dcfcb774083a4c0f8a2f6f10747f986"
+    },
+    "A2": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3151118,
+        "pre_first_xid_max_job_us": 3150659,
+        "pre_first_xid_min_job_us": 2269462,
+        "span_us": 628120
+      },
+      "phases_us": {
+        "enqueue": 189356,
+        "first_64": 127184,
+        "last_256": 342531,
+        "next_704": 865094,
+        "terminal_tail": 8231
+      },
+      "raw_sha256": "3dd829d482d421bf3af4bc6cf5cdfe0f7503986413d0421b14784f883782930a"
+    },
+    "B": {
+      "middle": {
+        "entry_to_first_commit_job_us": 18636492,
+        "pre_first_xid_max_job_us": 18632027,
+        "pre_first_xid_min_job_us": 15355745,
+        "span_us": 1238201
+      },
+      "phases_us": {
+        "enqueue": 179649,
+        "first_64": 164820,
+        "last_256": 363408,
+        "next_704": 1714668,
+        "terminal_tail": 6523
+      },
+      "raw_sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61"
+    },
+    "apalis": {
+      "middle": {
+        "entry_to_first_commit_job_us": 1692649,
+        "pre_first_xid_max_job_us": 1600713,
+        "pre_first_xid_min_job_us": 402984,
+        "span_us": 409198
+      },
+      "phases_us": {
+        "enqueue": 37100,
+        "first_64": 79374,
+        "last_256": 208498,
+        "next_704": 598637,
+        "terminal_tail": 3952
+      },
+      "raw_sha256": "44be01bdeaf24b7cf80c7de5d18abe0ca955183fded88afa618ad451e80554e8"
+    },
+    "oban": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3867121,
+        "pre_first_xid_max_job_us": 3867049,
+        "pre_first_xid_min_job_us": 1553131,
+        "span_us": 650655
+      },
+      "phases_us": {
+        "enqueue": 151837,
+        "first_64": 210562,
+        "last_256": 341683,
+        "next_704": 963254,
+        "terminal_tail": 3795
+      },
+      "raw_sha256": "a09d715b652dacd4c8f95641f852a7d99b6e86d26259ee144a892df7fe5bb8f4"
+    },
+    "reference": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3329896,
+        "pre_first_xid_max_job_us": 3327176,
+        "pre_first_xid_min_job_us": 2419658,
+        "span_us": 590848
+      },
+      "phases_us": {
+        "enqueue": 172012,
+        "first_64": 122424,
+        "last_256": 343243,
+        "next_704": 815951,
+        "terminal_tail": 8920
+      },
+      "raw_sha256": "38167d80e6343e43eaef59b3d64ad10a403ec2a453525fe1de98e76aad2d8ab8"
+    },
+    "river": {
+      "middle": {
+        "entry_to_first_commit_job_us": 515287,
+        "pre_first_xid_max_job_us": 503605,
+        "pre_first_xid_min_job_us": 154200,
+        "span_us": 291171
+      },
+      "phases_us": {
+        "enqueue": 79145,
+        "first_64": 226806,
+        "last_256": 154464,
+        "next_704": 524700,
+        "terminal_tail": 247352
+      },
+      "raw_sha256": "9d2edd45d65c08ea3fea527c4a4e793a192c22cfd6dbd539efa0c40936a5bdef"
+    }
+  },
+  "3": {
+    "A1": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3582623,
+        "pre_first_xid_max_job_us": 3581509,
+        "pre_first_xid_min_job_us": 2666742,
+        "span_us": 604034
+      },
+      "phases_us": {
+        "enqueue": 174689,
+        "first_64": 132046,
+        "last_256": 329175,
+        "next_704": 843583,
+        "terminal_tail": 9679
+      },
+      "raw_sha256": "fcf638a68a652c8da03e991d4b3d863b2ec729308815b249fdf801c6d7d4976e"
+    },
+    "A2": {
+      "middle": {
+        "entry_to_first_commit_job_us": 2996543,
+        "pre_first_xid_max_job_us": 2995597,
+        "pre_first_xid_min_job_us": 2115282,
+        "span_us": 597066
+      },
+      "phases_us": {
+        "enqueue": 177143,
+        "first_64": 113002,
+        "last_256": 343668,
+        "next_704": 839827,
+        "terminal_tail": 13059
+      },
+      "raw_sha256": "4ee7b86623dfd0963f641c93897c8b125c09a0bffd3e545a230c586d911aedf1"
+    },
+    "B": {
+      "middle": {
+        "entry_to_first_commit_job_us": 5742728,
+        "pre_first_xid_max_job_us": 5739959,
+        "pre_first_xid_min_job_us": 4633876,
+        "span_us": 525532
+      },
+      "phases_us": {
+        "enqueue": 214159,
+        "first_64": 116708,
+        "last_256": 282756,
+        "next_704": 732467,
+        "terminal_tail": 7400
+      },
+      "raw_sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3"
+    },
+    "apalis": {
+      "middle": {
+        "entry_to_first_commit_job_us": 1703249,
+        "pre_first_xid_max_job_us": 1702203,
+        "pre_first_xid_min_job_us": 488917,
+        "span_us": 420454
+      },
+      "phases_us": {
+        "enqueue": 40143,
+        "first_64": 92633,
+        "last_256": 177842,
+        "next_704": 580379,
+        "terminal_tail": 25946101
+      },
+      "raw_sha256": "7b46f4ed9d9cfd087ed914b4fcbf6d600bf3048d8b27f6cceeec3fed5b48dd6a"
+    },
+    "oban": {
+      "middle": {
+        "entry_to_first_commit_job_us": 4307084,
+        "pre_first_xid_max_job_us": 4306073,
+        "pre_first_xid_min_job_us": 2067115,
+        "span_us": 670491
+      },
+      "phases_us": {
+        "enqueue": 141633,
+        "first_64": 138766,
+        "last_256": 351528,
+        "next_704": 1052456,
+        "terminal_tail": 3485
+      },
+      "raw_sha256": "b2ce1ae8e442520ffe0ee40a3002664efd1027cce1ff48cbbfe74daff4381091"
+    },
+    "reference": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3120692,
+        "pre_first_xid_max_job_us": 3118179,
+        "pre_first_xid_min_job_us": 2256141,
+        "span_us": 609182
+      },
+      "phases_us": {
+        "enqueue": 200480,
+        "first_64": 111273,
+        "last_256": 348010,
+        "next_704": 857794,
+        "terminal_tail": 9395
+      },
+      "raw_sha256": "9a87ce0130b261d4c752494af328f66325fe925b9c81b68d4986e2d2133420f4"
+    },
+    "river": {
+      "middle": {
+        "entry_to_first_commit_job_us": 559089,
+        "pre_first_xid_max_job_us": 533685,
+        "pre_first_xid_min_job_us": 174765,
+        "span_us": 298117
+      },
+      "phases_us": {
+        "enqueue": 79860,
+        "first_64": 238410,
+        "last_256": 123620,
+        "next_704": 529378,
+        "terminal_tail": 228925
+      },
+      "raw_sha256": "7118aa8cdf7b11a55137cc55e04d5ebd6c1843a27e225b2ca89a3a22b1e04578"
+    }
+  },
+  "4": {
+    "A1": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3113570,
+        "pre_first_xid_max_job_us": 3110112,
+        "pre_first_xid_min_job_us": 2223351,
+        "span_us": 616294
+      },
+      "phases_us": {
+        "enqueue": 171413,
+        "first_64": 115755,
+        "last_256": 304121,
+        "next_704": 857481,
+        "terminal_tail": 15481
+      },
+      "raw_sha256": "978118e93f2f734b1df9690608b3ed27e913e9d7e6813085488b39e235312860"
+    },
+    "A2": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3111084,
+        "pre_first_xid_max_job_us": 3107689,
+        "pre_first_xid_min_job_us": 2256815,
+        "span_us": 605357
+      },
+      "phases_us": {
+        "enqueue": 172013,
+        "first_64": 133468,
+        "last_256": 335468,
+        "next_704": 864197,
+        "terminal_tail": 17418
+      },
+      "raw_sha256": "df1d5ee48d8c52d9b3bb29e9b07ab5caa8acf403a30b6d05dcba3b77bdf0824d"
+    },
+    "B": {
+      "middle": {
+        "entry_to_first_commit_job_us": 5422789,
+        "pre_first_xid_max_job_us": 5421957,
+        "pre_first_xid_min_job_us": 4338958,
+        "span_us": 537845
+      },
+      "phases_us": {
+        "enqueue": 237861,
+        "first_64": 128804,
+        "last_256": 304522,
+        "next_704": 747453,
+        "terminal_tail": 3960
+      },
+      "raw_sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598"
+    },
+    "apalis": {
+      "middle": {
+        "entry_to_first_commit_job_us": 1359135,
+        "pre_first_xid_max_job_us": 1343929,
+        "pre_first_xid_min_job_us": 276183,
+        "span_us": 408791
+      },
+      "phases_us": {
+        "enqueue": 37572,
+        "first_64": 90827,
+        "last_256": 185943,
+        "next_704": 589046,
+        "terminal_tail": 6636
+      },
+      "raw_sha256": "436765e700659fd5a262c99f65c84306c7688b0bc5818a5420ad5c34d168ec4d"
+    },
+    "oban": {
+      "middle": {
+        "entry_to_first_commit_job_us": 4036701,
+        "pre_first_xid_max_job_us": 4036701,
+        "pre_first_xid_min_job_us": 1781298,
+        "span_us": 634729
+      },
+      "phases_us": {
+        "enqueue": 151513,
+        "first_64": 229033,
+        "last_256": 325583,
+        "next_704": 942985,
+        "terminal_tail": 1613
+      },
+      "raw_sha256": "4717674f927f06cd14fff7b2bc34db75274234cf3eff814d0c97255ecfa6664a"
+    },
+    "reference": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3188791,
+        "pre_first_xid_max_job_us": 3186559,
+        "pre_first_xid_min_job_us": 2309390,
+        "span_us": 600009
+      },
+      "phases_us": {
+        "enqueue": 178438,
+        "first_64": 121241,
+        "last_256": 331230,
+        "next_704": 853607,
+        "terminal_tail": 8692
+      },
+      "raw_sha256": "1c485f1c86422355daef1c2a31c80d748bc637cae8564311b401cd0923b1ca75"
+    },
+    "river": {
+      "middle": {
+        "entry_to_first_commit_job_us": 507285,
+        "pre_first_xid_max_job_us": 491167,
+        "pre_first_xid_min_job_us": 183771,
+        "span_us": 279993
+      },
+      "phases_us": {
+        "enqueue": 76869,
+        "first_64": 220793,
+        "last_256": 127561,
+        "next_704": 535791,
+        "terminal_tail": 244987
+      },
+      "raw_sha256": "46344afee41bc4b14aae8e9d01f678c14bbc4d4104c57c724150dd83f3506cf8"
+    }
+  },
+  "5": {
+    "A1": {
+      "middle": {
+        "entry_to_first_commit_job_us": 2963955,
+        "pre_first_xid_max_job_us": 2957933,
+        "pre_first_xid_min_job_us": 2135733,
+        "span_us": 600732
+      },
+      "phases_us": {
+        "enqueue": 171977,
+        "first_64": 116755,
+        "last_256": 340535,
+        "next_704": 829950,
+        "terminal_tail": 7706
+      },
+      "raw_sha256": "8131d66a50a3e91bb14ca9ffdf1ebaea9698ca54ecdd00c377a73cabb7c1daac"
+    },
+    "A2": {
+      "middle": {
+        "entry_to_first_commit_job_us": 4218025,
+        "pre_first_xid_max_job_us": 4215471,
+        "pre_first_xid_min_job_us": 3108232,
+        "span_us": 759900
+      },
+      "phases_us": {
+        "enqueue": 184148,
+        "first_64": 116692,
+        "last_256": 415847,
+        "next_704": 1092208,
+        "terminal_tail": 13768
+      },
+      "raw_sha256": "c06f1ab7f24c8ba03ec599f08dbec271138c84fe8f2524b95809ce6df0bfe472"
+    },
+    "B": {
+      "middle": {
+        "entry_to_first_commit_job_us": 5661176,
+        "pre_first_xid_max_job_us": 5660771,
+        "pre_first_xid_min_job_us": 4548846,
+        "span_us": 534268
+      },
+      "phases_us": {
+        "enqueue": 204933,
+        "first_64": 128213,
+        "last_256": 305814,
+        "next_704": 749810,
+        "terminal_tail": 11295
+      },
+      "raw_sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175"
+    },
+    "apalis": {
+      "middle": {
+        "entry_to_first_commit_job_us": 1498740,
+        "pre_first_xid_max_job_us": 1495341,
+        "pre_first_xid_min_job_us": 455739,
+        "span_us": 396967
+      },
+      "phases_us": {
+        "enqueue": 39962,
+        "first_64": 108987,
+        "last_256": 193810,
+        "next_704": 581636,
+        "terminal_tail": 8559
+      },
+      "raw_sha256": "27a02c8667aeaeb7c4c441499064c675539c519c49e3f4ff77c748ea242611c9"
+    },
+    "oban": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3689290,
+        "pre_first_xid_max_job_us": 3689174,
+        "pre_first_xid_min_job_us": 1540138,
+        "span_us": 640643
+      },
+      "phases_us": {
+        "enqueue": 150676,
+        "first_64": 145296,
+        "last_256": 346607,
+        "next_704": 938606,
+        "terminal_tail": 4628
+      },
+      "raw_sha256": "da327771f7dd3e8d19e9045b33d12534ea2511fbb2219846286f325546c9796d"
+    },
+    "reference": {
+      "middle": {
+        "entry_to_first_commit_job_us": 3794870,
+        "pre_first_xid_max_job_us": 3786287,
+        "pre_first_xid_min_job_us": 2858242,
+        "span_us": 625065
+      },
+      "phases_us": {
+        "enqueue": 172453,
+        "first_64": 137122,
+        "last_256": 330160,
+        "next_704": 868960,
+        "terminal_tail": 6420
+      },
+      "raw_sha256": "0a22aef8912f74e1ed22987b2e7a6910f343e68d6c4ce3fe1c37d96203e64a06"
+    },
+    "river": {
+      "middle": {
+        "entry_to_first_commit_job_us": 492494,
+        "pre_first_xid_max_job_us": 463277,
+        "pre_first_xid_min_job_us": 185153,
+        "span_us": 295719
+      },
+      "phases_us": {
+        "enqueue": 73140,
+        "first_64": 258642,
+        "last_256": 118145,
+        "next_704": 497118,
+        "terminal_tail": 196593
+      },
+      "raw_sha256": "b35594b0d3455275962b9e6fd5b01b3ba5ddad0f4c073d7e044a79abead1840a"
+    }
+  }
+}
