@@ -370,6 +370,37 @@ B led Oban on both clocks in both rotations. River and Apalis led B on both cloc
 
 The mirrored admission pilot used hot checked-individual duplicates A1/A2 and hot candidate B. Pilot C kept application checkout checks on B's grouped route and shared the ELF and warmed session count. Both pilot gates passed. The scored forward peer block came from the 06:04 exit-1 capture. The seven arms from its interrupted reverse block remain archived, including B's warmup flagged for overlapping apt-get. The 06:15:10 exit-0 continuation supplied the entire fresh reverse block. [Pilot and custody](../2026-11-25-public-dense-8x8/path-recovery/README.md) · [Peer clock and roster audit](../2026-11-25-public-dense-8x8/path-recovery/peer-stage-recovery/reverse-continuation/evidence/peers/clock-and-roster.json) · [Reverse continuation and retained failure](../2026-11-25-public-dense-8x8/path-recovery/peer-stage-recovery/reverse-continuation/README.md)
 
+## Public dense eight-runner late capacity
+
+5/5 matched rotations. Five fresh rotations of 1,024 jobs use eight 8-slot runners per lane on CPUs 0 and 1. B and the two off controls share the qualified 839c4f32 ELF. The public grouped-hot bridge keeps ELF 4924b588. Rates and paired changes are medians. [Interactive results](chart.html#public-dense-8x8-late-capacity)
+
+| Lane | Submit jobs/s | Drain jobs/s | Mesh B paired submit change (wins) | Mesh B paired drain change (wins) |
+|---|---:|---:|---:|---:|
+| Mesh B · late capacity | 731.39 | 864.33 | — | — |
+| Mesh A1 · off | 696.94 | 791.16 | +4.78% (4/5) | +9.12% (4/5) |
+| Mesh A2 · off | 668.23 | 758.21 | +9.84% (4/5) | +14.94% (4/5) |
+| Public grouped-hot reference | 680.01 | 775.24 | +8.22% (4/5) | +12.34% (4/5) |
+| Stock Go River | 849.09 | 906.89 | -15.23% (0/5) | -4.69% (1/5) |
+| Stock Elixir Oban | 620.33 | 683.02 | +16.04% (4/5) | +26.54% (4/5) |
+| Stock Rust Apalis | 1,097.59 | 1,146.71 | -33.36% (1/5) | -25.28% (1/5) |
+
+Paired last durable application effect, comparison lane minus B in milliseconds. Positive values mean B reached the last effect sooner. Cells give median (min to max).
+
+| Lane | From submit | From enqueue commit |
+|---|---:|---:|
+| Mesh A1 · off | +70.4 (-954.5 to +160.9) | +103.4 (-961.5 to +172.9) |
+| Mesh A2 · off | +127.5 (-898.4 to +420.1) | +164.6 (-908.1 to +440.9) |
+| Public grouped-hot reference | +119.9 (-968.9 to +194.3) | +152.4 (-961.3 to +185.9) |
+| Stock Go River | -441.7 (-1437.4 to -329.1) | -296.6 (-1336.9 to -229.8) |
+| Stock Elixir Oban | +230.5 (-755.2 to +338.3) | +316.8 (-727.4 to +410.8) |
+| Stock Rust Apalis | -464.4 (-1498.9 to -353.3) | -299.4 (-1356.4 to -216.4) |
+
+The original peer gate requires both clocks to favor the same lane in every rotation. Every gap must exceed the larger of 5% of the peer time and the same-image control spread, with B inside the runner, PostgreSQL and host CPU bounds. Outcomes were **River inconclusive, Oban inconclusive, Apalis inconclusive**. B met the CPU bounds in 4/5 rotations. The additional late-capacity gate passed only in rotations 1, 3.
+
+Rotation 2 remains scored. Mesh B took 2.429 s from submit and recorded 14.73% I/O wait with 0.00% CPU steal. Its CPU use exceeded the higher off control for runner, PostgreSQL and host CPU (1,459 vs 1,332, 1,860 vs 1,680, 3,420 vs 2,930 CPU-ms, respectively). Rotation 3 also remains scored. Apalis's final settlement came 25.946 s after its last application effect committed.
+
+The two mirrored admission pilot rotations used B, both same-image off controls and the public grouped-hot bridge. Both pilot gates passed. The peer table uses the five fresh rotations. [Pilot and proof](../2026-11-25-public-dense-late-capacity/README.md) · [Peer release and archive summary](../2026-11-25-public-dense-late-capacity/peer-comparison/evidence/summary.json)
+
 ## Short jobs with combined settlement and refill
 
 2/5 matched rotations. The initial two rotations use opposite orders. The three additional rotations require both fused copies to improve both clocks against their paired and public controls in each pilot rotation.

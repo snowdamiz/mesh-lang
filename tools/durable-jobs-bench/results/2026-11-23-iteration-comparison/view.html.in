@@ -49,6 +49,8 @@ const measures={
  first_submit_to_commit_ms:["First submission to commit","ms","Producer latency through the first durable enqueue commit."],
  submit_to_last_settlement_ms:["Submission to last settlement","ms","Elapsed time from producer submission to the last durable settlement."],
  commit_to_last_settlement_ms:["First commit to last settlement","ms","Elapsed time from first durable enqueue commit to the last durable settlement."],
+ submit_to_last_effect_ms:["Submission to last application commit","ms","Elapsed time from producer submission to the last durable second application write."],
+ commit_to_last_effect_ms:["First commit to last application commit","ms","Elapsed time from first durable enqueue commit to the last durable second application write."],
  commit_to_pickup_p99_ms:["Pickup p99 from commit","ms","Each arm contributes its own 99th percentile."],
  runner_cpu_ms_per_job:["Runner CPU per job","ms/job","CPU charged to the runner process trees. PostgreSQL CPU is separate."],
  peak_runner_rss_bytes:["Peak runner RSS","MiB","Sampled sum of resident memory in the runner process trees. Shared pages can count once per process."],
@@ -93,6 +95,7 @@ const seriesNames={
  "dense-fixed8-logical-peers":{combined:"Mesh · fixed8 + d388","river-2x32":"Go River · stock, opens sessions during drain"},
  "dense-fixed8-river-readiness":{combined:"Mesh · fixed8 + d388","river-2x32":"Go River · stock","river-cold":"Go River · rebuilt lazy","river-warm":"Go River · rebuilt prewarmed"},
  "public-dense-8x8-fixed8":{B:"Public Mesh · B fixed8 + d388",A1:"Public Mesh · A1 checked-individual",A2:"Public Mesh · A2 checked-individual"},
+ "public-dense-8x8-late-capacity":{B:"Mesh · late capacity",A1:"Mesh · off A1",A2:"Mesh · off A2",reference:"Public Mesh · grouped-hot reference"},
  "public-dense-individual-hot-checkout":{hot:"Mesh · hot checkout","checked-a":"Mesh · checked A","checked-b":"Mesh · checked B"}
 };
 function draw() {
@@ -144,7 +147,7 @@ function chooseSeries() {
  const priorMetric=metric.value;
  const first=b[0].scores[b[0].order[0]];
  metric.replaceChildren(...Object.entries(measures)
-   .filter(([key])=>!key.endsWith("_to_last_settlement_ms")||key in first)
+   .filter(([key])=>!/to_last_(settlement|effect)_ms$/.test(key)||key in first)
    .map(([key,m])=>option(key,m[0])));
  if([...metric.options].some(o=>o.value===priorMetric))metric.value=priorMetric;
  for (const [id,label] of Object.entries(workloads)) if(b.some(row=>row.profile===id))profile.add(option(id,label));
