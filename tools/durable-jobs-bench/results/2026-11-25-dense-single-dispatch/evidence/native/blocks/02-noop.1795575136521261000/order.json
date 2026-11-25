@@ -1,0 +1,14 @@
+{
+  "group": 2,
+  "order": [
+    "stock-b",
+    "single-two",
+    "single-four",
+    "stock-a"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "noop"
+}
