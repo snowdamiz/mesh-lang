@@ -1,0 +1,122 @@
+{
+  "dense": {
+    "plan-key": {
+      "raw_sha256": "d758c4d30c537000b797b8ff8bf96e5a7543c51eb997ae4bf879389738671e4c",
+      "statements": {
+        "lock": {
+          "calls": 1024,
+          "filtered_rows": 0,
+          "paths": [
+            {
+              "id_in_condition": true,
+              "index": "jobs_pkey",
+              "samples": 1024
+            }
+          ],
+          "scan_hits": 4064
+        },
+        "update": {
+          "calls": 1024,
+          "filtered_rows": 0,
+          "paths": [
+            {
+              "id_in_condition": true,
+              "index": "jobs_pkey",
+              "samples": 1024
+            }
+          ],
+          "scan_hits": 4042
+        }
+      }
+    },
+    "plan-stock": {
+      "raw_sha256": "70bf8563e53ceecb03e3cb08d0d95bb534312cd222da25750a3bf120631df309",
+      "statements": {
+        "lock": {
+          "calls": 1024,
+          "filtered_rows": 0,
+          "paths": [
+            {
+              "id_in_condition": true,
+              "index": "jobs_pkey",
+              "samples": 1024
+            }
+          ],
+          "scan_hits": 4091
+        },
+        "update": {
+          "calls": 1024,
+          "filtered_rows": 0,
+          "paths": [
+            {
+              "id_in_condition": true,
+              "index": "jobs_pkey",
+              "samples": 1024
+            }
+          ],
+          "scan_hits": 4089
+        }
+      }
+    }
+  },
+  "slow": {
+    "plan-key": {
+      "raw_sha256": "3a65f96121ec0119f519bb16c42e0500500bbd45dcc6fab740194415a5c4c5cd",
+      "statements": {
+        "lock": {
+          "calls": 512,
+          "filtered_rows": 130614,
+          "paths": [
+            {
+              "id_in_condition": false,
+              "index": "mesh_jobs_unique_candidates",
+              "samples": 512
+            }
+          ],
+          "scan_hits": 10510
+        },
+        "update": {
+          "calls": 512,
+          "filtered_rows": 261632,
+          "paths": [
+            {
+              "id_in_condition": false,
+              "index": "mesh_jobs_unique_candidates",
+              "samples": 512
+            }
+          ],
+          "scan_hits": 40305
+        }
+      }
+    },
+    "plan-stock": {
+      "raw_sha256": "d69e3b7ae5af51b220cc06a0db894c5b8f1f30523b24668d93af42ee24be8cb7",
+      "statements": {
+        "lock": {
+          "calls": 512,
+          "filtered_rows": 130711,
+          "paths": [
+            {
+              "id_in_condition": false,
+              "index": "mesh_jobs_unique_candidates",
+              "samples": 512
+            }
+          ],
+          "scan_hits": 15370
+        },
+        "update": {
+          "calls": 512,
+          "filtered_rows": 261632,
+          "paths": [
+            {
+              "id_in_condition": false,
+              "index": "mesh_jobs_unique_candidates",
+              "samples": 512
+            }
+          ],
+          "scan_hits": 69220
+        }
+      }
+    }
+  }
+}
