@@ -1,0 +1,6 @@
+{
+  "compiler": "/var/lib/durable-jobs-bench/native/toolchain/slow-river-readiness-go1.26.4-4fecd8ce88115826/go/bin/go",
+  "compiler_sha256": "86b748c64de0175db601f56805251f3b08cd12bffb927ad5c68ef8497c50c7ba",
+  "module_cache": "/var/lib/durable-jobs-bench/native/toolchain/slow-river-readiness-go1.26.4-4fecd8ce88115826/mod",
+  "request_sha256": "80546f35b75be008244d515bb257592b9ed7ef252b2bc6fe2e13f13799a3f545"
+}
