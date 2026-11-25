@@ -1,0 +1,46 @@
+{
+  "artifact": {
+    "architecture": "x86_64",
+    "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+    "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+    "cc": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+    "compiler_sha256": "e023d5944764878969ca40b7edb59c779498a435b44d308776076f4c7f2e8c19",
+    "execution_contract": "ordinary-trusted-shared-process-v2",
+    "files": {
+      "libworker_identity.a": "adcb475dbad943e5807543e992d64decba5e15f78923b2811df12f44a1726270",
+      "main.mpl": "1273ba6b01002d4c0a11a83cf827f7f83b412ff6d7c078cbfe8f21d77e8267e0",
+      "mesh": "c8791a99653335b4a814d66e2842d21099fcfbed676145f6a6d950766a847aa9",
+      "mesh.toml": "64bbe65a533a942753a2bfe8fa5fd4e025a1fa9f4a8dbf25d82ad22ad4137325",
+      "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+      "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+      "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+    },
+    "meshc": "meshc 0.1.8",
+    "runtime_sha256": "bd1dcb39e6d87c398e60cd83e3def8e8df1ab6a283f3156aa16d89325aa7ee1c",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.0\nLLVM version: 23.1.1",
+    "source_sha256": "01de6fef884898606039951edd04ffd4ca230156e9a190545e733fbe9046c45d",
+    "system": "Linux",
+    "version": "f3b3612d99473af58c228228b3b32befb11672c2"
+  },
+  "installed": {
+    "/var/lib/durable-jobs-bench/native/source-public-large-exact-prepare-f3b3612d9947/adapter/backend.py": "392b825755b1706ccb6cbf2f87ccaf0e179210d7bccb386c683aaf645dc07fd6",
+    "/var/lib/durable-jobs-bench/native/source-public-large-exact-prepare-f3b3612d9947/adapter/identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "/var/lib/durable-jobs-bench/native/source-public-large-exact-prepare-f3b3612d9947/adapter/native-run": "67046f5eb71cdabe43460c5b9b59430aeb16ccf8a12592b8903ad1377c0ecc0b",
+    "/var/lib/durable-jobs-bench/native/source-public-large-exact-prepare-f3b3612d9947/adapter/product_arm.py": "b7253e622051a033050b3e79afab73cd11c4c61cb0bf1dedd06303b8facdce24",
+    "/var/lib/durable-jobs-bench/native/source-public-large-exact-prepare-f3b3612d9947/artifact/mesh.json": "6a5c2393c3282db56e29dc10401e5d99bd002ff976ec6cbf3446fdd1fda8c0f1",
+    "/var/lib/durable-jobs-bench/native/source-public-large-exact-prepare-f3b3612d9947/pg17_lock_exact.so": "04f47d5d6b89d92bc03b6a7eccd39ce4a356ca88bc0bf4a9bd5ba68401198888",
+    "/var/lib/durable-jobs-bench/native/source-public-large-exact-prepare-f3b3612d9947/source/compiler/mesh-rt/src/jobs/prepare_claim_install.sql": "0d7941cc87e81ddedb2322b5e2516846cdd0c4927ca6a6b4379f48365c970658",
+    "/var/lib/durable-jobs-bench/native/source-public-large-exact-prepare-f3b3612d9947/source/compiler/mesh-rt/src/jobs/prepare_claim_remove.sql": "8109ddd18fcc264a578ad9e9c885d8164f28d54141e74f39b9bb4a20f234af21",
+    "/var/lib/durable-jobs-bench/native/source-public-large-exact-prepare-f3b3612d9947/source/compiler/mesh-rt/src/jobs/prepare_claim_schema.sql": "08d08dc1e068175b75eb61c16ed6658d24745162147ab4a66705e0463c2b11c9"
+  },
+  "raw_sha256": "695d472fe91a6a96e9e5439b8a964c80da0aef3181c3b9bdb19cbfc0abf2351b",
+  "smoke": {
+    "drain_us": 515557,
+    "enqueue_us": 1548584,
+    "last_confirmed_us": 460979,
+    "last_stamp_us": 449796,
+    "submit_us": 2064141,
+    "temp_bytes": 33583726,
+    "temp_files": 8
+  }
+}
