@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import runpy
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from statistics import median
 import subprocess
@@ -741,20 +742,34 @@ def add_dense_river_readiness(lines, series):
     for a, b in zip(submit["blocks"], drain["blocks"], strict=True):
         leads = (a["mesh_us"] - a["warm_us"], a["threshold_us"], b["mesh_us"] - b["warm_us"], b["threshold_us"])
         lines.append(f"| {a['group']} | " + " | ".join(f"{value / 1000:.2f}" for value in leads) + " |")
+    lines.extend(["", "Paired elapsed-time differences, median (min to max) in milliseconds.", "",
+                  "| Comparison | Submit | Drain |", "|---|---:|---:|"])
+    for field, label in (("cold_minus_warm_us", "Time saved by warming the same River ELF"),
+                         ("stock_minus_cold_us", "Frozen stock minus rebuilt-lazy River")):
+        cells = []
+        for clock in (submit, drain):
+            times = clock["summary"][field]
+            mid, low, high = (Decimal(times[key]).quantize(Decimal(1), rounding=ROUND_HALF_UP) / 1000
+                              for key in ("median", "min", "max"))
+            cells.append(f"{mid:+.3f} ({low:+.3f} to {high:+.3f})")
+        lines.append("| " + " | ".join([label, *cells]) + " |")
     pairs = [(b["scores"]["river-cold"]["startup"], b["scores"]["river-warm"]["startup"]) for b in series["blocks"]]
     launch = "runner_launch_to_ready_us"
     through = "runner_launch_through_settlement_us"
     ready_ms = [median(row[i][launch] for row in pairs) / 1000 for i in (0, 1)]
+    ready_delta = median(warm[launch] - cold[launch] for cold, warm in pairs) / 1000
     launch_delta = median(warm[through] - cold[through] for cold, warm in pairs) / 1000
+    group_five, = (b["scores"]["combined"] for b in series["blocks"] if b["group"] == 5)
     lines.extend(["", "Mesh had **41 idle total sessions**, including 32 warmed application TLS sessions. "
                   "Prewarmed River had **67 idle total sessions**, with 32 shared-pool sessions and one listener "
                   "per runner, plus the observer. Stock and rebuilt-lazy River each started with seven idle sessions.", "",
                   f"River runner launch to readiness took a median {ready_ms[0]:.1f} ms in lazy mode and "
-                  f"{ready_ms[1]:.1f} ms in prewarmed mode. Including the common idle window, the paired median "
-                  f"prewarmed-minus-lazy difference from runner launch through settlement was {launch_delta:+.1f} ms. "
+                  f"{ready_ms[1]:.1f} ms in prewarmed mode. Warming added a paired median {ready_delta:.3f} ms to "
+                  f"readiness and {launch_delta:.3f} ms from runner launch through settlement, including the common idle window. "
                   "Mesh has no matching runner-launch timestamp. The cross-engine gates use the submit and drain clocks.", "",
-                  "All six rotations contribute to the table and medians, including group 5. "
-                  "[Releases and native startup replay](../2026-11-25-dense-fixed8-river-readiness/evidence/native/README.md)", ""])
+                  f"Group 5 remains scored. Mesh recorded {group_five['cpu_iowait_percent']:.2f}% I/O wait and "
+                  f"{group_five['cpu_steal_percent']:.2f}% CPU steal in that rotation. "
+                  "[Native result and independent release audit](../2026-11-25-dense-fixed8-river-readiness/NATIVE-RESULTS.md)", ""])
 
 
 def write_scorecard(data):

@@ -340,11 +340,18 @@ The sealed gate requires all six gaps to have the same sign and each absolute ga
 | 5 | 720.18 | 39.01 | 635.66 | 34.72 |
 | 6 | 187.94 | 39.23 | 102.35 | 35.66 |
 
+Paired elapsed-time differences, median (min to max) in milliseconds.
+
+| Comparison | Submit | Drain |
+|---|---:|---:|
+| Time saved by warming the same River ELF | +241.358 (+217.835 to +276.158) | +243.539 (+204.746 to +277.431) |
+| Frozen stock minus rebuilt-lazy River | +9.333 (-31.587 to +31.488) | +12.260 (-22.756 to +24.957) |
+
 Mesh had **41 idle total sessions**, including 32 warmed application TLS sessions. Prewarmed River had **67 idle total sessions**, with 32 shared-pool sessions and one listener per runner, plus the observer. Stock and rebuilt-lazy River each started with seven idle sessions.
 
-River runner launch to readiness took a median 56.4 ms in lazy mode and 314.7 ms in prewarmed mode. Including the common idle window, the paired median prewarmed-minus-lazy difference from runner launch through settlement was +29.5 ms. Mesh has no matching runner-launch timestamp. The cross-engine gates use the submit and drain clocks.
+River runner launch to readiness took a median 56.4 ms in lazy mode and 314.7 ms in prewarmed mode. Warming added a paired median 267.002 ms to readiness and 29.466 ms from runner launch through settlement, including the common idle window. Mesh has no matching runner-launch timestamp. The cross-engine gates use the submit and drain clocks.
 
-All six rotations contribute to the table and medians, including group 5. [Releases and native startup replay](../2026-11-25-dense-fixed8-river-readiness/evidence/native/README.md)
+Group 5 remains scored. Mesh recorded 11.71% I/O wait and 0.00% CPU steal in that rotation. [Native result and independent release audit](../2026-11-25-dense-fixed8-river-readiness/NATIVE-RESULTS.md)
 
 ## Short jobs with combined settlement and refill
 
