@@ -1,0 +1,21 @@
+{
+  "app_insert_calls": 3,
+  "final": {
+    "attempt": 1,
+    "attempts": [
+      "773"
+    ],
+    "effect": "774",
+    "expiry": null,
+    "key": "next",
+    "state": "completed",
+    "token": null,
+    "xid": "775"
+  },
+  "wire": {
+    "command": "INSERT 0 1",
+    "idle": true,
+    "receipt_dropped": true,
+    "rows": 0
+  }
+}

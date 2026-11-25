@@ -1,0 +1,102 @@
+{
+  "gates": {
+    "core-workspace": {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 0,
+      "passed_per_suite": [
+        334,
+        21,
+        26,
+        1,
+        9,
+        4,
+        17,
+        174,
+        5,
+        23,
+        40,
+        19,
+        1,
+        111,
+        1,
+        8,
+        57,
+        314,
+        136,
+        2,
+        57,
+        10,
+        1,
+        113,
+        23,
+        11,
+        24,
+        1,
+        37,
+        83,
+        19,
+        4,
+        1,
+        10,
+        43,
+        23,
+        10,
+        3,
+        9,
+        7,
+        14,
+        6,
+        9,
+        70,
+        19,
+        27,
+        11,
+        2,
+        36,
+        1,
+        17,
+        8,
+        4,
+        1,
+        1
+      ],
+      "raw_sha256": "3b2c2c3e84c73ae2a3b52e1f75b74ad72c804764eea448cbb7bfe617a5445bc4"
+    },
+    "exact-workspace-build": {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 0,
+      "passed_per_suite": [],
+      "raw_sha256": "cba9b20617395a3fd21b94a28098e099263fde823862fff7b64cec61c04e080a"
+    },
+    "postgres-gate": {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 6,
+      "passed_per_suite": [
+        39,
+        80,
+        3
+      ],
+      "raw_sha256": "5b20288237d7047d83693d0d63ee07511574fe1c1675a6b4d549f27e0bf6ac54"
+    },
+    "runtime-workspace": {
+      "exit": 0,
+      "failed": 0,
+      "ignored": 58,
+      "passed_per_suite": [
+        1,
+        1605,
+        2,
+        1
+      ],
+      "raw_sha256": "676f127041769fbe5b34221a808cb5402b05205bf0ef0fdde8e5fe1c360c3415"
+    }
+  },
+  "host": "darwin-arm64",
+  "patch_sha256": "04dbcb920a031d846ff48fa6cfbbbc388fde05b5349c0e47c06179a263b16c08",
+  "postgres": "17.11",
+  "source": "1e70f18d624a841740d3bbb3d0fd09b269257f68",
+  "untimed_cases": 17
+}

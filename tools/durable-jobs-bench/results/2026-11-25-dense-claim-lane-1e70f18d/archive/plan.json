@@ -1,0 +1,64 @@
+{
+  "blocks": [
+    {
+      "group": 1,
+      "order": [
+        "checked-a",
+        "river-2x32",
+        "apalis-2x32",
+        "hot",
+        "checked-b",
+        "oban-2x32"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 2,
+      "order": [
+        "oban-2x32",
+        "checked-b",
+        "hot",
+        "apalis-2x32",
+        "river-2x32",
+        "checked-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "gate": {
+    "minimum_faster_control_elapsed_fraction": 0.05,
+    "minimum_groups": 2,
+    "require_earlier_last_effect": true,
+    "total_groups": 2
+  },
+  "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+  "modes": {
+    "checked-a": false,
+    "checked-b": false,
+    "hot": true
+  },
+  "topology": {
+    "cpus": [
+      0,
+      1
+    ],
+    "mesh_application_sessions_per_runner": 16,
+    "mesh_scheduler_workers_per_runner": 2,
+    "poll_ms": 250,
+    "postgres": "17.11",
+    "postgres_cap": 96,
+    "runners": 2,
+    "slots_per_runner": 32,
+    "storage": "default",
+    "total_slots": 64,
+    "work_mem": "4MB"
+  }
+}

@@ -1,0 +1,305 @@
+{
+  "claim_responses": [
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55106,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55106,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55106,
+      "statuses": [
+        "claimed"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "claimed"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_set_v1",
+      "port": 55131,
+      "statuses": [
+        "empty"
+      ],
+      "transaction": "T"
+    }
+  ],
+  "done": {
+    "attempt": 2,
+    "attempts": [
+      "785"
+    ],
+    "effect": "787",
+    "expiry": null,
+    "key": "claim",
+    "state": "completed",
+    "token": null,
+    "xid": "788"
+  },
+  "first_app_commit_ms": 1795571925383,
+  "held": {
+    "attempt": 1,
+    "attempts": [],
+    "effect": null,
+    "expiry": 1795571924204,
+    "key": "claim",
+    "state": "executing",
+    "token": "3f534a61-eae4-447d-81ca-56e58fa7f277",
+    "xid": "759"
+  },
+  "wire": {
+    "command": "COMMIT",
+    "idle": true,
+    "receipt_dropped": true,
+    "rows": 0
+  }
+}

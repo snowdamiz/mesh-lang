@@ -1,0 +1,203 @@
+{
+  "app_inserts": [
+    "public.mesh_jobs_parity_attempts",
+    "public.mesh_jobs_parity_effects",
+    "public.mesh_jobs_parity_attempts",
+    "public.mesh_jobs_parity_effects"
+  ],
+  "checked_app_probes": 4,
+  "claim_responses": [
+    {
+      "function": "claim_batch_set_v1",
+      "port": 54930,
+      "statuses": [
+        "fallback"
+      ],
+      "transaction": "T"
+    },
+    {
+      "function": "claim_batch_v1",
+      "port": 54930,
+      "statuses": [
+        "claimed",
+        "claimed"
+      ],
+      "transaction": "T"
+    }
+  ],
+  "final": {
+    "second": {
+      "attempt": 1,
+      "attempts": [
+        "762"
+      ],
+      "effect": "763",
+      "expiry": null,
+      "key": "second",
+      "state": "completed",
+      "token": null,
+      "xid": "765"
+    },
+    "small": {
+      "attempt": 1,
+      "attempts": [
+        "760"
+      ],
+      "effect": "761",
+      "expiry": null,
+      "key": "small",
+      "state": "completed",
+      "token": null,
+      "xid": "764"
+    }
+  },
+  "grant_check": null,
+  "grant_receipt": {
+    "command": "COMMIT",
+    "idle": true,
+    "receipt_dropped": false,
+    "rows": 0
+  },
+  "held": {
+    "second": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795571940711,
+      "key": "second",
+      "state": "executing",
+      "token": "0a7aaef7-9a3b-411f-b599-65cd7d0fcb80",
+      "xid": "758"
+    },
+    "small": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795571940710,
+      "key": "small",
+      "state": "executing",
+      "token": "1831a286-f510-4197-b490-c26fc3fe37b9",
+      "xid": "758"
+    }
+  },
+  "mixed": true,
+  "physical": {
+    "second": {
+      "compression": null,
+      "payload_bytes": 131072,
+      "storage_bytes": 131160
+    },
+    "small": {
+      "compression": null,
+      "payload_bytes": 8,
+      "storage_bytes": 93
+    }
+  },
+  "producer_xid": "755",
+  "queue_statements": [
+    [
+      54919,
+      "SELECT 1"
+    ],
+    [
+      54919,
+      "WITH functions AS (\n                 SELECT to_regprocedure('mesh_jobs.try_renew(text,uuid,uuid,bigint)') AS renew,\n                        to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') AS settle,\n                        to_regprocedure('mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint)') AS batch,\n                        to_regprocedure('mesh_jobs.claim_drain_v1(text,text,jsonb,bigint,bigint,jsonb)') AS single_claim,\n                        to_regprocedure('mesh_jobs.claim_batch_set_v1(text,text,jsonb,bigint,integer,bigint)') AS batch_set\n             ) SELECT CASE\n                 WHEN version <> 1 OR to_regclass('mesh_jobs.cron_schedules') IS NULL\n                     OR renew IS NULL OR settle IS NULL THEN 'migrate'\n                 WHEN NOT (has_function_privilege(renew, 'EXECUTE')\n                     AND has_function_privilege(settle, 'EXECUTE')) THEN 'permissions'\n                 WHEN $1::boolean AND batch IS NULL THEN 'migrate'\n                 WHEN $1::boolean AND NOT has_function_privilege(batch, 'EXECUTE') THEN 'batch_permissions'\n                 WHEN $2::boolean AND single_claim IS NULL THEN 'migrate'\n                 WHEN $2::boolean AND NOT has_function_privilege(single_claim, 'EXECUTE') THEN 'single_permissions'\n                 WHEN $3::boolean AND batch_set IS NULL THEN 'migrate'\n                 WHEN $3::boolean AND NOT has_function_privilege(batch_set, 'EXECUTE') THEN 'batch_set_permissions'\n                 ELSE 'ready'\n             END FROM mesh_jobs.schema_version CROSS JOIN functions WHERE singleton"
+    ],
+    [
+      54919,
+      "SELECT 1"
+    ],
+    [
+      54919,
+      "SELECT mesh_jobs.recover($1, $2::integer, nullif($3, '')::jsonb)::text AS recovered"
+    ],
+    [
+      54929,
+      "LISTEN \"mesh_jobs_wake_777e245fa1937c9418f3034895393374\""
+    ],
+    [
+      54930,
+      "BEGIN ISOLATION LEVEL READ COMMITTED"
+    ],
+    [
+      54930,
+      "SELECT status, id, token, context, timeout_ms, context_bytes,\n                CASE WHEN $6::boolean AND status = 'claimed'\n                    THEN mesh_jobs.now_ms()::text END AS observed_at_ms, ordinality::text\n         FROM mesh_jobs.claim_batch_set_v1($1, $2, $3::jsonb, $4::bigint, $5::integer, NULL)\n         WITH ORDINALITY"
+    ],
+    [
+      54930,
+      "COMMIT"
+    ],
+    [
+      54930,
+      "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n             SELECT (j.scheduled_at_ms - (SELECT now_ms FROM clock))::text\n             FROM mesh_jobs.queues q JOIN mesh_jobs.jobs j\n                 ON j.namespace = q.namespace AND j.queue = q.name\n             WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active' AND q.concurrency > 0\n                 AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused\n                     WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')\n                 AND j.state IN ('available', 'scheduled', 'retryable')\n                 AND j.scheduled_at_ms > (SELECT now_ms FROM clock) AND j.attempt < j.max_attempts\n                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)\n                             WHERE w.worker = j.worker AND w.version = j.version)\n             ORDER BY j.scheduled_at_ms LIMIT 1\n         ), '')"
+    ],
+    [
+      54930,
+      "BEGIN ISOLATION LEVEL READ COMMITTED"
+    ],
+    [
+      54930,
+      "SELECT coalesce(status, 'contention_hint') AS status, id, token, context, timeout_ms, context_bytes,\n                    CASE WHEN $7::boolean AND status = 'claimed'\n                    THEN floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text END AS observed_at_ms,\n                    ordinality::text\n             FROM (VALUES (1)) AS probe_anchor(dummy)\n             LEFT JOIN LATERAL (\n                 SELECT * FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,\n                     nullif($6, '')::bigint) WITH ORDINALITY\n             ) AS result ON true\n             WHERE CASE WHEN ordinality IS NOT NULL THEN true ELSE EXISTS (\n                 SELECT FROM mesh_jobs.queues q\n                 WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active'\n                     AND q.concurrency > 0\n                     AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused\n                         WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')\n                     AND q.concurrency > (SELECT count(*) FROM mesh_jobs.jobs running\n                         WHERE running.namespace = q.namespace AND running.queue = q.name\n                             AND running.state = 'executing')\n                     AND EXISTS (SELECT FROM mesh_jobs.jobs j\n                         WHERE j.namespace = q.namespace AND j.queue = q.name\n                             AND j.state IN ('available', 'scheduled', 'retryable')\n                             AND j.scheduled_at_ms <= coalesce(nullif($6, '')::bigint,\n                                 floor(extract(epoch FROM pg_catalog.statement_timestamp()) * 1000)::bigint)\n                             AND j.attempt < j.max_attempts\n                             AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)\n                                 WHERE w.worker = j.worker AND w.version = j.version)\n                             AND NOT EXISTS (SELECT FROM mesh_jobs.batch_context_blocks b\n                                 WHERE b.namespace = j.namespace AND b.id = j.id\n                                     AND b.row_version = j.xmin AND b.row_location = j.ctid\n                                     AND b.encoding = current_setting('client_encoding')::name))\n             ) END"
+    ],
+    [
+      54930,
+      "COMMIT"
+    ],
+    [
+      54919,
+      "SELECT 1"
+    ],
+    [
+      54919,
+      "SELECT mesh_jobs.recover($1, $2::integer, nullif($3, '')::jsonb)::text AS recovered"
+    ],
+    [
+      54930,
+      "BEGIN ISOLATION LEVEL READ COMMITTED"
+    ],
+    [
+      54930,
+      "SELECT status, id, token, context, timeout_ms, context_bytes,\n                CASE WHEN $6::boolean AND status = 'claimed'\n                    THEN mesh_jobs.now_ms()::text END AS observed_at_ms, ordinality::text\n         FROM mesh_jobs.claim_batch_set_v1($1, $2, $3::jsonb, $4::bigint, $5::integer, NULL)\n         WITH ORDINALITY"
+    ],
+    [
+      54930,
+      "COMMIT"
+    ],
+    [
+      54930,
+      "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n             SELECT greatest(j.scheduled_at_ms - (SELECT now_ms FROM clock), 0)::text\n             FROM mesh_jobs.queues q JOIN mesh_jobs.jobs j\n                 ON j.namespace = q.namespace AND j.queue = q.name\n             WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active' AND q.concurrency > 0\n                 AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused\n                     WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')\n                 AND j.state IN ('available', 'scheduled', 'retryable')\n                 AND j.scheduled_at_ms > $4::bigint AND j.attempt < j.max_attempts\n                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)\n                             WHERE w.worker = j.worker AND w.version = j.version)\n             ORDER BY j.scheduled_at_ms LIMIT 1\n         ), '')"
+    ],
+    [
+      54926,
+      "SELECT coalesce(mesh_jobs.settle_state($1, $2::uuid, $3::uuid, $4::jsonb, false), 'stale')"
+    ],
+    [
+      54926,
+      "SELECT coalesce(mesh_jobs.settle_state($1, $2::uuid, $3::uuid, $4::jsonb, false), 'stale')"
+    ],
+    [
+      54930,
+      "BEGIN ISOLATION LEVEL READ COMMITTED"
+    ],
+    [
+      54930,
+      "SELECT status, id, token, context, timeout_ms, context_bytes,\n                CASE WHEN $6::boolean AND status = 'claimed'\n                    THEN mesh_jobs.now_ms()::text END AS observed_at_ms, ordinality::text\n         FROM mesh_jobs.claim_batch_set_v1($1, $2, $3::jsonb, $4::bigint, $5::integer, NULL)\n         WITH ORDINALITY"
+    ],
+    [
+      54919,
+      "SELECT 1"
+    ],
+    [
+      54919,
+      "SELECT mesh_jobs.recover($1, $2::integer, nullif($3, '')::jsonb)::text AS recovered"
+    ],
+    [
+      54930,
+      "COMMIT"
+    ],
+    [
+      54930,
+      "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)\n         SELECT coalesce((\n             SELECT greatest(j.scheduled_at_ms - (SELECT now_ms FROM clock), 0)::text\n             FROM mesh_jobs.queues q JOIN mesh_jobs.jobs j\n                 ON j.namespace = q.namespace AND j.queue = q.name\n             WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active' AND q.concurrency > 0\n                 AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused\n                     WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')\n                 AND j.state IN ('available', 'scheduled', 'retryable')\n                 AND j.scheduled_at_ms > $4::bigint AND j.attempt < j.max_attempts\n                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)\n                             WHERE w.worker = j.worker AND w.version = j.version)\n             ORDER BY j.scheduled_at_ms LIMIT 1\n         ), '')"
+    ]
+  ]
+}

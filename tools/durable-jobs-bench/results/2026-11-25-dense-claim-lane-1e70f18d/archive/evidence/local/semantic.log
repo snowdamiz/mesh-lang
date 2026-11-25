@@ -1,0 +1,16 @@
+START short-set-grant
+PASS short-set-grant
+START mixed-checked-cursor
+PASS mixed-checked-cursor
+START ambiguous-claim-commit
+PASS ambiguous-claim-commit
+START ambiguous-application-write
+PASS ambiguous-application-write
+START short-hot-grant
+PASS short-hot-grant
+START hot-ambiguous-application-write
+PASS hot-ambiguous-application-write
+START teardown-release
+PASS teardown-release
+START teardown-kill
+PASS teardown-kill

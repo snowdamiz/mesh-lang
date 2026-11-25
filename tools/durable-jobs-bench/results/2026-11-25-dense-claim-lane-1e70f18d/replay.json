@@ -1,0 +1,24 @@
+{
+  "archive_members": 65,
+  "campaign_check": "PASS canonical source, exact peer inventories, reversed pilots and sole same-ELF switch",
+  "local_binaries": {
+    "control": "2a8642ad247024192ddeb1cbaaa990b597dcb2554b89a4d9f6eb81c1d8c01a54",
+    "jobs": "50b33d30a87d997e29bdca4c3e8bb291f3876def45cfa2f02d531f2b1caf1814",
+    "witness": "90c6a2dfc96292eb1c59a3b1ebcf93d0b1273d4cf1588aa9842d41147da432a4"
+  },
+  "passed_gate_tests": {
+    "core-workspace": 2018,
+    "exact-workspace-build": 0,
+    "postgres-gate": 122,
+    "runtime-workspace": 1609
+  },
+  "patched_paths": [
+    "compiler/mesh-rt/src/jobs/runner.rs",
+    "compiler/mesh-rt/src/jobs/runner_tests.rs",
+    "compiler/mesh-rt/src/jobs/trusted.rs"
+  ],
+  "proof_cases": 17,
+  "setup_request_sha256": "a2ea903586e339d8457211f5dca1dee78c3049ea61104ceb4eea7548220dfc38",
+  "stage_sha256": "5530b955d304961cb06e098593dcc158629c08ba12fd3f38f3891ded05132fb9",
+  "timing_request_sha256": "af9db52c30a8338f0bb94135025cfb643489d4f14a183360a1c646fd912bc760"
+}

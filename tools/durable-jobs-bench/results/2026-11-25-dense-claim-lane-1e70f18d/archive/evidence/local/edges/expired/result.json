@@ -1,0 +1,75 @@
+{
+  "final": {
+    "attempt": 2,
+    "attempts": [
+      "770"
+    ],
+    "effect": "771",
+    "expiry": null,
+    "key": "expired",
+    "state": "completed",
+    "token": null,
+    "xid": "772"
+  },
+  "held": {
+    "attempt": 1,
+    "attempts": [],
+    "effect": null,
+    "expiry": 1795571911689,
+    "key": "expired",
+    "state": "executing",
+    "token": "fdf87a4e-5cce-4bf6-89f5-e9d2f76369b1",
+    "xid": "757"
+  },
+  "malformed_ready": false,
+  "mode": "expired",
+  "shutdown": {
+    "batch_contention_hints": 0,
+    "claimed": 2,
+    "drained": true,
+    "finished": 1,
+    "last_error": null,
+    "namespace": "parity_0123456789abcdef",
+    "outcomes": {
+      "cancelled": 0,
+      "completed": 1,
+      "discarded": 0,
+      "released_unstarted": 0,
+      "retryable": 0,
+      "scheduled": 0
+    },
+    "peak_queued_context_bytes": 337,
+    "pending_claims": 0,
+    "pruned": 0,
+    "queues": {
+      "default": {
+        "drained": true,
+        "in_flight": 0,
+        "limit": 4,
+        "pending_claims": 0,
+        "state": "stopped"
+      }
+    },
+    "recovered": 1,
+    "runner_id": 1,
+    "scheduled": 0,
+    "stale_acks": 1,
+    "state": "stopped",
+    "undrained": 0,
+    "undrained_jobs": [],
+    "wakeups": {
+      "due_scans": 1,
+      "fallback_scans": 11,
+      "notification_scans": 0,
+      "subscribed": false,
+      "subscription_scans": 1,
+      "subscriptions": 1
+    }
+  },
+  "wire": {
+    "command": "COMMIT",
+    "idle": true,
+    "receipt_dropped": false,
+    "rows": 0
+  }
+}
