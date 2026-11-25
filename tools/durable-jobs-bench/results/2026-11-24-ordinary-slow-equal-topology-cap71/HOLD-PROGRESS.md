@@ -26,3 +26,19 @@ These counts use the database's millisecond claim stamp. Moving every stamp to t
 The paired River settlement tail also varied from 16 to 242 ms. Retaining the middle first-write interval alongside the full clock allows a new topology or codec comparison to distinguish sustained job progress from either boundary.
 
 The [archive reader](evidence/native-analysis/hold_progress.py) reads the two measured arms in each released block. It verifies each input against the raw digest in the original scorer output. Phase and occupancy calculations use the embedded durable commit timestamps. Pool opening uses the PostgreSQL connection log on the database clock and allows 999 µs above each logged millisecond.
+
+## Where the middle-window difference accumulates
+
+Mesh took a paired median **185.5 ms longer than River** between first-write ranks 64 and 448. Most of that difference accumulated while slots were outside the recorded handler-entry to effect-commit interval. Across eight blocks, Mesh spent **93.4–202.1 ms more** there on a 64-slot-equivalent basis. The corresponding difference between the end of the required 100 ms and the effect commit ranged from **5.7 ms less to 11.1 ms more**. Timer wakeup, application-pool checkout and the second write can all contribute to that latter interval. Their individual costs remain unresolved.
+
+| Mesh minus peer, paired median in ms | River | Oban | Apalis |
+| --- | ---: | ---: | ---: |
+| Elapsed from 64th to 448th first commit | +185.5 | −4.9 | +146.9 |
+| Recorded entry to first commit, slot-time ÷ 64 | +16.4 | −1.0 | +5.4 |
+| Required first 100 ms after commit, slot-time ÷ 64 | +30.2 | +7.1 | +38.4 |
+| End of required hold to effect commit, slot-time ÷ 64 | +3.4 | −24.5 | −10.4 |
+| Outside recorded entry to effect commit, slot-time ÷ 64 | +121.0 | +22.1 | +124.4 |
+
+The calculation clips every interval at the two rank boundaries. Both products can complete the same work and have different amounts of required hold inside that window because different jobs cross its boundaries. The four terms sum exactly to elapsed within each arm. The table takes a separate paired median for each row. The outside interval includes time spent claiming jobs, awaiting handler entry, and completing earlier jobs. It gives neither a CPU measurement nor the time a faster operation would save.
+
+The [ledger arithmetic](evidence/native-analysis/middle_service.py) verifies all 32 measured archive hashes, the 100 ms minimum for every job, and the 64-slot limit. The [per-arm results](evidence/native-analysis/middle-service.json) retain integer microseconds and each input digest.
