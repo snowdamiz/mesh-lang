@@ -1,0 +1,430 @@
+{
+  "1": {
+    "measured": {
+      "A1": {
+        "claim_calls": 89,
+        "device_busy_ms": [
+          201,
+          259
+        ],
+        "device_flush_ms": [
+          96,
+          122
+        ],
+        "drain_us": 1193330,
+        "effect_128_windows_us": [
+          167830,
+          142083,
+          150884,
+          137681,
+          151362,
+          136556,
+          137260,
+          168846
+        ],
+        "runner_cpu_ms": 554.462,
+        "runner_sql_calls": 1323,
+        "terminal_tail_us": 828,
+        "terminal_xids": 1024
+      },
+      "A2": {
+        "claim_calls": 94,
+        "device_busy_ms": [
+          204,
+          264
+        ],
+        "device_flush_ms": [
+          98,
+          122
+        ],
+        "drain_us": 1201853,
+        "effect_128_windows_us": [
+          189657,
+          136677,
+          148391,
+          142349,
+          129125,
+          141583,
+          149129,
+          161944
+        ],
+        "runner_cpu_ms": 552.5609999999999,
+        "runner_sql_calls": 1341,
+        "terminal_tail_us": 2998,
+        "terminal_xids": 1024
+      },
+      "B": {
+        "claim_calls": 168,
+        "device_busy_ms": [
+          93,
+          180
+        ],
+        "device_flush_ms": [
+          57,
+          94
+        ],
+        "drain_us": 837563,
+        "effect_128_windows_us": [
+          120610,
+          96939,
+          106372,
+          85083,
+          104108,
+          94186,
+          92929,
+          128822
+        ],
+        "runner_cpu_ms": 525.428,
+        "runner_sql_calls": 696,
+        "terminal_tail_us": 8514,
+        "terminal_xids": 163
+      },
+      "C": {
+        "claim_calls": 169,
+        "device_busy_ms": [
+          116,
+          218
+        ],
+        "device_flush_ms": [
+          55,
+          96
+        ],
+        "drain_us": 832330,
+        "effect_128_windows_us": [
+          112139,
+          101858,
+          96264,
+          92387,
+          106492,
+          90231,
+          107021,
+          119021
+        ],
+        "runner_cpu_ms": 536.678,
+        "runner_sql_calls": 698,
+        "terminal_tail_us": 6917,
+        "terminal_xids": 164
+      }
+    },
+    "warmup": {
+      "A1": {
+        "claim_calls": 94,
+        "device_busy_ms": [
+          215,
+          279
+        ],
+        "device_flush_ms": [
+          95,
+          122
+        ],
+        "drain_us": 1208787,
+        "effect_128_windows_us": [
+          171499,
+          138825,
+          152369,
+          137912,
+          153524,
+          135611,
+          146361,
+          166219
+        ],
+        "runner_cpu_ms": 549.7749999999999,
+        "runner_sql_calls": 1338,
+        "terminal_tail_us": 6467,
+        "terminal_xids": 1024
+      },
+      "A2": {
+        "claim_calls": 96,
+        "device_busy_ms": [
+          207,
+          270
+        ],
+        "device_flush_ms": [
+          98,
+          122
+        ],
+        "drain_us": 1220162,
+        "effect_128_windows_us": [
+          180522,
+          131808,
+          149638,
+          150242,
+          143455,
+          141890,
+          138892,
+          182673
+        ],
+        "runner_cpu_ms": 552.788,
+        "runner_sql_calls": 1349,
+        "terminal_tail_us": 1042,
+        "terminal_xids": 1024
+      },
+      "B": {
+        "claim_calls": 165,
+        "device_busy_ms": [
+          142,
+          241
+        ],
+        "device_flush_ms": [
+          54,
+          91
+        ],
+        "drain_us": 828008,
+        "effect_128_windows_us": [
+          115024,
+          100118,
+          85762,
+          106181,
+          91032,
+          90671,
+          101594,
+          131355
+        ],
+        "runner_cpu_ms": 528.188,
+        "runner_sql_calls": 686,
+        "terminal_tail_us": 6271,
+        "terminal_xids": 161
+      },
+      "C": {
+        "claim_calls": 164,
+        "device_busy_ms": [
+          108,
+          212
+        ],
+        "device_flush_ms": [
+          50,
+          87
+        ],
+        "drain_us": 820483,
+        "effect_128_windows_us": [
+          111204,
+          103196,
+          85040,
+          100163,
+          102175,
+          89168,
+          100198,
+          123323
+        ],
+        "runner_cpu_ms": 522.3019999999999,
+        "runner_sql_calls": 680,
+        "terminal_tail_us": 6016,
+        "terminal_xids": 160
+      }
+    }
+  },
+  "2": {
+    "measured": {
+      "A1": {
+        "claim_calls": 88,
+        "device_busy_ms": [
+          231,
+          298
+        ],
+        "device_flush_ms": [
+          100,
+          124
+        ],
+        "drain_us": 1218982,
+        "effect_128_windows_us": [
+          181030,
+          134786,
+          134059,
+          155880,
+          135897,
+          138590,
+          148281,
+          188982
+        ],
+        "runner_cpu_ms": 554.181,
+        "runner_sql_calls": 1321,
+        "terminal_tail_us": 1477,
+        "terminal_xids": 1024
+      },
+      "A2": {
+        "claim_calls": 98,
+        "device_busy_ms": [
+          258,
+          271
+        ],
+        "device_flush_ms": [
+          119,
+          124
+        ],
+        "drain_us": 1209068,
+        "effect_128_windows_us": [
+          187004,
+          143404,
+          130601,
+          148093,
+          143329,
+          135188,
+          142945,
+          177429
+        ],
+        "runner_cpu_ms": 549.908,
+        "runner_sql_calls": 1354,
+        "terminal_tail_us": 1075,
+        "terminal_xids": 1024
+      },
+      "B": {
+        "claim_calls": 194,
+        "device_busy_ms": [
+          384,
+          523
+        ],
+        "device_flush_ms": [
+          176,
+          239
+        ],
+        "drain_us": 1033764,
+        "effect_128_windows_us": [
+          175736,
+          134880,
+          116285,
+          127373,
+          118926,
+          113685,
+          106344,
+          133589
+        ],
+        "runner_cpu_ms": 579.296,
+        "runner_sql_calls": 806,
+        "terminal_tail_us": 6946,
+        "terminal_xids": 188
+      },
+      "C": {
+        "claim_calls": 167,
+        "device_busy_ms": [
+          100,
+          200
+        ],
+        "device_flush_ms": [
+          56,
+          93
+        ],
+        "drain_us": 825455,
+        "effect_128_windows_us": [
+          110626,
+          103449,
+          84141,
+          106009,
+          96467,
+          84187,
+          108033,
+          128024
+        ],
+        "runner_cpu_ms": 526.377,
+        "runner_sql_calls": 692,
+        "terminal_tail_us": 4519,
+        "terminal_xids": 162
+      }
+    },
+    "warmup": {
+      "A1": {
+        "claim_calls": 96,
+        "device_busy_ms": [
+          253,
+          311
+        ],
+        "device_flush_ms": [
+          100,
+          128
+        ],
+        "drain_us": 1212215,
+        "effect_128_windows_us": [
+          163698,
+          154125,
+          141346,
+          131544,
+          163059,
+          133451,
+          143270,
+          180938
+        ],
+        "runner_cpu_ms": 559.4259999999999,
+        "runner_sql_calls": 1349,
+        "terminal_tail_us": 784,
+        "terminal_xids": 1024
+      },
+      "A2": {
+        "claim_calls": 93,
+        "device_busy_ms": [
+          248,
+          312
+        ],
+        "device_flush_ms": [
+          98,
+          124
+        ],
+        "drain_us": 1243054,
+        "effect_128_windows_us": [
+          201015,
+          146775,
+          162827,
+          137610,
+          140325,
+          141775,
+          139459,
+          168689
+        ],
+        "runner_cpu_ms": 560.014,
+        "runner_sql_calls": 1340,
+        "terminal_tail_us": 4579,
+        "terminal_xids": 1024
+      },
+      "B": {
+        "claim_calls": 168,
+        "device_busy_ms": [
+          194,
+          224
+        ],
+        "device_flush_ms": [
+          85,
+          99
+        ],
+        "drain_us": 852739,
+        "effect_128_windows_us": [
+          130434,
+          100174,
+          98998,
+          92355,
+          98240,
+          95935,
+          93078,
+          134285
+        ],
+        "runner_cpu_ms": 540.431,
+        "runner_sql_calls": 695,
+        "terminal_tail_us": 9240,
+        "terminal_xids": 162
+      },
+      "C": {
+        "claim_calls": 226,
+        "device_busy_ms": [
+          752,
+          813
+        ],
+        "device_flush_ms": [
+          388,
+          419
+        ],
+        "drain_us": 1290925,
+        "effect_128_windows_us": [
+          192078,
+          117019,
+          164771,
+          154714,
+          150151,
+          161147,
+          154462,
+          191443
+        ],
+        "runner_cpu_ms": 583.547,
+        "runner_sql_calls": 943,
+        "terminal_tail_us": 5140,
+        "terminal_xids": 222
+      }
+    }
+  }
+}
