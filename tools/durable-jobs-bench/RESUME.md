@@ -2,6 +2,12 @@
 
 Open the existing Mesh worktree on branch `t3/9a80aabe` on the workstation that owns the benchmark. Its path is `/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe`. The Git history, local controller journal, staged binaries, and SSH configuration are available there. Other owners have changes in the Git index and working tree.
 
+## November 25 at the 10:56 UTC LARGE FILE factorial pilot
+
+The build-free recovery `05a78a8e…` released exit 0 at 10:55:05 UTC. The independent replay bound the retained producer and consumer and passed the three wire-fault cases. Each of the five qualification cells reconciled 64 first-attempt jobs, 128 independent application writes and 64 terminal transactions. The controller opened the reversed pilot `e9de9209…` at 10:56:25 UTC. Both rotations must pass before the peer stage can open. [Recovery release and verified binding](../../../t3-09dc428a/tools/durable-jobs-bench/results/2026-11-25-public-large-file-factorial/evidence/wire) · [Controller journal](../../target/linode-jobs-stepchange/requests/STATUS.md)
+
+Against the 20% Oban drain target in five matched default-storage blocks, the last Mesh database claim stamp must advance by at least 184–212 ms. At each deadline, 24–32 jobs still awaited their first durable write. The historical replay in `a299db556` reproduces from a 36-file Git export. [Per-block grant and write counts](results/2026-11-25-public-large-claim-gap/CROSSED-FILE-PHASES.md)
+
 ## November 25 after the 10:32 UTC LARGE FILE factorial SETUP
 
 The controller released SETUP `174888d2…` with exit 1. The parent independently checked the raw archive SHA-256 `59d0fca502621f7cff90072852a76ecb404b6c177c1e971613a4f89f27564d4e`. The consumer matched the released `c8791a99…` ELF. The newly linked producer `f3998c3e…` passed the held-write proof, all 64 TLS FILE receipts, explicit and late rollback, and same-ID lost-reply retry. The consumer wire harness then raised `ModuleNotFoundError` on the build-time `overlay` import. The controller retained both artifacts. The owner is preparing a build-free recovery for the outstanding wire cases and five qualification cells. Pilot and peer timing still require their original gates. [Release and raw evidence](../../../t3-09dc428a/tools/durable-jobs-bench/results/2026-11-25-public-large-file-factorial/evidence/setup) · [Controller journal](../../target/linode-jobs-stepchange/requests/STATUS.md)
