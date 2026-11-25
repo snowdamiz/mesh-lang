@@ -1,0 +1,49 @@
+{
+  "archived_evidence_manifest_sha256": "9f58d6a47337981df3432f5306670d863cb002d43088d6d8279e49e4cd49a243",
+  "attempts": {
+    "diagnostic-lazy-a": "84b70f1de7f64bafb54eb7f61cdd3d7d",
+    "diagnostic-lazy-b": "bdc2ab7868d74ca0ba121e52715b6e48",
+    "diagnostic-mesh": "ceeeb2360968416395ad9db91d78006f",
+    "diagnostic-oban": "d2a620f1f4544ee79f1fac439a910dd6",
+    "diagnostic-retained-river": "2030fc6b1be945c6bc44aea4bfd52316",
+    "diagnostic-underready-river": "8188d2c450c4489f8dcf5f5894fbc0fe",
+    "diagnostic-warm-river": "672ccfa50ccb49b4b45bcf256223fcb3"
+  },
+  "build": {
+    "artifact": "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-river-readiness-c58da20e160be75a-elf/river-bench",
+    "build_archive_sha256": "bcd6c058336726c07bd3a27be9bf5eff80733298f93a255ac35af4ffed6a8afd",
+    "candidate_elf_sha256": "b591ed4603257d9bd48f83edb30a3947fe11708260679bbe53e8b3e8469cf6fb",
+    "compiled_sources_sha256": "54e69bf047ed6fe790079fc4dc88b7e633c17518ebd5efec90499a0f222a11cd",
+    "native_toolchain_binding_sha256": "a167e700d03bf5834ab7a207adc80226995e1e355e96d6a5127844b92e70b9fd",
+    "stock_elf_sha256": "a23130f74210946291ed3609797e5b218ece5a7bd70df318851cf91e634da1e1"
+  },
+  "dispatch_replay_sha256": "cafa0cdcc45ecad903f4517e147e5d7a6c2fb1bbf68f3a90ac6de98f83a9f2c9",
+  "normalized_listener_pid_lanes": [
+    "lazy-a",
+    "lazy-b",
+    "warm-river",
+    "underready-river"
+  ],
+  "original_readiness_release_sha256": "80b982187eb96ae29ed8a0a445ea7a5852a81802f86594db604b317f5ccafe38",
+  "qualified": true,
+  "raw_sha256": {
+    "00/diagnostic-lazy-a/diagnostic-go/raw.tar.gz": "77a6ff4edd52aa9cc6e479c82c8541e9ce8a5cb8aebff6bce992341f0bb416cb",
+    "00/diagnostic-lazy-b/diagnostic-go/raw.tar.gz": "018dcf58c85e7002d6b60627fab9f63580ebe812c1b53bf534012fa7f37efd1d",
+    "00/diagnostic-mesh/diagnostic-mesh/raw.tar.gz": "e12a42717a37efa5348b70ed2c25fe3563ef7886a871a28687a253268936ee8e",
+    "00/diagnostic-oban/diagnostic-oban/raw.tar.gz": "9e1fd82537d2270910150ef9772e77d90a7a725f03526a2663cb6ea32a138e8e",
+    "00/diagnostic-retained-river/diagnostic-go/raw.tar.gz": "cc5ffb94489f130088bda4ed76c8b0d2802e5001e58163e92c9d2c8975704a78",
+    "00/diagnostic-underready-river/diagnostic-go/raw.tar.gz": "8326cc19bce3c1ae522de84f01aa9e30cf0bbe4b36b2cd0b841d17036ae8cf7e",
+    "00/diagnostic-warm-river/diagnostic-go/raw.tar.gz": "9b8b3dde22a5a0c9ebbb135beb9b2ab6823b0a1f308ae2ec4e62bfc7734948f7"
+  },
+  "readiness": {
+    "diagnostic-lazy-a": 7,
+    "diagnostic-lazy-b": 7,
+    "diagnostic-retained-river": 7,
+    "diagnostic-underready-river": 66,
+    "diagnostic-warm-river": 67
+  },
+  "retained_release_sha256": "da0daba87bc31f322f5c91f339cf29cfe3a00b6712092b16669ad4e36950d0d7",
+  "source_manifest_sha256": "706eef5cbb98815d7985375cab812f9a3e3c92a318e6bed6e582333f92e2dd76",
+  "supply_release_sha256": "b579eb1f8d97bf46e81866392bfb41f09bbed33603b72f05e5854b25b379019c",
+  "underready": "frozen trial: physical readiness requires 33 clients per runner at ready, observed 33/32"
+}

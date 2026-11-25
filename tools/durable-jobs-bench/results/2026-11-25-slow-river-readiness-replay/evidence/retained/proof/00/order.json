@@ -1,0 +1,30 @@
+[
+  [
+    "diagnostic",
+    "mesh"
+  ],
+  [
+    "diagnostic",
+    "retained-river"
+  ],
+  [
+    "diagnostic",
+    "lazy-a"
+  ],
+  [
+    "diagnostic",
+    "warm-river"
+  ],
+  [
+    "diagnostic",
+    "lazy-b"
+  ],
+  [
+    "diagnostic",
+    "oban"
+  ],
+  [
+    "diagnostic",
+    "underready-river"
+  ]
+]

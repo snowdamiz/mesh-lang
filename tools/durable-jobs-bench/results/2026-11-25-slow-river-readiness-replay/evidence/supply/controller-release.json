@@ -1,0 +1,18 @@
+{
+  "exit_status": 0,
+  "grant": {
+    "end": "2026-11-25T20:14:53Z",
+    "id": "2026-11-25-slow-river-toolchain-supply",
+    "request_sha256": "4fecd8ce881158268ba4061159cc7a5c03b57798191046469fea9db7cd3bbd2e",
+    "start": "2026-11-25T19:54:53Z"
+  },
+  "id": "2026-11-25-slow-river-toolchain-supply",
+  "native_receipt_sha256": "c9978ce2f895b3844ac4b953838a174fe0e9ed910f6cc6cd5be82f59dbd83935",
+  "phase": "setup",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/controller-receipts/2026-11-25-slow-river-toolchain-supply",
+  "released_at": "2026-11-25T19:55:33.577435+00:00",
+  "request_sha256": "4fecd8ce881158268ba4061159cc7a5c03b57798191046469fea9db7cd3bbd2e",
+  "source_commit": "c74a21228534b1b535a64123eb7e352262e515f5",
+  "started": "2026-11-25T19:54:53.261299+00:00",
+  "toolchain_binding_sha256": "a167e700d03bf5834ab7a207adc80226995e1e355e96d6a5127844b92e70b9fd"
+}

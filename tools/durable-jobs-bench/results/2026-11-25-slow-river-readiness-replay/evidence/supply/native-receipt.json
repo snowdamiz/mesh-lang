@@ -1,0 +1,44 @@
+{
+  "compiler_version": "go version go1.26.4 linux/amd64",
+  "host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "module_inventory_sha256": "8e2340013afd07802f60d4a1a742155ead155b1d368233158bfa6bd8d494f0b8",
+  "sdk_sha256": "1153d3d50e0ac764b447adfe05c2bcf08e889d42a02e0fe0259bd47f6733ad7f",
+  "stock_build_info": [
+    "\tpath\tmesh-lang/durable-jobs-bench/river",
+    "\tmod\tmesh-lang/durable-jobs-bench/river\t(devel)\t",
+    "\tdep\tgithub.com/jackc/pgpassfile\tv1.0.0\th1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=",
+    "\tdep\tgithub.com/jackc/pgservicefile\tv0.0.0-20240606120523-5a60cdf6a761\th1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=",
+    "\tdep\tgithub.com/jackc/pgx/v5\tv5.13.0\th1:Hl08k64maU0nrRyVUEbwCnK6/gT0EhMrtAqBHz9/gA4=",
+    "\tdep\tgithub.com/jackc/puddle/v2\tv2.2.3\th1:f8HoREISb3l5eO9coPgK7U3hKLhWGokOFVcThl5jrao=",
+    "\tdep\tgithub.com/riverqueue/river\tv0.51.2\th1:lCFmF8zlKftfjDEW6zCtcRamXmCgOFk6XjeJ82gAEh8=",
+    "\tdep\tgithub.com/riverqueue/river/riverdriver\tv0.51.2\th1:hIDg+sRD7h3Xcjy2ozlbDBnjsyLVDbLnB2cWgTR1SoU=",
+    "\tdep\tgithub.com/riverqueue/river/riverdriver/riverpgxv5\tv0.51.2\th1:vLucKpDFLu/w6m8/jQl4NV4bxu1U8iiM835pfPooJ+U=",
+    "\tdep\tgithub.com/riverqueue/river/rivershared\tv0.51.2\th1:d4MU7Az6iMQb9ADhgi9GEoO1ThB7Ou1Oe2EtvRaRIoA=",
+    "\tdep\tgithub.com/riverqueue/river/rivertype\tv0.51.2\th1:2GIvVH6cRJcXtIlba8bHmZDvlcydtND0PZQBHCRyEsw=",
+    "\tdep\tgithub.com/tidwall/gjson\tv1.20.0\th1:+agJ3rEzKcCXKDKo0ml26UROcpcAlnZyjq+TjbY5Fto=",
+    "\tdep\tgithub.com/tidwall/match\tv1.2.0\th1:0pt8FlkOwjN2fPt4bIl4BoNxb98gGHN2ObFEDkrfZnM=",
+    "\tdep\tgithub.com/tidwall/pretty\tv1.2.1\th1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4=",
+    "\tdep\tgithub.com/tidwall/sjson\tv1.2.5\th1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY=",
+    "\tdep\tgolang.org/x/sync\tv0.24.0\th1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA=",
+    "\tdep\tgolang.org/x/text\tv0.43.0\th1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc=",
+    "\tbuild\t-buildmode=exe",
+    "\tbuild\t-compiler=gc",
+    "\tbuild\t-trimpath=true",
+    "\tbuild\tCGO_ENABLED=0",
+    "\tbuild\tGOARCH=amd64",
+    "\tbuild\tGOOS=linux",
+    "\tbuild\tGOAMD64=v1"
+  ],
+  "stock_elf_sha256": "a23130f74210946291ed3609797e5b218ece5a7bd70df318851cf91e634da1e1",
+  "supply_request_sha256": "4fecd8ce881158268ba4061159cc7a5c03b57798191046469fea9db7cd3bbd2e",
+  "toolchain_binding": {
+    "compiler": "/var/lib/durable-jobs-bench/native/toolchain/slow-river-readiness-go1.26.4-4fecd8ce88115826/go/bin/go",
+    "compiler_sha256": "86b748c64de0175db601f56805251f3b08cd12bffb927ad5c68ef8497c50c7ba",
+    "module_cache": "/var/lib/durable-jobs-bench/native/toolchain/slow-river-readiness-go1.26.4-4fecd8ce88115826/mod",
+    "request_sha256": "80546f35b75be008244d515bb257592b9ed7ef252b2bc6fe2e13f13799a3f545"
+  }
+}

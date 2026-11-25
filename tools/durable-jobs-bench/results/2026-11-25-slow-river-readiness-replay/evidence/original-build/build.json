@@ -1,0 +1,8 @@
+{
+  "artifact": "/var/tmp/mesh-durable-jobs-matrix/2026-11-25-slow-river-readiness-c58da20e160be75a-elf/river-bench",
+  "build_archive_sha256": "bcd6c058336726c07bd3a27be9bf5eff80733298f93a255ac35af4ffed6a8afd",
+  "candidate_elf_sha256": "b591ed4603257d9bd48f83edb30a3947fe11708260679bbe53e8b3e8469cf6fb",
+  "compiled_sources_sha256": "54e69bf047ed6fe790079fc4dc88b7e633c17518ebd5efec90499a0f222a11cd",
+  "native_toolchain_binding_sha256": "a167e700d03bf5834ab7a207adc80226995e1e355e96d6a5127844b92e70b9fd",
+  "stock_elf_sha256": "a23130f74210946291ed3609797e5b218ece5a7bd70df318851cf91e634da1e1"
+}
