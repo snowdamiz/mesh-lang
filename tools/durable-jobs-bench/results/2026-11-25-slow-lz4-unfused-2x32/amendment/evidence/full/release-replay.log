@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/amendment/controller.py", line 266, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/amendment/controller.py", line 251, in main
+    full, full_sha = released_replay(base, "full", config["full"])
+                     ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/amendment/controller.py", line 189, in released_replay
+    path = base.released(mode)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-slow-lz4-unfused-2x32/controller.py", line 267, in released
+    require(data["id"] == f"{ID}-{mode}" and data["exit_status"] == 0 and data["released_at"]
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            and data["request_sha256"] == sha(req)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            and read(OUT / mode / "grant.json")["packet_sha256"] == sha(req),
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            f"{mode} canonical release or custody missing")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/verify.py", line 27, in require
+    raise ValueError(message)
+ValueError: full canonical release or custody missing

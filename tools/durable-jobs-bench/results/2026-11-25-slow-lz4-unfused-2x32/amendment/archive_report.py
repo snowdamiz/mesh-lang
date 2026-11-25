@@ -44,15 +44,19 @@ def get(archive, name):
     return json.loads(member(archive, name))
 
 
-def share(points, cpus, field):
+def cpu_deltas(points, cpus):
     counters = [(points[0]["cpu"][f"cpu{cpu}"], points[-1]["cpu"][f"cpu{cpu}"]) for cpu in cpus]
     changes = [[b - a for a, b in zip(before, after, strict=True)] for before, after in counters]
     require(min(min(line) for line in changes) >= 0, "CPU counters moved backward")
+    return changes
+
+
+def share(changes, field):
     total = sum(map(sum, changes))
     return 100 * sum(row[field] for row in changes) / total if total else None
 
 
-def duration_metrics(archive, host, submitted, committed, terminal, exit_us, shape):
+def duration_metrics(archive, host, submitted, committed, terminal, exit_us, shape, enforce_noise):
     points = [json.loads(line) for line in member(archive, "host-samples.jsonl").splitlines()]
     require(all(a["epoch_us"] <= b["epoch_us"] and a["monotonic_ns"] < b["monotonic_ns"]
                 for a, b in zip(points, points[1:])) and not any(row["builders"] for row in points),
@@ -63,14 +67,26 @@ def duration_metrics(archive, host, submitted, committed, terminal, exit_us, sha
     require(hi > lo and all(b["monotonic_ns"] - a["monotonic_ns"] <= 1_000_000_000
                            for a, b in zip(bracket, bracket[1:])), "missed durable clock bracket")
     cpus = host["affinity"]
-    steal = share(bracket, cpus, 7)
-    require(steal is not None and steal <= 1 and terminal <= exit_us, "submit-window steal or worker exit differs")
+    changes = cpu_deltas(bracket, cpus)
+    steal = share(changes, 7)
+    require(steal is not None and terminal <= exit_us, "empty submit window or worker exit precedes settlement")
+    if enforce_noise:
+        require(steal <= 1, "accepted replay exceeds the submit-window steal limit")
     row = dict(terminal_to_worker_exit_us=exit_us-terminal,
                terminal_to_last_sample_us=points[-1]["epoch_us"]-terminal,
                recorder_wall_ns=points[-1]["monotonic_ns"]-points[0]["monotonic_ns"],
-               submit_window_steal_pct=steal, recorder_steal_pct=share(points, cpus, 7),
-               exit_sample_steal_pct=share(points[hi:], cpus, 7),
-               submit_window_iowait_pct=share(bracket, cpus, 4))
+               submit_window_steal_pct=steal, recorder_steal_pct=share(cpu_deltas(points, cpus), 7),
+               exit_sample_steal_pct=share(cpu_deltas(points[hi:], cpus), 7),
+               submit_window_iowait_pct=share(changes, 4))
+    if not enforce_noise:
+        row["submit_window_cpu_evidence"] = dict(
+            source="host-samples.jsonl", submit_us=submitted, terminal_us=terminal,
+            first_sample_index=lo, last_sample_index=hi,
+            first_sample_epoch_us=points[lo]["epoch_us"], last_sample_epoch_us=points[hi]["epoch_us"],
+            first_sample_monotonic_ns=points[lo]["monotonic_ns"], last_sample_monotonic_ns=points[hi]["monotonic_ns"],
+            per_cpu_ticks={f"cpu{cpu}": change for cpu, change in zip(cpus, changes, strict=True)},
+            steal_ticks=sum(change[7] for change in changes), denominator_ticks=sum(map(sum, changes)),
+            limit_pct=1, accepted=steal <= 1)
     if shape == "two":
         stamps = get(archive, "adapter/startup-clock.json")
         ready = stamps.get("verified_tls_roster", stamps["runners_ready"])
@@ -149,7 +165,8 @@ def archive_score(archive, inventory, lane, label, attempt, status, raw_sha, ver
         overlap = sum(max(0, min(job["effect_committed_us"], rank448) - max(job["attempt_committed_us"], rank64))
                       for job in jobs)
         row["mean_committed_holds_rank64_to_rank448"] = overlap / (rank448 - rank64)
-    row.update(duration_metrics(archive, host, submitted, committed, terminal, status["finished_us"], shape))
+    row.update(duration_metrics(archive, host, submitted, committed, terminal, status["finished_us"],
+                                shape, verified is not None))
 
     if verified is not None:
         require(verified["raw_sha256"] == raw_sha and verified["attempt_id"] == attempt
@@ -233,6 +250,11 @@ def archived_release(packet_path, folder, inventory_path, consumed, *, prior=Fal
                             unscored[key] = archive_score(archive, inv, lane, label, attempt, status, raw[rel], None)
                         except (KeyError, TypeError, ValueError, StopIteration) as error:
                             gaps[key]["archive_arithmetic_error"] = str(error)
+                        if gaps[key]["reason"].startswith("CPU steal "):
+                            pct = unscored[key]["submit_window_steal_pct"]
+                            require(pct > 1 and gaps[key]["reason"] ==
+                                    f"CPU steal {pct:.2f}% exceeds the 1% comparison limit",
+                                    "raw steal ticks do not reproduce the scorer rejection")
                     continue
                 accepted[key] = archive_score(archive, inv, lane, label, attempt, status, raw[rel], verified)
         eligible = order_matches and group_result.get("eligible") is True and not gaps
@@ -253,16 +275,16 @@ def distribution(rows):
             if (values := [row[metric] for row in rows if row[metric] is not None])}
 
 
-def pairings(releases):
+def pairings(releases, *, descriptive=False):
     order_results = {}
     measured_by_lane = {}
     for release in releases:
         for group, entry in release["groups"].items():
-            if not entry["eligible"]:
+            if not (entry["eligible"] or descriptive):
                 continue
             measured = {key.removeprefix("measured-"): row for key, row in entry["scores"].items()
                         if key.startswith("measured-")}
-            if not measured:
+            if len(measured) != 3 * len(ENGINES):
                 continue
             for label, row in measured.items():
                 measured_by_lane.setdefault(label, []).append(row)
@@ -312,7 +334,8 @@ def main():
         timing.append(archived_release(HERE / "request-pilot.json", HERE / "evidence/pilot", INVENTORY, consumed))
     if args.through == "full":
         timing.append(archived_release(HERE / "request-full.json", HERE / "evidence/full", INVENTORY, consumed))
-    print(json.dumps(dict(original_proof=original, amended_proof=proof, timing=timing, **pairings(timing)),
+    print(json.dumps(dict(original_proof=original, amended_proof=proof, timing=timing,
+                          descriptive=pairings(timing, descriptive=True), **pairings(timing)),
                      indent=2, sort_keys=True, allow_nan=False))
 
 
