@@ -1,0 +1,12 @@
+{
+  "group": 2,
+  "order": [
+    "off-b",
+    "sampled",
+    "off-a"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "noop"
+}

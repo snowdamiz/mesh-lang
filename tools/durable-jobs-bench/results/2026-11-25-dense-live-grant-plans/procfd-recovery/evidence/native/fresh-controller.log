@@ -1,0 +1,17 @@
+off-a measured mesh: 0
+sampled measured mesh: 0
+off-b measured mesh: 0
+off-b measured mesh: 0
+sampled measured mesh: 1
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/controller.py", line 220, in <module>
+    timing(receipt, config)
+    ~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-live-grant-plans/procfd-recovery/controller.py", line 169, in timing
+    need(run.read_json(folder / "measured-mesh/dispatch.json").get("exit_code") == 0,
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         f"{lane} failed; original and new raw attempts are retained")
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/verify.py", line 27, in require
+    raise ValueError(message)
+ValueError: sampled failed; original and new raw attempts are retained
