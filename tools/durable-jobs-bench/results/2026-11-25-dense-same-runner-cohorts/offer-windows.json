@@ -1,0 +1,432 @@
+{
+  "1": {
+    "sha256": "94c3a1114d1b5cec397dbb5df9cb0f018df3334ba153b458a57d8aa6f01f729d",
+    "original_pairs": 62,
+    "sensitivities": [
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 62,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 29,
+          "250": 31,
+          "1000": 32
+        }
+      },
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 62,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 29,
+          "250": 29,
+          "1000": 31
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 62,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 30,
+          "250": 30,
+          "1000": 32
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 62,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 29,
+          "250": 29,
+          "1000": 31
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 62,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 30,
+          "250": 30,
+          "1000": 31
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 62,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 30,
+          "250": 30,
+          "1000": 32
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 32,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 12,
+          "250": 12,
+          "1000": 12
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 32,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 10,
+          "250": 11,
+          "1000": 12
+        }
+      }
+    ]
+  },
+  "2": {
+    "sha256": "4e419d9be14bd3a2950123e4d43ea4036fdaf5323c5b02647aae55f33aa3dd61",
+    "original_pairs": 130,
+    "sensitivities": [
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 130,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 65,
+          "250": 60,
+          "1000": 40
+        }
+      },
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 130,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 57,
+          "250": 51,
+          "1000": 40
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 130,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 66,
+          "250": 61,
+          "1000": 40
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 130,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 58,
+          "250": 55,
+          "1000": 40
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 130,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 70,
+          "250": 63,
+          "1000": 42
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 130,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 66,
+          "250": 61,
+          "1000": 40
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 112,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 65,
+          "250": 57,
+          "1000": 35
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 112,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 65,
+          "250": 57,
+          "1000": 34
+        }
+      }
+    ]
+  },
+  "3": {
+    "sha256": "7d0fafb440086692dbd43b7f2de84d8d75144f533beac0a87277e9e29431fac3",
+    "original_pairs": 60,
+    "sensitivities": [
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 60,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 27,
+          "250": 25,
+          "1000": 21
+        }
+      },
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 60,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 23,
+          "250": 23,
+          "1000": 18
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 60,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 27,
+          "250": 26,
+          "1000": 21
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 60,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 25,
+          "250": 23,
+          "1000": 19
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 60,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 29,
+          "250": 27,
+          "1000": 23
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 60,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 27,
+          "250": 26,
+          "1000": 21
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 36,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 16,
+          "250": 13,
+          "1000": 10
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 36,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 15,
+          "250": 13,
+          "1000": 10
+        }
+      }
+    ]
+  },
+  "4": {
+    "sha256": "a4bbec49b4115ca12b78a52f5f20e1627c5f0ae560d2ac5239ab8aa769d31598",
+    "original_pairs": 69,
+    "sensitivities": [
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 69,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 26,
+          "250": 27,
+          "1000": 21
+        }
+      },
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 69,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 26,
+          "250": 27,
+          "1000": 20
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 69,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 26,
+          "250": 27,
+          "1000": 22
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 69,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 26,
+          "250": 27,
+          "1000": 21
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 69,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 27,
+          "250": 29,
+          "1000": 22
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 69,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 26,
+          "250": 27,
+          "1000": 22
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 42,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 20,
+          "250": 18,
+          "1000": 11
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 42,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 19,
+          "250": 16,
+          "1000": 12
+        }
+      }
+    ]
+  },
+  "5": {
+    "sha256": "906f82b19cf16c0a1e2fcef800379e3d2f469e9dd6f8af0cca3aab8c7789b175",
+    "original_pairs": 71,
+    "sensitivities": [
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 71,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 23,
+          "250": 28,
+          "1000": 26
+        }
+      },
+      {
+        "ready_lag_us": 0,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 71,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 21,
+          "250": 25,
+          "1000": 25
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 71,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 23,
+          "250": 27,
+          "1000": 27
+        }
+      },
+      {
+        "ready_lag_us": 250,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 71,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 23,
+          "250": 26,
+          "1000": 25
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 71,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 24,
+          "250": 28,
+          "1000": 29
+        }
+      },
+      {
+        "ready_lag_us": 1000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 71,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 23,
+          "250": 27,
+          "1000": 27
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 250,
+        "consistent_with_both_stock_xid_upper_bounds": 42,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 16,
+          "250": 15,
+          "1000": 13
+        }
+      },
+      {
+        "ready_lag_us": 4000,
+        "receipt_lag_us": 1000,
+        "consistent_with_both_stock_xid_upper_bounds": 42,
+        "pairs_with_open_offer_by_election_delay_us": {
+          "0": 14,
+          "250": 15,
+          "1000": 13
+        }
+      }
+    ]
+  }
+}

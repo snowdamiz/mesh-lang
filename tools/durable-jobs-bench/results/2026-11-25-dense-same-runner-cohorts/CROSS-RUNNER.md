@@ -51,3 +51,19 @@ The lost supply is sensitive to receipt latency. One millisecond produced zero f
 The same replay integrates ledger states during effects 256–768 in B, both same-image controls and the reference. Slow B rotation 2 spent **1,238 ms** in that window. A time average of **15.05 jobs** had entered their handler and had yet to commit the first write, versus **5.93 and 5.02** in its same-image controls (592 and 628 ms). Only **0.74 of eight runners** on average had exclusively post-effect jobs awaiting settlement, versus **1.75 and 1.79** in the controls. Moving each claim stamp to the latest possible point before entry changes slow B's latter value to 0.75. These are overlapping jobs and runner states. Settlement can affect future admission, but a terminal-only backlog cannot by itself explain the observed slowdown. The SQL and host readbacks independently record queue-lock timeouts and higher device activity in this rotation. [Native phase analysis](../2026-11-25-dense-factorial-interaction/LATE-CAPACITY-PEER-PHASES.md)
 
 The [archive calculation](middle_supply.py) reads 20 hash-bound measured arms. The [per-arm output](middle-supply.json) includes both claim-clock endpoints, the four job stages, and the delay sensitivity.
+
+## How often do the prototype's two collection windows line up?
+
+The implementation in `fe8901c4d` lets a writer take another runner's group when its own normal flush is due and the other group is still accepting an election. The two events must occur in that order. Two transactions committing close together need not satisfy that condition.
+
+In the illustration below, each job becomes eligible 250 µs after its effect commit and each owner's previous receipt is applied 250 µs after its terminal commit. A group is available once all its members are eligible and the prior receipt has arrived. Its ordinary deadline is eight milliseconds after its earliest member became eligible. For a full intact pair, the leader must pass its deadline, while the other group's deadline must still be ahead. Both groups must also meet their original XID-assignment upper bounds. The calculation allows either owner to lead and examines each pair independently.
+
+| Rotation | Original pairs | Eligible with 250 µs election delay | Net advance per eligible pair to tie stock River on submit |
+|---|---:|---:|---:|
+| 1 | 62 | 30 | 3.13 ms |
+| 2 | 130 | 61 | 19.62 ms |
+| 3 | 60 | 26 | 5.90 ms |
+| 4 | 69 | 27 | 8.02 ms |
+| 5 | 71 | 27 | 9.50 ms |
+
+The illustration retains **171 of 392** pairs. With the same assumed exit and receipt latency, immediate election retains 172 and a 1 ms delay retains 142. In an individual pair, a later election can miss an open offer or give the other runner enough time to publish one. A qualifying pair has to displace enough elapsed work after accounting for the two-exchange shared commit, local handoff, and any delayed refill. This is scheduling sensitivity for the recorded cohorts. Actual teardown, polling, publication, renewal, and receipt latency can change the groups and their ordering. Native evidence needs the real mixed-owner XIDs and durable write clocks. [Window calculation](offer_windows.py) · [Five archive hashes and all lag assumptions](offer-windows.json)
