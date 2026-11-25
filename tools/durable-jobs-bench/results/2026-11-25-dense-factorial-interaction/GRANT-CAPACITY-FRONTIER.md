@@ -37,3 +37,19 @@ The model credits the earlier owner with its observed grant and moves the later 
 At 8 ms assumed lag, matching River on submit would require 1.8–4.5 ms of net advance per pair outside rotation 2 and 19.3 ms in rotation 2. Matching River's middle-write pace through this mechanism alone would require 7.4–11.2 ms per middle pair outside rotation 2 and 29.6 ms in rotation 2. The actual saving is unmeasured. The first question for an implementation is whether two compatible reservations are ready when the first claim can run, without delaying a lone request.
 
 The [raw hashes, seat sensitivities and intervening grant counts](two-owner-prefix.json) cover the five B captures. Reproduce them with `python3 -B two_owner_prefix.py`.
+
+## How many granted rows actually used the late capacity?
+
+The stopped runners record how many seats they added between reservation and the bounded SELECT. A grant can return fewer rows than it requests. Even after allowing the maximum possible unused capacity, **at least 210–384 of the 1,024 jobs in each measured B arm used a seat added after the original reservation**. This puts a cost on freezing the leader's width early to combine two owners. In the four ordinary rotations, at least 30–36 full grants in the middle 512 effects used a late credit. The middle-specific lower bound is zero in G2.
+
+| Rotation | Seats added | Lower bound on added seats filled | Middle full grants using added seats, lower bound / full grants |
+|---|---:|---:|---:|
+| 1 | 593 | 384 | 36 / 60 |
+| 2 | 633 | 210 | 0 / 36 |
+| 3 | 605 | 359 | 32 / 57 |
+| 4 | 621 | 374 | 30 / 53 |
+| 5 | 609 | 348 | 31 / 55 |
+
+The calculation gives every post-idle empty SELECT and every failed SELECT after a successful prelock seven unused credits, the maximum increase from one seat to eight. On positive grants it allows every unfilled seat to consume a credit. Each runner's first positive grant starts with its full eight-seat allowance. The terminal claim counters equal the final observer's successful SELECT count in every arm. The runner samples also equal the successful prelock rows, and G2's two failures inside the bounded SELECT are included. For the middle bound, assign as many topups as possible to empty, failed, partial, or outside-window turns. Each remaining topup on a full grant necessarily admitted at least one additional job.
+
+A two-owner diagnostic should record both original reservations, the credits available to each owner immediately before the combined SELECT, and the actual ordered row assignment. A prospective saving from dropping a database turn needs to account for rows displaced onto later turns. These counts describe the actual schedule. A displaced row's delay and the effect on subsequent grants require native measurement. [Archive calculation](realized_topups.py) · [Five-arm results](realized-topups.json)
