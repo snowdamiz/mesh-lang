@@ -33,7 +33,9 @@ def inspect(bindir):
         return subprocess.run([bindir / name, *map(str, args)], check=True, text=True,
                               stdout=subprocess.PIPE, **kwargs).stdout.strip()
 
-    with TemporaryDirectory(dir=ROOT / "target", prefix="dh-") as tmp:
+    work = ROOT / "target"
+    work.mkdir(exist_ok=True)
+    with TemporaryDirectory(dir=work, prefix="dh-") as tmp:
         scratch = Path(tmp)
         harness = runpy.run_path(str(ROOT / "scripts/jobs-parity.py"))
         config = json.loads(harness["CONFIG"].read_text())
@@ -104,7 +106,10 @@ def inspect(bindir):
                     assert raw_arg == 18 and size < sample["completed"]["tuple_min"]
                     sample["oversized_control"] = dict(tuple_bytes=size, args_bytes=raw_arg)
                 out[db] = sample
-            return {"postgres": "17.11", "profile": "noop", "input_sha256": INPUT, "layouts": out}
+            sources = {p.name: sha256(p.read_bytes()).hexdigest()
+                       for p in (SQL / "schema.sql", SQL / "enqueue_schema.sql")}
+            return {"postgres": "17.11", "profile": "noop", "input_sha256": INPUT,
+                    "schema_sha256": sources, "layouts": out}
         finally:
             tool("pg_ctl", "-D", data, "-m", "fast", "-w", "stop")
 
