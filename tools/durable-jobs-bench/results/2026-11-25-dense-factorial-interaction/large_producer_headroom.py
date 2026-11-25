@@ -47,7 +47,7 @@ def arm(group, directory):
 def replay():
     result = {}
     for name, directory, summary, release in (
-        ("default", DEFAULT / "timing-adapter-path-retry", DEFAULT / "score-replay.json",
+        ("default", DEFAULT / "timing-adapter-path-retry", DEFAULT / "timing-adapter-path-retry-scores.json",
          DEFAULT / "timing-adapter-path-retry-release.json"),
         ("external", EXTERNAL / "native", EXTERNAL / "replay.json", EXTERNAL / "native/controller-release.json"),
     ):
