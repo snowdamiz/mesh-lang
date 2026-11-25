@@ -1,0 +1,917 @@
+{
+  "recent-1-inline-a": {
+    "additional_query_rows": 24,
+    "by_width": {
+      "1": {
+        "cohorts": 9,
+        "median_stamp_to_first_entry_us": 3126
+      },
+      "2": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 5657.0
+      },
+      "3": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 3929
+      },
+      "4": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 4863.0
+      },
+      "5": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 5236
+      },
+      "6": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 10346
+      },
+      "7": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 20841.5
+      },
+      "8": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 12314.0
+      },
+      "10": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 10389
+      },
+      "13": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 35617
+      },
+      "14": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 14983
+      },
+      "15": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 16264.5
+      },
+      "16": {
+        "cohorts": 23,
+        "median_stamp_to_first_entry_us": 15738
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 144665.953125,
+    "raw_sha256": "28c1914792a432a0db7fce535c8780ce2f72096705042b295daab9e88acee5c3",
+    "stamp_groups": 50,
+    "subsequent_entry_slot_us": 18689.125,
+    "whole_arm_claim_exec_ms": 563.96567,
+    "whole_arm_settle_exec_ms": 271.77114000000006
+  },
+  "recent-1-inline-b": {
+    "additional_query_rows": 21,
+    "by_width": {
+      "1": {
+        "cohorts": 8,
+        "median_stamp_to_first_entry_us": 2281.5
+      },
+      "2": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 6664.5
+      },
+      "3": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 22653
+      },
+      "4": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4590
+      },
+      "6": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 5010
+      },
+      "7": {
+        "cohorts": 5,
+        "median_stamp_to_first_entry_us": 9271
+      },
+      "8": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 11607.0
+      },
+      "9": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 8523
+      },
+      "13": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 12399
+      },
+      "15": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 26335.5
+      },
+      "16": {
+        "cohorts": 24,
+        "median_stamp_to_first_entry_us": 16003.5
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 145308.25,
+    "raw_sha256": "855640c6c95d988ca8ce110e3505c02c99ec3f0dae2eb3dd75326c7421c453f5",
+    "stamp_groups": 48,
+    "subsequent_entry_slot_us": 19707.453125,
+    "whole_arm_claim_exec_ms": 588.6643449999999,
+    "whole_arm_settle_exec_ms": 262.379026
+  },
+  "recent-2-inline-a": {
+    "additional_query_rows": 24,
+    "by_width": {
+      "1": {
+        "cohorts": 7,
+        "median_stamp_to_first_entry_us": 3396
+      },
+      "2": {
+        "cohorts": 10,
+        "median_stamp_to_first_entry_us": 4488.5
+      },
+      "3": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 7558.0
+      },
+      "5": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4962
+      },
+      "6": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4720
+      },
+      "7": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 6774
+      },
+      "10": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 13499
+      },
+      "11": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 21279
+      },
+      "14": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 14332
+      },
+      "16": {
+        "cohorts": 25,
+        "median_stamp_to_first_entry_us": 15166
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 128715.53125,
+    "raw_sha256": "4f7e47a253e37be60a3cf3186b3decf2d178edd0c29e2f2af1f64381c4f92b41",
+    "stamp_groups": 54,
+    "subsequent_entry_slot_us": 18083.140625,
+    "whole_arm_claim_exec_ms": 593.243604,
+    "whole_arm_settle_exec_ms": 271.259674
+  },
+  "recent-2-inline-b": {
+    "additional_query_rows": 23,
+    "by_width": {
+      "1": {
+        "cohorts": 7,
+        "median_stamp_to_first_entry_us": 4085
+      },
+      "2": {
+        "cohorts": 7,
+        "median_stamp_to_first_entry_us": 5049
+      },
+      "3": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 10995
+      },
+      "4": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 6726.5
+      },
+      "5": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 7504.0
+      },
+      "6": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 11770.0
+      },
+      "7": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 8737.0
+      },
+      "8": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 25789.0
+      },
+      "9": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 16353.0
+      },
+      "13": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 10368
+      },
+      "15": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 24676
+      },
+      "16": {
+        "cohorts": 20,
+        "median_stamp_to_first_entry_us": 18764.0
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 146697.953125,
+    "raw_sha256": "0ce25ae29976e95355fba40abb37c3e516e9f558b94284681c5af691b711ac4c",
+    "stamp_groups": 57,
+    "subsequent_entry_slot_us": 18116.1875,
+    "whole_arm_claim_exec_ms": 662.1318929999996,
+    "whole_arm_settle_exec_ms": 265.116228
+  },
+  "river-1": {
+    "by_width": {
+      "1": {
+        "cohorts": 27,
+        "median_stamp_to_first_entry_us": 2287
+      },
+      "2": {
+        "cohorts": 10,
+        "median_stamp_to_first_entry_us": 1990.0
+      },
+      "3": {
+        "cohorts": 9,
+        "median_stamp_to_first_entry_us": 2578
+      },
+      "4": {
+        "cohorts": 12,
+        "median_stamp_to_first_entry_us": 2358.0
+      },
+      "5": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 3203.5
+      },
+      "6": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 1828
+      },
+      "7": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 5022
+      },
+      "8": {
+        "cohorts": 8,
+        "median_stamp_to_first_entry_us": 2263.5
+      },
+      "9": {
+        "cohorts": 6,
+        "median_stamp_to_first_entry_us": 2402.0
+      },
+      "10": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 2263.5
+      },
+      "11": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 2846
+      },
+      "12": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 4040
+      },
+      "13": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4424
+      },
+      "14": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 2940
+      },
+      "15": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 3035.5
+      },
+      "21": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 5500
+      },
+      "64": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 9834
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 31847.90625,
+    "raw_sha256": "29eaa3c062ceea63deec983bb6bf3e639a4c42b9f384c92ce7b385903127c954",
+    "stamp_groups": 92,
+    "subsequent_entry_slot_us": 31724.3125
+  },
+  "river-2": {
+    "by_width": {
+      "1": {
+        "cohorts": 32,
+        "median_stamp_to_first_entry_us": 1696.0
+      },
+      "2": {
+        "cohorts": 11,
+        "median_stamp_to_first_entry_us": 1288
+      },
+      "3": {
+        "cohorts": 8,
+        "median_stamp_to_first_entry_us": 1898.5
+      },
+      "4": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 2112.0
+      },
+      "5": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 3939.0
+      },
+      "6": {
+        "cohorts": 6,
+        "median_stamp_to_first_entry_us": 3146.5
+      },
+      "7": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 4005.5
+      },
+      "8": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 2771
+      },
+      "11": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 2551.5
+      },
+      "15": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 7637
+      },
+      "18": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 7355.0
+      },
+      "19": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 5512.5
+      },
+      "21": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 5406
+      },
+      "22": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 7380
+      },
+      "23": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4026
+      },
+      "24": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 6299
+      },
+      "25": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 5190
+      },
+      "26": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 4300.0
+      },
+      "64": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 10842
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 42556.9375,
+    "raw_sha256": "919ff265c2e3d727aef9ed579ce0169632dbf466b7742b1ac5b1b79ed3e4c811",
+    "stamp_groups": 81,
+    "subsequent_entry_slot_us": 43618.890625
+  },
+  "river-3": {
+    "by_width": {
+      "1": {
+        "cohorts": 16,
+        "median_stamp_to_first_entry_us": 2307.5
+      },
+      "2": {
+        "cohorts": 5,
+        "median_stamp_to_first_entry_us": 1618
+      },
+      "3": {
+        "cohorts": 6,
+        "median_stamp_to_first_entry_us": 2812.5
+      },
+      "4": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 1992
+      },
+      "5": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 4690.5
+      },
+      "7": {
+        "cohorts": 8,
+        "median_stamp_to_first_entry_us": 3454.5
+      },
+      "8": {
+        "cohorts": 7,
+        "median_stamp_to_first_entry_us": 4918
+      },
+      "9": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 2225
+      },
+      "10": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 5583.5
+      },
+      "11": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4125
+      },
+      "19": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 8694
+      },
+      "23": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 5833
+      },
+      "32": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 7367.5
+      },
+      "33": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 7197
+      },
+      "35": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 7206
+      },
+      "64": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 25029
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 70103.40625,
+    "raw_sha256": "74fb102138aec47cb34bb939348312259e64616bf435e873beb9a9eea942f7ba",
+    "stamp_groups": 58,
+    "subsequent_entry_slot_us": 22331.40625
+  },
+  "river-4": {
+    "by_width": {
+      "1": {
+        "cohorts": 23,
+        "median_stamp_to_first_entry_us": 1437
+      },
+      "2": {
+        "cohorts": 18,
+        "median_stamp_to_first_entry_us": 2461.0
+      },
+      "3": {
+        "cohorts": 5,
+        "median_stamp_to_first_entry_us": 2524
+      },
+      "4": {
+        "cohorts": 5,
+        "median_stamp_to_first_entry_us": 2572
+      },
+      "5": {
+        "cohorts": 6,
+        "median_stamp_to_first_entry_us": 3153.5
+      },
+      "6": {
+        "cohorts": 6,
+        "median_stamp_to_first_entry_us": 2588.0
+      },
+      "7": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 3211.0
+      },
+      "8": {
+        "cohorts": 7,
+        "median_stamp_to_first_entry_us": 3568
+      },
+      "9": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4344
+      },
+      "10": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 7323
+      },
+      "18": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 7833
+      },
+      "25": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 5717
+      },
+      "30": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 6532
+      },
+      "31": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 6565
+      },
+      "36": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 9278
+      },
+      "45": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 6325
+      },
+      "64": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 12733
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 47141.734375,
+    "raw_sha256": "6aa11fd61af2925e1d03397d2cb4e58a23a769ee43191077d003168e01853f8f",
+    "stamp_groups": 83,
+    "subsequent_entry_slot_us": 54228.703125
+  },
+  "river-5": {
+    "by_width": {
+      "1": {
+        "cohorts": 31,
+        "median_stamp_to_first_entry_us": 1407
+      },
+      "2": {
+        "cohorts": 5,
+        "median_stamp_to_first_entry_us": 2346
+      },
+      "3": {
+        "cohorts": 8,
+        "median_stamp_to_first_entry_us": 1698.0
+      },
+      "4": {
+        "cohorts": 11,
+        "median_stamp_to_first_entry_us": 2872
+      },
+      "5": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 2798
+      },
+      "6": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 3122
+      },
+      "7": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 2557.5
+      },
+      "8": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 3274
+      },
+      "11": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 3572
+      },
+      "13": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4399
+      },
+      "14": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 4677
+      },
+      "15": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 3641
+      },
+      "16": {
+        "cohorts": 5,
+        "median_stamp_to_first_entry_us": 3198
+      },
+      "17": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4225
+      },
+      "21": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 6898
+      },
+      "23": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4812
+      },
+      "24": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 5322.0
+      },
+      "64": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 13266
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 40382.984375,
+    "raw_sha256": "187b02393e1a37a0023fa9ec8b330b952936babb04b777e9f52ab89d5273c52a",
+    "stamp_groups": 83,
+    "subsequent_entry_slot_us": 26071.984375
+  },
+  "stock-1": {
+    "additional_query_rows": 23,
+    "by_width": {
+      "1": {
+        "cohorts": 20,
+        "median_stamp_to_first_entry_us": 2720.0
+      },
+      "2": {
+        "cohorts": 5,
+        "median_stamp_to_first_entry_us": 2619
+      },
+      "3": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 3681.0
+      },
+      "4": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 4637
+      },
+      "6": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 14795.0
+      },
+      "7": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 11390.5
+      },
+      "8": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 25279.5
+      },
+      "10": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 9461
+      },
+      "11": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 34160
+      },
+      "12": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 11844
+      },
+      "14": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 15064
+      },
+      "15": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 18695
+      },
+      "16": {
+        "cohorts": 18,
+        "median_stamp_to_first_entry_us": 17692.0
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 133966.078125,
+    "raw_sha256": "1bb9b1ebaff4dd32d40eded1b2d8acfe117d4902c5483178cd28f2b79e6b2fec",
+    "stamp_groups": 67,
+    "subsequent_entry_slot_us": 16495.96875,
+    "whole_arm_claim_exec_ms": 635.9309010000002,
+    "whole_arm_settle_exec_ms": 264.0653229999998
+  },
+  "stock-2": {
+    "additional_query_rows": 23,
+    "by_width": {
+      "1": {
+        "cohorts": 10,
+        "median_stamp_to_first_entry_us": 2478.0
+      },
+      "2": {
+        "cohorts": 8,
+        "median_stamp_to_first_entry_us": 3248.5
+      },
+      "3": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 2966
+      },
+      "4": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 22622
+      },
+      "5": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 10487
+      },
+      "7": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 9503
+      },
+      "9": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 15483.0
+      },
+      "11": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 11410.5
+      },
+      "12": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 10827
+      },
+      "13": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 11584
+      },
+      "14": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 44668.0
+      },
+      "16": {
+        "cohorts": 21,
+        "median_stamp_to_first_entry_us": 16453
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 158067.9375,
+    "raw_sha256": "36002095f10d79441701c30bb5688aaee611760e0c4478cce26e8c8762bb6044",
+    "stamp_groups": 55,
+    "subsequent_entry_slot_us": 13366.5625,
+    "whole_arm_claim_exec_ms": 623.0333219999998,
+    "whole_arm_settle_exec_ms": 270.6150300000001
+  },
+  "stock-3": {
+    "additional_query_rows": 28,
+    "by_width": {
+      "1": {
+        "cohorts": 10,
+        "median_stamp_to_first_entry_us": 7242.0
+      },
+      "2": {
+        "cohorts": 5,
+        "median_stamp_to_first_entry_us": 3290
+      },
+      "3": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 3885
+      },
+      "4": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 8356.5
+      },
+      "5": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 4681
+      },
+      "6": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 13501
+      },
+      "7": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 15085
+      },
+      "10": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 9875
+      },
+      "11": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 21502.0
+      },
+      "12": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 31431
+      },
+      "14": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 13410
+      },
+      "15": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 13243
+      },
+      "16": {
+        "cohorts": 21,
+        "median_stamp_to_first_entry_us": 15444
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 141820.453125,
+    "raw_sha256": "67f2eb0fb93566e909d2b314a22a3c67025788a7b52cf68bf0db396b2165e169",
+    "stamp_groups": 56,
+    "subsequent_entry_slot_us": 17607.671875,
+    "whole_arm_claim_exec_ms": 603.2811180000003,
+    "whole_arm_settle_exec_ms": 264.87993500000005
+  },
+  "stock-4": {
+    "additional_query_rows": 31,
+    "by_width": {
+      "1": {
+        "cohorts": 15,
+        "median_stamp_to_first_entry_us": 2511
+      },
+      "2": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 3497.0
+      },
+      "3": {
+        "cohorts": 7,
+        "median_stamp_to_first_entry_us": 6521
+      },
+      "4": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 6782
+      },
+      "5": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 6065.5
+      },
+      "6": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 4920.5
+      },
+      "8": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 32238.5
+      },
+      "10": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 13397.0
+      },
+      "11": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 10955
+      },
+      "13": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 18694
+      },
+      "15": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 14520.0
+      },
+      "16": {
+        "cohorts": 20,
+        "median_stamp_to_first_entry_us": 15770.0
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 138834.328125,
+    "raw_sha256": "8b8865186215595d85ff3ba9fc258d60d4696943fd0d41f27b54cb871f1001cc",
+    "stamp_groups": 61,
+    "subsequent_entry_slot_us": 15888.03125,
+    "whole_arm_claim_exec_ms": 626.4869840000002,
+    "whole_arm_settle_exec_ms": 254.3575439999999
+  },
+  "stock-5": {
+    "additional_query_rows": 26,
+    "by_width": {
+      "1": {
+        "cohorts": 16,
+        "median_stamp_to_first_entry_us": 3773.5
+      },
+      "2": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 30145
+      },
+      "3": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 4391
+      },
+      "4": {
+        "cohorts": 3,
+        "median_stamp_to_first_entry_us": 6460
+      },
+      "5": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 10133
+      },
+      "6": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 35142.5
+      },
+      "9": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 9323.5
+      },
+      "10": {
+        "cohorts": 1,
+        "median_stamp_to_first_entry_us": 10557
+      },
+      "11": {
+        "cohorts": 2,
+        "median_stamp_to_first_entry_us": 14468.5
+      },
+      "15": {
+        "cohorts": 4,
+        "median_stamp_to_first_entry_us": 18488.0
+      },
+      "16": {
+        "cohorts": 22,
+        "median_stamp_to_first_entry_us": 18133.0
+      }
+    },
+    "common_stamp_to_first_entry_slot_us": 149922.140625,
+    "raw_sha256": "329f3c01d40924050c31fb561763345dd6521dd86553bc9d0664a07d969a1322",
+    "stamp_groups": 55,
+    "subsequent_entry_slot_us": 18952.078125,
+    "whole_arm_claim_exec_ms": 639.313946,
+    "whole_arm_settle_exec_ms": 264.21560900000003
+  }
+}
