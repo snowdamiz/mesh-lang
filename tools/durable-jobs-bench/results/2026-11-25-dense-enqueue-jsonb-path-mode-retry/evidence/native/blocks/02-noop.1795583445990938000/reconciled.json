@@ -1,0 +1,1199 @@
+{
+  "measured": {
+    "projected": {
+      "acknowledgement_us": 213190,
+      "affinity": [
+        0,
+        1
+      ],
+      "application_sql_exec_ms": 92.59540399999995,
+      "attempt_to_effect_commit_p50_ms": 1.0805,
+      "attempt_to_effect_commit_p99_ms": 6.106,
+      "bulk_sql_calls": 166,
+      "checkout_probes": 4,
+      "claim_sql_calls": 195,
+      "claim_to_entry_p50_ms": 22.291,
+      "claim_to_entry_p99_ms": 67.062,
+      "claim_to_last_settlement_ms": 909.676,
+      "cohort_xid_widths": {
+        "1": 3,
+        "2": 3,
+        "3": 7,
+        "4": 22,
+        "5": 25,
+        "6": 29,
+        "7": 33,
+        "8": 47
+      },
+      "commit_jobs_per_s": 1121.3659639147936,
+      "commit_to_claim_p50_ms": 457.996,
+      "commit_to_claim_p99_ms": 868.496,
+      "commit_to_pickup_p50_ms": 477.0115,
+      "commit_to_pickup_p99_ms": 883.664,
+      "commit_to_settlement_p50_ms": 497.885,
+      "commit_to_settlement_p99_ms": 909.197,
+      "committed_occupancy": {
+        "3069033": 32,
+        "3069038": 32,
+        "total": 64
+      },
+      "completed": 1024,
+      "cpu_iowait_percent": 1.1278195488721805,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 242,
+      "disk_flushes": 1371,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 37347328,
+      "drain_us": 913172,
+      "effect_commit_to_settlement_p50_ms": 8.7335,
+      "effect_commit_to_settlement_p99_ms": 26.134,
+      "enqueue_overlay": {
+        "after": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "2577dd4219b27bdbdc78a723c7cd9b51dcc6c2108ca6c2cde51878077cf46a37",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        },
+        "before": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        }
+      },
+      "enqueue_us": 200368,
+      "entry_to_attempt_commit_p50_ms": 5.6850000000000005,
+      "entry_to_attempt_commit_p99_ms": 89.874,
+      "failed": 0,
+      "first_claim_from_commit_ms": 3.496,
+      "first_commit_us": 1795583481680504,
+      "first_submit_to_commit_ms": 200.368,
+      "first_submit_us": 1795583481480136,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_cpu_ms": 2090.0,
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1366.369,
+      "host_samples": 7,
+      "jobs_by_runner": [
+        517,
+        507
+      ],
+      "largest_terminal_cohort": 8,
+      "last_effect_from_commit_us": 911831,
+      "last_effect_us": 1795583482592335,
+      "last_settlement_us": 1795583482593676,
+      "middle_820_effect_us": 651109,
+      "observed_arm_wall_ms": 8888.886175,
+      "ordered_independent_writes": 1024,
+      "peak_connections": 41,
+      "peak_executing": 64,
+      "peak_runner_rss_bytes": 23572480,
+      "pg_cpu": {
+        "ms": 1270,
+        "paired": 47,
+        "slack_us": 76144,
+        "unmatched": []
+      },
+      "pg_cpu_ms": 1270,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "physical_tls_by_role": {
+        "compiled_caller": 32,
+        "parity_producer": 1,
+        "parity_subject": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": 0.703125,
+      "pinned_user_cpu_ms_per_job": 1.337890625,
+      "probe_sql_exec_ms": 0.03604,
+      "raw_sha256": "6d82a22f0ee30c5ddaed658e14eb6981a584517fe38ccaebcf913e1409225894",
+      "runner_cpu_ms": 544.694,
+      "runner_cpu_ms_per_job": 0.531927734375,
+      "submit_jobs_per_s": 919.5897767480288,
+      "submit_to_pickup_p50_ms": 677.3795,
+      "submit_to_pickup_p99_ms": 1084.032,
+      "submit_to_settlement_p50_ms": 698.253,
+      "submit_to_settlement_p99_ms": 1109.565,
+      "submit_us": 1113540,
+      "terminal_sql_elapsed_ms": 337.6027839999999,
+      "terminal_xids": 169,
+      "writer": [
+        {
+          "claims_while_writing": 9,
+          "cohort_submissions_by_width": [
+            2,
+            2,
+            3,
+            12,
+            12,
+            17,
+            12,
+            26
+          ],
+          "confirmed_free_claims": 97,
+          "max_collection_us": 26881,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 807,
+          "runner": 1,
+          "saturated_flushes": 0
+        },
+        {
+          "claims_while_writing": 3,
+          "cohort_submissions_by_width": [
+            1,
+            1,
+            4,
+            10,
+            13,
+            12,
+            21,
+            21
+          ],
+          "confirmed_free_claims": 98,
+          "max_collection_us": 14495,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 798,
+          "runner": 1,
+          "saturated_flushes": 0
+        }
+      ],
+      "writer_counts": {
+        "bulk": [
+          8,
+          1024
+        ]
+      }
+    },
+    "stock-a": {
+      "acknowledgement_us": 167072,
+      "affinity": [
+        0,
+        1
+      ],
+      "application_sql_exec_ms": 74.15986000000001,
+      "attempt_to_effect_commit_p50_ms": 1.0995,
+      "attempt_to_effect_commit_p99_ms": 5.408,
+      "bulk_sql_calls": 159,
+      "checkout_probes": 4,
+      "claim_sql_calls": 189,
+      "claim_to_entry_p50_ms": 22.877,
+      "claim_to_entry_p99_ms": 48.908,
+      "claim_to_last_settlement_ms": 833.508,
+      "cohort_xid_widths": {
+        "1": 1,
+        "2": 3,
+        "3": 8,
+        "4": 3,
+        "5": 23,
+        "6": 38,
+        "7": 34,
+        "8": 50
+      },
+      "commit_jobs_per_s": 1222.8939115647072,
+      "commit_to_claim_p50_ms": 373.85,
+      "commit_to_claim_p99_ms": 787.85,
+      "commit_to_pickup_p50_ms": 397.06050000000005,
+      "commit_to_pickup_p99_ms": 813.43,
+      "commit_to_settlement_p50_ms": 415.332,
+      "commit_to_settlement_p99_ms": 826.839,
+      "committed_occupancy": {
+        "3069649": 32,
+        "3069654": 32,
+        "total": 64
+      },
+      "completed": 1024,
+      "cpu_iowait_percent": 1.3274336283185841,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 217,
+      "disk_flushes": 1309,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 36777984,
+      "drain_us": 837358,
+      "effect_commit_to_settlement_p50_ms": 8.2955,
+      "effect_commit_to_settlement_p99_ms": 19.225,
+      "enqueue_overlay": {
+        "after": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        },
+        "before": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        }
+      },
+      "enqueue_us": 161234,
+      "entry_to_attempt_commit_p50_ms": 4.667,
+      "entry_to_attempt_commit_p99_ms": 76.907,
+      "failed": 0,
+      "first_claim_from_commit_ms": 3.85,
+      "first_commit_us": 1795583501001150,
+      "first_submit_to_commit_ms": 161.234,
+      "first_submit_us": 1795583500839916,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_cpu_ms": 1760.0,
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1154.395,
+      "host_samples": 6,
+      "jobs_by_runner": [
+        498,
+        526
+      ],
+      "largest_terminal_cohort": 8,
+      "last_effect_from_commit_us": 826154,
+      "last_effect_us": 1795583501827304,
+      "last_settlement_us": 1795583501838508,
+      "middle_820_effect_us": 621371,
+      "observed_arm_wall_ms": 8253.788531,
+      "ordered_independent_writes": 1024,
+      "peak_connections": 41,
+      "peak_executing": 59,
+      "peak_runner_rss_bytes": 23207936,
+      "pg_cpu": {
+        "ms": 1160,
+        "paired": 47,
+        "slack_us": 65507,
+        "unmatched": []
+      },
+      "pg_cpu_ms": 1160,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "physical_tls_by_role": {
+        "compiled_caller": 32,
+        "parity_producer": 1,
+        "parity_subject": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": 0.56640625,
+      "pinned_user_cpu_ms_per_job": 1.15234375,
+      "probe_sql_exec_ms": 0.034589999999999996,
+      "raw_sha256": "032a2c367045e32209d08e11868f3562087ede557a326665dcb3711798a0137c",
+      "runner_cpu_ms": 525.333,
+      "runner_cpu_ms_per_job": 0.5130205078125,
+      "submit_jobs_per_s": 1025.443824905467,
+      "submit_to_pickup_p50_ms": 558.2945,
+      "submit_to_pickup_p99_ms": 974.664,
+      "submit_to_settlement_p50_ms": 576.566,
+      "submit_to_settlement_p99_ms": 988.073,
+      "submit_us": 998592,
+      "terminal_sql_elapsed_ms": 271.872273,
+      "terminal_xids": 160,
+      "writer": [
+        {
+          "claims_while_writing": 1,
+          "cohort_submissions_by_width": [
+            0,
+            3,
+            5,
+            2,
+            14,
+            18,
+            13,
+            25
+          ],
+          "confirmed_free_claims": 94,
+          "max_collection_us": 9776,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 777,
+          "runner": 1,
+          "saturated_flushes": 0
+        },
+        {
+          "claims_while_writing": 2,
+          "cohort_submissions_by_width": [
+            1,
+            0,
+            3,
+            1,
+            9,
+            20,
+            21,
+            25
+          ],
+          "confirmed_free_claims": 95,
+          "max_collection_us": 33016,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 809,
+          "runner": 1,
+          "saturated_flushes": 0
+        }
+      ],
+      "writer_counts": {
+        "bulk": [
+          8,
+          1024
+        ]
+      }
+    },
+    "stock-b": {
+      "acknowledgement_us": 166007,
+      "affinity": [
+        0,
+        1
+      ],
+      "application_sql_exec_ms": 74.37258399999997,
+      "attempt_to_effect_commit_p50_ms": 1.067,
+      "attempt_to_effect_commit_p99_ms": 6.5,
+      "bulk_sql_calls": 161,
+      "checkout_probes": 4,
+      "claim_sql_calls": 190,
+      "claim_to_entry_p50_ms": 23.0355,
+      "claim_to_entry_p99_ms": 52.381,
+      "claim_to_last_settlement_ms": 855.929,
+      "cohort_xid_widths": {
+        "1": 2,
+        "2": 4,
+        "3": 2,
+        "4": 12,
+        "5": 28,
+        "6": 35,
+        "7": 30,
+        "8": 50
+      },
+      "commit_jobs_per_s": 1192.387814821241,
+      "commit_to_claim_p50_ms": 400.852,
+      "commit_to_claim_p99_ms": 809.852,
+      "commit_to_pickup_p50_ms": 422.75350000000003,
+      "commit_to_pickup_p99_ms": 831.51,
+      "commit_to_settlement_p50_ms": 438.4105,
+      "commit_to_settlement_p99_ms": 851.88,
+      "committed_occupancy": {
+        "3069341": 32,
+        "3069346": 32,
+        "total": 64
+      },
+      "completed": 1024,
+      "cpu_iowait_percent": 2.1739130434782608,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 202,
+      "disk_flushes": 1342,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 34312192,
+      "drain_us": 858781,
+      "effect_commit_to_settlement_p50_ms": 8.0055,
+      "effect_commit_to_settlement_p99_ms": 23.414,
+      "enqueue_overlay": {
+        "after": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        },
+        "before": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        }
+      },
+      "enqueue_us": 159732,
+      "entry_to_attempt_commit_p50_ms": 5.2165,
+      "entry_to_attempt_commit_p99_ms": 66.148,
+      "failed": 0,
+      "first_claim_from_commit_ms": 2.852,
+      "first_commit_us": 1795583491456148,
+      "first_submit_to_commit_ms": 159.732,
+      "first_submit_us": 1795583491296416,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_cpu_ms": 1810.0,
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1155.683,
+      "host_samples": 6,
+      "jobs_by_runner": [
+        517,
+        507
+      ],
+      "largest_terminal_cohort": 8,
+      "last_effect_from_commit_us": 855683,
+      "last_effect_us": 1795583492311831,
+      "last_settlement_us": 1795583492314929,
+      "middle_820_effect_us": 630462,
+      "observed_arm_wall_ms": 8489.15444,
+      "ordered_independent_writes": 1024,
+      "peak_connections": 41,
+      "peak_executing": 58,
+      "peak_runner_rss_bytes": 23568384,
+      "pg_cpu": {
+        "ms": 1140,
+        "paired": 47,
+        "slack_us": 80228,
+        "unmatched": []
+      },
+      "pg_cpu_ms": 1140,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "physical_tls_by_role": {
+        "compiled_caller": 32,
+        "parity_producer": 1,
+        "parity_subject": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": 0.576171875,
+      "pinned_user_cpu_ms_per_job": 1.19140625,
+      "probe_sql_exec_ms": 0.044649999999999995,
+      "raw_sha256": "d71f2af5e93a2b63d6e34f3c15d1c4e0bdd749a7a48652605c415ca0b82a0839",
+      "runner_cpu_ms": 533.3439999999999,
+      "runner_cpu_ms_per_job": 0.5208437499999999,
+      "submit_jobs_per_s": 1005.3872655528206,
+      "submit_to_pickup_p50_ms": 582.4855,
+      "submit_to_pickup_p99_ms": 991.242,
+      "submit_to_settlement_p50_ms": 598.1424999999999,
+      "submit_to_settlement_p99_ms": 1011.612,
+      "submit_us": 1018513,
+      "terminal_sql_elapsed_ms": 280.4671380000002,
+      "terminal_xids": 163,
+      "writer": [
+        {
+          "claims_while_writing": 2,
+          "cohort_submissions_by_width": [
+            1,
+            2,
+            1,
+            6,
+            13,
+            18,
+            16,
+            25
+          ],
+          "confirmed_free_claims": 96,
+          "max_collection_us": 24034,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 814,
+          "runner": 1,
+          "saturated_flushes": 0
+        },
+        {
+          "claims_while_writing": 3,
+          "cohort_submissions_by_width": [
+            1,
+            2,
+            1,
+            6,
+            15,
+            17,
+            14,
+            25
+          ],
+          "confirmed_free_claims": 94,
+          "max_collection_us": 37512,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 783,
+          "runner": 1,
+          "saturated_flushes": 0
+        }
+      ],
+      "writer_counts": {
+        "bulk": [
+          8,
+          1024
+        ]
+      }
+    }
+  },
+  "warmup": {
+    "projected": {
+      "acknowledgement_us": 182130,
+      "affinity": [
+        0,
+        1
+      ],
+      "application_sql_exec_ms": 78.32545099999996,
+      "attempt_to_effect_commit_p50_ms": 1.1484999999999999,
+      "attempt_to_effect_commit_p99_ms": 6.098,
+      "bulk_sql_calls": 162,
+      "checkout_probes": 4,
+      "claim_sql_calls": 193,
+      "claim_to_entry_p50_ms": 23.891,
+      "claim_to_entry_p99_ms": 57.224,
+      "claim_to_last_settlement_ms": 871.993,
+      "cohort_xid_widths": {
+        "1": 2,
+        "2": 4,
+        "3": 7,
+        "4": 12,
+        "5": 27,
+        "6": 25,
+        "7": 36,
+        "8": 51
+      },
+      "commit_jobs_per_s": 1172.2054519000833,
+      "commit_to_claim_p50_ms": 406.574,
+      "commit_to_claim_p99_ms": 816.574,
+      "commit_to_pickup_p50_ms": 426.03549999999996,
+      "commit_to_pickup_p99_ms": 834.221,
+      "commit_to_settlement_p50_ms": 453.595,
+      "commit_to_settlement_p99_ms": 863.652,
+      "committed_occupancy": {
+        "3068107": 32,
+        "3068112": 32,
+        "total": 64
+      },
+      "completed": 1024,
+      "cpu_iowait_percent": 0.8888888888888888,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 205,
+      "disk_flushes": 1331,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 34299904,
+      "drain_us": 873567,
+      "effect_commit_to_settlement_p50_ms": 8.584,
+      "effect_commit_to_settlement_p99_ms": 31.182,
+      "enqueue_overlay": {
+        "after": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "2577dd4219b27bdbdc78a723c7cd9b51dcc6c2108ca6c2cde51878077cf46a37",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        },
+        "before": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        }
+      },
+      "enqueue_us": 169257,
+      "entry_to_attempt_commit_p50_ms": 5.088,
+      "entry_to_attempt_commit_p99_ms": 67.26,
+      "failed": 0,
+      "first_claim_from_commit_ms": 1.574,
+      "first_commit_us": 1795583452205426,
+      "first_submit_to_commit_ms": 169.257,
+      "first_submit_us": 1795583452036169,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_cpu_ms": 1840.0,
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1147.43,
+      "host_samples": 6,
+      "jobs_by_runner": [
+        513,
+        511
+      ],
+      "largest_terminal_cohort": 8,
+      "last_effect_from_commit_us": 870134,
+      "last_effect_us": 1795583453075560,
+      "last_settlement_us": 1795583453078993,
+      "middle_820_effect_us": 661198,
+      "observed_arm_wall_ms": 8312.450896,
+      "ordered_independent_writes": 1024,
+      "peak_connections": 41,
+      "peak_executing": 59,
+      "peak_runner_rss_bytes": 23556096,
+      "pg_cpu": {
+        "ms": 1220,
+        "paired": 47,
+        "slack_us": 104540,
+        "unmatched": []
+      },
+      "pg_cpu_ms": 1220,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "physical_tls_by_role": {
+        "compiled_caller": 32,
+        "parity_producer": 1,
+        "parity_subject": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": 0.56640625,
+      "pinned_user_cpu_ms_per_job": 1.23046875,
+      "probe_sql_exec_ms": 0.03241,
+      "raw_sha256": "c772d2da22b40d69b825e520a9a19142c2ad0a65034e19a467c9fe723d974308",
+      "runner_cpu_ms": 535.877,
+      "runner_cpu_ms_per_job": 0.5233173828125,
+      "submit_jobs_per_s": 981.9490153659677,
+      "submit_to_pickup_p50_ms": 595.2925,
+      "submit_to_pickup_p99_ms": 1003.478,
+      "submit_to_settlement_p50_ms": 622.852,
+      "submit_to_settlement_p99_ms": 1032.909,
+      "submit_us": 1042824,
+      "terminal_sql_elapsed_ms": 319.01914000000005,
+      "terminal_xids": 164,
+      "writer": [
+        {
+          "claims_while_writing": 3,
+          "cohort_submissions_by_width": [
+            1,
+            1,
+            2,
+            6,
+            13,
+            17,
+            15,
+            26
+          ],
+          "confirmed_free_claims": 95,
+          "max_collection_us": 27376,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 805,
+          "runner": 1,
+          "saturated_flushes": 0
+        },
+        {
+          "claims_while_writing": 3,
+          "cohort_submissions_by_width": [
+            1,
+            3,
+            5,
+            6,
+            14,
+            8,
+            21,
+            25
+          ],
+          "confirmed_free_claims": 98,
+          "max_collection_us": 31194,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 817,
+          "runner": 1,
+          "saturated_flushes": 0
+        }
+      ],
+      "writer_counts": {
+        "bulk": [
+          8,
+          1024
+        ]
+      }
+    },
+    "stock-a": {
+      "acknowledgement_us": 214291,
+      "affinity": [
+        0,
+        1
+      ],
+      "application_sql_exec_ms": 86.67313100000007,
+      "attempt_to_effect_commit_p50_ms": 1.1975,
+      "attempt_to_effect_commit_p99_ms": 5.696,
+      "bulk_sql_calls": 174,
+      "checkout_probes": 4,
+      "claim_sql_calls": 198,
+      "claim_to_entry_p50_ms": 25.307499999999997,
+      "claim_to_entry_p99_ms": 63.939,
+      "claim_to_last_settlement_ms": 942.744,
+      "cohort_xid_widths": {
+        "1": 1,
+        "2": 4,
+        "3": 15,
+        "4": 24,
+        "5": 32,
+        "6": 28,
+        "7": 22,
+        "8": 49
+      },
+      "commit_jobs_per_s": 1084.246136579013,
+      "commit_to_claim_p50_ms": 482.691,
+      "commit_to_claim_p99_ms": 893.691,
+      "commit_to_pickup_p50_ms": 496.228,
+      "commit_to_pickup_p99_ms": 920.219,
+      "commit_to_settlement_p50_ms": 524.902,
+      "commit_to_settlement_p99_ms": 934.935,
+      "committed_occupancy": {
+        "3068723": 32,
+        "3068728": 32,
+        "total": 64
+      },
+      "completed": 1024,
+      "cpu_iowait_percent": 0.7604562737642585,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 245,
+      "disk_flushes": 1328,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 36999168,
+      "drain_us": 944435,
+      "effect_commit_to_settlement_p50_ms": 8.773,
+      "effect_commit_to_settlement_p99_ms": 28.859,
+      "enqueue_overlay": {
+        "after": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        },
+        "before": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        }
+      },
+      "enqueue_us": 199711,
+      "entry_to_attempt_commit_p50_ms": 5.324999999999999,
+      "entry_to_attempt_commit_p99_ms": 82.72,
+      "failed": 0,
+      "first_claim_from_commit_ms": 1.691,
+      "first_commit_us": 1795583471508309,
+      "first_submit_to_commit_ms": 199.711,
+      "first_submit_us": 1795583471308598,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_cpu_ms": 2010.0,
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1359.598,
+      "host_samples": 7,
+      "jobs_by_runner": [
+        509,
+        515
+      ],
+      "largest_terminal_cohort": 8,
+      "last_effect_from_commit_us": 937843,
+      "last_effect_us": 1795583472446152,
+      "last_settlement_us": 1795583472452744,
+      "middle_820_effect_us": 723992,
+      "observed_arm_wall_ms": 8490.597331,
+      "ordered_independent_writes": 1024,
+      "peak_connections": 41,
+      "peak_executing": 60,
+      "peak_runner_rss_bytes": 23617536,
+      "pg_cpu": {
+        "ms": 1340,
+        "paired": 47,
+        "slack_us": 57982,
+        "unmatched": []
+      },
+      "pg_cpu_ms": 1340,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "physical_tls_by_role": {
+        "compiled_caller": 32,
+        "parity_producer": 1,
+        "parity_subject": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": 0.60546875,
+      "pinned_user_cpu_ms_per_job": 1.357421875,
+      "probe_sql_exec_ms": 0.033651,
+      "raw_sha256": "b5bf2c4ac7a3257de725a9bc3d1173f9537eb3d6f066263b8c96c8fcf25b5dd3",
+      "runner_cpu_ms": 563.5969999999999,
+      "runner_cpu_ms_per_job": 0.5503876953124999,
+      "submit_jobs_per_s": 894.9906742670953,
+      "submit_to_pickup_p50_ms": 695.9390000000001,
+      "submit_to_pickup_p99_ms": 1119.93,
+      "submit_to_settlement_p50_ms": 724.613,
+      "submit_to_settlement_p99_ms": 1134.646,
+      "submit_us": 1144146,
+      "terminal_sql_elapsed_ms": 352.58488399999993,
+      "terminal_xids": 175,
+      "writer": [
+        {
+          "claims_while_writing": 4,
+          "cohort_submissions_by_width": [
+            0,
+            3,
+            6,
+            13,
+            16,
+            15,
+            9,
+            25
+          ],
+          "confirmed_free_claims": 99,
+          "max_collection_us": 24236,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 803,
+          "runner": 1,
+          "saturated_flushes": 0
+        },
+        {
+          "claims_while_writing": 4,
+          "cohort_submissions_by_width": [
+            1,
+            1,
+            9,
+            11,
+            16,
+            13,
+            13,
+            24
+          ],
+          "confirmed_free_claims": 99,
+          "max_collection_us": 19996,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 813,
+          "runner": 1,
+          "saturated_flushes": 0
+        }
+      ],
+      "writer_counts": {
+        "bulk": [
+          8,
+          1024
+        ]
+      }
+    },
+    "stock-b": {
+      "acknowledgement_us": 190241,
+      "affinity": [
+        0,
+        1
+      ],
+      "application_sql_exec_ms": 77.81611099999995,
+      "attempt_to_effect_commit_p50_ms": 1.068,
+      "attempt_to_effect_commit_p99_ms": 5.126,
+      "bulk_sql_calls": 163,
+      "checkout_probes": 4,
+      "claim_sql_calls": 193,
+      "claim_to_entry_p50_ms": 25.1675,
+      "claim_to_entry_p99_ms": 49.708,
+      "claim_to_last_settlement_ms": 826.061,
+      "cohort_xid_widths": {
+        "2": 4,
+        "3": 9,
+        "4": 10,
+        "5": 23,
+        "6": 34,
+        "7": 34,
+        "8": 49
+      },
+      "commit_jobs_per_s": 1234.4800897891378,
+      "commit_to_claim_p50_ms": 375.438,
+      "commit_to_claim_p99_ms": 785.438,
+      "commit_to_pickup_p50_ms": 404.288,
+      "commit_to_pickup_p99_ms": 803.51,
+      "commit_to_settlement_p50_ms": 420.203,
+      "commit_to_settlement_p99_ms": 819.212,
+      "committed_occupancy": {
+        "3068415": 32,
+        "3068420": 32,
+        "total": 64
+      },
+      "completed": 1024,
+      "cpu_iowait_percent": 0.8771929824561403,
+      "cpu_steal_percent": 0.0,
+      "disk_busy_ms": 200,
+      "disk_flushes": 1336,
+      "disk_read_bytes": 0,
+      "disk_write_bytes": 34263040,
+      "drain_us": 829499,
+      "effect_commit_to_settlement_p50_ms": 7.9735,
+      "effect_commit_to_settlement_p99_ms": 17.639,
+      "enqueue_overlay": {
+        "after": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        },
+        "before": {
+          "acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "application": false,
+          "body": "7c1f7a722dd9e4472277c4c1cdc9dfbdab1c31443b7973500805949e192dbf97",
+          "configuration": [
+            "search_path=pg_catalog, pg_temp"
+          ],
+          "guard_acl": [
+            "parity_migrator=X/parity_migrator",
+            "parity_producer=X/parity_migrator"
+          ],
+          "invoker": true,
+          "layout": "8c54442b3c2d42a8c0e04fef96ce6cdee7530d0a23c9e030c673f02b2dab2e44",
+          "owner": "parity_migrator",
+          "producer": true,
+          "runner": false,
+          "volatile": true
+        }
+      },
+      "enqueue_us": 170731,
+      "entry_to_attempt_commit_p50_ms": 4.7005,
+      "entry_to_attempt_commit_p99_ms": 60.123,
+      "failed": 0,
+      "first_claim_from_commit_ms": 3.438,
+      "first_commit_us": 1795583461840562,
+      "first_submit_to_commit_ms": 170.731,
+      "first_submit_us": 1795583461669831,
+      "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "host_cpu_ms": 1730.0,
+      "host_kernel": "6.8.0-149-generic",
+      "host_sample_span_ms": 1165.445,
+      "host_samples": 6,
+      "jobs_by_runner": [
+        513,
+        511
+      ],
+      "largest_terminal_cohort": 8,
+      "last_effect_from_commit_us": 823112,
+      "last_effect_us": 1795583462663674,
+      "last_settlement_us": 1795583462670061,
+      "middle_820_effect_us": 621694,
+      "observed_arm_wall_ms": 8295.795588,
+      "ordered_independent_writes": 1024,
+      "peak_connections": 41,
+      "peak_executing": 64,
+      "peak_runner_rss_bytes": 23236608,
+      "pg_cpu": {
+        "ms": 1140,
+        "paired": 47,
+        "slack_us": 58865,
+        "unmatched": []
+      },
+      "pg_cpu_ms": 1140,
+      "pg_mount": {
+        "fstype": "ext4",
+        "maj:min": "8:0",
+        "source": "/dev/sda",
+        "target": "/"
+      },
+      "physical_tls_by_role": {
+        "compiled_caller": 32,
+        "parity_producer": 1,
+        "parity_subject": 8
+      },
+      "pinned_kernel_cpu_ms_per_job": 0.537109375,
+      "pinned_user_cpu_ms_per_job": 1.15234375,
+      "probe_sql_exec_ms": 0.02579,
+      "raw_sha256": "4880eafc397ceac2659aefa63bf5670b323045de98e8a498cb21bb4736b5a8b4",
+      "runner_cpu_ms": 528.419,
+      "runner_cpu_ms_per_job": 0.5160341796875,
+      "submit_jobs_per_s": 1023.7645341571439,
+      "submit_to_pickup_p50_ms": 575.019,
+      "submit_to_pickup_p99_ms": 974.241,
+      "submit_to_settlement_p50_ms": 590.934,
+      "submit_to_settlement_p99_ms": 989.943,
+      "submit_us": 1000230,
+      "terminal_sql_elapsed_ms": 261.23693999999995,
+      "terminal_xids": 163,
+      "writer": [
+        {
+          "claims_while_writing": 1,
+          "cohort_submissions_by_width": [
+            0,
+            3,
+            3,
+            5,
+            12,
+            20,
+            14,
+            25
+          ],
+          "confirmed_free_claims": 96,
+          "max_collection_us": 12423,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 807,
+          "runner": 1,
+          "saturated_flushes": 0
+        },
+        {
+          "claims_while_writing": 1,
+          "cohort_submissions_by_width": [
+            0,
+            1,
+            6,
+            5,
+            11,
+            14,
+            20,
+            24
+          ],
+          "confirmed_free_claims": 97,
+          "max_collection_us": 12646,
+          "mode": "fixed8ms",
+          "refill_flushes": 0,
+          "requested_slots": 790,
+          "runner": 1,
+          "saturated_flushes": 0
+        }
+      ],
+      "writer_counts": {
+        "bulk": [
+          8,
+          1024
+        ]
+      }
+    }
+  }
+}
