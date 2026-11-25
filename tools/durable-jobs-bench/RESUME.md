@@ -2,6 +2,14 @@
 
 Open the existing Mesh worktree on branch `t3/9a80aabe` on the workstation that owns the benchmark. Its path is `/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe`. The Git history, local controller journal, staged binaries, and SSH configuration are available there. Other owners have changes in the Git index and working tree.
 
+## November 25 after the 06:05 UTC releases
+
+Public dense 8×8 on ELF `4924b588…` passed both reversed pilots. Bounded grants, grouped success and hot checkout saved 523 and 347 ms from submit, and 540 and 415 ms from enqueue commit against the faster individual control. PostgreSQL, runner and host CPU fell in both. Read the released pilot with `git show dad83049a:tools/durable-jobs-bench/results/2026-11-25-public-dense-8x8/path-recovery/evidence/pilot/replay.json`.
+
+The first complete matched 8×8 peer block took 1,502 ms from submit for Mesh, 1,277 for stock River, 1,584 for Oban and 864 for Apalis. The reverse block stopped when the host noise check detected apt-get during the Mesh warmup. One whole block reconciled. Read the controller journal for the reverse-order continuation before quoting a paired series. The separate Direct4 scheduler scan pilot reconciled all 36 arms and closed at zero of two material CPU improvements. [Controller journal](../../target/linode-jobs-stepchange/requests/STATUS.md)
+
+For canonical SLOW, stock Mesh reached the 64th durable effect ahead of River in all five blocks, then lost 260–300 ms to River over the next 384 effects. Two separate treatments target that interval. Width 16 with the bounded grant produced full native stock and treatment diagnostic ledgers. Its release stopped at the lock-timeout scorer, which counted deliberate diagnostic-database timeouts. Width 32 has a separate fixture recovery after its first AMD64 test build stopped on missing compile-time inputs. The cap-71 fused pilot stays held. [SLOW progress and replay](results/2026-11-25-slow-claim-width-price/MIDDLE-EFFECTS.md)
+
 ## November 25 after the 05:33 UTC public 2×32 release
 
 The experimental grouped 8 ms writer plus the bounded grant lookup beat stock River in four of five dense submits and all five drains. Mesh beat Oban in every pair. Prewarmed River finished ahead on both clocks in all six separate matched blocks. The comparison viewer keeps the two series distinct. [Stock peers](results/2026-11-25-dense-fixed8-logical-factorial/PEER-RESULTS.md) · [Warm River](results/2026-11-25-dense-fixed8-river-readiness/NATIVE-RESULTS.md)
