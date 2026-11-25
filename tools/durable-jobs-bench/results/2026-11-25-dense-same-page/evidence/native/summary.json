@@ -1,0 +1,11 @@
+{
+  "groups": {
+    "1": null,
+    "2": null
+  },
+  "failures": {
+    "01-noop.1795570920779314000": "'hot'"
+  },
+  "controller_released": false,
+  "opens_four_engine_pricing": false
+}
