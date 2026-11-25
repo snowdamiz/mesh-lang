@@ -25,3 +25,24 @@ python3 -B "$d/crossed_file_phases.py" | cmp - "$d/crossed-file-phases.json"
 ```
 
 The replay verifies both release seals, the original advancement decisions, all 16 measured archive hashes, stock default storage, and all three scorer clocks. Each arm ran eight runners with 64 slots, submitted the same 64 payloads in 64 scalar admissions, and recorded 128 application XIDs and 64 individual terminal XIDs. Both original peer stages stayed closed. The prospective experiment has its own stock FILE bridge, duplicate controls and comparison against each individual treatment.
+
+## What a 20% throughput lead would take on default storage
+
+Across the five released stock-peer rotations, FILE already exceeded River's submit throughput by 20% in all five. It cleared that margin on both clocks in four. Against Oban, FILE won all five from submit, but reached a 20% submit lead in one. Oban finished the post-commit drain sooner in every rotation.
+
+The table shows the further advance needed from the original FILE arm in each paired block to reach 1.20× Oban's throughput. The last row gives the minimum by which the final application effect must advance even if final settlement costs zero. Units are milliseconds.
+
+| FILE advance needed | 1 | 2 | 3 | 4 | 5 |
+|---|---:|---:|---:|---:|---:|
+| Submit to final settlement | 105.7 | 198.1 | 123.7 | 56.8 | 0.0 |
+| Enqueue commit to final settlement | 229.8 | 247.7 | 249.1 | 236.2 | 215.6 |
+| Last application effect from commit with an instantaneous final settlement | 225.5 | 243.4 | 245.1 | 234.2 | 211.9 |
+
+The separate consumer pilots advanced the final effect from commit by 146.7 and 115.9 ms against their own controls. Earlier durable writes therefore matter even if the combined producer captures all the intended enqueue savings. The fresh peer runs, if qualified, provide the matched comparison.
+
+For equal batches of 64 jobs, a 20% throughput gain requires FILE to finish by five sixths of the peer's time. The replay verifies the raw hashes, ledgers, boot identity and three clock boundaries for 20 measured peer and FILE archives. It includes Apalis's delayed settlement in rotation four. This descriptive margin does not affect either original gate.
+
+```sh
+d=tools/durable-jobs-bench/results/2026-11-25-public-large-claim-gap
+python3 -B "$d/peer_deadlines.py" | cmp - "$d/peer-deadlines.json"
+```
