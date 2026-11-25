@@ -1,0 +1,19 @@
+{
+  "compiler": "a00ee42a7cc633f5d1f02c7c891769db6488552286b53949d118bd812170c8e8",
+  "files": {
+    "broker": "729694377f1ad19babab20c4106af65eed3312433556b65e6049164841ccdc39",
+    "libworker_identity.a": "20c7c59caede89aafc141bf414101cb1e348bda0d3860ffd94b456a360589455",
+    "main.mpl": "02b1ba98b2373046840f478b37ec861c61d45898601683c1fddff87d5dec6556",
+    "mesh.toml": "cff4fd88a425a4806298d41879b9385960094e6be26580d03525e28b58e0f2bf",
+    "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+    "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+    "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+  },
+  "revision": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "runner": "9e933cee591cd7756062e53862db67082a91ba0cf18a9400e18c60f1cc6d46f0",
+  "runtime": "323fc6fa6a80f29e201be3624e5a4bed82fb423fbf18b0207404acc8783800f2",
+  "source_archive": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+  "stock_manifest": "3da4cb95cacfd813bb3dc1d0bbfba92b428e2ce00c16f27bb445f41b45d0c761",
+  "system": "Darwin",
+  "trace": true
+}
