@@ -33,7 +33,45 @@ In Dense, 8 × 8, Apalis group 2 settled its final job, `job_001009`, 25.92 s af
 
 ## Public large jobs with the file-session producer
 
-The original SETUP export failed. The controller recovered the same native SETUP archive. The first TIMING attempt failed before the file and duplicate inline adapters could launch and yielded zero qualified rotations. Scores are pending five qualified rotations and a matching release for the path-only retry. [Campaign evidence](../2026-11-24-public-large-file-session/resume/README.md)
+5 matched rotations on CPUs 0 and 1. Each lane completed 64 jobs and committed two ordered application writes per job. The file lane and both inline duplicates used the same runner and broker ELFs. Public stock used the same runner ELF and its stock broker. [Interactive results](chart.html#public-large-file-session)
+
+Elapsed time in milliseconds. Cells show median (min–max).
+
+| Lane | First submit to enqueue commit | Submit to last settlement | Enqueue commit to last settlement |
+|---|---:|---:|---:|
+| Mesh file | 1506.15 (1462.08–1581.29) | 2207.51 (2113.27–2245.72) | 664.43 (651.18–723.39) |
+| Mesh inline A | 1805.74 (1791.91–1879.43) | 2450.55 (2424.11–2543.21) | 658.65 (618.36–691.83) |
+| Mesh inline B | 1816.52 (1769.41–1872.76) | 2502.47 (2423.34–2578.87) | 683.88 (649.41–706.11) |
+| Public stock Mesh | 1776.66 (1771.11–1879.45) | 2472.69 (2412.09–2575.59) | 677.95 (635.82–696.14) |
+| Go River | 2235.09 (2214.02–2261.20) | 3085.32 (3049.35–3213.71) | 850.24 (835.13–952.51) |
+| Elixir Oban | 1969.86 (1914.72–2250.24) | 2467.80 (2450.78–2859.58) | 506.30 (497.94–609.34) |
+| Rust Apalis | 1494.77 (1446.38–1643.14) | 1820.20 (1614.35–26775.85) | 205.21 (167.97–25282.02) |
+
+Each cell below gives the median paired difference in milliseconds and the count of rotations where file was faster. Positive differences favor file.
+
+| Reference | First submit to enqueue commit | Submit to last settlement | Enqueue commit to last settlement |
+|---|---:|---:|---:|
+| Mesh inline A | +290.17 (5/5) | +288.09 (5/5) | -5.78 (1/5) |
+| Mesh inline B | +332.40 (5/5) | +298.55 (5/5) | -10.50 (2/5) |
+| Public stock Mesh | +309.03 (5/5) | +311.50 (5/5) | +1.70 (3/5) |
+| Go River | +715.23 (5/5) | +936.08 (5/5) | +185.81 (5/5) |
+| Elixir Oban | +466.78 (5/5) | +304.75 (5/5) | -153.25 (0/5) |
+| Rust Apalis | +31.74 (3/5) | -387.31 (1/5) | -483.79 (1/5) |
+| Faster inline duplicate | +290.17 (5/5) | +288.09 (5/5) | -10.50 (1/5) |
+
+Within-rotation absolute difference between the two inline controls, in milliseconds.
+
+| Rotation | First submit to enqueue commit | Submit to last settlement | Enqueue commit to last settlement |
+|---|---:|---:|---:|
+| 1 | 76.44 | 132.86 | 56.42 |
+| 2 | 6.84 | 37.88 | 31.04 |
+| 3 | 22.50 | 27.22 | 4.72 |
+| 4 | 2.01 | 5.93 | 7.94 |
+| 5 | 62.91 | 37.15 | 25.75 |
+
+Apalis's final settlement in rotation 4 came 25.11 s after its last application commit. The measured comparison includes that rotation.
+
+The original SETUP export failed. The controller recovered the same native SETUP archive. The first TIMING attempt failed before the file and duplicate inline adapters could launch and yielded zero qualified rotations. All scores above use the released path-only retry. [Execution orders, per-arm clocks and evidence digests](scores.json)
 
 ## Original V1 and protected workloads
 

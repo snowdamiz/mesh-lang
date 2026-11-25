@@ -426,6 +426,11 @@ def add_large_file_session(lines, series):
     for block in blocks:
         spread = " | ".join(f"{block['duplicate_spread_ms'][key]:.2f}" for key in metrics)
         lines.append(f"| {block['group']} | {spread} |")
+    for block in blocks:
+        tail = block["scores"]["apalis"]["last_application_commit_to_last_settlement_ms"]
+        if tail >= 10_000:
+            lines.extend(["", f"Apalis's final settlement in rotation {block['group']} came {tail / 1000:.2f} s "
+                          "after its last application commit. The measured comparison includes that rotation."])
     lines.extend(["", failures + " All scores above use the released path-only retry. "
                   "[Execution orders, per-arm clocks and evidence digests](scores.json)", ""])
 

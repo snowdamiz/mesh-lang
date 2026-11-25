@@ -1,5 +1,6 @@
 """Replay the released public LARGE path-only retry from its native archives."""
 
+from contextlib import redirect_stdout
 from datetime import datetime
 from pathlib import Path
 import json
@@ -39,7 +40,8 @@ def release_receipt(resume, previous_release):
         run.require(live.with_name(f"{RETRY_ID}.json").read_bytes() == packet.read_bytes(),
                     "live and sealed retry intakes differ")
     else:
-        run.require(previous_release == digest, "live TIMING release missing for first publication")
+        run.require(previous_release is not None, "live TIMING release missing for first publication")
+        run.require(previous_release == digest, "archived TIMING release differs from the published digest")
     release = run.read_json(archive)
     grant = release["grant"]
     run.require((release["id"], release["phase"], release["exit_status"], grant["key"], grant["kind"])
@@ -88,7 +90,8 @@ def load_replay(resume):
     recovered = retry["RECOVERED"]
     original.sha = lambda path: run.digest(sealed_source(path.relative_to(ROOT)))
     doc = original.document()
-    retry["check"](doc)
+    with redirect_stdout(sys.stderr):
+        retry["check"](doc)
     original.timing_plan = retry["plan"]
     return original, doc, recovered, launcher, drivers
 
@@ -160,15 +163,17 @@ def capture_block(attempt, block, group, lanes):
                             and (row["completed"], row["ordered_independent_writes"], row["failed"])
                             == (64, 64, 0), f"{raw}: archive hash, affinity or durable job count differs")
                 runner = lanes[label]["inventory"]["engines"][engine]["artifact_sha256"]
+                last_effect = max(job["effect_committed_us"] for job in ledger["jobs"])
                 row = dict(row, engine=engine, sha256=runner,
                            submit_to_last_settlement_ms=group["clocks"][label]["submit_ms"],
-                           commit_to_last_settlement_ms=group["clocks"][label]["drain_ms"])
+                           commit_to_last_settlement_ms=group["clocks"][label]["drain_ms"],
+                           last_application_commit_to_last_settlement_ms=(settlement - last_effect) / 1000)
                 if engine == "mesh":
                     identities = run.file_json(capture, "adapter/process-identity.json")
                     broker, = (p["executable_sha256"] for p in identities if p["argv"][-1] == "session")
                     row.update(runner_sha256=runner, broker_sha256=broker)
                 scores[label] = row
-    return dict(group=block["group"], profile=block["profile"], order=block["order"],
+    return dict(group=block["group"], profile=block["profile"], order=block["order"], phases=block["phases"],
                 attempt=attempt.name, scores=scores, raw_sha256=archives,
                 order_sha256=run.digest(attempt / "order.json"),
                 reconciliation_sha256=run.digest(attempt / "reconciled.json"),
