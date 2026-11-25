@@ -10,7 +10,7 @@ def historical():
     plan = c.configure()
     c.original.timing_plan = c.prior["plan"]
     default = c.original.scores(c.session_document(), c.RECOVERED, c.DEFAULT)
-    assert default == c.read(c.DEFAULT.with_name("score-replay.json"))
+    assert default == c.read(c.DEFAULT.with_name(c.DEFAULT.name + "-scores.json"))
     public = c.read(c.EXTERNAL / "large-external.inventory.json")
     root = c.EXTERNAL / "large-external"
     expected = c.read(c.SESSION / "evidence/public-baselines.json")["public"]["large-external"]["blocks"]
