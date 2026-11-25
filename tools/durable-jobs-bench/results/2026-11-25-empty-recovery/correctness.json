@@ -1,0 +1,56 @@
+{
+  "candidate_sha256": "86a17110290c835a983cbdae9feb0a5007d397d8aab3300b2d018fda52cecbc9",
+  "checks": {
+    "candidate": {
+      "after_locked_head": {
+        "1": "scheduled",
+        "2": "available",
+        "3": "scheduled",
+        "4": "scheduled",
+        "5": "scheduled",
+        "6": "suspended"
+      },
+      "after_unfiltered": {
+        "1": "available",
+        "2": "available",
+        "3": "available",
+        "4": "scheduled",
+        "5": "scheduled",
+        "6": "suspended"
+      },
+      "bulk_layout": true,
+      "empty_statement_trigger_rows": 0,
+      "outer_rollback": true,
+      "recovered_expired": 1
+    },
+    "stock": {
+      "after_locked_head": {
+        "1": "scheduled",
+        "2": "available",
+        "3": "scheduled",
+        "4": "scheduled",
+        "5": "scheduled",
+        "6": "suspended"
+      },
+      "after_unfiltered": {
+        "1": "available",
+        "2": "available",
+        "3": "available",
+        "4": "scheduled",
+        "5": "scheduled",
+        "6": "suspended"
+      },
+      "bulk_layout": true,
+      "empty_statement_trigger_rows": 0,
+      "outer_rollback": true,
+      "recovered_expired": 1
+    }
+  },
+  "generic_target_filters": [
+    [
+      "(InitPlan 2).col1"
+    ]
+  ],
+  "postgres": "17.11",
+  "stock_sha256": "c5e348c3f324c1e0a7b7d38715be47ae557b1bcfd46eb63e4edeffc9c5046763"
+}

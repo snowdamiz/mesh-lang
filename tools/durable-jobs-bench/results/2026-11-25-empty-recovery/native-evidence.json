@@ -1,0 +1,122 @@
+{
+  "arms": [
+    {
+      "archive": "blocks/01-noop.1795560827541604000/measured-equal-trace/measured-mesh/raw.tar.gz",
+      "group": 1,
+      "runners": 2,
+      "sha256": "834c0347b9ad198261c6ca43b8931cce42fa209f72147be4aa568e2652912fc2",
+      "windows": {
+        "idle": {
+          "calls": 24,
+          "rows": 0,
+          "shared_blks_hit": 48,
+          "shared_blks_read": 0,
+          "total_exec_time": 0.145291
+        },
+        "post_observer": {
+          "calls": 0,
+          "rows": 0,
+          "shared_blks_hit": 0,
+          "shared_blks_read": 0,
+          "total_exec_time": 0.0
+        },
+        "submit_to_observer": {
+          "calls": 14,
+          "rows": 0,
+          "shared_blks_hit": 13231,
+          "shared_blks_read": 0,
+          "total_exec_time": 10.351513
+        }
+      }
+    },
+    {
+      "archive": "blocks/01-noop.1795560827541604000/measured-stock-trace/measured-mesh/raw.tar.gz",
+      "group": 1,
+      "runners": 8,
+      "sha256": "b5bc7f25027db0c387196df784a1b5253a407752678e6879cc63dc08a84b52a7",
+      "windows": {
+        "idle": {
+          "calls": 97,
+          "rows": 0,
+          "shared_blks_hit": 194,
+          "shared_blks_read": 0,
+          "total_exec_time": 0.607167
+        },
+        "post_observer": {
+          "calls": 1,
+          "rows": 0,
+          "shared_blks_hit": 1032,
+          "shared_blks_read": 0,
+          "total_exec_time": 1.167154
+        },
+        "submit_to_observer": {
+          "calls": 73,
+          "rows": 0,
+          "shared_blks_hit": 73060,
+          "shared_blks_read": 0,
+          "total_exec_time": 64.545281
+        }
+      }
+    },
+    {
+      "archive": "blocks/02-noop.1795560891926202000/measured-equal-trace/measured-mesh/raw.tar.gz",
+      "group": 2,
+      "runners": 2,
+      "sha256": "8d4c69809a25c2305157296c494e294ef8aadeb35f391fd7a43142759cdaca86",
+      "windows": {
+        "idle": {
+          "calls": 24,
+          "rows": 0,
+          "shared_blks_hit": 48,
+          "shared_blks_read": 0,
+          "total_exec_time": 0.177392
+        },
+        "post_observer": {
+          "calls": 0,
+          "rows": 0,
+          "shared_blks_hit": 0,
+          "shared_blks_read": 0,
+          "total_exec_time": 0.0
+        },
+        "submit_to_observer": {
+          "calls": 12,
+          "rows": 0,
+          "shared_blks_hit": 11405,
+          "shared_blks_read": 0,
+          "total_exec_time": 10.548525
+        }
+      }
+    },
+    {
+      "archive": "blocks/02-noop.1795560891926202000/measured-stock-trace/measured-mesh/raw.tar.gz",
+      "group": 2,
+      "runners": 8,
+      "sha256": "a2875e9f2f112af7a37c3ce242e25133fa53e139aaaaf70a30b7e3bd3129af0c",
+      "windows": {
+        "idle": {
+          "calls": 96,
+          "rows": 0,
+          "shared_blks_hit": 192,
+          "shared_blks_read": 0,
+          "total_exec_time": 0.579502
+        },
+        "post_observer": {
+          "calls": 1,
+          "rows": 0,
+          "shared_blks_hit": 1032,
+          "shared_blks_read": 0,
+          "total_exec_time": 4.893589
+        },
+        "submit_to_observer": {
+          "calls": 90,
+          "rows": 0,
+          "shared_blks_hit": 93576,
+          "shared_blks_read": 0,
+          "total_exec_time": 94.349205
+        }
+      }
+    }
+  ],
+  "query_id": -2584306270883932604,
+  "source": "2026-11-24-public-dense-set-claim"
+}
