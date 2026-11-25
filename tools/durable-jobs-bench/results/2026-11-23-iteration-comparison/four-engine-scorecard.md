@@ -73,6 +73,24 @@ Apalis's final settlement in rotation 4 came 25.11 s after its last application 
 
 The original SETUP export failed. The controller recovered the same native SETUP archive. The first TIMING attempt failed before the file and duplicate inline adapters could launch and yielded zero qualified rotations. All scores above use the released path-only retry. [Execution orders, per-arm clocks and evidence digests](scores.json)
 
+## Public large-file producer with symmetric EXTERNAL storage
+
+5/5 matched rotations. Seven lanes complete the same 64 jobs with 512 KiB payloads per rotation on CPUs 0 and 1. Every lane uses eight 8-slot runners and EXTERNAL payload storage. Mesh verifies 4 MiB work_mem. Rates and matched throughput changes are medians. [Interactive results](chart.html#public-large-file-external)
+
+| Lane | Submit jobs/s | Drain jobs/s | FILE paired submit change (wins) | FILE paired drain change (wins) |
+|---|---:|---:|---:|---:|
+| Mesh FILE | 46.96 | 97.10 | — | — |
+| Mesh inline A | 37.50 | 92.88 | +28.48% (5/5) | +5.28% (3/5) |
+| Mesh inline B | 37.92 | 94.97 | +23.47% (4/5) | +0.22% (3/5) |
+| Public stock Mesh | 37.58 | 98.05 | +21.95% (5/5) | -0.97% (2/5) |
+| Go River | 27.56 | 73.96 | +75.22% (5/5) | +31.28% (4/5) |
+| Elixir Oban | 38.48 | 125.96 | +20.32% (5/5) | -25.16% (0/5) |
+| Rust Apalis | 73.89 | 324.61 | -37.69% (0/5) | -72.67% (0/5) |
+
+Against the faster same-broker inline control per clock, FILE saved a paired median 293 ms to enqueue commit and 320 ms from submit through settlement. It won 5/5 producer comparisons and 4/5 full submissions. Oban drained sooner in all five rotations. [Durable application-write intervals](../2026-11-25-large-external-write-progress/README.md)
+
+The original grant parser failed before staging. These five rotations came from the released [retry](../2026-11-25-public-large-file-external/grant-parser-retry/RESULTS.md). [Original failure](../2026-11-25-public-large-file-external/evidence/native/README.md)
+
 ## Original V1 and protected workloads
 
 The five workloads below use the original trusted Mesh V1 runner and its protected Mesh control. Each completed rotation contains both Mesh modes and all three stock peers on the same Linode. Rates are median jobs per second. The last column counts the rotations in which trusted Mesh was faster than each peer.

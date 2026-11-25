@@ -18046,6 +18046,1734 @@
     "selected_mode": "product-bulk",
     "title": "Public Mesh \u00b7 large jobs, equal EXTERNAL storage"
   },
+  "public-large-file-external": {
+    "blocks": [
+      {
+        "attempt": "01-large.1795574111114735000",
+        "clocks": {
+          "apalis": {
+            "drain_jobs_s": 339.7171854431186,
+            "drain_ms": 188.392,
+            "enqueue_ms": 677.743,
+            "jobs_s": 73.89148342925756,
+            "submit_ms": 866.135
+          },
+          "file": {
+            "drain_jobs_s": 92.84835542350456,
+            "drain_ms": 689.296,
+            "enqueue_ms": 730.541,
+            "jobs_s": 45.075596705819045,
+            "submit_ms": 1419.837
+          },
+          "inline-a": {
+            "drain_jobs_s": 93.24946709386579,
+            "drain_ms": 686.331,
+            "enqueue_ms": 1040.368,
+            "jobs_s": 37.06494299238026,
+            "submit_ms": 1726.699
+          },
+          "inline-b": {
+            "drain_jobs_s": 94.96647980033298,
+            "drain_ms": 673.922,
+            "enqueue_ms": 1013.968,
+            "jobs_s": 37.91716284828988,
+            "submit_ms": 1687.89
+          },
+          "oban": {
+            "drain_jobs_s": 130.16331428338995,
+            "drain_ms": 491.69,
+            "enqueue_ms": 1160.194,
+            "jobs_s": 38.74364059461802,
+            "submit_ms": 1651.884
+          },
+          "product": {
+            "drain_jobs_s": 101.05922702323731,
+            "drain_ms": 633.292,
+            "enqueue_ms": 1045.822,
+            "jobs_s": 38.115339399230784,
+            "submit_ms": 1679.114
+          },
+          "river": {
+            "drain_jobs_s": 75.16730598026389,
+            "drain_ms": 851.434,
+            "enqueue_ms": 1443.207,
+            "jobs_s": 27.891073156977498,
+            "submit_ms": 2294.641
+          }
+        },
+        "duplicate_spread_ms": {
+          "drain_ms": 12.409,
+          "enqueue_ms": 26.4,
+          "submit_ms": 38.809
+        },
+        "faster_duplicate_minus_file_ms": {
+          "drain_ms": -15.374,
+          "enqueue_ms": 283.427,
+          "submit_ms": 268.053
+        },
+        "group": 1,
+        "order": [
+          "inline-a",
+          "file",
+          "river",
+          "product",
+          "apalis",
+          "inline-b",
+          "oban"
+        ],
+        "paired_ms": {
+          "apalis": {
+            "drain_ms": -500.904,
+            "enqueue_ms": -52.798,
+            "submit_ms": -553.702
+          },
+          "inline-a": {
+            "drain_ms": -2.965,
+            "enqueue_ms": 309.827,
+            "submit_ms": 306.862
+          },
+          "inline-b": {
+            "drain_ms": -15.374,
+            "enqueue_ms": 283.427,
+            "submit_ms": 268.053
+          },
+          "oban": {
+            "drain_ms": -197.606,
+            "enqueue_ms": 429.653,
+            "submit_ms": 232.047
+          },
+          "product": {
+            "drain_ms": -56.004,
+            "enqueue_ms": 315.281,
+            "submit_ms": 259.277
+          },
+          "river": {
+            "drain_ms": 162.138,
+            "enqueue_ms": 712.666,
+            "submit_ms": 874.804
+          }
+        },
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "cc9e74aeff30eb2087841f0030e044d38b99a51999fed314535520f53465cec2",
+          "measured-file/measured-mesh": "e8cfeb321b9eab9aaefc760aaf90399a1b46553973332943a7d377a7d3c837b8",
+          "measured-inline-a/measured-mesh": "e35e24be90d48f453f807e41507bd0dd5282fb91bb6f689237667dfbda8a40cb",
+          "measured-inline-b/measured-mesh": "5c54e09f3104b9d09fdfd3872aae1bac5373fb7af1cf7c54c6e529d3504f1cbf",
+          "measured-oban/measured-oban": "d3afea1e3751a5d281dedc42ed6e8d792a3e605c3e2c1a4bd5cb15781462b653",
+          "measured-product/measured-mesh": "c51f724140fc3c1b00e3e282f727d3c04b685c494a7f14ee9f17932933e8c02d",
+          "measured-river/measured-go": "571a685ac5abe5e4abc6062c7534ba6d761ecb1ba87c8c64db68dc81f6b18bf1",
+          "warmup-apalis/warmup-rust": "30b1f7294ced2c4fb2177f6a64a189c15646f75ba779ff2d5edce90c30528aa1",
+          "warmup-file/warmup-mesh": "a6a3a7d5df1e5c13e4798f4f4f1016782630c4b895e1eabe2a9084f0d80eafb6",
+          "warmup-inline-a/warmup-mesh": "36ce5f59d3008bd2678f33945987c78b5d26c464edc41370da709703aa46c27e",
+          "warmup-inline-b/warmup-mesh": "a6f048b54e517cb9c2cf98cea418512fa9af284084e9a2f4aa64cc101e640916",
+          "warmup-oban/warmup-oban": "415a29b0948dbdbd522302fb3337018bfba8f0f48fec4a164a22188ca57cd845",
+          "warmup-product/warmup-mesh": "9b73a40a9f5cf916ea558e9a19c8cc6f2e3156cebf98df7462a24c64d36950a7",
+          "warmup-river/warmup-go": "5be82ec74dbfe388d406e3b63a563e5a137553e393249668b62d2a52dc370e68"
+        },
+        "scores": {
+          "apalis": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 339.7171854431186,
+            "commit_to_last_settlement_ms": 188.392,
+            "commit_to_pickup_p99_ms": 161.377,
+            "commit_to_settlement_p99_ms": 188.392,
+            "completed": 64,
+            "cpu_iowait_percent": 1.3043478260869565,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 677.743,
+            "peak_runner_rss_bytes": 115118080,
+            "runner_cpu_ms_per_job": 5.6821874999999995,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "storage": {
+              "ddl_end_us": 1795574238307699,
+              "policy": "EXTERNAL",
+              "relation": "apalis.jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574244189377
+            },
+            "submit_jobs_per_s": 73.89148342925756,
+            "submit_to_last_settlement_ms": 866.135,
+            "submit_to_settlement_p50_ms": 844.222,
+            "submit_to_settlement_p99_ms": 866.135,
+            "terminal_xids": 19
+          },
+          "file": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 92.84835542350456,
+            "commit_to_last_settlement_ms": 689.296,
+            "commit_to_pickup_p99_ms": 678.867,
+            "commit_to_settlement_p99_ms": 689.296,
+            "completed": 64,
+            "cpu_iowait_percent": 0.6369426751592356,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 730.541,
+            "peak_runner_rss_bytes": 110727168,
+            "runner_cpu_ms_per_job": 18.393828125000002,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 45.075596705819045,
+            "submit_to_last_settlement_ms": 1419.837,
+            "submit_to_settlement_p50_ms": 1145.5955,
+            "submit_to_settlement_p99_ms": 1419.837,
+            "terminal_xids": 64
+          },
+          "inline-a": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 93.24946709386579,
+            "commit_to_last_settlement_ms": 686.331,
+            "commit_to_pickup_p99_ms": 672.886,
+            "commit_to_settlement_p99_ms": 686.331,
+            "completed": 64,
+            "cpu_iowait_percent": 0.8287292817679558,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1040.368,
+            "peak_runner_rss_bytes": 117133312,
+            "runner_cpu_ms_per_job": 18.737859375,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 37.06494299238026,
+            "submit_to_last_settlement_ms": 1726.699,
+            "submit_to_settlement_p50_ms": 1489.189,
+            "submit_to_settlement_p99_ms": 1726.699,
+            "terminal_xids": 64
+          },
+          "inline-b": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 94.96647980033298,
+            "commit_to_last_settlement_ms": 673.922,
+            "commit_to_pickup_p99_ms": 661.829,
+            "commit_to_settlement_p99_ms": 673.922,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5509641873278237,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1013.968,
+            "peak_runner_rss_bytes": 111620096,
+            "runner_cpu_ms_per_job": 18.606031249999997,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 37.91716284828988,
+            "submit_to_last_settlement_ms": 1687.89,
+            "submit_to_settlement_p50_ms": 1446.0365,
+            "submit_to_settlement_p99_ms": 1687.89,
+            "terminal_xids": 64
+          },
+          "oban": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 130.16331428338995,
+            "commit_to_last_settlement_ms": 491.69,
+            "commit_to_pickup_p99_ms": 470.429,
+            "commit_to_settlement_p99_ms": 491.69,
+            "completed": 64,
+            "cpu_iowait_percent": 0.26737967914438504,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 1160.194,
+            "peak_runner_rss_bytes": 860901376,
+            "runner_cpu_ms_per_job": 140.3511875,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "storage": {
+              "ddl_end_us": 1795574260261672,
+              "policy": "EXTERNAL",
+              "relation": "parity_8c15c0778376db70.oban_jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574271488548
+            },
+            "submit_jobs_per_s": 38.74364059461802,
+            "submit_to_last_settlement_ms": 1651.884,
+            "submit_to_settlement_p50_ms": 1499.659,
+            "submit_to_settlement_p99_ms": 1651.884,
+            "terminal_xids": 64
+          },
+          "product": {
+            "application_xids": 128,
+            "broker_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "commit_jobs_per_s": 101.05922702323731,
+            "commit_to_last_settlement_ms": 633.292,
+            "commit_to_pickup_p99_ms": 622.551,
+            "commit_to_settlement_p99_ms": 633.292,
+            "completed": 64,
+            "cpu_iowait_percent": 0.8310249307479224,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1045.822,
+            "peak_runner_rss_bytes": 119046144,
+            "runner_cpu_ms_per_job": 19.916296875,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 38.115339399230784,
+            "submit_to_last_settlement_ms": 1679.114,
+            "submit_to_settlement_p50_ms": 1448.4305,
+            "submit_to_settlement_p99_ms": 1679.114,
+            "terminal_xids": 64
+          },
+          "river": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 75.16730598026389,
+            "commit_to_last_settlement_ms": 851.434,
+            "commit_to_pickup_p99_ms": 537.79,
+            "commit_to_settlement_p99_ms": 851.434,
+            "completed": 64,
+            "cpu_iowait_percent": 0.398406374501992,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 1443.207,
+            "peak_runner_rss_bytes": 228970496,
+            "runner_cpu_ms_per_job": 14.3904375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "storage": {
+              "ddl_end_us": 1795574216927496,
+              "policy": "EXTERNAL",
+              "relation": "parity_cba8a91eb7cbcfe4.river_job",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574222728886
+            },
+            "submit_jobs_per_s": 27.891073156977498,
+            "submit_to_last_settlement_ms": 2294.641,
+            "submit_to_settlement_p50_ms": 2146.033,
+            "submit_to_settlement_p99_ms": 2294.641,
+            "terminal_xids": 9
+          }
+        }
+      },
+      {
+        "attempt": "02-large.1795574273426969000",
+        "clocks": {
+          "apalis": {
+            "drain_jobs_s": 285.5052550811013,
+            "drain_ms": 224.164,
+            "enqueue_ms": 671.467,
+            "jobs_s": 71.45800000223306,
+            "submit_ms": 895.631
+          },
+          "file": {
+            "drain_jobs_s": 98.63711252182732,
+            "drain_ms": 648.843,
+            "enqueue_ms": 714.099,
+            "jobs_s": 46.95724396195876,
+            "submit_ms": 1362.942
+          },
+          "inline-a": {
+            "drain_jobs_s": 86.21967155693866,
+            "drain_ms": 742.29,
+            "enqueue_ms": 1232.38,
+            "jobs_s": 32.410478712898865,
+            "submit_ms": 1974.67
+          },
+          "inline-b": {
+            "drain_jobs_s": 94.73902359593806,
+            "drain_ms": 675.54,
+            "enqueue_ms": 1007.23,
+            "jobs_s": 38.03252969805737,
+            "submit_ms": 1682.77
+          },
+          "oban": {
+            "drain_jobs_s": 131.7902887031012,
+            "drain_ms": 485.62,
+            "enqueue_ms": 1154.207,
+            "jobs_s": 39.028507275462594,
+            "submit_ms": 1639.827
+          },
+          "product": {
+            "drain_jobs_s": 94.1977151166727,
+            "drain_ms": 679.422,
+            "enqueue_ms": 1086.48,
+            "jobs_s": 36.242101770086904,
+            "submit_ms": 1765.902
+          },
+          "river": {
+            "drain_jobs_s": 68.76352438848812,
+            "drain_ms": 930.726,
+            "enqueue_ms": 1465.49,
+            "jobs_s": 26.708777505867584,
+            "submit_ms": 2396.216
+          }
+        },
+        "duplicate_spread_ms": {
+          "drain_ms": 66.75,
+          "enqueue_ms": 225.15,
+          "submit_ms": 291.9
+        },
+        "faster_duplicate_minus_file_ms": {
+          "drain_ms": 26.697,
+          "enqueue_ms": 293.131,
+          "submit_ms": 319.828
+        },
+        "group": 2,
+        "order": [
+          "oban",
+          "inline-b",
+          "apalis",
+          "product",
+          "river",
+          "file",
+          "inline-a"
+        ],
+        "paired_ms": {
+          "apalis": {
+            "drain_ms": -424.679,
+            "enqueue_ms": -42.632,
+            "submit_ms": -467.311
+          },
+          "inline-a": {
+            "drain_ms": 93.447,
+            "enqueue_ms": 518.281,
+            "submit_ms": 611.728
+          },
+          "inline-b": {
+            "drain_ms": 26.697,
+            "enqueue_ms": 293.131,
+            "submit_ms": 319.828
+          },
+          "oban": {
+            "drain_ms": -163.223,
+            "enqueue_ms": 440.108,
+            "submit_ms": 276.885
+          },
+          "product": {
+            "drain_ms": 30.579,
+            "enqueue_ms": 372.381,
+            "submit_ms": 402.96
+          },
+          "river": {
+            "drain_ms": 281.883,
+            "enqueue_ms": 751.391,
+            "submit_ms": 1033.274
+          }
+        },
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "60d58862ed4d480a888278d96cb2dc6ae008b4f093b81424c2a028ae7f0b6384",
+          "measured-file/measured-mesh": "f501507714e50cc3c6932fcc4437b00430fc0d352c71dc8ae341ca3da9afb503",
+          "measured-inline-a/measured-mesh": "396837325c98146aa477b2829a57566699da46004eedd52e60fd3d9322f3e625",
+          "measured-inline-b/measured-mesh": "5fb2a34c818f243489bc13a47f3595bc54fb01f26bbeb337bc1f8c18712c39c3",
+          "measured-oban/measured-oban": "40b3dfb2944d7a70f28082ab5e7e1f3606ce0998abad92f3514a74a7d7f96f4f",
+          "measured-product/measured-mesh": "1fa53deaa2587a0ed20b0e56e91d0e94918bac7cb392e7df00b1de20e6f09ebf",
+          "measured-river/measured-go": "4817a4fa4d8d6e592096800e8b01f8fe76bbf450f9a463193e4210ce5b1373b1",
+          "warmup-apalis/warmup-rust": "2588721f5b8c6f7b5dd38d7188ba2d4538e59a8190785b88ea1af502ffeb874a",
+          "warmup-file/warmup-mesh": "65f6dd4e0a2954b0c66184a1e2f5017e74f3a8f4acb59977cf31ea7842fc2376",
+          "warmup-inline-a/warmup-mesh": "11a4d44923ce02df1356f588a5eed9efe5c8483037c771d00219212c4f98160b",
+          "warmup-inline-b/warmup-mesh": "9a5a9b937173f0a1682890998908b0966d8bca0f49d169f2202849fb250511bd",
+          "warmup-oban/warmup-oban": "b44f5d5370beeed5514691a61203df0409e62287c27da896892eb1db4a0e66d5",
+          "warmup-product/warmup-mesh": "e5c0cebcd2654cdfdac3967214bd7239cae57d4df5c1ceffeafbbaafc4b25429",
+          "warmup-river/warmup-go": "f1daf62927ab62a3f6638fcbfa2cde63ccb7438ce376b24dd8280337820fd724"
+        },
+        "scores": {
+          "apalis": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 285.5052550811013,
+            "commit_to_last_settlement_ms": 224.164,
+            "commit_to_pickup_p99_ms": 197.185,
+            "commit_to_settlement_p99_ms": 224.164,
+            "completed": 64,
+            "cpu_iowait_percent": 0.4424778761061947,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 671.467,
+            "peak_runner_rss_bytes": 114708480,
+            "runner_cpu_ms_per_job": 6.481671874999999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "storage": {
+              "ddl_end_us": 1795574383587095,
+              "policy": "EXTERNAL",
+              "relation": "apalis.jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574389508173
+            },
+            "submit_jobs_per_s": 71.45800000223306,
+            "submit_to_last_settlement_ms": 895.631,
+            "submit_to_settlement_p50_ms": 882.973,
+            "submit_to_settlement_p99_ms": 895.631,
+            "terminal_xids": 15
+          },
+          "file": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 98.63711252182732,
+            "commit_to_last_settlement_ms": 648.843,
+            "commit_to_pickup_p99_ms": 637.841,
+            "commit_to_settlement_p99_ms": 648.843,
+            "completed": 64,
+            "cpu_iowait_percent": 0.9404388714733543,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 714.099,
+            "peak_runner_rss_bytes": 100823040,
+            "runner_cpu_ms_per_job": 17.41459375,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 46.95724396195876,
+            "submit_to_last_settlement_ms": 1362.942,
+            "submit_to_settlement_p50_ms": 1135.461,
+            "submit_to_settlement_p99_ms": 1362.942,
+            "terminal_xids": 64
+          },
+          "inline-a": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 86.21967155693866,
+            "commit_to_last_settlement_ms": 742.29,
+            "commit_to_pickup_p99_ms": 721.192,
+            "commit_to_settlement_p99_ms": 742.29,
+            "completed": 64,
+            "cpu_iowait_percent": 3.982300884955752,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1232.38,
+            "peak_runner_rss_bytes": 112889856,
+            "runner_cpu_ms_per_job": 20.943671874999996,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 32.410478712898865,
+            "submit_to_last_settlement_ms": 1974.67,
+            "submit_to_settlement_p50_ms": 1697.5079999999998,
+            "submit_to_settlement_p99_ms": 1974.67,
+            "terminal_xids": 64
+          },
+          "inline-b": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 94.73902359593806,
+            "commit_to_last_settlement_ms": 675.54,
+            "commit_to_pickup_p99_ms": 670.495,
+            "commit_to_settlement_p99_ms": 675.54,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5449591280653951,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1007.23,
+            "peak_runner_rss_bytes": 101269504,
+            "runner_cpu_ms_per_job": 18.628625,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 38.03252969805737,
+            "submit_to_last_settlement_ms": 1682.77,
+            "submit_to_settlement_p50_ms": 1421.1915,
+            "submit_to_settlement_p99_ms": 1682.77,
+            "terminal_xids": 64
+          },
+          "oban": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 131.7902887031012,
+            "commit_to_last_settlement_ms": 485.62,
+            "commit_to_pickup_p99_ms": 462.873,
+            "commit_to_settlement_p99_ms": 485.62,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5376344086021505,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 1154.207,
+            "peak_runner_rss_bytes": 869179392,
+            "runner_cpu_ms_per_job": 142.23746874999998,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "storage": {
+              "ddl_end_us": 1795574357354167,
+              "policy": "EXTERNAL",
+              "relation": "parity_bf758ab76ac66cb5.oban_jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574368475061
+            },
+            "submit_jobs_per_s": 39.028507275462594,
+            "submit_to_last_settlement_ms": 1639.827,
+            "submit_to_settlement_p50_ms": 1498.2885,
+            "submit_to_settlement_p99_ms": 1639.827,
+            "terminal_xids": 64
+          },
+          "product": {
+            "application_xids": 128,
+            "broker_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "commit_jobs_per_s": 94.1977151166727,
+            "commit_to_last_settlement_ms": 679.422,
+            "commit_to_pickup_p99_ms": 672.608,
+            "commit_to_settlement_p99_ms": 679.422,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1086.48,
+            "peak_runner_rss_bytes": 126025728,
+            "runner_cpu_ms_per_job": 19.229140625,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 36.242101770086904,
+            "submit_to_last_settlement_ms": 1765.902,
+            "submit_to_settlement_p50_ms": 1530.8919999999998,
+            "submit_to_settlement_p99_ms": 1765.902,
+            "terminal_xids": 64
+          },
+          "river": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 68.76352438848812,
+            "commit_to_last_settlement_ms": 930.726,
+            "commit_to_pickup_p99_ms": 478.277,
+            "commit_to_settlement_p99_ms": 930.726,
+            "completed": 64,
+            "cpu_iowait_percent": 0.40160642570281124,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 1465.49,
+            "peak_runner_rss_bytes": 229191680,
+            "runner_cpu_ms_per_job": 14.35071875,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "storage": {
+              "ddl_end_us": 1795574403929166,
+              "policy": "EXTERNAL",
+              "relation": "parity_04e6d0f4b0c19194.river_job",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574409849018
+            },
+            "submit_jobs_per_s": 26.708777505867584,
+            "submit_to_last_settlement_ms": 2396.216,
+            "submit_to_settlement_p50_ms": 2326.962,
+            "submit_to_settlement_p99_ms": 2396.216,
+            "terminal_xids": 16
+          }
+        }
+      },
+      {
+        "attempt": "03-large.1795574433642548000",
+        "clocks": {
+          "apalis": {
+            "drain_jobs_s": 324.61110068523374,
+            "drain_ms": 197.159,
+            "enqueue_ms": 626.237,
+            "jobs_s": 77.7268774684356,
+            "submit_ms": 823.396
+          },
+          "file": {
+            "drain_jobs_s": 100.76582023377671,
+            "drain_ms": 635.136,
+            "enqueue_ms": 686.224,
+            "jobs_s": 48.43494581340437,
+            "submit_ms": 1321.36
+          },
+          "inline-a": {
+            "drain_jobs_s": 94.9031098562811,
+            "drain_ms": 674.372,
+            "enqueue_ms": 1032.49,
+            "jobs_s": 37.4957084989882,
+            "submit_ms": 1706.862
+          },
+          "inline-b": {
+            "drain_jobs_s": 93.14496704269096,
+            "drain_ms": 687.101,
+            "enqueue_ms": 1076.142,
+            "jobs_s": 36.29675546705701,
+            "submit_ms": 1763.243
+          },
+          "oban": {
+            "drain_jobs_s": 125.06008746389867,
+            "drain_ms": 511.754,
+            "enqueue_ms": 1233.491,
+            "jobs_s": 36.67106910491077,
+            "submit_ms": 1745.245
+          },
+          "product": {
+            "drain_jobs_s": 98.62434449483533,
+            "drain_ms": 648.927,
+            "enqueue_ms": 1054.054,
+            "jobs_s": 37.58115915562182,
+            "submit_ms": 1702.981
+          },
+          "river": {
+            "drain_jobs_s": 70.30471601838029,
+            "drain_ms": 910.323,
+            "enqueue_ms": 1564.603,
+            "jobs_s": 25.85935902730021,
+            "submit_ms": 2474.926
+          }
+        },
+        "duplicate_spread_ms": {
+          "drain_ms": 12.729,
+          "enqueue_ms": 43.652,
+          "submit_ms": 56.381
+        },
+        "faster_duplicate_minus_file_ms": {
+          "drain_ms": 39.236,
+          "enqueue_ms": 346.266,
+          "submit_ms": 385.502
+        },
+        "group": 3,
+        "order": [
+          "product",
+          "oban",
+          "inline-b",
+          "apalis",
+          "file",
+          "river",
+          "inline-a"
+        ],
+        "paired_ms": {
+          "apalis": {
+            "drain_ms": -437.977,
+            "enqueue_ms": -59.987,
+            "submit_ms": -497.964
+          },
+          "inline-a": {
+            "drain_ms": 39.236,
+            "enqueue_ms": 346.266,
+            "submit_ms": 385.502
+          },
+          "inline-b": {
+            "drain_ms": 51.965,
+            "enqueue_ms": 389.918,
+            "submit_ms": 441.883
+          },
+          "oban": {
+            "drain_ms": -123.382,
+            "enqueue_ms": 547.267,
+            "submit_ms": 423.885
+          },
+          "product": {
+            "drain_ms": 13.791,
+            "enqueue_ms": 367.83,
+            "submit_ms": 381.621
+          },
+          "river": {
+            "drain_ms": 275.187,
+            "enqueue_ms": 878.379,
+            "submit_ms": 1153.566
+          }
+        },
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "ca51f63b29d2c8e45c6e0512ec6797442d8917bdbeeb8557a5b33563d7cf89ba",
+          "measured-file/measured-mesh": "72bb4a0aa69392bc737a0f0a817911daa9121f3630d065b531eb3a7732b25fba",
+          "measured-inline-a/measured-mesh": "32275e26f5e80a700888e1e6ed6a197ee43f9c131231f8d21ca3a4e9adf8d2a9",
+          "measured-inline-b/measured-mesh": "a4d345e541821c39ad1072f54eb8a56e08f822acf365c467d93628edc7788064",
+          "measured-oban/measured-oban": "5d761c14ec7a96fb0bb65273ed611266b0846aea6a3d0fafb6b288652bba4e93",
+          "measured-product/measured-mesh": "585238b966390c18723a5555ec1c98c7c22a58f10c6b1fc8ea92bb9ba5343752",
+          "measured-river/measured-go": "1449a4538562af2d7ebc749673f88121e00edbde0c3a271c66d047732ac38b4a",
+          "warmup-apalis/warmup-rust": "04ec3afc7082ee83b903d46bb809ae1060da30b1197270607f941d5d237dcf30",
+          "warmup-file/warmup-mesh": "479f96861bfe4ad37821edb9aac4af1af86a27e61a93c5f5e91b970189824cae",
+          "warmup-inline-a/warmup-mesh": "c9f02d18f13c1f2e77b6b2f0fba8d819c93cb3ebaa852179d3f2c98d89ec027f",
+          "warmup-inline-b/warmup-mesh": "fd3414f9136126c3338e08a4ad784793c3da97e5df33edcc6dc42808c7675525",
+          "warmup-oban/warmup-oban": "ccb1d83eb062228929456eb516b7a8c1050b3c019e4a236c217f6487bb1e39a3",
+          "warmup-product/warmup-mesh": "cdac58236670defcdbeeea745f344d0d16224b527388188aca6ebcf7673fd086",
+          "warmup-river/warmup-go": "9a208dac36a88c5df07e4267caeb145fbebe92d5b225f255d18bace01931d050"
+        },
+        "scores": {
+          "apalis": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 324.61110068523374,
+            "commit_to_last_settlement_ms": 197.159,
+            "commit_to_pickup_p99_ms": 183.039,
+            "commit_to_settlement_p99_ms": 197.159,
+            "completed": 64,
+            "cpu_iowait_percent": 0.8695652173913043,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 626.237,
+            "peak_runner_rss_bytes": 115167232,
+            "runner_cpu_ms_per_job": 5.868921875,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "storage": {
+              "ddl_end_us": 1795574555210549,
+              "policy": "EXTERNAL",
+              "relation": "apalis.jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574560936612
+            },
+            "submit_jobs_per_s": 77.7268774684356,
+            "submit_to_last_settlement_ms": 823.396,
+            "submit_to_settlement_p50_ms": 814.332,
+            "submit_to_settlement_p99_ms": 823.396,
+            "terminal_xids": 21
+          },
+          "file": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 100.76582023377671,
+            "commit_to_last_settlement_ms": 635.136,
+            "commit_to_pickup_p99_ms": 624.664,
+            "commit_to_settlement_p99_ms": 635.136,
+            "completed": 64,
+            "cpu_iowait_percent": 0.7299270072992701,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 686.224,
+            "peak_runner_rss_bytes": 110604288,
+            "runner_cpu_ms_per_job": 18.43634375,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 48.43494581340437,
+            "submit_to_last_settlement_ms": 1321.36,
+            "submit_to_settlement_p50_ms": 1112.6435000000001,
+            "submit_to_settlement_p99_ms": 1321.36,
+            "terminal_xids": 64
+          },
+          "inline-a": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 94.9031098562811,
+            "commit_to_last_settlement_ms": 674.372,
+            "commit_to_pickup_p99_ms": 661.745,
+            "commit_to_settlement_p99_ms": 674.372,
+            "completed": 64,
+            "cpu_iowait_percent": 0.4914004914004914,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1032.49,
+            "peak_runner_rss_bytes": 118882304,
+            "runner_cpu_ms_per_job": 18.75859375,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 37.4957084989882,
+            "submit_to_last_settlement_ms": 1706.862,
+            "submit_to_settlement_p50_ms": 1456.6905,
+            "submit_to_settlement_p99_ms": 1706.862,
+            "terminal_xids": 64
+          },
+          "inline-b": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 93.14496704269096,
+            "commit_to_last_settlement_ms": 687.101,
+            "commit_to_pickup_p99_ms": 677.718,
+            "commit_to_settlement_p99_ms": 687.101,
+            "completed": 64,
+            "cpu_iowait_percent": 0.49504950495049505,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1076.142,
+            "peak_runner_rss_bytes": 116002816,
+            "runner_cpu_ms_per_job": 19.211203125,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 36.29675546705701,
+            "submit_to_last_settlement_ms": 1763.243,
+            "submit_to_settlement_p50_ms": 1479.1825,
+            "submit_to_settlement_p99_ms": 1763.243,
+            "terminal_xids": 64
+          },
+          "oban": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 125.06008746389867,
+            "commit_to_last_settlement_ms": 511.754,
+            "commit_to_pickup_p99_ms": 470.684,
+            "commit_to_settlement_p99_ms": 511.754,
+            "completed": 64,
+            "cpu_iowait_percent": 0.2403846153846154,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 1233.491,
+            "peak_runner_rss_bytes": 870010880,
+            "runner_cpu_ms_per_job": 142.91690624999998,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "storage": {
+              "ddl_end_us": 1795574528450466,
+              "policy": "EXTERNAL",
+              "relation": "parity_c885d365137ddc8b.oban_jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574539943056
+            },
+            "submit_jobs_per_s": 36.67106910491077,
+            "submit_to_last_settlement_ms": 1745.245,
+            "submit_to_settlement_p50_ms": 1577.9385000000002,
+            "submit_to_settlement_p99_ms": 1745.245,
+            "terminal_xids": 64
+          },
+          "product": {
+            "application_xids": 128,
+            "broker_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "commit_jobs_per_s": 98.62434449483533,
+            "commit_to_last_settlement_ms": 648.927,
+            "commit_to_pickup_p99_ms": 641.217,
+            "commit_to_settlement_p99_ms": 648.927,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5524861878453039,
+            "cpu_steal_percent": 0.27624309392265195,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1054.054,
+            "peak_runner_rss_bytes": 101941248,
+            "runner_cpu_ms_per_job": 19.06128125,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 37.58115915562182,
+            "submit_to_last_settlement_ms": 1702.981,
+            "submit_to_settlement_p50_ms": 1433.633,
+            "submit_to_settlement_p99_ms": 1702.981,
+            "terminal_xids": 64
+          },
+          "river": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 70.30471601838029,
+            "commit_to_last_settlement_ms": 910.323,
+            "commit_to_pickup_p99_ms": 567.376,
+            "commit_to_settlement_p99_ms": 910.323,
+            "completed": 64,
+            "cpu_iowait_percent": 0.18796992481203006,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 1564.603,
+            "peak_runner_rss_bytes": 229691392,
+            "runner_cpu_ms_per_job": 14.4375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "storage": {
+              "ddl_end_us": 1795574575359308,
+              "policy": "EXTERNAL",
+              "relation": "parity_9dc38427253d1900.river_job",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574581336424
+            },
+            "submit_jobs_per_s": 25.85935902730021,
+            "submit_to_last_settlement_ms": 2474.926,
+            "submit_to_settlement_p50_ms": 2301.627,
+            "submit_to_settlement_p99_ms": 2474.926,
+            "terminal_xids": 13
+          }
+        }
+      },
+      {
+        "attempt": "04-large.1795574594132803000",
+        "clocks": {
+          "apalis": {
+            "drain_jobs_s": 318.5394964089649,
+            "drain_ms": 200.917,
+            "enqueue_ms": 650.029,
+            "jobs_s": 75.21041288166347,
+            "submit_ms": 850.946
+          },
+          "file": {
+            "drain_jobs_s": 74.20083383187018,
+            "drain_ms": 862.524,
+            "enqueue_ms": 778.244,
+            "jobs_s": 39.00612396146195,
+            "submit_ms": 1640.768
+          },
+          "inline-a": {
+            "drain_jobs_s": 92.87503373975835,
+            "drain_ms": 689.098,
+            "enqueue_ms": 995.154,
+            "jobs_s": 37.99906427304228,
+            "submit_ms": 1684.252
+          },
+          "inline-b": {
+            "drain_jobs_s": 100.18016777047471,
+            "drain_ms": 638.849,
+            "enqueue_ms": 988.437,
+            "jobs_s": 39.32928815217485,
+            "submit_ms": 1627.286
+          },
+          "oban": {
+            "drain_jobs_s": 125.96292753588959,
+            "drain_ms": 508.086,
+            "enqueue_ms": 1155.09,
+            "jobs_s": 38.48059375556165,
+            "submit_ms": 1663.176
+          },
+          "product": {
+            "drain_jobs_s": 85.69588405346887,
+            "drain_ms": 746.827,
+            "enqueue_ms": 1108.083,
+            "jobs_s": 34.50302170994819,
+            "submit_ms": 1854.91
+          },
+          "river": {
+            "drain_jobs_s": 77.13445499686641,
+            "drain_ms": 829.72,
+            "enqueue_ms": 1454.845,
+            "jobs_s": 28.014085832532672,
+            "submit_ms": 2284.565
+          }
+        },
+        "duplicate_spread_ms": {
+          "drain_ms": 50.249,
+          "enqueue_ms": 6.717,
+          "submit_ms": 56.966
+        },
+        "faster_duplicate_minus_file_ms": {
+          "drain_ms": -223.675,
+          "enqueue_ms": 210.193,
+          "submit_ms": -13.482
+        },
+        "group": 4,
+        "order": [
+          "inline-a",
+          "river",
+          "file",
+          "apalis",
+          "inline-b",
+          "oban",
+          "product"
+        ],
+        "paired_ms": {
+          "apalis": {
+            "drain_ms": -661.607,
+            "enqueue_ms": -128.215,
+            "submit_ms": -789.822
+          },
+          "inline-a": {
+            "drain_ms": -173.426,
+            "enqueue_ms": 216.91,
+            "submit_ms": 43.484
+          },
+          "inline-b": {
+            "drain_ms": -223.675,
+            "enqueue_ms": 210.193,
+            "submit_ms": -13.482
+          },
+          "oban": {
+            "drain_ms": -354.438,
+            "enqueue_ms": 376.846,
+            "submit_ms": 22.408
+          },
+          "product": {
+            "drain_ms": -115.697,
+            "enqueue_ms": 329.839,
+            "submit_ms": 214.142
+          },
+          "river": {
+            "drain_ms": -32.804,
+            "enqueue_ms": 676.601,
+            "submit_ms": 643.797
+          }
+        },
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "621b1acd50f0d0bcccb7bee23d8f9867de6b07aa929115c4ecc268085dbde893",
+          "measured-file/measured-mesh": "cd65c7217b7c7e29ee9a79bee501ebe40ca5811245f113f539ddd3e63c9d5e4e",
+          "measured-inline-a/measured-mesh": "b9591bb53ea08e4be10de3b1ea50b7bed60d9918726fa71981a3c393c64421a9",
+          "measured-inline-b/measured-mesh": "0e22a0c27950c9432e363e870ffd8aa42f3f20f325f20c106f2b3d3e8544f6e9",
+          "measured-oban/measured-oban": "c0c1a1bf9b51dfc0bcf3b5e495973e991453d22b3ae3ca60a908ca4fe29ab327",
+          "measured-product/measured-mesh": "f47d3a9c1a8d1e17878ec60562e4c109e394a25b2a7b929b4b865eda5e51627d",
+          "measured-river/measured-go": "17c171e625a3b5e0a1a769004270654647e74a2d9816d281e323820fbdd6af73",
+          "warmup-apalis/warmup-rust": "b9efad6946b3f052e2ea595c7b8ae0d0404243020b16c3a5b4f975417fdfd311",
+          "warmup-file/warmup-mesh": "79122a9829ea3cba98cc4d8a0fdcb5ff3101b8d8689978908ce89d756fa39a12",
+          "warmup-inline-a/warmup-mesh": "a75864ff36baedb1933da89906f26ab92611884628791bd8e01c10dccc034b6b",
+          "warmup-inline-b/warmup-mesh": "035ba540aeaa4e9377b0f8be50f9229236ed1cffd7f2693d6445f078710e2c31",
+          "warmup-oban/warmup-oban": "2b93e1130eb4aa46f8fa54bf910f5669a8521879431311a07afc85b2a8d1fb43",
+          "warmup-product/warmup-mesh": "e5b2378bbfd2780ad4c1b1d9a6efa827af3fbca32573acbcf5736a47745c8510",
+          "warmup-river/warmup-go": "e8a06e7a6bf2752030f16773f5f5364aadb841b6d0f2ce9b6a0fdf8596136e00"
+        },
+        "scores": {
+          "apalis": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 318.5394964089649,
+            "commit_to_last_settlement_ms": 200.917,
+            "commit_to_pickup_p99_ms": 165.667,
+            "commit_to_settlement_p99_ms": 200.917,
+            "completed": 64,
+            "cpu_iowait_percent": 0.8620689655172413,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 650.029,
+            "peak_runner_rss_bytes": 112525312,
+            "runner_cpu_ms_per_job": 5.656249999999999,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "storage": {
+              "ddl_end_us": 1795574709597246,
+              "policy": "EXTERNAL",
+              "relation": "apalis.jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574715392281
+            },
+            "submit_jobs_per_s": 75.21041288166347,
+            "submit_to_last_settlement_ms": 850.946,
+            "submit_to_settlement_p50_ms": 840.748,
+            "submit_to_settlement_p99_ms": 850.946,
+            "terminal_xids": 20
+          },
+          "file": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 74.20083383187018,
+            "commit_to_last_settlement_ms": 862.524,
+            "commit_to_pickup_p99_ms": 837.833,
+            "commit_to_settlement_p99_ms": 862.524,
+            "completed": 64,
+            "cpu_iowait_percent": 1.6483516483516483,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 778.244,
+            "peak_runner_rss_bytes": 123899904,
+            "runner_cpu_ms_per_job": 20.030890624999998,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 39.00612396146195,
+            "submit_to_last_settlement_ms": 1640.768,
+            "submit_to_settlement_p50_ms": 1283.4665,
+            "submit_to_settlement_p99_ms": 1640.768,
+            "terminal_xids": 64
+          },
+          "inline-a": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 92.87503373975835,
+            "commit_to_last_settlement_ms": 689.098,
+            "commit_to_pickup_p99_ms": 684.606,
+            "commit_to_settlement_p99_ms": 689.098,
+            "completed": 64,
+            "cpu_iowait_percent": 0.8130081300813008,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 995.154,
+            "peak_runner_rss_bytes": 126697472,
+            "runner_cpu_ms_per_job": 19.029140625,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 37.99906427304228,
+            "submit_to_last_settlement_ms": 1684.252,
+            "submit_to_settlement_p50_ms": 1430.7045,
+            "submit_to_settlement_p99_ms": 1684.252,
+            "terminal_xids": 64
+          },
+          "inline-b": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 100.18016777047471,
+            "commit_to_last_settlement_ms": 638.849,
+            "commit_to_pickup_p99_ms": 622.639,
+            "commit_to_settlement_p99_ms": 638.849,
+            "completed": 64,
+            "cpu_iowait_percent": 0.8264462809917356,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 988.437,
+            "peak_runner_rss_bytes": 112410624,
+            "runner_cpu_ms_per_job": 18.902984375000003,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 39.32928815217485,
+            "submit_to_last_settlement_ms": 1627.286,
+            "submit_to_settlement_p50_ms": 1355.414,
+            "submit_to_settlement_p99_ms": 1627.286,
+            "terminal_xids": 64
+          },
+          "oban": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 125.96292753588959,
+            "commit_to_last_settlement_ms": 508.086,
+            "commit_to_pickup_p99_ms": 491.172,
+            "commit_to_settlement_p99_ms": 508.086,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5434782608695652,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 1155.09,
+            "peak_runner_rss_bytes": 877830144,
+            "runner_cpu_ms_per_job": 146.45646875,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "storage": {
+              "ddl_end_us": 1795574731929772,
+              "policy": "EXTERNAL",
+              "relation": "parity_200c8762a2939bbb.oban_jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574743395352
+            },
+            "submit_jobs_per_s": 38.48059375556165,
+            "submit_to_last_settlement_ms": 1663.176,
+            "submit_to_settlement_p50_ms": 1515.8755,
+            "submit_to_settlement_p99_ms": 1663.176,
+            "terminal_xids": 64
+          },
+          "product": {
+            "application_xids": 128,
+            "broker_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "commit_jobs_per_s": 85.69588405346887,
+            "commit_to_last_settlement_ms": 746.827,
+            "commit_to_pickup_p99_ms": 719.204,
+            "commit_to_settlement_p99_ms": 746.827,
+            "completed": 64,
+            "cpu_iowait_percent": 0.24875621890547264,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1108.083,
+            "peak_runner_rss_bytes": 108048384,
+            "runner_cpu_ms_per_job": 20.028390625000004,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 34.50302170994819,
+            "submit_to_last_settlement_ms": 1854.91,
+            "submit_to_settlement_p50_ms": 1605.2675,
+            "submit_to_settlement_p99_ms": 1854.91,
+            "terminal_xids": 64
+          },
+          "river": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 77.13445499686641,
+            "commit_to_last_settlement_ms": 829.72,
+            "commit_to_pickup_p99_ms": 527.839,
+            "commit_to_settlement_p99_ms": 829.72,
+            "completed": 64,
+            "cpu_iowait_percent": 0.6060606060606061,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 1454.845,
+            "peak_runner_rss_bytes": 229081088,
+            "runner_cpu_ms_per_job": 14.132218749999998,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "storage": {
+              "ddl_end_us": 1795574688965630,
+              "policy": "EXTERNAL",
+              "relation": "parity_d0376bdc55e91e8e.river_job",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574694744557
+            },
+            "submit_jobs_per_s": 28.014085832532672,
+            "submit_to_last_settlement_ms": 2284.565,
+            "submit_to_settlement_p50_ms": 2201.156,
+            "submit_to_settlement_p99_ms": 2284.565,
+            "terminal_xids": 10
+          }
+        }
+      },
+      {
+        "attempt": "05-large.1795574756498798000",
+        "clocks": {
+          "apalis": {
+            "drain_jobs_s": 380.252987065457,
+            "drain_ms": 168.309,
+            "enqueue_ms": 705.898,
+            "jobs_s": 73.20920560004667,
+            "submit_ms": 874.207
+          },
+          "file": {
+            "drain_jobs_s": 97.09724744474939,
+            "drain_ms": 659.133,
+            "enqueue_ms": 666.173,
+            "jobs_s": 48.29073436625202,
+            "submit_ms": 1325.306
+          },
+          "inline-a": {
+            "drain_jobs_s": 92.22938601168431,
+            "drain_ms": 693.922,
+            "enqueue_ms": 1008.819,
+            "jobs_s": 37.58645619034251,
+            "submit_ms": 1702.741
+          },
+          "inline-b": {
+            "drain_jobs_s": 96.88440933057414,
+            "drain_ms": 660.581,
+            "enqueue_ms": 1060.489,
+            "jobs_s": 37.18616906924181,
+            "submit_ms": 1721.07
+          },
+          "oban": {
+            "drain_jobs_s": 119.3526610048748,
+            "drain_ms": 536.226,
+            "enqueue_ms": 1213.979,
+            "jobs_s": 36.5671449915867,
+            "submit_ms": 1750.205
+          },
+          "product": {
+            "drain_jobs_s": 98.04537356053306,
+            "drain_ms": 652.759,
+            "enqueue_ms": 963.491,
+            "jobs_s": 39.59783449342614,
+            "submit_ms": 1616.25
+          },
+          "river": {
+            "drain_jobs_s": 73.96287294911932,
+            "drain_ms": 865.299,
+            "enqueue_ms": 1456.872,
+            "jobs_s": 27.56041652401998,
+            "submit_ms": 2322.171
+          }
+        },
+        "duplicate_spread_ms": {
+          "drain_ms": 33.341,
+          "enqueue_ms": 51.67,
+          "submit_ms": 18.329
+        },
+        "faster_duplicate_minus_file_ms": {
+          "drain_ms": 1.448,
+          "enqueue_ms": 342.646,
+          "submit_ms": 377.435
+        },
+        "group": 5,
+        "order": [
+          "apalis",
+          "file",
+          "inline-b",
+          "river",
+          "inline-a",
+          "product",
+          "oban"
+        ],
+        "paired_ms": {
+          "apalis": {
+            "drain_ms": -490.824,
+            "enqueue_ms": 39.725,
+            "submit_ms": -451.099
+          },
+          "inline-a": {
+            "drain_ms": 34.789,
+            "enqueue_ms": 342.646,
+            "submit_ms": 377.435
+          },
+          "inline-b": {
+            "drain_ms": 1.448,
+            "enqueue_ms": 394.316,
+            "submit_ms": 395.764
+          },
+          "oban": {
+            "drain_ms": -122.907,
+            "enqueue_ms": 547.806,
+            "submit_ms": 424.899
+          },
+          "product": {
+            "drain_ms": -6.374,
+            "enqueue_ms": 297.318,
+            "submit_ms": 290.944
+          },
+          "river": {
+            "drain_ms": 206.166,
+            "enqueue_ms": 790.699,
+            "submit_ms": 996.865
+          }
+        },
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "large",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "3355b98e516920e0fbc54621d59a9221e42afab8a652ced6bd5ebb02f9c2802d",
+          "measured-file/measured-mesh": "884a041449fa1f19b93c9d65e1de83a3d49262f1aaf7461d70318ce8d5d23c5a",
+          "measured-inline-a/measured-mesh": "d39b95af1150a405ff2bb1703d673e077d3ab2e740d251b2020747593bba8c95",
+          "measured-inline-b/measured-mesh": "2ef4d29aebbdaff7521dc687c7fdb90a535c67a19c9906f6c1f4c9b6eeee7924",
+          "measured-oban/measured-oban": "13c0be9139ad2342af6621bdfd2e8537617f25adbb80090c1908e533f3d11896",
+          "measured-product/measured-mesh": "afa02b2f7400460d6f266bb1118715fe2a79c68309b067d6f5f5c34079be190d",
+          "measured-river/measured-go": "62f72db2d49203aadbfc6b3a4e82e7605741ca9a19a065aefb971d25112fbe27",
+          "warmup-apalis/warmup-rust": "3a6225243fe8becc1556c71dc4098a4eaa07165b32d99184eac28f8274f8c749",
+          "warmup-file/warmup-mesh": "ddfd46eb5bba346c7f4def9f463a22338bd39eab46fe82edd0bc0287bd9c7347",
+          "warmup-inline-a/warmup-mesh": "370489fd2d230cf5ce151fce9d64e1fc1e16414aa5bfc3c7c7b238564c3f1cb1",
+          "warmup-inline-b/warmup-mesh": "976f2371bb70180ead67e5fffee4424cc7e4e381c1b0665a21949b38e64baf28",
+          "warmup-oban/warmup-oban": "ec66e862eafa8bf76abb8679f2cc143b7fdae5acf2812d66beb9c2ca5e218490",
+          "warmup-product/warmup-mesh": "a186af2cdab607bd0d52a3324bbc3a262c692ecc664c2182dc14f45199a7de31",
+          "warmup-river/warmup-go": "ed92e49091407c8932e74133f5cc01e294f69d7bd19a0a3d9200b56afb44770b"
+        },
+        "scores": {
+          "apalis": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 380.252987065457,
+            "commit_to_last_settlement_ms": 168.309,
+            "commit_to_pickup_p99_ms": 140.94,
+            "commit_to_settlement_p99_ms": 168.309,
+            "completed": 64,
+            "cpu_iowait_percent": 0.5555555555555556,
+            "cpu_steal_percent": 0.0,
+            "engine": "rust",
+            "first_submit_to_commit_ms": 705.898,
+            "peak_runner_rss_bytes": 112361472,
+            "runner_cpu_ms_per_job": 5.529578125,
+            "sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+            "storage": {
+              "ddl_end_us": 1795574838721532,
+              "policy": "EXTERNAL",
+              "relation": "apalis.jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574844634172
+            },
+            "submit_jobs_per_s": 73.20920560004667,
+            "submit_to_last_settlement_ms": 874.207,
+            "submit_to_settlement_p50_ms": 865.261,
+            "submit_to_settlement_p99_ms": 874.207,
+            "terminal_xids": 16
+          },
+          "file": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 97.09724744474939,
+            "commit_to_last_settlement_ms": 659.133,
+            "commit_to_pickup_p99_ms": 650.123,
+            "commit_to_settlement_p99_ms": 659.133,
+            "completed": 64,
+            "cpu_iowait_percent": 0.6289308176100629,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 666.173,
+            "peak_runner_rss_bytes": 112283648,
+            "runner_cpu_ms_per_job": 17.865953125,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 48.29073436625202,
+            "submit_to_last_settlement_ms": 1325.306,
+            "submit_to_settlement_p50_ms": 1067.0704999999998,
+            "submit_to_settlement_p99_ms": 1325.306,
+            "terminal_xids": 64
+          },
+          "inline-a": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 92.22938601168431,
+            "commit_to_last_settlement_ms": 693.922,
+            "commit_to_pickup_p99_ms": 681.549,
+            "commit_to_settlement_p99_ms": 693.922,
+            "completed": 64,
+            "cpu_iowait_percent": 0.8174386920980926,
+            "cpu_steal_percent": 0.2724795640326976,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1008.819,
+            "peak_runner_rss_bytes": 108871680,
+            "runner_cpu_ms_per_job": 19.521203125,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 37.58645619034251,
+            "submit_to_last_settlement_ms": 1702.741,
+            "submit_to_settlement_p50_ms": 1448.2984999999999,
+            "submit_to_settlement_p99_ms": 1702.741,
+            "terminal_xids": 64
+          },
+          "inline-b": {
+            "application_xids": 128,
+            "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+            "commit_jobs_per_s": 96.88440933057414,
+            "commit_to_last_settlement_ms": 660.581,
+            "commit_to_pickup_p99_ms": 641.513,
+            "commit_to_settlement_p99_ms": 660.581,
+            "completed": 64,
+            "cpu_iowait_percent": 0.8379888268156425,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 1060.489,
+            "peak_runner_rss_bytes": 108613632,
+            "runner_cpu_ms_per_job": 19.917624999999997,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 37.18616906924181,
+            "submit_to_last_settlement_ms": 1721.07,
+            "submit_to_settlement_p50_ms": 1507.7694999999999,
+            "submit_to_settlement_p99_ms": 1721.07,
+            "terminal_xids": 64
+          },
+          "oban": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 119.3526610048748,
+            "commit_to_last_settlement_ms": 536.226,
+            "commit_to_pickup_p99_ms": 524.999,
+            "commit_to_settlement_p99_ms": 536.226,
+            "completed": 64,
+            "cpu_iowait_percent": 0.8108108108108109,
+            "cpu_steal_percent": 0.0,
+            "engine": "oban",
+            "first_submit_to_commit_ms": 1213.979,
+            "peak_runner_rss_bytes": 879898624,
+            "runner_cpu_ms_per_job": 142.274390625,
+            "sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+            "storage": {
+              "ddl_end_us": 1795574904020422,
+              "policy": "EXTERNAL",
+              "relation": "parity_8675c34e887e2bca.oban_jobs",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574915289277
+            },
+            "submit_jobs_per_s": 36.5671449915867,
+            "submit_to_last_settlement_ms": 1750.205,
+            "submit_to_settlement_p50_ms": 1625.76,
+            "submit_to_settlement_p99_ms": 1750.205,
+            "terminal_xids": 64
+          },
+          "product": {
+            "application_xids": 128,
+            "broker_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "commit_jobs_per_s": 98.04537356053306,
+            "commit_to_last_settlement_ms": 652.759,
+            "commit_to_pickup_p99_ms": 640.79,
+            "commit_to_settlement_p99_ms": 652.759,
+            "completed": 64,
+            "cpu_iowait_percent": 0.547945205479452,
+            "cpu_steal_percent": 0.0,
+            "engine": "mesh",
+            "first_submit_to_commit_ms": 963.491,
+            "peak_runner_rss_bytes": 103112704,
+            "runner_cpu_ms_per_job": 18.687921875000004,
+            "runner_sha256": "af2aca867a02d526cb6ba92d1867166ffc346f31e97a8f8aba0f19aa76b1d355",
+            "sha256": "979cd601099c5e7da4be763229a91e9dcabca51a35f4bed79f6cf4128adbac55",
+            "storage": {
+              "args_compression": "",
+              "args_storage": "e",
+              "default_toast_compression": "pglz",
+              "max_connections": 96,
+              "shared_buffers": "128MB",
+              "storage": "external-4m",
+              "topology": "stock",
+              "wal_compression": "off",
+              "work_mem": "4MB"
+            },
+            "submit_jobs_per_s": 39.59783449342614,
+            "submit_to_last_settlement_ms": 1616.25,
+            "submit_to_settlement_p50_ms": 1386.578,
+            "submit_to_settlement_p99_ms": 1616.25,
+            "terminal_xids": 64
+          },
+          "river": {
+            "application_xids": 128,
+            "commit_jobs_per_s": 73.96287294911932,
+            "commit_to_last_settlement_ms": 865.299,
+            "commit_to_pickup_p99_ms": 495.269,
+            "commit_to_settlement_p99_ms": 865.299,
+            "completed": 64,
+            "cpu_iowait_percent": 0.37105751391465674,
+            "cpu_steal_percent": 0.0,
+            "engine": "go",
+            "first_submit_to_commit_ms": 1456.872,
+            "peak_runner_rss_bytes": 228810752,
+            "runner_cpu_ms_per_job": 14.345109375,
+            "sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+            "storage": {
+              "ddl_end_us": 1795574870288544,
+              "policy": "EXTERNAL",
+              "relation": "parity_a9c9fe9f5ea3f6ba.river_job",
+              "toast_heap_bytes": 34471936,
+              "verify_start_us": 1795574876168877
+            },
+            "submit_jobs_per_s": 27.56041652401998,
+            "submit_to_last_settlement_ms": 2322.171,
+            "submit_to_settlement_p50_ms": 2255.356,
+            "submit_to_settlement_p99_ms": 2322.171,
+            "terminal_xids": 14
+          }
+        }
+      }
+    ],
+    "configuration_sha256": "87e58fbec96ca1ee81e870d0681e07a4fff88fbfc2be1bbfc7ad74b2049115b5",
+    "description": "Five rotations compare Mesh FILE, two same-broker inline controls, public stock Mesh, Go River, Elixir Oban and Rust Apalis. Each lane completes 64 jobs with 512 KiB payloads using EXTERNAL storage.",
+    "manifest_sha256": "d7cc1a1b3a81f327e8e9b1aba1ca029a00e77ed338ac2d181fa6262ef3eb03ea",
+    "original_release_sha256": "338da02e4fc0e88bae7b8daa932a4f6423ff0bc82a83c28f96eead7d395cbe8f",
+    "qualification": {
+      "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
+      "raw_sha256": "b3bab4a1dca4e1b94a3794bde41dcfe937f22a7fb1d35b47504e3d6addd1b383",
+      "relink_sha256": null,
+      "runtime_origin": "rebuilt-exact",
+      "runtime_sha256": "4e81280d27d218a3c1eaba8b10b33455f06280ca2297b48ad0563ddf96873584"
+    },
+    "release_sha256": "a1e3a4187a2e8ab84db8ec094fd768c5fe9c335c4298c0f4624a776f80769df5",
+    "replay_sha256": "e633ff4fcafddf0f05c66affdcc931aa5bef4c829e64b38f15c8d1d2d07694a1",
+    "title": "Public Mesh \u00b7 large-file producer with symmetric EXTERNAL storage"
+  },
   "public-large-file-session": {
     "blocks": [
       {

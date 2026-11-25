@@ -86,8 +86,10 @@ function element(tag,text,cls) {
 }
 function median(xs) {const x=xs.slice().sort((a,b)=>a-b),i=Math.floor(x.length/2);return x.length%2?x[i]:(x[i-1]+x[i])/2;}
 const number=new Intl.NumberFormat("en-US",{maximumFractionDigits:2});
+const fileLanes={file:"Mesh · file","inline-a":"Mesh · inline A","inline-b":"Mesh · inline B",product:"Mesh · public stock"};
 const seriesNames={
- "public-large-file-session":{file:"Mesh · file","inline-a":"Mesh · inline A","inline-b":"Mesh · inline B",product:"Mesh · public stock"},
+ "public-large-file-session":fileLanes,
+ "public-large-file-external":fileLanes,
  "public-dense-individual-hot-checkout":{hot:"Mesh · hot checkout","checked-a":"Mesh · checked A","checked-b":"Mesh · checked B"}
 };
 function draw() {
@@ -137,8 +139,9 @@ function draw() {
 function chooseSeries() {
  const prior=profile.value, b=db[series.value].blocks;profile.replaceChildren();
  const priorMetric=metric.value;
+ const first=b[0].scores[b[0].order[0]];
  metric.replaceChildren(...Object.entries(measures)
-   .filter(([key])=>series.value==="public-large-file-session"||!key.endsWith("_to_last_settlement_ms"))
+   .filter(([key])=>!key.endsWith("_to_last_settlement_ms")||key in first)
    .map(([key,m])=>option(key,m[0])));
  if([...metric.options].some(o=>o.value===priorMetric))metric.value=priorMetric;
  for (const [id,label] of Object.entries(workloads)) if(b.some(row=>row.profile===id))profile.add(option(id,label));

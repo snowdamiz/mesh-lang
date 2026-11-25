@@ -200,6 +200,63 @@ def capture_public_dense_individual_checkout(directory):
     return series
 
 
+def capture_public_large_file_external(retry):
+    directory = retry / "evidence/native"
+    report_path = retry / "evidence/replay.json"
+    replay = subprocess.check_output([sys.executable, "-B", retry / "retry.py", "replay"])
+    run.require(replay == report_path.read_bytes(), f"{report_path}: differs from fresh archive replay")
+    report = json.loads(replay)
+    manifest = run.read_json(directory / "series.json")
+    lanes = manifest["config"]["lanes"]
+    release_path = directory / "controller-release.json"
+    release = run.read_json(release_path)
+    packet = retry / "controller-packet.json"
+    bound = run.read_json(packet)
+    run.require(release["phase"] == "timing" and release["request_sha256"] == run.digest(packet)
+                and Path(release["receipt"]).parts[-len(directory.relative_to(SUITE).parts):]
+                == directory.relative_to(SUITE).parts, "TIMING release does not bind this archive")
+    run.require([row["group"] for row in report["groups"]] == list(range(1, 6)) and len(lanes) == 7,
+                "expected five seven-lane EXTERNAL rotations")
+    public = (SUITE / "results/2026-11-24-trusted-jobs-product-composition"
+              / "evidence/native/timing-closure-retry/large-external.inventory.json")
+    runner = run.read_json(public)["artifact"]["files"]["mesh"]
+    blocks = []
+    for group, plan in zip(report["groups"], manifest["plan"], strict=True):
+        archives, scores = {}, {}
+        for phase in plan["phases"]:
+            for label in plan["order"]:
+                lane = lanes[label]
+                engine = lane["engine"]
+                receipt = group["receipts"][phase][label]
+                arm = f"{phase}-{label}/{phase}-{engine}"
+                archives[arm] = receipt["raw_sha256"]
+                if phase == "measured":
+                    row = group["scores"][label]
+                    run.require(row["raw_sha256"] == archives[arm] and row["affinity"] == [0, 1]
+                                and (row["completed"], row["ordered_independent_writes"], row["failed"],
+                                     receipt["app_xids"]) == (64, 64, 0, 128), "unexpected EXTERNAL outcome")
+                    score = {key: row[key] for key in METRICS}
+                    clock = group["clocks"][label]
+                    score.update(engine=engine, completed=row["completed"], application_xids=receipt["app_xids"],
+                                 terminal_xids=receipt["terminal_xids"], storage=receipt["storage"],
+                                 sha256=lane["inventory"]["engines"][engine]["artifact_sha256"],
+                                 submit_to_last_settlement_ms=clock["submit_ms"],
+                                 commit_to_last_settlement_ms=clock["drain_ms"])
+                    if engine == "mesh":
+                        score.update(runner_sha256=runner, broker_sha256=(
+                            runner if label == "product" else report["qualification"]["broker_sha256"]))
+                    scores[label] = score
+        run.require(len(archives) == 14, "expected seven warmup and seven measured arm hashes")
+        blocks.append(dict(**plan, attempt=group["path"], raw_sha256=archives, scores=scores,
+                           clocks=group["clocks"], duplicate_spread_ms=group["inline_spread_ms"],
+                           faster_duplicate_minus_file_ms=group["faster_inline_minus_file_ms"],
+                           paired_ms=group["lane_minus_file_ms"]))
+    return dict(manifest_sha256=run.digest(directory / "series.json"), release_sha256=run.digest(release_path),
+                replay_sha256=run.digest(report_path), configuration_sha256=bound["configuration_sha256"],
+                original_release_sha256=run.digest(retry.parent / "evidence/native/controller-release.json"),
+                qualification=report["qualification"], blocks=blocks)
+
+
 def capture_slow_storage(packet):
     sys.path.insert(0, str(packet / "replay"))
     import native as storage_run
@@ -411,11 +468,11 @@ def text_json(value):
     return json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + "\n"
 
 
-def add_policy_table(lines, series, title, detail, lanes, planned=5, paired=False):
+def add_policy_table(lines, series, title, detail, lanes, planned=5, paired=None):
     blocks = series.get("blocks", [])
     if not blocks:
         return
-    comparison = ("| Hot paired submit change (wins) | Hot paired drain change (wins) |" if paired
+    comparison = (f"| {paired} paired submit change (wins) | {paired} paired drain change (wins) |" if paired
                   else "| Candidate wins from submit | Candidate wins from commit |")
     lines.extend([f"## {title}", "", f"{len(blocks)}/{planned} matched rotations. {detail}", "",
                   f"| Lane | Submit jobs/s | Drain jobs/s {comparison}", "|---|---:|---:|---:|---:|"])
@@ -546,6 +603,26 @@ def write_scorecard(data):
                              f"samples spanning {late['sampled_span_ms'] / 1000:.2f} s.")
                 lines.extend([note + " The rates and paired wins include this run.", ""])
     add_large_file_session(lines, data.get("public-large-file-session", {}))
+    external_file = data.get("public-large-file-external", {})
+    add_policy_table(lines, external_file, "Public large-file producer with symmetric EXTERNAL storage",
+                     "Seven lanes complete the same 64 jobs with 512 KiB payloads per rotation on CPUs 0 and 1. "
+                     "Every lane uses eight 8-slot runners and EXTERNAL payload storage. Mesh verifies 4 MiB work_mem. Rates and "
+                     "matched throughput changes are medians. [Interactive results](chart.html#public-large-file-external)",
+                     [("file", "Mesh FILE"), ("inline-a", "Mesh inline A"), ("inline-b", "Mesh inline B"),
+                      ("product", "Public stock Mesh"), ("river", "Go River"), ("oban", "Elixir Oban"),
+                      ("apalis", "Rust Apalis")], paired="FILE")
+    if external_file:
+        rotations = external_file["blocks"]
+        enqueue = [b["faster_duplicate_minus_file_ms"]["enqueue_ms"] for b in rotations]
+        submit = [b["faster_duplicate_minus_file_ms"]["submit_ms"] for b in rotations]
+        lines.extend([f"Against the faster same-broker inline control per clock, FILE saved a paired median "
+                      f"{median(enqueue):.0f} ms to enqueue commit and {median(submit):.0f} ms from submit through "
+                      f"settlement. It won {sum(v > 0 for v in enqueue)}/5 producer comparisons and "
+                      f"{sum(v > 0 for v in submit)}/5 full submissions. Oban drained sooner in all five rotations. "
+                      "[Durable application-write intervals](../2026-11-25-large-external-write-progress/README.md)", "",
+                      "The original grant parser failed before staging. These five rotations came from the released "
+                      "[retry](../2026-11-25-public-large-file-external/grant-parser-retry/RESULTS.md). "
+                      "[Original failure](../2026-11-25-public-large-file-external/evidence/native/README.md)", ""])
     lines.extend(["## Original V1 and protected workloads", "",
                   "The five workloads below use the original trusted Mesh V1 runner and its protected Mesh control. Each completed rotation contains both Mesh modes and all three stock peers on the same Linode. Rates are median jobs per second. The last column counts the rotations in which trusted Mesh was faster than each peer.", ""])
     for metric, title in [("submit_jobs_per_s", "Submission through last settlement"),
@@ -668,7 +745,7 @@ def write_scorecard(data):
                      "[Interactive results](chart.html#public-dense-individual-hot-checkout)",
                      [("hot", "Mesh hot checkout"), ("checked-a", "Mesh checked A"), ("checked-b", "Mesh checked B"),
                       ("river-2x32", "Go River"), ("oban-2x32", "Elixir Oban"), ("apalis-2x32", "Rust Apalis")],
-                     planned=6, paired=True)
+                     planned=6, paired="Hot")
     if individual:
         gains = individual["paired_hot_vs_faster_control_percent"]
         groups = ", ".join(map(str, individual["qualifying_groups"]))
@@ -885,6 +962,8 @@ def refresh(collect, selected=()):
                 if previous_release and current["release_sha256"] != previous_release:
                     print(f"{name}: previously captured TIMING release changed", file=sys.stderr)
                     continue
+            elif name == "public-large-file-external":
+                current = capture_public_large_file_external(archived)
             elif name == "slow-storage":
                 current = capture_slow_storage(archived)
             elif name == "public-dense-hot-checkout":
