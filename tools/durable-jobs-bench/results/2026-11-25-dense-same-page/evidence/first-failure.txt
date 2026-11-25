@@ -1,0 +1,16 @@
+ERROR:  permission denied for database mesh
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-same-page/prove.py", line 234, in <module>
+    print(json.dumps(inspect(parser.parse_args().bindir.resolve()), indent=2))
+                     ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-same-page/prove.py", line 208, in inspect
+    query("SET ROLE parity_migrator;\n" + schema + enqueue)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-same-page/prove.py", line 195, in query
+    return tool("psql", "-XqAt", "-v", "ON_ERROR_STOP=1", "-h", scratch,
+                "-U", "owner", "-d", db, input=sql)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-same-page/prove.py", line 192, in tool
+    return run([bindir / name, *args], **kwargs)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-same-page/prove.py", line 46, in run
+    raise subprocess.CalledProcessError(completed.returncode, command)
+subprocess.CalledProcessError: Command '[PosixPath('/opt/homebrew/Cellar/postgresql@17/17.11/bin/psql'), '-XqAt', '-v', 'ON_ERROR_STOP=1', '-h', PosixPath('/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ff-_aytxd8d'), '-U', 'owner', '-d', 'mesh']' returned non-zero exit status 3.
