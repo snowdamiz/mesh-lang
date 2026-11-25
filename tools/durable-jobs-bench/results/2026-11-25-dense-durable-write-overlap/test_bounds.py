@@ -5,6 +5,7 @@ import random
 import unittest
 
 from replay import minimum_events
+from stages import occupancy
 
 
 def exact_minimum(windows, cap):
@@ -28,6 +29,12 @@ def exact_minimum(windows, cap):
 
 
 class BoundsTest(unittest.TestCase):
+    def test_occupancy_clips_crossing_jobs_and_combines_shared_timestamps(self):
+        measured = occupancy([(1, 6), (4, 6), (6, 9), (7, 12), (8, 8)], 3, 10, 2)
+        self.assertEqual(measured["job_us"], 11)
+        self.assertEqual(measured["peak_jobs"], 2)
+        self.assertEqual(measured["at_or_above_slots_us"], 4)
+
     def test_limits_apply_separately_to_each_runner(self):
         self.assertEqual(minimum_events([(0, 1, pid) for pid in (1, 1, 2, 2)], cap=2), 1)
         self.assertEqual(minimum_events([(0, 1, 1)] * 3 + [(2, 3, 2)] * 3, cap=2), 4)

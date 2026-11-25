@@ -25,6 +25,21 @@ Six separate instrumented Linode arms captured the compiled handler returning fr
 
 The cluster counters cover admission, application writes, settlement and other WAL activity. A minimum event count gives neither a per-role physical flush count nor a wall-time saving. Changing the runner can change the transaction timeline itself. The separate native logger-off readiness pilot failed its advancement gate. To isolate service cost, a comparison of PostgreSQL's durable sync methods can keep the application, CPU budget and durability flags fixed. With a synchronous-open method the cost can move into WAL writes, so both write and sync time and both durable throughput windows matter. [Readiness pilot](../2026-11-24-dense-hot-readiness/evidence/pilot/README.md)
 
+## Distinguishing application overlap from delayed settlement
+
+The first-write interval ends at the second application commit and can be computed without a terminal timestamp. Mesh still required at least 494 and 486 events for the 1,024 first writes alone. River required at least 93 and 99. Mesh moved each job from its first to its second commit in a shorter median time, 1.32 and 1.25 ms versus River's 4.73 and 4.24 ms. River moved more jobs through that stage concurrently. [Stage replay with raw hashes](stages.json)
+
+| Mean jobs in stage during the middle 80%, rotations 1 / 2 | Entry to first app commit | First to second app commit | Second app commit to durable terminal |
+|---|---:|---:|---:|
+| Mesh hot R2 | 9.2 / 8.1 | 1.5 / 1.5 | 5.5 / 5.5 |
+| River | 2.9 / 2.4 | 10.9 / 10.2 | 169.4 / 179.8 |
+| Oban | 5.7 / 6.2 | 11.2 / 9.5 | 8.6 / 8.4 |
+| Apalis | 4.5 / 4.7 | 7.4 / 8.4 | 23.5 / 23.2 |
+
+For each stage the replay clips each job's interval to the middle window and divides their summed duration by elapsed wall time. The last column counts completed second writes awaiting a durable terminal record. River spent 96.8% and 96.9% of that window with at least 64 such jobs, while Mesh peaked at 17 and 16. River can accumulate acknowledgments after a handler releases an execution slot. A 64-slot configuration therefore describes different numbers of unsettled jobs across engines. Mesh's observed claim-to-terminal occupancy peaked at 60 and 59 during these windows. The ledger does not reveal local slot-release times or rule out contention on an individual runner. [Benchmark occupancy contract](../../README.md)
+
+The separate qualified readiness rotation tested whether more write overlap helped Mesh. The mean number of jobs between first and second commits rose from 1.45 and 1.39 in the two synchronous controls to **4.31** with actor readiness. The corresponding first-write event floor fell from 506 and 519 to **142**. Yet the candidate's middle second writes took 904.8 ms against 904.6 and 914.6 ms, and its full drain took 31.6 ms longer than the faster control. Mean jobs between the second commit and settlement rose from 5.7 and 7.7 to 14.8. This is one valid rotation on an individual-settlement ELF. It shows a concrete change in overlap without a durable throughput gain. [Native pilot and excluded rotation](../2026-11-24-dense-hot-readiness/evidence/pilot/README.md)
+
 ## Offline replay
 
 From the repository root, use the archived Linode receipts.
@@ -33,4 +48,5 @@ From the repository root, use the archived Linode receipts.
 d=tools/durable-jobs-bench/results/2026-11-25-dense-durable-write-overlap
 python3 -B "$d/test_bounds.py"
 python3 -B "$d/replay.py" | cmp - "$d/native.json"
+python3 -B "$d/stages.py" | cmp - "$d/stages.json"
 ```

@@ -1,0 +1,480 @@
+[
+  {
+    "first_write_only_floor": 94,
+    "group": 1,
+    "lane": "measured-apalis-2x32",
+    "median_first_to_second_us": 4097.0,
+    "middle_us": 515596,
+    "raw_sha256": "059db2c59c78f9d5fa4d8833f5fccdab31f7b20e4e7a41fbf7d9fc10054b3593",
+    "series": "wal",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 3826874,
+        "mean_jobs": 7.422,
+        "peak_jobs": 56
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 5.178,
+        "at_or_above_slots_us": 26696,
+        "job_us": 12135907,
+        "mean_jobs": 23.538,
+        "peak_jobs": 64
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 2341993,
+        "mean_jobs": 4.542,
+        "peak_jobs": 51
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 494,
+    "group": 1,
+    "lane": "measured-d2-on",
+    "median_first_to_second_us": 1324.5,
+    "middle_us": 891492,
+    "raw_sha256": "39ad4331af8d27ab31225671c22370f70819b2ce1730dd81d5606293f635532d",
+    "series": "wal",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 1316954,
+        "mean_jobs": 1.477,
+        "peak_jobs": 4
+      },
+      "claimed_us_to_entered_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 22914761,
+        "mean_jobs": 25.704,
+        "peak_jobs": 44
+      },
+      "claimed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 37333615,
+        "mean_jobs": 41.878,
+        "peak_jobs": 60
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 4890179,
+        "mean_jobs": 5.485,
+        "peak_jobs": 17
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 8211721,
+        "mean_jobs": 9.211,
+        "peak_jobs": 29
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 89,
+    "group": 1,
+    "lane": "measured-oban-2x32",
+    "median_first_to_second_us": 9352.5,
+    "middle_us": 873865,
+    "raw_sha256": "4076af42b0edf23b45bec29b99be75182a6d08782e655ddf0184542673027a82",
+    "series": "wal",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 9748624,
+        "mean_jobs": 11.156,
+        "peak_jobs": 41
+      },
+      "claimed_us_to_entered_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 16564214,
+        "mean_jobs": 18.955,
+        "peak_jobs": 41
+      },
+      "claimed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.319,
+        "at_or_above_slots_us": 2791,
+        "job_us": 38846376,
+        "mean_jobs": 44.454,
+        "peak_jobs": 64
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 7536045,
+        "mean_jobs": 8.624,
+        "peak_jobs": 35
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 4997493,
+        "mean_jobs": 5.719,
+        "peak_jobs": 37
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 93,
+    "group": 1,
+    "lane": "measured-river-2x32",
+    "median_first_to_second_us": 4726.0,
+    "middle_us": 356027,
+    "raw_sha256": "260c65e1c9b563a02a8bf5e9dece3fdfbfa3203c299143933dc3fbf4a68bb84c",
+    "series": "wal",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 3882495,
+        "mean_jobs": 10.905,
+        "peak_jobs": 41
+      },
+      "claimed_us_to_entered_us": {
+        "at_or_above_slots_pct": 0.401,
+        "at_or_above_slots_us": 1426,
+        "job_us": 6447592,
+        "mean_jobs": 18.11,
+        "peak_jobs": 64
+      },
+      "claimed_us_to_settled_us": {
+        "at_or_above_slots_pct": 100.0,
+        "at_or_above_slots_us": 356027,
+        "job_us": 71681688,
+        "mean_jobs": 201.338,
+        "peak_jobs": 337
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 96.752,
+        "at_or_above_slots_us": 344462,
+        "job_us": 60303258,
+        "mean_jobs": 169.378,
+        "peak_jobs": 274
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 1048343,
+        "mean_jobs": 2.945,
+        "peak_jobs": 31
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 83,
+    "group": 2,
+    "lane": "measured-apalis-2x32",
+    "median_first_to_second_us": 5166.0,
+    "middle_us": 495583,
+    "raw_sha256": "66c8d452249beb33b631d01a0fdc0bdb9ef007e6359c1f8c2dc3586c4b4729a5",
+    "series": "wal",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 4151601,
+        "mean_jobs": 8.377,
+        "peak_jobs": 44
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 1.666,
+        "at_or_above_slots_us": 8255,
+        "job_us": 11496726,
+        "mean_jobs": 23.198,
+        "peak_jobs": 64
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 2337762,
+        "mean_jobs": 4.717,
+        "peak_jobs": 36
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 486,
+    "group": 2,
+    "lane": "measured-d2-on",
+    "median_first_to_second_us": 1250.5,
+    "middle_us": 887886,
+    "raw_sha256": "302a8298251af4af23092b865d3ea64578d8a5cc697d46e900cb04f4185f8634",
+    "series": "wal",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 1351329,
+        "mean_jobs": 1.522,
+        "peak_jobs": 4
+      },
+      "claimed_us_to_entered_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 24797488,
+        "mean_jobs": 27.929,
+        "peak_jobs": 48
+      },
+      "claimed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 38192355,
+        "mean_jobs": 43.015,
+        "peak_jobs": 59
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 4889236,
+        "mean_jobs": 5.507,
+        "peak_jobs": 16
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 7154302,
+        "mean_jobs": 8.058,
+        "peak_jobs": 24
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 95,
+    "group": 2,
+    "lane": "measured-oban-2x32",
+    "median_first_to_second_us": 9003.5,
+    "middle_us": 863444,
+    "raw_sha256": "7cd9e4815607ef3e17059ff37cdaf0e3cf8fd3c47dcaa57708e96a6e15298433",
+    "series": "wal",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 8241917,
+        "mean_jobs": 9.545,
+        "peak_jobs": 35
+      },
+      "claimed_us_to_entered_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 17573668,
+        "mean_jobs": 20.353,
+        "peak_jobs": 53
+      },
+      "claimed_us_to_settled_us": {
+        "at_or_above_slots_pct": 1.124,
+        "at_or_above_slots_us": 9703,
+        "job_us": 38479810,
+        "mean_jobs": 44.565,
+        "peak_jobs": 64
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 7286481,
+        "mean_jobs": 8.439,
+        "peak_jobs": 32
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 5377744,
+        "mean_jobs": 6.228,
+        "peak_jobs": 40
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 99,
+    "group": 2,
+    "lane": "measured-river-2x32",
+    "median_first_to_second_us": 4239.5,
+    "middle_us": 340476,
+    "raw_sha256": "8dfe3a4800a59ced4e0013e26dc5cdf06993c7109fe537d020bb5e283a6b3998",
+    "series": "wal",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 3466506,
+        "mean_jobs": 10.181,
+        "peak_jobs": 38
+      },
+      "claimed_us_to_entered_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 5543670,
+        "mean_jobs": 16.282,
+        "peak_jobs": 53
+      },
+      "claimed_us_to_settled_us": {
+        "at_or_above_slots_pct": 100.0,
+        "at_or_above_slots_us": 340476,
+        "job_us": 71064054,
+        "mean_jobs": 208.72,
+        "peak_jobs": 330
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 96.931,
+        "at_or_above_slots_us": 330026,
+        "job_us": 61230380,
+        "mean_jobs": 179.838,
+        "peak_jobs": 308
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 823498,
+        "mean_jobs": 2.419,
+        "peak_jobs": 37
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 142,
+    "group": 2,
+    "lane": "measured-hot-ready",
+    "median_first_to_second_us": 4090.0,
+    "middle_us": 904823,
+    "raw_sha256": "465d3b0aca30a68f38d4b5b9518f23c051684c1375676a1227b6938b995d85f3",
+    "series": "readiness",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 3898562,
+        "mean_jobs": 4.309,
+        "peak_jobs": 32
+      },
+      "claimed_us_to_entered_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 20594843,
+        "mean_jobs": 22.761,
+        "peak_jobs": 43
+      },
+      "claimed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 40096737,
+        "mean_jobs": 44.314,
+        "peak_jobs": 61
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 13389775,
+        "mean_jobs": 14.798,
+        "peak_jobs": 37
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 2213557,
+        "mean_jobs": 2.446,
+        "peak_jobs": 30
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 506,
+    "group": 2,
+    "lane": "measured-hot-sync-a",
+    "median_first_to_second_us": 1227.0,
+    "middle_us": 904561,
+    "raw_sha256": "a70add5b149f8b5fbe3fc9dfcc11ea318fd31ad24be6b134de54cb7ba2052303",
+    "series": "readiness",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 1313881,
+        "mean_jobs": 1.453,
+        "peak_jobs": 4
+      },
+      "claimed_us_to_entered_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 23885474,
+        "mean_jobs": 26.406,
+        "peak_jobs": 47
+      },
+      "claimed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 38618345,
+        "mean_jobs": 42.693,
+        "peak_jobs": 62
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 5157264,
+        "mean_jobs": 5.701,
+        "peak_jobs": 17
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 8261726,
+        "mean_jobs": 9.133,
+        "peak_jobs": 35
+      }
+    }
+  },
+  {
+    "first_write_only_floor": 519,
+    "group": 2,
+    "lane": "measured-hot-sync-b",
+    "median_first_to_second_us": 1201.5,
+    "middle_us": 914646,
+    "raw_sha256": "a7896e1841bfc8d828160769227789ebe79c84605b588b8e96903b93c4b030a4",
+    "series": "readiness",
+    "stages": {
+      "attempt_committed_us_to_effect_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 1268305,
+        "mean_jobs": 1.387,
+        "peak_jobs": 4
+      },
+      "claimed_us_to_entered_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 24954511,
+        "mean_jobs": 27.283,
+        "peak_jobs": 45
+      },
+      "claimed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 40237175,
+        "mean_jobs": 43.992,
+        "peak_jobs": 61
+      },
+      "effect_committed_us_to_settled_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 6998652,
+        "mean_jobs": 7.652,
+        "peak_jobs": 19
+      },
+      "entered_us_to_attempt_committed_us": {
+        "at_or_above_slots_pct": 0.0,
+        "at_or_above_slots_us": 0,
+        "job_us": 7015707,
+        "mean_jobs": 7.67,
+        "peak_jobs": 27
+      }
+    }
+  }
+]
