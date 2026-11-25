@@ -33,16 +33,16 @@ index fab9398cc..bb45e4074 100644
 +    ) -> Result<Option<Vec<[Option<String>; N]>>, String> {
 +        self.timed(|conn| pg_jobs_claim_rows(conn, sql, params, names, limit))
      }
-
+ 
      pub(crate) fn in_transaction(&self) -> bool {
 diff --git a/compiler/mesh-rt/src/db/pg.rs b/compiler/mesh-rt/src/db/pg.rs
 index f4b9250c8..6660c0e58 100644
 --- a/compiler/mesh-rt/src/db/pg.rs
 +++ b/compiler/mesh-rt/src/db/pg.rs
 @@ -2146,12 +2146,13 @@ pub(super) fn pg_jobs_claim_command(
-
+ 
  pub(crate) type JobsClaimRow = [Option<String>; 8];
-
+ 
 -pub(super) fn pg_jobs_claim_rows(
 +pub(super) fn pg_jobs_claim_rows<const N: usize>(
      conn: &mut PgConn,
@@ -732,7 +732,7 @@ index dee56d41d..77db40630 100644
  use std::sync::{Arc, LazyLock, OnceLock};
 -use std::time::{Duration, Instant};
 +use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
+ 
  use crossbeam_channel::Sender;
  use parking_lot::Mutex;
 @@ -92,6 +93,8 @@ struct Config {
@@ -773,7 +773,7 @@ index dee56d41d..77db40630 100644
          if let Some(events) = &self.events {
              report["events_dropped"] = events.dropped().into();
 @@ -907,7 +917,7 @@ fn start_runner(
-
+ 
  fn start_configured(
      pool: u64,
 -    config: Config,
@@ -971,7 +971,7 @@ index 677e686b2..e9d05218c 100644
 @@ -6,6 +6,9 @@ use std::collections::{BTreeMap, HashSet};
  use crate::db::jobs_connection::PgJobDb;
  use crate::db::pg::{JobsAckError, JobsClaimCommand, JobsClaimRow};
-
+ 
 +#[path = "prepared_claim.rs"]
 +pub(super) mod prepared_claim;
 +
@@ -981,7 +981,7 @@ index 677e686b2..e9d05218c 100644
 @@ -1323,6 +1326,41 @@ fn decode_claim_batch(
      Ok(batch)
  }
-
+ 
 +fn prepared_claim_contention(
 +    db: &mut impl Database,
 +    namespace: &str,

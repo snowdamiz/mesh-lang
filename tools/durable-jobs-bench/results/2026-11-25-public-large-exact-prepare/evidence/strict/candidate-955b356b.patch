@@ -3,18 +3,18 @@ index 7486d562..cf02e0b1 100644
 --- a/compiler/mesh-rt/src/db/jobs_connection.rs
 +++ b/compiler/mesh-rt/src/db/jobs_connection.rs
 @@ -7,7 +7,7 @@ use socket2::{SockRef, TcpKeepalive};
-
+ 
  use super::pg::{
      commit, connect, connect_with_socket, pg_jobs_ack, pg_simple_command, pg_text_query,
 -    JobsAckError, PgConn, PgNotifications,
 +    pg_utf8_query, pg_verified_commit, JobsAckError, PgConn, PgNotifications,
  };
  use super::pool::{connection_url, NativeLease};
-
+ 
 @@ -158,6 +158,22 @@ impl PgJobDb<'_> {
          self.timed(|conn| pg_text_query(conn, sql, params))
      }
-
+ 
 +    pub(crate) fn query_utf8(
 +        &mut self,
 +        sql: &str,
@@ -41,7 +41,7 @@ index ff230752..5e026e61 100644
 @@ -1242,10 +1242,35 @@ impl Failure {
      }
  }
-
+ 
 +#[derive(PartialEq, Eq)]
 +enum Completion {
 +    Select(usize),
@@ -130,7 +130,7 @@ index ff230752..5e026e61 100644
 -    request(conn, "execute", &message, |_, _| Ok(()))
 +    request(conn, "execute", &message, |_, _| Ok(())).map(|reply| reply.count)
  }
-
+ 
  /// Run a query with `params`: its rows, each decoded by `decode` from the
 @@ -1337,8 +1380,18 @@ fn query<R>(
      sql: &str,
@@ -168,7 +168,7 @@ index ff230752..5e026e61 100644
 -    Ok(rows)
 +    Ok((rows, reply))
  }
-
+ 
  /// Run `sql` through the Simple Query protocol (BEGIN, COMMIT, ROLLBACK and
  /// the pool's health check), ignoring any rows: the server's message when
  /// it fails.
@@ -197,12 +197,12 @@ index ff230752..5e026e61 100644
 +    }
 +    Ok(())
  }
-
+ 
  /// Say goodbye (Terminate) and close the connection.
 @@ -2026,6 +2093,44 @@ pub(super) fn pg_text_query(
      text_query(conn, sql, params).map_err(Failure::message)
  }
-
+ 
 +/// Decode the whole reply before allowing a Jobs payload reservation to activate.
 +pub(super) fn pg_utf8_query(
 +    conn: &mut PgConn,
@@ -907,7 +907,7 @@ index fc558554..6f9b03f6 100644
              report["events_dropped"] = events.dropped().into();
              report["event_logs_dropped"] = events.logs_dropped().into();
 @@ -847,7 +853,7 @@ fn start_runner(
-
+ 
  fn start_configured(
      pool: u64,
 -    config: Config,
@@ -997,9 +997,9 @@ index f6a9eb9d..8585d98f 100644
 --- a/compiler/mesh-rt/src/jobs/store.rs
 +++ b/compiler/mesh-rt/src/jobs/store.rs
 @@ -5,6 +5,9 @@ use std::collections::BTreeMap;
-
+ 
  use crate::db::pg::JobsAckError;
-
+ 
 +#[path = "prepared_claim.rs"]
 +pub(super) mod prepared_claim;
 +
@@ -1009,7 +1009,7 @@ index f6a9eb9d..8585d98f 100644
 @@ -899,6 +902,41 @@ fn decode_claim_batch(
      Ok(batch)
  }
-
+ 
 +fn prepared_claim_contention(
 +    db: &mut impl Database,
 +    namespace: &str,
