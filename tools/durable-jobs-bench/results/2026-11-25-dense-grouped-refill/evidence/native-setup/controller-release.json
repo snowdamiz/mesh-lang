@@ -1,0 +1,11 @@
+{
+  "exit_status": 0,
+  "id": "2026-11-25-dense-grouped-refill-setup",
+  "phase": "setup",
+  "raw_sha256": "1d419ec279ebb4ea3d9ba96354606fd0802f49b024dc8c429076cf515cc03639",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-dense-grouped-refill/evidence/native-setup",
+  "released_at": "2026-11-25T03:18:47.718006+00:00",
+  "request_sha256": "ad2efa756e80dca1e8b442e4d456defb9b2c0028d3bdb3f05a044985ac9b60c8",
+  "setup_exit_status": 0,
+  "started": "2026-11-25T03:15:02.850257+00:00"
+}
