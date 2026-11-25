@@ -1,0 +1,9 @@
+{
+  "cooperative_exclusive_lock_acquired": false,
+  "effect_key_inside_guarded_call": "replacement/1",
+  "isolation": "read committed",
+  "postgres": "17.11",
+  "stock_effect_key": "00000000-0000-4000-8000-000000000001/1",
+  "stock_guard_after": false,
+  "stock_guard_before": true
+}
