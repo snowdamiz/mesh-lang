@@ -1,0 +1,11 @@
+{
+  "command_attempts": 1,
+  "controller_receipt_dir": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/controller-receipts/large-v3-955b356b-timing",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-large-v3-timing-955b356b",
+  "id": "large-v3-955b356b-timing",
+  "inventory_sha256": "628f111ceaabee8a0e4938269e5ad0effbe1accba0512c777cadda9ea5a3c771",
+  "setup_release_sha256": "f7cf65bb8cffd6a1d3161663f554a701ba01f6578fd3b4e3dd0a044a2b7d0b8f",
+  "timing_command": "/opt/homebrew/opt/python@3.14/bin/python3.14 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-jobs-stepchange/strict-large-timing-dispatch.py",
+  "timing_grant_id": "large-v3-955b356b-timing",
+  "timing_window_minutes": 30
+}

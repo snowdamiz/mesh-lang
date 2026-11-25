@@ -1,0 +1,14 @@
+{
+  "group": 4,
+  "order": [
+    "river",
+    "mesh-pg17-exact",
+    "oban",
+    "mesh-stock"
+  ],
+  "phases": [
+    "warmup",
+    "measured"
+  ],
+  "profile": "large"
+}
