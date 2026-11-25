@@ -9,12 +9,15 @@ import subprocess
 import tempfile
 import uuid
 
+import layout_race
+
 HERE = Path(__file__).resolve().parent
 SOURCE = "b3557273d72be3802bf189b284e7caaf5f3caa0f"
 FIXTURE = HERE.parent / "2026-11-23-slow-storage-transfer/frozen/canonical-batch.json.gz"
 SET_CLAIM = "mesh_jobs.claim_batch_set_v1"
 CURSOR = "mesh_jobs.claim_batch_v1"
 RAW = "mesh_jobs.proof_claim_raw_size"
+POST_LOCK = "mesh_jobs.proof_claim_postlock"
 ARGS = """('n','q','[{"worker":"work","version":1}]',30000,16,1)"""
 
 
@@ -43,6 +46,20 @@ def candidate(schema):
     return body[:first] + size_check + body[last:]
 
 
+def post_lock_candidate(schema):
+    # The scalar subquery is shared by newly eligible compressed rows in
+    # this render command. This command runs after the queue lock returns.
+    sql = candidate(schema).replace(RAW, POST_LOCK, 1)
+    anchor = "AND public.proof_raw_size(p.args)"
+    assert sql.count(anchor) == 1
+    guard = """AND (SELECT CASE
+           WHEN has_function_privilege(current_user, 'mesh_jobs.effect_key(mesh_jobs.jobs)', 'execute')
+           AND has_function_privilege(current_user, 'mesh_jobs.enqueue_batch_layout_v1()', 'execute')
+           THEN mesh_jobs.enqueue_batch_layout_v1() ELSE false END)
+           """
+    return sql.replace(anchor, guard + anchor)
+
+
 def check_cluster(sql, module, schema):
     sql(schema)
     sql(f"CREATE FUNCTION public.proof_raw_size(jsonb) RETURNS bigint "
@@ -60,6 +77,7 @@ def check_cluster(sql, module, schema):
     END IF;"""
     guarded_sql = candidate(schema).replace(RAW, guarded, 1).replace("BEGIN", schema_check, 1)
     sql(guarded_sql)
+    sql(post_lock_candidate(schema))
     sql("INSERT INTO mesh_jobs.queues(namespace,name,concurrency) VALUES ('n','q',64)")
     batch = json.loads(gzip.decompress(FIXTURE.read_bytes()))
     canonical = (json.dumps(batch, sort_keys=True, indent=2) + "\n").encode()
@@ -90,7 +108,7 @@ def check_cluster(sql, module, schema):
             retire = """UPDATE mesh_jobs.jobs SET state='completed',finished_at_ms=2,
                             lease_token=NULL,lease_expires_at_ms=NULL WHERE state='executing';"""
             marker = f"SELECT status FROM {SET_CLAIM}{ARGS};" if check_fallback else ""
-            lines = sql("BEGIN;" + (marker + read + retire)*32 + "ROLLBACK;").splitlines()
+            lines = sql("SET track_functions=pl; BEGIN;" + (marker + read + retire)*32 + "ROLLBACK;").splitlines()
             if check_fallback:
                 assert lines[::2] == ["fallback"] * 32
                 lines = lines[1::2]
@@ -99,12 +117,19 @@ def check_cluster(sql, module, schema):
         stock_status = sql(f"BEGIN; SELECT DISTINCT status FROM {SET_CLAIM}{ARGS}; ROLLBACK;")
         assert stock_status == ("fallback" if policy == "lz4" else "claimed")
         stock = collect(CURSOR if policy == "lz4" else SET_CLAIM, check_fallback=policy == "lz4")
-        fast = collect(guarded)
+        def guard_calls():
+            return int(sql("SELECT coalesce(sum(calls),0) FROM pg_stat_user_functions "
+                           "WHERE funcid='mesh_jobs.enqueue_batch_layout_v1()'::regprocedure"))
+
+        before = guard_calls()
+        fast = collect(POST_LOCK)
+        gate_calls = guard_calls() - before
+        assert gate_calls == (32 if policy == "lz4" else 0), gate_calls
         assert fast == stock and all(len(page) == 16 for page in fast)
         ids = [job[1] for page in fast for job in page if job[0] == "claimed"]
         assert ids == [str(uuid.UUID(hashlib.md5(j["key"].encode()).hexdigest())) for j in batch["jobs"]]
         manifest = hashlib.sha256(json.dumps(fast,separators=(",",":")).encode()).hexdigest()
-        layouts[policy] = dict(sizes=sizes, stock_first_status=stock_status, matched_contexts=512,
+        layouts[policy] = dict(sizes=sizes, stock_first_status=stock_status, matched_contexts=512, layout_calls_in_32_postlock_batches=gate_calls,
                                ordered_context_manifest=manifest)
 
     assert layouts["lz4"]["ordered_context_manifest"] == layouts["pglz"]["ordered_context_manifest"]
@@ -117,7 +142,7 @@ def check_cluster(sql, module, schema):
     assert large["physical_bytes"] < 65536 < large["raw_bytes"] and large["status"] == "fallback"
     custom, fast_key, guarded_status = sql(f"""BEGIN;
         CREATE OR REPLACE FUNCTION mesh_jobs.effect_key(j mesh_jobs.jobs) RETURNS text
-        LANGUAGE SQL IMMUTABLE STRICT AS $$SELECT 'custom/' || j.id::text$$;
+        LANGUAGE SQL IMMUTABLE STRICT AS $$SELECT j.id::text || '/2'$$;
         SAVEPOINT initial;
         SELECT context::jsonb->>'effect_key' FROM {CURSOR}{ARGS} LIMIT 1;
         ROLLBACK TO initial;
@@ -126,7 +151,7 @@ def check_cluster(sql, module, schema):
         SELECT status FROM {guarded}{ARGS};
         ROLLBACK;""").splitlines()
     assert guarded_status == "fallback"
-    assert custom.startswith("custom/") and custom.removeprefix("custom/") == fast_key.split("/")[0]
+    assert custom.endswith("/2") and custom[:-2] + "/1" == fast_key
     denied = sql(f"""BEGIN;
         CREATE ROLE proof_worker;
         GRANT USAGE ON SCHEMA mesh_jobs TO proof_worker;
@@ -134,7 +159,7 @@ def check_cluster(sql, module, schema):
         GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA mesh_jobs TO proof_worker;
         REVOKE EXECUTE ON FUNCTION mesh_jobs.effect_key(mesh_jobs.jobs) FROM PUBLIC, proof_worker;
         SET LOCAL ROLE proof_worker;
-        SELECT mesh_jobs.enqueue_batch_layout_v1(), status FROM {guarded}{ARGS};
+        SELECT mesh_jobs.enqueue_batch_layout_v1(), status FROM {POST_LOCK}{ARGS};
         DO $$ BEGIN
             PERFORM * FROM {CURSOR}{ARGS};
             RAISE EXCEPTION 'cursor unexpectedly accepted revoked helper';
@@ -165,10 +190,21 @@ def main():
         output([bindir/"pg_ctl","-D",data,"-l",work/"pg.log","-o",
                 f"-k {sock} -c listen_addresses=''","-w","start"])
         try:
+            command = [bindir/"psql", "-XqAt", "-v", "ON_ERROR_STOP=1",
+                       "-h", sock, "-d", "postgres"]
             def sql(statement):
-                return output([bindir/"psql","-XqAt","-v","ON_ERROR_STOP=1","-h",sock,
-                               "-d","postgres"],input=statement)
-            print(json.dumps(check_cluster(sql,module,schema),sort_keys=True,indent=2))
+                return output(command, input=statement)
+            result = check_cluster(sql, module, schema)
+            stock = layout_race.run(command, SET_CLAIM, ARGS, CURSOR)
+            guarded = layout_race.run(command, "mesh_jobs.proof_claim_known_layout", ARGS, CURSOR)
+            assert stock["pending_claim_reply"] == "fallback"
+            assert stock["subsequent_cursor_key"] == guarded["subsequent_cursor_key"]
+            post_lock = layout_race.run(command, POST_LOCK, ARGS, CURSOR)
+            assert post_lock == stock
+            key = guarded["pending_claim_reply"]
+            assert key.endswith("/1") and key[:-2] + "/2" == stock["subsequent_cursor_key"]
+            result["concurrent_replacement"] = {"stock": stock, "prelock_guard": guarded, "postlock_guard": post_lock}
+            print(json.dumps(result, sort_keys=True, indent=2))
         finally:
             output([bindir/"pg_ctl","-D",data,"-m","fast","-w","stop"])
 
