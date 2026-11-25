@@ -1,0 +1,19 @@
+measured-plan-stock measured mesh: 0
+measured-plan-key measured mesh: 0
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/controller.py", line 313, in <module>
+    sys.exit(main(sys.argv[1:]))
+             ~~~~^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/controller.py", line 306, in main
+    return dispatch(cfg)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/controller.py", line 269, in dispatch
+    result = score_block(path, trial, cfg)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/controller.py", line 200, in score_block
+    arms = {lane: score_arm(folder/f"measured-{lane}/measured-mesh", trial, lane, cfg)
+                  ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/controller.py", line 177, in score_arm
+    clocks = workload(archive)
+  File "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/score.py", line 64, in workload
+    assert hints == log.count("canceling statement due to lock timeout") == len(queue_timeouts)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

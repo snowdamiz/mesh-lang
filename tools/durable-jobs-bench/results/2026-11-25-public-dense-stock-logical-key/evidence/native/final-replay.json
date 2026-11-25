@@ -1,0 +1,34 @@
+{
+  "additional_complete_attempts": {},
+  "failures": {
+    "00-noop.1795580607103201000": {
+      "error": "AssertionError: ",
+      "raw_sha256": {
+        "measured-plan-key/measured-mesh/raw.tar.gz": "d758c4d30c537000b797b8ff8bf96e5a7543c51eb997ae4bf879389738671e4c",
+        "measured-plan-stock/measured-mesh/raw.tar.gz": "70bf8563e53ceecb03e3cb08d0d95bb534312cd222da25750a3bf120631df309"
+      }
+    }
+  },
+  "fair_8x8_peers_eligible": false,
+  "groups": {},
+  "pilot_gate": {
+    "passed": false,
+    "reason": "live qualification or duplicate controls incomplete"
+  },
+  "release": {
+    "attempts": [
+      1
+    ],
+    "exit_status": 1,
+    "group_command": "timing_command",
+    "groups": [
+      0,
+      1,
+      2
+    ],
+    "id": "2026-11-25-public-dense-stock-logical-key",
+    "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-25-public-dense-stock-logical-key/evidence/native",
+    "released_at": "2026-11-25T04:24:19.006670+00:00",
+    "started": "2026-11-25T04:22:57.510538+00:00"
+  }
+}
