@@ -12,7 +12,18 @@
         },
         "middle_hold_slot_us": 43166105,
         "middle_unoccupied_hold_slot_us": 20728167,
-        "river_connections": null
+        "river_connections": null,
+        "middle_seats": {
+          "interval_slot_us": {
+            "claimed_to_entered": 3799328,
+            "entered_to_attempt_committed": 1449311,
+            "attempt_committed_to_effect_committed": 43166105,
+            "effect_committed_to_settled": 4702174
+          },
+          "outside_stamp_to_settlement_slot_us": 10777354,
+          "additional_outside_up_to_slot_us": 390590,
+          "outside_with_eight_or_more_per_runner_slot_us": 9576318
+        }
       },
       "go": {
         "raw_sha256": "5c3208bf944a9a31ad38428e237e99a84caff2ef502ee541594379bcbdfc2084",
@@ -62,7 +73,18 @@
         },
         "middle_hold_slot_us": 42919767,
         "middle_unoccupied_hold_slot_us": 21257769,
-        "river_connections": null
+        "river_connections": null,
+        "middle_seats": {
+          "interval_slot_us": {
+            "claimed_to_entered": 4435793,
+            "entered_to_attempt_committed": 1339683,
+            "attempt_committed_to_effect_committed": 42919767,
+            "effect_committed_to_settled": 4526253
+          },
+          "outside_stamp_to_settlement_slot_us": 10956040,
+          "additional_outside_up_to_slot_us": 386569,
+          "outside_with_eight_or_more_per_runner_slot_us": 9797533
+        }
       },
       "go": {
         "raw_sha256": "466148aa7d8a15a64f44773d20d1a3733a405396a2eec0c193209f82ac7440cb",
@@ -112,7 +134,18 @@
         },
         "middle_hold_slot_us": 43045632,
         "middle_unoccupied_hold_slot_us": 18728768,
-        "river_connections": null
+        "river_connections": null,
+        "middle_seats": {
+          "interval_slot_us": {
+            "claimed_to_entered": 4251618,
+            "entered_to_attempt_committed": 1546454,
+            "attempt_committed_to_effect_committed": 43045632,
+            "effect_committed_to_settled": 3520018
+          },
+          "outside_stamp_to_settlement_slot_us": 9410678,
+          "additional_outside_up_to_slot_us": 394107,
+          "outside_with_eight_or_more_per_runner_slot_us": 6899290
+        }
       },
       "go": {
         "raw_sha256": "3424b870095c4e1d028666bc6db8d9325bbef8bf80dd87fed3c4581bd73c747d",
@@ -162,7 +195,18 @@
         },
         "middle_hold_slot_us": 43244800,
         "middle_unoccupied_hold_slot_us": 16212864,
-        "river_connections": null
+        "river_connections": null,
+        "middle_seats": {
+          "interval_slot_us": {
+            "claimed_to_entered": 3028931,
+            "entered_to_attempt_committed": 1114359,
+            "attempt_committed_to_effect_committed": 43244800,
+            "effect_committed_to_settled": 3694401
+          },
+          "outside_stamp_to_settlement_slot_us": 8375173,
+          "additional_outside_up_to_slot_us": 395578,
+          "outside_with_eight_or_more_per_runner_slot_us": 7039218
+        }
       },
       "go": {
         "raw_sha256": "8caf55410382b70c30e852235b20806c29be1a45018c5442b0d625788283ef5f",
@@ -212,7 +256,18 @@
         },
         "middle_hold_slot_us": 43481983,
         "middle_unoccupied_hold_slot_us": 17353409,
-        "river_connections": null
+        "river_connections": null,
+        "middle_seats": {
+          "interval_slot_us": {
+            "claimed_to_entered": 3616269,
+            "entered_to_attempt_committed": 1367543,
+            "attempt_committed_to_effect_committed": 43481983,
+            "effect_committed_to_settled": 3550437
+          },
+          "outside_stamp_to_settlement_slot_us": 8819160,
+          "additional_outside_up_to_slot_us": 400511,
+          "outside_with_eight_or_more_per_runner_slot_us": 7277074
+        }
       },
       "go": {
         "raw_sha256": "5802b33b521334eb4f33ab45dcd0e4087c96f5b28c9471e04cbc7fff137537ae",
@@ -262,7 +317,18 @@
         },
         "middle_hold_slot_us": 41714386,
         "middle_unoccupied_hold_slot_us": 16035630,
-        "river_connections": null
+        "river_connections": null,
+        "middle_seats": {
+          "interval_slot_us": {
+            "claimed_to_entered": 3348412,
+            "entered_to_attempt_committed": 1208631,
+            "attempt_committed_to_effect_committed": 41714386,
+            "effect_committed_to_settled": 3371962
+          },
+          "outside_stamp_to_settlement_slot_us": 8106625,
+          "additional_outside_up_to_slot_us": 389368,
+          "outside_with_eight_or_more_per_runner_slot_us": 7112981
+        }
       },
       "go": {
         "raw_sha256": "b1e8d628e2c261869e45669de1cf4bda235a5b846d2952eca9382524d58c9d79",
@@ -312,7 +378,18 @@
         },
         "middle_hold_slot_us": 42616083,
         "middle_unoccupied_hold_slot_us": 17085101,
-        "river_connections": null
+        "river_connections": null,
+        "middle_seats": {
+          "interval_slot_us": {
+            "claimed_to_entered": 3285300,
+            "entered_to_attempt_committed": 1382639,
+            "attempt_committed_to_effect_committed": 42616083,
+            "effect_committed_to_settled": 3793054
+          },
+          "outside_stamp_to_settlement_slot_us": 8624108,
+          "additional_outside_up_to_slot_us": 394564,
+          "outside_with_eight_or_more_per_runner_slot_us": 7516297
+        }
       },
       "go": {
         "raw_sha256": "e1b2d6114514e9307a50d8be9897a72b2fa091cba3cb210ee87762b5e06da007",
@@ -362,7 +439,18 @@
         },
         "middle_hold_slot_us": 43060743,
         "middle_unoccupied_hold_slot_us": 13637433,
-        "river_connections": null
+        "river_connections": null,
+        "middle_seats": {
+          "interval_slot_us": {
+            "claimed_to_entered": 3508808,
+            "entered_to_attempt_committed": 1122101,
+            "attempt_committed_to_effect_committed": 43060743,
+            "effect_committed_to_settled": 2740154
+          },
+          "outside_stamp_to_settlement_slot_us": 6266370,
+          "additional_outside_up_to_slot_us": 393521,
+          "outside_with_eight_or_more_per_runner_slot_us": 4560641
+        }
       },
       "go": {
         "raw_sha256": "d304d2e0636f2796cf4a3b82619610adb44273177de559d3e956ea38168c2f24",

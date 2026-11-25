@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import tarfile
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,6 +34,53 @@ def runner_startup(lines, commit, rank64):
                 first_post_authorization_offset_us_upper=min(post) + 999 - commit,
                 by_first_64_min=sum(auth + 999 <= rank64 for auth in post),
                 by_first_64_max=sum(auth <= rank64 for auth in post))
+
+
+def mesh_seats(jobs, low, high):
+    def clipped(start, end):
+        return max(0, min(high, end) - max(low, start))
+
+    fields = ("claimed_us", "entered_us", "attempt_committed_us",
+              "effect_committed_us", "settled_us")
+    intervals = {}
+    for start, end in zip(fields, fields[1:]):
+        intervals[f"{start[:-3]}_to_{end[:-3]}"] = sum(
+            clipped(job[start], job[end]) for job in jobs)
+    outside = 64 * (high - low) - sum(intervals.values())
+
+    deep = 0
+    from_runners = 0
+    pids = {job["worker_pid"] for job in jobs}
+    if len(pids) != 2:
+        raise ValueError("Expected two SLOW runners")
+    for pid in pids:
+        changes = Counter({low: 0, high: 0})
+        for job in jobs:
+            if job["worker_pid"] != pid:
+                continue
+            start, end = max(low, job["claimed_us"]), min(high, job["settled_us"])
+            if start < end:
+                changes[start] += 1
+                changes[end] -= 1
+        occupied = 0
+        previous = low
+        for stamp, change in sorted(changes.items()):
+            free = 32 - occupied
+            if not 0 <= free <= 32:
+                raise ValueError("Claim-stamp interval exceeds per-runner capacity")
+            area = free * (stamp - previous)
+            from_runners += area
+            if free >= 8:
+                deep += area
+            previous = stamp
+            occupied += change
+    if outside != from_runners:
+        raise ValueError("Per-runner occupancy does not reconcile to 64 slots")
+    stamp_uncertainty = sum(clipped(job["claimed_us"], min(job["claimed_us"] + 999,
+                            job["entered_us"])) for job in jobs)
+    return dict(interval_slot_us=intervals, outside_stamp_to_settlement_slot_us=outside,
+                additional_outside_up_to_slot_us=stamp_uncertainty,
+                outside_with_eight_or_more_per_runner_slot_us=deep)
 
 
 def read_arm(path, raw_sha, engine):
@@ -67,10 +115,13 @@ def read_arm(path, raw_sha, engine):
                    max(low, job["attempt_committed_us"])) for job in jobs)
     if not 0 <= held <= 64 * (high - low):
         raise ValueError(f"Committed hold exposure exceeds physical capacity: {path}")
-    return dict(raw_sha256=raw_sha, phase_us=phases,
+    result = dict(raw_sha256=raw_sha, phase_us=phases,
                 middle_hold_slot_us=held,
                 middle_unoccupied_hold_slot_us=64 * (high - low) - held,
                 river_connections=roster)
+    if engine == "mesh":
+        result["middle_seats"] = mesh_seats(jobs, low, high)
+    return result
 
 
 def main():
