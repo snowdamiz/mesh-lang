@@ -25,3 +25,15 @@ Mesh's enqueue advantage carried all five full-submit wins over Oban. Oban compl
 Against the faster same-broker inline control, FILE saved a median 293 ms to enqueue in five wins and 320 ms through settlement in four wins. The remaining full-submit pair lost 13 ms. The file-path transport was exercised by the benchmark broker; these measurements apply to that producer and deployment.
 
 Run `python3 -B replay.py | cmp - native.json` here to verify the 20 measured FILE and peer archive hashes and reproduce [all intervals](native.json). For the controls and storage checks, run `python3 -B ../2026-11-25-public-large-file-external/grant-parser-retry/retry.py replay`.
+
+## Producer CPU availability before commit
+
+Both storage configurations left CPU time available in the measured portion of the stock FILE enqueue. In EXTERNAL groups 1, 2, 4 and 5, CPUs 0 and 1 together recorded 130–160 idle CPU-ms (29.5–36.4% of their ticks) over windows of 233–234 ms. Group 3 had too few interior samples for a difference. The five default-storage windows recorded 32.1–33.5% idle over 934–1,168 ms. Each CPU read included here followed a sample timestamp inside the producer transaction and preceded the durable commit timestamp.
+
+In the separate default-storage factorial, the producer-only lookahead arm recorded 27.4% and 27.0% idle in the two rotations. The combined arm recorded 29.0% and 29.8%. The same-image OFF duplicates spanned 32.2–33.6%. These are partial host-wide counts on the two pinned CPUs. They cannot identify the process using the CPU, establish that input preparation was ready during idle ticks, or predict EXTERNAL throughput. An EXTERNAL trial still needs a fresh matched stock bridge and both reversed controls.
+
+The replay checks 22 measured raw hashes. Supply the pilot evidence directory from the factorial archive at commit `34b4403224f4880dad4710934801183189346e49`.
+
+```sh
+python3 -B producer_window.py "$pilot_evidence" | cmp - producer-window.json
+```
