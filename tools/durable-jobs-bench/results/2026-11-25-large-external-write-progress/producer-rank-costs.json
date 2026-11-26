@@ -1,0 +1,371 @@
+{
+  "early_differences_ms": {
+    "g1-1-off-a": [
+      26,
+      74
+    ],
+    "g1-2-on-a": [
+      25,
+      40
+    ],
+    "g1-3-original-off": [
+      25,
+      67
+    ],
+    "g1-4-on-b": [
+      24,
+      95
+    ],
+    "g1-5-off-b": [
+      26,
+      39
+    ],
+    "g1-6-original-on": [
+      24,
+      76
+    ],
+    "g2-1-original-on": [
+      21,
+      44
+    ],
+    "g2-2-off-b": [
+      30,
+      74
+    ],
+    "g2-3-on-b": [
+      29,
+      28
+    ],
+    "g2-4-original-off": [
+      26,
+      67
+    ],
+    "g2-5-on-a": [
+      30,
+      52
+    ],
+    "g2-6-off-a": [
+      25,
+      47
+    ],
+    "g3-1-on-b": [
+      24,
+      59
+    ],
+    "g3-2-original-on": [
+      23,
+      44
+    ],
+    "g3-3-off-b": [
+      29,
+      45
+    ],
+    "g3-4-original-off": [
+      30,
+      49
+    ],
+    "g3-5-on-a": [
+      30,
+      69
+    ],
+    "g3-6-off-a": [
+      27,
+      164
+    ],
+    "g4-1-off-a": [
+      28,
+      104
+    ],
+    "g4-2-on-a": [
+      23,
+      80
+    ],
+    "g4-3-original-off": [
+      23,
+      75
+    ],
+    "g4-4-off-b": [
+      22,
+      73
+    ],
+    "g4-5-original-on": [
+      22,
+      92
+    ],
+    "g4-6-on-b": [
+      29,
+      120
+    ],
+    "g5-1-original-on": [
+      25,
+      77
+    ],
+    "g5-2-off-b": [
+      27,
+      73
+    ],
+    "g5-3-on-b": [
+      33,
+      82
+    ],
+    "g5-4-off-a": [
+      25,
+      57
+    ],
+    "g5-5-original-off": [
+      38,
+      63
+    ],
+    "g5-6-on-a": [
+      30,
+      71
+    ],
+    "g6-1-on-a": [
+      23,
+      63
+    ],
+    "g6-2-original-off": [
+      20,
+      94
+    ],
+    "g6-3-off-a": [
+      29,
+      79
+    ],
+    "g6-4-on-b": [
+      30,
+      77
+    ],
+    "g6-5-off-b": [
+      34,
+      73
+    ],
+    "g6-6-original-on": [
+      32,
+      104
+    ]
+  },
+  "lanes": {
+    "off-a": {
+      "first_fifteen_minus_last_fifteen_ms": [
+        47,
+        76.5,
+        164
+      ],
+      "first_five_minus_next_five_ms": [
+        25,
+        26.5,
+        29
+      ],
+      "median_gap_by_rank_band_ms": [
+        15.0,
+        10.0,
+        10.0,
+        7.5,
+        7.0,
+        6.75
+      ]
+    },
+    "off-b": {
+      "first_fifteen_minus_last_fifteen_ms": [
+        39,
+        73.0,
+        74
+      ],
+      "first_five_minus_next_five_ms": [
+        22,
+        28.0,
+        34
+      ],
+      "median_gap_by_rank_band_ms": [
+        15.0,
+        10.0,
+        9.0,
+        7.75,
+        7.0,
+        7.0
+      ]
+    },
+    "on-a": {
+      "first_fifteen_minus_last_fifteen_ms": [
+        40,
+        66.0,
+        80
+      ],
+      "first_five_minus_next_five_ms": [
+        23,
+        27.5,
+        30
+      ],
+      "median_gap_by_rank_band_ms": [
+        15.0,
+        10.0,
+        8.5,
+        8.0,
+        7.0,
+        6.75
+      ]
+    },
+    "on-b": {
+      "first_fifteen_minus_last_fifteen_ms": [
+        28,
+        79.5,
+        120
+      ],
+      "first_five_minus_next_five_ms": [
+        24,
+        29.0,
+        33
+      ],
+      "median_gap_by_rank_band_ms": [
+        15.0,
+        10.0,
+        9.0,
+        8.0,
+        7.0,
+        7.0
+      ]
+    },
+    "original-off": {
+      "first_fifteen_minus_last_fifteen_ms": [
+        49,
+        67.0,
+        94
+      ],
+      "first_five_minus_next_five_ms": [
+        20,
+        25.5,
+        38
+      ],
+      "median_gap_by_rank_band_ms": [
+        15.0,
+        11.0,
+        9.0,
+        8.0,
+        7.0,
+        6.5
+      ]
+    },
+    "original-on": {
+      "first_fifteen_minus_last_fifteen_ms": [
+        44,
+        76.5,
+        104
+      ],
+      "first_five_minus_next_five_ms": [
+        21,
+        23.5,
+        32
+      ],
+      "median_gap_by_rank_band_ms": [
+        16.0,
+        12.0,
+        9.0,
+        8.0,
+        7.0,
+        6.75
+      ]
+    }
+  },
+  "off_duplicate_pairs": [
+    {
+      "a_minus_b_enqueue_us": -59071,
+      "a_slower_by_at_least_2ms_intervals": 5,
+      "b_slower_by_at_least_2ms_intervals": 8,
+      "group": 1,
+      "prefix_us": 1100,
+      "recurring_by_rank_ms": [
+        1,
+        6,
+        -27,
+        -12,
+        -29
+      ],
+      "recurring_ms": -61,
+      "tail_us": 829
+    },
+    {
+      "a_minus_b_enqueue_us": -24104,
+      "a_slower_by_at_least_2ms_intervals": 3,
+      "b_slower_by_at_least_2ms_intervals": 6,
+      "group": 2,
+      "prefix_us": -6803,
+      "recurring_by_rank_ms": [
+        -6,
+        4,
+        -8,
+        -33,
+        25
+      ],
+      "recurring_ms": -18,
+      "tail_us": 699
+    },
+    {
+      "a_minus_b_enqueue_us": 430568,
+      "a_slower_by_at_least_2ms_intervals": 58,
+      "b_slower_by_at_least_2ms_intervals": 2,
+      "group": 3,
+      "prefix_us": 34221,
+      "recurring_by_rank_ms": [
+        51,
+        107,
+        64,
+        78,
+        95
+      ],
+      "recurring_ms": 395,
+      "tail_us": 1347
+    },
+    {
+      "a_minus_b_enqueue_us": 19352,
+      "a_slower_by_at_least_2ms_intervals": 8,
+      "b_slower_by_at_least_2ms_intervals": 3,
+      "group": 4,
+      "prefix_us": -1668,
+      "recurring_by_rank_ms": [
+        7,
+        25,
+        -2,
+        -9,
+        1
+      ],
+      "recurring_ms": 22,
+      "tail_us": -980
+    },
+    {
+      "a_minus_b_enqueue_us": -17150,
+      "a_slower_by_at_least_2ms_intervals": 5,
+      "b_slower_by_at_least_2ms_intervals": 11,
+      "group": 5,
+      "prefix_us": -6671,
+      "recurring_by_rank_ms": [
+        -9,
+        -37,
+        32,
+        34,
+        -31
+      ],
+      "recurring_ms": -11,
+      "tail_us": 521
+    },
+    {
+      "a_minus_b_enqueue_us": -35372,
+      "a_slower_by_at_least_2ms_intervals": 6,
+      "b_slower_by_at_least_2ms_intervals": 7,
+      "group": 6,
+      "prefix_us": 11493,
+      "recurring_by_rank_ms": [
+        -2,
+        -26,
+        7,
+        9,
+        -35
+      ],
+      "recurring_ms": -47,
+      "tail_us": 135
+    }
+  ],
+  "raw_sha256": "49424c9bbea75914b19ed731ee89c689205741447e9d12a48541e381c1b0cece",
+  "release_sha256": "c0642a8ef6f4898699e2be973be0b71c9f6a4dec76f4c244bfcb6af8a053a87c",
+  "source": "d09f644cba38daf1b48b55ec05d8ee99bcd25400"
+}
