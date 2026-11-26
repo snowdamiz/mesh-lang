@@ -146,3 +146,20 @@ The replay clips each actual handler turn at the two rank boundaries, including 
 The ON warmup is diagnostic. Native release `65115b81` exited 1 on a settlement counter comparison before either measured block ran. The trace distinguishes a receipt delivered by the grouped writer from the SQL that writer uses for a one-member group. The fresh mirrored controls must qualify before using observed reply or dispatch exposure to advance a candidate. A readiness-based suspension would need to show an actual socket wait with another published actor available, while preserving the first write's checked outcome before sending the second.
 
 Run `python3 -B direct4_checked_worker_budget.py EXPOSURE_ARGV_V2 REDUCE_PY` in this directory. The replay pins the failed release, ON warmup archive and original trace decoder from `23df94494`. It verifies the six historical warm River ledgers through the existing peer reducer.
+
+### Fresh mirrored series
+
+The corrected counter allowed native release `ace2f2cb` to complete all 16 arms. Strict replay matched `verified.json` byte for byte. Both measured orders failed the original observer parity checks, including submit, middle span and host CPU comparisons. The forward OFF duplicates alone differed by 39.976 ms in the middle. The reverse submit spread was 53.708 ms against a 50.656 ms allowance. The recorder's estimated CPU charges passed at 1.059 and 0.961 CPU-ms. All measured arms had complete PostgreSQL PID attribution.
+
+| Measured ON, middle 512 effects | Forward | Reverse |
+|---|---:|---:|
+| Observed span (ms) | 359.442 | 375.106 |
+| Handler residence by runner (worker-ms) | 1,077.905 / 1,206.336 | 1,216.891 / 1,317.343 |
+| Minimum span at that residence with five workers on each runner (ms) | 241.267 | 263.469 |
+| Excess over the 227.280 ms historical River interval (ms) | 13.987 | 36.189 |
+| Reply with definitely queued work, clipped at two cores (slot-ms) | 648.445 | 722.345 |
+| Upper bound on between-turn dispatch gaps with queued work, same clipping (slot-ms) | 44.636 | 54.844 |
+
+Even with perfect packing, one owner in each arm would have to reduce total handler residence by at least 69.936 or 180.943 worker-ms for five workers to hit that reference. In those two ON arms the reply intervals overlapped actual queued work, but the failed controls leave the amount on the uninstrumented path undetermined. Neither interval is recoverable wall time. This result supports examining whether an already-admitted coroutine can release its worker during an actual socket wait. It supplies no qualified speedup for doing so and earns no peer comparison.
+
+Use `--measured` with the preceding command and the released `exposure-settlement-v3` directory. The reducer checks the sealed replay digest, both ON archive hashes and all 2,048 job identities across the two arms.

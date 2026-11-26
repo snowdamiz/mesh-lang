@@ -9,25 +9,20 @@ from pathlib import Path
 from direct4_peer_deadlines import warm_river
 
 
-def checked_worker_budget(evidence, decoder):
-    release = evidence / "controller/release.json"
-    arm = evidence / "blocks/01-noop/warmup-on/warmup-mesh"
+def pinned(path, expected):
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, path
+
+
+def worker_budget(arm, phase, digest, decode, peers):
     raw = arm / "raw.tar.gz"
-    for path, expected in (
-        (release, "65115b81c78279e68594eaf98346ab56e8e057ff0232c1e3f1aef89ab5e6b3f8"),
-        (raw, "ec73769de866fa4e808464003ac3a9f44bbfca937133a5552afe05f7c881badc"),
-        (decoder, "6891d64914ff43fbabd76c5762349395a0f487b55dda8ccdb5e09f9e1b5ae91e"),
-    ):
-        assert hashlib.sha256(path.read_bytes()).hexdigest() == expected
-    assert json.loads(release.read_bytes())["exit_status"] == 1
+    pinned(raw, digest)
     assert json.loads((arm / "dispatch.json").read_bytes())["exit_code"] == 0
-    decode = runpy.run_path(str(decoder))
     with tarfile.open(raw) as archive:
         def adapter(name):
             return archive.extractfile("adapter/" + name).read()
 
         ledger = json.loads(adapter("ledger.json"))
-        assert (ledger["phase"], ledger["slots"], ledger["runners"]) == ("warmup", 64, 2)
+        assert (ledger["phase"], ledger["slots"], ledger["runners"]) == (phase, 64, 2)
         broker, *runners = json.loads(adapter("process-identity.json"))
         assert len(runners) == 2
         assert all(proc["executable_sha256"] == "806f8022a0755a62661e9f05a8c91709a9b4147872c2616781fd835626dbb06e"
@@ -46,7 +41,6 @@ def checked_worker_budget(evidence, decoder):
     def duration(start, stop):
         return max(0, min(end, stop) - max(begin, start))
 
-    peers = warm_river()
     slowest = max(peer["phases"]["middle_us"] for peer in peers.values()) * 1000
     owners = []
     for pid in sorted(trace):
@@ -70,14 +64,48 @@ def checked_worker_budget(evidence, decoder):
                            workers_at_slowest_peer_cadence=handler / slowest,
                            five_worker_residence_excess_ns=max(0, handler - 5*slowest)))
     assert sum(o["effects"] for o in owners) == 512
-    return dict(phase="instrumented warmup", middle_ns=end-begin, owners=owners,
+    return dict(phase="instrumented warmup" if phase == "warmup" else phase, middle_ns=end-begin, owners=owners,
                 warm_river_middle_us={g: p["phases"]["middle_us"] for g, p in peers.items()},
                 alignment_allowance_ns=slack)
+
+
+def checked_worker_budget(evidence, decoder, measured):
+    pinned(decoder, "6891d64914ff43fbabd76c5762349395a0f487b55dda8ccdb5e09f9e1b5ae91e")
+    decode = runpy.run_path(str(decoder))
+    peers = warm_river()
+    release = evidence / "controller/release.json"
+    if measured:
+        return measured_budgets(evidence, release, decode, peers)
+    pinned(release, "65115b81c78279e68594eaf98346ab56e8e057ff0232c1e3f1aef89ab5e6b3f8")
+    assert json.loads(release.read_bytes())["exit_status"] == 1
+    arm = evidence / "blocks/01-noop/warmup-on/warmup-mesh"
+    return worker_budget(arm, "warmup", "ec73769de866fa4e808464003ac3a9f44bbfca937133a5552afe05f7c881badc",
+                         decode, peers)
+
+
+def measured_budgets(evidence, release, decode, peers):
+    verification = evidence / "verified.json"
+    pinned(verification, "4f310f20baa40a50dcc2ee5010c91db664f7523ed54e29e9ff18590b12846a60")
+    report = json.loads(verification.read_bytes())
+    pinned(release, report["release_sha256"])
+    assert json.loads(release.read_bytes())["exit_status"] == 0
+    assert report["request_sha256"] == "0268c3ec3b678a601ac074a2dfa1b1a083cd21cc1ce46c3dbe9f08b4bc7ef75c"
+    assert report["complete"] and not report["errors"]
+    blocks = {}
+    for index in (1, 2):
+        block = f"blocks/{index:02}-noop"
+        score = report["arms"][block]["measured"]["on"]
+        arm = evidence / block / "measured-on/measured-mesh"
+        budget = worker_budget(arm, "measured", score["raw_sha256"], decode, peers)
+        assert budget["middle_ns"] == score["middle_512_us"] * 1000
+        blocks[block] = budget
+    return dict(verdict=report["verdict"], release_sha256=report["release_sha256"], blocks=blocks)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path)
     parser.add_argument("decoder", type=Path)
+    parser.add_argument("--measured", action="store_true", help="read both measured ON arms of the settlement successor")
     args = parser.parse_args()
-    print(json.dumps(checked_worker_budget(args.evidence, args.decoder), indent=2))
+    print(json.dumps(checked_worker_budget(args.evidence, args.decoder, args.measured), indent=2))
