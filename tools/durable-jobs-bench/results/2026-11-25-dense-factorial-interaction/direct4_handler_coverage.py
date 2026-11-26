@@ -9,7 +9,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from direct4_idle_budget import blob
-from direct4_peer_deadlines import ledger
+from direct4_peer_deadlines import ledger, warm_river
+from warm_river_occupancy import SERIES
 from xid_bounds import brackets
 
 
@@ -65,6 +66,43 @@ def coverage(jobs):
     return result
 
 
+def owner_write_overlap(jobs):
+    """Time with at least five unfinished effects on one runner, using the quiet ledger."""
+    effects = sorted(j["effect_committed_us"] for j in jobs)
+    windows = {"full": (min(j["entered_us"] for j in jobs), effects[-1]),
+               "middle": (effects[255], effects[767])}
+    result = {}
+    for pid in sorted({j["worker_pid"] for j in jobs}):
+        own = [j for j in jobs if j["worker_pid"] == pid]
+        result[pid] = {}
+        for label, (begin, end) in windows.items():
+            spans = {}
+            for field in ("entered_us", "attempt_committed_us"):
+                edges = Counter()
+                for job in own:
+                    lo = max(begin, job[field])
+                    hi = min(end, job["effect_committed_us"])
+                    if lo < hi:
+                        edges[lo] += 1
+                        edges[hi] -= 1
+                active = peak = five_us = excess_job_us = 0
+                previous = begin
+                for stamp, change in sorted(edges.items()):
+                    if active >= 5:
+                        five_us += stamp - previous
+                        excess_job_us += (active - 5) * (stamp - previous)
+                    active += change
+                    assert active >= 0
+                    peak = max(peak, active)
+                    previous = stamp
+                assert active == 0
+                spans[field] = dict(peak=peak, five_or_more_us=five_us, beyond_five_job_us=excess_job_us)
+            assert spans["entered_us"]["five_or_more_us"] >= spans["attempt_committed_us"]["five_or_more_us"]
+            result[pid][label] = spans
+    assert len(result) == 2
+    return result
+
+
 def control_blocks(exposure):
     digest = lambda data: hashlib.sha256(data).hexdigest()
     release = (exposure / "controller/release.json").read_bytes()
@@ -102,11 +140,34 @@ def controls(exposure):
 
 
 def replay(exposure):
-    return {name: dict(raw_sha256=score["raw_sha256"], worker_us=coverage(jobs))
+    return {name: dict(raw_sha256=score["raw_sha256"], worker_us=coverage(jobs),
+                       write_overlap=owner_write_overlap(jobs))
             for name, score, jobs, _ in controls(exposure)}
+
+
+def river_overlap():
+    result = {}
+    for group, score in warm_river().items():
+        path, = SERIES.glob(f"blocks/{group:02}-*/measured-river-warm/*/raw.tar.gz")
+        raw = path.read_bytes()
+        jobs, _ = ledger(raw, score["raw_sha256"])
+        with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
+            attempts = json.load(archive.extractfile("adapter/river/measured/ledger.json"))["attempts"]
+        owners = {(row["job_key"], str(row["xid"])): row["worker_pid"] for row in attempts}
+        assert len(owners) == len(attempts) == len(jobs)
+        for job in jobs:
+            job["worker_pid"] = owners.pop((job["job_key"], str(job["attempt_xid"])))
+        assert not owners
+        result[group] = dict(raw_sha256=score["raw_sha256"], write_overlap=owner_write_overlap(jobs))
+    return result
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exposure", type=Path)
-    print(json.dumps(replay(parser.parse_args().exposure), indent=2))
+    parser.add_argument("--warm-river", action="store_true", help="also join the six warm River owner ledgers")
+    args = parser.parse_args()
+    results = replay(args.exposure)
+    if args.warm_river:
+        results["warm_river"] = river_overlap()
+    print(json.dumps(results, indent=2))
