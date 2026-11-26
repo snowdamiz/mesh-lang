@@ -97,7 +97,7 @@ ordinary() {
 assert_fresh() {
   local checkout="$1" log
   log="$(cd "$checkout" && CARGO_TARGET_DIR="$checkout/target" \
-    cargo build --offline --verbose --manifest-path compiler/meshc/Cargo.toml 2>&1)"
+    cargo build --color never --offline --verbose --manifest-path compiler/meshc/Cargo.toml 2>&1)"
   if [[ "$log" != *'Fresh meshc v1.2.3'* ]]; then
     printf '%s\nexpected a fresh Cargo build\n' "$log" >&2
     exit 1
