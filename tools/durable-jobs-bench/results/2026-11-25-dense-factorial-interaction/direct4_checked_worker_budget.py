@@ -277,6 +277,67 @@ def fixed_publication_ranks(jobs, owners, start, end, alignment_ns):
                                          moved_later=sum(move["advance"] < 0 for move in moves.values()),
                                          effect_advance_ns={i: original[i-1]-records[i-1] for i in ranks},
                                          credit_crossings=credit_crossings(jobs, moves, alignment_ns))
+        if first == 6_709_000 and later == 0:
+            cases[f"{first}/{later}"]["feedback"] = publication_feedback(jobs, moves, ranks)
+    return cases
+
+
+def publication_feedback(jobs, moves, ranks):
+    """Pass credit changes into later same-owner stamp groups at fixed service lags."""
+    groups = defaultdict(lambda: defaultdict(list))
+    cohorts = defaultdict(list)
+    for job in jobs:
+        groups[job["pid"]][job["claim"]].append(job)
+        cohorts[job["settled_xid"]].append(job)
+    assert all(len({j["pid"] for j in cohort}) == 1 for cohort in cohorts.values())
+    original = sorted(j["record2"] for j in jobs)
+    cases = {}
+    for transfer in (0, 0.5, 1):
+        effects = []
+        pub_shifts = []
+        for owner in groups.values():
+            old_credits, new_credits = [], []
+            finished = {}
+            published = previous_last = 0
+            previous_shift = 0
+            for _, batch in sorted(owner.items()):
+                assert 1 <= len(batch) <= 16
+                begin = min(j["pub_before"] for j in batch)
+                assert previous_last <= begin
+                needed = published + len(batch) - 32
+                old_floor = new_floor = 0
+                if needed > 0:
+                    assert len(old_credits) >= needed
+                    old_floor = old_credits[needed - 1]
+                    new_floor = new_credits[needed - 1]
+                old_gate = max(previous_last, old_floor)
+                new_gate = max(previous_last - previous_shift, new_floor)
+                assert old_gate <= begin
+                # Full transfer preserves the measured lag after the later
+                # prerequisite. At half transfer only half its shift propagates.
+                shift = min(round(transfer * (old_gate - new_gate)), begin - new_gate)
+                pub_shifts.append(shift)
+                for job in batch:
+                    advance = moves.get(job["id"], {}).get("advance", 0)
+                    finished[job["id"]] = job["returned"] - advance - shift
+                    effects.append(job["record2"] - advance - shift)
+                for xid in {j["settled_xid"] for j in batch}:
+                    cohort = cohorts[xid]
+                    if all(j["id"] in finished for j in cohort):
+                        credit_shift = max(j["returned"] for j in cohort) - max(finished[j["id"]] for j in cohort)
+                        for j in cohort:
+                            insort(old_credits, j["credit"])
+                            insort(new_credits, j["credit"] - credit_shift)
+                published += len(batch)
+                previous_last = max(j["pub_after"] for j in batch)
+                previous_shift = shift
+            assert len(old_credits) == len(new_credits) == published
+        effects.sort()
+        cases[str(transfer)] = dict(stamp_groups=len(pub_shifts),
+                                    earlier_groups=sum(s > 0 for s in pub_shifts),
+                                    later_groups=sum(s < 0 for s in pub_shifts),
+                                    max_publication_advance_ns=max(pub_shifts),
+                                    effect_advance_ns={rank: original[rank-1]-effects[rank-1] for rank in ranks})
     return cases
 
 

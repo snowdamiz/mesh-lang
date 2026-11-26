@@ -251,3 +251,15 @@ An earlier credit could start the next claim earlier even if both old and new cr
 For the 32 local slots, publication *k* needs at least *k* − 32 earlier jobs on that runner to have returned checked credit. Holding the preceding publications fixed, the replay takes the later of the preceding publication and that required credit, before and after moving the settlement groups. It repeats the calculation at both edges of the preceding publication's measured bracket. In each rotation 960 of the 1,024 jobs came after the first 32 on their respective runner.
 
 With one 6.709 ms checkout charge per runner and free later reuse, this capacity floor moved earlier for only **2 of 960** publications forward (at most **1.391 ms**) and **3 of 960** in reverse (at most **0.453 ms**). One reverse floor moved **2.161 ms later**. The final publication on each runner had zero shift. Charging every additional checkout moved 13 forward and 17 reverse floors later and none earlier. Both publication brackets gave the same counts. These are individual seat constraints at fixed prior publications. A claim can reserve several seats together, and an earlier checked grant could shift a whole series of publications. Only the linked native grant and write clocks can measure that feedback.
+
+### How much of a shift survives successive refills?
+
+The same two traces contained 101 and 105 same-owner claim-stamp groups, each spanning one to sixteen rows. The replay keeps these groups and the actual terminal XID memberships. It moves each group's publications together. It allows the group to move after its predecessor's last publication and once enough earlier checked credits exist for **every row** under the 32-seat cap. The full-transfer case preserves the recorded delay from the later of these prerequisites to first publication. Earlier publication then feeds through member returns and the last return of each terminal group into later credits. The one-spare pickup selection and first cold checkout charge are the same as above.
+
+| Amount of prerequisite shift passed to the next group | Forward rank 768 / final effect advance | Reverse rank 768 / final effect advance |
+|---|---:|---:|
+| Zero | 0 / 0 ms | 0 / 0 ms |
+| Half | <0.001 / 0 ms | 0 / 0 ms |
+| Full | 0.273 / 0.273 ms | −2.161 / 0.073 ms |
+
+At full transfer 26 forward groups moved earlier. In reverse 35 moved earlier and 48 later. A delayed first cold checkout can propagate through the same mechanism as an early credit. This sensitivity keeps the original owner order, group sizes and service durations. It omits contention between owners, changes in which job the spare can pick, and any change in server service at higher concurrency. The millisecond claim stamps do not identify a checked grant. These instrumented arms failed observer parity. A material product gain would need a larger change in pickup, group formation or service time than the modeled credit feedback delivers.
