@@ -46,6 +46,56 @@ def saturated_episodes(jobs, begin, end):
             for width, durations in spans.items()}
 
 
+def pickups_before_first_reply(jobs, begin, end):
+    """Replay the first two known publications during each distinct four-worker wait."""
+    changes = defaultdict(list)
+    for job in jobs:
+        for seq in (1, 2):
+            start = max(begin, job[f"sent{seq}"])
+            stop = min(end, job[f"ready{seq}"])
+            if start < stop:
+                changes[start].append((1, job["worker"]))
+                changes[stop].append((-1, job["worker"]))
+    waiting = set()
+    windows = []
+    previous = begin
+    for stamp, changes_at_stamp in sorted(changes.items()):
+        if len(waiting) == 4:
+            windows.append((previous, stamp))
+        for direction, worker in sorted(changes_at_stamp):
+            if direction < 0:
+                waiting.remove(worker)
+            else:
+                assert worker not in waiting
+                waiting.add(worker)
+        previous = stamp
+    assert not waiting
+
+    ordered = sorted(jobs, key=lambda job: (job["pub_after"], job["id"]))
+    results = {}
+    for delay in (0, 500_000, 1_000_000):
+        counts = Counter()
+        unique = defaultdict(set)
+        for left, right in windows:
+            chosen = []
+            for job in ordered:
+                pickup = max(left, job["pub_after"]) + delay
+                if pickup >= right:
+                    break
+                if pickup < job["pick_lower"]:
+                    chosen.append((job, pickup))
+                    if len(chosen) == 2:
+                        break
+            if len(chosen) == 2:
+                counts["two_pickups"] += 1
+            for edge in ("sent1", "checked1", "checked2"):
+                fits = [j["id"] for j, pickup in chosen if pickup + j[edge] - j["pick"] <= right]
+                counts["both_" + edge] += len(fits) == 2
+                unique[edge].update(fits)
+        results[delay] = dict(counts=counts, distinct_jobs={k: len(v) for k, v in unique.items()})
+    return results
+
+
 def worker_budget(arm, phase, digest, decode, peers):
     raw = arm / "raw.tar.gz"
     pinned(raw, digest)
@@ -93,6 +143,7 @@ def worker_budget(arm, phase, digest, decode, peers):
         assert sum(r["send_to_ready_ns"] for r in replies) <= handler
         owners.append(dict(pid=pid, effects=sum(begin < j["record2"] <= end for j in own),
                            middle_handler_ns=handler, saturated=saturated_episodes(own, begin, end),
+                           before_base_reply=pickups_before_first_reply(own, begin, end),
                            other_than_handler_ns=4*(end-begin)-handler,
                            reply_intervals=replies, published_before_pick_ns=area("pub_after", "pick_lower"),
                            workers_at_slowest_peer_cadence=handler / slowest,

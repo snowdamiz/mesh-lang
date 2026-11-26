@@ -176,3 +176,16 @@ Both measured ON arms of `ace2f2cb` had stretches where all four workers on the 
 | Reverse 2 | 245.053 | 230.264 | 394 | 4.126 | 95.507 / 49.982 |
 
 The second column includes the third. Subtracting a hypothetical activation delay once per continuous episode shows why the wake cost matters: a 1 ms delay leaves 17–28% of the recorded time with two fresh attempts. An admitted handler can keep running after an original worker gets its reply, so a spare can also impose CPU cost outside these windows. The duration calculation gives neither the number of additional completions nor a predicted gain. It supplies two concrete requirements for the source proof: measure time to actual pickup after a raw socket wait, and account for how long the borrowed worker stays occupied after the original reply arrives. The official parity verdict remains the one above.
+
+### How far could two fresh jobs get before the first base worker received its reply?
+
+The replay selects by publication order, using the job ID to break ties. Each hypothetical spare can start one job per four-worker reply window. It must wait for the fourth worker to enter its reply interval and for the job's publication, then pay the modeled pickup delay while the job is still known to be queued. The calculation shifts that job's own recorded pickup-to-send and pickup-to-checked-reply durations to this earlier pickup. The middle-window boundaries also clip the calculation. Every window is evaluated independently, so an actor can appear in multiple windows. The counts describe opportunities in the observed schedules.
+
+| Runner | Windows with two pickups at 0.5 ms | Both send first write before boundary | Both check first reply | Both check second reply |
+|---|---:|---:|---:|---:|
+| Forward 1 | 129 | 93 | 6 | 0 |
+| Forward 2 | 151 | 120 | 4 | 1 |
+| Reverse 1 | 127 | 107 | 11 | 2 |
+| Reverse 2 | 151 | 113 | 7 | 1 |
+
+At this delay, both jobs could send a first write in 433 of 558 windows, but both could check its reply in only 28. The model assumes two usable connections and preserves each job's original service cost with extra requests in flight. Neither assumption has been verified. The qualification needs to follow work past the first base reply and count checked writes, outstanding connections and worker occupancy. Crediting two completed writes at pickup would overstate what the traces support. The reducer reports each runner at 0, 0.5 and 1 ms and deduplicates job IDs for its separate distinct-job counts.
