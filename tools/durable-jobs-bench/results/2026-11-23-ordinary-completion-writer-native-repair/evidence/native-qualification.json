@@ -1,0 +1,46 @@
+{
+  "attempt": "bulk-writer-retry-36b2eeee6f07",
+  "fault_cases": [
+    "ambiguous-claim",
+    "ambiguous-completion",
+    "cancelled-member",
+    "expired-middle",
+    "held-middle",
+    "renew-priority",
+    "stop"
+  ],
+  "inventory": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-completion-writer-native-repair/evidence/bulk-writer-retry-36b2eeee6f07/qualified-timing.json",
+  "inventory_sha256": "b9f208e9c44b619ca6331031df55709ba41b24150c5adce0ebe5ab877c00923a",
+  "original_raw_sha256": "eb39628d011afa879b0205dc6333ec53fd16fb05eefb8333d3f896f6ac9887ed",
+  "raw_sha256": "d954080060c878b95fb589c2fc7da72a82904a4435e3b4f9da957179f76b24d7",
+  "smoke": {
+    "off": {
+      "terminal_groups_by_size": {
+        "1": 119,
+        "2": 1,
+        "3": 1,
+        "4": 1
+      },
+      "terminal_xids": 122,
+      "warmed_application_sessions": 8
+    },
+    "zero": {
+      "terminal_groups_by_size": {
+        "1": 30,
+        "2": 15,
+        "3": 8,
+        "4": 3,
+        "5": 1,
+        "6": 2,
+        "7": 1,
+        "8": 1
+      },
+      "terminal_xids": 61,
+      "warmed_application_sessions": 8
+    }
+  },
+  "teardown_modes": [
+    "off",
+    "zero"
+  ]
+}

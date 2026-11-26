@@ -1,0 +1,10 @@
+{
+  "cpu_count": 15,
+  "host_scope": "Darwin host, two Mesh schedulers per runner",
+  "orders": [
+    [
+      "scalar"
+    ]
+  ],
+  "trace": true
+}

@@ -1,0 +1,57 @@
+{
+  "calibration": {
+    "getrusage_self_ns": 200028000,
+    "mach_ns": 200101125.0,
+    "mach_ticks": 4802427,
+    "mach_timebase": [
+      125,
+      3
+    ],
+    "process_cpu_ns": 200008000
+  },
+  "executable_sha256": {
+    "bulk": [
+      "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/native-bulk-enqueue-integration/artifacts/v1-bulk/mesh",
+      "78b12a8efaff7ae0ac4e1b1457d255c688b77825df4cbf07fc4fc873e8ad4d03"
+    ],
+    "stock_a": [
+      "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-trusted-mesh-queue/local-artifacts-v1/mesh",
+      "43c091c8fe70fda1fbd6b9fd9014ed751ee0835a484a39c1016a49bf54642368"
+    ],
+    "stock_b": [
+      "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/native-bulk-enqueue-integration/artifacts/v1-stock/mesh",
+      "586c83893156638fb465570caf9bf9dcc8fd77540c6878d5fcfd1507b2ce202d"
+    ]
+  },
+  "host": [
+    "Darwin",
+    "Andreys-MBP.lan",
+    "27.0.0",
+    "Darwin Kernel Version 27.0.0: Tue Aug 11 21:06:40 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6050",
+    "arm64"
+  ],
+  "inputs": {
+    "slow": [
+      "0dbb92d1c88d90421c407e41a6d14f5156349a763eda933eacc34884a43f324c"
+    ],
+    "small": [
+      "a6f1152be7cf34abfdd2048bf0e1b17252e48102868e0c31d31e00f802d3c587"
+    ]
+  },
+  "load": [
+    65.20703125,
+    41.87060546875,
+    37.00048828125
+  ],
+  "orders": [
+    [
+      "stock_a",
+      "stock_b",
+      "bulk"
+    ]
+  ],
+  "profiles": [
+    "slow",
+    "small"
+  ]
+}

@@ -1,0 +1,675 @@
+{
+  "groups": [
+    {
+      "arms": {
+        "one-a": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 139.57666015625,
+          "sql": {
+            "claim": {
+              "calls": 65,
+              "rows": 512,
+              "total_exec_time": 223.37237699999994
+            },
+            "due_probe": {
+              "calls": 65,
+              "rows": 65,
+              "total_exec_time": 12.36692
+            },
+            "recover": {
+              "calls": 11,
+              "rows": 11,
+              "total_exec_time": 2.309749
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 260.8354099999999
+            }
+          }
+        },
+        "one-b": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 174.2724609375,
+          "sql": {
+            "claim": {
+              "calls": 60,
+              "rows": 512,
+              "total_exec_time": 169.90816599999997
+            },
+            "due_probe": {
+              "calls": 60,
+              "rows": 60,
+              "total_exec_time": 14.160332
+            },
+            "recover": {
+              "calls": 12,
+              "rows": 12,
+              "total_exec_time": 3.401080999999998
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 315.5103119999996
+            }
+          }
+        },
+        "two": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 181.48779296875,
+          "sql": {
+            "claim": {
+              "calls": 79,
+              "rows": 523,
+              "total_exec_time": 214.11840700000002
+            },
+            "due_probe": {
+              "calls": 79,
+              "rows": 79,
+              "total_exec_time": 16.731916000000002
+            },
+            "recover": {
+              "calls": 22,
+              "rows": 22,
+              "total_exec_time": 6.745873000000003
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 315.87157899999966
+            }
+          }
+        }
+      },
+      "group": 1
+    },
+    {
+      "arms": {
+        "one-a": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 83.236328125,
+          "sql": {
+            "claim": {
+              "calls": 82,
+              "rows": 512,
+              "total_exec_time": 163.19966599999992
+            },
+            "due_probe": {
+              "calls": 82,
+              "rows": 82,
+              "total_exec_time": 17.014622999999997
+            },
+            "recover": {
+              "calls": 12,
+              "rows": 12,
+              "total_exec_time": 3.107084000000002
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 212.6514670000001
+            }
+          }
+        },
+        "one-b": {
+          "extra_claims_in_sql_window": 1,
+          "load_at_launch": 151.56494140625,
+          "sql": {
+            "claim": {
+              "calls": 75,
+              "rows": 512,
+              "total_exec_time": 161.64162600000006
+            },
+            "due_probe": {
+              "calls": 75,
+              "rows": 75,
+              "total_exec_time": 14.053129
+            },
+            "recover": {
+              "calls": 33,
+              "rows": 33,
+              "total_exec_time": 7.776789
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 248.72749800000003
+            }
+          }
+        },
+        "two": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 101.07568359375,
+          "sql": {
+            "claim": {
+              "calls": 105,
+              "rows": 538,
+              "total_exec_time": 258.84266
+            },
+            "due_probe": {
+              "calls": 105,
+              "rows": 105,
+              "total_exec_time": 108.92117699999999
+            },
+            "recover": {
+              "calls": 22,
+              "rows": 22,
+              "total_exec_time": 6.036251999999999
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 248.63904700000012
+            }
+          }
+        }
+      },
+      "group": 2
+    },
+    {
+      "arms": {
+        "one-a": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 62.2890625,
+          "sql": {
+            "claim": {
+              "calls": 54,
+              "rows": 512,
+              "total_exec_time": 119.87791999999999
+            },
+            "due_probe": {
+              "calls": 54,
+              "rows": 54,
+              "total_exec_time": 12.500997
+            },
+            "recover": {
+              "calls": 8,
+              "rows": 8,
+              "total_exec_time": 1.849209
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 176.435047
+            }
+          }
+        },
+        "one-b": {
+          "extra_claims_in_sql_window": 1,
+          "load_at_launch": 62.33935546875,
+          "sql": {
+            "claim": {
+              "calls": 68,
+              "rows": 512,
+              "total_exec_time": 519.624632
+            },
+            "due_probe": {
+              "calls": 68,
+              "rows": 68,
+              "total_exec_time": 11.485667
+            },
+            "recover": {
+              "calls": 17,
+              "rows": 17,
+              "total_exec_time": 4.068710000000001
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 347.00980400000043
+            }
+          }
+        },
+        "two": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 72.21826171875,
+          "sql": {
+            "claim": {
+              "calls": 81,
+              "rows": 529,
+              "total_exec_time": 185.65133599999996
+            },
+            "due_probe": {
+              "calls": 81,
+              "rows": 81,
+              "total_exec_time": 16.890007000000004
+            },
+            "recover": {
+              "calls": 14,
+              "rows": 14,
+              "total_exec_time": 3.147625000000005
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 198.51420600000006
+            }
+          }
+        }
+      },
+      "group": 3
+    },
+    {
+      "arms": {
+        "one-a": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 40.54443359375,
+          "sql": {
+            "claim": {
+              "calls": 63,
+              "rows": 512,
+              "total_exec_time": 725.8984609999997
+            },
+            "due_probe": {
+              "calls": 63,
+              "rows": 63,
+              "total_exec_time": 12.821842999999996
+            },
+            "recover": {
+              "calls": 37,
+              "rows": 37,
+              "total_exec_time": 8.241705000000001
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 356.0437160000003
+            }
+          }
+        },
+        "one-b": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 54.99462890625,
+          "sql": {
+            "claim": {
+              "calls": 87,
+              "rows": 512,
+              "total_exec_time": 154.77699699999988
+            },
+            "due_probe": {
+              "calls": 87,
+              "rows": 87,
+              "total_exec_time": 11.716003
+            },
+            "recover": {
+              "calls": 22,
+              "rows": 22,
+              "total_exec_time": 4.325290999999999
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 215.74387099999996
+            }
+          }
+        },
+        "two": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 32.82080078125,
+          "sql": {
+            "claim": {
+              "calls": 78,
+              "rows": 525,
+              "total_exec_time": 189.355252
+            },
+            "due_probe": {
+              "calls": 78,
+              "rows": 78,
+              "total_exec_time": 15.532041000000005
+            },
+            "recover": {
+              "calls": 17,
+              "rows": 17,
+              "total_exec_time": 5.898998000000006
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 221.69285000000002
+            }
+          }
+        }
+      },
+      "group": 4
+    },
+    {
+      "arms": {
+        "one-a": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 26.7373046875,
+          "sql": {
+            "claim": {
+              "calls": 56,
+              "rows": 512,
+              "total_exec_time": 592.3922510000001
+            },
+            "due_probe": {
+              "calls": 56,
+              "rows": 56,
+              "total_exec_time": 15.665999000000001
+            },
+            "recover": {
+              "calls": 28,
+              "rows": 28,
+              "total_exec_time": 16.136253
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 1297.891255
+            }
+          }
+        },
+        "one-b": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 30.5908203125,
+          "sql": {
+            "claim": {
+              "calls": 50,
+              "rows": 512,
+              "total_exec_time": 151.90921299999997
+            },
+            "due_probe": {
+              "calls": 50,
+              "rows": 50,
+              "total_exec_time": 8.10971
+            },
+            "recover": {
+              "calls": 9,
+              "rows": 9,
+              "total_exec_time": 2.2116260000000016
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 221.49224800000005
+            }
+          }
+        },
+        "two": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 66.263671875,
+          "sql": {
+            "claim": {
+              "calls": 91,
+              "rows": 518,
+              "total_exec_time": 197.62974799999998
+            },
+            "due_probe": {
+              "calls": 91,
+              "rows": 91,
+              "total_exec_time": 17.022992000000006
+            },
+            "recover": {
+              "calls": 16,
+              "rows": 16,
+              "total_exec_time": 3.6975370000000023
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 289.8673800000002
+            }
+          }
+        }
+      },
+      "group": 5
+    },
+    {
+      "arms": {
+        "one-a": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 73.0185546875,
+          "sql": {
+            "claim": {
+              "calls": 45,
+              "rows": 512,
+              "total_exec_time": 168.81212500000004
+            },
+            "due_probe": {
+              "calls": 45,
+              "rows": 45,
+              "total_exec_time": 8.875790000000002
+            },
+            "recover": {
+              "calls": 9,
+              "rows": 9,
+              "total_exec_time": 2.4178360000000003
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 228.8008739999999
+            }
+          }
+        },
+        "one-b": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 54.42822265625,
+          "sql": {
+            "claim": {
+              "calls": 64,
+              "rows": 512,
+              "total_exec_time": 440.913785
+            },
+            "due_probe": {
+              "calls": 64,
+              "rows": 64,
+              "total_exec_time": 87.415205
+            },
+            "recover": {
+              "calls": 26,
+              "rows": 26,
+              "total_exec_time": 44.076291
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 842.2178099999988
+            }
+          }
+        },
+        "two": {
+          "extra_claims_in_sql_window": 0,
+          "load_at_launch": 59.7890625,
+          "sql": {
+            "claim": {
+              "calls": 67,
+              "rows": 517,
+              "total_exec_time": 157.56378300000006
+            },
+            "due_probe": {
+              "calls": 67,
+              "rows": 67,
+              "total_exec_time": 12.959540999999998
+            },
+            "recover": {
+              "calls": 18,
+              "rows": 18,
+              "total_exec_time": 4.763082999999996
+            },
+            "settlement": {
+              "calls": 512,
+              "rows": 512,
+              "total_exec_time": 233.71125799999993
+            }
+          }
+        }
+      },
+      "group": 6
+    }
+  ],
+  "rollup": {
+    "one-a": {
+      "load_at_launch": {
+        "max": 139.57666015625,
+        "median": 67.65380859375,
+        "min": 26.7373046875
+      },
+      "sql": {
+        "claim": {
+          "calls": {
+            "max": 82,
+            "median": 59.5,
+            "min": 45
+          },
+          "total_exec_time": {
+            "max": 725.8984609999997,
+            "median": 196.09225099999998,
+            "min": 119.87791999999999
+          }
+        },
+        "due_probe": {
+          "calls": {
+            "max": 82,
+            "median": 59.5,
+            "min": 45
+          },
+          "total_exec_time": {
+            "max": 17.014622999999997,
+            "median": 12.661419999999998,
+            "min": 8.875790000000002
+          }
+        },
+        "recover": {
+          "calls": {
+            "max": 37,
+            "median": 11.5,
+            "min": 8
+          },
+          "total_exec_time": {
+            "max": 16.136253,
+            "median": 2.7624600000000012,
+            "min": 1.849209
+          }
+        },
+        "settlement": {
+          "calls": {
+            "max": 512,
+            "median": 512.0,
+            "min": 512
+          },
+          "total_exec_time": {
+            "max": 1297.891255,
+            "median": 244.8181419999999,
+            "min": 176.435047
+          }
+        }
+      }
+    },
+    "one-b": {
+      "load_at_launch": {
+        "max": 174.2724609375,
+        "median": 58.6669921875,
+        "min": 30.5908203125
+      },
+      "sql": {
+        "claim": {
+          "calls": {
+            "max": 87,
+            "median": 66.0,
+            "min": 50
+          },
+          "total_exec_time": {
+            "max": 519.624632,
+            "median": 165.774896,
+            "min": 151.90921299999997
+          }
+        },
+        "due_probe": {
+          "calls": {
+            "max": 87,
+            "median": 66.0,
+            "min": 50
+          },
+          "total_exec_time": {
+            "max": 87.415205,
+            "median": 12.884566,
+            "min": 8.10971
+          }
+        },
+        "recover": {
+          "calls": {
+            "max": 33,
+            "median": 19.5,
+            "min": 9
+          },
+          "total_exec_time": {
+            "max": 44.076291,
+            "median": 4.1970005,
+            "min": 2.2116260000000016
+          }
+        },
+        "settlement": {
+          "calls": {
+            "max": 512,
+            "median": 512.0,
+            "min": 512
+          },
+          "total_exec_time": {
+            "max": 842.2178099999988,
+            "median": 282.1189049999998,
+            "min": 215.74387099999996
+          }
+        }
+      }
+    },
+    "two": {
+      "load_at_launch": {
+        "max": 181.48779296875,
+        "median": 69.240966796875,
+        "min": 32.82080078125
+      },
+      "sql": {
+        "claim": {
+          "calls": {
+            "max": 105,
+            "median": 80.0,
+            "min": 67
+          },
+          "total_exec_time": {
+            "max": 258.84266,
+            "median": 193.4925,
+            "min": 157.56378300000006
+          }
+        },
+        "due_probe": {
+          "calls": {
+            "max": 105,
+            "median": 80.0,
+            "min": 67
+          },
+          "total_exec_time": {
+            "max": 108.92117699999999,
+            "median": 16.810961500000005,
+            "min": 12.959540999999998
+          }
+        },
+        "recover": {
+          "calls": {
+            "max": 22,
+            "median": 17.5,
+            "min": 14
+          },
+          "total_exec_time": {
+            "max": 6.745873000000003,
+            "median": 5.331040500000001,
+            "min": 3.147625000000005
+          }
+        },
+        "settlement": {
+          "calls": {
+            "max": 512,
+            "median": 512.0,
+            "min": 512
+          },
+          "total_exec_time": {
+            "max": 315.87157899999966,
+            "median": 241.17515250000002,
+            "min": 198.51420600000006
+          }
+        }
+      }
+    }
+  }
+}

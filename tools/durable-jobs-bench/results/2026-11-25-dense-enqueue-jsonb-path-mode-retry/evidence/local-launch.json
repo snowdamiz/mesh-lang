@@ -1,0 +1,65 @@
+{
+  "cases": [
+    {
+      "exit_code": 2,
+      "launcher": "original.sh",
+      "stderr": "python3: can't open file '/var/tmp/dense-enqueue-jsonb-path.MV4GkfQ3/factorial_arm.py': [Errno 13] Permission denied",
+      "treatment": "stock",
+      "umask": "077"
+    },
+    {
+      "entry": {
+        "disposition": "stopped before product code",
+        "effective_uid": 65534,
+        "projected": false,
+        "python_mode": "0o644"
+      },
+      "exit_code": 0,
+      "launcher": "original.sh",
+      "treatment": "stock",
+      "umask": "022"
+    },
+    {
+      "entry": {
+        "disposition": "stopped before product code",
+        "effective_uid": 65534,
+        "projected": false,
+        "python_mode": "0o644"
+      },
+      "exit_code": 0,
+      "launcher": "amended.sh",
+      "treatment": "stock",
+      "umask": "077"
+    },
+    {
+      "entry": {
+        "disposition": "stopped before product code",
+        "effective_uid": 65534,
+        "projected": true,
+        "python_mode": "0o644"
+      },
+      "exit_code": 0,
+      "launcher": "amended.sh",
+      "treatment": "projected",
+      "umask": "077"
+    }
+  ],
+  "image": "sha256:3dc01f342e31ad8de39338d14ab12de0090c9102b34f75ca9774ff1f4f5e904e",
+  "input_sha256": {
+    "amended.sh": "2b6a1b334a6ab67b649692d802ca81d292d55e241ef28a826f7db6e3c99e4cdf",
+    "backend.py": "f2a897601d10f8c30b6bad30358ed1a88a8f688b54068095237ae1160ac7cea1",
+    "candidate.sql": "d388baa3b67c07df1a2498cd1fdc60bf7d0ce11f4b42d950f7b0a64a551c0f45",
+    "contract.py": "c45ce2a527c23a5f7f497ffee790baeacccbdbb7be2df199dc54a53de14b21bd",
+    "enqueue-stock.sql": "6b7c5cef45efd0caabb5eabccda0ba9e19ae7ea586c2da7f61b8f2910ade89c6",
+    "entry_probe.py": "203d5a76a27f27a862fe05a36140c824398328302d49acf40cd2d1b498f647a3",
+    "factorial_arm.py": "9bf13c86613c2ccc3693837e4da59e4d5688d38a16ab544ee8dcdf4ed78a86fb",
+    "identity.py": "c8bdb6ecf0be0b168b863752f92531b862221934249991965eae73aaf448b19f",
+    "native-run": "8e8cd00a72385b5d31f555817d6ae5135553569cfd5e39066c8a2caffbf7c762",
+    "original.sh": "048cb4b6252c55d6254dae1c64b8fc5a3e8c584376c3be76165348c56796e087",
+    "overlay.py": "a765753f525f25d41bd0e57b0ab55f0cc30084d93fefa1876d64e8384738649a",
+    "product_arm.py": "b7253e622051a033050b3e79afab73cd11c4c61cb0bf1dedd06303b8facdce24",
+    "render.py": "adc81cf2813c79913a54501be485df49b6051d00a9310848d081dbb2f92d1418",
+    "stage_arm.py": "25d2a17ee3f69a6dcc132b7e00c46ea49f1101ced8deaa98dc25c1ee597418d9",
+    "stock.sql": "31597202cdd0c8d03c8472e51362f0cfc6a988ca28a8e6e29fb1c69825c8ec1a"
+  }
+}

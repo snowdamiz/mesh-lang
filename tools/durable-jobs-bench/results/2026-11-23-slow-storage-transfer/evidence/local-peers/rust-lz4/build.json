@@ -1,0 +1,23 @@
+{
+  "artifact_sha256": "0a2e956e946d7ef7817478d03225575cf08c9be0d631692c49b56b4f1cba9c41",
+  "build_mode": "cargo build --release --locked; SQLX_OFFLINE=true",
+  "build_platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+  "cargo_tree_sha256": "97e0f4fdfe5442bc611041383fdc03c809003b4250222279e0920c417886f651",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+  "source_sha256": {
+    "Cargo.lock": "d8d23b98fd38d3ff01bf0efe5512cc872cf4333171e876e5ebb5afc5aaee9790",
+    "Cargo.toml": "29929d7109e80a627b15dc122a20f6871a137f3612982b12005d3188f7fa6719",
+    "build": "16a6f148aa927a8edd0d39670452cd0f8480f530b35d7f5f91f063e27ccab6e9",
+    "counters.sql": "fbc685d901d6639c8489aa74aebe0cdfbbd7a744606726c27c6ff80d68cb0433",
+    "database.sql": "6ab9824b29e49d9b68084a2c7e387c76bbdc9376e939940d3bf1ad839ddff3df",
+    "jobs.sql": "86fb3c22f322c4eb345131debe36fb995098906a33a62f6ba57cc1daf106efe7",
+    "run": "0a770416fc9433c76d5f5d5cf2ef87e2af4f20a61d0fa4c7e98d5715d781345d",
+    "run.py": "05c94874455c7c48e0ca6e9204b412aa67d41096b6cf314c0d4a9f3a8fdaf0f7",
+    "sample.sql": "7963bd4cc07444e9afcb90b839ea9daa41015630cc86baf3dfb9267f2e0b462c",
+    "sessions.sql": "fa4f97f89c2ae55514a80090f8b45f75acd1511c0eecd35c23155b168c444552",
+    "src/main.rs": "6845249e17e86c266da2ae34e5b144318b23fcf451e9b3c8753de6970c24e8e9",
+    "writes.sql": "b7bd0a07f996b0d66257f86e387160ded09f2a27a4e7ea5dde7f968461087264"
+  },
+  "target": "arm64"
+}

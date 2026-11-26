@@ -1,0 +1,20 @@
+{
+  "gates": [
+    {
+      "command": "cargo build --workspace --locked",
+      "exit_status": 0,
+      "log": "target/2026-11-24-public-large-file-session-resume/workspace-build.log",
+      "log_sha256": "7d84938e58e17da8321670b320baf4639b64c815490a7440d9257cb558aee7f3"
+    },
+    {
+      "command": "bash scripts/verify-postgres-jobs.sh --parity-driver-check",
+      "exit_status": 0,
+      "log": "target/2026-11-24-public-large-file-session-resume/postgres-proof-gate.log",
+      "log_sha256": "1211aa40f52de0589fdbd6fc7910452156fa1a41b8d76a8e30d1d9f30ac76336"
+    }
+  ],
+  "platform": "Darwin arm64",
+  "postgres": "17.11",
+  "purpose": "local correctness",
+  "revision": "b3557273d72be3802bf189b284e7caaf5f3caa0f"
+}

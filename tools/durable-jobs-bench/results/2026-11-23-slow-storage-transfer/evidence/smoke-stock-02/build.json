@@ -1,0 +1,18 @@
+{
+  "architecture": "arm64",
+  "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+  "compiler_sha256": "8ea49451284e82692b21398434ab9913fe9167b1f582bcb9917fcd4cdd263fc8",
+  "execution_contract": "ordinary-trusted-shared-process",
+  "files": {
+    "libworker_identity.a": "27e745a70311f9b3d8968f940ee545cec902c96b7ed8021dad6cb7f1af442b6a",
+    "main.mpl": "06ac61eb204d1ebe0d45fff1d6694ff76536210b6a56613ac43b9aea94598efd",
+    "mesh": "78b12a8efaff7ae0ac4e1b1457d255c688b77825df4cbf07fc4fc873e8ad4d03",
+    "mesh.toml": "f5b0443a52d05f693b216fca7015bd244d8c2da4d211791ccff52d406885d4ec",
+    "worker_identity.c": "309b59a25c9577527ed7030171e00034a510c25628ca66e997ef7f652cb1db6e",
+    "worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca",
+    "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0"
+  },
+  "runtime_sha256": "009f3aab1e3a7bc49b0031b595c31fbb8ee6b6bb423d11e8dbac2ab3bd3db121",
+  "system": "Darwin",
+  "version": "3828f20d2d6beb683868cce33e6dd1958365914b"
+}

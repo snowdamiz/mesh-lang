@@ -1,0 +1,194 @@
+[
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 7.096583333333332,
+    "bulk_calls": 0,
+    "commit_ms": 12.163,
+    "group": 1,
+    "load": [
+      23.8984375,
+      29.61279296875,
+      28.01416015625
+    ],
+    "producer_cpu_ms": 1.9167500000000004,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 12.538041
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 6.954791666666666,
+    "bulk_calls": 0,
+    "commit_ms": 17.512,
+    "group": 1,
+    "load": [
+      23.8984375,
+      29.61279296875,
+      28.01416015625
+    ],
+    "producer_cpu_ms": 0.8574999999999999,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 18.379667
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 12.131458333333331,
+    "bulk_calls": 1,
+    "commit_ms": 24.114,
+    "group": 1,
+    "load": [
+      23.8984375,
+      29.61279296875,
+      28.01416015625
+    ],
+    "producer_cpu_ms": 2.0157083333333325,
+    "profile": "small",
+    "scalar_calls": 0,
+    "wall_ms": 24.99225
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 33.380208333333336,
+    "bulk_calls": 0,
+    "commit_ms": 47.497,
+    "group": 1,
+    "load": [
+      23.8984375,
+      29.61279296875,
+      28.01416015625
+    ],
+    "producer_cpu_ms": 6.316583333333333,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 47.858334
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 32.94929166666667,
+    "bulk_calls": 0,
+    "commit_ms": 46.384,
+    "group": 1,
+    "load": [
+      23.8984375,
+      29.61279296875,
+      28.01416015625
+    ],
+    "producer_cpu_ms": 6.332250000000001,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 46.605417
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 14.212499999999999,
+    "bulk_calls": 1,
+    "commit_ms": 18.155,
+    "group": 1,
+    "load": [
+      23.8984375,
+      29.61279296875,
+      28.01416015625
+    ],
+    "producer_cpu_ms": 2.3667083333333334,
+    "profile": "short",
+    "scalar_calls": 0,
+    "wall_ms": 18.460333
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 237.41866666666667,
+    "bulk_calls": 0,
+    "commit_ms": 513.631,
+    "group": 1,
+    "load": [
+      23.8984375,
+      29.61279296875,
+      28.01416015625
+    ],
+    "producer_cpu_ms": 51.15175,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 513.942875
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 202.3325,
+    "bulk_calls": 0,
+    "commit_ms": 420.476,
+    "group": 1,
+    "load": [
+      23.8984375,
+      29.61279296875,
+      28.01416015625
+    ],
+    "producer_cpu_ms": 42.434375,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 420.926208
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 64.986375,
+    "bulk_calls": 8,
+    "commit_ms": 120.198,
+    "group": 1,
+    "load": [
+      23.8984375,
+      29.61279296875,
+      28.01416015625
+    ],
+    "producer_cpu_ms": 18.79866666666667,
+    "profile": "noop",
+    "scalar_calls": 0,
+    "wall_ms": 121.783208
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 682.4909583333333,
+    "bulk_calls": 0,
+    "commit_ms": 1133.586,
+    "group": 1,
+    "load": [
+      24.306640625,
+      29.6025390625,
+      28.01953125
+    ],
+    "producer_cpu_ms": 167.32795833333333,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1137.598875
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 690.4060833333334,
+    "bulk_calls": 0,
+    "commit_ms": 1091.168,
+    "group": 1,
+    "load": [
+      24.306640625,
+      29.6025390625,
+      28.01953125
+    ],
+    "producer_cpu_ms": 170.24270833333333,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1092.133458
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 758.9055416666666,
+    "bulk_calls": 0,
+    "commit_ms": 1756.521,
+    "group": 1,
+    "load": [
+      24.306640625,
+      29.6025390625,
+      28.01953125
+    ],
+    "producer_cpu_ms": 182.76770833333333,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1757.958291
+  }
+]

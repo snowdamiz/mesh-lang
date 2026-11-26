@@ -1,0 +1,2552 @@
+diff --git a/compiler/mesh-rt/src/actor/scheduler.rs b/compiler/mesh-rt/src/actor/scheduler.rs
+index d6e341f6..c1b3446d 100644
+--- a/compiler/mesh-rt/src/actor/scheduler.rs
++++ b/compiler/mesh-rt/src/actor/scheduler.rs
+@@ -784,6 +784,8 @@ impl Scheduler {
+         shape: *const u32,
+         mode: SpawnMode,
+     ) -> ProcessId {
++        #[cfg(mesh_jobs_effects)]
++        crate::jobs::reject_trusted_worker_spawn();
+         let linked_parent = match mode {
+             SpawnMode::Linked { parent, .. } => self.get_process(parent),
+             _ => None,
+diff --git a/compiler/mesh-rt/src/jobs/effects.rs b/compiler/mesh-rt/src/jobs/effects.rs
+index 799fb688..2bba9ff7 100644
+--- a/compiler/mesh-rt/src/jobs/effects.rs
++++ b/compiler/mesh-rt/src/jobs/effects.rs
+@@ -1,3 +1,4 @@
++use std::cell::RefCell;
+ use std::collections::BTreeMap;
+ use std::io::{self, Read, Write};
+ use std::net::Shutdown;
+@@ -20,7 +21,8 @@ use crate::db::quote_ident;
+ use crate::json::{bounded_json, MeshJson};
+ 
+ use super::effect_pool::{Checkout, CheckoutError, SessionPool};
+-use super::runner::JobProcess;
++use super::runner::{JobProcess, Worker};
++use super::worker::trusted::{self, LanePool};
+ use super::worker::{read_frame, write_frame, WorkerPoll, WorkerProcess};
+ 
+ pub(super) const MAX_REGISTRY_BYTES: usize = 16 * 1024;
+@@ -28,7 +30,7 @@ const MAX_FRAME: usize = 8 * 1024;
+ const MAX_OPERATIONS: usize = 16;
+ const MAX_ARGUMENTS: usize = 8;
+ const MAX_TEXT: usize = 512;
+-const UNKNOWN: &str = "Jobs effect outcome is unconfirmed";
++pub(super) const UNKNOWN: &str = "Jobs effect outcome is unconfirmed";
+ const INVALID: &str = "Jobs effect name or arguments were rejected";
+ const REJECTED: &str = "Jobs effect was rejected by PostgreSQL";
+ const UNAVAILABLE: &str = "Jobs effect session is unavailable";
+@@ -58,8 +60,12 @@ const CHECK_ROLE: &str = "SELECT EXISTS (
+ 
+ static CHILD_ENDPOINT: Mutex<Option<ChildEndpoint>> = Mutex::new(None);
+ 
++thread_local! {
++    static ATTEMPT_ENDPOINT: RefCell<Option<ChildEndpoint>> = const { RefCell::new(None) };
++}
++
+ enum ChildEndpoint {
+-    Ready(UnixStream),
++    Ready { socket: UnixStream, tagged: bool },
+     Unavailable,
+     Uncertain,
+ }
+@@ -71,8 +77,8 @@ impl ChildEndpoint {
+         values: Vec<Value>,
+         timeout: Duration,
+     ) -> Result<bool, &'static str> {
+-        let socket = match self {
+-            Self::Ready(socket) => socket,
++        let (socket, tagged) = match self {
++            Self::Ready { socket, tagged } => (socket, *tagged),
+             Self::Unavailable => return Err(UNAVAILABLE),
+             Self::Uncertain => return Err(UNKNOWN),
+         };
+@@ -80,7 +86,15 @@ impl ChildEndpoint {
+         let mut wire = TimedWire::new(socket, WireDeadline::Shared(request.deadline));
+         // A write error leaves the relay with no complete frame. The unbuffered
+         // flush cannot turn a completed frame into an unsent error.
+-        if write_frame(&mut wire, &request, MAX_FRAME).is_err() {
++        let sent = if tagged {
++            wire.write_all(&[trusted::EFFECT])
++        } else {
++            Ok(())
++        };
++        if sent
++            .and_then(|()| write_frame(&mut wire, &request, MAX_FRAME))
++            .is_err()
++        {
+             *self = Self::Unavailable;
+             return Err(UNAVAILABLE);
+         }
+@@ -106,7 +120,10 @@ impl ChildEndpoint {
+ }
+ 
+ pub(super) fn enter_worker(socket: UnixStream) {
+-    *CHILD_ENDPOINT.lock() = Some(ChildEndpoint::Ready(socket));
++    *CHILD_ENDPOINT.lock() = Some(ChildEndpoint::Ready {
++        socket,
++        tagged: false,
++    });
+ }
+ 
+ pub(super) fn finish_worker(reply: Result<String, String>) -> Result<String, String> {
+@@ -116,20 +133,46 @@ pub(super) fn finish_worker(reply: Result<String, String>) -> Result<String, Str
+     }
+ }
+ 
++pub(super) fn in_trusted_attempt(
++    socket: UnixStream,
++    run: impl FnOnce() -> Result<String, String>,
++) -> Result<String, String> {
++    ATTEMPT_ENDPOINT.with(|slot| {
++        *slot.borrow_mut() = Some(ChildEndpoint::Ready {
++            socket,
++            tagged: true,
++        });
++        let reply = run();
++        match slot.borrow_mut().take() {
++            Some(ChildEndpoint::Ready { .. }) => reply,
++            _ => Err(UNKNOWN.into()),
++        }
++    })
++}
++
+ pub(super) unsafe fn call(name: &str, values: *const MeshJson) -> Result<bool, &'static str> {
+     if !identifier(name) {
+         return Err(INVALID);
+     }
+-    let mut endpoint = CHILD_ENDPOINT.lock();
+-    let endpoint = endpoint
+-        .as_mut()
+-        .ok_or("Jobs.effect requires an active effect worker")?;
+-    let values = bounded_json(values, 2, MAX_FRAME - 128).map_err(|_| INVALID)?;
+-    let values = serde_json::from_slice::<Vec<Value>>(&values).map_err(|_| INVALID)?;
+-    if values.len() > MAX_ARGUMENTS || values.iter().any(|value| scalar(value).is_none()) {
+-        return Err(INVALID);
+-    }
+-    endpoint.request(name, values, IO_TIMEOUT)
++    let call = |endpoint: &mut ChildEndpoint| {
++        let values = bounded_json(values, 2, MAX_FRAME - 128).map_err(|_| INVALID)?;
++        let values = serde_json::from_slice::<Vec<Value>>(&values).map_err(|_| INVALID)?;
++        if values.len() > MAX_ARGUMENTS || values.iter().any(|value| scalar(value).is_none()) {
++            return Err(INVALID);
++        }
++        endpoint.request(name, values, IO_TIMEOUT)
++    };
++    ATTEMPT_ENDPOINT.with(|slot| {
++        if let Some(endpoint) = slot.borrow_mut().as_mut() {
++            return call(endpoint);
++        }
++        let mut endpoint = CHILD_ENDPOINT.lock();
++        call(
++            endpoint
++                .as_mut()
++                .ok_or("Jobs.effect requires an active effect worker")?,
++        )
++    })
+ }
+ 
+ #[derive(Deserialize, Serialize)]
+@@ -404,7 +447,7 @@ impl Operation {
+     }
+ }
+ 
+-struct Identity {
++pub(super) struct Identity {
+     namespace: String,
+     id: String,
+     run: String,
+@@ -451,7 +494,7 @@ impl Identity {
+     }
+ }
+ 
+-struct Shared {
++pub(super) struct Shared {
+     operations: BTreeMap<String, Operation>,
+     sessions: SessionPool<EffectSession>,
+ }
+@@ -459,6 +502,8 @@ struct Shared {
+ pub(super) struct Effects {
+     shared: Arc<Shared>,
+     handler: String,
++    persistent: Option<LanePool>,
++    trusted_workers: Vec<Worker>,
+ }
+ 
+ impl Effects {
+@@ -468,6 +513,7 @@ impl Effects {
+         app_url: &str,
+         operations: &[u8],
+         lanes: usize,
++        trusted_workers: Vec<Worker>,
+     ) -> Result<Self, String> {
+         let operations = Operation::parse(operations)?;
+         let mut sessions = Vec::with_capacity(lanes);
+@@ -496,6 +542,8 @@ impl Effects {
+                 sessions: SessionPool::new(sessions),
+             }),
+             handler,
++            persistent: (!trusted_workers.is_empty()).then(LanePool::new),
++            trusted_workers,
+         })
+     }
+ 
+@@ -507,6 +555,8 @@ impl Effects {
+                 sessions: SessionPool::new(vec![]),
+             }),
+             handler: String::new(),
++            persistent: None,
++            trusted_workers: Vec::new(),
+         }
+     }
+ 
+@@ -516,6 +566,26 @@ impl Effects {
+ 
+     pub(super) fn close(&self) {
+         self.shared.sessions.close();
++        self.sweep_idle(true);
++    }
++
++    pub(super) fn sweep_idle(&self, remove_all: bool) {
++        if let Some(pool) = &self.persistent {
++            pool.sweep_idle(remove_all);
++        }
++    }
++
++    fn trusted_workload(&self, context: &str) -> Option<&Worker> {
++        #[derive(Deserialize)]
++        struct Workload<'a> {
++            worker: &'a str,
++            version: u32,
++        }
++
++        let job: Workload<'_> = serde_json::from_str(context).ok()?;
++        self.trusted_workers
++            .iter()
++            .find(|worker| worker.worker == job.worker && worker.version == job.version)
+     }
+ 
+     #[allow(clippy::too_many_arguments)]
+@@ -532,6 +602,27 @@ impl Effects {
+     ) -> Result<Box<dyn JobProcess>, String> {
+         let identity = Identity::from_claim(namespace, id, token, &context)?;
+         let authority = Arc::new(EffectAuthority::new(deadline, lease));
++        if let Some(pool) = &self.persistent {
++            if let Some(workload) = self
++                .trusted_workload(&context)
++                .filter(|worker| pool.supports(worker))
++            {
++                return pool.start(
++                    &self.handler,
++                    workload.clone(),
++                    context,
++                    deadline,
++                    lease,
++                    worker_lease,
++                    identity,
++                    authority,
++                    self.shared.clone(),
++                    reply_wake,
++                );
++            }
++            // Reserve this physical slot for the fresh strict child.
++            pool.discard_idle();
++        }
+         let (relay, child) = UnixStream::pair().map_err(|error| error.to_string())?;
+         let shutdown = relay.try_clone().map_err(|error| error.to_string())?;
+         let owner = authority.clone();
+@@ -637,71 +728,98 @@ fn serve(
+         if socket.set_read_timeout(None).is_err() || socket.read_exact(&mut first).is_err() {
+             return;
+         }
+-        let io_deadline = deadline.min(Instant::now() + IO_TIMEOUT);
+-        let mut frame =
+-            io::Cursor::new(first).chain(TimedWire::new(socket, WireDeadline::Local(io_deadline)));
+-        let Ok(request) = read_frame::<Request>(&mut frame, MAX_FRAME) else {
+-            return;
+-        };
+-        let Ok(io_deadline) = request.deadline.clamp(io_deadline) else {
+-            return;
+-        };
+-        let Some((op, values)) = shared
+-            .operations
+-            .get(&request.name)
+-            .and_then(|op| Some((op, op.bind(&request.values)?)))
+-        else {
+-            if !owner.publish_without_checkout(|| publish(socket, Receipt::Invalid)) {
+-                return;
+-            }
+-            continue;
+-        };
+-        let mut checkout = match checkout_for_call(&shared.sessions, socket, owner, io_deadline) {
+-            Ok(checkout) => checkout,
+-            Err(CheckoutError::Cancelled) => return,
+-            Err(CheckoutError::Unavailable) => {
+-                if !owner.publish_without_checkout(|| publish(socket, Receipt::Unavailable)) {
+-                    return;
+-                }
+-                continue;
+-            }
+-        };
+-        if !worker_endpoint_open(socket) {
+-            checkout.reuse();
++        if !serve_call(socket, first, deadline, identity, owner, shared) {
+             return;
+         }
+-        if checkout.session().checkout(owner).is_err() {
+-            checkout.reuse();
+-            owner.publish_without_checkout(|| publish(socket, Receipt::Unavailable));
+-            return;
++    }
++}
++
++pub(super) fn serve_tagged_call(
++    mut socket: &UnixStream,
++    deadline: Instant,
++    identity: &Identity,
++    owner: &EffectAuthority,
++    shared: &Shared,
++) -> bool {
++    let mut first = [0];
++    if socket.set_read_timeout(Some(IO_TIMEOUT)).is_err() || socket.read_exact(&mut first).is_err()
++    {
++        return false;
++    }
++    serve_call(socket, first, deadline, identity, owner, shared)
++}
++
++pub(super) fn interrupt_waiters(shared: &Shared) {
++    shared.sessions.interrupt_waiters();
++}
++
++fn serve_call(
++    socket: &UnixStream,
++    first: [u8; 1],
++    deadline: Instant,
++    identity: &Identity,
++    owner: &EffectAuthority,
++    shared: &Shared,
++) -> bool {
++    let io_deadline = deadline.min(Instant::now() + IO_TIMEOUT);
++    let mut frame =
++        io::Cursor::new(first).chain(TimedWire::new(socket, WireDeadline::Local(io_deadline)));
++    let Ok(request) = read_frame::<Request>(&mut frame, MAX_FRAME) else {
++        return false;
++    };
++    let Ok(io_deadline) = request.deadline.clamp(io_deadline) else {
++        return false;
++    };
++    let Some((op, values)) = shared
++        .operations
++        .get(&request.name)
++        .and_then(|op| Some((op, op.bind(&request.values)?)))
++    else {
++        return owner.publish_without_checkout(|| publish(socket, Receipt::Invalid));
++    };
++    let mut checkout = match checkout_for_call(&shared.sessions, socket, owner, io_deadline) {
++        Ok(checkout) => checkout,
++        Err(CheckoutError::Cancelled) => return false,
++        Err(CheckoutError::Unavailable) => {
++            return owner.publish_without_checkout(|| publish(socket, Receipt::Unavailable));
+         }
+-        let mut params = identity.parameters().to_vec();
+-        params.extend(values.iter().map(String::as_str));
+-        let completed = match checkout
+-            .session()
+-            .invoke(&op.sql, &params, io_deadline, owner)
+-        {
+-            Ok(receipt) => {
+-                let receipt = match receipt {
+-                    EffectReceipt::Confirmed(applied) => Receipt::Confirmed(applied),
+-                    EffectReceipt::Rejected => Receipt::Rejected,
+-                };
+-                owner.release(|| publish(socket, receipt))
+-            }
+-            Err(EffectFailure::BeforeSubmission) => {
+-                // Retire the TLS session, which may still buffer request bytes.
+-                let _ = owner.release(|| publish(socket, Receipt::Unavailable));
+-                Err(EffectFailure::BeforeSubmission)
+-            }
+-            Err(error) => Err(error),
+-        };
+-        if completed.is_ok() {
+-            checkout.reuse();
+-        } else {
+-            // Retire on any uncertain progress. The next request never replays it.
+-            owner.revoke();
+-            return;
++    };
++    if !worker_endpoint_open(socket) {
++        checkout.reuse();
++        return false;
++    }
++    if checkout.session().checkout(owner).is_err() {
++        checkout.reuse();
++        owner.publish_without_checkout(|| publish(socket, Receipt::Unavailable));
++        return false;
++    }
++    let mut params = identity.parameters().to_vec();
++    params.extend(values.iter().map(String::as_str));
++    let completed = match checkout
++        .session()
++        .invoke(&op.sql, &params, io_deadline, owner)
++    {
++        Ok(receipt) => {
++            let receipt = match receipt {
++                EffectReceipt::Confirmed(applied) => Receipt::Confirmed(applied),
++                EffectReceipt::Rejected => Receipt::Rejected,
++            };
++            owner.release(|| publish(socket, receipt))
+         }
++        Err(EffectFailure::BeforeSubmission) => {
++            // Retire the TLS session, which may still buffer request bytes.
++            let _ = owner.release(|| publish(socket, Receipt::Unavailable));
++            Err(EffectFailure::BeforeSubmission)
++        }
++        Err(error) => Err(error),
++    };
++    if completed.is_ok() {
++        checkout.reuse();
++        true
++    } else {
++        // Retire on any uncertain progress. The next request never replays it.
++        owner.revoke();
++        false
+     }
+ }
+ 
+@@ -891,7 +1009,10 @@ mod tests {
+             TimedWire::new(&child, WireDeadline::Shared(request.deadline)).read_receipt(),
+             Ok(Receipt::Invalid)
+         ));
+-        let mut endpoint = ChildEndpoint::Ready(child);
++        let mut endpoint = ChildEndpoint::Ready {
++            socket: child,
++            tagged: false,
++        };
+         assert_eq!(
+             endpoint.request("append", vec![], IO_TIMEOUT),
+             Err(UNAVAILABLE)
+@@ -905,7 +1026,10 @@ mod tests {
+         let (child, mut relay) = UnixStream::pair().unwrap();
+         relay.shutdown(Shutdown::Write).unwrap();
+         relay.set_read_timeout(Some(IO_TIMEOUT)).unwrap();
+-        let mut endpoint = ChildEndpoint::Ready(child);
++        let mut endpoint = ChildEndpoint::Ready {
++            socket: child,
++            tagged: false,
++        };
+         assert_eq!(endpoint.request("append", vec![], IO_TIMEOUT), Err(UNKNOWN));
+         let sent: Request = read_frame(&mut relay, MAX_FRAME).unwrap();
+         assert_eq!(sent.name, "append");
+@@ -921,7 +1045,10 @@ mod tests {
+         let reply = Ok(r#"{"action":"complete"}"#.to_string());
+         let (child, mut relay) = UnixStream::pair().unwrap();
+         publish(&relay, Receipt::Invalid).unwrap();
+-        let mut endpoint = ChildEndpoint::Ready(child);
++        let mut endpoint = ChildEndpoint::Ready {
++            socket: child,
++            tagged: false,
++        };
+         assert_eq!(endpoint.request("append", vec![], IO_TIMEOUT), Err(INVALID));
+ 
+         relay.set_read_timeout(Some(IO_TIMEOUT)).unwrap();
+@@ -971,7 +1098,10 @@ mod tests {
+             Operation::parse(br#"[{"name":"append","routine":"app.append","args":[]}]"#).unwrap();
+         thread::scope(|scope| {
+             scope.spawn(move || serve_without_session(relay, ops));
+-            let mut endpoint = ChildEndpoint::Ready(child);
++            let mut endpoint = ChildEndpoint::Ready {
++                socket: child,
++                tagged: false,
++            };
+             assert_eq!(
+                 endpoint.request("append", vec![], IO_TIMEOUT),
+                 Err(UNAVAILABLE)
+diff --git a/compiler/mesh-rt/src/jobs/mod.rs b/compiler/mesh-rt/src/jobs/mod.rs
+index f8ba2d53..6969a03b 100644
+--- a/compiler/mesh-rt/src/jobs/mod.rs
++++ b/compiler/mesh-rt/src/jobs/mod.rs
+@@ -10,6 +10,11 @@ mod store;
+ pub mod testing;
+ mod worker;
+ 
++#[cfg(mesh_jobs_effects)]
++pub(crate) fn reject_trusted_worker_spawn() {
++    worker::trusted::reject_spawn();
++}
++
+ #[cfg(target_os = "linux")]
+ pub(crate) use worker::apply_worker_startup_policy;
+ 
+diff --git a/compiler/mesh-rt/src/jobs/runner.rs b/compiler/mesh-rt/src/jobs/runner.rs
+index fc558554..b5c43077 100644
+--- a/compiler/mesh-rt/src/jobs/runner.rs
++++ b/compiler/mesh-rt/src/jobs/runner.rs
+@@ -93,16 +93,17 @@ struct Config {
+     listen: bool,
+     #[serde(deserialize_with = "effect_session_count")]
+     effect_sessions: Option<usize>,
++    trusted_persistent_workers: Vec<Worker>,
+     #[cfg(mesh_jobs_effects)]
+     #[serde(skip)]
+     effects: Option<super::effects::Effects>,
+ }
+ 
+-#[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
++#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+ #[serde(deny_unknown_fields)]
+-struct Worker {
+-    worker: String,
+-    version: u32,
++pub(super) struct Worker {
++    pub(super) worker: String,
++    pub(super) version: u32,
+ }
+ 
+ impl Default for Config {
+@@ -128,6 +129,7 @@ impl Default for Config {
+             event_log: false,
+             listen: false,
+             effect_sessions: None,
++            trusted_persistent_workers: Vec::new(),
+             #[cfg(mesh_jobs_effects)]
+             effects: None,
+         }
+@@ -153,6 +155,9 @@ impl Config {
+         if config.effect_sessions.is_some() {
+             return Err("effect_sessions requires Jobs.start_effects".into());
+         }
++        if !config.trusted_persistent_workers.is_empty() {
++            return Err("trusted_persistent_workers requires Jobs.start_effects".into());
++        }
+         Ok(config)
+     }
+ 
+@@ -177,6 +182,16 @@ impl Config {
+         if lanes > 16 {
+             return Err("Jobs effect_sessions must be at most 16".into());
+         }
++        let mut trusted = HashSet::new();
++        if config
++            .trusted_persistent_workers
++            .iter()
++            .any(|worker| !config.workers.contains(worker) || !trusted.insert(worker))
++        {
++            return Err(
++                "trusted_persistent_workers must name distinct configured worker versions".into(),
++            );
++        }
+         config.effect_sessions = Some(lanes);
+         Ok(config)
+     }
+@@ -570,6 +585,15 @@ impl Runner {
+                 job.observe_local_lease_loss(self);
+             }
+         }
++        #[cfg(mesh_jobs_effects)]
++        if poll_all {
++            if let Some(effects) = &self.config.effects {
++                let queue_stopped = queues
++                    .values()
++                    .all(|queue| matches!(queue.phase, QueuePhase::Stopped));
++                effects.sweep_idle(queue_stopped);
++            }
++        }
+         drop(state);
+         if reply_ready {
+             self.wake_dispatcher();
+@@ -744,6 +768,7 @@ pub(super) fn start_effects(
+         app_url,
+         operations,
+         config.effect_sessions.expect("validated effect sessions"),
++        std::mem::take(&mut config.trusted_persistent_workers),
+     )?);
+     start_configured(
+         pool,
+diff --git a/compiler/mesh-rt/src/jobs/trusted_control.rs b/compiler/mesh-rt/src/jobs/trusted_control.rs
+new file mode 100644
+index 00000000..21e8cd08
+--- /dev/null
++++ b/compiler/mesh-rt/src/jobs/trusted_control.rs
+@@ -0,0 +1,248 @@
++use std::io;
++use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
++use std::os::unix::net::UnixStream;
++use std::sync::Arc;
++use std::time::Duration;
++
++use crossbeam_channel::{Receiver, Sender};
++use parking_lot::Mutex;
++
++use super::super::effect_endpoint;
++use super::super::{exit_worker, remaining, BOOTSTRAP_ERROR, PARENT_GONE};
++
++pub(super) fn pair() -> io::Result<(OwnedFd, OwnedFd)> {
++    let mut fds = [-1; 2];
++    if unsafe {
++        libc::socketpair(
++            libc::AF_UNIX,
++            libc::SOCK_SEQPACKET | libc::SOCK_CLOEXEC,
++            0,
++            fds.as_mut_ptr(),
++        )
++    } == -1
++    {
++        return Err(io::Error::last_os_error());
++    }
++    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
++}
++
++const BEGIN: u8 = 1;
++const RENEW: u8 = 2;
++const LIMIT: u8 = 3;
++const FRAME_BYTES: usize = 25;
++
++pub(super) fn begin(
++    control: RawFd,
++    generation: u64,
++    deadline: u64,
++    lease: u64,
++    attempt: OwnedFd,
++) -> io::Result<()> {
++    send(
++        control,
++        BEGIN,
++        generation,
++        deadline,
++        lease,
++        &[attempt.as_raw_fd()],
++    )
++}
++
++pub(super) fn renew(control: RawFd, generation: u64, lease: u64) -> io::Result<()> {
++    send(control, RENEW, generation, lease, 0, &[])
++}
++
++pub(super) fn limit(control: RawFd, generation: u64, deadline: u64) -> io::Result<()> {
++    send(control, LIMIT, generation, deadline, 0, &[])
++}
++
++fn send(
++    control: RawFd,
++    command: u8,
++    generation: u64,
++    value: u64,
++    lease: u64,
++    fds: &[RawFd],
++) -> io::Result<()> {
++    let mut packet = [0; FRAME_BYTES];
++    packet[0] = command;
++    packet[1..9].copy_from_slice(&generation.to_le_bytes());
++    packet[9..17].copy_from_slice(&value.to_le_bytes());
++    packet[17..25].copy_from_slice(&lease.to_le_bytes());
++    effect_endpoint::send_packet(control, &packet, fds)
++}
++
++pub(super) struct Assignment {
++    pub(super) generation: u64,
++    pub(super) socket: UnixStream,
++}
++
++struct Active {
++    generation: u64,
++    deadline: u64,
++    lease: u64,
++}
++
++impl Active {
++    fn remaining(&self) -> Duration {
++        remaining(self.deadline, self.lease)
++    }
++}
++
++#[derive(Default)]
++struct Fence {
++    last_generation: u64,
++    active: Option<Active>,
++}
++
++impl Fence {
++    fn begin(&mut self, generation: u64, deadline: u64, lease: u64) -> io::Result<()> {
++        if self.active.is_some() || self.last_generation.checked_add(1) != Some(generation) {
++            return Err(io::ErrorKind::InvalidData.into());
++        }
++        remaining(deadline, lease);
++        self.last_generation = generation;
++        self.active = Some(Active {
++            generation,
++            deadline,
++            lease,
++        });
++        Ok(())
++    }
++
++    fn update(&mut self, command: u8, generation: u64, value: u64) {
++        if let Some(active) = self
++            .active
++            .as_mut()
++            .filter(|active| active.generation == generation)
++        {
++            if command == RENEW {
++                active.lease = active.lease.max(value);
++            } else {
++                active.deadline = active.deadline.min(value);
++            }
++        }
++    }
++
++    fn require(&self, generation: u64) {
++        if let Some(active) = self
++            .active
++            .as_ref()
++            .filter(|active| active.generation == generation)
++        {
++            active.remaining();
++        } else {
++            exit_worker(BOOTSTRAP_ERROR);
++        }
++    }
++}
++
++pub(super) struct Watchdog {
++    fence: Arc<Mutex<Fence>>,
++    input: Receiver<Assignment>,
++}
++
++impl Watchdog {
++    pub(super) fn start(control: OwnedFd) -> io::Result<Self> {
++        let fence = Arc::new(Mutex::new(Fence::default()));
++        let watcher = fence.clone();
++        let (send, input) = crossbeam_channel::bounded(1);
++        std::thread::Builder::new()
++            .name("mesh-job-watchdog".into())
++            .spawn(move || match watch(&control, &watcher, &send) {
++                Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
++                    exit_worker(PARENT_GONE)
++                }
++                _ => exit_worker(BOOTSTRAP_ERROR),
++            })?;
++        Ok(Self { fence, input })
++    }
++
++    pub(super) fn next(&self) -> io::Result<Assignment> {
++        self.input
++            .recv()
++            .map_err(|_| io::ErrorKind::BrokenPipe.into())
++    }
++
++    pub(super) fn check(&self, generation: u64) {
++        self.fence.lock().require(generation);
++    }
++
++    pub(super) fn finish(&self, generation: u64) {
++        let mut fence = self.fence.lock();
++        fence.require(generation);
++        fence.active = None;
++    }
++}
++
++fn watch(
++    control: &OwnedFd,
++    fence: &Mutex<Fence>,
++    assignments: &Sender<Assignment>,
++) -> io::Result<()> {
++    loop {
++        let wait = fence
++            .lock()
++            .active
++            .as_ref()
++            .map(|active| active.remaining().min(Duration::from_millis(20)));
++        let mut packet = [0; FRAME_BYTES];
++        let socket = match effect_endpoint::receive_packet(control.as_raw_fd(), wait, &mut packet) {
++            Ok(socket) => socket,
++            Err(error)
++                if matches!(
++                    error.kind(),
++                    io::ErrorKind::TimedOut | io::ErrorKind::Interrupted
++                ) =>
++            {
++                continue
++            }
++            Err(error) => return Err(error),
++        };
++        let generation = u64::from_le_bytes(packet[1..9].try_into().unwrap());
++        let value = u64::from_le_bytes(packet[9..17].try_into().unwrap());
++        let lease = u64::from_le_bytes(packet[17..25].try_into().unwrap());
++        let mut fence = fence.lock();
++        if let Some(active) = &fence.active {
++            // A timely send cannot resurrect authority after the current deadline.
++            active.remaining();
++        }
++        match (packet[0], socket) {
++            (BEGIN, Some(socket)) => {
++                fence.begin(generation, value, lease)?;
++                assignments
++                    .try_send(Assignment { generation, socket })
++                    .map_err(|_| io::ErrorKind::InvalidData)?;
++            }
++            (command @ (RENEW | LIMIT), None) => fence.update(command, generation, value),
++            _ => return Err(io::ErrorKind::InvalidData.into()),
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::super::super::boot_millis;
++    use super::*;
++
++    #[test]
++    fn lease_and_deadline_updates_are_scoped_to_the_active_generation() {
++        let now = boot_millis().unwrap();
++        let mut fence = Fence::default();
++        fence.begin(1, now + 5000, now + 1000).unwrap();
++        assert!(fence.begin(2, now + 5000, now + 1000).is_err());
++        fence.update(RENEW, 1, now + 2000);
++        assert_eq!(fence.active.as_ref().unwrap().lease, now + 2000);
++
++        fence.active = None;
++        fence.begin(2, now + 5000, now + 1000).unwrap();
++        fence.update(RENEW, 1, now + 4000);
++        fence.update(LIMIT, 1, now + 1);
++        fence.update(RENEW, 3, now + 4000);
++        assert_eq!(fence.active.as_ref().unwrap().lease, now + 1000);
++        assert_eq!(fence.active.as_ref().unwrap().deadline, now + 5000);
++        fence.update(RENEW, 2, now + 3000);
++        fence.update(RENEW, 2, now + 1000);
++        assert_eq!(fence.active.as_ref().unwrap().lease, now + 3000);
++    }
++}
+diff --git a/compiler/mesh-rt/src/jobs/trusted_worker.rs b/compiler/mesh-rt/src/jobs/trusted_worker.rs
+new file mode 100644
+index 00000000..a2e22558
+--- /dev/null
++++ b/compiler/mesh-rt/src/jobs/trusted_worker.rs
+@@ -0,0 +1,612 @@
++use std::collections::HashSet;
++use std::net::Shutdown;
++use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
++use std::os::unix::process::CommandExt;
++use std::sync::atomic::AtomicBool;
++use std::thread::{self, JoinHandle};
++
++use crate::actor::{global_scheduler, stack};
++use crate::db::pg::jobs_effect_session::{EffectAuthority, IO_TIMEOUT};
++
++use super::super::effects::{self, Identity, Shared};
++use super::super::runner::{JobProcess, Worker};
++use super::super::store::Outcome;
++use super::*;
++
++#[path = "trusted_control.rs"]
++mod control;
++
++#[derive(Deserialize, Serialize)]
++struct TurnRequest {
++    handler: String,
++}
++
++pub(in crate::jobs) const WORKER_ARG: &str = "--mesh-internal-job-trusted-worker-v1";
++pub(in crate::jobs) const EFFECT: u8 = 1;
++const RETURN: u8 = 2;
++const UNSUPPORTED_OPERATION: i32 = 175;
++static TRUSTED_CHILD: AtomicBool = AtomicBool::new(false);
++
++pub(in crate::jobs) fn reject_spawn() {
++    if TRUSTED_CHILD.load(Ordering::Relaxed) {
++        exit_worker(UNSUPPORTED_OPERATION);
++    }
++}
++
++#[derive(Clone)]
++pub(in crate::jobs) struct LanePool(Arc<Mutex<PoolState>>);
++
++#[derive(Default)]
++struct PoolState {
++    idle: Vec<Lane>,
++    unsupported: HashSet<Worker>,
++}
++
++impl LanePool {
++    pub(in crate::jobs) fn new() -> Self {
++        Self(Arc::new(Mutex::new(PoolState::default())))
++    }
++
++    pub(in crate::jobs) fn sweep_idle(&self, remove_all: bool) {
++        self.0
++            .lock()
++            .idle
++            .retain_mut(|lane| !remove_all && matches!(lane.child.try_wait(), Ok(None)));
++    }
++
++    pub(in crate::jobs) fn discard_idle(&self) {
++        let idle = self.0.lock().idle.pop();
++        drop(idle);
++    }
++
++    pub(in crate::jobs) fn supports(&self, workload: &Worker) -> bool {
++        !self.0.lock().unsupported.contains(workload)
++    }
++
++    fn acquire(&self) -> Result<Lane, String> {
++        while let Some(mut lane) = self.0.lock().idle.pop() {
++            if lane
++                .child
++                .try_wait()
++                .map_err(|error| error.to_string())?
++                .is_none()
++            {
++                return Ok(lane);
++            }
++        }
++        Lane::spawn().map_err(|error| format!("could not start trusted Jobs worker: {error}"))
++    }
++
++    #[allow(clippy::too_many_arguments)]
++    pub(in crate::jobs) fn start(
++        &self,
++        handler: &str,
++        workload: Worker,
++        context: String,
++        deadline: Instant,
++        lease: Instant,
++        worker_lease: u64,
++        identity: Identity,
++        authority: Arc<EffectAuthority>,
++        shared: Arc<Shared>,
++        reply_wake: Sender<()>,
++    ) -> Result<Box<dyn JobProcess>, String> {
++        let request = TurnRequest {
++            handler: handler.to_owned(),
++        };
++        let hard_deadline = host_deadline(deadline)?;
++        let (relay, child) = UnixStream::pair().map_err(|error| error.to_string())?;
++        let shutdown = relay.try_clone().map_err(|error| error.to_string())?;
++        let (result, finished) = crossbeam_channel::bounded(1);
++        let mut lane = self.acquire()?;
++        lane.generation = lane
++            .generation
++            .checked_add(1)
++            .ok_or("trusted Jobs worker generation exhausted")?;
++        let generation = lane.generation;
++        Ok(Box::new(Process {
++            lane: Some(lane),
++            pool: self.clone(),
++            workload,
++            generation,
++            activation: Some(Activation {
++                child: child.into(),
++                hard_deadline,
++                worker_lease,
++                turn: Turn {
++                    request,
++                    context,
++                    identity,
++                    deadline,
++                    authority: authority.clone(),
++                    shared: shared.clone(),
++                    relay,
++                    result,
++                    reply_wake,
++                },
++            }),
++            shutdown,
++            authority,
++            shared,
++            finished,
++            deadline,
++            lease,
++            completion: None,
++            retiring: false,
++            crashed: false,
++            reusable: false,
++        }))
++    }
++}
++
++struct Lane {
++    child: Child,
++    control: OwnedFd,
++    generation: u64,
++    turns: Option<Sender<Turn>>,
++    relay: Option<JoinHandle<()>>,
++}
++
++impl Lane {
++    fn spawn() -> io::Result<Self> {
++        let (peer, child) = control::pair()?;
++        let mut command = Command::new(executable().map_err(io::Error::other)?);
++        configure_effect_worker_env(&mut command, std::env::var_os(DISABLE_THP_ENV).as_deref());
++        command
++            .arg(WORKER_ARG)
++            .env("MESH_SCHEDULER_MIN_WORKERS", "1")
++            .env("MESH_SCHEDULER_MAX_WORKERS", "1")
++            .process_group(0)
++            .stdin(Stdio::from(child))
++            .stdout(Stdio::inherit())
++            .stderr(Stdio::inherit());
++        let parent = unsafe { libc::getpid() };
++        // Leave Rust's exec-error pipe available until exec. The worker and
++        // its native constructors receive only the three positional streams.
++        unsafe {
++            command.pre_exec(move || {
++                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0) == -1
++                    || libc::dup2(libc::STDERR_FILENO, libc::STDOUT_FILENO) == -1
++                    || libc::syscall(
++                        libc::SYS_close_range,
++                        3u32,
++                        u32::MAX,
++                        libc::CLOSE_RANGE_CLOEXEC,
++                    ) == -1
++                {
++                    return Err(io::Error::last_os_error());
++                }
++                if libc::getppid() != parent {
++                    return Err(io::ErrorKind::BrokenPipe.into());
++                }
++                Ok(())
++            });
++        }
++        let mut lane = Self {
++            child: command.spawn()?,
++            control: peer,
++            generation: 0,
++            turns: None,
++            relay: None,
++        };
++        drop(command);
++        let (turns, input) = crossbeam_channel::bounded::<Turn>(1);
++        lane.turns = Some(turns);
++        lane.relay = Some(
++            thread::Builder::new()
++                .name("mesh-job-trusted-relay".into())
++                .spawn(move || {
++                    while let Ok(turn) = input.recv() {
++                        turn.run();
++                    }
++                })?,
++        );
++        Ok(lane)
++    }
++}
++
++impl Drop for Lane {
++    fn drop(&mut self) {
++        self.turns.take();
++        let _ = self.child.kill();
++        let _ = self.child.wait();
++        if let Some(relay) = self.relay.take() {
++            let _ = relay.join();
++        }
++    }
++}
++
++struct Activation {
++    child: OwnedFd,
++    hard_deadline: u64,
++    worker_lease: u64,
++    turn: Turn,
++}
++
++struct Turn {
++    request: TurnRequest,
++    context: String,
++    identity: Identity,
++    deadline: Instant,
++    authority: Arc<EffectAuthority>,
++    shared: Arc<Shared>,
++    relay: UnixStream,
++    result: Sender<Result<Reply, String>>,
++    reply_wake: Sender<()>,
++}
++
++impl Turn {
++    fn fail(self, error: io::Error) {
++        let _ = self.result.send(Err(format!(
++            "could not send trusted Jobs assignment: {error}"
++        )));
++        let _ = self.reply_wake.try_send(());
++    }
++
++    fn run(self) {
++        let Self {
++            request,
++            context,
++            identity,
++            deadline,
++            authority,
++            shared,
++            mut relay,
++            result,
++            reply_wake,
++        } = self;
++        let completion = relay
++            .set_write_timeout(Some(IO_TIMEOUT))
++            .and_then(|()| write_frame(&mut relay, &request, MAX_REQUEST_HEADER))
++            .and_then(|()| write_bytes(&mut relay, context.as_bytes(), MAX_DB_VALUE_BYTES))
++            .map_err(|error| format!("could not send trusted Jobs attempt: {error}"));
++        drop(context);
++        let completion = completion
++            .and_then(|()| read_turn(&mut relay, deadline, &identity, &authority, &shared));
++        let interrupted = authority.revoke();
++        let _ = relay.shutdown(Shutdown::Both);
++        drop(relay);
++        let completion = if interrupted {
++            Err(effects::UNKNOWN.into())
++        } else {
++            completion
++        };
++        let _ = result.send(completion);
++        let _ = reply_wake.try_send(());
++    }
++}
++
++fn read_turn(
++    relay: &mut UnixStream,
++    deadline: Instant,
++    identity: &Identity,
++    authority: &EffectAuthority,
++    shared: &Shared,
++) -> Result<Reply, String> {
++    loop {
++        let mut opcode = [0];
++        relay
++            .set_read_timeout(None)
++            .map_err(|error| error.to_string())?;
++        relay
++            .read_exact(&mut opcode)
++            .map_err(|error| format!("trusted Jobs worker lost: {error}"))?;
++        match opcode[0] {
++            EFFECT => {
++                if !effects::serve_tagged_call(relay, deadline, identity, authority, shared) {
++                    return Err(effects::UNKNOWN.into());
++                }
++            }
++            RETURN => {
++                relay
++                    .set_read_timeout(Some(IO_TIMEOUT))
++                    .map_err(|error| error.to_string())?;
++                let reply = read_frame(relay, MAX_REPLY_FRAME)
++                    .map_err(|error| format!("invalid trusted Jobs reply: {error}"))?;
++                // Only a closed attempt stream can be followed by another
++                // assignment. Extra bytes would be an out-of-turn request.
++                if relay.read(&mut opcode).ok() != Some(0) || !authority.live() {
++                    return Err("trusted Jobs attempt did not close cleanly".into());
++                }
++                return Ok(reply);
++            }
++            _ => return Err("invalid trusted Jobs message".into()),
++        }
++    }
++}
++
++struct Process {
++    lane: Option<Lane>,
++    pool: LanePool,
++    workload: Worker,
++    generation: u64,
++    activation: Option<Activation>,
++    shutdown: UnixStream,
++    authority: Arc<EffectAuthority>,
++    shared: Arc<Shared>,
++    finished: Receiver<Result<Reply, String>>,
++    deadline: Instant,
++    lease: Instant,
++    completion: Option<Result<Reply, String>>,
++    retiring: bool,
++    crashed: bool,
++    reusable: bool,
++}
++
++impl Process {
++    fn revoke(&self) {
++        self.authority.revoke();
++        let _ = self.shutdown.shutdown(Shutdown::Both);
++        effects::interrupt_waiters(&self.shared);
++    }
++
++    fn retire(&mut self) -> Result<(), String> {
++        self.retiring = true;
++        self.reusable = false;
++        self.revoke();
++        self.activation.take();
++        self.lane
++            .as_mut()
++            .unwrap()
++            .child
++            .kill()
++            .map_err(|error| error.to_string())
++    }
++}
++
++impl JobProcess for Process {
++    fn activate_effects(&mut self) {
++        if let Some(Activation {
++            child,
++            hard_deadline,
++            worker_lease,
++            turn,
++        }) = self.activation.take()
++        {
++            let lane = self.lane.as_ref().unwrap();
++            // Registration precedes BEGIN. The single seqpacket carries both
++            // initial bounds and the fresh endpoint before any renewal can run.
++            match control::begin(
++                lane.control.as_raw_fd(),
++                self.generation,
++                hard_deadline,
++                worker_lease,
++                child,
++            ) {
++                Ok(()) => {
++                    let _ = lane.turns.as_ref().unwrap().try_send(turn);
++                }
++                Err(error) => turn.fail(error),
++            }
++        }
++    }
++
++    fn confirm_effect_lease(&mut self, expires: Instant) {
++        self.lease = expires;
++        self.authority.renew(expires);
++    }
++
++    fn limit_effect_deadline(&mut self, deadline: Instant) {
++        if deadline >= self.deadline {
++            return;
++        }
++        self.deadline = deadline;
++        self.authority.limit_deadline(deadline);
++        effects::interrupt_waiters(&self.shared);
++        let fd = self.lane.as_ref().unwrap().control.as_raw_fd();
++        if !self.retiring
++            && host_deadline(deadline)
++                .and_then(|limit| {
++                    control::limit(fd, self.generation, limit).map_err(|error| error.to_string())
++                })
++                .is_err()
++        {
++            let _ = self.retire();
++        }
++    }
++
++    fn renew(&mut self, lease: u64) -> Result<(), String> {
++        if self.retiring {
++            return Ok(());
++        }
++        let fd = self.lane.as_ref().unwrap().control.as_raw_fd();
++        control::renew(fd, self.generation, lease).map_err(|error| error.to_string())
++    }
++
++    fn reply_pending(&self) -> bool {
++        !self.finished.is_empty()
++    }
++
++    fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String> {
++        if !self.retiring && now >= self.deadline.min(self.lease) {
++            // Let the runner record the timeout, lease loss, or shutdown reason
++            // and revoke the attempt before consuming any buffered result.
++            return Ok(WorkerPoll::Running);
++        }
++        let status = self
++            .lane
++            .as_mut()
++            .unwrap()
++            .child
++            .try_wait()
++            .map_err(|error| error.to_string())?;
++        if status.is_some() && !self.retiring {
++            self.retiring = true;
++            self.crashed = true;
++            self.revoke();
++        }
++        if self.completion.is_none() {
++            self.completion = match self.finished.try_recv() {
++                Ok(result) => Some(result),
++                Err(TryRecvError::Empty) => return Ok(WorkerPoll::Running),
++                Err(TryRecvError::Disconnected) => Some(Err("trusted Jobs relay exited".into())),
++            };
++        }
++        if !self.retiring {
++            self.reusable = matches!(
++                self.completion.as_ref(),
++                Some(Ok(Ok(output))) if matches!(serde_json::from_str(output), Ok(Outcome::Complete))
++            );
++            if !self.reusable {
++                self.retire()?;
++                return Ok(WorkerPoll::Running);
++            }
++        } else if status.is_none() {
++            // Settlement is downstream of both relay completion and consuming wait.
++            return Ok(WorkerPoll::Running);
++        }
++        let completion = self.completion.take().unwrap();
++        if status.and_then(|status| status.code()) == Some(UNSUPPORTED_OPERATION) {
++            self.pool.0.lock().unsupported.insert(self.workload.clone());
++            return Ok(WorkerPoll::Exited(Err(
++                "trusted Jobs handler tried to spawn an actor; subsequent attempts use strict execution".into(),
++            )));
++        }
++        if self.crashed {
++            let status = status.unwrap();
++            return Ok(match status.code() {
++                Some(TIMEOUT) => WorkerPoll::TimedOut,
++                Some(LEASE_LOST) => WorkerPoll::LeaseExpired,
++                _ => WorkerPoll::Exited(Err(completion
++                    .err()
++                    .unwrap_or_else(|| format!("trusted Jobs worker exited: {status}")))),
++            });
++        }
++        Ok(WorkerPoll::Exited(completion.unwrap_or_else(Err)))
++    }
++
++    fn kill(&mut self) -> Result<(), String> {
++        self.retire()
++    }
++}
++
++impl Drop for Process {
++    fn drop(&mut self) {
++        if self.reusable {
++            self.pool.0.lock().idle.push(self.lane.take().unwrap());
++        } else {
++            self.revoke();
++        }
++    }
++}
++
++pub(super) fn enter() -> ! {
++    TRUSTED_CHILD.store(true, Ordering::Relaxed);
++    crate::panic::ignore_sigpipe();
++    if let Err(error) = run_child() {
++        if error.kind() == io::ErrorKind::UnexpectedEof {
++            exit_worker(PARENT_GONE);
++        }
++        eprintln!("Mesh trusted Jobs worker failed: {error}");
++    }
++    exit_worker(BOOTSTRAP_ERROR);
++}
++
++fn run_child() -> io::Result<()> {
++    let fd = unsafe { libc::fcntl(libc::STDIN_FILENO, libc::F_DUPFD_CLOEXEC, 3) };
++    if fd == -1 {
++        return Err(io::Error::last_os_error());
++    }
++    let control = unsafe { OwnedFd::from_raw_fd(fd) };
++    let null = File::open("/dev/null")?;
++    if unsafe { libc::dup2(null.as_raw_fd(), libc::STDIN_FILENO) } == -1 {
++        return Err(io::Error::last_os_error());
++    }
++    drop(null);
++    let descriptors = open_descriptors()?;
++    let watchdog = control::Watchdog::start(control)?;
++    let scheduler = global_scheduler();
++    let initial =
++        stack::get_current_pid().ok_or_else(|| io::Error::other("missing Jobs runtime"))?;
++    let stack_base = scheduler.get_process(initial).unwrap().lock().stack_base;
++    scheduler.finalize_host_process(initial);
++    stack::clear_current_pid();
++    loop {
++        let control::Assignment {
++            generation,
++            mut socket,
++        } = watchdog.next()?;
++        socket.set_read_timeout(Some(IO_TIMEOUT))?;
++        let request: TurnRequest = read_frame(&mut socket, MAX_REQUEST_HEADER)?;
++        let context = String::from_utf8(read_bytes(&mut socket, MAX_DB_VALUE_BYTES)?)
++            .map_err(io::Error::other)?;
++        let handler = HANDLERS
++            .lock()
++            .get(&request.handler)
++            .copied()
++            .ok_or_else(|| io::Error::other("job handler is missing from this executable"))?;
++        watchdog.check(generation);
++        let pid = scheduler.create_main_process();
++        {
++            let process = scheduler.get_process(pid).unwrap();
++            let mut process = process.lock();
++            process.stack_base = stack_base;
++            process.collects_at_safepoints = !stack_base.is_null();
++        }
++        stack::set_current_pid(pid);
++        let mut expected = descriptors.clone();
++        expected.insert(socket.as_raw_fd(), descriptor(socket.as_raw_fd())?);
++        let reply = effects::in_trusted_attempt(socket.try_clone()?, || {
++            invoke(context, |input| {
++                watchdog.check(generation);
++                unsafe { handler(input) }
++            })
++        });
++        // The Rust outcome owns its bytes. Retire the attempt's managed heap,
++        // mailbox and actor-owned resources before publishing any result.
++        scheduler.finalize_host_process(pid);
++        stack::clear_current_pid();
++        socket.set_write_timeout(Some(IO_TIMEOUT))?;
++        if open_descriptors()? != expected {
++            return Err(io::Error::other(
++                "trusted Jobs handler changed open descriptors",
++            ));
++        }
++        watchdog.check(generation);
++        socket.write_all(&[RETURN])?;
++        write_frame(&mut socket, &reply, MAX_REPLY_FRAME)?;
++        watchdog.finish(generation);
++        socket.shutdown(Shutdown::Both)?;
++    }
++}
++
++fn descriptor(fd: i32) -> io::Result<PathBuf> {
++    std::fs::read_link(format!("/proc/self/fd/{fd}"))
++}
++
++fn open_descriptors() -> io::Result<BTreeMap<i32, PathBuf>> {
++    struct Dir(std::ptr::NonNull<libc::DIR>);
++    impl Drop for Dir {
++        fn drop(&mut self) {
++            unsafe { libc::closedir(self.0.as_ptr()) };
++        }
++    }
++
++    let directory =
++        Dir(
++            std::ptr::NonNull::new(unsafe { libc::opendir(c"/proc/self/fd".as_ptr()) })
++                .ok_or_else(io::Error::last_os_error)?,
++        );
++    let directory_fd = unsafe { libc::dirfd(directory.0.as_ptr()) };
++    let mut descriptors = BTreeMap::new();
++    loop {
++        let entry = unsafe {
++            *libc::__errno_location() = 0;
++            libc::readdir(directory.0.as_ptr())
++        };
++        if entry.is_null() {
++            let errno = unsafe { *libc::__errno_location() };
++            return if errno == 0 {
++                Ok(descriptors)
++            } else {
++                Err(io::Error::from_raw_os_error(errno))
++            };
++        }
++        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
++        if let Some(fd) = name.to_str().ok().and_then(|name| name.parse::<i32>().ok()) {
++            if fd != directory_fd {
++                descriptors.insert(fd, descriptor(fd)?);
++            }
++        }
++    }
++}
+diff --git a/compiler/mesh-rt/src/jobs/worker.rs b/compiler/mesh-rt/src/jobs/worker.rs
+index 0e12217e..db965d14 100644
+--- a/compiler/mesh-rt/src/jobs/worker.rs
++++ b/compiler/mesh-rt/src/jobs/worker.rs
+@@ -22,6 +22,9 @@ use std::os::unix::net::UnixStream;
+ #[cfg(any(mesh_jobs_effects, all(target_os = "linux", test)))]
+ #[path = "worker_effect_endpoint_linux.rs"]
+ mod effect_endpoint;
++#[cfg(mesh_jobs_effects)]
++#[path = "trusted_worker.rs"]
++pub(super) mod trusted;
+ 
+ const WORKER_ARG: &str = "--mesh-internal-job-attempt-v1";
+ #[cfg(target_os = "linux")]
+@@ -513,17 +516,14 @@ fn is_current_worker() -> io::Result<bool> {
+ 
+     let mut args = std::env::args_os();
+     if args.len() != 0 {
+-        return Ok(args.len() == 2
+-            && args
+-                .nth(1)
+-                .is_some_and(|arg| worker_uses_effect_stdin(arg.as_bytes()).is_some()));
++        return Ok(args.len() == 2 && args.nth(1).is_some_and(|arg| worker_arg(arg.as_bytes())));
+     }
+ 
+     // C main on musl can leave Rust's argv empty. Read through Linux's
+     // maximum argv[0] (32 pages, at most 2 MiB), the longest accepted marker,
+     // its NUL, and at least one byte of any extra argument.
+     #[cfg(mesh_jobs_effects)]
+-    const MARKER_LEN: usize = effect_endpoint::WORKER_ARG.len();
++    const MARKER_LEN: usize = trusted::WORKER_ARG.len();
+     #[cfg(not(mesh_jobs_effects))]
+     const MARKER_LEN: usize = WORKER_ARG.len();
+     const LIMIT: u64 = 2 * 1024 * 1024 + MARKER_LEN as u64 + 2;
+@@ -540,9 +540,16 @@ fn proc_cmdline_selects_worker(command_line: &[u8]) -> bool {
+         return false;
+     };
+     let mut args = command_line.splitn(3, |byte| *byte == 0);
+-    args.nth(1)
+-        .is_some_and(|arg| worker_uses_effect_stdin(arg).is_some())
+-        && args.next().is_none()
++    args.nth(1).is_some_and(worker_arg) && args.next().is_none()
++}
++
++#[cfg(target_os = "linux")]
++fn worker_arg(arg: &[u8]) -> bool {
++    #[cfg(mesh_jobs_effects)]
++    if arg == trusted::WORKER_ARG.as_bytes() {
++        return true;
++    }
++    worker_uses_effect_stdin(arg).is_some()
+ }
+ 
+ #[cfg(all(test, target_os = "linux"))]
+@@ -610,6 +617,10 @@ mod thp_tests {
+ pub unsafe extern "C" fn mesh_jobs_enter_worker(argc: i32, argv: *const *const c_char) {
+     if argc == 2 {
+         let arg = unsafe { CStr::from_ptr(*argv.add(1)) }.to_bytes();
++        #[cfg(mesh_jobs_effects)]
++        if arg == trusted::WORKER_ARG.as_bytes() {
++            trusted::enter();
++        }
+         if let Some(effect_stdin) = worker_uses_effect_stdin(arg) {
+             #[cfg(target_os = "linux")]
+             if thp_disable_requested(std::env::var_os(DISABLE_THP_ENV).as_deref()) {
+diff --git a/compiler/mesh-rt/src/jobs/worker_effect_endpoint_linux.rs b/compiler/mesh-rt/src/jobs/worker_effect_endpoint_linux.rs
+index e4ecf165..fa55ea28 100644
+--- a/compiler/mesh-rt/src/jobs/worker_effect_endpoint_linux.rs
++++ b/compiler/mesh-rt/src/jobs/worker_effect_endpoint_linux.rs
+@@ -32,35 +32,39 @@ pub(in crate::jobs::worker) fn send(control: &UnixStream, endpoint: &OwnedFd) ->
+     send_frame(control, PRELUDE, &[endpoint.as_raw_fd()])
+ }
+ 
+-fn send_frame(control: &UnixStream, mut byte: u8, fds: &[RawFd]) -> io::Result<()> {
++fn send_frame(control: &UnixStream, byte: u8, fds: &[RawFd]) -> io::Result<()> {
++    send_packet(control.as_raw_fd(), std::slice::from_ref(&byte), fds)
++}
++
++pub(super) fn send_packet(control: RawFd, payload: &[u8], fds: &[RawFd]) -> io::Result<()> {
+     let bytes = size_of_val(fds);
+     let space = unsafe { libc::CMSG_SPACE(bytes as u32) } as usize;
+     let mut ancillary = Ancillary::<SEND_SPACE>::new();
+-    assert!(space <= ancillary.bytes.len() && !fds.is_empty());
++    assert!(space <= ancillary.bytes.len() && !payload.is_empty());
+     let mut iov = libc::iovec {
+-        iov_base: ptr::from_mut(&mut byte).cast(),
+-        iov_len: 1,
++        iov_base: payload.as_ptr().cast_mut().cast(),
++        iov_len: payload.len(),
+     };
+     let mut message: libc::msghdr = unsafe { zeroed() };
+     message.msg_iov = &mut iov;
+     message.msg_iovlen = 1;
+-    message.msg_control = ancillary.bytes.as_mut_ptr().cast();
+-    message.msg_controllen = space as _;
++    if !fds.is_empty() {
++        message.msg_control = ancillary.bytes.as_mut_ptr().cast();
++        message.msg_controllen = space as _;
++    }
+     // The aligned buffer has room for the header and all the supplied FDs.
+     let sent = unsafe {
+-        let header = libc::CMSG_FIRSTHDR(&message);
+-        (*header).cmsg_len = libc::CMSG_LEN(bytes as u32) as _;
+-        (*header).cmsg_level = libc::SOL_SOCKET;
+-        (*header).cmsg_type = libc::SCM_RIGHTS;
+-        ptr::copy_nonoverlapping(fds.as_ptr().cast::<u8>(), libc::CMSG_DATA(header), bytes);
+-        libc::sendmsg(
+-            control.as_raw_fd(),
+-            &message,
+-            libc::MSG_NOSIGNAL | libc::MSG_DONTWAIT,
+-        )
++        if !fds.is_empty() {
++            let header = libc::CMSG_FIRSTHDR(&message);
++            (*header).cmsg_len = libc::CMSG_LEN(bytes as u32) as _;
++            (*header).cmsg_level = libc::SOL_SOCKET;
++            (*header).cmsg_type = libc::SCM_RIGHTS;
++            ptr::copy_nonoverlapping(fds.as_ptr().cast::<u8>(), libc::CMSG_DATA(header), bytes);
++        }
++        libc::sendmsg(control, &message, libc::MSG_NOSIGNAL | libc::MSG_DONTWAIT)
+     };
+     match sent {
+-        1 => Ok(()),
++        sent if sent == payload.len() as isize => Ok(()),
+         -1 => Err(io::Error::last_os_error()),
+         _ => Err(io::ErrorKind::WriteZero.into()),
+     }
+@@ -73,26 +77,44 @@ pub(in crate::jobs::worker) fn receive_stdin() -> io::Result<UnixStream> {
+     if unsafe { libc::fcntl(stdin, libc::F_SETFD, libc::FD_CLOEXEC) } == -1 {
+         return Err(io::Error::last_os_error());
+     }
+-    receive(stdin, IO_TIMEOUT)
++    receive(stdin, Some(IO_TIMEOUT))
+ }
+ 
+-fn receive(control: RawFd, timeout: Duration) -> io::Result<UnixStream> {
++fn receive(control: RawFd, timeout: Option<Duration>) -> io::Result<UnixStream> {
++    let mut prelude = [0];
++    let endpoint = receive_packet(control, timeout, &mut prelude)?;
++    match (prelude[0], endpoint) {
++        (PRELUDE, Some(endpoint)) => Ok(endpoint),
++        _ => Err(invalid_prelude()),
++    }
++}
++
++pub(super) fn receive_packet(
++    control: RawFd,
++    timeout: Option<Duration>,
++    payload: &mut [u8],
++) -> io::Result<Option<UnixStream>> {
+     let mut waiting = libc::pollfd {
+         fd: control,
+         events: libc::POLLIN,
+         revents: 0,
+     };
+-    match unsafe { libc::poll(&mut waiting, 1, timeout.as_millis() as i32) } {
++    match unsafe {
++        libc::poll(
++            &mut waiting,
++            1,
++            timeout.map_or(-1, |limit| limit.as_millis() as i32),
++        )
++    } {
+         -1 => return Err(io::Error::last_os_error()),
+         0 => return Err(io::ErrorKind::TimedOut.into()),
+         _ => {}
+     }
+ 
+-    let mut byte = 0u8;
+     let mut ancillary = Ancillary::<RECEIVE_SPACE>::new();
+     let mut iov = libc::iovec {
+-        iov_base: ptr::from_mut(&mut byte).cast(),
+-        iov_len: 1,
++        iov_base: payload.as_mut_ptr().cast(),
++        iov_len: payload.len(),
+     };
+     let mut message: libc::msghdr = unsafe { zeroed() };
+     message.msg_iov = &mut iov;
+@@ -113,8 +135,7 @@ fn receive(control: RawFd, timeout: Duration) -> io::Result<UnixStream> {
+         return Err(io::ErrorKind::UnexpectedEof.into());
+     }
+ 
+-    let mut valid = received == 1
+-        && byte == PRELUDE
++    let mut valid = received == payload.len() as isize
+         && message.msg_flags & (libc::MSG_CTRUNC | libc::MSG_TRUNC) == 0;
+     let mut endpoint = None;
+     // Even when the byte or ancillary data is invalid, take ownership of every
+@@ -144,10 +165,16 @@ fn receive(control: RawFd, timeout: Duration) -> io::Result<UnixStream> {
+             header = libc::CMSG_NXTHDR(&message, header);
+         }
+     }
+-    let endpoint = endpoint.filter(|_| valid).ok_or_else(invalid_prelude)?;
+-    let socket = UnixStream::from(endpoint);
+-    validate_stream(&socket)?;
+-    Ok(socket)
++    if !valid {
++        return Err(invalid_prelude());
++    }
++    endpoint
++        .map(|endpoint| {
++            let socket = UnixStream::from(endpoint);
++            validate_stream(&socket)?;
++            Ok(socket)
++        })
++        .transpose()
+ }
+ 
+ fn validate_stream(socket: &UnixStream) -> io::Result<()> {
+@@ -205,8 +232,8 @@ mod tests {
+         send(&parent_b, &effect_b.into()).unwrap();
+         parent_a.write_all(b"bootstrap A").unwrap();
+         parent_b.write_all(b"bootstrap B").unwrap();
+-        let worker_b = receive(input_b.as_raw_fd(), TEST_TIMEOUT).unwrap();
+-        let worker_a = receive(input_a.as_raw_fd(), TEST_TIMEOUT).unwrap();
++        let worker_b = receive(input_b.as_raw_fd(), Some(TEST_TIMEOUT)).unwrap();
++        let worker_a = receive(input_a.as_raw_fd(), Some(TEST_TIMEOUT)).unwrap();
+ 
+         for (mut worker, owner, byte) in [
+             (worker_a, &mut owner_a, b'A'),
+@@ -242,7 +269,7 @@ mod tests {
+             send_frame(&parent, marker, &fds).unwrap();
+             drop(effects);
+ 
+-            let error = receive(input.as_raw_fd(), TEST_TIMEOUT).unwrap_err();
++            let error = receive(input.as_raw_fd(), Some(TEST_TIMEOUT)).unwrap_err();
+             assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+             for owner in owners {
+                 assert_eof(owner);
+@@ -254,7 +281,7 @@ mod tests {
+     fn rejects_missing_rights_and_wrong_fd_types() {
+         let (mut parent, input) = UnixStream::pair().unwrap();
+         parent.write_all(&[PRELUDE]).unwrap();
+-        let error = receive(input.as_raw_fd(), TEST_TIMEOUT).unwrap_err();
++        let error = receive(input.as_raw_fd(), Some(TEST_TIMEOUT)).unwrap_err();
+         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+ 
+         let file = File::open("/dev/null").unwrap();
+@@ -268,7 +295,7 @@ mod tests {
+             unconnected.as_raw_fd(),
+         ] {
+             send_frame(&parent, PRELUDE, &[fd]).unwrap();
+-            let error = receive(input.as_raw_fd(), TEST_TIMEOUT).unwrap_err();
++            let error = receive(input.as_raw_fd(), Some(TEST_TIMEOUT)).unwrap_err();
+             assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+         }
+     }
+@@ -276,10 +303,10 @@ mod tests {
+     #[test]
+     fn prelude_wait_is_bounded_and_observes_parent_close() {
+         let (parent, input) = UnixStream::pair().unwrap();
+-        let error = receive(input.as_raw_fd(), Duration::ZERO).unwrap_err();
++        let error = receive(input.as_raw_fd(), Some(Duration::ZERO)).unwrap_err();
+         assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+         drop(parent);
+-        let error = receive(input.as_raw_fd(), TEST_TIMEOUT).unwrap_err();
++        let error = receive(input.as_raw_fd(), Some(TEST_TIMEOUT)).unwrap_err();
+         assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+     }
+ }
+diff --git a/docs/durable-jobs-oban-parity.md b/docs/durable-jobs-oban-parity.md
+index 16179602..2f38384f 100644
+--- a/docs/durable-jobs-oban-parity.md
++++ b/docs/durable-jobs-oban-parity.md
+@@ -522,3 +522,44 @@ Derive and verify exact grants before releasing the operational changes. The mat
+ - [Oban testing](https://oban.hexdocs.pm/Oban.Testing.html) · [Oban telemetry](https://oban.hexdocs.pm/2.24.2/Oban.Telemetry.html) · [Oban maintenance](https://oban.hexdocs.pm/operational_maintenance.html)
+ - [PostgreSQL LISTEN](https://www.postgresql.org/docs/19/sql-listen.html) · [PostgreSQL NOTIFY](https://www.postgresql.org/docs/19/sql-notify.html) · [Asynchronous messages](https://www.postgresql.org/docs/19/protocol-flow.html#PROTOCOL-ASYNC-OPERATIONS)
+ - [Mesh Jobs APIs](../website/docs/docs/concurrency/index.md#durable-jobs) · [Runtime state and schema](../compiler/mesh-rt/src/jobs/schema.sql) · [Compiled proof](../compiler/meshc/tests/e2e_durable_jobs.rs) · [PostgreSQL test entry point](../scripts/verify-postgres-jobs.sh)
++
++### Experimental trusted persistent workers
++
++On GNU/Linux with Linux 5.11 or later, `Jobs.start_effects` accepts an optional
++`trusted_persistent_workers` array of configured `{"worker":"name","version":1}`
++pairs. Only those exact claimed versions use persistent workers. Omit the
++array to give every attempt a fresh process. Use the default for any handler
++whose code or transitive dependencies have not been audited for reuse.
++
++Trusted handlers run synchronously on the worker's main thread. They may use
++ordinary Mesh values, synchronous operations, and the registered
++`Jobs.effect` calls. They must keep all attempt state in that invocation and
++release any opened resources before returning. They cannot spawn actors,
++start background jobs or callbacks, retain Mesh references, or rely on
++process globals, thread-local state, or native constructors being initialized
++again. The runtime terminates a trusted child that tries to spawn an actor. Later
++claims of that worker version use strict execution on that runner.
++FFI and other process-wide or asynchronous facilities require application
++review. Code that uses unmanaged threads, child processes, signal callbacks,
++persistent handles, or external side effects outside the named registry
++belongs on the strict path. The file descriptor inventory catches ordinary
++descriptor leaks. This opt-in is a trusted application contract, with the
++same OS user and filesystem permissions as the runner.
++
++Each occupied slot uses one child executable and one relay thread. On a clean
++`complete` return their PID and thread can serve another attempt. The child
++receives a fresh private socket and managed process context for each attempt.
++Its environment omits database URLs, and the launch closes inherited
++descriptors above standard I/O. Every call uses the current claim's durable
++token, cancellation and lease fence, the admitted application login over TLS,
++and its own commit receipt after full session reset. The relay drops the
++attempt socket and authority before the runner can settle. Retry, failure,
++invalid replies, timeouts, stops, or a lost authority retire the child before
++another assignment. An unknown application result is never replayed within
++that attempt. Existing durable retry and recovery rules still apply.
++
++A reusable child watchdog enforces the hard deadline and latest confirmed
++lease even if the runner is suspended. Each assignment has a new generation,
++and a renewal or shutdown deadline can affect only that generation. Linux
++sends SIGKILL on parent death. Use the strict path when a workload requires
++fresh initialization of process-wide state for each attempt.
+diff --git a/proof/jobs-parity/linux-regression/trial.py b/proof/jobs-parity/linux-regression/trial.py
+index 17b9b10b..9e39f444 100644
+--- a/proof/jobs-parity/linux-regression/trial.py
++++ b/proof/jobs-parity/linux-regression/trial.py
+@@ -122,7 +122,11 @@ class Cluster(h.Cluster):
+         """))
+         assert witness["ordered"] == witness["jobs"] == len(enqueued_ids), witness
+         if engine == "mesh":
+-            assert witness["worker_pids"] == witness["jobs"], witness
++            if getattr(self, "mesh_execution", "strict") == "trusted-persistent":
++                assert 0 < witness["worker_pids"] <= self.slots, witness
++                assert witness["worker_pids"] < witness["jobs"], witness
++            else:
++                assert witness["worker_pids"] == witness["jobs"], witness
+         else:
+             assert 0 < witness["worker_pids"] <= self.runners, witness
+         assert witness["minimum_hold_ms"] >= self.hold_ms - 1, witness
+diff --git a/scripts/fixtures/jobs-effect-compiled/prove.py b/scripts/fixtures/jobs-effect-compiled/prove.py
+index 93d698c5..7537348d 100644
+--- a/scripts/fixtures/jobs-effect-compiled/prove.py
++++ b/scripts/fixtures/jobs-effect-compiled/prove.py
+@@ -103,7 +103,7 @@ class Proof:
+             raise RuntimeError("disposable role setup failed" if private else result.stderr.strip())
+         return result.stdout.strip()
+ 
+-    def prepare(self):
++    def build(self):
+         subprocess.run(
+             ["cargo", "build", "--locked", "-p", "meshc", "-p", "mesh-rt"],
+             cwd=ROOT, check=True,
+@@ -114,6 +114,9 @@ class Proof:
+             cwd=self.path, check=True,
+             env=dict(os.environ, MESH_RT_LIB_PATH=str(self.meshc.with_name("libmesh_rt.a"))),
+         )
++
++    def prepare(self):
++        self.build()
+         bootstrap = subprocess.run(
+             [self.binary, WORKER_ARG], cwd=self.path, env={}, stdin=subprocess.DEVNULL,
+             capture_output=True, timeout=5,
+@@ -156,9 +159,9 @@ class Proof:
+         except (FileNotFoundError, json.JSONDecodeError):
+             return {}
+ 
+-    def enqueue(self, owner, marks, label, max_attempts=1, timeout_ms=40_000):
++    def enqueue(self, owner, marks, label, max_attempts=1, timeout_ms=40_000, version=1):
+         spec = json.dumps(dict(
+-            worker="proof", version=1, queue="default", args={"path": str(marks), "label": label},
++            worker="proof", version=version, queue="default", args={"path": str(marks), "label": label},
+             metadata={}, tags=[], priority=0, max_attempts=max_attempts, timeout_ms=timeout_ms,
+             backoff_base_ms=0, backoff_max_ms=0, suspended=False, unique=None,
+         ))
+@@ -251,10 +254,13 @@ class Proof:
+                 if producer.poll() is None:
+                     producer.terminate()
+ 
++    def runner_log(self, check):
++        return "runner.log"
++
+     def run_compiled(self, check, expected_exit=0):
+         for name in ("ready", "status", "stop"):
+             (self.path / name).unlink(missing_ok=True)
+-        with (self.path / "runner.log").open("w+") as log:
++        with (self.path / self.runner_log(check)).open("w+") as log:
+             with subprocess.Popen([self.binary], cwd=self.path, env=self.env, stdout=log, stderr=log) as owner:
+                 try:
+                     check(owner)
+diff --git a/scripts/fixtures/jobs-trusted-worker/drop_receipt.c b/scripts/fixtures/jobs-trusted-worker/drop_receipt.c
+new file mode 100644
+index 00000000..0fd3fe10
+--- /dev/null
++++ b/scripts/fixtures/jobs-trusted-worker/drop_receipt.c
+@@ -0,0 +1,52 @@
++/* Proof-only: drop the second confirmed Unix receipt after PostgreSQL reset. */
++#define _GNU_SOURCE
++#include <dlfcn.h>
++#include <errno.h>
++#include <stdatomic.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++#include <time.h>
++#include <sys/socket.h>
++
++ssize_t send(int fd, const void *data, size_t size, int flags) {
++    static _Atomic unsigned confirmed;
++    if (getenv("MESH_PROOF_DROP_RECEIPT") &&
++        flags == (MSG_DONTWAIT | MSG_NOSIGNAL) && size == 1 &&
++        *(const unsigned char *)data == 1) {
++        struct sockaddr_storage address;
++        socklen_t length = sizeof address;
++        if (getsockname(fd, (struct sockaddr *)&address, &length) == 0 &&
++            address.ss_family == AF_UNIX && atomic_fetch_add(&confirmed, 1) == 1) {
++            errno = EPIPE;
++            return -1;
++        }
++    }
++    ssize_t (*original)(int, const void *, size_t, int) = dlsym(RTLD_NEXT, "send");
++    return original(fd, data, size, flags);
++}
++
++ssize_t sendmsg(int fd, const struct msghdr *message, int flags) {
++    ssize_t (*original)(int, const struct msghdr *, int) = dlsym(RTLD_NEXT, "sendmsg");
++    ssize_t sent = original(fd, message, flags);
++    const char *fault = getenv("MESH_PROOF_CONTROL_FAULT");
++    if (!fault || sent != 25 || message->msg_iovlen != 1 ||
++        message->msg_iov[0].iov_len != 25 || !message->msg_control)
++        return sent;
++    const unsigned char *body = message->msg_iov[0].iov_base;
++    if (body[0] != 1) return sent;
++    if (body[1] == 1 && strcmp(fault, "hold-context") == 0) {
++        const struct timespec wait = { .tv_sec = 2, .tv_nsec = 0 };
++        nanosleep(&wait, NULL);
++    }
++    if (body[1] == 2 && strcmp(fault, "stale-generation") == 0) {
++        unsigned char stale[25] = { 3, 1 }; /* LIMIT generation 1 at boot time 0 */
++        struct iovec data = { stale, sizeof stale };
++        struct msghdr update = { .msg_iov = &data, .msg_iovlen = 1 };
++        if (original(fd, &update, flags) != 25) abort();
++        stale[0] = 2;
++        memset(stale + 9, 255, 8); /* RENEW generation 1 forever */
++        if (original(fd, &update, flags) != 25) abort();
++    }
++    return sent;
++}
+diff --git a/scripts/fixtures/jobs-trusted-worker/main.mpl b/scripts/fixtures/jobs-trusted-worker/main.mpl
+new file mode 100644
+index 00000000..d5a10503
+--- /dev/null
++++ b/scripts/fixtures/jobs-trusted-worker/main.mpl
+@@ -0,0 +1,117 @@
++fn hold(path :: String, stage :: Int) -> Unit!String do
++  let _ = File.write(path <> "/committed-${stage}", "committed")?
++  let deadline = Monotonic.now_nanos() + 15_000_000_000
++  while !File.exists(path <> "/release-${stage}") && Monotonic.now_nanos() < deadline do
++    Timer.sleep(10)
++  end
++  if File.exists(path <> "/release-${stage}") do Ok(()) else Err("proof hold elapsed") end
++end
++
++fn run_handler(context :: String) -> String!String do
++  let args = Json.object_get(Json.parse(context)?, "args")?
++  let path = Json.as_string(Json.object_get(args, "path")?)?
++  let label = Json.as_string(Json.object_get(args, "label")?)?
++  let version = Json.as_int(Json.object_get(Json.parse(context)?, "version")?)?
++  if version == 2 || label == "unsupported actor" do
++    let actor_reply = Job.await(Job.async(fn () -> "child-" <> label end))?
++    if actor_reply != "child-" <> label do
++      return Err("the first actor returned the wrong value")
++    end
++  end
++  if label == "explicit failure" do
++    return Ok("""{"action":"fail","reason":"application failure"}""")
++  end
++  let values = Json.object_get(json { values: [label] }, "values")?
++  let _ = Jobs.effect("first", values)?
++  if label == "frozen hard deadline" || label == "frozen confirmed lease" do
++    let _ = File.write(path <> "/spinning", "entered")?
++    let deadline = Monotonic.now_nanos() + 10_000_000_000
++    while Monotonic.now_nanos() < deadline do
++      ()
++    end
++  end
++  hold(path, 1)?
++  case Jobs.effect("second", values) do
++    Ok(_) -> hold(path, 2)?
++    Err(error) ->
++      if error == "Jobs effect outcome is unconfirmed" do
++        let _ = File.write(path <> "/ignored-unknown", error)?
++        ()
++      else
++        return Err(error)
++      end
++  end
++  let attempt = Json.as_int(Json.object_get(Json.parse(context)?, "attempt")?)?
++  if label == "explicit retry" && attempt == 1 do
++    Ok("""{"action":"retry_after","delay_ms":0,"reason":"application retry"}""")
++  else
++    Ok("""{"action":"complete"}""")
++  end
++end
++
++fn handler(context :: String) -> String do
++  case run_handler(context) do
++    Ok(outcome) -> outcome
++    Err(error) -> Json.encode(json { action: "retry", reason: error })
++  end
++end
++
++fn check_local_control(runner :: Int, listen :: Bool) -> Unit!String do
++  let _ = case Jobs.local_control(runner, "{\"queue\":\"default\",\"action\":\"scale\",\"limit\":2}") do
++    Ok(_) -> Err("effect runner accepted a scale-up")
++    Err(_) -> Ok(())
++  end?
++  let _ = case Jobs.local_control(runner, "{\"queue\":\"second\",\"action\":\"start\"}") do
++    Ok(_) -> Err("effect runner accepted a second queue")
++    Err(_) -> Ok(())
++  end?
++  if !listen do
++    let _ = Jobs.local_control(runner, "{\"queue\":\"default\",\"action\":\"pause\"}")?
++    let _ = Jobs.local_control(runner, "{\"queue\":\"default\",\"action\":\"resume\"}")?
++    ()
++  end
++  Ok(())
++end
++
++fn serve(pool :: PoolHandle) -> String!String do
++  let registry = Json.parse("[{\"name\":\"first\",\"routine\":\"compiled_demo.first\",\"args\":[\"text\"]},{\"name\":\"second\",\"routine\":\"compiled_demo.second\",\"args\":[\"text\"]}]")?
++  let listen = Env.get("MESH_EFFECT_LISTEN", "") == "1"
++  let wakeup_config = if listen do
++    "\"listen\":true,\"poll_ms\":60000"
++  else
++    "\"listen\":false,\"poll_ms\":25"
++  end
++  let config = """{"namespace":"compiled-effect-proof","queues":{"default":1},"workers":[{"worker":"proof","version":1},{"worker":"proof","version":2}],"trusted_persistent_workers":[{"worker":"proof","version":1}],"claim_batch":true,"cron_interval_ms":0,"lease_ms":${Env.get_int("MESH_EFFECT_LEASE_MS", 60000)},${wakeup_config}}"""
++  let runner = Jobs.start_effects(pool, config, handler, Env.get("MESH_EFFECT_APP_URL", ""), registry)?
++  check_local_control(runner, listen)?
++  let marks = Env.get("MESH_EFFECT_MARKS", "")
++  let _ = File.write(marks <> "/ready", Jobs.status(runner)?)?
++  let deadline = Monotonic.now_nanos() + 45_000_000_000
++  while !File.exists(marks <> "/stop") && Monotonic.now_nanos() < deadline do
++    let _ = File.write(marks <> "/status", Jobs.status(runner)?)?
++    Timer.sleep(25)
++  end
++  let _ = Jobs.stop(runner, 0)?
++  Jobs.join(runner)
++end
++
++fn run() -> String!String do
++  let pool = Pool.open(Env.get("MESH_EFFECT_JOBS_URL", ""), 1, 1, 5000)?
++  let result = if Env.get("MESH_EFFECT_MIGRATE", "") == "1" do
++    Jobs.migrate(pool)?
++    Ok("migrated")
++  else
++    serve(pool)
++  end
++  Pool.close(pool)
++  result
++end
++
++fn main() do
++  case run() do
++    Ok(result) -> println(result)
++    Err(error) ->
++      println("compiled effect proof: " <> error)
++      Process.exit(1)
++  end
++end
+diff --git a/scripts/fixtures/jobs-trusted-worker/prove.py b/scripts/fixtures/jobs-trusted-worker/prove.py
+new file mode 100644
+index 00000000..300acb32
+--- /dev/null
++++ b/scripts/fixtures/jobs-trusted-worker/prove.py
+@@ -0,0 +1,380 @@
++#!/usr/bin/env python3
++"""Compiled persistent Jobs proof using a private TLS PostgreSQL instance."""
++
++import json
++import os
++from pathlib import Path
++import signal
++import subprocess
++import sys
++import time
++
++HERE = Path(__file__).resolve().parent
++sys.path.insert(0, str(HERE.parent / "jobs-effect-compiled"))
++from prove import Proof, Producer, equal, literal, wait_for
++
++TRUSTED_ARG = b"--mesh-internal-job-trusted-worker-v1"
++STRICT_ARG = b"--mesh-internal-job-attempt-effect-v1"
++
++
++class TrustedProof(Proof):
++    def __init__(self, scratch, binary, drop_receipt):
++        super().__init__(scratch)
++        self.binary = binary
++        self.drop_receipt = drop_receipt
++
++    def build(self):
++        assert self.binary.is_file()
++
++    def runner_log(self, check):
++        return f"{check.__name__}.log"
++
++    def prepare(self):
++        super().prepare()
++        # Keep the exact compiled application functions as the control, with
++        # one label that waits on a proof-owned transaction lock in stage two.
++        self.sql("""
++            DO $$
++            DECLARE definition text;
++            BEGIN
++                definition := pg_get_functiondef(
++                    'compiled_demo.second(text,uuid,bigint,integer,uuid,text)'::regprocedure);
++                definition := replace(definition, '    INSERT INTO compiled_demo.effects',
++                          $patch$    IF label = 'stop in flight' THEN
++        PERFORM pg_advisory_xact_lock(1782495102, 423);
++    END IF;
++    INSERT INTO compiled_demo.effects$patch$);
++                EXECUTE definition;
++            END $$;
++        """)
++
++    def run(self):
++        self.prepare()
++        role = "compiled_producer"
++        command = ["psql", "-XqAtw", "-v", "ON_ERROR_STOP=1", self.connection(role)]
++        env = dict(os.environ, PGPASSWORD=self.passwords[role], PGCONNECT_TIMEOUT="4",
++                   PGOPTIONS="-c statement_timeout=4000")
++        with subprocess.Popen(command, env=env, stdin=subprocess.PIPE,
++                              stdout=subprocess.PIPE, bufsize=0) as producer:
++            self.producer_session = Producer(producer)
++            try:
++                for test in (self.reuse, self.timeout, self.stop_held, self.stop_in_flight,
++                             self.stale, self.cancelled, self.crash, self.fail_and_retry,
++                             self.unsupported):
++                    self.run_compiled(test)
++                self.run_compiled(self.frozen_hard_deadline)
++                self.env.update(LD_PRELOAD=str(self.drop_receipt),
++                                MESH_PROOF_CONTROL_FAULT="stale-generation", MESH_EFFECT_LEASE_MS="1800")
++                self.run_compiled(self.frozen_confirmed_lease)
++                self.env.update(MESH_PROOF_CONTROL_FAULT="hold-context", MESH_EFFECT_LEASE_MS="60000")
++                self.run_compiled(self.expired_before_entry)
++                self.env.pop("MESH_PROOF_CONTROL_FAULT")
++                self.env.pop("MESH_EFFECT_LEASE_MS")
++                self.env["MESH_PROOF_DROP_RECEIPT"] = "1"
++                self.run_compiled(self.unknown)
++                self.env.pop("MESH_PROOF_DROP_RECEIPT")
++                self.env.pop("LD_PRELOAD")
++                self.run_compiled(self.recover_unknown)
++                self.run_compiled(self.parent_disconnect, expected_exit=-signal.SIGKILL)
++            finally:
++                producer.terminate()
++
++    def ready(self, owner):
++        wait_for((self.path / "ready").exists, "compiled runner ready", owner)
++        return wait_for(self.warm_idle, "verified TLS backend under cap five", owner)
++
++    def markdir(self, name):
++        directory = self.path / name
++        directory.mkdir()
++        return directory
++
++    def start(self, owner, name, label="positive", **options):
++        directory = self.markdir(name)
++        job = self.enqueue(owner, directory, label, **options)
++        wait_for((directory / "committed-1").exists, f"{name} first committed receipt", owner)
++        return job, directory, self.active_pid(owner)
++
++    def active_pid(self, owner, kind=TRUSTED_ARG):
++        workers = [
++            pid for pid in self.children(owner)
++            if (Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")[1:2] == [kind])
++        ]
++        pid, = workers
++        return pid
++
++    def second(self, owner, job, marks, backend):
++        self.release(marks, 1)
++        wait_for((marks / "committed-2").exists, "second committed receipt", owner)
++        rows = self.effects(job)
++        equal([row["stage"] for row in rows], [1, 2], "two durable writes")
++        equal(len({row["xid"] for row in rows}), 2, "independent XIDs")
++        equal({row["backend"] for row in rows}, {backend}, "same genuine TLS session")
++        equal(self.warm_idle(), backend, "session reset to idle")
++        equal(self.producer(f"SELECT count(*) FROM pg_locks WHERE pid={backend} AND locktype='advisory'"),
++              "0", "full reset removed session locks")
++        assert self.state(job).startswith("executing:")
++        return rows
++
++    @staticmethod
++    def release(marks, stage):
++        (marks / f"release-{stage}").touch()
++
++    def assert_reaped(self, pid):
++        wait_for(lambda: not Path(f"/proc/{pid}").exists(), f"consuming wait for {pid}")
++
++    def completed(self, owner, job, marks, attempt=1):
++        self.release(marks, 2)
++        wait_for(lambda: self.state(job) == f"completed:{attempt}", "terminal commit", owner)
++
++    def followup(self, owner, name, previous):
++        job, marks, pid = self.start(owner, name)
++        assert pid != previous
++        self.second(owner, job, marks, self.warm_idle())
++        self.completed(owner, job, marks)
++        return pid
++
++    def reuse(self, owner):
++        backend = self.ready(owner)
++        equal(self.children(owner), set(), "cold idle has no child")
++        job, marks, pid = self.start(owner, "first")
++        env = Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
++        allowed = {b"MESH_SCHEDULER_MIN_WORKERS=1", b"MESH_SCHEDULER_MAX_WORKERS=1", b""}
++        if self.env.get("MESH_DIAGNOSTIC_JOB_DISABLE_THP") == "1":
++            allowed.add(b"MESH_DIAGNOSTIC_JOB_DISABLE_THP=1")
++        equal(set(env), allowed, "credential-free executable")
++        self.second(owner, job, marks, backend)
++        self.completed(owner, job, marks)
++        equal(self.children(owner), {pid}, "exact PID retained on success")
++        fd_count = len(list(Path(f"/proc/{pid}/fd").iterdir()))
++        for sample in range(3):
++            job, marks, next_pid = self.start(owner, f"reuse-{sample}")
++            equal(next_pid, pid, "same child on sequential claims")
++            self.second(owner, job, marks, backend)
++            self.completed(owner, job, marks)
++            equal(len(list(Path(f"/proc/{pid}/fd").iterdir())), fd_count, "idle has no attempt descriptors")
++        marks = self.markdir("unlisted")
++        job = self.enqueue(owner, marks, "strict version", version=2)
++        wait_for((marks / "committed-1").exists, "strict fallback entered", owner)
++        strict_pid = self.active_pid(owner, STRICT_ARG)
++        self.second(owner, job, marks, backend)
++        self.completed(owner, job, marks)
++        self.assert_reaped(strict_pid)
++        self.assert_reaped(pid)
++        equal(self.children(owner), set(), "strict fallback used the same physical slot cap")
++        pid = self.followup(owner, "warm-before-stop", strict_pid)
++        (self.path / "stop").touch()
++        owner.wait(timeout=5)
++        self.assert_reaped(pid)
++        print("reuse/idle/fallback: four claims used one PID, two commits each, unlisted version used a fresh child", flush=True)
++
++    def timeout(self, owner):
++        self.ready(owner)
++        job, marks, pid = self.start(owner, "timeout", timeout_ms=600)
++        wait_for(lambda: self.state(job) == "discarded:1", "timed-out terminal commit", owner)
++        self.assert_reaped(pid)
++        equal([row["stage"] for row in self.effects(job)], [1], "timeout fenced second effect")
++        self.followup(owner, "after-timeout", pid)
++        print("timeout: blocked handler killed and reaped, replacement completed", flush=True)
++
++    def stop_held(self, owner):
++        self.ready(owner)
++        job, _, pid = self.start(owner, "stop-held")
++        (self.path / "stop").touch()
++        owner.wait(timeout=5)
++        self.assert_reaped(pid)
++        equal(self.state(job), "discarded:1", "held attempt settled after stop")
++        equal([row["stage"] for row in self.effects(job)], [1], "held stop allowed only first commit")
++        print("stop during hold: child consumed, no second effect", flush=True)
++
++    def stop_in_flight(self, owner):
++        backend = self.ready(owner)
++        self.producer("SELECT pg_advisory_lock(1782495102, 423)")
++        try:
++            job, marks, pid = self.start(owner, "stop-in-flight", "stop in flight")
++            self.release(marks, 1)
++            wait_for(lambda: self.producer(f"""
++                SELECT pid FROM pg_locks WHERE pid={backend} AND locktype='advisory'
++                AND NOT granted AND objid=423
++                """), "second write inside PostgreSQL", owner)
++            (self.path / "stop").touch()
++            self.assert_reaped(pid)
++            owner.wait(timeout=5)
++            wait_for(lambda: self.producer(f"SELECT count(*) FROM pg_stat_activity WHERE pid={backend}") == "0",
++                     "blocked TLS backend exited before release")
++        finally:
++            self.producer("SELECT pg_advisory_unlock(1782495102, 423)")
++        owner.wait(timeout=5)
++        equal(self.state(job), "discarded:1", "stopped in-flight attempt settled")
++        equal([row["stage"] for row in self.effects(job)], [1], "in-flight effect rolled back")
++        print("stop during in-flight TLS write: child reaped while PostgreSQL lock was held", flush=True)
++
++    def stale(self, owner):
++        self.ready(owner)
++        job, marks, pid = self.start(owner, "stale")
++        self.producer(f"""
++            UPDATE mesh_jobs.jobs SET lease_expires_at_ms=0, lease_token=gen_random_uuid()
++            WHERE id={literal(job)}::uuid
++        """)
++        self.release(marks, 1)
++        self.assert_reaped(pid)
++        equal([row["stage"] for row in self.effects(job)], [1], "old token cannot write stage two")
++        report = wait_for(lambda: (status if (status := self.status()).get("stale_acks") == 1 else None),
++                          "old token settlement rejected", owner)
++        equal(report["finished"], 0, "old attempt had no terminal authority")
++        self.followup(owner, "after-stale", pid)
++        print("stale/lost lease: prior token could neither write nor settle, replacement completed", flush=True)
++
++    def cancelled(self, owner):
++        self.ready(owner)
++        job, marks, pid = self.start(owner, "cancelled")
++        self.producer(f"UPDATE mesh_jobs.jobs SET cancel_requested_at_ms=mesh_jobs.now_ms() WHERE id={literal(job)}::uuid")
++        self.release(marks, 1)
++        wait_for(lambda: self.state(job) == "cancelled:1", "durable cancellation", owner)
++        self.assert_reaped(pid)
++        equal([row["stage"] for row in self.effects(job)], [1], "cancelled claim denied stage two")
++        print("cancel: revoked token's next SQL and settled cancellation", flush=True)
++
++    def crash(self, owner):
++        self.ready(owner)
++        job, _, pid = self.start(owner, "crash")
++        os.kill(pid, signal.SIGKILL)
++        wait_for(lambda: self.state(job) == "discarded:1", "crash terminal commit", owner)
++        self.assert_reaped(pid)
++        equal([row["stage"] for row in self.effects(job)], [1], "crashed handler cannot write")
++        self.followup(owner, "after-crash", pid)
++        print("crash: exact PID reaped before replacement", flush=True)
++
++    def fail_and_retry(self, owner):
++        backend = self.ready(owner)
++        marks = self.markdir("explicit-fail")
++        failed = self.enqueue(owner, marks, "explicit failure")
++        wait_for(lambda: self.state(failed) == "discarded:1", "explicit failure", owner)
++        equal(self.effects(failed), [], "failure issued no calls")
++        equal(self.children(owner), set(), "business failure retired its child")
++        marks = self.markdir("explicit-retry")
++        # Pre-release two holds so both attempts can reach the ordinary return.
++        self.release(marks, 1)
++        self.release(marks, 2)
++        job = self.enqueue(owner, marks, "explicit retry", max_attempts=2)
++        wait_for(lambda: self.state(job) == "completed:2", "business retry completion", owner)
++        rows = self.effects(job)
++        equal([(r["stage"], r["job_attempt"]) for r in rows], [(1, 1), (2, 1)], "retry kept the original commits")
++        equal({r["backend"] for r in rows}, {backend}, "retry retained reset TLS session")
++        print("fail/retry: ordinary Mesh outcome and idempotent durable attempts", flush=True)
++
++    def unsupported(self, owner):
++        backend = self.ready(owner)
++        marks = self.markdir("unsupported")
++        job = self.enqueue(owner, marks, "unsupported actor", max_attempts=2)
++        wait_for((marks / "committed-1").exists, "strict retry admitted after unsupported spawn", owner)
++        equal(self.state(job), "executing:2", "no transparent replay of the first attempt")
++        pid = self.active_pid(owner, STRICT_ARG)
++        self.second(owner, job, marks, backend)
++        self.completed(owner, job, marks, 2)
++        self.assert_reaped(pid)
++        print("unsupported actor: worker version fell back on next durable attempt", flush=True)
++
++    @staticmethod
++    def proc_state(pid):
++        try:
++            return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
++        except FileNotFoundError:
++            return None
++
++    def spin(self, owner, directory, label, timeout_ms):
++        job = self.enqueue(owner, directory, label, timeout_ms=timeout_ms)
++        wait_for((directory / "spinning").exists, "CPU-bound handler entered", owner)
++        return job, self.active_pid(owner)
++
++    def frozen_hard_deadline(self, owner):
++        self.ready(owner)
++        marks = self.markdir("hard-deadline")
++        job, pid = self.spin(owner, marks, "frozen hard deadline", 1100)
++        owner.send_signal(signal.SIGSTOP)
++        try:
++            wait_for(lambda: self.proc_state(owner.pid) == "T", "supervisor stopped")
++            wait_for(lambda: self.proc_state(pid) == "Z", "child watchdog expired hard deadline")
++            equal(self.state(job), "executing:1", "frozen supervisor did not settle")
++            equal([r["stage"] for r in self.effects(job)], [1], "hard expiry after first effect")
++        finally:
++            owner.send_signal(signal.SIGCONT)
++        self.assert_reaped(pid)
++        wait_for(lambda: self.state(job) == "discarded:1", "timeout settled after restart", owner)
++        reason = self.producer(f"SELECT errors->0->>'reason' FROM mesh_jobs.jobs WHERE id={literal(job)}::uuid")
++        equal(reason, "job handler timed out", "hard watchdog exit classification")
++        print("frozen supervisor: CPU-bound child independently expired its hard deadline", flush=True)
++
++    def frozen_confirmed_lease(self, owner):
++        backend = self.ready(owner)
++        first_job, marks, reused = self.start(owner, "warm-for-lease")
++        self.second(owner, first_job, marks, backend)
++        self.completed(owner, first_job, marks)
++        time.sleep(1.9)
++        equal(self.proc_state(reused), "S", "previous generation expired while healthy worker was idle")
++
++        marks = self.markdir("confirmed-lease")
++        job, pid = self.spin(owner, marks, "frozen confirmed lease", 20_000)
++        equal(pid, reused, "short-lease proof actually reused the worker")
++        scope = f"WHERE id={literal(job)}::uuid"
++        def expiry():
++            return int(self.producer(f"SELECT lease_expires_at_ms FROM mesh_jobs.jobs {scope}"))
++        initial = expiry()
++        wait_for(lambda: expiry() >= initial + 1000, "durably confirmed renewal", owner)
++        # Let the dispatcher deliver the confirmed lease, then freeze all its threads.
++        time.sleep(0.12)
++        owner.send_signal(signal.SIGSTOP)
++        try:
++            wait_for(lambda: self.proc_state(owner.pid) == "T", "lease supervisor stopped")
++            confirmed = expiry()
++            assert confirmed >= initial + 1000
++            wait_for(lambda: int(self.producer("SELECT mesh_jobs.now_ms()")) > initial + 50,
++                     "prior confirmed lease expired")
++            assert self.proc_state(pid) in {"R", "S"}, "renewal did not extend the live current generation"
++            wait_for(lambda: self.proc_state(pid) == "Z", "latest confirmed lease independently expired")
++            equal(self.state(job), "executing:1", "frozen supervisor did not settle expired lease")
++            equal([r["stage"] for r in self.effects(job)], [1], "expired child issued no second write")
++        finally:
++            owner.send_signal(signal.SIGCONT)
++        self.assert_reaped(pid)
++        self.followup(owner, "after-confirmed-lease", pid)
++        print("frozen supervisor: reused PID ignored stale LIMIT/RENEW, honored current confirmed lease", flush=True)
++
++    def expired_before_entry(self, owner):
++        self.ready(owner)
++        marks = self.markdir("pre-entry")
++        job = self.enqueue(owner, marks, "did not enter", timeout_ms=450)
++        pid = wait_for(lambda: next(iter(self.children(owner)), None), "worker received assignment", owner)
++        wait_for(lambda: self.proc_state(pid) == "Z", "deadline elapsed before context transmission")
++        self.assert_reaped(pid)
++        wait_for(lambda: self.state(job) == "discarded:1", "pre-entry deadline settled", owner)
++        equal(list(marks.iterdir()), [], "handler never entered")
++        equal(self.effects(job), [], "no effect before entry")
++        print("pre-entry expiry: child watchdog armed on receipt before context read", flush=True)
++
++    def unknown(self, owner):
++        self.ready(owner)
++        job, marks, pid = self.start(owner, "unknown", max_attempts=2)
++        self.release(marks, 1)
++        wait_for(lambda: self.state(job) == "retryable:1", "unknown receipt settlement", owner)
++        self.assert_reaped(pid)
++        self.unknown_rows = self.effects(job)
++        self.unknown_job = job
++        equal([row["stage"] for row in self.unknown_rows], [1, 2], "both PG commits survived lost receipt")
++        equal((marks / "committed-2").exists(), False, "worker received no second receipt")
++        equal(len({row["xid"] for row in self.unknown_rows}), 2, "independent uncertain commit")
++        (marks / "committed-1").unlink()
++        print("unknown: second receipt dropped after its SQL commit and reset, child reaped", flush=True)
++
++    def recover_unknown(self, owner):
++        backend = self.ready(owner)
++        marks = self.path / "unknown"
++        wait_for((marks / "committed-2").exists, "replacement handled prior committed write", owner)
++        equal(self.effects(self.unknown_job), self.unknown_rows, "replacement did not duplicate writes")
++        equal(self.warm_idle(), backend, "replacement session clean")
++        self.completed(owner, self.unknown_job, marks, 2)
++        print("unknown retry: prior commits kept their exact XIDs", flush=True)
++
++
++if __name__ == "__main__":
++    scratch, binary, fault = map(lambda raw: Path(raw).resolve(), sys.argv[1:])
++    TrustedProof(scratch, binary, fault).run()
+diff --git a/scripts/fixtures/jobs-trusted-worker/run-native.sh b/scripts/fixtures/jobs-trusted-worker/run-native.sh
+new file mode 100755
+index 00000000..d08d0a2d
+--- /dev/null
++++ b/scripts/fixtures/jobs-trusted-worker/run-native.sh
+@@ -0,0 +1,36 @@
++#!/bin/bash
++# Run as the same unprivileged account used by the native matrix.
++set -euo pipefail
++src="${1:?source checkout}"
++out="${2:?proof directory}"
++export PATH="${PG_BIN_DIR:?pinned PostgreSQL bin}:/usr/bin:/bin"
++export LC_ALL=C.UTF-8
++umask 077
++test "$(id -u)" != 0
++db="$(mktemp -d "$out/private.XXXXXX")"
++PORT=55431
++cleanup() {
++    pg_ctl -D "$db/data" -w -t 10 -m fast stop >/dev/null 2>&1 || :
++    rm -rf -- "$db"
++}
++trap cleanup EXIT
++mkdir -p "$out/results" "$db/pgsocket"
++openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=mesh-worker-execution-proof \
++    -keyout "$db/ca.key" -out "$out/results/ca.crt" > "$db/openssl.log" 2>&1
++openssl req -newkey rsa:2048 -nodes -subj /CN=127.0.0.1 \
++    -keyout "$db/server.key" -out "$db/server.csr" >> "$db/openssl.log" 2>&1
++printf '%s\n' 'subjectAltName=IP:127.0.0.1' > "$db/server.ext"
++openssl x509 -req -in "$db/server.csr" -CA "$out/results/ca.crt" -CAkey "$db/ca.key" \
++    -CAserial "$db/ca.srl" -CAcreateserial -days 1 -extfile "$db/server.ext" \
++    -out "$db/server.crt" >> "$db/openssl.log" 2>&1
++initdb -D "$db/data" -A trust --locale=C --encoding=UTF8 -U postgres
++printf '%s\n' 'local all postgres trust' 'hostssl all all 127.0.0.1/32 scram-sha-256' > "$db/data/pg_hba.conf"
++pg_ctl -D "$db/data" -w -t 15 -l "$db/postgres.log" -o \
++    "-p $PORT -h 127.0.0.1 -k $db/pgsocket -c ssl=on -c ssl_cert_file=$db/server.crt -c ssl_key_file=$db/server.key -c fsync=on -c synchronous_commit=on -c track_commit_timestamp=on" start
++test "$(psql -XqAtw -h "$db/pgsocket" -p "$PORT" -U postgres -c 'SHOW server_version_num')" = 170011
++secret="$(openssl rand -hex 24)"
++printf "ALTER ROLE postgres PASSWORD '%s';\nCREATE DATABASE mesh_jobs_proof;\n" "$secret" |
++    psql -XqAtw -h "$db/pgsocket" -p "$PORT" -U postgres -v ON_ERROR_STOP=1 >/dev/null
++export MESH_TEST_DATABASE_URL="postgresql://postgres:$secret@127.0.0.1:$PORT/mesh_jobs_proof?sslmode=verify-full&sslrootcert=$out/results/ca.crt"
++python3 -Bu "$src/scripts/fixtures/jobs-trusted-worker/prove.py" \
++    "$out/results" "$out/trusted-effects" "$out/drop-receipt.so"
+diff --git a/tools/durable-jobs-bench/native/arm.py b/tools/durable-jobs-bench/native/arm.py
+index 6e43917f..d31fca86 100644
+--- a/tools/durable-jobs-bench/native/arm.py
++++ b/tools/durable-jobs-bench/native/arm.py
+@@ -201,6 +201,9 @@ def run_arm(args, out, state, artifacts):
+         raise ValueError("invalid phase for this profile")
+     if args.local_smoke and phase != "diagnostic":
+         raise ValueError("local component smoke requires diagnostic phase")
++    execution = os.environ.get("NATIVE_JOBS_MESH_EXECUTION", "strict")
++    if execution not in {"strict", "trusted-persistent"} or (engine != "mesh" and execution != "strict"):
++        raise ValueError("invalid Mesh execution mode")
+     before = host_snapshot()
+     h.write_json(out / "host-before.json", before)
+     if not args.local_smoke:
+@@ -219,7 +222,8 @@ def run_arm(args, out, state, artifacts):
+             raise RuntimeError(f"artifact failed SHA-256 check: {name}")
+     h.write_json(out / "build.json", build)
+     h.write_json(out / "invocation.json", dict(engine=engine, profile=profile, phase=phase,
+-                                               local_smoke=args.local_smoke))
++                                               local_smoke=args.local_smoke,
++                                               mesh_execution=execution if engine == "mesh" else None))
+     if engine == "mesh":
+         if not re.fullmatch(r"[0-9a-f]{40}", build["version"]) or build.get("base_revision") != MESH_REVISION:
+             raise RuntimeError("wrong Mesh runtime lineage")
+@@ -234,6 +238,7 @@ def run_arm(args, out, state, artifacts):
+     cluster = None
+     try:
+         cluster = Cluster(scratch, out, cap)
++        cluster.mesh_execution = execution
+         cluster.runners, cluster.slots, cluster.lanes, cluster.hold_ms = runners, slots, lanes, workload["hold_ms"]
+         inetrc = artifacts / "oban.inetrc"
+         cluster.proof_config = {
+@@ -258,7 +263,8 @@ def run_arm(args, out, state, artifacts):
+         else:
+             env.update(JOBS_PARITY_MESH_BATCH="1", JOBS_PARITY_MESH_LISTEN="1",
+                        MESH_EFFECT_LANES=str(lanes), MESH_EFFECT_APP_URL=cluster.url("mesh", "compiled_caller"),
+-                       MESH_DIAGNOSTIC_JOB_DISABLE_THP="1")
++                       MESH_DIAGNOSTIC_JOB_DISABLE_THP="1",
++                       JOBS_PARITY_MESH_EXECUTION=execution)
+         subject = Subject(engine, [str(command)], artifacts, cluster, env)
+         metrics = h.run_trial(subject, h.allocate_slots(runners, slots), workload,
+                               batches, scratch, out, settings, 0)
+@@ -268,6 +274,23 @@ def run_arm(args, out, state, artifacts):
+             raise RuntimeError("completed job count differs from frozen input")
+         if profile == "sparse" and metrics["peak_connections"] != (5 if engine == "mesh" else 4):
+             raise RuntimeError("sparse sampled connection count differs from frozen topology")
++        if engine == "mesh":
++            pids = {job["worker_pid"] for job in cluster.jobs}
++            if any(type(pid) is not int or pid < 1 for pid in pids):
++                raise RuntimeError("Mesh worker PID ledger is incomplete")
++            reused = len(pids) < len(cluster.jobs)
++            if reused != (execution == "trusted-persistent"):
++                raise RuntimeError("Mesh worker PID evidence disagrees with execution mode")
++            residence = [max(0, job["settled_us"] - job["claimed_us"]) / 1000 for job in cluster.jobs]
++            h.write_json(out / "mesh-execution.json", {
++                "mode": execution,
++                "claim_to_terminal_p50_ms": h.percentile(residence, 0.50),
++                "claim_to_terminal_p99_ms": h.percentile(residence, 0.99),
++                "jobs": len(cluster.jobs),
++                "distinct_worker_pids": len(pids),
++                "runner_and_reaped_children_cpu_seconds":
++                    metrics["cpu_seconds_per_job"] * metrics["completed"],
++            })
+         database = database_settings(cluster, engine)
+         h.write_json(out / "postgres-settings.json", database)
+         row = dict(metrics, profile=profile, phase=phase, runners=runners, slots=slots,
+diff --git a/tools/durable-jobs-bench/native/build b/tools/durable-jobs-bench/native/build
+index b9ca0f3e..0d4afda0 100755
+--- a/tools/durable-jobs-bench/native/build
++++ b/tools/durable-jobs-bench/native/build
+@@ -29,6 +29,9 @@ fixture="$root/scripts/fixtures/jobs-parity-oban"
+ if [[ "$engine" != oban ]]; then
+     mkdir "$out/mesh-source"
+     tar -xOf "$archive" frozen-fixture/main.mpl > "$out/mesh-source/main.mpl"
++    if [[ "${NATIVE_JOBS_TRUSTED_FIXTURE:-0}" == 1 ]]; then
++        python3 -B "$here/configure-trusted-mesh.py" "$out/mesh-source/main.mpl"
++    fi
+     tar -xOf "$archive" frozen-fixture/worker_identity.mpl > "$out/mesh-source/worker_identity.mpl"
+     cat > "$out/mesh-source/worker_identity.c" <<'C'
+ #define _POSIX_C_SOURCE 200809L
+diff --git a/tools/durable-jobs-bench/native/configure-trusted-mesh.py b/tools/durable-jobs-bench/native/configure-trusted-mesh.py
+new file mode 100644
+index 00000000..f23ad355
+--- /dev/null
++++ b/tools/durable-jobs-bench/native/configure-trusted-mesh.py
+@@ -0,0 +1,21 @@
++"""Change only runner admission in the frozen compiled fixture."""
++from pathlib import Path
++import sys
++
++path = Path(sys.argv[1])
++source = path.read_text()
++anchor = '  let registry = Json.parse('
++assert source.count(anchor) == 1
++source = source.replace(
++    '  let effects_config = ',
++    '  let effects_base_config = ',
++)
++assert source.count('  let effects_base_config = ') == 1
++source = source.replace(anchor, r'''  let effects_config = if Env.get("JOBS_PARITY_MESH_EXECUTION", "strict") == "trusted-persistent" do
++    String.slice(effects_base_config, 0, String.length(effects_base_config) - 1) <>
++      ""","trusted_persistent_workers":[{"worker":"parity","version":1}]}"""
++  else
++    effects_base_config
++  end
++''' + anchor)
++path.write_text(source)
+diff --git a/tools/durable-jobs-bench/native/run b/tools/durable-jobs-bench/native/run
+index 280cab65..96f24027 100755
+--- a/tools/durable-jobs-bench/native/run
++++ b/tools/durable-jobs-bench/native/run
+@@ -21,6 +21,7 @@ env_args=(env -i
+     LC_ALL=C.UTF-8 "PG_BIN_DIR=$tool/pgsql-17.11/bin"
+     ERL_CRASH_DUMP=/dev/null
+     "DURABLE_JOBS_PHASE=${DURABLE_JOBS_PHASE:-diagnostic}"
++    "NATIVE_JOBS_MESH_EXECUTION=${NATIVE_JOBS_MESH_EXECUTION:-strict}"
+     "NATIVE_JOBS_STATE=$base" "NATIVE_JOBS_ARTIFACTS=$artifact")
+ 
+ # SSH starts in /root, which the producer cannot traverse after dropping UID.
+@@ -31,6 +32,6 @@ if [[ "$(id -u)" == 0 ]]; then
+     [[ -d "$out" && -z "$(find "$out" -mindepth 1 -maxdepth 1 -print -quit)" ]]
+     chown nobody:nogroup "$out"
+     chmod 0700 "$out"
+-    exec runuser -u nobody -- "${env_args[@]}" python3 -B "$here/arm.py" "$engine" "$profile" "$out"
++    exec /usr/sbin/runuser -u nobody -- "${env_args[@]}" python3 -B "$here/arm.py" "$engine" "$profile" "$out"
+ fi
+ exec "${env_args[@]}" python3 -B "$here/arm.py" "$engine" "$profile" "$out"

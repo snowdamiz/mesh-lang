@@ -1,0 +1,146 @@
+{
+  "go-default": {
+    "column_bytes": 8431616,
+    "completed": 512,
+    "compression_counts": {
+      "None": 512
+    },
+    "effect_commits": 512,
+    "failed": 0,
+    "heap_bytes": 172032,
+    "ledger_sha256": "bc2dd25b6df36fccef168755667dea4198df347c8b55c3be140162eeaa3d9e7a",
+    "payload_receipt_sha256": "f2d26cb5bafaf4c0962bd91c72fed015c6fb5ace1cdf25a8f3d66b0aff8f7dcf",
+    "peak_connections": 67,
+    "producer_ack_ms": 313.128,
+    "rss_available": false,
+    "toast_heap_bytes": 8740864,
+    "total_bytes": 9699328
+  },
+  "go-external": {
+    "column_bytes": 8431616,
+    "completed": 512,
+    "compression_counts": {
+      "None": 512
+    },
+    "effect_commits": 512,
+    "failed": 0,
+    "heap_bytes": 180224,
+    "ledger_sha256": "f8496c843f377b28114eb21ecb3148084c1b52b205cc4d7dd2a1b446dd4a0300",
+    "payload_receipt_sha256": "f09e6c73a95123841fc09b5f45316bd43c755c9e5bf7ccc4e95835efbfaf8e95",
+    "peak_connections": 67,
+    "producer_ack_ms": 181.048,
+    "rss_available": false,
+    "toast_heap_bytes": 8740864,
+    "total_bytes": 9715712
+  },
+  "mesh-default": {
+    "bulk_calls": 8,
+    "bulk_rows": 504,
+    "column_bytes": 8431616,
+    "completed": 512,
+    "compression_counts": {
+      "None": 512
+    },
+    "effect_commits": 512,
+    "failed": 0,
+    "heap_bytes": 196608,
+    "ledger_sha256": "c76c868c63d2dd36a598b14fd7aa60f50389afd9d3f012836816f963a67da328",
+    "payload_receipt_sha256": "36b63ee71718cc9d14774e385797cc284e3321e8b9f5107a596b246c81e0add6",
+    "peak_committed_holds": 64,
+    "peak_connections": 13,
+    "producer_ack_ms": 430.451,
+    "producer_sql_exec_ms": 236.139085,
+    "producer_sql_wal_bytes": 9624922,
+    "scalar_calls": 8,
+    "scalar_rows": 8,
+    "toast_heap_bytes": 8740864,
+    "total_bytes": 9412608
+  },
+  "mesh-external": {
+    "bulk_calls": 8,
+    "bulk_rows": 504,
+    "column_bytes": 8431616,
+    "completed": 512,
+    "compression_counts": {
+      "None": 512
+    },
+    "effect_commits": 512,
+    "failed": 0,
+    "heap_bytes": 196608,
+    "ledger_sha256": "b2133389976b854773319431e026e082a211a885cac14883e2c89bd630bb0ccc",
+    "payload_receipt_sha256": "e37ca941f9b509599ec37a849486813a2ea502b5a58326c659402288b30cc9f3",
+    "peak_committed_holds": 64,
+    "peak_connections": 13,
+    "producer_ack_ms": 145.025,
+    "producer_sql_exec_ms": 62.39083299999999,
+    "producer_sql_wal_bytes": 9612150,
+    "scalar_calls": 8,
+    "scalar_rows": 8,
+    "toast_heap_bytes": 8740864,
+    "total_bytes": 9363456
+  },
+  "oban-default": {
+    "column_bytes": 8431616,
+    "completed": 512,
+    "compression_counts": {
+      "None": 512
+    },
+    "effect_commits": 512,
+    "failed": 0,
+    "heap_bytes": 516096,
+    "ledger_sha256": "949db6efc72bbe9a9d0974c560acb85d02cdc240d876edec70bb437a211b23a2",
+    "payload_receipt_sha256": "8ec6f2b401c072b2cc213b027445abc0839b147b1bd547559d5ce5e0be8fb72a",
+    "peak_connections": 67,
+    "producer_ack_ms": 253.589,
+    "toast_heap_bytes": 8740864,
+    "total_bytes": 10084352
+  },
+  "oban-external": {
+    "column_bytes": 8431616,
+    "completed": 512,
+    "compression_counts": {
+      "None": 512
+    },
+    "effect_commits": 512,
+    "failed": 0,
+    "heap_bytes": 376832,
+    "ledger_sha256": "5866f8abfd991fb425db43f6f0bc723b88e0f4f724d924fc67351287fb1f6ed3",
+    "payload_receipt_sha256": "f26b19aa65d920b0414cad4a64379cf39e73914e7525d2fe63bfc499c96a5a06",
+    "peak_connections": 67,
+    "producer_ack_ms": 496.909,
+    "toast_heap_bytes": 8740864,
+    "total_bytes": 9961472
+  },
+  "rust-default": {
+    "column_bytes": 8422400,
+    "completed": 512,
+    "compression_counts": {
+      "None": 512
+    },
+    "effect_commits": 512,
+    "failed": 0,
+    "heap_bytes": 253952,
+    "ledger_sha256": "fbd8f7e6a8884c09fcb35e6cf08d6fc2100f6f63889970cf64a689a8204affee",
+    "payload_receipt_sha256": "5f434e9258165bf09e47a2050007ce2570b79bd3e931876f365b3f1d56430476",
+    "peak_connections": 67,
+    "producer_ack_ms": 598.886,
+    "toast_heap_bytes": 8740864,
+    "total_bytes": 9494528
+  },
+  "rust-external": {
+    "column_bytes": 8422400,
+    "completed": 512,
+    "compression_counts": {
+      "None": 512
+    },
+    "effect_commits": 512,
+    "failed": 0,
+    "heap_bytes": 245760,
+    "ledger_sha256": "33cd618eba3cac2d9446b76ec339828883850cd10a9f169caed2ba706dff7e6d",
+    "payload_receipt_sha256": "afeaf3c5b54dfbb450c81f8142bc7d9967789dbf3a6d223b6579fda088792a6a",
+    "peak_connections": 67,
+    "producer_ack_ms": 186.915,
+    "toast_heap_bytes": 8740864,
+    "total_bytes": 9486336
+  }
+}

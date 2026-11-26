@@ -1,0 +1,9 @@
+{
+  "different_file_digests": [
+    "libworker_identity.a",
+    "mesh",
+    "mesh.toml"
+  ],
+  "matching_native_object": true,
+  "matching_source_compiler_runtime": true
+}

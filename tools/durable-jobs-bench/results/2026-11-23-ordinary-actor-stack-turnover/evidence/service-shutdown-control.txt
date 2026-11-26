@@ -1,0 +1,6 @@
+Both arms linked the same standalone source with the pinned release compiler and
+its default optimization level. The two new processes ran with an eight-second
+diagnostic timeout. The workspace service test subsequently passed.
+
+('stock', 8.029004833020736, 'timeout', b'main done\n', None)
+('reuse', 8.021182333002798, 'timeout', b'main done\n', None)

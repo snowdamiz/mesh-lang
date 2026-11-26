@@ -1,0 +1,11 @@
+{
+  "args_compression": "",
+  "args_storage": "x",
+  "default_toast_compression": "pglz",
+  "max_connections": 20,
+  "shared_buffers": "128MB",
+  "storage": "default",
+  "topology": "stock",
+  "wal_compression": "off",
+  "work_mem": "4MB"
+}

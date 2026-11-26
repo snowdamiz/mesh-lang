@@ -1,0 +1,25 @@
+{
+  "archives": {
+    "optimized-a": "18ba3533d79af84fb95d145c3e98bc3ccdc75e188bcc6a30cf158fcd4526a6c9",
+    "optimized-b": "18ba3533d79af84fb95d145c3e98bc3ccdc75e188bcc6a30cf158fcd4526a6c9",
+    "stock": "40a909087b5f132cd8d327dc330037829bcc6668f906372d7adbe33329304885",
+    "stock-b": "61d3854798d32a03e08949953d3b8e4eba7178fc379e44adc729adfe856c8f37"
+  },
+  "base": "29abb9cbe97999029dd6383edce67a09fe11de5f",
+  "compiler": "271091a95f8468d8048c0a1b0f0547d77bde87e7df6372df4a8b5baf85b20d77",
+  "cpus": 15,
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "jobs": {
+    "optimized-a": "abb21a171c610821da6b2a36a3f12a4142448131f850b75793d980c707c8e1dc",
+    "optimized-b": "a6cee94368c29409a2625eae092400a1b5b56c5c184ab45c627424a15f32335e",
+    "stock": "acefd274af5cbf0513589d7be00b4aeae23125a88b4873924c00534b3afd273c",
+    "stock-b": "1d0cc77e61af718a215f76b939ec75c19403b35948bc480ec3b28fc1fafb111d"
+  },
+  "mesh": {
+    "optimized-a": "e6a44031e5fc110f20e74429ddcb920b23d04ce33e81b88b1182be157213c470",
+    "optimized-b": "d87b7755ffa1be57a44b316763ff3ec36072a4afdb5b5d6d0a774138be4e2066",
+    "stock": "8b1ac3c4ec7fefca5ef6137be068fe1366c1afa367d4341645265fd842b3e8f3",
+    "stock-b": "34c8768d6a4c033899bdbe68a09317fae5b6795b2a09db51fa188adcb5da34a7"
+  },
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n"
+}

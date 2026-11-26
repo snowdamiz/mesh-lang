@@ -1,0 +1,14 @@
+{"offset_ms":0.000333,"idle":true,"all_connections_tls":true,"connections":4,"database_running_rows":0,"terminal":0,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":3002.308042,"idle":true,"all_connections_tls":true,"connections":4,"database_running_rows":0,"terminal":0,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":3235.765167,"idle":false,"all_connections_tls":true,"connections":4,"database_running_rows":0,"terminal":0,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":3336.134917,"idle":false,"all_connections_tls":true,"connections":66,"database_running_rows":64,"terminal":0,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":3436.817417,"idle":false,"all_connections_tls":true,"connections":66,"database_running_rows":128,"terminal":0,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":3559.077708,"idle":false,"all_connections_tls":true,"connections":67,"database_running_rows":64,"terminal":128,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":3659.888583,"idle":false,"all_connections_tls":true,"connections":67,"database_running_rows":123,"terminal":128,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":3761.398583,"idle":false,"all_connections_tls":true,"connections":67,"database_running_rows":82,"terminal":233,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":3862.807667,"idle":false,"all_connections_tls":true,"connections":67,"database_running_rows":93,"terminal":277,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":3964.37875,"idle":false,"all_connections_tls":true,"connections":67,"database_running_rows":149,"terminal":277,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":4065.650208,"idle":false,"all_connections_tls":true,"connections":67,"database_running_rows":28,"terminal":426,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":4167.253708,"idle":false,"all_connections_tls":true,"connections":67,"database_running_rows":86,"terminal":426,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":4268.814583,"idle":false,"all_connections_tls":true,"connections":67,"database_running_rows":86,"terminal":426,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}
+{"offset_ms":4370.11725,"idle":false,"all_connections_tls":true,"connections":67,"database_running_rows":0,"terminal":512,"processes":1,"threads":0,"rss_bytes":0,"host_load_average_1m":0}

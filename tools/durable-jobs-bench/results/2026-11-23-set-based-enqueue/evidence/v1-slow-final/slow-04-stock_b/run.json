@@ -1,0 +1,16 @@
+{
+  "arm": "stock_b",
+  "backend_cpu_ms": 373.8629583333333,
+  "bulk_calls": 0,
+  "commit_ms": 4676.435,
+  "group": 4,
+  "load": [
+    194.6865234375,
+    102.7939453125,
+    72.86279296875
+  ],
+  "producer_cpu_ms": 107.77245833333333,
+  "profile": "slow",
+  "scalar_calls": 512,
+  "wall_ms": 4677.262833
+}

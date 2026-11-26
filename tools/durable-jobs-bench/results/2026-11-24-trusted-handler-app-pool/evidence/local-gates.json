@@ -1,0 +1,119 @@
+{
+  "archived_native_ledgers": {
+    "equal_dense": 10,
+    "exit_confirmed": 4,
+    "v1_short": 5
+  },
+  "candidate_patch": {
+    "path": "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/candidate.patch",
+    "sha256": "f01bace320a84adc13dae034984d1efc376a3eef9a4a2cbbd80ce9d5577a6931"
+  },
+  "completed": {
+    "fixtures": {
+      "command": "bash replay/link-fixtures.sh <workspace meshc> <workspace libmesh_rt.a> <four staged fixtures> <new output>",
+      "exit_code": 0,
+      "log": {
+        "path": "target/trusted-handler-app-pool/resumed-gates/fixtures.log",
+        "sha256": "ac4cefbb83794c345d23654c23f5a93b81c99b36e0aa80ea2be90def619bd04a"
+      }
+    },
+    "format": {
+      "command": "cargo fmt --all -- --check",
+      "exit_code": 0,
+      "log": {
+        "path": "target/trusted-handler-app-pool/resumed-gates/format.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "semantic": {
+      "command": "bash replay/semantic.sh <semantic binary> <new disposable PG directory> <PostgreSQL 17 bin>",
+      "exit_code": 0,
+      "log": {
+        "path": "target/trusted-handler-app-pool/resumed-gates/semantic.log",
+        "sha256": "2d7e8bbb5b68218a85baa1cf4807b8a5ae0a8ee86a544493d3478c3ddbdb0dc1"
+      }
+    },
+    "semantic-build": {
+      "command": "meshc build <owning scratch semantic project> --output <owning scratch semantic binary>",
+      "exit_code": 0,
+      "log": {
+        "path": "target/trusted-handler-app-pool/resumed-gates/semantic-build.log",
+        "sha256": "e0bebb8ebc677f1a92e144cc0574dca2cd63aff328fcf86384292e78479c195b"
+      }
+    },
+    "teardown": {
+      "command": "cargo test --locked -p mesh-rt --lib owned_actor_reports_exit_after_its_stack_and_registration_are_cleaned_up",
+      "exit_code": 0,
+      "log": {
+        "path": "target/trusted-handler-app-pool/resumed-gates/teardown.log",
+        "sha256": "2fbb8212b5f1056211aa32f20a95ecd292b5be362b591bb1d053510a535973be"
+      }
+    },
+    "typeck": {
+      "command": "cargo test --locked -p mesh-typeck --test jobs",
+      "exit_code": 0,
+      "log": {
+        "path": "target/trusted-handler-app-pool/resumed-gates/typeck.log",
+        "sha256": "91d29ee0c86267e1dd7a20bc1d6403f3c2eff5838e75db1787c8669d9785186c"
+      }
+    },
+    "workspace": {
+      "command": "cargo build --locked --workspace",
+      "exit_code": 0,
+      "log": {
+        "path": "target/trusted-handler-app-pool/resumed-gates/workspace.log",
+        "sha256": "6b56abf34341275b1d19f36b18739a8294662b24bef269b14cbe991f2dbbd870"
+      }
+    }
+  },
+  "host": "Darwin arm64",
+  "offline_scorer": {
+    "inputs": {
+      "noop": {
+        "path": "target/trusted-handler-app-pool/replayed-scorer/noop/raw.tar.gz",
+        "sha256": "cd4eb2d933591db3b35116f9be47ef1adf2e65dd118fcbe82c4eec2646dc54e1"
+      },
+      "short": {
+        "path": "target/trusted-handler-app-pool/replayed-scorer/short/raw.tar.gz",
+        "sha256": "43baf28ae8ccc09a9cb8271065b08c2de87c5add2ef879a29b0d0d1cd691e031"
+      }
+    },
+    "profiles": [
+      "noop",
+      "short"
+    ],
+    "scope": "Schema exercise using pinned historical ledgers and synthetic new envelope fields"
+  },
+  "performance_measurements": [],
+  "previous_run": {
+    "broad_postgres_suite": "interrupted; no suite-wide pass claimed",
+    "live_on_resume": false,
+    "partials": [
+      {
+        "path": "target/trusted-handler-app-pool/postgres-proof.log",
+        "sha256": "c7ae0a29b39a97ee1b75f09115ca970e397555a631604fbe53da2e5a17ea835b"
+      },
+      {
+        "path": "target/trusted-handler-app-pool/workspace-final.log",
+        "sha256": "df5f7aece198c3bd3bdf82fa0e48944b8d3726d4b6870b2234bf4f6fad8dd106"
+      },
+      {
+        "path": "target/trusted-handler-app-pool/link-first.log",
+        "sha256": "fc33f9c805b384e7eea6ba930ed3a4b1478e61c7776d00b2bb24c103e3c4dd94"
+      },
+      {
+        "path": "target/trusted-handler-app-pool/semantic-build-first.log",
+        "sha256": "243a67c8197fa04faa33137bcbdc81ed15b32bc393326514d4f5fff62b2ff63c"
+      }
+    ]
+  },
+  "source_archive": {
+    "path": "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/candidate-source.tar.gz",
+    "sha256": "f10e6683a29f16f1e7e646e6d7e30e6b4011c83200274fc5410a017e7ac6cdda"
+  },
+  "source_replay": {
+    "applied_patch_files": 9,
+    "base": "db5937e7e8988f935e9be16b68a2561c2250cc27",
+    "verified_archive_files": 682
+  }
+}

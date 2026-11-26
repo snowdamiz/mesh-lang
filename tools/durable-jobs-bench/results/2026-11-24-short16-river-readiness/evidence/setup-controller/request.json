@@ -1,0 +1,184 @@
+{
+  "base_commit": "1617e257f26ec7eb3b5996406d0993918d482226",
+  "candidate_elf_sha256": "8176db6dd7731097a2f3df5c8d741335d87ec0c159a45f8dcf93d6a3b0e3b4b0",
+  "command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/controller.py setup",
+  "command_attempts": 1,
+  "comparison": [
+    "r2-off",
+    "river-cold",
+    "oban",
+    "river",
+    "r2-d2",
+    "river-warm",
+    "apalis"
+  ],
+  "controller": "linode-native-stepchange-controller-v1",
+  "controller_entrypoint": "python3 -B tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/slots.py",
+  "cpus": [
+    0,
+    1
+  ],
+  "database_connection_cap": 20,
+  "evidence_destination": "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence",
+  "expected_setup_minutes": 2,
+  "group_plan": [
+    {
+      "group": 1,
+      "order": [
+        "r2-off",
+        "river-cold",
+        "oban",
+        "river",
+        "r2-d2",
+        "river-warm",
+        "apalis"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 2,
+      "order": [
+        "apalis",
+        "river-warm",
+        "r2-d2",
+        "river",
+        "oban",
+        "river-cold",
+        "r2-off"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 3,
+      "order": [
+        "river-warm",
+        "r2-d2",
+        "apalis",
+        "oban",
+        "river-cold",
+        "r2-off",
+        "river"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 4,
+      "order": [
+        "river",
+        "r2-off",
+        "river-cold",
+        "oban",
+        "apalis",
+        "r2-d2",
+        "river-warm"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 5,
+      "order": [
+        "oban",
+        "apalis",
+        "river",
+        "r2-off",
+        "river-warm",
+        "r2-d2",
+        "river-cold"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 6,
+      "order": [
+        "river-cold",
+        "r2-d2",
+        "river-warm",
+        "r2-off",
+        "river",
+        "apalis",
+        "oban"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    }
+  ],
+  "host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "id": "2026-11-24-short16-river-readiness",
+  "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+  "jobs": 128,
+  "offline_check_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/controller.py check",
+  "operator_id": "native-short-warm-river-shared-pool",
+  "pins": {
+    "tools/durable-jobs-bench/go/db.go": "5b46edba58b4bbf318759cef2b5fc5540aae4f5f15b2df9083b875525c89ba85",
+    "tools/durable-jobs-bench/go/evidence.go": "9dc4522dd46ff8787d10d1413528284986d419a091271f0cc8cc0d660f754621",
+    "tools/durable-jobs-bench/go/go.mod": "b50f560f8a406715b0796e6729837fa21b14595a897a33560afd7c590ca840da",
+    "tools/durable-jobs-bench/go/go.sum": "d0b5ac110be4112c71271ad2d3f126667f185f41cff7db605e99a5eb4b3d8f4b",
+    "tools/durable-jobs-bench/go/main.go": "83b2aa2c526d6825ccc6050bdae8ffcb001d5141a25392f9d8391634a41bf579",
+    "tools/durable-jobs-bench/go/readiness.go": "678947d3cd9e5b20c2785792e1f4be526016e55669ad110e1950c5f8cdeadc91",
+    "tools/durable-jobs-bench/go/worker.go": "fcd768adafdb1ba46f2e6a1ef40d5c9328f9fd0785fbff49a3d02d2b9676acc5",
+    "tools/durable-jobs-bench/results/2026-11-23-bulk-enqueue-v2-short/replay/interleave-v2.py": "d30834fa1ca18030edd5df0de5d760ea1952d2b84aa05fb3eae9d2af13825c52",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-completion-writer-native-repair/replay/archived.py": "da00bef5e6076190ecd20baedf03ae05e5f5afdb4f56e2db4065903eedb10e74",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-completion-writer-native-repair/replay/proof.py": "98838da1444e49ec3faf61bcd13763ba04876199c1381df585b36ef62e96a33f",
+    "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/controller-packet.json": "1d2d2e72986e955354ec2dad4d0d28b3af310ce818e908efa85ce9726add3f93",
+    "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/evidence/native-timing/2026-11-24-exit-confirmed-bulk-d2/series.json": "ca6d3950ae7c95bb4bf2b8623370dd834a6d782785ba3ee055a312503174cc01",
+    "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/evidence/native-timing/2026-11-24-exit-confirmed-bulk-d2/summary.json": "97e06255854f384d999f551a7f0f3b67cf6e13b52902855758ff5e0768c9c121",
+    "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/recovery/evidence/exit-bulk-d2-retry-2a241553dc42/qualified-timing.json": "fd720349fdb1985469687d23e68ddb09c11664dffeca3feb1943b019e3d9dc00",
+    "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/recovery/evidence/qualification.json": "c9a26860a9df6c1c9ddf89e5c39abf38602a46500627a7231e03c3ed6200863d",
+    "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/replay/controller.py": "e6ee7d42214c8f01cecef742cedac084227fbfcc04c863519152d1bc95ac44ff",
+    "tools/durable-jobs-bench/results/2026-11-24-exit-confirmed-bulk-d2/replay/qualify.py": "b6b1023a162a2dda9124586b5ababaf612c6da2db561c72ea79fc6e57ec5eae7",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/README.md": "3052deb1ebb40c1874f895c447ca1f7962ae85b05e206bf4d8b7e6949fe812f1",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/build.py": "4485a7ed382e7259db504f7dfc706b216f95aef7686206673d3f2fe7474275e3",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/controller.py": "81d5f901bf525798fda9537f34d7703d0a3557965aa5c6e3eb7fdd87470249fc",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/build.json": "17f57b4a09f901cdab4c741e633c77e817c170312e0aa347bb249f96b2c61645",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/stock-replay.json": "9bb728357de6d9fcbbbaac410e1960dc417ed133450147f6821e433c9aa62474",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/native-install.sh": "60f4cc7ecc68c373cb67102c0de77c449723550c912b4fc25733a9cc90312d6f",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/score.py": "acd645008e9e900ee2fca3cea46d1a70d34b54159cbf8045c3a7c29df79ec815",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/slots.py": "59d753eb9848a9a933bf407a536039e08344758b5349096347e22b29ca56e307",
+    "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/test_score.py": "5f69290f9a0933799a89077d08ecd7c3f0fa04a9365763482f2c714a02f3aeef",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "postgres": "17.11",
+  "prerequisites": "Run behind existing bookings under the sole controller. Require native SETUP replay and a successful fenced release before the mirrored TIMING pair. Require a successful fenced pilot release and both pilot reconciliations before the remaining mirrored pairs.",
+  "profile": "short",
+  "ready": true,
+  "remaining_timing_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/controller.py timing 3 4 5 6",
+  "requested_window_minutes": 8,
+  "runners": 1,
+  "scope": "A distinct short16 steady-service sensitivity. Same River ELF cold and explicit warm, duplicate frozen River, retained checked and hot R2 writer-off, stock Oban and Apalis.",
+  "setup_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/controller.py setup",
+  "slots": 16,
+  "source_sha": "683768553a9da62aff88f1fe5c36746b64370c8852ba6131e6465e002b2812de",
+  "stage_archive": "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/river-linux-amd64.gz",
+  "stage_sha256": "3feb55b437aa04e042bab18ca42964d36842938e66d7a42e256d5b20cb5af4bc",
+  "state": "ready-for-controller",
+  "steady_service_connections": 18,
+  "stock_elf_sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+  "summarize_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/controller.py summarize",
+  "timing_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/controller.py timing 1 2",
+  "timing_grant_id": "2026-11-24-short16-river-readiness",
+  "timing_window_minutes": 20,
+  "verify_setup_command": "python3 -B tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/controller.py verify-setup"
+}

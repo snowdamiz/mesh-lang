@@ -1,0 +1,160 @@
+{
+  "slow": {
+    "backend_cpu_ms:medians": {
+      "bulk": 216.85752083333333,
+      "stock_a": 406.3369583333333,
+      "stock_b": 392.47741666666667
+    },
+    "backend_cpu_ms:stock_a/bulk": {
+      "bulk_wins": 6,
+      "max": 1.9818092547050714,
+      "median": 1.8674005537340785,
+      "min": 1.6175501498758218,
+      "n": 6
+    },
+    "backend_cpu_ms:stock_b/bulk": {
+      "bulk_wins": 6,
+      "max": 1.9421201805071056,
+      "median": 1.8193885893977193,
+      "min": 1.7123837405138844,
+      "n": 6
+    },
+    "calls": {
+      "bulk": [
+        [
+          8,
+          8
+        ]
+      ],
+      "stock_a": [
+        [
+          0,
+          512
+        ]
+      ],
+      "stock_b": [
+        [
+          0,
+          512
+        ]
+      ]
+    },
+    "producer_cpu_ms:medians": {
+      "bulk": 67.68629166666666,
+      "stock_a": 962.2478541666667,
+      "stock_b": 117.29760416666667
+    },
+    "producer_cpu_ms:stock_a/bulk": {
+      "bulk_wins": 6,
+      "max": 16.237693647282942,
+      "median": 14.864499392888668,
+      "min": 11.826471029566866,
+      "n": 6
+    },
+    "producer_cpu_ms:stock_b/bulk": {
+      "bulk_wins": 6,
+      "max": 2.2647198194316296,
+      "median": 1.7905039627501622,
+      "min": 1.3610232804349736,
+      "n": 6
+    },
+    "wall_ms:medians": {
+      "bulk": 2081.6724375000003,
+      "stock_a": 7236.754083,
+      "stock_b": 5457.3881665
+    },
+    "wall_ms:stock_a/bulk": {
+      "bulk_wins": 6,
+      "max": 9.114617527373625,
+      "median": 4.172163190448929,
+      "min": 1.6924811886115807,
+      "n": 6
+    },
+    "wall_ms:stock_b/bulk": {
+      "bulk_wins": 6,
+      "max": 4.201820131471869,
+      "median": 3.236232995997886,
+      "min": 1.5656141559414614,
+      "n": 6
+    }
+  },
+  "small": {
+    "backend_cpu_ms:medians": {
+      "bulk": 7.215708333333333,
+      "stock_a": 7.267270833333333,
+      "stock_b": 6.94825
+    },
+    "backend_cpu_ms:stock_a/bulk": {
+      "bulk_wins": 3,
+      "max": 1.3428238009580729,
+      "median": 1.004459741199041,
+      "min": 0.8077375444979378,
+      "n": 6
+    },
+    "backend_cpu_ms:stock_b/bulk": {
+      "bulk_wins": 3,
+      "max": 1.108933042691883,
+      "median": 0.9870044393678036,
+      "min": 0.8870584178547225,
+      "n": 6
+    },
+    "calls": {
+      "bulk": [
+        [
+          0,
+          2
+        ]
+      ],
+      "stock_a": [
+        [
+          0,
+          2
+        ]
+      ],
+      "stock_b": [
+        [
+          0,
+          2
+        ]
+      ]
+    },
+    "producer_cpu_ms:medians": {
+      "bulk": 0.920229166666668,
+      "stock_a": 2.4075000000000006,
+      "stock_b": 0.8462916666666667
+    },
+    "producer_cpu_ms:stock_a/bulk": {
+      "bulk_wins": 6,
+      "max": 4.399165983046208,
+      "median": 2.513150293063255,
+      "min": 1.0104161602411388,
+      "n": 6
+    },
+    "producer_cpu_ms:stock_b/bulk": {
+      "bulk_wins": 2,
+      "max": 2.1863389539868496,
+      "median": 0.6569968842431558,
+      "min": 0.543110992269921,
+      "n": 6
+    },
+    "wall_ms:medians": {
+      "bulk": 40.9818335,
+      "stock_a": 39.449729,
+      "stock_b": 13.2630625
+    },
+    "wall_ms:stock_a/bulk": {
+      "bulk_wins": 2,
+      "max": 6.382506135901224,
+      "median": 0.7008370748228034,
+      "min": 0.19125325665651646,
+      "n": 6
+    },
+    "wall_ms:stock_b/bulk": {
+      "bulk_wins": 1,
+      "max": 1.676083592529597,
+      "median": 0.37499077975241624,
+      "min": 0.08477443789637465,
+      "n": 6
+    }
+  }
+}

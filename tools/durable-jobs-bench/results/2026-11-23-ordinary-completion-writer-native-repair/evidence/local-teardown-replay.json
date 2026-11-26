@@ -1,0 +1,30 @@
+{
+  "results": {
+    "off": {
+      "after": "completed",
+      "held": "executing",
+      "runner_sha256": "3ba7b99f636eeb7563127df8648164522759ecf1e34542c7ab01c84864a728b4"
+    },
+    "product": {
+      "after": "completed",
+      "held": "executing",
+      "runner_sha256": "c559aaa26dfe93d1acf0ab566c61f57397b867acb96a3c0fa6b25c76f0299da3"
+    },
+    "r1": {
+      "after": "completed",
+      "held": "completed",
+      "runner_sha256": "6b1f16e2ccac4519c68baf85dbeddcaaf5a1b15f03715e7710289bb685ce0ee4"
+    },
+    "v2": {
+      "after": "completed",
+      "held": "completed",
+      "runner_sha256": "7b88415f60494067e646355636d4233c91e05a12b299e6a9110c9af0ab383e3f"
+    },
+    "zero": {
+      "after": "completed",
+      "held": "executing",
+      "runner_sha256": "3ba7b99f636eeb7563127df8648164522759ecf1e34542c7ab01c84864a728b4"
+    }
+  },
+  "scope": "archived local macOS witnesses"
+}

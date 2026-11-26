@@ -1,0 +1,23 @@
+{
+  "acknowledged_us": 1795466751816088,
+  "backend_cpu_ms": 0.770583333333331,
+  "producer_cpu_ms": 0.321041666666666,
+  "response": {
+    "count": 1,
+    "ids": {
+      "job_000013": "417890f9-956f-4b96-b090-b9ec500397ab"
+    },
+    "receipts": [
+      {
+        "conflict": false,
+        "effect_key": "417890f9-956f-4b96-b090-b9ec500397ab/1",
+        "id": "417890f9-956f-4b96-b090-b9ec500397ab",
+        "inserted": true,
+        "state": "available"
+      }
+    ],
+    "xid": "2408"
+  },
+  "submitted_us": 1795466751814263,
+  "wall_ms": 1.823417
+}

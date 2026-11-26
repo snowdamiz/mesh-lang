@@ -1,0 +1,15 @@
+{
+  "server_version_num": 170011,
+  "user": "parity_subject",
+  "tls": true,
+  "tls_version": "TLSv1.3",
+  "synchronous_commit": true,
+  "fsync": true,
+  "full_page_writes": true,
+  "track_commit_timestamp": true,
+  "max_connections": 68,
+  "database_connection_limit": 68,
+  "reserved_connections": 0,
+  "superuser_reserved_connections": 0,
+  "other_client_backends": 0
+}

@@ -1,0 +1,21 @@
+{
+  "after_callback_state": {
+    "attempt": 1,
+    "attempt_xid": "760",
+    "effect_xid": "761",
+    "job_xid": "762",
+    "state": "completed"
+  },
+  "broker_sha256": "25f1f9bb0bee23a14e93d0090a01f394f49ccea6515eb791ccd143dfd7942ba8",
+  "callback_held_witness": "entered present and finished absent before release",
+  "held_callback_state": {
+    "attempt": 1,
+    "attempt_xid": "760",
+    "effect_xid": "761",
+    "job_xid": "762",
+    "state": "completed"
+  },
+  "mode": "r1",
+  "normal_exit": true,
+  "runner_sha256": "6b1f16e2ccac4519c68baf85dbeddcaaf5a1b15f03715e7710289bb685ce0ee4"
+}

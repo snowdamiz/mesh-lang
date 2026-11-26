@@ -1,0 +1,14 @@
+{
+  "group": 3,
+  "order": [
+    "oban",
+    "river",
+    "admission-v3",
+    "apalis",
+    "current"
+  ],
+  "phases": [
+    "measured"
+  ],
+  "profile": "short"
+}

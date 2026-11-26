@@ -1,0 +1,29 @@
+Linux 6.12.115-0-virt aarch64
+Python 3.11.18
+711 0 /var/tmp/mesh-durable-jobs-matrix
+711 0 /var/tmp/mesh-durable-jobs-matrix/app-pool-v1
+644 0 /var/tmp/mesh-durable-jobs-matrix/app-pool-v1/native-arm.py
+644 0 /var/tmp/mesh-durable-jobs-matrix/app-pool-v1/topology_arm.py
+ea6cd1a715e303b6f36847a95947f3b7bef16ac2722b6ad6fa00142f6fa50915  /var/tmp/mesh-durable-jobs-matrix/app-pool-v1/native-arm.py
+7cf3f626f9e242ed176c69e0577ef89fb7439f6b2bf7c1332e0545fdaebfaee5  /var/tmp/mesh-durable-jobs-matrix/app-pool-v1/topology_arm.py
+uid=65534(nobody) gid=65534(nobody) groups=65534(nobody)
+ls: can't open '/var/tmp/mesh-durable-jobs-matrix/app-pool-v1': Permission denied
+Traceback (most recent call last):
+  File "/var/tmp/mesh-durable-jobs-matrix/app-pool-v1/native-arm.py", line 11, in <module>
+    from topology_arm import CAPS, SESSIONS, load_arm
+ModuleNotFoundError: No module named 'topology_arm'
+APP_POOL_ORIGINAL_IMPORT_FAILURE_REPRODUCED
+711 0 /var/tmp/mesh-durable-jobs-matrix/app-pool-v1-import-fix
+644 0 /var/tmp/mesh-durable-jobs-matrix/app-pool-v1-import-fix/native-arm.py
+644 0 /var/tmp/mesh-durable-jobs-matrix/app-pool-v1-import-fix/topology_arm.py
+ccfe998d8f33dab1550c1907d01b6012a5d9b2197774df470913127cb6db3368  /var/tmp/mesh-durable-jobs-matrix/app-pool-v1-import-fix/native-arm.py
+7cf3f626f9e242ed176c69e0577ef89fb7439f6b2bf7c1332e0545fdaebfaee5  /var/tmp/mesh-durable-jobs-matrix/app-pool-v1-import-fix/topology_arm.py
+Traceback (most recent call last):
+  File "/var/tmp/mesh-durable-jobs-matrix/app-pool-v1-import-fix/native-arm.py", line 117, in <module>
+    main(Path(source), Path(runner), mode, profile, Path(out))
+  File "/var/tmp/mesh-durable-jobs-matrix/app-pool-v1-import-fix/native-arm.py", line 24, in main
+    raise ValueError("unexpected application-pool lane or affinity")
+ValueError: unexpected application-pool lane or affinity
+APP_POOL_ENTRY_REACHED_ONE_CPU_GUARD
+APP_POOL_LINUX_FULL_IMPORT_OK
+APP_POOL_NO_BYTECODE

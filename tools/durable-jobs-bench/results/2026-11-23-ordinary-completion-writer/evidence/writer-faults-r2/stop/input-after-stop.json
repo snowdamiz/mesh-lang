@@ -1,0 +1,1 @@
+{"request_id": "after-stop", "rollback": false, "jobs": [{"key": "after-stop", "hold_ms": 0, "fail_first": false, "payload": "writer-fault/\u00e9t\u00e9"}]}

@@ -1,0 +1,55 @@
+{
+  "calibration": {
+    "getrusage_self_ns": 200016001,
+    "mach_ns": 200057041.66666666,
+    "mach_ticks": 4801369,
+    "mach_timebase": [
+      125,
+      3
+    ],
+    "process_cpu_ns": 200002000
+  },
+  "executable_sha256": {
+    "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/linode-ordered-enqueue/stock-package/mesh": "86b84cb58be756d0d3d342682f7c6e97322159cd9bef0a12d6c9c4ab059f2e8c",
+    "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/native-bulk-enqueue-integration/artifacts/strict/mesh": "6a99b8ad0967ee3cca3614a78b08f53647a00eeff7b9329987a35fcb8937f2fb"
+  },
+  "host": [
+    "Darwin",
+    "Andreys-MBP.lan",
+    "27.0.0",
+    "Darwin Kernel Version 27.0.0: Tue Aug 11 21:06:40 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6050",
+    "arm64"
+  ],
+  "inputs": {
+    "large": [
+      "5fa8fb096b1a212ce19751ab50c9dc108382b4c9f9fc0b0d1171431a8e56801a"
+    ],
+    "noop": [
+      "b94850e6fcd20d4717617ce287b78df196ba01bfabe2322b812a92c280b76b0c"
+    ],
+    "short": [
+      "41afedbcd0e2d4aaffb1c068d75ead8d8895caa460fb3ea4559d6b75da4b1ea0"
+    ],
+    "small": [
+      "a6f1152be7cf34abfdd2048bf0e1b17252e48102868e0c31d31e00f802d3c587"
+    ]
+  },
+  "load": [
+    24.4990234375,
+    29.826171875,
+    28.0791015625
+  ],
+  "orders": [
+    [
+      "stock_a",
+      "stock_b",
+      "bulk"
+    ]
+  ],
+  "profiles": [
+    "small",
+    "short",
+    "noop",
+    "large"
+  ]
+}

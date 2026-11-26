@@ -1,0 +1,15 @@
+{
+  "attempts": [
+    0
+  ],
+  "exit_status": 0,
+  "group_command": "timing_command",
+  "groups": [
+    1,
+    2
+  ],
+  "id": "2026-11-24-short16-river-readiness",
+  "receipt": "tools/durable-jobs-bench/results/2026-11-24-short16-river-readiness/evidence/timing",
+  "released_at": "2026-11-24T22:09:00.219272+00:00",
+  "started": "2026-11-24T22:07:04.411163+00:00"
+}

@@ -1,0 +1,71 @@
+{
+  "artifacts": {
+    "proof-new": "910753bad44ef71732c00bbfaf875145be972efea05e68131e8043b1b24fae95",
+    "proof-old": "bfa2fb165feb41cb9c1e4550e7817d561d6af25619e32ec12155176153df2da4"
+  },
+  "installer": {
+    "after": {
+      "enqueue_batch_layout_v1": {
+        "acl": [
+          "parity_subject=X/parity_subject",
+          "parity_producer=X/parity_subject"
+        ],
+        "body_md5": "5443f3db3fcbc4bca84e4ff6c0618d22",
+        "config": [
+          "search_path=pg_catalog, pg_temp"
+        ],
+        "definer": true,
+        "oid": "16652",
+        "owner": "parity_subject",
+        "volatility": "v"
+      },
+      "enqueue_batch_v1": {
+        "acl": [
+          "parity_subject=X/parity_subject",
+          "parity_producer=X/parity_subject"
+        ],
+        "body_md5": "af7cff67b92f37760f6c1792793d28a1",
+        "config": [
+          "search_path=pg_catalog, pg_temp"
+        ],
+        "definer": false,
+        "oid": "16653",
+        "owner": "parity_subject",
+        "volatility": "v"
+      }
+    },
+    "before": {
+      "enqueue_batch_layout_v1": {
+        "acl": [
+          "parity_subject=X/parity_subject",
+          "parity_producer=X/parity_subject"
+        ],
+        "body_md5": "760ba26736eeba5558d53238f9f5bde6",
+        "config": [
+          "search_path=pg_catalog, pg_temp"
+        ],
+        "definer": true,
+        "oid": "16652",
+        "owner": "parity_subject",
+        "volatility": "v"
+      },
+      "enqueue_batch_v1": {
+        "acl": [
+          "parity_subject=X/parity_subject",
+          "parity_producer=X/parity_subject"
+        ],
+        "body_md5": "af7cff67b92f37760f6c1792793d28a1",
+        "config": [
+          "search_path=pg_catalog, pg_temp"
+        ],
+        "definer": false,
+        "oid": "16653",
+        "owner": "parity_subject",
+        "volatility": "v"
+      }
+    },
+    "guard_pass": true,
+    "installed_sha256": "23ecd45c342bd4ae974eac4dcc936762288518c0d81ce014476bb042f983d16d"
+  },
+  "version": 170011
+}

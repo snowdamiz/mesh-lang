@@ -1,0 +1,5 @@
+{
+  "exit": 1,
+  "stderr": "read query: read body: failed to fill whole buffer; mesh jobs rollback failed: send ROLLBACK TO SAVEPOINT mesh_jobs_enqueue: PostgreSQL connection is unusable\n",
+  "stdout": ""
+}

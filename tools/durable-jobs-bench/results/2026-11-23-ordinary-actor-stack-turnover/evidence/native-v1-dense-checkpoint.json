@@ -1,0 +1,1044 @@
+{
+  "contract": "ordinary-trusted-shared-process",
+  "cpus": [
+    0,
+    1
+  ],
+  "host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "issues": {},
+  "missing": [
+    "02-noop",
+    "03-noop",
+    "04-noop",
+    "05-noop"
+  ],
+  "paired_percent": {
+    "noop": {
+      "oban": {
+        "commit_jobs_per_s": {
+          "max": -40.644096620704794,
+          "median": -40.644096620704794,
+          "min": -40.644096620704794,
+          "n": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 1518.8855224093654,
+          "median": 1518.8855224093654,
+          "min": 1518.8855224093654,
+          "n": 1
+        },
+        "submit_jobs_per_s": {
+          "max": -43.7020843447077,
+          "median": -43.7020843447077,
+          "min": -43.7020843447077,
+          "n": 1
+        }
+      },
+      "ordinary": {
+        "commit_jobs_per_s": {
+          "max": -61.69339823503943,
+          "median": -61.69339823503943,
+          "min": -61.69339823503943,
+          "n": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 165.86523424656,
+          "median": 165.86523424656,
+          "min": 165.86523424656,
+          "n": 1
+        },
+        "submit_jobs_per_s": {
+          "max": -68.55757672441901,
+          "median": -68.55757672441901,
+          "min": -68.55757672441901,
+          "n": 1
+        }
+      },
+      "protected-mesh": {
+        "commit_jobs_per_s": {
+          "max": -83.74553969438105,
+          "median": -83.74553969438105,
+          "min": -83.74553969438105,
+          "n": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 851.3071261189446,
+          "median": 851.3071261189446,
+          "min": 851.3071261189446,
+          "n": 1
+        },
+        "submit_jobs_per_s": {
+          "max": -84.66746415401286,
+          "median": -84.66746415401286,
+          "min": -84.66746415401286,
+          "n": 1
+        }
+      },
+      "river": {
+        "commit_jobs_per_s": {
+          "max": -17.837376672039106,
+          "median": -17.837376672039106,
+          "min": -17.837376672039106,
+          "n": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 25.7728155620105,
+          "median": 25.7728155620105,
+          "min": 25.7728155620105,
+          "n": 1
+        },
+        "submit_jobs_per_s": {
+          "max": -19.911352621059187,
+          "median": -19.911352621059187,
+          "min": -19.911352621059187,
+          "n": 1
+        }
+      }
+    }
+  },
+  "paired_reference": "apalis",
+  "rows": {
+    "noop": [
+      {
+        "attempt": "01-noop.1795466741160792000",
+        "group": 1,
+        "order": [
+          "apalis",
+          "oban",
+          "river",
+          "ordinary",
+          "protected-mesh"
+        ],
+        "phases": [
+          "warmup",
+          "measured"
+        ],
+        "profile": "noop",
+        "raw_sha256": {
+          "measured-apalis/measured-rust": "842667758b26171e1f5dfe248adf8586551741ffef57a886dc0af14651c4ed90",
+          "measured-oban/measured-oban": "7e741ce040a1459f2be50d67e13d26fd1b9956ebea08408f0b086acd40aa5244",
+          "measured-ordinary/measured-mesh": "dafaf019126503e4f53dceabb6204acf2185969fbf9cd114f0f1bc71f2ab65ca",
+          "measured-protected-mesh/measured-mesh": "5ad8b2d3d65f6a99e3d7ad17792f5011478f8312b4f2b7a702d4bc949d34005c",
+          "measured-river/measured-go": "6939bbfc01fe7d2220d0bfacc39bb0b9053b136939ef2c77f41395d6f72d6a2e",
+          "warmup-apalis/warmup-rust": "7c040e786df2bc6ba7d82e6128d002a5562ca3ad18e88ff23ff5edac4c30ef47",
+          "warmup-oban/warmup-oban": "64a74953f446e55c5836670c0b8ad438925254d745734bce9c7c190079469f81",
+          "warmup-ordinary/warmup-mesh": "65b2fa39e6a8d6ac3a12757d7a7033405f1fa211ea301f09116750194744cc91",
+          "warmup-protected-mesh/warmup-mesh": "5cc2e5d0a18f1cd7cc6a0e6e10e6962950d137c582d5ed30c54f3e561f5d9cdd",
+          "warmup-river/warmup-go": "88517123a2dc75052a9b1481c29ee0f8616117f4293ee4bfe9658bcc84f3cea8"
+        },
+        "scores": {
+          "apalis": {
+            "affinity": [
+              0,
+              1
+            ],
+            "attempt_to_effect_commit_p50_ms": 4.584,
+            "attempt_to_effect_commit_p99_ms": 35.551,
+            "claim_to_last_settlement_ms": null,
+            "commit_jobs_per_s": 1190.7018280296327,
+            "commit_to_pickup_p50_ms": 456.79650000000004,
+            "commit_to_pickup_p99_ms": 835.092,
+            "commit_to_settlement_p50_ms": 475.722,
+            "commit_to_settlement_p99_ms": 852.559,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.4291845493562232,
+            "cpu_steal_percent": 0.0,
+            "disk_busy_ms": 114,
+            "disk_flushes": 562,
+            "disk_read_bytes": 0,
+            "disk_write_bytes": 29941760,
+            "effect_commit_to_settlement_p50_ms": 19.4905,
+            "effect_commit_to_settlement_p99_ms": 52.119,
+            "entry_to_attempt_commit_p50_ms": 2.7155,
+            "entry_to_attempt_commit_p99_ms": 25.573,
+            "failed": 0,
+            "first_claim_from_commit_ms": null,
+            "first_commit_us": 1795466806826142,
+            "first_submit_to_commit_ms": 38.757,
+            "first_submit_us": 1795466806787385,
+            "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+            "host_kernel": "6.8.0-149-generic",
+            "host_sample_span_ms": 1180.102,
+            "host_samples": 6,
+            "last_settlement_us": 1795466807686139,
+            "observed_arm_wall_ms": 7041.537835,
+            "ordered_independent_writes": 1024,
+            "peak_connections": 81,
+            "peak_executing": 16,
+            "peak_runner_rss_bytes": 69992448,
+            "pg_mount": {
+              "fstype": "ext4",
+              "maj:min": "8:0",
+              "source": "/dev/sda",
+              "target": "/"
+            },
+            "pinned_kernel_cpu_ms_per_job": 0.751953125,
+            "pinned_user_cpu_ms_per_job": 0.986328125,
+            "runner_cpu_ms_per_job": 0.6088544921875,
+            "submit_jobs_per_s": 1139.355151687781,
+            "submit_to_pickup_p50_ms": 495.5535,
+            "submit_to_pickup_p99_ms": 873.849,
+            "submit_to_settlement_p50_ms": 514.479,
+            "submit_to_settlement_p99_ms": 891.316
+          },
+          "oban": {
+            "affinity": [
+              0,
+              1
+            ],
+            "attempt_to_effect_commit_p50_ms": 10.736,
+            "attempt_to_effect_commit_p99_ms": 39.568,
+            "claim_to_entry_p50_ms": 21.0045,
+            "claim_to_entry_p99_ms": 306.41,
+            "claim_to_last_settlement_ms": 1415.911,
+            "commit_jobs_per_s": 706.7518265807705,
+            "commit_to_claim_p50_ms": 786.48,
+            "commit_to_claim_p99_ms": 1409.06,
+            "commit_to_pickup_p50_ms": 801.643,
+            "commit_to_pickup_p99_ms": 1425.73,
+            "commit_to_settlement_p50_ms": 827.2284999999999,
+            "commit_to_settlement_p99_ms": 1444.025,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "disk_busy_ms": 180,
+            "disk_flushes": 828,
+            "disk_read_bytes": 0,
+            "disk_write_bytes": 31375360,
+            "effect_commit_to_settlement_p50_ms": 7.7165,
+            "effect_commit_to_settlement_p99_ms": 33.331,
+            "entry_to_attempt_commit_p50_ms": 5.415,
+            "entry_to_attempt_commit_p99_ms": 24.155,
+            "failed": 0,
+            "first_claim_from_commit_ms": 32.971,
+            "first_commit_us": 1795466822872954,
+            "first_submit_to_commit_ms": 147.543,
+            "first_submit_us": 1795466822725411,
+            "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+            "host_kernel": "6.8.0-149-generic",
+            "host_sample_span_ms": 1937.743,
+            "host_samples": 9,
+            "last_settlement_us": 1795466824321836,
+            "observed_arm_wall_ms": 16367.371641,
+            "ordered_independent_writes": 1024,
+            "peak_connections": 81,
+            "peak_executing": 36,
+            "peak_runner_rss_bytes": 795742208,
+            "pg_mount": {
+              "fstype": "ext4",
+              "maj:min": "8:0",
+              "source": "/dev/sda",
+              "target": "/"
+            },
+            "pinned_kernel_cpu_ms_per_job": 0.87890625,
+            "pinned_user_cpu_ms_per_job": 2.16796875,
+            "runner_cpu_ms_per_job": 9.856657226562499,
+            "submit_jobs_per_s": 641.4332023114146,
+            "submit_to_pickup_p50_ms": 949.186,
+            "submit_to_pickup_p99_ms": 1573.273,
+            "submit_to_settlement_p50_ms": 974.7715000000001,
+            "submit_to_settlement_p99_ms": 1591.568
+          },
+          "ordinary": {
+            "affinity": [
+              0,
+              1
+            ],
+            "application_pg_calls_per_job": 4.0,
+            "application_pg_execution_ms_per_job": 0.126758181640625,
+            "attempt_to_effect_commit_p50_ms": 2.3360000000000003,
+            "attempt_to_effect_commit_p99_ms": 9.664,
+            "claim_to_entry_p50_ms": 7.7815,
+            "claim_to_entry_p99_ms": 26.638,
+            "claim_to_last_settlement_ms": 2237.956,
+            "commit_jobs_per_s": 456.1174074714169,
+            "commit_to_claim_p50_ms": 1140.08,
+            "commit_to_claim_p99_ms": 2197.08,
+            "commit_to_pickup_p50_ms": 1149.295,
+            "commit_to_pickup_p99_ms": 2204.48,
+            "commit_to_settlement_p50_ms": 1170.321,
+            "commit_to_settlement_p99_ms": 2221.463,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.33112582781456956,
+            "cpu_steal_percent": 0.16556291390728478,
+            "disk_busy_ms": 294,
+            "disk_flushes": 1839,
+            "disk_read_bytes": 0,
+            "disk_write_bytes": 24723456,
+            "effect_commit_to_settlement_p50_ms": 6.555,
+            "effect_commit_to_settlement_p99_ms": 37.847,
+            "entry_to_attempt_commit_p50_ms": 8.058,
+            "entry_to_attempt_commit_p99_ms": 46.845,
+            "failed": 0,
+            "first_claim_from_commit_ms": 7.08,
+            "first_commit_us": 1795466841891920,
+            "first_submit_to_commit_ms": 613.376,
+            "first_submit_us": 1795466841278544,
+            "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+            "host_kernel": "6.8.0-149-generic",
+            "host_sample_span_ms": 3074.824,
+            "host_samples": 14,
+            "last_settlement_us": 1795466844136956,
+            "mean_occupied_slots_lower": 13.726055617816373,
+            "mean_slot_residence_lower_ms": 30.0932509765625,
+            "observed_arm_wall_ms": 10139.350459,
+            "ordered_independent_writes": 1024,
+            "peak_connections": 65,
+            "peak_executing": 16,
+            "peak_runner_rss_bytes": 76677120,
+            "pg_mount": {
+              "fstype": "ext4",
+              "maj:min": "8:0",
+              "source": "/dev/sda",
+              "target": "/"
+            },
+            "pinned_kernel_cpu_ms_per_job": 1.416015625,
+            "pinned_user_cpu_ms_per_job": 3.73046875,
+            "runner_cpu_ms_per_job": 1.618732421875,
+            "submit_jobs_per_s": 358.2408694058099,
+            "submit_to_pickup_p50_ms": 1762.671,
+            "submit_to_pickup_p99_ms": 2817.856,
+            "submit_to_settlement_p50_ms": 1783.6970000000001,
+            "submit_to_settlement_p99_ms": 2834.839
+          },
+          "protected-mesh": {
+            "affinity": [
+              0,
+              1
+            ],
+            "attempt_to_effect_commit_p50_ms": 11.305,
+            "attempt_to_effect_commit_p99_ms": 41.429,
+            "claim_to_entry_p50_ms": 66.9915,
+            "claim_to_entry_p99_ms": 133.333,
+            "claim_to_last_settlement_ms": 5287.347,
+            "commit_jobs_per_s": 193.54215599535576,
+            "commit_to_claim_p50_ms": 2589.99,
+            "commit_to_claim_p99_ms": 5182.49,
+            "commit_to_pickup_p50_ms": 2674.659,
+            "commit_to_pickup_p99_ms": 5235.112,
+            "commit_to_settlement_p50_ms": 2746.8334999999997,
+            "commit_to_settlement_p99_ms": 5271.778,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.08064516129032258,
+            "cpu_steal_percent": 0.0,
+            "disk_busy_ms": 310,
+            "disk_flushes": 1175,
+            "disk_read_bytes": 0,
+            "disk_write_bytes": 37163008,
+            "effect_commit_to_settlement_p50_ms": 39.022999999999996,
+            "effect_commit_to_settlement_p99_ms": 126.827,
+            "entry_to_attempt_commit_p50_ms": 1.7200000000000002,
+            "entry_to_attempt_commit_p99_ms": 36.115,
+            "failed": 0,
+            "first_claim_from_commit_ms": 3.49,
+            "first_commit_us": 1795466853306510,
+            "first_submit_to_commit_ms": 570.907,
+            "first_submit_us": 1795466852735603,
+            "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+            "host_kernel": "6.8.0-149-generic",
+            "host_sample_span_ms": 6258.042,
+            "host_samples": 27,
+            "last_settlement_us": 1795466858597347,
+            "mean_occupied_slots_lower": 24.545480233089773,
+            "mean_slot_residence_lower_ms": 126.8223974609375,
+            "observed_arm_wall_ms": 13119.661198,
+            "ordered_independent_writes": 1024,
+            "peak_connections": 65,
+            "peak_executing": 32,
+            "peak_runner_rss_bytes": 121241600,
+            "pg_mount": {
+              "fstype": "ext4",
+              "maj:min": "8:0",
+              "source": "/dev/sda",
+              "target": "/"
+            },
+            "pinned_kernel_cpu_ms_per_job": 4.990234375,
+            "pinned_user_cpu_ms_per_job": 6.181640625,
+            "runner_cpu_ms_per_job": 5.792076171874999,
+            "submit_jobs_per_s": 174.69203704563012,
+            "submit_to_pickup_p50_ms": 3245.566,
+            "submit_to_pickup_p99_ms": 5806.019,
+            "submit_to_settlement_p50_ms": 3317.7405,
+            "submit_to_settlement_p99_ms": 5842.685
+          },
+          "river": {
+            "affinity": [
+              0,
+              1
+            ],
+            "attempt_to_effect_commit_p50_ms": 5.7265,
+            "attempt_to_effect_commit_p99_ms": 33.094,
+            "claim_to_entry_p50_ms": 9.189,
+            "claim_to_entry_p99_ms": 39.945,
+            "claim_to_last_settlement_ms": 1043.653,
+            "commit_jobs_per_s": 978.3118579231318,
+            "commit_to_claim_p50_ms": 574.253,
+            "commit_to_claim_p99_ms": 839.295,
+            "commit_to_pickup_p50_ms": 585.945,
+            "commit_to_pickup_p99_ms": 846.963,
+            "commit_to_settlement_p50_ms": 679.246,
+            "commit_to_settlement_p99_ms": 1046.701,
+            "completed": 1024,
+            "cpu_iowait_percent": 0.0,
+            "cpu_steal_percent": 0.0,
+            "disk_busy_ms": 89,
+            "disk_flushes": 413,
+            "disk_read_bytes": 0,
+            "disk_write_bytes": 29151232,
+            "effect_commit_to_settlement_p50_ms": 132.469,
+            "effect_commit_to_settlement_p99_ms": 433.133,
+            "entry_to_attempt_commit_p50_ms": 0.668,
+            "entry_to_attempt_commit_p99_ms": 285.57,
+            "failed": 0,
+            "first_claim_from_commit_ms": 3.048,
+            "first_commit_us": 1795466832624490,
+            "first_submit_to_commit_ms": 75.498,
+            "first_submit_us": 1795466832548992,
+            "host_boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+            "host_kernel": "6.8.0-149-generic",
+            "host_sample_span_ms": 1413.212,
+            "host_samples": 7,
+            "last_settlement_us": 1795466833671191,
+            "observed_arm_wall_ms": 6413.506194,
+            "ordered_independent_writes": 1024,
+            "peak_connections": 78,
+            "peak_executing": 64,
+            "peak_runner_rss_bytes": 129183744,
+            "pg_mount": {
+              "fstype": "ext4",
+              "maj:min": "8:0",
+              "source": "/dev/sda",
+              "target": "/"
+            },
+            "pinned_kernel_cpu_ms_per_job": 0.859375,
+            "pinned_user_cpu_ms_per_job": 1.15234375,
+            "runner_cpu_ms_per_job": 0.7657734374999999,
+            "submit_jobs_per_s": 912.4941298290232,
+            "submit_to_pickup_p50_ms": 661.443,
+            "submit_to_pickup_p99_ms": 922.461,
+            "submit_to_settlement_p50_ms": 754.744,
+            "submit_to_settlement_p99_ms": 1122.199
+          }
+        }
+      }
+    ]
+  },
+  "summary": {
+    "noop": {
+      "apalis": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 4.584,
+          "median": 4.584,
+          "min": 4.584,
+          "n": 1
+        },
+        "commit_jobs_per_s": {
+          "max": 1190.7018280296327,
+          "median": 1190.7018280296327,
+          "min": 1190.7018280296327,
+          "n": 1
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 835.092,
+          "median": 835.092,
+          "min": 835.092,
+          "n": 1
+        },
+        "commit_to_settlement_p99_ms": {
+          "max": 852.559,
+          "median": 852.559,
+          "min": 852.559,
+          "n": 1
+        },
+        "cpu_iowait_percent": {
+          "max": 0.4291845493562232,
+          "median": 0.4291845493562232,
+          "min": 0.4291845493562232,
+          "n": 1
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 19.4905,
+          "median": 19.4905,
+          "min": 19.4905,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p99_ms": {
+          "max": 52.119,
+          "median": 52.119,
+          "min": 52.119,
+          "n": 1
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 2.7155,
+          "median": 2.7155,
+          "min": 2.7155,
+          "n": 1
+        },
+        "first_submit_to_commit_ms": {
+          "max": 38.757,
+          "median": 38.757,
+          "min": 38.757,
+          "n": 1
+        },
+        "observed_arm_wall_ms": {
+          "max": 7041.537835,
+          "median": 7041.537835,
+          "min": 7041.537835,
+          "n": 1
+        },
+        "peak_connections": {
+          "max": 81,
+          "median": 81,
+          "min": 81,
+          "n": 1
+        },
+        "peak_runner_rss_bytes": {
+          "max": 69992448,
+          "median": 69992448,
+          "min": 69992448,
+          "n": 1
+        },
+        "pinned_kernel_cpu_ms_per_job": {
+          "max": 0.751953125,
+          "median": 0.751953125,
+          "min": 0.751953125,
+          "n": 1
+        },
+        "pinned_user_cpu_ms_per_job": {
+          "max": 0.986328125,
+          "median": 0.986328125,
+          "min": 0.986328125,
+          "n": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 0.6088544921875,
+          "median": 0.6088544921875,
+          "min": 0.6088544921875,
+          "n": 1
+        },
+        "submit_jobs_per_s": {
+          "max": 1139.355151687781,
+          "median": 1139.355151687781,
+          "min": 1139.355151687781,
+          "n": 1
+        },
+        "submit_to_settlement_p99_ms": {
+          "max": 891.316,
+          "median": 891.316,
+          "min": 891.316,
+          "n": 1
+        }
+      },
+      "oban": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 10.736,
+          "median": 10.736,
+          "min": 10.736,
+          "n": 1
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 21.0045,
+          "median": 21.0045,
+          "min": 21.0045,
+          "n": 1
+        },
+        "commit_jobs_per_s": {
+          "max": 706.7518265807705,
+          "median": 706.7518265807705,
+          "min": 706.7518265807705,
+          "n": 1
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 1425.73,
+          "median": 1425.73,
+          "min": 1425.73,
+          "n": 1
+        },
+        "commit_to_settlement_p99_ms": {
+          "max": 1444.025,
+          "median": 1444.025,
+          "min": 1444.025,
+          "n": 1
+        },
+        "cpu_iowait_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 1
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 7.7165,
+          "median": 7.7165,
+          "min": 7.7165,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p99_ms": {
+          "max": 33.331,
+          "median": 33.331,
+          "min": 33.331,
+          "n": 1
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 5.415,
+          "median": 5.415,
+          "min": 5.415,
+          "n": 1
+        },
+        "first_submit_to_commit_ms": {
+          "max": 147.543,
+          "median": 147.543,
+          "min": 147.543,
+          "n": 1
+        },
+        "observed_arm_wall_ms": {
+          "max": 16367.371641,
+          "median": 16367.371641,
+          "min": 16367.371641,
+          "n": 1
+        },
+        "peak_connections": {
+          "max": 81,
+          "median": 81,
+          "min": 81,
+          "n": 1
+        },
+        "peak_runner_rss_bytes": {
+          "max": 795742208,
+          "median": 795742208,
+          "min": 795742208,
+          "n": 1
+        },
+        "pinned_kernel_cpu_ms_per_job": {
+          "max": 0.87890625,
+          "median": 0.87890625,
+          "min": 0.87890625,
+          "n": 1
+        },
+        "pinned_user_cpu_ms_per_job": {
+          "max": 2.16796875,
+          "median": 2.16796875,
+          "min": 2.16796875,
+          "n": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 9.856657226562499,
+          "median": 9.856657226562499,
+          "min": 9.856657226562499,
+          "n": 1
+        },
+        "submit_jobs_per_s": {
+          "max": 641.4332023114146,
+          "median": 641.4332023114146,
+          "min": 641.4332023114146,
+          "n": 1
+        },
+        "submit_to_settlement_p99_ms": {
+          "max": 1591.568,
+          "median": 1591.568,
+          "min": 1591.568,
+          "n": 1
+        }
+      },
+      "ordinary": {
+        "application_pg_calls_per_job": {
+          "max": 4.0,
+          "median": 4.0,
+          "min": 4.0,
+          "n": 1
+        },
+        "application_pg_execution_ms_per_job": {
+          "max": 0.126758181640625,
+          "median": 0.126758181640625,
+          "min": 0.126758181640625,
+          "n": 1
+        },
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 2.3360000000000003,
+          "median": 2.3360000000000003,
+          "min": 2.3360000000000003,
+          "n": 1
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 7.7815,
+          "median": 7.7815,
+          "min": 7.7815,
+          "n": 1
+        },
+        "commit_jobs_per_s": {
+          "max": 456.1174074714169,
+          "median": 456.1174074714169,
+          "min": 456.1174074714169,
+          "n": 1
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 2204.48,
+          "median": 2204.48,
+          "min": 2204.48,
+          "n": 1
+        },
+        "commit_to_settlement_p99_ms": {
+          "max": 2221.463,
+          "median": 2221.463,
+          "min": 2221.463,
+          "n": 1
+        },
+        "cpu_iowait_percent": {
+          "max": 0.33112582781456956,
+          "median": 0.33112582781456956,
+          "min": 0.33112582781456956,
+          "n": 1
+        },
+        "cpu_steal_percent": {
+          "max": 0.16556291390728478,
+          "median": 0.16556291390728478,
+          "min": 0.16556291390728478,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 6.555,
+          "median": 6.555,
+          "min": 6.555,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p99_ms": {
+          "max": 37.847,
+          "median": 37.847,
+          "min": 37.847,
+          "n": 1
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 8.058,
+          "median": 8.058,
+          "min": 8.058,
+          "n": 1
+        },
+        "first_submit_to_commit_ms": {
+          "max": 613.376,
+          "median": 613.376,
+          "min": 613.376,
+          "n": 1
+        },
+        "mean_occupied_slots_lower": {
+          "max": 13.726055617816373,
+          "median": 13.726055617816373,
+          "min": 13.726055617816373,
+          "n": 1
+        },
+        "mean_slot_residence_lower_ms": {
+          "max": 30.0932509765625,
+          "median": 30.0932509765625,
+          "min": 30.0932509765625,
+          "n": 1
+        },
+        "observed_arm_wall_ms": {
+          "max": 10139.350459,
+          "median": 10139.350459,
+          "min": 10139.350459,
+          "n": 1
+        },
+        "peak_connections": {
+          "max": 65,
+          "median": 65,
+          "min": 65,
+          "n": 1
+        },
+        "peak_runner_rss_bytes": {
+          "max": 76677120,
+          "median": 76677120,
+          "min": 76677120,
+          "n": 1
+        },
+        "pinned_kernel_cpu_ms_per_job": {
+          "max": 1.416015625,
+          "median": 1.416015625,
+          "min": 1.416015625,
+          "n": 1
+        },
+        "pinned_user_cpu_ms_per_job": {
+          "max": 3.73046875,
+          "median": 3.73046875,
+          "min": 3.73046875,
+          "n": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 1.618732421875,
+          "median": 1.618732421875,
+          "min": 1.618732421875,
+          "n": 1
+        },
+        "submit_jobs_per_s": {
+          "max": 358.2408694058099,
+          "median": 358.2408694058099,
+          "min": 358.2408694058099,
+          "n": 1
+        },
+        "submit_to_settlement_p99_ms": {
+          "max": 2834.839,
+          "median": 2834.839,
+          "min": 2834.839,
+          "n": 1
+        }
+      },
+      "protected-mesh": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 11.305,
+          "median": 11.305,
+          "min": 11.305,
+          "n": 1
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 66.9915,
+          "median": 66.9915,
+          "min": 66.9915,
+          "n": 1
+        },
+        "commit_jobs_per_s": {
+          "max": 193.54215599535576,
+          "median": 193.54215599535576,
+          "min": 193.54215599535576,
+          "n": 1
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 5235.112,
+          "median": 5235.112,
+          "min": 5235.112,
+          "n": 1
+        },
+        "commit_to_settlement_p99_ms": {
+          "max": 5271.778,
+          "median": 5271.778,
+          "min": 5271.778,
+          "n": 1
+        },
+        "cpu_iowait_percent": {
+          "max": 0.08064516129032258,
+          "median": 0.08064516129032258,
+          "min": 0.08064516129032258,
+          "n": 1
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 39.022999999999996,
+          "median": 39.022999999999996,
+          "min": 39.022999999999996,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p99_ms": {
+          "max": 126.827,
+          "median": 126.827,
+          "min": 126.827,
+          "n": 1
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 1.7200000000000002,
+          "median": 1.7200000000000002,
+          "min": 1.7200000000000002,
+          "n": 1
+        },
+        "first_submit_to_commit_ms": {
+          "max": 570.907,
+          "median": 570.907,
+          "min": 570.907,
+          "n": 1
+        },
+        "mean_occupied_slots_lower": {
+          "max": 24.545480233089773,
+          "median": 24.545480233089773,
+          "min": 24.545480233089773,
+          "n": 1
+        },
+        "mean_slot_residence_lower_ms": {
+          "max": 126.8223974609375,
+          "median": 126.8223974609375,
+          "min": 126.8223974609375,
+          "n": 1
+        },
+        "observed_arm_wall_ms": {
+          "max": 13119.661198,
+          "median": 13119.661198,
+          "min": 13119.661198,
+          "n": 1
+        },
+        "peak_connections": {
+          "max": 65,
+          "median": 65,
+          "min": 65,
+          "n": 1
+        },
+        "peak_runner_rss_bytes": {
+          "max": 121241600,
+          "median": 121241600,
+          "min": 121241600,
+          "n": 1
+        },
+        "pinned_kernel_cpu_ms_per_job": {
+          "max": 4.990234375,
+          "median": 4.990234375,
+          "min": 4.990234375,
+          "n": 1
+        },
+        "pinned_user_cpu_ms_per_job": {
+          "max": 6.181640625,
+          "median": 6.181640625,
+          "min": 6.181640625,
+          "n": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 5.792076171874999,
+          "median": 5.792076171874999,
+          "min": 5.792076171874999,
+          "n": 1
+        },
+        "submit_jobs_per_s": {
+          "max": 174.69203704563012,
+          "median": 174.69203704563012,
+          "min": 174.69203704563012,
+          "n": 1
+        },
+        "submit_to_settlement_p99_ms": {
+          "max": 5842.685,
+          "median": 5842.685,
+          "min": 5842.685,
+          "n": 1
+        }
+      },
+      "river": {
+        "attempt_to_effect_commit_p50_ms": {
+          "max": 5.7265,
+          "median": 5.7265,
+          "min": 5.7265,
+          "n": 1
+        },
+        "claim_to_entry_p50_ms": {
+          "max": 9.189,
+          "median": 9.189,
+          "min": 9.189,
+          "n": 1
+        },
+        "commit_jobs_per_s": {
+          "max": 978.3118579231318,
+          "median": 978.3118579231318,
+          "min": 978.3118579231318,
+          "n": 1
+        },
+        "commit_to_pickup_p99_ms": {
+          "max": 846.963,
+          "median": 846.963,
+          "min": 846.963,
+          "n": 1
+        },
+        "commit_to_settlement_p99_ms": {
+          "max": 1046.701,
+          "median": 1046.701,
+          "min": 1046.701,
+          "n": 1
+        },
+        "cpu_iowait_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 1
+        },
+        "cpu_steal_percent": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p50_ms": {
+          "max": 132.469,
+          "median": 132.469,
+          "min": 132.469,
+          "n": 1
+        },
+        "effect_commit_to_settlement_p99_ms": {
+          "max": 433.133,
+          "median": 433.133,
+          "min": 433.133,
+          "n": 1
+        },
+        "entry_to_attempt_commit_p50_ms": {
+          "max": 0.668,
+          "median": 0.668,
+          "min": 0.668,
+          "n": 1
+        },
+        "first_submit_to_commit_ms": {
+          "max": 75.498,
+          "median": 75.498,
+          "min": 75.498,
+          "n": 1
+        },
+        "observed_arm_wall_ms": {
+          "max": 6413.506194,
+          "median": 6413.506194,
+          "min": 6413.506194,
+          "n": 1
+        },
+        "peak_connections": {
+          "max": 78,
+          "median": 78,
+          "min": 78,
+          "n": 1
+        },
+        "peak_runner_rss_bytes": {
+          "max": 129183744,
+          "median": 129183744,
+          "min": 129183744,
+          "n": 1
+        },
+        "pinned_kernel_cpu_ms_per_job": {
+          "max": 0.859375,
+          "median": 0.859375,
+          "min": 0.859375,
+          "n": 1
+        },
+        "pinned_user_cpu_ms_per_job": {
+          "max": 1.15234375,
+          "median": 1.15234375,
+          "min": 1.15234375,
+          "n": 1
+        },
+        "runner_cpu_ms_per_job": {
+          "max": 0.7657734374999999,
+          "median": 0.7657734374999999,
+          "min": 0.7657734374999999,
+          "n": 1
+        },
+        "submit_jobs_per_s": {
+          "max": 912.4941298290232,
+          "median": 912.4941298290232,
+          "min": 912.4941298290232,
+          "n": 1
+        },
+        "submit_to_settlement_p99_ms": {
+          "max": 1122.199,
+          "median": 1122.199,
+          "min": 1122.199,
+          "n": 1
+        }
+      }
+    }
+  }
+}

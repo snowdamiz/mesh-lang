@@ -1,0 +1,16 @@
+{
+  "attempts": [
+    0
+  ],
+  "exit_status": 0,
+  "group_command": "remaining_timing_command",
+  "groups": [
+    3,
+    4,
+    5
+  ],
+  "id": "bulk-v2-completion-writer-exit-r2-identity-retry",
+  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-completion-writer-native-repair/evidence",
+  "released_at": "2026-11-23T23:51:48.298334+00:00",
+  "started": "2026-11-23T23:49:15.335154+00:00"
+}

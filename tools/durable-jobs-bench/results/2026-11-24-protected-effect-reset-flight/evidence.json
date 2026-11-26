@@ -1,0 +1,542 @@
+{
+  "earlier_equivalent": {
+    "dense-pipeline-proof": {
+      "arms": {
+        "pipeline": {
+          "elf_sha256": "d0a1c2da216da518f3d9b35c385ddb64ac1c2038bebfcca15aa35893c7dd1029",
+          "exact_waits": 1024,
+          "jobs_per_s": 691.0527674624401,
+          "ordered_pairs": 1024,
+          "runner_cpu_ms_per_job": 1.2997421875000001
+        },
+        "pipeline-control": {
+          "elf_sha256": "7c1c1cf20d5458dab186ee1af9c48b15eecc3805c1ca9748cc4e587ac5c6fa11",
+          "exact_waits": 1024,
+          "jobs_per_s": 1130.9754805892942,
+          "ordered_pairs": 1024,
+          "runner_cpu_ms_per_job": 0.8622958984374998
+        }
+      },
+      "embedded_archive_sha256": "2b5a137c507792bd62f52b7c326fab10087d8da8180a0166c5f8cd33a96ea4bc",
+      "pipeline_rate_change_percent": -38.897634889275636,
+      "serial_sha256": "8047f1efd1075896559f3155be3c6e94f48d567a02a03c86f21671e984e84b23"
+    },
+    "dense-warm-02": {
+      "arms": {
+        "pipeline": {
+          "elf_sha256": "d0a1c2da216da518f3d9b35c385ddb64ac1c2038bebfcca15aa35893c7dd1029",
+          "exact_waits": null,
+          "jobs_per_s": 874.8934622202328,
+          "ordered_pairs": 1024,
+          "runner_cpu_ms_per_job": 1.06103515625
+        },
+        "pipeline-control": {
+          "elf_sha256": "7c1c1cf20d5458dab186ee1af9c48b15eecc3805c1ca9748cc4e587ac5c6fa11",
+          "exact_waits": null,
+          "jobs_per_s": 1167.1272413187637,
+          "ordered_pairs": 1024,
+          "runner_cpu_ms_per_job": 0.9047626953125
+        }
+      },
+      "embedded_archive_sha256": "bbffeec359c3efc4d5bb8968fcd2a382dc86cdf98fc5845b7c09a5d3b56b98bf",
+      "pipeline_rate_change_percent": -25.038724892440122,
+      "serial_sha256": "6935ac4bfe53be0d28291f570600a689da42d7506414d85883fbc6144a17da07"
+    }
+  },
+  "native_series": {
+    "1": {
+      "arms": {
+        "admission-v3": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "891a7faba486e0c7c9c5050e36c240e843a5d6835f602357cd3b419d529aa522",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 4779833,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": 2080,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 7872,
+          "post_commit_window_sum_us": 42258498,
+          "post_commit_window_union_us": 4727874,
+          "raw_sha256": "e6f794a86ee5c9de8fc5def9f990910cd371b43bd5523e90f77d364ca3492cd4",
+          "submit_to_terminal_us": 5431497,
+          "terminal_xids": 1024,
+          "version": "bd7851b9398198955b4c8df630310a29b38cddd4"
+        },
+        "apalis": {
+          "app_xids": 2048,
+          "artifact_sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 827719,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "c084d9788db84b6769a21981b02a044bc508c9f6eaa97438d9dc8fd18890f462",
+          "submit_to_terminal_us": 865898,
+          "terminal_xids": 172,
+          "version": "apalis 1.2.0 / apalis-postgres 1.2.0"
+        },
+        "current": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 5180341,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": null,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 5724,
+          "post_commit_window_sum_us": 56051552,
+          "post_commit_window_union_us": 5128443,
+          "raw_sha256": "7ac4992dc3214da8b5e2c3447800fe15e087162415dfad6bdffca12700c2dfef",
+          "submit_to_terminal_us": 5740737,
+          "terminal_xids": 1024,
+          "version": "3828f20d2d6beb683868cce33e6dd1958365914b"
+        },
+        "oban": {
+          "app_xids": 2048,
+          "artifact_sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1540220,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "03042f549c907285400a6e497614a35a1f33ee3d932da4652bf752c1fe773c10",
+          "submit_to_terminal_us": 1694296,
+          "terminal_xids": 1024,
+          "version": "2.24.2"
+        },
+        "river": {
+          "app_xids": 2048,
+          "artifact_sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1155797,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "897c19992988bcd793fdae01b67049aa6c447cf64fac63594cd1d0964f838fb7",
+          "submit_to_terminal_us": 1251783,
+          "terminal_xids": 33,
+          "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4"
+        }
+      },
+      "block": "01-noop.1795466563532341000",
+      "serial_savings_us_per_flight_to_match_peer": {
+        "apalis": 1929.743,
+        "oban": 1581.842,
+        "river": 1769.549
+      },
+      "strict_gap_us": {
+        "apalis": 3952114,
+        "oban": 3239613,
+        "river": 3624036
+      }
+    },
+    "2": {
+      "arms": {
+        "admission-v3": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "891a7faba486e0c7c9c5050e36c240e843a5d6835f602357cd3b419d529aa522",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 4746421,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": 2080,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 15508,
+          "post_commit_window_sum_us": 45517230,
+          "post_commit_window_union_us": 4707710,
+          "raw_sha256": "6af59cde7e1e11edd2e80977b467b0425be43ab761e31a8ec9dd6cb8028e266b",
+          "submit_to_terminal_us": 5322675,
+          "terminal_xids": 1024,
+          "version": "bd7851b9398198955b4c8df630310a29b38cddd4"
+        },
+        "apalis": {
+          "app_xids": 2048,
+          "artifact_sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 870128,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "e836b70d5aa796715cf333fbf012890c5e8b994a8bba964d0c70f6c188b54f4e",
+          "submit_to_terminal_us": 906689,
+          "terminal_xids": 187,
+          "version": "apalis 1.2.0 / apalis-postgres 1.2.0"
+        },
+        "current": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 5541288,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": null,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 8561,
+          "post_commit_window_sum_us": 63799096,
+          "post_commit_window_union_us": 5493668,
+          "raw_sha256": "43245ea2c1963c7b393d1057a83e948cfea2a05c54e558a76c2ec33751a72ab7",
+          "submit_to_terminal_us": 6098867,
+          "terminal_xids": 1024,
+          "version": "3828f20d2d6beb683868cce33e6dd1958365914b"
+        },
+        "oban": {
+          "app_xids": 2048,
+          "artifact_sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1428071,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "342459fd18013018fe17c8af52b740bd30a216307f2f2188ec0b8cdcc8b94dc7",
+          "submit_to_terminal_us": 1564124,
+          "terminal_xids": 1024,
+          "version": "2.24.2"
+        },
+        "river": {
+          "app_xids": 2048,
+          "artifact_sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1082346,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "c8f676863f2275c918120a5f240dcec41feaae6b990feb1889a394902c62215f",
+          "submit_to_terminal_us": 1155697,
+          "terminal_xids": 32,
+          "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4"
+        }
+      },
+      "block": "02-noop.1795470376539440000",
+      "serial_savings_us_per_flight_to_match_peer": {
+        "apalis": 1892.721,
+        "oban": 1620.288,
+        "river": 1789.099
+      },
+      "strict_gap_us": {
+        "apalis": 3876293,
+        "oban": 3318350,
+        "river": 3664075
+      }
+    },
+    "3": {
+      "arms": {
+        "admission-v3": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "891a7faba486e0c7c9c5050e36c240e843a5d6835f602357cd3b419d529aa522",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 4927915,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": 2080,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 4981,
+          "post_commit_window_sum_us": 46445398,
+          "post_commit_window_union_us": 4896875,
+          "raw_sha256": "409b60732d42daa643addd440225d0cd8191d6650edb4a78acbb6ef08267a5b1",
+          "submit_to_terminal_us": 5490303,
+          "terminal_xids": 1024,
+          "version": "bd7851b9398198955b4c8df630310a29b38cddd4"
+        },
+        "apalis": {
+          "app_xids": 2048,
+          "artifact_sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 867839,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "871acb350ee2a72833cbcaef46eb717756a3d8a816e811d9fd98c505766dfea2",
+          "submit_to_terminal_us": 905507,
+          "terminal_xids": 185,
+          "version": "apalis 1.2.0 / apalis-postgres 1.2.0"
+        },
+        "current": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 5195541,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": null,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 12546,
+          "post_commit_window_sum_us": 53544489,
+          "post_commit_window_union_us": 5119119,
+          "raw_sha256": "bdab24b10836d06f9bad4e36072ab6932a1200b968df45496ab582b934b863b4",
+          "submit_to_terminal_us": 5754208,
+          "terminal_xids": 1024,
+          "version": "3828f20d2d6beb683868cce33e6dd1958365914b"
+        },
+        "oban": {
+          "app_xids": 2048,
+          "artifact_sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1689031,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "9a76085eeef5ba3f421d54fd8bfd2b8e06199e088dceddfdf6c67b31c2a26df6",
+          "submit_to_terminal_us": 1861921,
+          "terminal_xids": 1024,
+          "version": "2.24.2"
+        },
+        "river": {
+          "app_xids": 2048,
+          "artifact_sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1060612,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "3616906b63b7b1ef7d208a458ed129cd4f15a37f9b9772213999b88179600238",
+          "submit_to_terminal_us": 1134880,
+          "terminal_xids": 32,
+          "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4"
+        }
+      },
+      "block": "03-noop.1795470504905049000",
+      "serial_savings_us_per_flight_to_match_peer": {
+        "apalis": 1982.459,
+        "oban": 1581.486,
+        "river": 1888.332
+      },
+      "strict_gap_us": {
+        "apalis": 4060076,
+        "oban": 3238884,
+        "river": 3867303
+      }
+    },
+    "4": {
+      "arms": {
+        "admission-v3": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "891a7faba486e0c7c9c5050e36c240e843a5d6835f602357cd3b419d529aa522",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 4842328,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": 2080,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 14132,
+          "post_commit_window_sum_us": 46258326,
+          "post_commit_window_union_us": 4743846,
+          "raw_sha256": "267aa398d59a4de9dbf8e24b429b950e72e5a3a0141f03e6e0f4a00fc06dbc5a",
+          "submit_to_terminal_us": 5427778,
+          "terminal_xids": 1024,
+          "version": "bd7851b9398198955b4c8df630310a29b38cddd4"
+        },
+        "apalis": {
+          "app_xids": 2048,
+          "artifact_sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 868252,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "f9c7a3532d90636d78c7ed8614623f822075b30a1a480df6766da855681d7263",
+          "submit_to_terminal_us": 915377,
+          "terminal_xids": 180,
+          "version": "apalis 1.2.0 / apalis-postgres 1.2.0"
+        },
+        "current": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 5354461,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": null,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 13408,
+          "post_commit_window_sum_us": 62953381,
+          "post_commit_window_union_us": 5275877,
+          "raw_sha256": "47fd235a661a22879b710c375348c2432df8e360567a8b623bd67afa36357592",
+          "submit_to_terminal_us": 5906174,
+          "terminal_xids": 1024,
+          "version": "3828f20d2d6beb683868cce33e6dd1958365914b"
+        },
+        "oban": {
+          "app_xids": 2048,
+          "artifact_sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1448569,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "a14de18f0338ceb3872bcc112045a62a8b773c05db554fe45b6f5b6b9edfa72e",
+          "submit_to_terminal_us": 1604953,
+          "terminal_xids": 1024,
+          "version": "2.24.2"
+        },
+        "river": {
+          "app_xids": 2048,
+          "artifact_sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1112493,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "db55ee8bfaa731bbdb7976dd7b76882644b9200ede19096c6ffe6b7d3ba136c6",
+          "submit_to_terminal_us": 1187792,
+          "terminal_xids": 36,
+          "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4"
+        }
+      },
+      "block": "04-noop.1795470710701146000",
+      "serial_savings_us_per_flight_to_match_peer": {
+        "apalis": 1940.467,
+        "oban": 1657.109,
+        "river": 1821.208
+      },
+      "strict_gap_us": {
+        "apalis": 3974076,
+        "oban": 3393759,
+        "river": 3729835
+      }
+    },
+    "5": {
+      "arms": {
+        "admission-v3": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "891a7faba486e0c7c9c5050e36c240e843a5d6835f602357cd3b419d529aa522",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.09165902841429881,
+          "disk": "8:0",
+          "drain_us": 4664042,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": 2080,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 17557,
+          "post_commit_window_sum_us": 40257832,
+          "post_commit_window_union_us": 4598721,
+          "raw_sha256": "b006aee9be106c088df98f794b9b92a54ebdca5e7542815b2acb42e58e2bc41e",
+          "submit_to_terminal_us": 5210209,
+          "terminal_xids": 1024,
+          "version": "bd7851b9398198955b4c8df630310a29b38cddd4"
+        },
+        "apalis": {
+          "app_xids": 2048,
+          "artifact_sha256": "b3c2fb2b472d7c8b2706e13c38281a46958b669f9d4cf22ca252636d083e7e66",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 856346,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "5c8f4a2289e77e96ae71af3000a6c9db2a79a368e72abdaa6d5015232166d0c4",
+          "submit_to_terminal_us": 893792,
+          "terminal_xids": 178,
+          "version": "apalis 1.2.0 / apalis-postgres 1.2.0"
+        },
+        "current": {
+          "app_calls_after_idle": 4096,
+          "app_tls_backends": 32,
+          "app_xids": 2048,
+          "artifact_sha256": "eeda861f1ad542292b04aa20adbe24596e727138fd97dd77f4b5a0a186410915",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "candidate_flights_per_arm": 2048,
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 5176676,
+          "fresh_worker_pids": 1024,
+          "full_reset_calls_including_startup": null,
+          "kernel": "6.8.0-149-generic",
+          "last_effect_commit_to_last_terminal_us": 8987,
+          "post_commit_window_sum_us": 60483975,
+          "post_commit_window_union_us": 5121619,
+          "raw_sha256": "3f9c97de7cdcb05993377f7cc22f5680b117ad9eb268fe2802be4ecaeb4579ec",
+          "submit_to_terminal_us": 5732169,
+          "terminal_xids": 1024,
+          "version": "3828f20d2d6beb683868cce33e6dd1958365914b"
+        },
+        "oban": {
+          "app_xids": 2048,
+          "artifact_sha256": "b0cd27902077fe83e0b93606fe24ae541c39351c9df3c92f3f1be363ae67d37f",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1416835,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "2a6786bd93eb159d72cd0891ed2696969deb27ba0e1d69cc369ac4bf38029b6b",
+          "submit_to_terminal_us": 1564893,
+          "terminal_xids": 1024,
+          "version": "2.24.2"
+        },
+        "river": {
+          "app_xids": 2048,
+          "artifact_sha256": "5db25a75ccfbf992cb72479a86470baa3a1ac054b5d780e0854e41caaaadf4d0",
+          "boot_id": "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+          "cpu_steal_percent": 0.0,
+          "disk": "8:0",
+          "drain_us": 1143929,
+          "kernel": "6.8.0-149-generic",
+          "raw_sha256": "11341d80ca78aa823fa904a5ce82622735652886a44ac321965d984993cfef93",
+          "submit_to_terminal_us": 1217244,
+          "terminal_xids": 36,
+          "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4"
+        }
+      },
+      "block": "05-noop.1795470838307205000",
+      "serial_savings_us_per_flight_to_match_peer": {
+        "apalis": 1859.227,
+        "oban": 1585.55,
+        "river": 1718.805
+      },
+      "strict_gap_us": {
+        "apalis": 3807696,
+        "oban": 3247207,
+        "river": 3520113
+      }
+    }
+  },
+  "observed_native_stock_cpu": {
+    "app_pg_cpu_ms_range": [
+      1816.660102,
+      1823.239097
+    ],
+    "archive_sha256": "eb7acc92ff05ef72c7765c6f250b5b28ece93584eaee0d8b2484efec22572ecf",
+    "child_only_fixed_work_wall_floor_ms": 1747.878,
+    "child_plus_jobs_pg_fixed_work_wall_floor_ms": 3201.8923244999996,
+    "exact_child_cpu_ms": 3495.756,
+    "jobs_pg_cpu_lower_ms": 2908.028649,
+    "observer_drain_shift_percent": 6.905051884192723,
+    "reduced_sha256": "c6e1d5bf18111219a06c4221239d8374d2c18a25240acd6f21a1018ffa1d7b27"
+  },
+  "strict_median_drain_us": 4779833
+}

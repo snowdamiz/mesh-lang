@@ -1,0 +1,1064 @@
+--- a/compiler/mesh-rt/src/actor/mod.rs
++++ b/compiler/mesh-rt/src/actor/mod.rs
+@@ -181,6 +181,41 @@
+             return answer;
+         }
+         stack::yield_current();
++    }
++}
++
++pub(crate) fn in_coroutine() -> bool {
++    stack::CURRENT_YIELDER.with(|current| current.yielder.get().is_some())
++}
++
++/// Suspend a native database frame. The PG decoder can hold actor references
++/// in its Rust row vector, so collection waits for the next Mesh safe point.
++pub(crate) fn recv_during_pg_io<T>(
++    receiver: &std::sync::mpsc::Receiver<T>,
++    deadline: Option<std::time::Instant>,
++) -> Result<T, std::sync::mpsc::RecvTimeoutError> {
++    use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
++    let (pid, me) = running_process();
++    if let Some(deadline) = deadline {
++        wake_at(pid, deadline);
++    }
++    loop {
++        let alive = me.lock().set_live_state(ProcessState::Waiting);
++        if alive {
++            let result = match receiver.try_recv() {
++                Ok(value) => Some(Ok(value)),
++                Err(TryRecvError::Disconnected) => Some(Err(RecvTimeoutError::Disconnected)),
++                Err(TryRecvError::Empty) => deadline
++                    .is_some_and(|until| std::time::Instant::now() >= until)
++                    .then_some(Err(RecvTimeoutError::Timeout)),
++            };
++            if let Some(result) = result {
++                if me.lock().set_live_state(ProcessState::Ready) {
++                    return result;
++                }
++            }
++        }
++        stack::suspend_current();
+     }
+ }
+ 
+--- a/compiler/mesh-rt/src/actor/process.rs
++++ b/compiler/mesh-rt/src/actor/process.rs
+@@ -325,6 +325,7 @@
+ 
+     /// Embedded calls have no coroutine GC and release their heap on return.
+     pub(crate) library_call: bool,
++    pub(crate) blocking_pool_calls: usize,
+     /// The main thread's process. It is not a coroutine and never yields, so
+     /// instead of collecting at a yield it collects at a reduction check, once
+     /// the allocator has asked for it (`YielderSlot::gc_wanted`).
+@@ -437,6 +438,7 @@
+             mailbox: Mailbox::for_process(pid.local_id(), mailbox_shard),
+             heap: ActorHeap::new(),
+             library_call: false,
++            blocking_pool_calls: 0,
+             collects_at_safepoints: false,
+             worker: None,
+             library_heap_owner: None,
+--- a/compiler/mesh-rt/src/db/migration.rs
++++ b/compiler/mesh-rt/src/db/migration.rs
+@@ -13,13 +13,13 @@
+ //! - `mesh_migration_execute`: Raw SQL escape hatch via Pool.execute
+ //!
+ //! All functions accept Mesh runtime types (MeshString pointers, List pointers)
+-//! and execute the generated DDL via `mesh_pool_execute`. SQL identifiers are
++//! and execute the generated DDL via `blocking_execute`. SQL identifiers are
+ //! double-quoted per PostgreSQL convention.
+ 
+ use super::{execute_ddl, quote_ident, quote_name};
+ use crate::collections::list::list_strings;
+ use crate::collections::list::mesh_list_new;
+-use crate::db::pool::mesh_pool_execute;
++use crate::db::pool::blocking_execute;
+ use crate::string::{text_of, MeshString};
+ 
+ // ── Pure Rust SQL builders (testable without GC) ─────────────────────
+@@ -391,7 +391,7 @@
+ /// Execute raw SQL (escape hatch for operations not covered by the DSL).
+ #[no_mangle]
+ pub extern "C" fn mesh_migration_execute(pool: u64, sql: *const MeshString) -> *mut u8 {
+-    mesh_pool_execute(pool, sql, mesh_list_new())
++    blocking_execute(pool, sql, mesh_list_new())
+ }
+ 
+ // ── Unit tests ───────────────────────────────────────────────────────
+--- a/compiler/mesh-rt/src/db/mod.rs
++++ b/compiler/mesh-rt/src/db/mod.rs
+@@ -8,6 +8,8 @@
+ pub mod pg_schema;
+ pub mod pool;
+ pub mod query;
++#[cfg(unix)]
++mod readiness;
+ pub mod repo;
+ pub mod row;
+ pub mod sqlite;
+@@ -33,7 +35,7 @@
+ /// result), or `Err(message)` for DDL that could not be built.
+ pub(crate) fn execute_ddl(pool: u64, sql: Result<String, String>) -> *mut u8 {
+     match sql {
+-        Ok(sql) => pool::mesh_pool_execute(
++        Ok(sql) => pool::blocking_execute(
+             pool,
+             crate::string::mesh_str(&sql),
+             crate::collections::list::mesh_list_new(),
+--- a/compiler/mesh-rt/src/db/pg.rs
++++ b/compiler/mesh-rt/src/db/pg.rs
+@@ -20,7 +20,7 @@
+ use std::net::{TcpStream, ToSocketAddrs};
+ use std::num::NonZeroU32;
+ use std::sync::Arc;
+-use std::time::Duration;
++use std::time::{Duration, Instant};
+ 
+ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+ use hmac::{Hmac, Mac};
+@@ -69,7 +69,7 @@
+ // ── Stream Abstraction ─────────────────────────────────────────────────
+ 
+ /// A PostgreSQL connection stream that may be plain TCP or TLS-wrapped.
+-enum PgStream<T: Read + Write = TcpStream> {
++enum PgStream<T: Read + Write = PgSocket> {
+     Plain(BufReader<T>),
+     Tls(StreamOwned<ClientConnection, T>),
+ }
+@@ -84,10 +84,17 @@
+ }
+ 
+ impl PgStream {
++    fn socket(&mut self) -> &mut PgSocket {
++        match self {
++            PgStream::Plain(s) => s.get_mut(),
++            PgStream::Tls(s) => &mut s.sock,
++        }
++    }
++
+     fn tcp(&self) -> &TcpStream {
+         match self {
+-            PgStream::Plain(s) => s.get_ref(),
+-            PgStream::Tls(s) => &s.sock,
++            PgStream::Plain(s) => &s.get_ref().tcp,
++            PgStream::Tls(s) => &s.sock.tcp,
+         }
+     }
+ }
+@@ -104,6 +111,70 @@
+             PgStream::Plain(s) => s.get_mut().flush(),
+             PgStream::Tls(s) => s.flush(),
+         }
++    }
++}
++
++/// Park at the TCP boundary so the same stack retains partial protocol
++/// frames, rustls record buffers, and row decoding state.
++struct PgSocket {
++    tcp: TcpStream,
++    deadline: Option<Instant>,
++}
++
++impl PgSocket {
++    fn new(tcp: TcpStream) -> Self {
++        Self {
++            tcp,
++            deadline: None,
++        }
++    }
++
++    fn transfer<T>(
++        &mut self,
++        interest: mio::Interest,
++        mut transfer: impl FnMut(&mut TcpStream) -> std::io::Result<T>,
++    ) -> std::io::Result<T> {
++        #[cfg(unix)]
++        if let Some(deadline) = self.deadline {
++            use std::io::ErrorKind;
++            use std::os::fd::AsRawFd;
++
++            loop {
++                if Instant::now() >= deadline {
++                    return Err(ErrorKind::TimedOut.into());
++                }
++                match transfer(&mut self.tcp) {
++                    Err(error) if error.kind() == ErrorKind::WouldBlock => {
++                        super::readiness::wait(self.tcp.as_raw_fd(), interest, deadline)?;
++                    }
++                    Err(error) if error.kind() == ErrorKind::Interrupted => continue,
++                    result => return result,
++                }
++            }
++        }
++        #[cfg(not(unix))]
++        let _ = interest;
++        transfer(&mut self.tcp)
++    }
++}
++
++impl Read for PgSocket {
++    fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
++        self.transfer(mio::Interest::READABLE, |tcp| tcp.read(bytes))
++    }
++}
++
++impl Write for PgSocket {
++    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
++        self.transfer(mio::Interest::WRITABLE, |tcp| tcp.write(bytes))
++    }
++
++    fn write_vectored(&mut self, bytes: &[std::io::IoSlice<'_>]) -> std::io::Result<usize> {
++        self.transfer(mio::Interest::WRITABLE, |tcp| tcp.write_vectored(bytes))
++    }
++
++    fn flush(&mut self) -> std::io::Result<()> {
++        self.tcp.flush()
+     }
+ }
+ 
+@@ -119,6 +190,24 @@
+ }
+ 
+ impl PgConn {
++    pub(super) fn begin_cooperative(&mut self) -> std::io::Result<()> {
++        let socket = self.stream.socket();
++        socket.tcp.set_nonblocking(true)?;
++        socket.deadline = Some(Instant::now() + ANSWER_TIMEOUT);
++        Ok(())
++    }
++
++    pub(super) fn renew_cooperative_deadline(&mut self) {
++        self.stream.socket().deadline = Some(Instant::now() + ANSWER_TIMEOUT);
++    }
++
++    pub(super) fn end_cooperative(&mut self) -> std::io::Result<()> {
++        let socket = self.stream.socket();
++        socket.tcp.set_nonblocking(false)?;
++        socket.deadline = None;
++        Ok(())
++    }
++
+     fn write_wire_all(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+         if self.broken {
+             return Err(std::io::Error::new(
+@@ -176,7 +265,7 @@
+     #[cfg(test)]
+     pub(super) fn from_test_stream(stream: TcpStream) -> Self {
+         Self {
+-            stream: PgStream::Plain(BufReader::new(stream)),
++            stream: PgStream::Plain(BufReader::new(PgSocket::new(stream))),
+             txn_status: b'I',
+             broken: false,
+             hot_checkout: false,
+@@ -1214,7 +1303,7 @@
+ /// parameters, every column in text format) or `DbValue`s (BYTEA columns in
+ /// binary format).
+ #[derive(Clone, Copy, PartialEq)]
+-enum Values {
++pub(super) enum Values {
+     Text,
+     Typed,
+ }
+@@ -1562,7 +1651,7 @@
+     let _ = stream.set_read_timeout(Some(ANSWER_TIMEOUT));
+     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
+ 
+-    let (stream, txn_status) = finish_startup(stream, &pg_url, None)?;
++    let (stream, txn_status) = finish_startup(PgSocket::new(stream), &pg_url, None)?;
+     let conn = PgConn {
+         stream,
+         txn_status,
+@@ -1719,6 +1808,11 @@
+     close(*unsafe { Box::from_raw(conn_handle as *mut PgConn) });
+ }
+ 
++/// Drop an interrupted exchange without writing Terminate.
++pub(super) unsafe fn abort(handle: u64) {
++    drop(Box::from_raw(handle as *mut PgConn));
++}
++
+ /// The parameters a `List<String>` or `List<DbValue>` holds.
+ unsafe fn bind_params<'a>(params: *mut u8, values: Values) -> Result<Vec<BindValue<'a>>, Failure> {
+     let params = match values {
+@@ -1729,7 +1823,7 @@
+ }
+ 
+ /// `Pg.execute` and `Pg.execute_values`: `Ok(rows affected)`.
+-unsafe fn mesh_execute(
++pub(super) unsafe fn mesh_execute(
+     conn_handle: u64,
+     sql: *const MeshString,
+     params: *mut u8,
+@@ -1743,7 +1837,7 @@
+ }
+ 
+ /// `Pg.query` and `Pg.query_values`: `Ok(rows)`.
+-unsafe fn mesh_query(
++pub(super) unsafe fn mesh_query(
+     conn_handle: u64,
+     sql: *const MeshString,
+     params: *mut u8,
+@@ -1927,7 +2021,9 @@
+ 
+         // 2. Call the closure with catch_unwind for panic safety
+         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+-            invoke_transaction_callback(fn_ptr, env_ptr, conn_handle)
++            super::pool::with_blocking_calls(|| {
++                invoke_transaction_callback(fn_ptr, env_ptr, conn_handle)
++            })
+         }));
+ 
+         match result {
+@@ -1975,7 +2071,9 @@
+     let mut decoded = mesh_list_new();
+     for index in 0..mesh_list_length(rows) {
+         let row = mesh_list_get(rows, index);
+-        decoded = mesh_list_append(decoded, crate::callback::call1(fn_ptr, env_ptr, row));
++        let value =
++            super::pool::with_blocking_calls(|| crate::callback::call1(fn_ptr, env_ptr, row));
++        decoded = mesh_list_append(decoded, value);
+     }
+     alloc_result(0, decoded) as *mut u8
+ }
+@@ -4004,6 +4102,7 @@
+         };
+         stream
+             .get_ref()
++            .tcp
+             .shutdown(std::net::Shutdown::Write)
+             .unwrap();
+         let error = outcome(mesh_pg_execute(handle, sql, mesh_list_new())).unwrap_err();
+--- a/compiler/mesh-rt/src/db/pg_schema.rs
++++ b/compiler/mesh-rt/src/db/pg_schema.rs
+@@ -8,7 +8,7 @@
+ use crate::collections::list::string_list;
+ use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
+ use crate::collections::map::mesh_map_get;
+-use crate::db::pool::mesh_pool_query;
++use crate::db::pool::blocking_query;
+ use crate::io::{alloc_result, err_result, MeshResult};
+ use crate::string::{mesh_str, text_of, MeshString};
+ 
+@@ -289,7 +289,7 @@
+ 
+         let sql = build_list_daily_partitions_before_sql();
+         let params = string_list(&[parent_table.to_string(), max_days.to_string()]);
+-        let query_result = mesh_pool_query(pool, mesh_str(sql), params);
++        let query_result = blocking_query(pool, mesh_str(sql), params);
+         let result = &*(query_result as *const MeshResult);
+         if result.tag != 0 {
+             return query_result;
+--- a/compiler/mesh-rt/src/db/pool.rs
++++ b/compiler/mesh-rt/src/db/pool.rs
+@@ -15,15 +15,17 @@
+ //! Pool handles are opaque u64 values (Box::into_raw), same pattern as
+ //! PgConn/SqliteConn handles.
+ 
+-use std::collections::HashSet;
++use std::collections::{HashMap, HashSet};
++use std::sync::Arc;
+ use std::time::{Duration, Instant};
+ 
+ use parking_lot::{Condvar, Mutex};
+ 
+ use super::pg::{
+-    mesh_pg_close, mesh_pg_execute, mesh_pg_execute_values, mesh_pg_query, mesh_pg_query_values,
+-    open, pg_simple_command, PgConn, ANSWER_TIMEOUT,
++    self, mesh_pg_close, mesh_pg_execute, mesh_pg_execute_values, mesh_pg_query,
++    mesh_pg_query_values, open, pg_simple_command, PgConn, Values, ANSWER_TIMEOUT,
+ };
++use crate::actor::{self, CooperativeSender, Process, ProcessId, ProcessState};
+ use crate::io::{alloc_result, box_scalar, err_result};
+ use crate::string::text_of;
+ use crate::string::MeshString;
+@@ -38,6 +40,10 @@
+ }
+ 
+ impl IdleConnection {
++    fn requires_probe(checked_in: Option<Instant>) -> bool {
++        checked_in.is_none_or(|instant| instant.elapsed() >= HEALTH_CHECK_IDLE)
++    }
++
+     fn new(handle: u64) -> Self {
+         Self {
+             handle,
+@@ -58,11 +64,29 @@
+     max_conns: usize,
+     checkout_timeout_ms: u64,
+     closed: bool,
++    actor_waiters: HashMap<ProcessId, CooperativeSender<()>>,
+ }
+ 
+ struct PgPool {
+     inner: Mutex<PoolInner>,
+     available: Condvar,
++    cooperative: bool,
++}
++
++impl PgPool {
++    fn notify_actor_waiters(&self) {
++        if self.cooperative {
++            let waiters = std::mem::take(&mut self.inner.lock().actor_waiters);
++            for reply in waiters.into_values() {
++                let _ = reply.send(());
++            }
++        }
++    }
++
++    fn notify_slot(&self) {
++        self.available.notify_one();
++        self.notify_actor_waiters();
++    }
+ }
+ 
+ // ── Helpers ──────────────────────────────────────────────────────────────
+@@ -80,7 +104,7 @@
+ /// Whether an idle connection still answers `SELECT 1`, within a bounded
+ /// time: a connection whose server went silent is dead too.
+ fn checkout_healthy(handle: u64, checked_in: Option<Instant>) -> bool {
+-    if checked_in.is_some_and(|instant| instant.elapsed() < HEALTH_CHECK_IDLE) {
++    if !IdleConnection::requires_probe(checked_in) {
+         return true;
+     }
+     let conn = unsafe { &mut *(handle as *mut PgConn) };
+@@ -110,10 +134,11 @@
+             if checkout_healthy(handle, checked_in) {
+                 return Ok(handle);
+             }
+-            mesh_pg_close(handle);
++            pool.inner.lock().leased.remove(&handle);
++            unsafe { pg::abort(handle) };
++            pool.inner.lock().total_created -= 1;
++            pool.notify_slot();
+             inner = pool.inner.lock();
+-            inner.leased.remove(&handle);
+-            inner.total_created -= 1;
+             continue;
+         }
+         if inner.total_created < inner.max_conns {
+@@ -139,7 +164,7 @@
+                     inner.total_created -= 1;
+                     drop(inner);
+                     // The slot is free again, for a checkout waiting on one.
+-                    pool.available.notify_one();
++                    pool.notify_slot();
+                     return Err(format!("pool connect: {error}"));
+                 }
+             }
+@@ -161,6 +186,173 @@
+         }
+         Err(error) => err_result(&error),
+     }
++}
++
++pub(super) fn with_blocking_calls<T>(run: impl FnOnce() -> T) -> T {
++    struct Restore(Arc<Mutex<Process>>);
++    impl Drop for Restore {
++        fn drop(&mut self) {
++            self.0.lock().blocking_pool_calls -= 1;
++        }
++    }
++    let _restore = actor::current_process().map(|process| {
++        process.lock().blocking_pool_calls += 1;
++        Restore(process)
++    });
++    run()
++}
++
++struct PoolWait<'a> {
++    pool: &'a PgPool,
++    pid: ProcessId,
++}
++
++impl Drop for PoolWait<'_> {
++    fn drop(&mut self) {
++        self.pool.inner.lock().actor_waiters.remove(&self.pid);
++    }
++}
++
++/// Owns the only live handle borrower. Drop retires the transport without
++/// sending protocol bytes or yielding, including during a forced actor exit.
++struct ActorLease<'a> {
++    pool: &'a PgPool,
++    handle: u64,
++}
++
++impl ActorLease<'_> {
++    fn conn(&mut self) -> &mut PgConn {
++        unsafe { &mut *(self.handle as *mut PgConn) }
++    }
++
++    fn finish(mut self) {
++        let conn = self.conn();
++        if conn.is_broken() {
++            return;
++        }
++        if conn.txn_status != b'I' {
++            conn.renew_cooperative_deadline();
++            if pg_simple_command(conn, "ROLLBACK").is_err() || conn.txn_status != b'I' {
++                return;
++            }
++        }
++        if conn.end_cooperative().is_err() {
++            return;
++        }
++        let mut inner = self.pool.inner.lock();
++        if !inner.closed {
++            inner.leased.remove(&self.handle);
++            inner.idle.push(IdleConnection::new(self.handle));
++            self.handle = 0;
++            drop(inner);
++            self.pool.notify_slot();
++        }
++    }
++}
++
++impl Drop for ActorLease<'_> {
++    fn drop(&mut self) {
++        if self.handle != 0 {
++            // Keep the connection counted until its file descriptor has closed.
++            // Remove provenance first, before the allocator can reuse the pointer.
++            self.pool.inner.lock().leased.remove(&self.handle);
++            unsafe { pg::abort(self.handle) };
++            self.pool.inner.lock().total_created -= 1;
++            self.pool.notify_slot();
++        }
++    }
++}
++
++fn checkout_actor(pool: &PgPool, pid: ProcessId) -> Result<ActorLease<'_>, String> {
++    let deadline = Instant::now() + Duration::from_millis(pool.inner.lock().checkout_timeout_ms);
++    loop {
++        let mut inner = pool.inner.lock();
++        if inner.closed {
++            return Err("pool is closed".into());
++        }
++        if Instant::now() >= deadline {
++            return Err("pool checkout timeout".into());
++        }
++        if let Some(IdleConnection { handle, checked_in }) = inner.idle.pop() {
++            inner.leased.insert(handle);
++            drop(inner);
++            let mut lease = ActorLease { pool, handle };
++            lease
++                .conn()
++                .begin_cooperative()
++                .map_err(|error| error.to_string())?;
++            if !IdleConnection::requires_probe(checked_in)
++                || (pg_simple_command(lease.conn(), "SELECT 1").is_ok()
++                    && lease.conn().txn_status == b'I')
++            {
++                return Ok(lease);
++            }
++            // Only the health probe ran. Drop this connection before trying another.
++            continue;
++        }
++        if inner.total_created < inner.max_conns {
++            inner.total_created += 1;
++            let url = inner.url.clone();
++            let hot_checkout = inner.hot_checkout;
++            drop(inner);
++            // DNS, TCP connect and authentication keep the ordinary bootstrap
++            // path. Only the exclusive, authenticated transport can suspend.
++            match open_for_pool(&url, hot_checkout) {
++                Ok(handle) => {
++                    let mut inner = pool.inner.lock();
++                    inner.leased.insert(handle);
++                    let closed = inner.closed;
++                    drop(inner);
++                    let mut lease = ActorLease { pool, handle };
++                    if closed {
++                        return Err("pool is closed".into());
++                    }
++                    lease
++                        .conn()
++                        .begin_cooperative()
++                        .map_err(|error| error.to_string())?;
++                    return Ok(lease);
++                }
++                Err(error) => {
++                    pool.inner.lock().total_created -= 1;
++                    pool.notify_slot();
++                    return Err(format!("pool connect: {error}"));
++                }
++            }
++        }
++        let (reply, receiver) = actor::cooperative_channel();
++        inner.actor_waiters.insert(pid, reply);
++        drop(inner);
++        let _registered = PoolWait { pool, pid };
++        // Checkin, retirement and close wake all registered candidates. If a
++        // woken actor dies before claiming the idle slot, another gets a turn.
++        let _ = actor::recv_during_pg_io(&receiver, Some(deadline));
++    }
++}
++
++fn with_actor_connection(pool: u64, run: impl FnOnce(u64) -> *mut u8) -> Option<*mut u8> {
++    let pool = unsafe { &*(pool as *const PgPool) };
++    if !pool.cooperative || !actor::in_coroutine() {
++        return None;
++    }
++    let (pid, process) = actor::running_process();
++    if process.lock().blocking_pool_calls != 0 {
++        return None;
++    }
++    let mut lease = match checkout_actor(pool, pid) {
++        Ok(lease) => lease,
++        Err(error) => return Some(err_result(&error)),
++    };
++    if matches!(process.lock().state, ProcessState::Exited(_)) {
++        // The scheduler will unwind the lease at this suspension.
++        let (_reply, receiver) = actor::cooperative_channel::<()>();
++        let _ = actor::recv_during_pg_io(&receiver, None);
++        unreachable!("an exited actor cannot submit a PostgreSQL statement");
++    }
++    lease.conn().renew_cooperative_deadline();
++    let result = run(lease.handle);
++    lease.finish();
++    Some(result)
+ }
+ 
+ pub(super) struct NativeLease {
+@@ -233,6 +425,12 @@
+     timeout_ms: i64,
+ ) -> *mut u8 {
+     let url = unsafe { text_of(url) };
++    let cooperative = cfg!(unix)
++        && url.split_once('?').is_some_and(|(_, options)| {
++            options
++                .split('&')
++                .any(|option| option == "mesh_cooperative_pool=1")
++        });
+     // Clamp parameters to reasonable values
+     let min = min_conns.max(0) as usize;
+     let max = (max_conns.max(1) as usize).max(min);
+@@ -268,8 +466,10 @@
+             max_conns: max,
+             checkout_timeout_ms: timeout_ms.max(100) as u64,
+             closed: false,
++            actor_waiters: HashMap::new(),
+         }),
+         available: Condvar::new(),
++        cooperative,
+     });
+     alloc_result(0, box_scalar(Box::into_raw(pool) as u64)) as *mut u8
+ }
+@@ -316,15 +516,14 @@
+         let kept = usable && !inner.closed;
+         if kept {
+             inner.idle.push(IdleConnection::new(conn_handle));
+-        } else {
+-            inner.total_created -= 1;
+         }
+         kept
+     };
+     if !kept {
+         mesh_pg_close(conn_handle);
+-    }
+-    pool.available.notify_one();
++        pool.inner.lock().total_created -= 1;
++    }
++    pool.notify_slot();
+ }
+ 
+ /// Execute a read query (SELECT) with automatic checkout-use-checkin.
+@@ -334,11 +533,20 @@
+ /// `mesh_pool_query(pool_handle: u64, sql: *const MeshString, params: *mut u8)
+ ///     -> *mut u8 (MeshResult<List<Map<String, String>>, String>)`
+ #[no_mangle]
+-pub extern "C" fn mesh_pool_query(
++pub extern "C-unwind" fn mesh_pool_query(
+     pool_handle: u64,
+     sql: *const MeshString,
+     params: *mut u8,
+ ) -> *mut u8 {
++    if let Some(result) = with_actor_connection(pool_handle, |conn| unsafe {
++        pg::mesh_query(conn, sql, params, Values::Text)
++    }) {
++        return result;
++    }
++    blocking_query(pool_handle, sql, params)
++}
++
++pub(crate) fn blocking_query(pool_handle: u64, sql: *const MeshString, params: *mut u8) -> *mut u8 {
+     with_connection(pool_handle, |conn| mesh_pg_query(conn, sql, params))
+ }
+ 
+@@ -349,7 +557,20 @@
+ /// `mesh_pool_execute(pool_handle: u64, sql: *const MeshString, params: *mut u8)
+ ///     -> *mut u8 (MeshResult<Int, String>)`
+ #[no_mangle]
+-pub extern "C" fn mesh_pool_execute(
++pub extern "C-unwind" fn mesh_pool_execute(
++    pool_handle: u64,
++    sql: *const MeshString,
++    params: *mut u8,
++) -> *mut u8 {
++    if let Some(result) = with_actor_connection(pool_handle, |conn| unsafe {
++        pg::mesh_execute(conn, sql, params, Values::Text)
++    }) {
++        return result;
++    }
++    blocking_execute(pool_handle, sql, params)
++}
++
++pub(crate) fn blocking_execute(
+     pool_handle: u64,
+     sql: *const MeshString,
+     params: *mut u8,
+@@ -358,20 +579,30 @@
+ }
+ 
+ #[no_mangle]
+-pub extern "C" fn mesh_pool_query_values(
++pub extern "C-unwind" fn mesh_pool_query_values(
+     pool_handle: u64,
+     sql: *const MeshString,
+     params: *mut u8,
+ ) -> *mut u8 {
++    if let Some(result) = with_actor_connection(pool_handle, |conn| unsafe {
++        pg::mesh_query(conn, sql, params, Values::Typed)
++    }) {
++        return result;
++    }
+     with_connection(pool_handle, |conn| mesh_pg_query_values(conn, sql, params))
+ }
+ 
+ #[no_mangle]
+-pub extern "C" fn mesh_pool_execute_values(
++pub extern "C-unwind" fn mesh_pool_execute_values(
+     pool_handle: u64,
+     sql: *const MeshString,
+     params: *mut u8,
+ ) -> *mut u8 {
++    if let Some(result) = with_actor_connection(pool_handle, |conn| unsafe {
++        pg::mesh_execute(conn, sql, params, Values::Typed)
++    }) {
++        return result;
++    }
+     with_connection(pool_handle, |conn| {
+         mesh_pg_execute_values(conn, sql, params)
+     })
+@@ -396,7 +627,7 @@
+ ) -> *mut u8 {
+     // The rows are decoded after the connection is back: a decoder that
+     // queries the pool itself then finds it there.
+-    let query_result = mesh_pool_query(pool_handle, sql as *const MeshString, params);
++    let query_result = blocking_query(pool_handle, sql as *const MeshString, params);
+     unsafe { crate::db::pg::decode_rows(query_result, fn_ptr, env_ptr) }
+ }
+ 
+@@ -424,6 +655,7 @@
+     }
+     // Wake all blocked checkouts so they see closed=true
+     pool.available.notify_all();
++    pool.notify_actor_waiters();
+ }
+ 
+ #[cfg(test)]
+@@ -461,8 +693,10 @@
+                 max_conns,
+                 checkout_timeout_ms: timeout_ms,
+                 closed: false,
++                actor_waiters: HashMap::new(),
+             }),
+             available: Condvar::new(),
++            cooperative: false,
+         })) as u64
+     }
+ 
+--- /dev/null
++++ b/compiler/mesh-rt/src/db/readiness.rs
+@@ -0,0 +1,178 @@
++//! Readiness notifications for PostgreSQL sockets owned by an actor.
++//! Only the owner registers or deregisters its live file descriptor.
++
++use std::collections::HashMap;
++use std::io::{self, ErrorKind};
++use std::os::fd::RawFd;
++use std::sync::atomic::{AtomicUsize, Ordering};
++use std::sync::{Arc, OnceLock};
++use std::time::Instant;
++
++use mio::unix::SourceFd;
++use mio::{Events, Interest, Poll, Registry, Token, Waker};
++use parking_lot::Mutex;
++
++use crate::actor::{cooperative_channel, recv_during_pg_io, CooperativeSender};
++
++const CONTROL: Token = Token(0);
++
++type Reply = CooperativeSender<io::Result<()>>;
++
++struct Waiting {
++    deadline: Instant,
++    reply: Reply,
++}
++
++#[derive(Default)]
++struct Pending {
++    waits: HashMap<Token, Waiting>,
++    polling_until: Option<Instant>,
++    stopped: bool,
++}
++
++struct Reactor {
++    registry: Registry,
++    control: Waker,
++    pending: Arc<Mutex<Pending>>,
++    next_token: AtomicUsize,
++}
++
++impl Reactor {
++    fn start() -> io::Result<Self> {
++        let poll = Poll::new()?;
++        let registry = poll.registry().try_clone()?;
++        let control = Waker::new(poll.registry(), CONTROL)?;
++        let pending = Arc::new(Mutex::new(Pending::default()));
++        let shared = pending.clone();
++        std::thread::Builder::new()
++            .name("mesh-pg-readiness".into())
++            .spawn(move || run(poll, &shared))?;
++        Ok(Self {
++            registry,
++            control,
++            pending,
++            next_token: AtomicUsize::new(1),
++        })
++    }
++
++    fn register(
++        &'static self,
++        fd: RawFd,
++        interest: Interest,
++        deadline: Instant,
++        reply: Reply,
++    ) -> io::Result<Registration> {
++        let token = Token(
++            self.next_token
++                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |token| {
++                    token.checked_add(1)
++                })
++                .map_err(|_| io::Error::other("PostgreSQL readiness tokens exhausted"))?,
++        );
++        let wake = {
++            let mut pending = self.pending.lock();
++            if pending.stopped {
++                return Err(io::Error::other("PostgreSQL readiness reactor stopped"));
++            }
++            pending.waits.insert(token, Waiting { deadline, reply });
++            pending
++                .polling_until
++                .is_none_or(|current| deadline < current)
++        };
++        if let Err(error) = self.registry.register(&mut SourceFd(&fd), token, interest) {
++            self.pending.lock().waits.remove(&token);
++            return Err(error);
++        }
++        let registration = Registration {
++            reactor: self,
++            fd,
++            token,
++        };
++        if wake {
++            self.control.wake()?;
++        }
++        Ok(registration)
++    }
++}
++
++struct Registration {
++    reactor: &'static Reactor,
++    fd: RawFd,
++    token: Token,
++}
++
++impl Drop for Registration {
++    fn drop(&mut self) {
++        let _ = self.reactor.registry.deregister(&mut SourceFd(&self.fd));
++        self.reactor.pending.lock().waits.remove(&self.token);
++    }
++}
++
++fn run(mut poll: Poll, pending: &Mutex<Pending>) {
++    let mut events = Events::with_capacity(128);
++    loop {
++        let now = Instant::now();
++        let mut expired = Vec::new();
++        let next = {
++            let mut pending = pending.lock();
++            let mut next = None::<Instant>;
++            pending.waits.retain(|_, waiting| {
++                if waiting.deadline <= now {
++                    expired.push(waiting.reply.clone());
++                    return false;
++                }
++                next = Some(next.map_or(waiting.deadline, |prior| prior.min(waiting.deadline)));
++                true
++            });
++            pending.polling_until = next;
++            next
++        };
++        for reply in expired {
++            let _ = reply.send(Err(ErrorKind::TimedOut.into()));
++        }
++        match poll.poll(
++            &mut events,
++            next.map(|deadline| deadline.saturating_duration_since(Instant::now())),
++        ) {
++            Ok(()) => {}
++            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
++            Err(_) => break,
++        }
++        for event in &events {
++            let waiting = pending.lock().waits.remove(&event.token());
++            if let Some(waiting) = waiting {
++                let _ = waiting.reply.send(Ok(()));
++            }
++        }
++    }
++    let waiting = {
++        let mut pending = pending.lock();
++        pending.stopped = true;
++        std::mem::take(&mut pending.waits)
++    };
++    for (_, waiting) in waiting {
++        let _ = waiting.reply.send(Err(io::Error::other(
++            "PostgreSQL readiness reactor stopped",
++        )));
++    }
++}
++
++pub(super) fn wait(fd: RawFd, interest: Interest, deadline: Instant) -> io::Result<()> {
++    static REACTOR: OnceLock<Result<Reactor, String>> = OnceLock::new();
++    let reactor = REACTOR
++        .get_or_init(|| Reactor::start().map_err(|error| error.to_string()))
++        .as_ref()
++        .map_err(|error| io::Error::other(error.clone()))?;
++    static TRACE: OnceLock<bool> = OnceLock::new();
++    if *TRACE.get_or_init(|| std::env::var_os("MESH_PG_TRACE_WAITS").is_some()) {
++        let direction = if interest.is_readable() {
++            "read"
++        } else {
++            "write"
++        };
++        eprintln!("postgres socket wait {direction}");
++    }
++    let (reply, receiver) = cooperative_channel();
++    let _registration = reactor.register(fd, interest, deadline, reply)?;
++    recv_during_pg_io(&receiver, None).map_err(io::Error::other)?
++}
+--- a/compiler/mesh-rt/src/db/repo.rs
++++ b/compiler/mesh-rt/src/db/repo.rs
+@@ -3,7 +3,7 @@
+ //! Provides stateless database operations that consume Query structs
+ //! (built by the Query module) and execute them via Pool.query. Each read
+ //! function reads the Query object's 13 slots to build parameterized SQL,
+-//! then delegates to `mesh_pool_query` for execution. Write functions use
++//! then delegates to `blocking_query` for execution. Write functions use
+ //! the ORM SQL builders from orm.rs with RETURNING * clauses.
+ //!
+ //! ## Read Functions
+@@ -34,7 +34,7 @@
+ };
+ use crate::db::expr::{clone_expr, parse_expr, render_expr, SqlExpr};
+ use crate::db::pool::{
+-    mesh_pool_checkin, mesh_pool_checkout, mesh_pool_execute, mesh_pool_query, unbox_u64_payload,
++    blocking_execute, blocking_query, mesh_pool_checkin, mesh_pool_checkout, unbox_u64_payload,
+ };
+ use crate::db::query::{query_parts, QueryParts};
+ use crate::io::{alloc_result, err_result, MeshResult};
+@@ -273,7 +273,7 @@
+ 
+ /// `sql` run on the pool with `params`: `Pool.query`'s result.
+ fn run_query(pool: u64, sql: &str, params: &[String]) -> *mut u8 {
+-    mesh_pool_query(pool, mesh_str(sql), string_list(params))
++    blocking_query(pool, mesh_str(sql), string_list(params))
+ }
+ 
+ // ── Extern C functions ───────────────────────────────────────────────
+@@ -321,7 +321,7 @@
+     let sql = "SELECT a.attname FROM pg_index i \
+         JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) \
+         WHERE i.indrelid = to_regclass($1) AND i.indisprimary";
+-    let result = mesh_pool_query(
++    let result = blocking_query(
+         pool,
+         mesh_str(sql) as *const MeshString,
+         string_list(&[quote_name(table)]),
+@@ -360,7 +360,7 @@
+             by_key(&key, 1)
+         );
+         let params = mesh_list_append(mesh_list_new(), id as u64);
+-        let result = mesh_pool_query(pool, mesh_str(&sql), params);
++        let result = blocking_query(pool, mesh_str(&sql), params);
+         first_row(result, "not found")
+     }
+ }
+@@ -386,7 +386,7 @@
+             quote_name(field_str)
+         );
+         let params = mesh_list_append(mesh_list_new(), value as u64);
+-        let result = mesh_pool_query(pool, mesh_str(&sql), params);
++        let result = blocking_query(pool, mesh_str(&sql), params);
+ 
+         first_row(result, "not found")
+     }
+@@ -745,7 +745,7 @@
+             by_key(&key, 1)
+         );
+         let params = mesh_list_append(mesh_list_new(), id as u64);
+-        let result = mesh_pool_query(pool, mesh_str(&sql), params);
++        let result = blocking_query(pool, mesh_str(&sql), params);
+ 
+         first_row(result, "delete: no row returned (id not found)")
+     }
+@@ -1403,7 +1403,7 @@
+         let (conditions, where_param_values, _next_idx) = where_sql(&query, 1);
+         sql.push_str(&format!(" WHERE {}", conditions));
+ 
+-        mesh_pool_execute(pool, mesh_str(&sql), string_list(&where_param_values))
++        blocking_execute(pool, mesh_str(&sql), string_list(&where_param_values))
+     }
+ }
+ 
+@@ -1517,7 +1517,7 @@
+ #[no_mangle]
+ pub extern "C" fn mesh_repo_query_raw(pool: u64, sql: *mut u8, params: *mut u8) -> *mut u8 {
+     let sql_ptr = sql as *const MeshString;
+-    mesh_pool_query(pool, sql_ptr, params)
++    blocking_query(pool, sql_ptr, params)
+ }
+ 
+ /// Execute raw SQL and return affected row count.
+@@ -1525,7 +1525,7 @@
+ #[no_mangle]
+ pub extern "C" fn mesh_repo_execute_raw(pool: u64, sql: *mut u8, params: *mut u8) -> *mut u8 {
+     let sql_ptr = sql as *const MeshString;
+-    mesh_pool_execute(pool, sql_ptr, params)
++    blocking_execute(pool, sql_ptr, params)
+ }
+ 
+ // ── Unit tests ───────────────────────────────────────────────────────
+@@ -3155,7 +3155,7 @@
+             .map(String::as_str)
+             .chain(setup.iter().copied())
+         {
+-            ok(mesh_pool_execute(pool, mesh_str(sql), mesh_list_new()));
++            ok(blocking_execute(pool, mesh_str(sql), mesh_list_new()));
+         }
+         pool
+     }
+--- a/compiler/mesh-rt/Cargo.toml
++++ b/compiler/mesh-rt/Cargo.toml
+@@ -67,7 +67,7 @@
+ # Hostname-based auto-identity for generic Docker/container deployments.
+ hostname = "0.4"
+ libc = "0.2"
+-mio = { version = "1.1", features = ["net", "os-poll"] }
++mio = { version = "1.1", features = ["net", "os-poll", "os-ext"] }
+ socket2 = "0.6"
+ 
+ # Blind RSA signing, key generation and PKCS#8 import (profile BR1) run only

@@ -1,0 +1,12 @@
+{
+  "pid": 93380,
+  "role": "parity_producer",
+  "settings": [
+    "170011",
+    "on",
+    "on",
+    "on",
+    "on"
+  ],
+  "ssl": true
+}

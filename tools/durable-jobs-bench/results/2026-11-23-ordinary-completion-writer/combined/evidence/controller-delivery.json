@@ -1,0 +1,8 @@
+{
+  "packetSha256": "87334bda19cd2f0e97a81f937b632bfce965d9804fd234375bbe820870c23b36",
+  "threadId": "thread:delegated-task:command%3Amcp%3A824787c5-935c-433b-8c9b-93389c4f3694%3Adelegate-task%3Alinode-native-stepchange-controller-v1",
+  "messageId": "message:mcp:4744be3f-7757-431f-add4-4118d2ef22f5:thread-send:completion-writer-bulk-split-exact-r2-87334bda",
+  "runId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A824787c5-935c-433b-8c9b-93389c4f3694%253Adelegate-task%253Alinode-native-stepchange-controller-v1:ordinal:1",
+  "status": "running",
+  "delivery": "steered"
+}

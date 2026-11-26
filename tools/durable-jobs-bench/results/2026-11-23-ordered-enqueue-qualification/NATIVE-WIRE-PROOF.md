@@ -18,11 +18,13 @@ runtime build took about three minutes. The first retry reached its 190-second l
 [Vector checksums](wire-vectors.sha256)
 
 The matrix owner allocates the new reservation. Acquire the local timing
-lock first, then the remote active-arm lock and native lock. With the
-locks held, set `NATIVE_WIRE_GRANT_END` to the published UTC end as a
-Unix timestamp. Run these commands on the same pinned host. Redirect the complete
-output into a fresh receipt. Record the exact command exit and verify
-the executable before and after the command.
+lock first, then the remote active-arm lock and native lock. From the
+checkout root, pass the exact active `NATIVE-ORDERED-WIRE-SETUP` grant
+line to `replay/slot.py --cached-wire --grant "$grant"`. The launcher
+runs the following recipe with the locks held and
+`NATIVE_WIRE_GRANT_END` set to the published UTC end as a Unix timestamp.
+It saves the complete output, command exit, and executable hashes in a
+fresh receipt under `target/linode-ordered-enqueue/wire-followthrough`.
 
 ```bash
 base=/var/lib/durable-jobs-bench/native
@@ -33,12 +35,32 @@ mesh="$base/builds/mesh-ordered-enqueue-v1/mesh"
 llvm="$base/toolchain/llvm-21.1.8"
 rust="$base/toolchain/rust-1.99.0"
 
+source_archive="$setup/input/source.tar.gz"
+source_sha=0c1695ebb875c875095429750731c137656e47b04c59e273d03b813392c5caef
+printf '%s  %s\n' "$source_sha" "$source_archive" | sha256sum -c -
+python3 -B - "$source_archive" "$source" <<'PY'
+from pathlib import Path
+import sys
+import tarfile
+
+with tarfile.open(sys.argv[1], "r:gz") as archive:
+    for member in archive:
+        if member.isfile():
+            path = Path(sys.argv[2]) / member.name
+            if path.is_symlink() or archive.extractfile(member).read() != path.read_bytes():
+                sys.exit(f"Sealed source changed: {member.name}")
+        elif not member.isdir():
+            sys.exit(f"Unexpected sealed source entry: {member.name}")
+PY
+printf 'source_archive_sha256=%s\n' "$source_sha"
 cd "$proof"
 diff -r "$source/compiler" "$proof/compiler"
 diff -r "$source/.cargo" "$proof/.cargo"
 cmp "$source/Cargo.lock" "$proof/Cargo.lock"
 cmp "$source/Cargo.toml" "$proof/Cargo.toml"
+cmp "$source/scripts/ci-x86_64-linux-gnu-clang" "$proof/scripts/ci-x86_64-linux-gnu-clang"
 test "$(cat NATIVE_MESH_REVISION)" = 77c447f773a4d0af5c5578873a2410301b3ba069
+printf 'source_revision=%s\n' "$(cat NATIVE_MESH_REVISION)"
 printf '%s  vectors.sha256\n' '52c03f05fb23775a16866433bf7aa178398471698d2830df64d8b5884357469f' | sha256sum -c -
 sha256sum -c vectors.sha256
 printf '%s  %s\n' 33ebb48f27c4e1623b5019400847812deb48ca6a4dba26b594efb0587a301954 "$mesh" | sha256sum -c -
@@ -65,3 +87,5 @@ and exit, including any timeout. Keep the compiler command separate from
 the existing producer build and executable. After exporting the receipt,
 release all three locks. The proof source copies and matching Cargo
 cache are retained on the host for this reservation.
+
+Replay the receipt locally with `replay/slot.py --verify-cached-wire RECEIPT`.

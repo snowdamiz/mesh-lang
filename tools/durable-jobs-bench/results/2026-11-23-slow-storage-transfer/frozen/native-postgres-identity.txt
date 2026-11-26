@@ -1,0 +1,6 @@
+postgres (PostgreSQL) 17.11
+ '--prefix=/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11' '--with-openssl'
+b70863988c4762b6b914ac54d194fa5a1723201100d8155caf7781edba29faa1  /var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres
+0cb86ff6113361a6e677309642c97a2779d4234d5b615ef8e740d7d9f8a4d637  /var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/lib/pg_stat_statements.so
+/dev/sda ext4
+pid 32981's current affinity list: 0-3

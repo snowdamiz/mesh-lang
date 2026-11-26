@@ -1,0 +1,4 @@
+bin/reuse.ll:  %pid = call i64 @mesh_actor_spawn(ptr @immediate, ptr %spawn_args, i64 8, i8 1)
+bin/reuse.ll:  %pid = call i64 @mesh_actor_spawn(ptr @parked, ptr %spawn_args, i64 8, i8 1)
+bin/stock.ll:  %pid = call i64 @mesh_actor_spawn(ptr @immediate, ptr %spawn_args, i64 8, i8 1)
+bin/stock.ll:  %pid = call i64 @mesh_actor_spawn(ptr @parked, ptr %spawn_args, i64 8, i8 1)

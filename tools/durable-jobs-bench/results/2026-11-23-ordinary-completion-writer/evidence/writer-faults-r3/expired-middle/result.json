@@ -1,0 +1,212 @@
+{
+  "prime_wire": {
+    "command": "SELECT 1",
+    "rows": 1,
+    "idle": true,
+    "receipt_dropped": false
+  },
+  "during_receipt_hold": {
+    "batch_contention_hints": 0,
+    "claimed": 4,
+    "drained": false,
+    "event_buffer_bytes": {
+      "logger": {
+        "sampled_peak_bytes": 456,
+        "upper_bound_bytes": 29184
+      },
+      "reader": null
+    },
+    "event_logs_dropped": 0,
+    "events_dropped": 0,
+    "finished": 0,
+    "last_error": null,
+    "namespace": "parity_0123456789abcdef",
+    "outcomes": {
+      "cancelled": 0,
+      "completed": 0,
+      "discarded": 0,
+      "released_unstarted": 0,
+      "retryable": 0,
+      "scheduled": 0
+    },
+    "peak_queued_context_bytes": 1035,
+    "pending_claims": 0,
+    "pruned": 0,
+    "queues": {
+      "default": {
+        "drained": false,
+        "in_flight": 4,
+        "limit": 4,
+        "pending_claims": 0,
+        "state": "running"
+      }
+    },
+    "recovered": 0,
+    "runner_id": 1,
+    "scheduled": 0,
+    "stale_acks": 0,
+    "state": "running",
+    "undrained": 4,
+    "undrained_jobs": [
+      "133fe32f-857c-4485-909c-47e0873bec18",
+      "1cef3d56-82d2-4553-926b-5c4f8361bb30",
+      "95abee26-32d5-4bf1-a32d-2cd825350e7b",
+      "9743b44c-a369-4e33-9890-c3dc33345320"
+    ]
+  },
+  "held_physical_backends": [
+    [
+      "parity_subject",
+      54542,
+      true
+    ],
+    [
+      "compiled_caller",
+      54551,
+      true
+    ],
+    [
+      "compiled_caller",
+      54557,
+      true
+    ],
+    [
+      "parity_subject",
+      54567,
+      true
+    ],
+    [
+      "parity_subject",
+      54573,
+      true
+    ]
+  ],
+  "peers_while_middle_locked": {
+    "left": {
+      "id": "1cef3d56-82d2-4553-926b-5c4f8361bb30",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    },
+    "right": {
+      "id": "9743b44c-a369-4e33-9890-c3dc33345320",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    }
+  },
+  "local_slot_after_expiry": {
+    "batch_contention_hints": 0,
+    "claimed": 6,
+    "drained": false,
+    "event_buffer_bytes": {
+      "logger": {
+        "sampled_peak_bytes": 456,
+        "upper_bound_bytes": 29184
+      },
+      "reader": null
+    },
+    "event_logs_dropped": 0,
+    "events_dropped": 0,
+    "finished": 5,
+    "last_error": "could not obtain lock on row in relation \"jobs\"",
+    "namespace": "parity_0123456789abcdef",
+    "outcomes": {
+      "cancelled": 0,
+      "completed": 4,
+      "discarded": 0,
+      "released_unstarted": 0,
+      "retryable": 1,
+      "scheduled": 0
+    },
+    "peak_queued_context_bytes": 1035,
+    "pending_claims": 0,
+    "pruned": 0,
+    "queues": {
+      "default": {
+        "drained": false,
+        "in_flight": 1,
+        "limit": 4,
+        "pending_claims": 0,
+        "state": "running"
+      }
+    },
+    "recovered": 0,
+    "runner_id": 1,
+    "scheduled": 0,
+    "stale_acks": 0,
+    "state": "running",
+    "undrained": 1,
+    "undrained_jobs": [
+      "133fe32f-857c-4485-909c-47e0873bec18"
+    ]
+  },
+  "final": {
+    "middle": {
+      "id": "133fe32f-857c-4485-909c-47e0873bec18",
+      "xid": "765",
+      "state": "executing",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": 1795473787667
+    },
+    "right": {
+      "id": "9743b44c-a369-4e33-9890-c3dc33345320",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    },
+    "later-retry": {
+      "id": "98e5ce28-8e05-4a8f-b919-a92c97a1d5b0",
+      "xid": "782",
+      "state": "completed",
+      "attempt": 2,
+      "effects": 1,
+      "attempts": [
+        1,
+        2
+      ],
+      "lease_expires_at_ms": null
+    },
+    "left": {
+      "id": "1cef3d56-82d2-4553-926b-5c4f8361bb30",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    },
+    "prime": {
+      "id": "95abee26-32d5-4bf1-a32d-2cd825350e7b",
+      "xid": "761",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    }
+  }
+}

@@ -1,0 +1,1442 @@
+[
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 32.079166666666666,
+    "bulk_calls": 0,
+    "commit_ms": 63.219,
+    "group": 1,
+    "load": [
+      30.90087890625,
+      26.998046875,
+      26.8564453125
+    ],
+    "producer_cpu_ms": 6.810541666666669,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 63.433958
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 23.188958333333332,
+    "bulk_calls": 0,
+    "commit_ms": 33.202,
+    "group": 1,
+    "load": [
+      30.90087890625,
+      26.998046875,
+      26.8564453125
+    ],
+    "producer_cpu_ms": 4.523499999999999,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 33.46025
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 13.87233333333333,
+    "bulk_calls": 1,
+    "commit_ms": 18.088,
+    "group": 1,
+    "load": [
+      30.90087890625,
+      26.998046875,
+      26.8564453125
+    ],
+    "producer_cpu_ms": 2.5541666666666663,
+    "profile": "short",
+    "scalar_calls": 0,
+    "wall_ms": 18.424666
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 17.087583333333335,
+    "bulk_calls": 1,
+    "commit_ms": 25.296,
+    "group": 2,
+    "load": [
+      30.90087890625,
+      26.998046875,
+      26.8564453125
+    ],
+    "producer_cpu_ms": 2.935666666666666,
+    "profile": "short",
+    "scalar_calls": 0,
+    "wall_ms": 26.013292
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 23.940916666666666,
+    "bulk_calls": 0,
+    "commit_ms": 32.092,
+    "group": 2,
+    "load": [
+      30.90087890625,
+      26.998046875,
+      26.8564453125
+    ],
+    "producer_cpu_ms": 4.4431666666666665,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 32.344
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 22.387291666666666,
+    "bulk_calls": 0,
+    "commit_ms": 33.283,
+    "group": 2,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 4.532416666666666,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 33.49325
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 23.49325,
+    "bulk_calls": 0,
+    "commit_ms": 32.431,
+    "group": 3,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 4.242416666666666,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 32.623417
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 10.873708333333333,
+    "bulk_calls": 1,
+    "commit_ms": 16.034,
+    "group": 3,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 2.758416666666667,
+    "profile": "short",
+    "scalar_calls": 0,
+    "wall_ms": 16.24475
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 29.712208333333336,
+    "bulk_calls": 0,
+    "commit_ms": 41.349,
+    "group": 3,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 5.556124999999999,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 41.84225
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 26.924458333333334,
+    "bulk_calls": 0,
+    "commit_ms": 33.91,
+    "group": 4,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 5.125833333333333,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 34.175625
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 26.187333333333335,
+    "bulk_calls": 0,
+    "commit_ms": 43.278,
+    "group": 4,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 5.285125000000001,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 43.605458
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 13.130375,
+    "bulk_calls": 1,
+    "commit_ms": 15.958,
+    "group": 4,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 2.5005416666666678,
+    "profile": "short",
+    "scalar_calls": 0,
+    "wall_ms": 16.291709
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 14.308250000000001,
+    "bulk_calls": 1,
+    "commit_ms": 23.06,
+    "group": 5,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 2.9519166666666665,
+    "profile": "short",
+    "scalar_calls": 0,
+    "wall_ms": 23.423792
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 32.65395833333333,
+    "bulk_calls": 0,
+    "commit_ms": 57.439,
+    "group": 5,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 6.495249999999999,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 57.985917
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 34.765458333333335,
+    "bulk_calls": 0,
+    "commit_ms": 89.348,
+    "group": 5,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 6.768249999999998,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 89.71275
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 24.344375,
+    "bulk_calls": 0,
+    "commit_ms": 37.616,
+    "group": 6,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 4.607541666666665,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 37.832
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 14.12470833333333,
+    "bulk_calls": 1,
+    "commit_ms": 20.746,
+    "group": 6,
+    "load": [
+      33.63134765625,
+      27.62890625,
+      27.07958984375
+    ],
+    "producer_cpu_ms": 2.590166666666665,
+    "profile": "short",
+    "scalar_calls": 0,
+    "wall_ms": 21.174625
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 25.013208333333335,
+    "bulk_calls": 0,
+    "commit_ms": 32.049,
+    "group": 6,
+    "load": [
+      35.34228515625,
+      28.0830078125,
+      27.2431640625
+    ],
+    "producer_cpu_ms": 4.619083333333333,
+    "profile": "short",
+    "scalar_calls": 128,
+    "wall_ms": 32.296459
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 169.34754166666667,
+    "bulk_calls": 0,
+    "commit_ms": 541.191,
+    "group": 1,
+    "load": [
+      35.34228515625,
+      28.0830078125,
+      27.2431640625
+    ],
+    "producer_cpu_ms": 39.082791666666665,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 541.527833
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 161.78304166666666,
+    "bulk_calls": 0,
+    "commit_ms": 380.363,
+    "group": 1,
+    "load": [
+      35.34228515625,
+      28.0830078125,
+      27.2431640625
+    ],
+    "producer_cpu_ms": 38.21291666666667,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 380.616375
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 64.21920833333333,
+    "bulk_calls": 8,
+    "commit_ms": 195.68,
+    "group": 1,
+    "load": [
+      35.34228515625,
+      28.0830078125,
+      27.2431640625
+    ],
+    "producer_cpu_ms": 21.04029166666666,
+    "profile": "noop",
+    "scalar_calls": 0,
+    "wall_ms": 196.264875
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 57.02479166666667,
+    "bulk_calls": 8,
+    "commit_ms": 79.648,
+    "group": 2,
+    "load": [
+      35.34228515625,
+      28.0830078125,
+      27.2431640625
+    ],
+    "producer_cpu_ms": 16.759333333333334,
+    "profile": "noop",
+    "scalar_calls": 0,
+    "wall_ms": 80.303167
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 239.10966666666667,
+    "bulk_calls": 0,
+    "commit_ms": 1808.767,
+    "group": 2,
+    "load": [
+      35.34228515625,
+      28.0830078125,
+      27.2431640625
+    ],
+    "producer_cpu_ms": 60.32987500000001,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 1809.257708
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 212.7927916666667,
+    "bulk_calls": 0,
+    "commit_ms": 854.891,
+    "group": 2,
+    "load": [
+      36.115234375,
+      28.36376953125,
+      27.34716796875
+    ],
+    "producer_cpu_ms": 52.589375,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 855.331708
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 201.76095833333332,
+    "bulk_calls": 0,
+    "commit_ms": 807.975,
+    "group": 3,
+    "load": [
+      36.115234375,
+      28.36376953125,
+      27.34716796875
+    ],
+    "producer_cpu_ms": 51.75958333333334,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 808.359166
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 61.8975,
+    "bulk_calls": 8,
+    "commit_ms": 131.526,
+    "group": 3,
+    "load": [
+      36.115234375,
+      28.36376953125,
+      27.34716796875
+    ],
+    "producer_cpu_ms": 21.296625000000006,
+    "profile": "noop",
+    "scalar_calls": 0,
+    "wall_ms": 132.443708
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 240.87262499999997,
+    "bulk_calls": 0,
+    "commit_ms": 1045.457,
+    "group": 3,
+    "load": [
+      36.115234375,
+      28.36376953125,
+      27.34716796875
+    ],
+    "producer_cpu_ms": 59.891749999999995,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 1045.776083
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 320.40120833333333,
+    "bulk_calls": 0,
+    "commit_ms": 1168.874,
+    "group": 4,
+    "load": [
+      38.26806640625,
+      28.9384765625,
+      27.5556640625
+    ],
+    "producer_cpu_ms": 73.82458333333332,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 1171.147875
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 409.4250416666667,
+    "bulk_calls": 0,
+    "commit_ms": 1504.592,
+    "group": 4,
+    "load": [
+      38.26806640625,
+      28.9384765625,
+      27.5556640625
+    ],
+    "producer_cpu_ms": 89.364125,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 1505.138208
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 93.853125,
+    "bulk_calls": 8,
+    "commit_ms": 389.82,
+    "group": 4,
+    "load": [
+      41.65478515625,
+      30.40771484375,
+      28.11962890625
+    ],
+    "producer_cpu_ms": 30.616416666666666,
+    "profile": "noop",
+    "scalar_calls": 0,
+    "wall_ms": 392.0645
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 60.366333333333344,
+    "bulk_calls": 8,
+    "commit_ms": 108.1,
+    "group": 5,
+    "load": [
+      43.36376953125,
+      30.94873046875,
+      28.32373046875
+    ],
+    "producer_cpu_ms": 17.648458333333338,
+    "profile": "noop",
+    "scalar_calls": 0,
+    "wall_ms": 108.827333
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 309.76975000000004,
+    "bulk_calls": 0,
+    "commit_ms": 1077.911,
+    "group": 5,
+    "load": [
+      43.36376953125,
+      30.94873046875,
+      28.32373046875
+    ],
+    "producer_cpu_ms": 71.32175000000001,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 1080.073625
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 234.861625,
+    "bulk_calls": 0,
+    "commit_ms": 555.281,
+    "group": 5,
+    "load": [
+      43.36376953125,
+      30.94873046875,
+      28.32373046875
+    ],
+    "producer_cpu_ms": 52.77016666666666,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 555.633291
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 238.92283333333333,
+    "bulk_calls": 0,
+    "commit_ms": 531.383,
+    "group": 6,
+    "load": [
+      43.36376953125,
+      30.94873046875,
+      28.32373046875
+    ],
+    "producer_cpu_ms": 52.11675,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 531.7435
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 55.67791666666667,
+    "bulk_calls": 8,
+    "commit_ms": 88.05,
+    "group": 6,
+    "load": [
+      42.77392578125,
+      31.0322265625,
+      28.36865234375
+    ],
+    "producer_cpu_ms": 17.35091666666667,
+    "profile": "noop",
+    "scalar_calls": 0,
+    "wall_ms": 88.631083
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 223.78179166666666,
+    "bulk_calls": 0,
+    "commit_ms": 363.024,
+    "group": 6,
+    "load": [
+      42.77392578125,
+      31.0322265625,
+      28.36865234375
+    ],
+    "producer_cpu_ms": 48.434374999999996,
+    "profile": "noop",
+    "scalar_calls": 1024,
+    "wall_ms": 363.779792
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 651.4988333333334,
+    "bulk_calls": 0,
+    "commit_ms": 1189.449,
+    "group": 1,
+    "load": [
+      42.77392578125,
+      31.0322265625,
+      28.36865234375
+    ],
+    "producer_cpu_ms": 178.85275000000001,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1208.162666
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 708.114875,
+    "bulk_calls": 0,
+    "commit_ms": 1490.49,
+    "group": 1,
+    "load": [
+      42.77392578125,
+      31.0322265625,
+      28.36865234375
+    ],
+    "producer_cpu_ms": 183.76808333333332,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1491.205625
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 682.583375,
+    "bulk_calls": 0,
+    "commit_ms": 1461.969,
+    "group": 1,
+    "load": [
+      40.3095703125,
+      30.7158203125,
+      28.2724609375
+    ],
+    "producer_cpu_ms": 185.29670833333333,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1463.0135
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 669.9282499999999,
+    "bulk_calls": 0,
+    "commit_ms": 1207.231,
+    "group": 2,
+    "load": [
+      40.3095703125,
+      30.7158203125,
+      28.2724609375
+    ],
+    "producer_cpu_ms": 177.30995833333333,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1208.028125
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 682.111125,
+    "bulk_calls": 0,
+    "commit_ms": 2427.118,
+    "group": 2,
+    "load": [
+      41.16552734375,
+      31.05224609375,
+      28.4052734375
+    ],
+    "producer_cpu_ms": 197.25616666666667,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 2427.816083
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 677.7740000000001,
+    "bulk_calls": 0,
+    "commit_ms": 2613.833,
+    "group": 2,
+    "load": [
+      41.16552734375,
+      31.05224609375,
+      28.4052734375
+    ],
+    "producer_cpu_ms": 199.57975,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 2617.53525
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 657.95125,
+    "bulk_calls": 0,
+    "commit_ms": 1683.829,
+    "group": 3,
+    "load": [
+      41.47216796875,
+      31.28369140625,
+      28.50244140625
+    ],
+    "producer_cpu_ms": 189.26775,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1685.951
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 678.6186250000001,
+    "bulk_calls": 0,
+    "commit_ms": 1439.081,
+    "group": 3,
+    "load": [
+      42.95556640625,
+      31.76025390625,
+      28.6865234375
+    ],
+    "producer_cpu_ms": 176.03275,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1439.904542
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 638.9379166666666,
+    "bulk_calls": 0,
+    "commit_ms": 1082.755,
+    "group": 3,
+    "load": [
+      42.95556640625,
+      31.76025390625,
+      28.6865234375
+    ],
+    "producer_cpu_ms": 161.91358333333335,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1102.285041
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 684.111625,
+    "bulk_calls": 0,
+    "commit_ms": 2549.172,
+    "group": 4,
+    "load": [
+      40.236328125,
+      31.38232421875,
+      28.57080078125
+    ],
+    "producer_cpu_ms": 194.4129583333333,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 2549.974958
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 662.1601250000001,
+    "bulk_calls": 0,
+    "commit_ms": 1511.618,
+    "group": 4,
+    "load": [
+      40.236328125,
+      31.38232421875,
+      28.57080078125
+    ],
+    "producer_cpu_ms": 183.92016666666666,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1512.365
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 796.2190833333334,
+    "bulk_calls": 0,
+    "commit_ms": 1987.201,
+    "group": 4,
+    "load": [
+      39.81689453125,
+      31.4423828125,
+      28.6083984375
+    ],
+    "producer_cpu_ms": 196.16370833333332,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1988.154125
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 755.964375,
+    "bulk_calls": 0,
+    "commit_ms": 1581.998,
+    "group": 5,
+    "load": [
+      39.81689453125,
+      31.4423828125,
+      28.6083984375
+    ],
+    "producer_cpu_ms": 181.797625,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1582.642417
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 809.6229583333334,
+    "bulk_calls": 0,
+    "commit_ms": 1768.854,
+    "group": 5,
+    "load": [
+      38.63037109375,
+      31.3349609375,
+      28.5869140625
+    ],
+    "producer_cpu_ms": 183.53591666666665,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1771.609375
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 779.9739999999999,
+    "bulk_calls": 0,
+    "commit_ms": 2235.813,
+    "group": 5,
+    "load": [
+      38.63037109375,
+      31.3349609375,
+      28.5869140625
+    ],
+    "producer_cpu_ms": 213.5835416666667,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 2237.337458
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 780.1752083333333,
+    "bulk_calls": 0,
+    "commit_ms": 2035.122,
+    "group": 6,
+    "load": [
+      38.97998046875,
+      31.5283203125,
+      28.6708984375
+    ],
+    "producer_cpu_ms": 190.455875,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 2036.648958
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 641.7449583333333,
+    "bulk_calls": 0,
+    "commit_ms": 1274.667,
+    "group": 6,
+    "load": [
+      38.5810546875,
+      31.5693359375,
+      28.70166015625
+    ],
+    "producer_cpu_ms": 161.914125,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 1275.363209
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 582.8080416666667,
+    "bulk_calls": 0,
+    "commit_ms": 964.998,
+    "group": 6,
+    "load": [
+      38.5810546875,
+      31.5693359375,
+      28.70166015625
+    ],
+    "producer_cpu_ms": 150.7065,
+    "profile": "large",
+    "scalar_calls": 64,
+    "wall_ms": 965.778834
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 3.826083333333333,
+    "bulk_calls": 0,
+    "commit_ms": 4.568,
+    "group": 1,
+    "load": [
+      38.5810546875,
+      31.5693359375,
+      28.70166015625
+    ],
+    "producer_cpu_ms": 0.3529166666666672,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 4.701333
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 5.314041666666667,
+    "bulk_calls": 0,
+    "commit_ms": 5.892,
+    "group": 1,
+    "load": [
+      38.5810546875,
+      31.5693359375,
+      28.70166015625
+    ],
+    "producer_cpu_ms": 0.5164166666666672,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 6.095917
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 4.178458333333333,
+    "bulk_calls": 0,
+    "commit_ms": 4.975,
+    "group": 1,
+    "load": [
+      38.5810546875,
+      31.5693359375,
+      28.70166015625
+    ],
+    "producer_cpu_ms": 0.4336666666666673,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 5.099583
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 4.367791666666668,
+    "bulk_calls": 0,
+    "commit_ms": 4.867,
+    "group": 2,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.43008333333333404,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 5.021291
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 4.779750000000001,
+    "bulk_calls": 0,
+    "commit_ms": 5.873,
+    "group": 2,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.47770833333333407,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 6.012625
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 5.143500000000001,
+    "bulk_calls": 0,
+    "commit_ms": 6.36,
+    "group": 2,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.5681250000000002,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 6.552
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 4.537208333333334,
+    "bulk_calls": 0,
+    "commit_ms": 5.038,
+    "group": 3,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.4478749999999998,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 5.196375
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 6.037166666666667,
+    "bulk_calls": 0,
+    "commit_ms": 7.305,
+    "group": 3,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.5899583333333336,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 7.541542
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 5.644749999999999,
+    "bulk_calls": 0,
+    "commit_ms": 6.975,
+    "group": 3,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.5540416666666674,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 7.151833
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 4.936583333333333,
+    "bulk_calls": 0,
+    "commit_ms": 5.492,
+    "group": 4,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.4904166666666674,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 5.683083
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 3.3577083333333335,
+    "bulk_calls": 0,
+    "commit_ms": 3.795,
+    "group": 4,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.30525,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 3.905417
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 5.577458333333333,
+    "bulk_calls": 0,
+    "commit_ms": 6.522,
+    "group": 4,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.5134999999999996,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 6.714625
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 3.564708333333334,
+    "bulk_calls": 0,
+    "commit_ms": 4.099,
+    "group": 5,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.31995833333333223,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 4.22175
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 5.437541666666666,
+    "bulk_calls": 0,
+    "commit_ms": 7.029,
+    "group": 5,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.5131249999999996,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 7.187625
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 4.065958333333334,
+    "bulk_calls": 0,
+    "commit_ms": 4.758,
+    "group": 5,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.463916666666667,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 4.957375
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 5.321708333333333,
+    "bulk_calls": 0,
+    "commit_ms": 5.971,
+    "group": 6,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.5065833333333334,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 6.129292
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 4.385333333333333,
+    "bulk_calls": 0,
+    "commit_ms": 4.938,
+    "group": 6,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.4333333333333327,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 5.071333
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 4.778041666666667,
+    "bulk_calls": 0,
+    "commit_ms": 5.572,
+    "group": 6,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 0.4426250000000005,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 5.786167
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 19.679333333333336,
+    "bulk_calls": 0,
+    "commit_ms": 34.611,
+    "group": 1,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 6.580916666666665,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 41.168458
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 22.54575,
+    "bulk_calls": 0,
+    "commit_ms": 48.917,
+    "group": 1,
+    "load": [
+      37.4931640625,
+      31.4599609375,
+      28.6796875
+    ],
+    "producer_cpu_ms": 7.764125,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 78.316
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 16.576833333333337,
+    "bulk_calls": 0,
+    "commit_ms": 30.026,
+    "group": 1,
+    "load": [
+      37.29345703125,
+      31.5185546875,
+      28.71630859375
+    ],
+    "producer_cpu_ms": 5.509249999999994,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 32.402127
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 11.508999999999997,
+    "bulk_calls": 0,
+    "commit_ms": 17.812,
+    "group": 2,
+    "load": [
+      37.29345703125,
+      31.5185546875,
+      28.71630859375
+    ],
+    "producer_cpu_ms": 3.4946666666666673,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 23.251168
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 17.551791666666666,
+    "bulk_calls": 0,
+    "commit_ms": 22.192,
+    "group": 2,
+    "load": [
+      37.29345703125,
+      31.5185546875,
+      28.71630859375
+    ],
+    "producer_cpu_ms": 5.403583333333337,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 28.786708
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 13.682041666666667,
+    "bulk_calls": 0,
+    "commit_ms": 21.277,
+    "group": 2,
+    "load": [
+      37.29345703125,
+      31.5185546875,
+      28.71630859375
+    ],
+    "producer_cpu_ms": 4.792083333333334,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 28.147291
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 16.930958333333333,
+    "bulk_calls": 0,
+    "commit_ms": 376.43100000000004,
+    "group": 3,
+    "load": [
+      37.29345703125,
+      31.5185546875,
+      28.71630859375
+    ],
+    "producer_cpu_ms": 8.838375,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 560.0525809999999
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 17.289083333333334,
+    "bulk_calls": 0,
+    "commit_ms": 26.708,
+    "group": 3,
+    "load": [
+      37.29345703125,
+      31.5185546875,
+      28.71630859375
+    ],
+    "producer_cpu_ms": 5.601291666666668,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 29.26096
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 18.538874999999997,
+    "bulk_calls": 0,
+    "commit_ms": 28.144,
+    "group": 3,
+    "load": [
+      37.29345703125,
+      31.5185546875,
+      28.71630859375
+    ],
+    "producer_cpu_ms": 6.035833333333333,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 31.377085
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 21.113833333333332,
+    "bulk_calls": 0,
+    "commit_ms": 35.782,
+    "group": 4,
+    "load": [
+      37.29345703125,
+      31.5185546875,
+      28.71630859375
+    ],
+    "producer_cpu_ms": 7.041624999999999,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 39.66375
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 17.762500000000003,
+    "bulk_calls": 0,
+    "commit_ms": 25.484,
+    "group": 4,
+    "load": [
+      37.29345703125,
+      31.5185546875,
+      28.71630859375
+    ],
+    "producer_cpu_ms": 5.331499999999999,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 28.082747
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 26.26129166666666,
+    "bulk_calls": 0,
+    "commit_ms": 61.782000000000004,
+    "group": 4,
+    "load": [
+      36.62890625,
+      31.4765625,
+      28.7177734375
+    ],
+    "producer_cpu_ms": 8.944374999999999,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 71.061458
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 15.31925,
+    "bulk_calls": 0,
+    "commit_ms": 21.904,
+    "group": 5,
+    "load": [
+      36.62890625,
+      31.4765625,
+      28.7177734375
+    ],
+    "producer_cpu_ms": 4.833041666666665,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 24.246375
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 16.07029166666667,
+    "bulk_calls": 0,
+    "commit_ms": 24.72,
+    "group": 5,
+    "load": [
+      36.62890625,
+      31.4765625,
+      28.7177734375
+    ],
+    "producer_cpu_ms": 5.855624999999997,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 27.077497
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 14.275541666666667,
+    "bulk_calls": 0,
+    "commit_ms": 20.834,
+    "group": 5,
+    "load": [
+      36.62890625,
+      31.4765625,
+      28.7177734375
+    ],
+    "producer_cpu_ms": 4.932249999999998,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 22.838123
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 12.435333333333332,
+    "bulk_calls": 0,
+    "commit_ms": 19.128,
+    "group": 6,
+    "load": [
+      36.62890625,
+      31.4765625,
+      28.7177734375
+    ],
+    "producer_cpu_ms": 4.362208333333333,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 20.965501
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 12.460291666666668,
+    "bulk_calls": 0,
+    "commit_ms": 18.448,
+    "group": 6,
+    "load": [
+      36.62890625,
+      31.4765625,
+      28.7177734375
+    ],
+    "producer_cpu_ms": 4.252791666666665,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 20.243794
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 12.134166666666665,
+    "bulk_calls": 0,
+    "commit_ms": 19.105999999999998,
+    "group": 6,
+    "load": [
+      36.62890625,
+      31.4765625,
+      28.7177734375
+    ],
+    "producer_cpu_ms": 4.550125000000001,
+    "profile": "sparse",
+    "scalar_calls": 24,
+    "wall_ms": 21.048083
+  }
+]

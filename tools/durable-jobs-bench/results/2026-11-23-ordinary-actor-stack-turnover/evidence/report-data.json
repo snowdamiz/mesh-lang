@@ -1,0 +1,5303 @@
+{
+  "counts": {
+    "immediate/1/2": {
+      "reuse": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 2,
+          "protect": 2,
+          "reserve": 2,
+          "reset": 1024,
+          "unmap": 2
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 2,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 2010
+      },
+      "stock-a": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 1,
+          "protect": 1024,
+          "reserve": 1024,
+          "reset": 0,
+          "unmap": 1024
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 0,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 2005
+      }
+    },
+    "immediate/16/2": {
+      "reuse": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 2,
+          "protect": 2,
+          "reserve": 2,
+          "reset": 1024,
+          "unmap": 2
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 2,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1900
+      },
+      "stock-a": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 2,
+          "protect": 1024,
+          "reserve": 1024,
+          "reset": 0,
+          "unmap": 1024
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 0,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1890
+      }
+    },
+    "immediate/64/2": {
+      "reuse": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 2,
+          "protect": 2,
+          "reserve": 2,
+          "reset": 1024,
+          "unmap": 2
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 2,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1951
+      },
+      "stock-a": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 2,
+          "protect": 1024,
+          "reserve": 1024,
+          "reset": 0,
+          "unmap": 1024
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 0,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1948
+      }
+    },
+    "parked/1/2": {
+      "reuse": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 2,
+          "protect": 2,
+          "reserve": 2,
+          "reset": 1024,
+          "unmap": 2
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 2,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1956
+      },
+      "stock-a": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 2,
+          "protect": 1024,
+          "reserve": 1024,
+          "reset": 0,
+          "unmap": 1024
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 0,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1953
+      }
+    },
+    "parked/16/1": {
+      "reuse": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 16,
+          "protect": 520,
+          "reserve": 520,
+          "reset": 512,
+          "unmap": 520
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 8,
+        "owners": 1,
+        "page_bytes": 16384,
+        "pid": 1993
+      },
+      "stock-a": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 16,
+          "protect": 1024,
+          "reserve": 1024,
+          "reset": 0,
+          "unmap": 1024
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 0,
+        "owners": 1,
+        "page_bytes": 16384,
+        "pid": 1985
+      }
+    },
+    "parked/16/2": {
+      "reuse": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 24,
+          "protect": 141,
+          "reserve": 141,
+          "reset": 899,
+          "unmap": 141
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 16,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1963
+      },
+      "stock-a": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 16,
+          "protect": 1024,
+          "reserve": 1024,
+          "reset": 0,
+          "unmap": 1024
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 0,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1958
+      }
+    },
+    "parked/16/4": {
+      "reuse": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 25,
+          "protect": 25,
+          "reserve": 25,
+          "reset": 1024,
+          "unmap": 25
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 25,
+        "owners": 4,
+        "page_bytes": 16384,
+        "pid": 2002
+      },
+      "stock-a": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 16,
+          "protect": 1024,
+          "reserve": 1024,
+          "reset": 0,
+          "unmap": 1024
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 0,
+        "owners": 4,
+        "page_bytes": 16384,
+        "pid": 1998
+      }
+    },
+    "parked/64/2": {
+      "reuse": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 64,
+          "protect": 784,
+          "reserve": 784,
+          "reset": 256,
+          "unmap": 784
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 16,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1979
+      },
+      "stock-a": {
+        "524288": {
+          "live": 0,
+          "peak_mappings": 64,
+          "protect": 1024,
+          "reserve": 1024,
+          "reset": 0,
+          "unmap": 1024
+        },
+        "65536": {
+          "live": 0,
+          "peak_mappings": 0,
+          "protect": 0,
+          "reserve": 0,
+          "reset": 0,
+          "unmap": 0
+        },
+        "idle_at_worker_exit": 0,
+        "owners": 2,
+        "page_bytes": 16384,
+        "pid": 1973
+      }
+    }
+  },
+  "memory": {
+    "parked/1/2": {
+      "arms": {
+        "reuse": {
+          "baseline_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "baseline_rss_kib": {
+            "max": 7392.0,
+            "median": 7376.0,
+            "min": 7360.0,
+            "n": 3
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "first_drained_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 512.0,
+            "median": 512.0,
+            "min": 496.0,
+            "n": 3
+          },
+          "first_drained_rss_kib": {
+            "max": 7904.0,
+            "median": 7888.0,
+            "min": 7856.0,
+            "n": 3
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 528.0,
+            "median": 528.0,
+            "min": 528.0,
+            "n": 3
+          },
+          "first_live_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "first_live_rss_delta_kib": {
+            "max": 304.0,
+            "median": 304.0,
+            "min": 288.0,
+            "n": 3
+          },
+          "first_live_rss_kib": {
+            "max": 7696.0,
+            "median": 7680.0,
+            "min": 7648.0,
+            "n": 3
+          },
+          "first_live_vm_delta_kib": {
+            "max": 528.0,
+            "median": 528.0,
+            "min": 528.0,
+            "n": 3
+          },
+          "last_drained_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 864.0,
+            "median": 816.0,
+            "min": 768.0,
+            "n": 3
+          },
+          "last_drained_rss_kib": {
+            "max": 8256.0,
+            "median": 8192.0,
+            "min": 8128.0,
+            "n": 3
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 1056.0,
+            "median": 1056.0,
+            "min": 1056.0,
+            "n": 3
+          },
+          "last_live_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "last_live_rss_delta_kib": {
+            "max": 880.0,
+            "median": 832.0,
+            "min": 784.0,
+            "n": 3
+          },
+          "last_live_rss_kib": {
+            "max": 8272.0,
+            "median": 8208.0,
+            "min": 8144.0,
+            "n": 3
+          },
+          "last_live_vm_delta_kib": {
+            "max": 1056.0,
+            "median": 1056.0,
+            "min": 1056.0,
+            "n": 3
+          },
+          "max_rss_kib": {
+            "max": 8400.0,
+            "median": 8368.0,
+            "min": 8304.0,
+            "n": 3
+          }
+        },
+        "stock": {
+          "baseline_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "baseline_rss_kib": {
+            "max": 7280.0,
+            "median": 7248.0,
+            "min": 7232.0,
+            "n": 6
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_drained_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 496.0,
+            "median": 488.0,
+            "min": 480.0,
+            "n": 6
+          },
+          "first_drained_rss_kib": {
+            "max": 7776.0,
+            "median": 7744.0,
+            "min": 7712.0,
+            "n": 6
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_live_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "first_live_rss_delta_kib": {
+            "max": 272.0,
+            "median": 264.0,
+            "min": 256.0,
+            "n": 6
+          },
+          "first_live_rss_kib": {
+            "max": 7552.0,
+            "median": 7520.0,
+            "min": 7488.0,
+            "n": 6
+          },
+          "first_live_vm_delta_kib": {
+            "max": 528.0,
+            "median": 528.0,
+            "min": 528.0,
+            "n": 6
+          },
+          "last_drained_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 832.0,
+            "median": 808.0,
+            "min": 768.0,
+            "n": 6
+          },
+          "last_drained_rss_kib": {
+            "max": 8080.0,
+            "median": 8072.0,
+            "min": 8016.0,
+            "n": 6
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "last_live_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "last_live_rss_delta_kib": {
+            "max": 848.0,
+            "median": 824.0,
+            "min": 784.0,
+            "n": 6
+          },
+          "last_live_rss_kib": {
+            "max": 8096.0,
+            "median": 8088.0,
+            "min": 8032.0,
+            "n": 6
+          },
+          "last_live_vm_delta_kib": {
+            "max": 528.0,
+            "median": 528.0,
+            "min": 528.0,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8224.0,
+            "median": 8216.0,
+            "min": 8160.0,
+            "n": 6
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "baseline_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_kib": {
+          "max": -96.0,
+          "median": -136.0,
+          "min": -144.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_rss_delta_kib": {
+          "max": 0.0,
+          "median": -24.0,
+          "min": -32.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_rss_kib": {
+          "max": -96.0,
+          "median": -160.0,
+          "min": -176.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_vm_delta_kib": {
+          "max": -528.0,
+          "median": -528.0,
+          "min": -528.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_rss_delta_kib": {
+          "max": -16.0,
+          "median": -40.0,
+          "min": -48.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_rss_kib": {
+          "max": -112.0,
+          "median": -176.0,
+          "min": -192.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_rss_delta_kib": {
+          "max": 16.0,
+          "median": 16.0,
+          "min": -64.0,
+          "n": 3,
+          "positive": 2
+        },
+        "last_drained_rss_kib": {
+          "max": -80.0,
+          "median": -120.0,
+          "min": -208.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_vm_delta_kib": {
+          "max": -1056.0,
+          "median": -1056.0,
+          "min": -1056.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_rss_delta_kib": {
+          "max": 16.0,
+          "median": 16.0,
+          "min": -64.0,
+          "n": 3,
+          "positive": 2
+        },
+        "last_live_rss_kib": {
+          "max": -80.0,
+          "median": -120.0,
+          "min": -208.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_vm_delta_kib": {
+          "max": -528.0,
+          "median": -528.0,
+          "min": -528.0,
+          "n": 3,
+          "positive": 0
+        },
+        "max_rss_kib": {
+          "max": -112.0,
+          "median": -152.0,
+          "min": -208.0,
+          "n": 3,
+          "positive": 0
+        }
+      },
+      "within_round_stock_control_spread": {
+        "baseline_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "baseline_rss_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 16.0,
+          "n": 3
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_drained_rss_delta_kib": {
+          "max": 16.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_rss_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 32.0,
+          "n": 3
+        },
+        "first_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_live_rss_delta_kib": {
+          "max": 16.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_rss_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 32.0,
+          "n": 3
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_drained_rss_delta_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_rss_kib": {
+          "max": 64.0,
+          "median": 64.0,
+          "min": 16.0,
+          "n": 3
+        },
+        "last_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_live_rss_delta_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_rss_kib": {
+          "max": 64.0,
+          "median": 64.0,
+          "min": 16.0,
+          "n": 3
+        },
+        "last_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "max_rss_kib": {
+          "max": 64.0,
+          "median": 64.0,
+          "min": 16.0,
+          "n": 3
+        }
+      }
+    },
+    "parked/16/1": {
+      "arms": {
+        "reuse": {
+          "baseline_os_threads": {
+            "max": 2,
+            "median": 2,
+            "min": 2,
+            "n": 3
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "baseline_rss_kib": {
+            "max": 7360.0,
+            "median": 7360.0,
+            "min": 7360.0,
+            "n": 3
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "first_drained_os_threads": {
+            "max": 2,
+            "median": 2,
+            "min": 2,
+            "n": 3
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 560.0,
+            "median": 544.0,
+            "min": 544.0,
+            "n": 3
+          },
+          "first_drained_rss_kib": {
+            "max": 7920.0,
+            "median": 7904.0,
+            "min": 7904.0,
+            "n": 3
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 4224.0,
+            "median": 4224.0,
+            "min": 4224.0,
+            "n": 3
+          },
+          "first_live_os_threads": {
+            "max": 2,
+            "median": 2,
+            "min": 2,
+            "n": 3
+          },
+          "first_live_rss_delta_kib": {
+            "max": 576.0,
+            "median": 576.0,
+            "min": 576.0,
+            "n": 3
+          },
+          "first_live_rss_kib": {
+            "max": 7936.0,
+            "median": 7936.0,
+            "min": 7936.0,
+            "n": 3
+          },
+          "first_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "last_drained_os_threads": {
+            "max": 2,
+            "median": 2,
+            "min": 2,
+            "n": 3
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 880.0,
+            "median": 848.0,
+            "min": 832.0,
+            "n": 3
+          },
+          "last_drained_rss_kib": {
+            "max": 8240.0,
+            "median": 8208.0,
+            "min": 8192.0,
+            "n": 3
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 4224.0,
+            "median": 4224.0,
+            "min": 4224.0,
+            "n": 3
+          },
+          "last_live_os_threads": {
+            "max": 2,
+            "median": 2,
+            "min": 2,
+            "n": 3
+          },
+          "last_live_rss_delta_kib": {
+            "max": 1104.0,
+            "median": 1088.0,
+            "min": 1072.0,
+            "n": 3
+          },
+          "last_live_rss_kib": {
+            "max": 8464.0,
+            "median": 8448.0,
+            "min": 8432.0,
+            "n": 3
+          },
+          "last_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "max_rss_kib": {
+            "max": 8496.0,
+            "median": 8464.0,
+            "min": 8448.0,
+            "n": 3
+          }
+        },
+        "stock": {
+          "baseline_os_threads": {
+            "max": 2,
+            "median": 2.0,
+            "min": 2,
+            "n": 6
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "baseline_rss_kib": {
+            "max": 7280.0,
+            "median": 7272.0,
+            "min": 7248.0,
+            "n": 6
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_drained_os_threads": {
+            "max": 2,
+            "median": 2.0,
+            "min": 2,
+            "n": 6
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 528.0,
+            "median": 528.0,
+            "min": 496.0,
+            "n": 6
+          },
+          "first_drained_rss_kib": {
+            "max": 7808.0,
+            "median": 7800.0,
+            "min": 7760.0,
+            "n": 6
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_live_os_threads": {
+            "max": 2,
+            "median": 2.0,
+            "min": 2,
+            "n": 6
+          },
+          "first_live_rss_delta_kib": {
+            "max": 560.0,
+            "median": 560.0,
+            "min": 528.0,
+            "n": 6
+          },
+          "first_live_rss_kib": {
+            "max": 7840.0,
+            "median": 7832.0,
+            "min": 7792.0,
+            "n": 6
+          },
+          "first_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 6
+          },
+          "last_drained_os_threads": {
+            "max": 2,
+            "median": 2.0,
+            "min": 2,
+            "n": 6
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 848.0,
+            "median": 808.0,
+            "min": 768.0,
+            "n": 6
+          },
+          "last_drained_rss_kib": {
+            "max": 8128.0,
+            "median": 8080.0,
+            "min": 8032.0,
+            "n": 6
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "last_live_os_threads": {
+            "max": 2,
+            "median": 2.0,
+            "min": 2,
+            "n": 6
+          },
+          "last_live_rss_delta_kib": {
+            "max": 1104.0,
+            "median": 1064.0,
+            "min": 1024.0,
+            "n": 6
+          },
+          "last_live_rss_kib": {
+            "max": 8384.0,
+            "median": 8336.0,
+            "min": 8288.0,
+            "n": 6
+          },
+          "last_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8384.0,
+            "median": 8336.0,
+            "min": 8288.0,
+            "n": 6
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "baseline_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_kib": {
+          "max": -80.0,
+          "median": -96.0,
+          "min": -96.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_rss_delta_kib": {
+          "max": -16.0,
+          "median": -16.0,
+          "min": -48.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_rss_kib": {
+          "max": -96.0,
+          "median": -112.0,
+          "min": -144.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_vm_delta_kib": {
+          "max": -4224.0,
+          "median": -4224.0,
+          "min": -4224.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_rss_delta_kib": {
+          "max": -16.0,
+          "median": -16.0,
+          "min": -32.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_rss_kib": {
+          "max": -96.0,
+          "median": -112.0,
+          "min": -128.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_rss_delta_kib": {
+          "max": -16.0,
+          "median": -32.0,
+          "min": -88.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_rss_kib": {
+          "max": -96.0,
+          "median": -128.0,
+          "min": -184.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_vm_delta_kib": {
+          "max": -4224.0,
+          "median": -4224.0,
+          "min": -4224.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_rss_delta_kib": {
+          "max": -16.0,
+          "median": -24.0,
+          "min": -32.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_rss_kib": {
+          "max": -96.0,
+          "median": -120.0,
+          "min": -128.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "max_rss_kib": {
+          "max": -96.0,
+          "median": -128.0,
+          "min": -184.0,
+          "n": 3,
+          "positive": 0
+        }
+      },
+      "within_round_stock_control_spread": {
+        "baseline_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "baseline_rss_kib": {
+          "max": 32.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_drained_rss_delta_kib": {
+          "max": 32.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_rss_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_live_rss_delta_kib": {
+          "max": 32.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_rss_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_drained_rss_delta_kib": {
+          "max": 64.0,
+          "median": 48.0,
+          "min": 32.0,
+          "n": 3
+        },
+        "last_drained_rss_kib": {
+          "max": 64.0,
+          "median": 48.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_live_rss_delta_kib": {
+          "max": 64.0,
+          "median": 48.0,
+          "min": 32.0,
+          "n": 3
+        },
+        "last_live_rss_kib": {
+          "max": 64.0,
+          "median": 48.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "max_rss_kib": {
+          "max": 64.0,
+          "median": 48.0,
+          "min": 0.0,
+          "n": 3
+        }
+      }
+    },
+    "parked/16/2": {
+      "arms": {
+        "reuse": {
+          "baseline_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "baseline_rss_kib": {
+            "max": 7376.0,
+            "median": 7360.0,
+            "min": 7328.0,
+            "n": 3
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "first_drained_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 592.0,
+            "median": 560.0,
+            "min": 544.0,
+            "n": 3
+          },
+          "first_drained_rss_kib": {
+            "max": 7952.0,
+            "median": 7936.0,
+            "min": 7872.0,
+            "n": 3
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 7920.0,
+            "median": 7920.0,
+            "min": 7920.0,
+            "n": 3
+          },
+          "first_live_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "first_live_rss_delta_kib": {
+            "max": 576.0,
+            "median": 576.0,
+            "min": 576.0,
+            "n": 3
+          },
+          "first_live_rss_kib": {
+            "max": 7952.0,
+            "median": 7936.0,
+            "min": 7904.0,
+            "n": 3
+          },
+          "first_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "last_drained_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 896.0,
+            "median": 880.0,
+            "min": 880.0,
+            "n": 3
+          },
+          "last_drained_rss_kib": {
+            "max": 8256.0,
+            "median": 8240.0,
+            "min": 8224.0,
+            "n": 3
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "last_live_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "last_live_rss_delta_kib": {
+            "max": 1136.0,
+            "median": 1136.0,
+            "min": 1120.0,
+            "n": 3
+          },
+          "last_live_rss_kib": {
+            "max": 8512.0,
+            "median": 8496.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "last_live_vm_delta_kib": {
+            "max": 8976.0,
+            "median": 8976.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "max_rss_kib": {
+            "max": 8576.0,
+            "median": 8576.0,
+            "min": 8528.0,
+            "n": 3
+          }
+        },
+        "stock": {
+          "baseline_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "baseline_rss_kib": {
+            "max": 7280.0,
+            "median": 7264.0,
+            "min": 7232.0,
+            "n": 6
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_drained_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 560.0,
+            "median": 552.0,
+            "min": 512.0,
+            "n": 6
+          },
+          "first_drained_rss_kib": {
+            "max": 7824.0,
+            "median": 7808.0,
+            "min": 7792.0,
+            "n": 6
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_live_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "first_live_rss_delta_kib": {
+            "max": 576.0,
+            "median": 560.0,
+            "min": 528.0,
+            "n": 6
+          },
+          "first_live_rss_kib": {
+            "max": 7840.0,
+            "median": 7824.0,
+            "min": 7792.0,
+            "n": 6
+          },
+          "first_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 6
+          },
+          "last_drained_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 928.0,
+            "median": 880.0,
+            "min": 800.0,
+            "n": 6
+          },
+          "last_drained_rss_kib": {
+            "max": 8160.0,
+            "median": 8136.0,
+            "min": 8064.0,
+            "n": 6
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "last_live_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "last_live_rss_delta_kib": {
+            "max": 1184.0,
+            "median": 1120.0,
+            "min": 1056.0,
+            "n": 6
+          },
+          "last_live_rss_kib": {
+            "max": 8416.0,
+            "median": 8376.0,
+            "min": 8320.0,
+            "n": 6
+          },
+          "last_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8560.0,
+            "median": 8416.0,
+            "min": 8384.0,
+            "n": 6
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "baseline_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_kib": {
+          "max": -64.0,
+          "median": -96.0,
+          "min": -120.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_rss_delta_kib": {
+          "max": 8.0,
+          "median": -32.0,
+          "min": -32.0,
+          "n": 3,
+          "positive": 1
+        },
+        "first_drained_rss_kib": {
+          "max": -56.0,
+          "median": -128.0,
+          "min": -152.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_vm_delta_kib": {
+          "max": -7920.0,
+          "median": -7920.0,
+          "min": -7920.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_rss_delta_kib": {
+          "max": -8.0,
+          "median": -16.0,
+          "min": -32.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_rss_kib": {
+          "max": -80.0,
+          "median": -128.0,
+          "min": -128.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_rss_delta_kib": {
+          "max": 24.0,
+          "median": -40.0,
+          "min": -56.0,
+          "n": 3,
+          "positive": 1
+        },
+        "last_drained_rss_kib": {
+          "max": -96.0,
+          "median": -120.0,
+          "min": -136.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_vm_delta_kib": {
+          "max": -8448.0,
+          "median": -8448.0,
+          "min": -8448.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_rss_delta_kib": {
+          "max": 24.0,
+          "median": -40.0,
+          "min": -40.0,
+          "n": 3,
+          "positive": 1
+        },
+        "last_live_rss_kib": {
+          "max": -96.0,
+          "median": -104.0,
+          "min": -136.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": -528.0,
+          "min": -528.0,
+          "n": 3,
+          "positive": 0
+        },
+        "max_rss_kib": {
+          "max": -104.0,
+          "median": -112.0,
+          "min": -160.0,
+          "n": 3,
+          "positive": 0
+        }
+      },
+      "within_round_stock_control_spread": {
+        "baseline_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "baseline_rss_kib": {
+          "max": 16.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_drained_rss_delta_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_rss_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 16.0,
+          "n": 3
+        },
+        "first_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_live_rss_delta_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_rss_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_drained_rss_delta_kib": {
+          "max": 80.0,
+          "median": 80.0,
+          "min": 48.0,
+          "n": 3
+        },
+        "last_drained_rss_kib": {
+          "max": 80.0,
+          "median": 80.0,
+          "min": 32.0,
+          "n": 3
+        },
+        "last_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_live_rss_delta_kib": {
+          "max": 80.0,
+          "median": 48.0,
+          "min": 48.0,
+          "n": 3
+        },
+        "last_live_rss_kib": {
+          "max": 80.0,
+          "median": 48.0,
+          "min": 32.0,
+          "n": 3
+        },
+        "last_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "max_rss_kib": {
+          "max": 176.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        }
+      }
+    },
+    "parked/16/4": {
+      "arms": {
+        "reuse": {
+          "baseline_os_threads": {
+            "max": 5,
+            "median": 5,
+            "min": 5,
+            "n": 3
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "baseline_rss_kib": {
+            "max": 7440.0,
+            "median": 7392.0,
+            "min": 7392.0,
+            "n": 3
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "first_drained_os_threads": {
+            "max": 5,
+            "median": 5,
+            "min": 5,
+            "n": 3
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 608.0,
+            "median": 608.0,
+            "min": 576.0,
+            "n": 3
+          },
+          "first_drained_rss_kib": {
+            "max": 8048.0,
+            "median": 8000.0,
+            "min": 7968.0,
+            "n": 3
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "first_live_os_threads": {
+            "max": 5,
+            "median": 5,
+            "min": 5,
+            "n": 3
+          },
+          "first_live_rss_delta_kib": {
+            "max": 624.0,
+            "median": 592.0,
+            "min": 576.0,
+            "n": 3
+          },
+          "first_live_rss_kib": {
+            "max": 8064.0,
+            "median": 7984.0,
+            "min": 7968.0,
+            "n": 3
+          },
+          "first_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "last_drained_os_threads": {
+            "max": 5,
+            "median": 5,
+            "min": 5,
+            "n": 3
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 960.0,
+            "median": 896.0,
+            "min": 896.0,
+            "n": 3
+          },
+          "last_drained_rss_kib": {
+            "max": 8400.0,
+            "median": 8288.0,
+            "min": 8288.0,
+            "n": 3
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 16368.0,
+            "median": 13728.0,
+            "min": 12672.0,
+            "n": 3
+          },
+          "last_live_os_threads": {
+            "max": 5,
+            "median": 5,
+            "min": 5,
+            "n": 3
+          },
+          "last_live_rss_delta_kib": {
+            "max": 1216.0,
+            "median": 1152.0,
+            "min": 1152.0,
+            "n": 3
+          },
+          "last_live_rss_kib": {
+            "max": 8656.0,
+            "median": 8544.0,
+            "min": 8544.0,
+            "n": 3
+          },
+          "last_live_vm_delta_kib": {
+            "max": 16368.0,
+            "median": 13728.0,
+            "min": 12672.0,
+            "n": 3
+          },
+          "max_rss_kib": {
+            "max": 8704.0,
+            "median": 8688.0,
+            "min": 8608.0,
+            "n": 3
+          }
+        },
+        "stock": {
+          "baseline_os_threads": {
+            "max": 5,
+            "median": 5.0,
+            "min": 5,
+            "n": 6
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "baseline_rss_kib": {
+            "max": 7344.0,
+            "median": 7328.0,
+            "min": 7296.0,
+            "n": 6
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_drained_os_threads": {
+            "max": 5,
+            "median": 5.0,
+            "min": 5,
+            "n": 6
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 560.0,
+            "median": 544.0,
+            "min": 528.0,
+            "n": 6
+          },
+          "first_drained_rss_kib": {
+            "max": 7904.0,
+            "median": 7872.0,
+            "min": 7824.0,
+            "n": 6
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_live_os_threads": {
+            "max": 5,
+            "median": 5.0,
+            "min": 5,
+            "n": 6
+          },
+          "first_live_rss_delta_kib": {
+            "max": 560.0,
+            "median": 544.0,
+            "min": 528.0,
+            "n": 6
+          },
+          "first_live_rss_kib": {
+            "max": 7904.0,
+            "median": 7880.0,
+            "min": 7824.0,
+            "n": 6
+          },
+          "first_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 6
+          },
+          "last_drained_os_threads": {
+            "max": 5,
+            "median": 5.0,
+            "min": 5,
+            "n": 6
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 880.0,
+            "median": 856.0,
+            "min": 848.0,
+            "n": 6
+          },
+          "last_drained_rss_kib": {
+            "max": 8224.0,
+            "median": 8184.0,
+            "min": 8160.0,
+            "n": 6
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "last_live_os_threads": {
+            "max": 5,
+            "median": 5.0,
+            "min": 5,
+            "n": 6
+          },
+          "last_live_rss_delta_kib": {
+            "max": 1136.0,
+            "median": 1112.0,
+            "min": 1104.0,
+            "n": 6
+          },
+          "last_live_rss_kib": {
+            "max": 8480.0,
+            "median": 8440.0,
+            "min": 8416.0,
+            "n": 6
+          },
+          "last_live_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8544.0,
+            "median": 8488.0,
+            "min": 8464.0,
+            "n": 6
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "baseline_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_kib": {
+          "max": -64.0,
+          "median": -88.0,
+          "min": -96.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_rss_delta_kib": {
+          "max": -24.0,
+          "median": -56.0,
+          "min": -80.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_rss_kib": {
+          "max": -88.0,
+          "median": -152.0,
+          "min": -168.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_vm_delta_kib": {
+          "max": -8448.0,
+          "median": -8448.0,
+          "min": -8448.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_rss_delta_kib": {
+          "max": -32.0,
+          "median": -48.0,
+          "min": -80.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_rss_kib": {
+          "max": -96.0,
+          "median": -136.0,
+          "min": -176.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_rss_delta_kib": {
+          "max": -24.0,
+          "median": -48.0,
+          "min": -96.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_rss_kib": {
+          "max": -112.0,
+          "median": -112.0,
+          "min": -192.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_vm_delta_kib": {
+          "max": -12672.0,
+          "median": -13728.0,
+          "min": -16368.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_rss_delta_kib": {
+          "max": -24.0,
+          "median": -48.0,
+          "min": -96.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_rss_kib": {
+          "max": -112.0,
+          "median": -112.0,
+          "min": -192.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_vm_delta_kib": {
+          "max": -4224.0,
+          "median": -5280.0,
+          "min": -7920.0,
+          "n": 3,
+          "positive": 0
+        },
+        "max_rss_kib": {
+          "max": -136.0,
+          "median": -168.0,
+          "min": -200.0,
+          "n": 3,
+          "positive": 0
+        }
+      },
+      "within_round_stock_control_spread": {
+        "baseline_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "baseline_rss_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_drained_rss_delta_kib": {
+          "max": 16.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_rss_kib": {
+          "max": 48.0,
+          "median": 16.0,
+          "min": 16.0,
+          "n": 3
+        },
+        "first_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_live_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_rss_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_drained_rss_delta_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_rss_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_live_rss_delta_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_rss_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "max_rss_kib": {
+          "max": 16.0,
+          "median": 16.0,
+          "min": 16.0,
+          "n": 3
+        }
+      }
+    },
+    "parked/64/2": {
+      "arms": {
+        "reuse": {
+          "baseline_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "baseline_rss_kib": {
+            "max": 7360.0,
+            "median": 7360.0,
+            "min": 7344.0,
+            "n": 3
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 3
+          },
+          "first_drained_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 688.0,
+            "median": 688.0,
+            "min": 656.0,
+            "n": 3
+          },
+          "first_drained_rss_kib": {
+            "max": 8048.0,
+            "median": 8032.0,
+            "min": 8016.0,
+            "n": 3
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "first_live_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "first_live_rss_delta_kib": {
+            "max": 1488.0,
+            "median": 1472.0,
+            "min": 1456.0,
+            "n": 3
+          },
+          "first_live_rss_kib": {
+            "max": 8832.0,
+            "median": 8832.0,
+            "min": 8816.0,
+            "n": 3
+          },
+          "first_live_vm_delta_kib": {
+            "max": 33792.0,
+            "median": 33792.0,
+            "min": 33792.0,
+            "n": 3
+          },
+          "last_drained_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 1088.0,
+            "median": 1040.0,
+            "min": 1024.0,
+            "n": 3
+          },
+          "last_drained_rss_kib": {
+            "max": 8448.0,
+            "median": 8384.0,
+            "min": 8384.0,
+            "n": 3
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 8448.0,
+            "median": 8448.0,
+            "min": 8448.0,
+            "n": 3
+          },
+          "last_live_os_threads": {
+            "max": 3,
+            "median": 3,
+            "min": 3,
+            "n": 3
+          },
+          "last_live_rss_delta_kib": {
+            "max": 2112.0,
+            "median": 2064.0,
+            "min": 2048.0,
+            "n": 3
+          },
+          "last_live_rss_kib": {
+            "max": 9472.0,
+            "median": 9408.0,
+            "min": 9408.0,
+            "n": 3
+          },
+          "last_live_vm_delta_kib": {
+            "max": 33792.0,
+            "median": 33792.0,
+            "min": 33792.0,
+            "n": 3
+          },
+          "max_rss_kib": {
+            "max": 9552.0,
+            "median": 9488.0,
+            "min": 9408.0,
+            "n": 3
+          }
+        },
+        "stock": {
+          "baseline_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "baseline_rss_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "baseline_rss_kib": {
+            "max": 7296.0,
+            "median": 7248.0,
+            "min": 7232.0,
+            "n": 6
+          },
+          "baseline_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_drained_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "first_drained_rss_delta_kib": {
+            "max": 704.0,
+            "median": 680.0,
+            "min": 640.0,
+            "n": 6
+          },
+          "first_drained_rss_kib": {
+            "max": 7952.0,
+            "median": 7936.0,
+            "min": 7904.0,
+            "n": 6
+          },
+          "first_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "first_live_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "first_live_rss_delta_kib": {
+            "max": 1472.0,
+            "median": 1448.0,
+            "min": 1424.0,
+            "n": 6
+          },
+          "first_live_rss_kib": {
+            "max": 8720.0,
+            "median": 8704.0,
+            "min": 8672.0,
+            "n": 6
+          },
+          "first_live_vm_delta_kib": {
+            "max": 33792.0,
+            "median": 33792.0,
+            "min": 33792.0,
+            "n": 6
+          },
+          "last_drained_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "last_drained_rss_delta_kib": {
+            "max": 1072.0,
+            "median": 1016.0,
+            "min": 976.0,
+            "n": 6
+          },
+          "last_drained_rss_kib": {
+            "max": 8304.0,
+            "median": 8272.0,
+            "min": 8240.0,
+            "n": 6
+          },
+          "last_drained_vm_delta_kib": {
+            "max": 0.0,
+            "median": 0.0,
+            "min": 0.0,
+            "n": 6
+          },
+          "last_live_os_threads": {
+            "max": 3,
+            "median": 3.0,
+            "min": 3,
+            "n": 6
+          },
+          "last_live_rss_delta_kib": {
+            "max": 2096.0,
+            "median": 2040.0,
+            "min": 2000.0,
+            "n": 6
+          },
+          "last_live_rss_kib": {
+            "max": 9328.0,
+            "median": 9296.0,
+            "min": 9264.0,
+            "n": 6
+          },
+          "last_live_vm_delta_kib": {
+            "max": 33792.0,
+            "median": 33792.0,
+            "min": 33792.0,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 9344.0,
+            "median": 9296.0,
+            "min": 9280.0,
+            "n": 6
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "baseline_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_rss_kib": {
+          "max": -80.0,
+          "median": -104.0,
+          "min": -120.0,
+          "n": 3,
+          "positive": 0
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_rss_delta_kib": {
+          "max": 32.0,
+          "median": 0.0,
+          "min": -32.0,
+          "n": 3,
+          "positive": 1
+        },
+        "first_drained_rss_kib": {
+          "max": -88.0,
+          "median": -104.0,
+          "min": -112.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_drained_vm_delta_kib": {
+          "max": -8448.0,
+          "median": -8448.0,
+          "min": -8448.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_rss_delta_kib": {
+          "max": 16.0,
+          "median": -40.0,
+          "min": -40.0,
+          "n": 3,
+          "positive": 1
+        },
+        "first_live_rss_kib": {
+          "max": -104.0,
+          "median": -120.0,
+          "min": -144.0,
+          "n": 3,
+          "positive": 0
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_rss_delta_kib": {
+          "max": -8.0,
+          "median": -32.0,
+          "min": -64.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_rss_kib": {
+          "max": -112.0,
+          "median": -112.0,
+          "min": -184.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_drained_vm_delta_kib": {
+          "max": -8448.0,
+          "median": -8448.0,
+          "min": -8448.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_os_threads": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_rss_delta_kib": {
+          "max": -8.0,
+          "median": -32.0,
+          "min": -64.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_rss_kib": {
+          "max": -112.0,
+          "median": -112.0,
+          "min": -184.0,
+          "n": 3,
+          "positive": 0
+        },
+        "last_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3,
+          "positive": 0
+        },
+        "max_rss_kib": {
+          "max": -112.0,
+          "median": -176.0,
+          "min": -264.0,
+          "n": 3,
+          "positive": 0
+        }
+      },
+      "within_round_stock_control_spread": {
+        "baseline_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "baseline_rss_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "baseline_rss_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 16.0,
+          "n": 3
+        },
+        "baseline_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_drained_rss_delta_kib": {
+          "max": 32.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_rss_kib": {
+          "max": 48.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "first_live_rss_delta_kib": {
+          "max": 16.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "first_live_rss_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 16.0,
+          "n": 3
+        },
+        "first_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_drained_rss_delta_kib": {
+          "max": 80.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_rss_kib": {
+          "max": 64.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_drained_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_os_threads": {
+          "max": 0,
+          "median": 0,
+          "min": 0,
+          "n": 3
+        },
+        "last_live_rss_delta_kib": {
+          "max": 80.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_rss_kib": {
+          "max": 64.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "last_live_vm_delta_kib": {
+          "max": 0.0,
+          "median": 0.0,
+          "min": 0.0,
+          "n": 3
+        },
+        "max_rss_kib": {
+          "max": 64.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 3
+        }
+      }
+    }
+  },
+  "original": {
+    "immediate/1/2": {
+      "arms": {
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 61.23394775390626,
+            "median": 38.40576171875,
+            "min": 28.8563232421875,
+            "n": 4
+          },
+          "full_cpu_us_per_actor": {
+            "max": 28.25421142578125,
+            "median": 27.093170166015625,
+            "min": 25.35894775390625,
+            "n": 4
+          },
+          "full_system_us_per_actor": {
+            "max": 16.90185546875,
+            "median": 16.297058105468746,
+            "min": 15.319396972656248,
+            "n": 4
+          },
+          "full_user_us_per_actor": {
+            "max": 11.35235595703125,
+            "median": 10.796112060546875,
+            "min": 10.03955078125,
+            "n": 4
+          },
+          "full_wall_us_per_actor": {
+            "max": 61.70479327392579,
+            "median": 38.88674673461914,
+            "min": 29.38627111816406,
+            "n": 4
+          },
+          "max_rss_kib": {
+            "max": 8384.0,
+            "median": 8344.0,
+            "min": 8288.0,
+            "n": 4
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04766845703125,
+            "median": 1.04730224609375,
+            "min": 1.04693603515625,
+            "n": 4
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {},
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 21.548645019531257,
+          "median": 14.909271240234379,
+          "min": 8.2698974609375,
+          "n": 2
+        },
+        "full_cpu_us_per_actor": {
+          "max": 0.859619140625,
+          "median": 0.5730285644531268,
+          "min": 0.28643798828125355,
+          "n": 2
+        },
+        "full_system_us_per_actor": {
+          "max": 0.50738525390625,
+          "median": 0.3209533691406268,
+          "min": 0.13452148437500355,
+          "n": 2
+        },
+        "full_user_us_per_actor": {
+          "max": 0.35223388671875,
+          "median": 0.2520751953125,
+          "min": 0.15191650390625,
+          "n": 2
+        },
+        "full_wall_us_per_actor": {
+          "max": 21.538579284667975,
+          "median": 14.879793823242192,
+          "min": 8.22100836181641,
+          "n": 2
+        },
+        "max_rss_kib": {
+          "max": 48.0,
+          "median": 40.0,
+          "min": 32.0,
+          "n": 2
+        },
+        "minor_faults_per_actor": {
+          "max": 0.000732421875,
+          "median": 0.00042724609375,
+          "min": 0.0001220703125,
+          "n": 2
+        }
+      }
+    },
+    "immediate/16/2": {
+      "arms": {
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 17.78131103515625,
+            "median": 13.86376953125,
+            "min": 10.83746337890625,
+            "n": 4
+          },
+          "full_cpu_us_per_actor": {
+            "max": 10.8001708984375,
+            "median": 10.5423583984375,
+            "min": 10.332824707031248,
+            "n": 4
+          },
+          "full_system_us_per_actor": {
+            "max": 7.26593017578125,
+            "median": 6.960113525390624,
+            "min": 6.840209960937499,
+            "n": 4
+          },
+          "full_user_us_per_actor": {
+            "max": 3.6947021484375,
+            "median": 3.513427734375,
+            "min": 3.46978759765625,
+            "n": 4
+          },
+          "full_wall_us_per_actor": {
+            "max": 18.278363586425783,
+            "median": 14.650722473144532,
+            "min": 11.392926513671876,
+            "n": 4
+          },
+          "max_rss_kib": {
+            "max": 8368.0,
+            "median": 8336.0,
+            "min": 8336.0,
+            "n": 4
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04730224609375,
+            "median": 1.047119140625,
+            "min": 1.046875,
+            "n": 4
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {},
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 4.62286376953125,
+          "median": 4.17724609375,
+          "min": 3.73162841796875,
+          "n": 2
+        },
+        "full_cpu_us_per_actor": {
+          "max": 0.3275146484375,
+          "median": 0.3033752441406259,
+          "min": 0.2792358398437518,
+          "n": 2
+        },
+        "full_system_us_per_actor": {
+          "max": 0.2630615234375009,
+          "median": 0.17010498046875044,
+          "min": 0.0771484375,
+          "n": 2
+        },
+        "full_user_us_per_actor": {
+          "max": 0.20208740234375044,
+          "median": 0.13327026367187522,
+          "min": 0.064453125,
+          "n": 2
+        },
+        "full_wall_us_per_actor": {
+          "max": 4.062423767089845,
+          "median": 3.877501190185547,
+          "min": 3.692578613281249,
+          "n": 2
+        },
+        "max_rss_kib": {
+          "max": 32.0,
+          "median": 16.0,
+          "min": 0.0,
+          "n": 2
+        },
+        "minor_faults_per_actor": {
+          "max": 0.0003662109375,
+          "median": 0.000335693359375,
+          "min": 0.00030517578125,
+          "n": 2
+        }
+      }
+    },
+    "immediate/64/2": {
+      "arms": {
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 10.92816162109375,
+            "median": 8.99774169921875,
+            "min": 5.98028564453125,
+            "n": 4
+          },
+          "full_cpu_us_per_actor": {
+            "max": 8.9737548828125,
+            "median": 8.2310791015625,
+            "min": 7.911621093749999,
+            "n": 4
+          },
+          "full_system_us_per_actor": {
+            "max": 6.368408203125,
+            "median": 5.851715087890625,
+            "min": 5.604248046875,
+            "n": 4
+          },
+          "full_user_us_per_actor": {
+            "max": 2.6053466796874996,
+            "median": 2.49005126953125,
+            "min": 2.08599853515625,
+            "n": 4
+          },
+          "full_wall_us_per_actor": {
+            "max": 11.522120178222657,
+            "median": 9.650700897216797,
+            "min": 6.452990234375,
+            "n": 4
+          },
+          "max_rss_kib": {
+            "max": 8448.0,
+            "median": 8432.0,
+            "min": 8416.0,
+            "n": 4
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04852294921875,
+            "median": 1.047454833984375,
+            "min": 1.04736328125,
+            "n": 4
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {},
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 4.9478759765625,
+          "median": 2.52850341796875,
+          "min": 0.109130859375,
+          "n": 2
+        },
+        "full_cpu_us_per_actor": {
+          "max": 1.0621337890625009,
+          "median": 0.7244873046875004,
+          "min": 0.3868408203125,
+          "n": 2
+        },
+        "full_system_us_per_actor": {
+          "max": 0.5427856445312509,
+          "median": 0.40817260742187544,
+          "min": 0.2735595703125,
+          "n": 2
+        },
+        "full_user_us_per_actor": {
+          "max": 0.5193481445312496,
+          "median": 0.3163146972656248,
+          "min": 0.11328125,
+          "n": 2
+        },
+        "full_wall_us_per_actor": {
+          "max": 5.069129943847657,
+          "median": 2.618058532714844,
+          "min": 0.16698712158203044,
+          "n": 2
+        },
+        "max_rss_kib": {
+          "max": 16.0,
+          "median": 16.0,
+          "min": 16.0,
+          "n": 2
+        },
+        "minor_faults_per_actor": {
+          "max": 0.00103759765625,
+          "median": 0.00054931640625,
+          "min": 6.103515625e-05,
+          "n": 2
+        }
+      }
+    },
+    "parked/1/2": {
+      "arms": {
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 138.040283203125,
+            "median": 103.68560791015625,
+            "min": 66.98480224609375,
+            "n": 4
+          },
+          "full_cpu_us_per_actor": {
+            "max": 46.36517333984375,
+            "median": 44.73248291015625,
+            "min": 39.45819091796874,
+            "n": 4
+          },
+          "full_system_us_per_actor": {
+            "max": 25.79339599609375,
+            "median": 25.375640869140625,
+            "min": 21.942199707031246,
+            "n": 4
+          },
+          "full_user_us_per_actor": {
+            "max": 20.571777343749996,
+            "median": 19.356842041015625,
+            "min": 17.515991210937496,
+            "n": 4
+          },
+          "full_wall_us_per_actor": {
+            "max": 138.60769903564454,
+            "median": 104.18135198974609,
+            "min": 67.61995190429687,
+            "n": 4
+          },
+          "max_rss_kib": {
+            "max": 8464.0,
+            "median": 8456.0,
+            "min": 8432.0,
+            "n": 4
+          },
+          "minor_faults_per_actor": {
+            "max": 1.0478515625,
+            "median": 1.047698974609375,
+            "min": 1.047607421875,
+            "n": 4
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {},
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 71.05548095703125,
+          "median": 46.659698486328125,
+          "min": 22.263916015625,
+          "n": 2
+        },
+        "full_cpu_us_per_actor": {
+          "max": 6.906982421875007,
+          "median": 4.0757446289062536,
+          "min": 1.2445068359375,
+          "n": 2
+        },
+        "full_system_us_per_actor": {
+          "max": 3.8511962890625036,
+          "median": 2.317230224609375,
+          "min": 0.7832641601562464,
+          "n": 2
+        },
+        "full_user_us_per_actor": {
+          "max": 3.0557861328125,
+          "median": 1.758514404296875,
+          "min": 0.46124267578125,
+          "n": 2
+        },
+        "full_wall_us_per_actor": {
+          "max": 70.98774713134767,
+          "median": 46.54809182739258,
+          "min": 22.10843652343749,
+          "n": 2
+        },
+        "max_rss_kib": {
+          "max": 32.0,
+          "median": 24.0,
+          "min": 16.0,
+          "n": 2
+        },
+        "minor_faults_per_actor": {
+          "max": 0.000244140625,
+          "median": 0.000152587890625,
+          "min": 6.103515625e-05,
+          "n": 2
+        }
+      }
+    },
+    "parked/16/1": {
+      "arms": {
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 56.13946533203125,
+            "median": 26.08953857421875,
+            "min": 16.64935302734375,
+            "n": 4
+          },
+          "full_cpu_us_per_actor": {
+            "max": 13.53564453125,
+            "median": 10.724365234375,
+            "min": 10.12677001953125,
+            "n": 4
+          },
+          "full_system_us_per_actor": {
+            "max": 9.04046630859375,
+            "median": 7.057281494140625,
+            "min": 6.51318359375,
+            "n": 4
+          },
+          "full_user_us_per_actor": {
+            "max": 4.495178222656249,
+            "median": 3.710601806640625,
+            "min": 3.52655029296875,
+            "n": 4
+          },
+          "full_wall_us_per_actor": {
+            "max": 57.050196289062505,
+            "median": 26.646191925048825,
+            "min": 17.19473516845703,
+            "n": 4
+          },
+          "max_rss_kib": {
+            "max": 8640.0,
+            "median": 8600.0,
+            "min": 8576.0,
+            "n": 4
+          },
+          "minor_faults_per_actor": {
+            "max": 1.0474853515625,
+            "median": 1.04742431640625,
+            "min": 1.04736328125,
+            "n": 4
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {},
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 25.98394775390625,
+          "median": 15.6790771484375,
+          "min": 5.37420654296875,
+          "n": 2
+        },
+        "full_cpu_us_per_actor": {
+          "max": 2.31414794921875,
+          "median": 1.207305908203125,
+          "min": 0.1004638671875,
+          "n": 2
+        },
+        "full_system_us_per_actor": {
+          "max": 1.6265869140625,
+          "median": 0.9070434570312496,
+          "min": 0.1874999999999991,
+          "n": 2
+        },
+        "full_user_us_per_actor": {
+          "max": 0.6875610351562496,
+          "median": 0.3872985839843748,
+          "min": 0.0870361328125,
+          "n": 2
+        },
+        "full_wall_us_per_actor": {
+          "max": 26.2880248413086,
+          "median": 15.811751037597661,
+          "min": 5.335477233886721,
+          "n": 2
+        },
+        "max_rss_kib": {
+          "max": 48.0,
+          "median": 40.0,
+          "min": 32.0,
+          "n": 2
+        },
+        "minor_faults_per_actor": {
+          "max": 0.0001220703125,
+          "median": 6.103515625e-05,
+          "min": 0.0,
+          "n": 2
+        }
+      }
+    },
+    "parked/16/2": {
+      "arms": {
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 43.0689697265625,
+            "median": 25.916473388671875,
+            "min": 23.261474609375,
+            "n": 4
+          },
+          "full_cpu_us_per_actor": {
+            "max": 17.11761474609375,
+            "median": 16.28097534179687,
+            "min": 15.81787109375,
+            "n": 4
+          },
+          "full_system_us_per_actor": {
+            "max": 11.36639404296875,
+            "median": 10.426727294921875,
+            "min": 10.12152099609375,
+            "n": 4
+          },
+          "full_user_us_per_actor": {
+            "max": 6.13507080078125,
+            "median": 5.749511718749999,
+            "min": 5.52197265625,
+            "n": 4
+          },
+          "full_wall_us_per_actor": {
+            "max": 43.61601770019531,
+            "median": 26.452180236816403,
+            "min": 23.732874572753907,
+            "n": 4
+          },
+          "max_rss_kib": {
+            "max": 8736.0,
+            "median": 8712.0,
+            "min": 8672.0,
+            "n": 4
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04833984375,
+            "median": 1.047943115234375,
+            "min": 1.0478515625,
+            "n": 4
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {},
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 16.231201171875,
+          "median": 8.982452392578125,
+          "min": 1.73370361328125,
+          "n": 2
+        },
+        "full_cpu_us_per_actor": {
+          "max": 0.42498779296875355,
+          "median": 0.2382202148437509,
+          "min": 0.051452636718748224,
+          "n": 2
+        },
+        "full_system_us_per_actor": {
+          "max": 0.808837890625,
+          "median": 0.491607666015625,
+          "min": 0.17437744140625,
+          "n": 2
+        },
+        "full_user_us_per_actor": {
+          "max": 0.3838500976562509,
+          "median": 0.304840087890625,
+          "min": 0.2258300781249991,
+          "n": 2
+        },
+        "full_wall_us_per_actor": {
+          "max": 16.125137390136715,
+          "median": 8.902871490478512,
+          "min": 1.68060559082031,
+          "n": 2
+        },
+        "max_rss_kib": {
+          "max": 64.0,
+          "median": 56.0,
+          "min": 48.0,
+          "n": 2
+        },
+        "minor_faults_per_actor": {
+          "max": 0.00042724609375,
+          "median": 0.000274658203125,
+          "min": 0.0001220703125,
+          "n": 2
+        }
+      }
+    },
+    "parked/16/4": {
+      "arms": {
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 37.7760009765625,
+            "median": 33.705413818359375,
+            "min": 29.12261962890625,
+            "n": 4
+          },
+          "full_cpu_us_per_actor": {
+            "max": 26.298400878906246,
+            "median": 25.142669677734375,
+            "min": 24.28778076171875,
+            "n": 4
+          },
+          "full_system_us_per_actor": {
+            "max": 16.40838623046875,
+            "median": 15.64111328125,
+            "min": 15.0516357421875,
+            "n": 4
+          },
+          "full_user_us_per_actor": {
+            "max": 9.8900146484375,
+            "median": 9.5665283203125,
+            "min": 9.106201171875,
+            "n": 4
+          },
+          "full_wall_us_per_actor": {
+            "max": 38.49025213623047,
+            "median": 34.26405334472656,
+            "min": 29.613062561035154,
+            "n": 4
+          },
+          "max_rss_kib": {
+            "max": 8800.0,
+            "median": 8792.0,
+            "min": 8752.0,
+            "n": 4
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04974365234375,
+            "median": 1.049346923828125,
+            "min": 1.04840087890625,
+            "n": 4
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {},
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 0.74676513671875,
+          "median": 0.49066162109375,
+          "min": 0.23455810546875,
+          "n": 2
+        },
+        "full_cpu_us_per_actor": {
+          "max": 2.0106201171874964,
+          "median": 1.4261169433593732,
+          "min": 0.84161376953125,
+          "n": 2
+        },
+        "full_system_us_per_actor": {
+          "max": 1.2268066406250018,
+          "median": 1.1379089355468759,
+          "min": 1.04901123046875,
+          "n": 2
+        },
+        "full_user_us_per_actor": {
+          "max": 0.7838134765625,
+          "median": 0.4956054687500009,
+          "min": 0.20739746093750178,
+          "n": 2
+        },
+        "full_wall_us_per_actor": {
+          "max": 0.7353082885742204,
+          "median": 0.5229122924804681,
+          "min": 0.31051629638671585,
+          "n": 2
+        },
+        "max_rss_kib": {
+          "max": 48.0,
+          "median": 32.0,
+          "min": 16.0,
+          "n": 2
+        },
+        "minor_faults_per_actor": {
+          "max": 0.000732421875,
+          "median": 0.000457763671875,
+          "min": 0.00018310546875,
+          "n": 2
+        }
+      }
+    },
+    "parked/64/2": {
+      "arms": {
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 22.37847900390625,
+            "median": 16.383453369140625,
+            "min": 8.97930908203125,
+            "n": 4
+          },
+          "full_cpu_us_per_actor": {
+            "max": 12.809326171875,
+            "median": 12.216156005859375,
+            "min": 12.049316406249998,
+            "n": 4
+          },
+          "full_system_us_per_actor": {
+            "max": 9.23138427734375,
+            "median": 8.6884765625,
+            "min": 8.61376953125,
+            "n": 4
+          },
+          "full_user_us_per_actor": {
+            "max": 3.7584838867187496,
+            "median": 3.5089111328125,
+            "min": 3.29254150390625,
+            "n": 4
+          },
+          "full_wall_us_per_actor": {
+            "max": 22.937093078613284,
+            "median": 16.919625610351563,
+            "min": 9.491884887695312,
+            "n": 4
+          },
+          "max_rss_kib": {
+            "max": 9744.0,
+            "median": 9584.0,
+            "min": 9536.0,
+            "n": 4
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04937744140625,
+            "median": 1.0487060546875,
+            "min": 1.04815673828125,
+            "n": 4
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {},
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 7.8140869140625,
+          "median": 7.109527587890625,
+          "min": 6.40496826171875,
+          "n": 2
+        },
+        "full_cpu_us_per_actor": {
+          "max": 0.749267578125,
+          "median": 0.5361022949218759,
+          "min": 0.3229370117187518,
+          "n": 2
+        },
+        "full_system_us_per_actor": {
+          "max": 0.6112060546875,
+          "median": 0.377105712890625,
+          "min": 0.14300537109375,
+          "n": 2
+        },
+        "full_user_us_per_actor": {
+          "max": 0.46594238281249956,
+          "median": 0.3020019531249998,
+          "min": 0.1380615234375,
+          "n": 2
+        },
+        "full_wall_us_per_actor": {
+          "max": 7.8094889526367215,
+          "median": 7.104352325439456,
+          "min": 6.399215698242191,
+          "n": 2
+        },
+        "max_rss_kib": {
+          "max": 160.0,
+          "median": 104.0,
+          "min": 48.0,
+          "n": 2
+        },
+        "minor_faults_per_actor": {
+          "max": 0.001220703125,
+          "median": 0.0009765625,
+          "min": 0.000732421875,
+          "n": 2
+        }
+      }
+    }
+  },
+  "timing": {
+    "immediate/1/2": {
+      "arms": {
+        "reuse": {
+          "body_wall_us_per_actor": {
+            "max": 60.35858154296875,
+            "median": 35.2332763671875,
+            "min": 22.4407958984375,
+            "n": 6
+          },
+          "full_cpu_us_per_actor": {
+            "max": 24.276794433593746,
+            "median": 20.630157470703125,
+            "min": 18.5478515625,
+            "n": 6
+          },
+          "full_system_us_per_actor": {
+            "max": 13.961975097656248,
+            "median": 11.4261474609375,
+            "min": 10.14837646484375,
+            "n": 6
+          },
+          "full_user_us_per_actor": {
+            "max": 10.314819335937498,
+            "median": 9.41241455078125,
+            "min": 8.270202636718748,
+            "n": 6
+          },
+          "full_wall_us_per_actor": {
+            "max": 62.923660278320305,
+            "median": 35.817063659667966,
+            "min": 22.89609783935547,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8448.0,
+            "median": 8400.0,
+            "min": 8352.0,
+            "n": 6
+          },
+          "minor_faults_per_actor": {
+            "max": 1.048095703125,
+            "median": 1.047454833984375,
+            "min": 1.03924560546875,
+            "n": 6
+          }
+        },
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 108.07354736328125,
+            "median": 50.91473388671875,
+            "min": 26.562744140625,
+            "n": 12
+          },
+          "full_cpu_us_per_actor": {
+            "max": 30.276123046875,
+            "median": 24.059112548828125,
+            "min": 21.633056640625,
+            "n": 12
+          },
+          "full_system_us_per_actor": {
+            "max": 18.56317138671875,
+            "median": 13.452758789062498,
+            "min": 11.64501953125,
+            "n": 12
+          },
+          "full_user_us_per_actor": {
+            "max": 11.71295166015625,
+            "median": 10.667938232421873,
+            "min": 9.370849609375,
+            "n": 12
+          },
+          "full_wall_us_per_actor": {
+            "max": 109.55799865722656,
+            "median": 51.48975372314453,
+            "min": 27.065694213867186,
+            "n": 12
+          },
+          "max_rss_kib": {
+            "max": 8416.0,
+            "median": 8328.0,
+            "min": 8288.0,
+            "n": 12
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04754638671875,
+            "median": 1.047149658203125,
+            "min": 1.03912353515625,
+            "n": 12
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "body_wall_us_per_actor": {
+          "max": 33.471221923828125,
+          "median": 21.4073486328125,
+          "min": -1.476318359375,
+          "n": 6,
+          "positive": 5
+        },
+        "full_cpu_us_per_actor": {
+          "max": 5.67657470703125,
+          "median": 3.5004272460937518,
+          "min": 2.841552734375,
+          "n": 6,
+          "positive": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 3.19342041015625,
+          "median": 2.256103515625,
+          "min": 1.740570068359375,
+          "n": 6,
+          "positive": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 2.483154296875,
+          "median": 1.1175842285156268,
+          "min": 0.469146728515625,
+          "n": 6,
+          "positive": 6
+        },
+        "full_wall_us_per_actor": {
+          "max": 31.826296508789063,
+          "median": 20.91111058044434,
+          "min": -1.5752118530273442,
+          "n": 6,
+          "positive": 5
+        },
+        "max_rss_kib": {
+          "max": 16.0,
+          "median": -76.0,
+          "min": -144.0,
+          "n": 6,
+          "positive": 1
+        },
+        "minor_faults_per_actor": {
+          "max": 0.008026123046875,
+          "median": -0.000244140625,
+          "min": -0.000823974609375,
+          "n": 6,
+          "positive": 2
+        }
+      },
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 29.81121826171875,
+          "median": 12.935150146484375,
+          "min": 2.0892333984375,
+          "n": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 3.9299926757812536,
+          "median": 1.524078369140625,
+          "min": 0.32373046875,
+          "n": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 2.8383178710937518,
+          "median": 0.8126831054687491,
+          "min": 0.11956787109375178,
+          "n": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 1.3079833984375,
+          "median": 0.711395263671875,
+          "min": 0.39306640625,
+          "n": 6
+        },
+        "full_wall_us_per_actor": {
+          "max": 29.755973815917976,
+          "median": 12.790459930419924,
+          "min": 2.2387059326171865,
+          "n": 6
+        },
+        "max_rss_kib": {
+          "max": 64.0,
+          "median": 24.0,
+          "min": 0.0,
+          "n": 6
+        },
+        "minor_faults_per_actor": {
+          "max": 0.008056640625,
+          "median": 0.000213623046875,
+          "min": 6.103515625e-05,
+          "n": 6
+        }
+      }
+    },
+    "immediate/16/2": {
+      "arms": {
+        "reuse": {
+          "body_wall_us_per_actor": {
+            "max": 10.23193359375,
+            "median": 6.096435546875,
+            "min": 4.7974853515625,
+            "n": 6
+          },
+          "full_cpu_us_per_actor": {
+            "max": 12.19781494140625,
+            "median": 8.408721923828125,
+            "min": 7.6629638671875,
+            "n": 6
+          },
+          "full_system_us_per_actor": {
+            "max": 8.7296142578125,
+            "median": 5.107025146484375,
+            "min": 4.489013671875,
+            "n": 6
+          },
+          "full_user_us_per_actor": {
+            "max": 3.8598632812499996,
+            "median": 3.30517578125,
+            "min": 2.97479248046875,
+            "n": 6
+          },
+          "full_wall_us_per_actor": {
+            "max": 11.759178161621094,
+            "median": 6.587717712402344,
+            "min": 5.3530400390625,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8512.0,
+            "median": 8448.0,
+            "min": 8416.0,
+            "n": 6
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04833984375,
+            "median": 1.047698974609375,
+            "min": 1.03973388671875,
+            "n": 6
+          }
+        },
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 17.5794677734375,
+            "median": 9.214874267578125,
+            "min": 5.2779541015625,
+            "n": 12
+          },
+          "full_cpu_us_per_actor": {
+            "max": 11.16729736328125,
+            "median": 9.8656005859375,
+            "min": 8.799072265625,
+            "n": 12
+          },
+          "full_system_us_per_actor": {
+            "max": 7.427490234375,
+            "median": 6.381561279296875,
+            "min": 5.449951171875,
+            "n": 12
+          },
+          "full_user_us_per_actor": {
+            "max": 3.8121337890625,
+            "median": 3.470428466796875,
+            "min": 3.2335205078125,
+            "n": 12
+          },
+          "full_wall_us_per_actor": {
+            "max": 18.183265686035156,
+            "median": 9.74892807006836,
+            "min": 5.7761993408203125,
+            "n": 12
+          },
+          "max_rss_kib": {
+            "max": 8352.0,
+            "median": 8336.0,
+            "min": 8288.0,
+            "n": 12
+          },
+          "minor_faults_per_actor": {
+            "max": 1.0477294921875,
+            "median": 1.04730224609375,
+            "min": 1.046875,
+            "n": 12
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "body_wall_us_per_actor": {
+          "max": 5.24029541015625,
+          "median": 2.6252288818359375,
+          "min": 0.610870361328125,
+          "n": 6,
+          "positive": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 2.389923095703124,
+          "median": 1.3718566894531259,
+          "min": -2.477630615234375,
+          "n": 6,
+          "positive": 5
+        },
+        "full_system_us_per_actor": {
+          "max": 1.871490478515625,
+          "median": 1.345428466796875,
+          "min": -2.513214111328125,
+          "n": 6,
+          "positive": 5
+        },
+        "full_user_us_per_actor": {
+          "max": 0.551116943359375,
+          "median": 0.1123809814453125,
+          "min": -0.136322021484375,
+          "n": 6,
+          "positive": 5
+        },
+        "full_wall_us_per_actor": {
+          "max": 5.357171356201172,
+          "median": 2.326473861694336,
+          "min": 0.5041923522949219,
+          "n": 6,
+          "positive": 6
+        },
+        "max_rss_kib": {
+          "max": -72.0,
+          "median": -120.0,
+          "min": -184.0,
+          "n": 6,
+          "positive": 0
+        },
+        "minor_faults_per_actor": {
+          "max": 0.007781982421875,
+          "median": -0.0004119873046875,
+          "min": -0.001251220703125,
+          "n": 6,
+          "positive": 2
+        }
+      },
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 7.90972900390625,
+          "median": 0.875457763671875,
+          "min": 0.17327880859375,
+          "n": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 1.40472412109375,
+          "median": 0.5257568359374991,
+          "min": 0.230712890625,
+          "n": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 0.853515625,
+          "median": 0.42510986328124956,
+          "min": 0.05621337890625089,
+          "n": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 0.5724487304687504,
+          "median": 0.150665283203125,
+          "min": 0.02801513671875,
+          "n": 6
+        },
+        "full_wall_us_per_actor": {
+          "max": 7.93389385986328,
+          "median": 0.9380518493652343,
+          "min": 0.4905548095703125,
+          "n": 6
+        },
+        "max_rss_kib": {
+          "max": 64.0,
+          "median": 24.0,
+          "min": 0.0,
+          "n": 6
+        },
+        "minor_faults_per_actor": {
+          "max": 0.00079345703125,
+          "median": 0.000152587890625,
+          "min": 6.103515625e-05,
+          "n": 6
+        }
+      }
+    },
+    "immediate/64/2": {
+      "arms": {
+        "reuse": {
+          "body_wall_us_per_actor": {
+            "max": 6.01031494140625,
+            "median": 3.91729736328125,
+            "min": 3.08270263671875,
+            "n": 6
+          },
+          "full_cpu_us_per_actor": {
+            "max": 6.72344970703125,
+            "median": 6.346405029296875,
+            "min": 6.03436279296875,
+            "n": 6
+          },
+          "full_system_us_per_actor": {
+            "max": 4.22265625,
+            "median": 4.1402587890625,
+            "min": 3.79095458984375,
+            "n": 6
+          },
+          "full_user_us_per_actor": {
+            "max": 2.5571289062499996,
+            "median": 2.326934814453125,
+            "min": 1.9201660156250002,
+            "n": 6
+          },
+          "full_wall_us_per_actor": {
+            "max": 7.463872314453125,
+            "median": 4.460316986083985,
+            "min": 3.54642236328125,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8528.0,
+            "median": 8488.0,
+            "min": 8464.0,
+            "n": 6
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04888916015625,
+            "median": 1.048492431640625,
+            "min": 1.03985595703125,
+            "n": 6
+          }
+        },
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 16.3876953125,
+            "median": 5.84393310546875,
+            "min": 4.83258056640625,
+            "n": 12
+          },
+          "full_cpu_us_per_actor": {
+            "max": 9.8211669921875,
+            "median": 8.84991455078125,
+            "min": 7.457702636718749,
+            "n": 12
+          },
+          "full_system_us_per_actor": {
+            "max": 6.750427246093749,
+            "median": 6.207427978515625,
+            "min": 5.165039062499999,
+            "n": 12
+          },
+          "full_user_us_per_actor": {
+            "max": 3.0707397460937496,
+            "median": 2.642486572265625,
+            "min": 2.09991455078125,
+            "n": 12
+          },
+          "full_wall_us_per_actor": {
+            "max": 17.052223205566406,
+            "median": 6.359217346191406,
+            "min": 5.325726867675781,
+            "n": 12
+          },
+          "max_rss_kib": {
+            "max": 8448.0,
+            "median": 8392.0,
+            "min": 8352.0,
+            "n": 12
+          },
+          "minor_faults_per_actor": {
+            "max": 1.048583984375,
+            "median": 1.048065185546875,
+            "min": 1.04718017578125,
+            "n": 12
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "body_wall_us_per_actor": {
+          "max": 6.909332275390625,
+          "median": 2.4629974365234375,
+          "min": 0.57098388671875,
+          "n": 6,
+          "positive": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 2.969818115234375,
+          "median": 2.4442749023437504,
+          "min": 1.44781494140625,
+          "n": 6,
+          "positive": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 2.50018310546875,
+          "median": 2.1172790527343746,
+          "min": 1.3053894042968741,
+          "n": 6,
+          "positive": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 0.46963500976562544,
+          "median": 0.326995849609375,
+          "min": -0.003356933593749556,
+          "n": 6,
+          "positive": 5
+        },
+        "full_wall_us_per_actor": {
+          "max": 6.104045837402344,
+          "median": 2.4710877380371095,
+          "min": 0.621757476806641,
+          "n": 6,
+          "positive": 6
+        },
+        "max_rss_kib": {
+          "max": -72.0,
+          "median": -100.0,
+          "min": -128.0,
+          "n": 6,
+          "positive": 0
+        },
+        "minor_faults_per_actor": {
+          "max": 0.008331298828125,
+          "median": -0.000518798828125,
+          "min": -0.001251220703125,
+          "n": 6,
+          "positive": 2
+        }
+      },
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 6.93609619140625,
+          "median": 0.806671142578125,
+          "min": 0.0460205078125,
+          "n": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 1.3618164062500009,
+          "median": 0.4608764648437509,
+          "min": 0.011169433593751776,
+          "n": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 1.0175781250000009,
+          "median": 0.366180419921875,
+          "min": 0.006164550781250888,
+          "n": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 0.34423828125,
+          "median": 0.12481689453124978,
+          "min": 0.0050048828125,
+          "n": 6
+        },
+        "full_wall_us_per_actor": {
+          "max": 6.968610107421874,
+          "median": 0.7900530395507812,
+          "min": 0.057039855957031094,
+          "n": 6
+        },
+        "max_rss_kib": {
+          "max": 96.0,
+          "median": 40.0,
+          "min": 16.0,
+          "n": 6
+        },
+        "minor_faults_per_actor": {
+          "max": 0.00091552734375,
+          "median": 0.0006103515625,
+          "min": 0.0001220703125,
+          "n": 6
+        }
+      }
+    },
+    "parked/1/2": {
+      "arms": {
+        "reuse": {
+          "body_wall_us_per_actor": {
+            "max": 162.1376953125,
+            "median": 64.64190673828125,
+            "min": 12.872314453125,
+            "n": 6
+          },
+          "full_cpu_us_per_actor": {
+            "max": 44.2894287109375,
+            "median": 34.594146728515625,
+            "min": 22.16473388671875,
+            "n": 6
+          },
+          "full_system_us_per_actor": {
+            "max": 24.030883789062496,
+            "median": 16.658538818359375,
+            "min": 12.01470947265625,
+            "n": 6
+          },
+          "full_user_us_per_actor": {
+            "max": 20.3843994140625,
+            "median": 17.93560791015625,
+            "min": 10.1500244140625,
+            "n": 6
+          },
+          "full_wall_us_per_actor": {
+            "max": 162.65051013183594,
+            "median": 65.27921420288087,
+            "min": 13.293197631835938,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8592.0,
+            "median": 8552.0,
+            "min": 8528.0,
+            "n": 6
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04827880859375,
+            "median": 1.048004150390625,
+            "min": 1.03936767578125,
+            "n": 6
+          }
+        },
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 212.677734375,
+            "median": 119.23245239257812,
+            "min": 25.49945068359375,
+            "n": 12
+          },
+          "full_cpu_us_per_actor": {
+            "max": 54.34088134765624,
+            "median": 41.18548583984375,
+            "min": 28.3270263671875,
+            "n": 12
+          },
+          "full_system_us_per_actor": {
+            "max": 31.374572753906246,
+            "median": 20.909332275390625,
+            "min": 15.0638427734375,
+            "n": 12
+          },
+          "full_user_us_per_actor": {
+            "max": 22.96630859375,
+            "median": 19.5032958984375,
+            "min": 13.26318359375,
+            "n": 12
+          },
+          "full_wall_us_per_actor": {
+            "max": 213.22419989013673,
+            "median": 120.34491601562502,
+            "min": 25.931203186035155,
+            "n": 12
+          },
+          "max_rss_kib": {
+            "max": 8480.0,
+            "median": 8464.0,
+            "min": 8368.0,
+            "n": 12
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04827880859375,
+            "median": 1.047760009765625,
+            "min": 1.03948974609375,
+            "n": 12
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "body_wall_us_per_actor": {
+          "max": 77.66232299804688,
+          "median": 22.75848388671875,
+          "min": -16.230194091796875,
+          "n": 6,
+          "positive": 4
+        },
+        "full_cpu_us_per_actor": {
+          "max": 11.84619140625,
+          "median": 5.76695251464843,
+          "min": -0.7761230468749964,
+          "n": 6,
+          "positive": 5
+        },
+        "full_system_us_per_actor": {
+          "max": 6.5254821777343786,
+          "median": 4.1881866455078125,
+          "min": -0.07302856445312145,
+          "n": 6,
+          "positive": 5
+        },
+        "full_user_us_per_actor": {
+          "max": 5.855316162109375,
+          "median": 1.843536376953125,
+          "min": -0.703094482421875,
+          "n": 6,
+          "positive": 4
+        },
+        "full_wall_us_per_actor": {
+          "max": 76.90302276611328,
+          "median": 22.738309860229478,
+          "min": -16.398175506591798,
+          "n": 6,
+          "positive": 4
+        },
+        "max_rss_kib": {
+          "max": -56.0,
+          "median": -108.0,
+          "min": -144.0,
+          "n": 6,
+          "positive": 0
+        },
+        "minor_faults_per_actor": {
+          "max": 0.0086669921875,
+          "median": -0.00030517578125,
+          "min": -0.0045166015625,
+          "n": 6,
+          "positive": 2
+        }
+      },
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 79.1378173828125,
+          "median": 21.799896240234375,
+          "min": 5.896484375,
+          "n": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 5.185302734375,
+          "median": 3.8022766113281214,
+          "min": 2.1229248046875,
+          "n": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 5.5965576171875,
+          "median": 3.6252136230468732,
+          "min": 1.16607666015625,
+          "n": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 2.06866455078125,
+          "median": 0.9957275390625009,
+          "min": 0.3238525390625,
+          "n": 6
+        },
+        "full_wall_us_per_actor": {
+          "max": 79.10740405273435,
+          "median": 21.194435119628906,
+          "min": 5.900822937011718,
+          "n": 6
+        },
+        "max_rss_kib": {
+          "max": 96.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 6
+        },
+        "minor_faults_per_actor": {
+          "max": 0.008056640625,
+          "median": 0.000396728515625,
+          "min": 0.0001220703125,
+          "n": 6
+        }
+      }
+    },
+    "parked/16/1": {
+      "arms": {
+        "reuse": {
+          "body_wall_us_per_actor": {
+            "max": 37.5787353515625,
+            "median": 13.0897216796875,
+            "min": 9.83355712890625,
+            "n": 6
+          },
+          "full_cpu_us_per_actor": {
+            "max": 10.82318115234375,
+            "median": 9.189056396484375,
+            "min": 7.780761718749999,
+            "n": 6
+          },
+          "full_system_us_per_actor": {
+            "max": 7.15936279296875,
+            "median": 5.67657470703125,
+            "min": 4.668823242187499,
+            "n": 6
+          },
+          "full_user_us_per_actor": {
+            "max": 3.6699218749999996,
+            "median": 3.512481689453125,
+            "min": 3.1119384765625,
+            "n": 6
+          },
+          "full_wall_us_per_actor": {
+            "max": 38.183672607421876,
+            "median": 13.655213684082032,
+            "min": 10.334531127929687,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8720.0,
+            "median": 8680.0,
+            "min": 8592.0,
+            "n": 6
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04803466796875,
+            "median": 1.047882080078125,
+            "min": 1.047607421875,
+            "n": 6
+          }
+        },
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 36.349609375,
+            "median": 19.64306640625,
+            "min": 8.12213134765625,
+            "n": 12
+          },
+          "full_cpu_us_per_actor": {
+            "max": 12.29290771484375,
+            "median": 9.8251953125,
+            "min": 8.14208984375,
+            "n": 12
+          },
+          "full_system_us_per_actor": {
+            "max": 8.48443603515625,
+            "median": 6.214263916015625,
+            "min": 4.84710693359375,
+            "n": 12
+          },
+          "full_user_us_per_actor": {
+            "max": 3.91650390625,
+            "median": 3.610931396484375,
+            "min": 3.1815185546875,
+            "n": 12
+          },
+          "full_wall_us_per_actor": {
+            "max": 36.99625646972656,
+            "median": 20.17575326538086,
+            "min": 8.599128723144531,
+            "n": 12
+          },
+          "max_rss_kib": {
+            "max": 8656.0,
+            "median": 8568.0,
+            "min": 8512.0,
+            "n": 12
+          },
+          "minor_faults_per_actor": {
+            "max": 1.047607421875,
+            "median": 1.047454833984375,
+            "min": 1.0472412109375,
+            "n": 12
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "body_wall_us_per_actor": {
+          "max": 16.81707763671875,
+          "median": 4.3642120361328125,
+          "min": -19.3978271484375,
+          "n": 6,
+          "positive": 4
+        },
+        "full_cpu_us_per_actor": {
+          "max": 2.692596435546875,
+          "median": 0.6350860595703125,
+          "min": -0.52099609375,
+          "n": 6,
+          "positive": 5
+        },
+        "full_system_us_per_actor": {
+          "max": 2.306671142578125,
+          "median": 0.6417388916015629,
+          "min": -0.455169677734375,
+          "n": 6,
+          "positive": 5
+        },
+        "full_user_us_per_actor": {
+          "max": 0.38592529296875,
+          "median": 0.04701232910156272,
+          "min": -0.07583618164062456,
+          "n": 6,
+          "positive": 4
+        },
+        "full_wall_us_per_actor": {
+          "max": 16.840395629882813,
+          "median": 4.372564331054688,
+          "min": -19.46264016723633,
+          "n": 6,
+          "positive": 4
+        },
+        "max_rss_kib": {
+          "max": -64.0,
+          "median": -108.0,
+          "min": -136.0,
+          "n": 6,
+          "positive": 0
+        },
+        "minor_faults_per_actor": {
+          "max": -0.00030517578125,
+          "median": -0.000396728515625,
+          "min": -0.00048828125,
+          "n": 6,
+          "positive": 0
+        }
+      },
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 17.86785888671875,
+          "median": 4.214111328125,
+          "min": 1.95635986328125,
+          "n": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 1.6318969726562482,
+          "median": 0.5467529296875,
+          "min": 0.10522460937499822,
+          "n": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 1.1918945312499991,
+          "median": 0.31652832031249956,
+          "min": 0.10528564453124911,
+          "n": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 0.49627685546875,
+          "median": 0.11532592773437522,
+          "min": 6.103515625e-05,
+          "n": 6
+        },
+        "full_wall_us_per_actor": {
+          "max": 17.93659716796875,
+          "median": 4.227233856201172,
+          "min": 1.9673589477539046,
+          "n": 6
+        },
+        "max_rss_kib": {
+          "max": 80.0,
+          "median": 40.0,
+          "min": 16.0,
+          "n": 6
+        },
+        "minor_faults_per_actor": {
+          "max": 0.000244140625,
+          "median": 9.1552734375e-05,
+          "min": 0.0,
+          "n": 6
+        }
+      }
+    },
+    "parked/16/2": {
+      "arms": {
+        "reuse": {
+          "body_wall_us_per_actor": {
+            "max": 52.0994873046875,
+            "median": 18.836700439453125,
+            "min": 4.53778076171875,
+            "n": 6
+          },
+          "full_cpu_us_per_actor": {
+            "max": 18.64935302734375,
+            "median": 13.34649658203125,
+            "min": 9.311645507812498,
+            "n": 6
+          },
+          "full_system_us_per_actor": {
+            "max": 12.47186279296875,
+            "median": 7.88885498046875,
+            "min": 4.71746826171875,
+            "n": 6
+          },
+          "full_user_us_per_actor": {
+            "max": 6.177490234375,
+            "median": 5.457641601562499,
+            "min": 4.594177246093749,
+            "n": 6
+          },
+          "full_wall_us_per_actor": {
+            "max": 53.889930725097656,
+            "median": 19.465910552978514,
+            "min": 4.946278930664063,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 8928.0,
+            "median": 8880.0,
+            "min": 8768.0,
+            "n": 6
+          },
+          "minor_faults_per_actor": {
+            "max": 1.0496826171875,
+            "median": 1.04852294921875,
+            "min": 1.0404052734375,
+            "n": 6
+          }
+        },
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 38.83673095703125,
+            "median": 25.391326904296875,
+            "min": 5.39837646484375,
+            "n": 12
+          },
+          "full_cpu_us_per_actor": {
+            "max": 17.45257568359375,
+            "median": 14.608001708984375,
+            "min": 10.8663330078125,
+            "n": 12
+          },
+          "full_system_us_per_actor": {
+            "max": 10.95489501953125,
+            "median": 9.025238037109375,
+            "min": 6.38336181640625,
+            "n": 12
+          },
+          "full_user_us_per_actor": {
+            "max": 6.4976806640625,
+            "median": 5.514007568359375,
+            "min": 4.48297119140625,
+            "n": 12
+          },
+          "full_wall_us_per_actor": {
+            "max": 40.48719787597656,
+            "median": 26.267823516845702,
+            "min": 5.778203369140625,
+            "n": 12
+          },
+          "max_rss_kib": {
+            "max": 8912.0,
+            "median": 8752.0,
+            "min": 8688.0,
+            "n": 12
+          },
+          "minor_faults_per_actor": {
+            "max": 1.04931640625,
+            "median": 1.04815673828125,
+            "min": 1.03997802734375,
+            "n": 12
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "body_wall_us_per_actor": {
+          "max": 18.266204833984375,
+          "median": 2.203399658203125,
+          "min": -29.27410888671875,
+          "n": 6,
+          "positive": 4
+        },
+        "full_cpu_us_per_actor": {
+          "max": 2.794464111328125,
+          "median": 1.5886383056640634,
+          "min": -3.2629089355468768,
+          "n": 6,
+          "positive": 4
+        },
+        "full_system_us_per_actor": {
+          "max": 2.232299804687501,
+          "median": 1.44683837890625,
+          "min": -2.457122802734375,
+          "n": 6,
+          "positive": 4
+        },
+        "full_user_us_per_actor": {
+          "max": 0.58355712890625,
+          "median": 0.1417999267578134,
+          "min": -0.8057861328125,
+          "n": 6,
+          "positive": 3
+        },
+        "full_wall_us_per_actor": {
+          "max": 18.64989730834961,
+          "median": 2.2059161224365216,
+          "min": -30.965641052246095,
+          "n": 6,
+          "positive": 4
+        },
+        "max_rss_kib": {
+          "max": -8.0,
+          "median": -92.0,
+          "min": -200.0,
+          "n": 6,
+          "positive": 0
+        },
+        "minor_faults_per_actor": {
+          "max": 0.00811767578125,
+          "median": -0.000335693359375,
+          "min": -0.00555419921875,
+          "n": 6,
+          "positive": 2
+        }
+      },
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 15.581787109375,
+          "median": 8.938018798828125,
+          "min": 0.4500732421875,
+          "n": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 3.33380126953125,
+          "median": 1.15142822265625,
+          "min": 0.4079589843750018,
+          "n": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 2.5298461914062482,
+          "median": 0.7732543945312491,
+          "min": 0.10101318359375,
+          "n": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 0.912353515625,
+          "median": 0.45419311523437544,
+          "min": 0.1842041015625,
+          "n": 6
+        },
+        "full_wall_us_per_actor": {
+          "max": 15.921038330078124,
+          "median": 9.470228820800783,
+          "min": 0.5121536254882812,
+          "n": 6
+        },
+        "max_rss_kib": {
+          "max": 128.0,
+          "median": 56.0,
+          "min": 16.0,
+          "n": 6
+        },
+        "minor_faults_per_actor": {
+          "max": 0.0079345703125,
+          "median": 0.001007080078125,
+          "min": 6.103515625e-05,
+          "n": 6
+        }
+      }
+    },
+    "parked/16/4": {
+      "arms": {
+        "reuse": {
+          "body_wall_us_per_actor": {
+            "max": 27.94732666015625,
+            "median": 26.3590087890625,
+            "min": 15.21746826171875,
+            "n": 6
+          },
+          "full_cpu_us_per_actor": {
+            "max": 21.00799560546875,
+            "median": 20.232330322265625,
+            "min": 18.204528808593746,
+            "n": 6
+          },
+          "full_system_us_per_actor": {
+            "max": 11.96075439453125,
+            "median": 11.052093505859375,
+            "min": 9.810180664062498,
+            "n": 6
+          },
+          "full_user_us_per_actor": {
+            "max": 9.934326171875,
+            "median": 8.636566162109375,
+            "min": 8.39434814453125,
+            "n": 6
+          },
+          "full_wall_us_per_actor": {
+            "max": 28.49838000488281,
+            "median": 26.87303414916992,
+            "min": 15.71361798095703,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 9088.0,
+            "median": 9008.0,
+            "min": 8912.0,
+            "n": 6
+          },
+          "minor_faults_per_actor": {
+            "max": 1.0511474609375,
+            "median": 1.0496826171875,
+            "min": 1.04876708984375,
+            "n": 6
+          }
+        },
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 46.91796875,
+            "median": 22.953826904296875,
+            "min": 13.6673583984375,
+            "n": 12
+          },
+          "full_cpu_us_per_actor": {
+            "max": 30.667541503906254,
+            "median": 23.35455322265625,
+            "min": 19.877929687499996,
+            "n": 12
+          },
+          "full_system_us_per_actor": {
+            "max": 20.50390625,
+            "median": 13.563934326171875,
+            "min": 12.188049316406248,
+            "n": 12
+          },
+          "full_user_us_per_actor": {
+            "max": 11.107788085937498,
+            "median": 9.254913330078125,
+            "min": 7.689880371093749,
+            "n": 12
+          },
+          "full_wall_us_per_actor": {
+            "max": 48.56523895263672,
+            "median": 23.790625274658204,
+            "min": 14.14608251953125,
+            "n": 12
+          },
+          "max_rss_kib": {
+            "max": 9024.0,
+            "median": 8864.0,
+            "min": 8752.0,
+            "n": 12
+          },
+          "minor_faults_per_actor": {
+            "max": 1.0499267578125,
+            "median": 1.04901123046875,
+            "min": 1.0478515625,
+            "n": 12
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "body_wall_us_per_actor": {
+          "max": 9.69403076171875,
+          "median": 0.7826690673828125,
+          "min": -8.9317626953125,
+          "n": 6,
+          "positive": 3
+        },
+        "full_cpu_us_per_actor": {
+          "max": 7.866607666015625,
+          "median": 3.202423095703125,
+          "min": 1.17919921875,
+          "n": 6,
+          "positive": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 6.473846435546875,
+          "median": 2.8522491455078134,
+          "min": 1.080230712890625,
+          "n": 6,
+          "positive": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 1.3927612304687518,
+          "median": 0.3501739501953116,
+          "min": -0.44866943359375,
+          "n": 6,
+          "positive": 5
+        },
+        "full_wall_us_per_actor": {
+          "max": 10.800565063476562,
+          "median": 0.9377219238281267,
+          "min": -8.925291656494139,
+          "n": 6,
+          "positive": 3
+        },
+        "max_rss_kib": {
+          "max": 0.0,
+          "median": -144.0,
+          "min": -320.0,
+          "n": 6,
+          "positive": 0
+        },
+        "minor_faults_per_actor": {
+          "max": 0.0001220703125,
+          "median": -0.00054931640625,
+          "min": -0.001953125,
+          "n": 6,
+          "positive": 1
+        }
+      },
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 27.389404296875,
+          "median": 6.243103027343751,
+          "min": 0.5811767578125,
+          "n": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 6.0480346679687536,
+          "median": 1.9343261718750018,
+          "min": 0.59814453125,
+          "n": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 5.35858154296875,
+          "median": 0.8746337890625,
+          "min": 0.0474853515625,
+          "n": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 1.83636474609375,
+          "median": 0.7116088867187504,
+          "min": 0.28302001953125,
+          "n": 6
+        },
+        "full_wall_us_per_actor": {
+          "max": 27.30379235839844,
+          "median": 6.322198211669923,
+          "min": 0.5916494140625002,
+          "n": 6
+        },
+        "max_rss_kib": {
+          "max": 80.0,
+          "median": 32.0,
+          "min": 0.0,
+          "n": 6
+        },
+        "minor_faults_per_actor": {
+          "max": 0.001220703125,
+          "median": 0.000885009765625,
+          "min": 0.0001220703125,
+          "n": 6
+        }
+      }
+    },
+    "parked/64/2": {
+      "arms": {
+        "reuse": {
+          "body_wall_us_per_actor": {
+            "max": 23.755615234375,
+            "median": 15.263916015625,
+            "min": 6.3087158203125,
+            "n": 6
+          },
+          "full_cpu_us_per_actor": {
+            "max": 12.807373046875,
+            "median": 11.52349853515625,
+            "min": 10.6107177734375,
+            "n": 6
+          },
+          "full_system_us_per_actor": {
+            "max": 9.29888916015625,
+            "median": 7.64776611328125,
+            "min": 7.439697265625,
+            "n": 6
+          },
+          "full_user_us_per_actor": {
+            "max": 4.34478759765625,
+            "median": 3.50885009765625,
+            "min": 3.0433349609375,
+            "n": 6
+          },
+          "full_wall_us_per_actor": {
+            "max": 25.18349200439453,
+            "median": 15.777257263183596,
+            "min": 6.789103149414062,
+            "n": 6
+          },
+          "max_rss_kib": {
+            "max": 9984.0,
+            "median": 9816.0,
+            "min": 9648.0,
+            "n": 6
+          },
+          "minor_faults_per_actor": {
+            "max": 1.05010986328125,
+            "median": 1.049530029296875,
+            "min": 1.0408935546875,
+            "n": 6
+          }
+        },
+        "stock": {
+          "body_wall_us_per_actor": {
+            "max": 26.8525390625,
+            "median": 18.878387451171875,
+            "min": 9.2073974609375,
+            "n": 12
+          },
+          "full_cpu_us_per_actor": {
+            "max": 12.61773681640625,
+            "median": 11.733184814453125,
+            "min": 11.0062255859375,
+            "n": 12
+          },
+          "full_system_us_per_actor": {
+            "max": 8.94354248046875,
+            "median": 8.093292236328125,
+            "min": 7.670837402343749,
+            "n": 12
+          },
+          "full_user_us_per_actor": {
+            "max": 4.06787109375,
+            "median": 3.52056884765625,
+            "min": 3.01806640625,
+            "n": 12
+          },
+          "full_wall_us_per_actor": {
+            "max": 28.09457147216797,
+            "median": 19.689407318115236,
+            "min": 9.826388061523437,
+            "n": 12
+          },
+          "max_rss_kib": {
+            "max": 9936.0,
+            "median": 9776.0,
+            "min": 9552.0,
+            "n": 12
+          },
+          "minor_faults_per_actor": {
+            "max": 1.0491943359375,
+            "median": 1.048675537109375,
+            "min": 1.04736328125,
+            "n": 12
+          }
+        }
+      },
+      "paired_stock_minus_reuse": {
+        "body_wall_us_per_actor": {
+          "max": 7.13714599609375,
+          "median": 3.242034912109375,
+          "min": -4.6185302734375,
+          "n": 6,
+          "positive": 4
+        },
+        "full_cpu_us_per_actor": {
+          "max": 0.7726135253906232,
+          "median": 0.391754150390625,
+          "min": -0.995391845703125,
+          "n": 6,
+          "positive": 5
+        },
+        "full_system_us_per_actor": {
+          "max": 0.67291259765625,
+          "median": 0.3324432373046875,
+          "min": -0.904296875,
+          "n": 6,
+          "positive": 5
+        },
+        "full_user_us_per_actor": {
+          "max": 0.427764892578125,
+          "median": 0.03802490234375,
+          "min": -0.313201904296875,
+          "n": 6,
+          "positive": 3
+        },
+        "full_wall_us_per_actor": {
+          "max": 7.270656555175783,
+          "median": 3.4476662139892564,
+          "min": -5.435956298828124,
+          "n": 6,
+          "positive": 4
+        },
+        "max_rss_kib": {
+          "max": 88.0,
+          "median": -60.0,
+          "min": -232.0,
+          "n": 6,
+          "positive": 1
+        },
+        "minor_faults_per_actor": {
+          "max": 0.00750732421875,
+          "median": -0.00079345703125,
+          "min": -0.00128173828125,
+          "n": 6,
+          "positive": 2
+        }
+      },
+      "within_round_stock_control_spread": {
+        "body_wall_us_per_actor": {
+          "max": 3.7044677734375,
+          "median": 1.49725341796875,
+          "min": 0.309814453125,
+          "n": 6
+        },
+        "full_cpu_us_per_actor": {
+          "max": 1.61151123046875,
+          "median": 0.5369873046874991,
+          "min": 0.07763671874999822,
+          "n": 6
+        },
+        "full_system_us_per_actor": {
+          "max": 0.8128662109375,
+          "median": 0.40026855468749956,
+          "min": 0.003540039062499112,
+          "n": 6
+        },
+        "full_user_us_per_actor": {
+          "max": 0.7986450195312496,
+          "median": 0.11056518554687478,
+          "min": 0.056213378906249556,
+          "n": 6
+        },
+        "full_wall_us_per_actor": {
+          "max": 3.5640665283203106,
+          "median": 1.6144638366699233,
+          "min": 0.4035161132812508,
+          "n": 6
+        },
+        "max_rss_kib": {
+          "max": 368.0,
+          "median": 272.0,
+          "min": 16.0,
+          "n": 6
+        },
+        "minor_faults_per_actor": {
+          "max": 0.00103759765625,
+          "median": 0.00048828125,
+          "min": 0.0003662109375,
+          "n": 6
+        }
+      }
+    }
+  }
+}

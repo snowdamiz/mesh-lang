@@ -1,0 +1,54 @@
+{
+  "id": "ordinary-completion-writer-short-r1",
+  "controller": "linode-native-stepchange-controller-v1",
+  "state": "staged-for-controller-review",
+  "source_archive": "../2026-11-23-ordinary-trusted-v2/ordinary-trusted-v2.tar.gz",
+  "source_archive_sha256": "d87114a2332d8e3dd56da8615367ffb7b68c16945a5879c101191a09c15377b6",
+  "source_patch": "replay/completion-writer.patch",
+  "source_patch_sha256": "1dabe11d17505ebdd79877b6c06fb839f9625dd53ade2e0b11ba78672ce39913",
+  "version": "1dabe11d17505ebdd79877b6c06fb839f9625dd5",
+  "profile": "short",
+  "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+  "runners": 1,
+  "slots": 16,
+  "app_sessions": 8,
+  "pg_connection_cap": 20,
+  "existing_expected_mesh_peak_connections": 13,
+  "baseline_snapshot": "../2026-11-23-ordinary-trusted-v2/evidence/ordinary-trusted-v2-short/summary.json",
+  "native_label": "ordinary-completion-writer-short-r1",
+  "primary_mode": "zero",
+  "sensitivity_mode": "hold",
+  "controls": [
+    "off",
+    "off-repeat"
+  ],
+  "trace_diagnostic_order": [
+    "off",
+    "zero",
+    "hold"
+  ],
+  "initial_matched_orders": [
+    [
+      "off",
+      "zero",
+      "hold",
+      "off-repeat"
+    ],
+    [
+      "off-repeat",
+      "hold",
+      "zero",
+      "off"
+    ]
+  ],
+  "prepare": "replay/materialize.sh",
+  "build": "replay/build.sh",
+  "arm": "replay/native-arm.sh",
+  "notes": [
+    "Use the existing controller grant and its existing setup and timing locks.",
+    "Keep the committed-transition and reply trace diagnostic outside the timing series.",
+    "Reuse the completed V2-short evidence and the pinned peer manifests. A fresh matched peer comparison belongs to a separate candidate block.",
+    "Compare submit-through-settlement and enqueue-commit-through-settlement from the independent PostgreSQL ledger.",
+    "Check terminal XID distributions, 256 independent application transactions, one terminal change per job, committed occupancy and the stable physical session inventory."
+  ]
+}

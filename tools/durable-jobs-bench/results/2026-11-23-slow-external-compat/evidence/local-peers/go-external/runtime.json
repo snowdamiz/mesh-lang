@@ -1,0 +1,6 @@
+{
+  "artifact_sha256": "e1e3b70c9b77b5c54d76b4992186da2997ade3fd9d96014d210383c97ad767b6",
+  "phase": "diagnostic",
+  "submit_boundary": "before_batch_read",
+  "version": "river v0.51.2 / pgx v5.13.0 / go1.26.4"
+}

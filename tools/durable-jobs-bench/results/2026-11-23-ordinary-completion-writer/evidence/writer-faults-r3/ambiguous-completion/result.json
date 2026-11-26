@@ -1,0 +1,183 @@
+{
+  "prime_wire": {
+    "command": "SELECT 1",
+    "rows": 1,
+    "idle": true,
+    "receipt_dropped": false
+  },
+  "during_receipt_hold": {
+    "batch_contention_hints": 0,
+    "claimed": 4,
+    "drained": false,
+    "event_buffer_bytes": {
+      "logger": {
+        "sampled_peak_bytes": 684,
+        "upper_bound_bytes": 29184
+      },
+      "reader": null
+    },
+    "event_logs_dropped": 0,
+    "events_dropped": 0,
+    "finished": 0,
+    "last_error": null,
+    "namespace": "parity_0123456789abcdef",
+    "outcomes": {
+      "cancelled": 0,
+      "completed": 0,
+      "discarded": 0,
+      "released_unstarted": 0,
+      "retryable": 0,
+      "scheduled": 0
+    },
+    "peak_queued_context_bytes": 1035,
+    "pending_claims": 0,
+    "pruned": 0,
+    "queues": {
+      "default": {
+        "drained": false,
+        "in_flight": 4,
+        "limit": 4,
+        "pending_claims": 0,
+        "state": "running"
+      }
+    },
+    "recovered": 0,
+    "runner_id": 1,
+    "scheduled": 0,
+    "stale_acks": 0,
+    "state": "running",
+    "undrained": 4,
+    "undrained_jobs": [
+      "1e59ee96-1ec0-4c2f-87a5-248c6c479d89",
+      "42869752-8814-4026-8352-bcf902e6c609",
+      "7a1a5afc-1f38-472b-b60f-9916132cc889",
+      "c0c709c3-6c0a-459e-a71f-29c6cf6bb715"
+    ]
+  },
+  "held_physical_backends": [
+    [
+      "parity_subject",
+      52018,
+      true
+    ],
+    [
+      "compiled_caller",
+      52019,
+      true
+    ],
+    [
+      "compiled_caller",
+      52024,
+      true
+    ],
+    [
+      "parity_subject",
+      52026,
+      true
+    ],
+    [
+      "parity_subject",
+      52027,
+      true
+    ]
+  ],
+  "wire": {
+    "command": "SELECT 3",
+    "rows": 3,
+    "idle": true,
+    "receipt_dropped": true
+  },
+  "committed_before_receipt_loss": {
+    "left": {
+      "id": "42869752-8814-4026-8352-bcf902e6c609",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    },
+    "middle": {
+      "id": "c0c709c3-6c0a-459e-a71f-29c6cf6bb715",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    },
+    "right": {
+      "id": "1e59ee96-1ec0-4c2f-87a5-248c6c479d89",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    }
+  },
+  "final": {
+    "right": {
+      "id": "1e59ee96-1ec0-4c2f-87a5-248c6c479d89",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    },
+    "middle": {
+      "id": "c0c709c3-6c0a-459e-a71f-29c6cf6bb715",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    },
+    "later-retry": {
+      "id": "4c420570-e636-4e27-a7d5-aa8ee6caa802",
+      "xid": "782",
+      "state": "completed",
+      "attempt": 2,
+      "effects": 1,
+      "attempts": [
+        1,
+        2
+      ],
+      "lease_expires_at_ms": null
+    },
+    "left": {
+      "id": "42869752-8814-4026-8352-bcf902e6c609",
+      "xid": "773",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    },
+    "prime": {
+      "id": "7a1a5afc-1f38-472b-b60f-9916132cc889",
+      "xid": "761",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    }
+  }
+}

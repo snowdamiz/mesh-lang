@@ -1,0 +1,22 @@
+{
+  "archived_summary_matches": true,
+  "archived_wire_pair_digests_match": true,
+  "compiled_extracted_source_sha256": "43f122b55398ad5cc8d79d148da05a0812bf9b6515b60f9378228cfdad90ded8",
+  "identical_product_blobs": {
+    "compiler/mesh-rt/src/db/pg.rs": {
+      "git_blob": "90f914ae875859e8ef83eadba48a82470fd2222d",
+      "sha256": "dc2f4f1f6ca42726b5f23ec430dd7329e0f4b60ab3c528a6441faef9c84634d0"
+    },
+    "compiler/mesh-rt/src/db/pg/jobs_effect_session.rs": {
+      "git_blob": "fa9287dcc996b492e3abf702490b798a292ff4de",
+      "sha256": "10bf4d0ec998f91cb5e462528970a85e673c7620a525405b927aca3480298cbb"
+    }
+  },
+  "integrated_commit": "7e6c956048270de94d229841bff83d40577ea2c8",
+  "isolated_candidate": "436d705463a01e2fb4ecfecc493abbd3d79e69b3",
+  "jobs_input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+  "raw_patch_sha256": "579d6d39676b71e36920bc4f2f88ef308bd85e0bcc252abf2c8f4ad1701e7420",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1",
+  "source_differential": "differential=ok fixed_vector=ok exact_limit=67108864 above_limit=ok max_count=32767 32_bit_sum=ok partial_writes=ok",
+  "stock_commit": "29abb9cbe97999029dd6383edce67a09fe11de5f"
+}

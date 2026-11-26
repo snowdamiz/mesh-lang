@@ -1,0 +1,21 @@
+{
+  "message": "runner, warm pool or producer physical connection layout changed",
+  "stage": [
+    [
+      "arm.py",
+      322,
+      "run_arm"
+    ],
+    [
+      "jobs-parity.py",
+      925,
+      "run_trial"
+    ],
+    [
+      "split_arm.py",
+      66,
+      "capture_runners"
+    ]
+  ],
+  "type": "RuntimeError"
+}

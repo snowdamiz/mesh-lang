@@ -1,0 +1,32 @@
+{
+  "architecture": "arm64",
+  "input_bytes": 33561352,
+  "stages": {
+    "bytes_from_utf8": {
+      "calls": 127,
+      "total_wall_ms": 1.870836
+    },
+    "file_read": {
+      "calls": 1,
+      "total_wall_ms": 7.2035
+    },
+    "jobs_enqueue_in": {
+      "calls": 64,
+      "total_wall_ms": 928.739371
+    },
+    "json_encode": {
+      "calls": 127,
+      "total_wall_ms": 20.813873
+    },
+    "json_parse": {
+      "calls": 1,
+      "total_wall_ms": 6.079917
+    },
+    "string_join": {
+      "calls": 64,
+      "total_wall_ms": 1.908583
+    }
+  },
+  "submit_to_receipt_ms": 981.03,
+  "system": "Darwin"
+}

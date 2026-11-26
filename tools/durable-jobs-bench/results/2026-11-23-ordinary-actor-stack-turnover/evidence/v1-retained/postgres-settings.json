@@ -1,0 +1,12 @@
+{
+  "database_connection_limit": 96,
+  "fsync": true,
+  "full_page_writes": true,
+  "max_connections": 96,
+  "reserved_connections": 0,
+  "superuser_reserved_connections": 0,
+  "synchronous_commit": true,
+  "tls": true,
+  "track_commit_timestamp": true,
+  "version": "17.11"
+}

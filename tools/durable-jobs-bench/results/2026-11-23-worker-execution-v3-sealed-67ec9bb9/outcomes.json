@@ -1,0 +1,302 @@
+{
+  "cpu_ids": [
+    0,
+    1
+  ],
+  "measured_group": 1,
+  "native_lifecycle": {
+    "first_exit": 1,
+    "first_socket_path_bytes": 122,
+    "passed_cases": [
+      "reuse/idle/fallback:",
+      "timeout:",
+      "stop during hold:",
+      "stop during in-flight TLS write:",
+      "stale/lost lease:",
+      "cancel:",
+      "crash:",
+      "fail/retry:",
+      "unsupported actor:",
+      "independently expired its hard deadline",
+      "ignored stale LIMIT/RENEW",
+      "pre-entry expiry:",
+      "second receipt dropped after its SQL commit and reset",
+      "prior commits kept their exact XIDs",
+      "Compiled Jobs parent death:"
+    ],
+    "retry_exit": 0,
+    "retry_socket_path_bytes": 84,
+    "smokes": {
+      "strict": {
+        "claim_to_terminal_p50_ms": 127.493,
+        "claim_to_terminal_p99_ms": 227.074,
+        "distinct_worker_pids": 1024,
+        "jobs": 1024,
+        "mode": "strict",
+        "runner_and_reaped_children_cpu_seconds": 5.839608
+      },
+      "trusted-persistent": {
+        "claim_to_terminal_p50_ms": 59.209,
+        "claim_to_terminal_p99_ms": 213.486,
+        "distinct_worker_pids": 64,
+        "jobs": 1024,
+        "mode": "trusted-persistent",
+        "runner_and_reaped_children_cpu_seconds": 2.9013039999999997
+      }
+    }
+  },
+  "rows": [
+    {
+      "claim_to_terminal_p50_ms": 127.27799999999999,
+      "completed": 1024,
+      "distinct_worker_pids": 1024,
+      "durable_jobs_per_s": 189.3911721149612,
+      "independent_application_commits": 2048,
+      "memory": {
+        "drain": {
+          "descendant_rss_bytes": 0,
+          "descendants": 0,
+          "executing": 0,
+          "processes": 8,
+          "root_rss_bytes": 76414976,
+          "rss_bytes": 76414976,
+          "terminal": 1024,
+          "threads": 64
+        },
+        "ready_idle": {
+          "descendant_rss_bytes": 0,
+          "descendants": 0,
+          "executing": 0,
+          "processes": 8,
+          "root_rss_bytes": 69992448,
+          "rss_bytes": 69992448,
+          "terminal": 0,
+          "threads": 64
+        },
+        "rss_peak": {
+          "descendant_rss_bytes": 71958528,
+          "descendants": 11,
+          "executing": 24,
+          "processes": 19,
+          "root_rss_bytes": 72744960,
+          "rss_bytes": 144703488,
+          "terminal": 8,
+          "threads": 141
+        }
+      },
+      "peak_connections": 65,
+      "peak_rss_bytes": 144703488,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 11.201171875,
+      "profile": "noop",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 5.81354296875,
+      "series": "mesh-strict"
+    },
+    {
+      "claim_to_terminal_p50_ms": 49.076,
+      "completed": 1024,
+      "distinct_worker_pids": 64,
+      "durable_jobs_per_s": 277.82239335309924,
+      "independent_application_commits": 2048,
+      "memory": {
+        "drain": {
+          "descendant_rss_bytes": 425459712,
+          "descendants": 64,
+          "executing": 0,
+          "processes": 72,
+          "root_rss_bytes": 73531392,
+          "rss_bytes": 498991104,
+          "terminal": 1024,
+          "threads": 320
+        },
+        "ready_idle": {
+          "descendant_rss_bytes": 0,
+          "descendants": 0,
+          "executing": 0,
+          "processes": 8,
+          "root_rss_bytes": 69730304,
+          "rss_bytes": 69730304,
+          "terminal": 0,
+          "threads": 64
+        },
+        "rss_peak": {
+          "descendant_rss_bytes": 425459712,
+          "descendants": 64,
+          "executing": 15,
+          "processes": 72,
+          "root_rss_bytes": 73531392,
+          "rss_bytes": 498991104,
+          "terminal": 846,
+          "threads": 320
+        }
+      },
+      "peak_connections": 65,
+      "peak_rss_bytes": 498991104,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 8.134765625,
+      "profile": "noop",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 2.8910019531250004,
+      "series": "mesh-trusted-persistent"
+    },
+    {
+      "claim_to_terminal_p50_ms": null,
+      "completed": 1024,
+      "durable_jobs_per_s": 1185.8645867713562,
+      "independent_application_commits": 2048,
+      "peak_connections": 81,
+      "peak_rss_bytes": 69861376,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 1.66015625,
+      "profile": "noop",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 0.5822880859375,
+      "series": "apalis"
+    },
+    {
+      "claim_to_terminal_p50_ms": 46.028499999999994,
+      "completed": 1024,
+      "durable_jobs_per_s": 726.5425726276504,
+      "independent_application_commits": 2048,
+      "peak_connections": 81,
+      "peak_rss_bytes": 798674944,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 3.037109375,
+      "profile": "noop",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 9.8057763671875,
+      "series": "oban"
+    },
+    {
+      "claim_to_terminal_p50_ms": 164.09,
+      "completed": 1024,
+      "durable_jobs_per_s": 904.0521666351779,
+      "independent_application_commits": 2048,
+      "peak_connections": 79,
+      "peak_rss_bytes": 129077248,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 1.9140625,
+      "profile": "noop",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 0.7714951171875,
+      "series": "river"
+    },
+    {
+      "claim_to_terminal_p50_ms": 58.268,
+      "completed": 128,
+      "distinct_worker_pids": 128,
+      "durable_jobs_per_s": 221.1869444406044,
+      "independent_application_commits": 256,
+      "memory": {
+        "drain": {
+          "descendant_rss_bytes": 0,
+          "descendants": 0,
+          "executing": 0,
+          "processes": 1,
+          "root_rss_bytes": 9830400,
+          "rss_bytes": 9830400,
+          "terminal": 128,
+          "threads": 8
+        },
+        "ready_idle": {
+          "descendant_rss_bytes": 0,
+          "descendants": 0,
+          "executing": 0,
+          "processes": 1,
+          "root_rss_bytes": 8912896,
+          "rss_bytes": 8912896,
+          "terminal": 0,
+          "threads": 8
+        },
+        "rss_peak": {
+          "descendant_rss_bytes": 12976128,
+          "descendants": 2,
+          "executing": 16,
+          "processes": 3,
+          "root_rss_bytes": 9830400,
+          "rss_bytes": 22806528,
+          "terminal": 64,
+          "threads": 30
+        }
+      },
+      "peak_connections": 13,
+      "peak_rss_bytes": 22806528,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 9.765625,
+      "profile": "short",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 4.776187499999999,
+      "series": "mesh-strict"
+    },
+    {
+      "claim_to_terminal_p50_ms": 32.079499999999996,
+      "completed": 128,
+      "distinct_worker_pids": 16,
+      "durable_jobs_per_s": 298.4162953948304,
+      "independent_application_commits": 256,
+      "memory": {
+        "drain": {
+          "descendant_rss_bytes": 106299392,
+          "descendants": 16,
+          "executing": 0,
+          "processes": 17,
+          "root_rss_bytes": 9699328,
+          "rss_bytes": 115998720,
+          "terminal": 128,
+          "threads": 72
+        },
+        "ready_idle": {
+          "descendant_rss_bytes": 0,
+          "descendants": 0,
+          "executing": 0,
+          "processes": 1,
+          "root_rss_bytes": 8912896,
+          "rss_bytes": 8912896,
+          "terminal": 0,
+          "threads": 8
+        },
+        "rss_peak": {
+          "descendant_rss_bytes": 106299392,
+          "descendants": 16,
+          "executing": 12,
+          "processes": 17,
+          "root_rss_bytes": 9699328,
+          "rss_bytes": 115998720,
+          "terminal": 99,
+          "threads": 72
+        }
+      },
+      "peak_connections": 13,
+      "peak_rss_bytes": 115998720,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 7.265625,
+      "profile": "short",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 2.6930546875,
+      "series": "mesh-trusted-persistent"
+    },
+    {
+      "claim_to_terminal_p50_ms": null,
+      "completed": 128,
+      "durable_jobs_per_s": 802.4374036134759,
+      "independent_application_commits": 256,
+      "peak_connections": 19,
+      "peak_rss_bytes": 9043968,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 3.984375,
+      "profile": "short",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 0.7229453124999999,
+      "series": "apalis"
+    },
+    {
+      "claim_to_terminal_p50_ms": 13.418,
+      "completed": 128,
+      "durable_jobs_per_s": 339.2265105517996,
+      "independent_application_commits": 256,
+      "peak_connections": 19,
+      "peak_rss_bytes": 104357888,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 3.90625,
+      "profile": "short",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 11.465390625,
+      "series": "oban"
+    },
+    {
+      "claim_to_terminal_p50_ms": 55.043,
+      "completed": 128,
+      "durable_jobs_per_s": 779.798349020683,
+      "independent_application_commits": 256,
+      "peak_connections": 18,
+      "peak_rss_bytes": 17571840,
+      "pinned_cpu_ms_per_job_including_pg_and_driver_in_work_window": 2.578125,
+      "profile": "short",
+      "runner_tree_cpu_ms_per_job_including_lifecycle": 0.8760234375,
+      "series": "river"
+    }
+  ]
+}

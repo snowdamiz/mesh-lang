@@ -1,0 +1,17 @@
+[
+  {
+    "args": {
+      "prefix": "new"
+    },
+    "unique": {
+      "fields": [
+        "worker",
+        "args"
+      ],
+      "keys": [
+        "prefix"
+      ]
+    },
+    "worker": "Proof"
+  }
+]

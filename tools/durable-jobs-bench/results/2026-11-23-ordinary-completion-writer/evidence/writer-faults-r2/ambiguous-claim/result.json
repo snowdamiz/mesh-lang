@@ -1,0 +1,52 @@
+{
+  "wire": {
+    "command": "COMMIT",
+    "rows": 0,
+    "idle": true,
+    "receipt_dropped": true
+  },
+  "before_recovery": {
+    "claim-b": {
+      "id": "706de97e-05a6-4b39-b0d2-30f2aecc3be4",
+      "xid": "757",
+      "state": "executing",
+      "leased": true,
+      "attempt": 1,
+      "effects": 0,
+      "attempts": []
+    },
+    "claim-a": {
+      "id": "99905d3b-ba8d-4aa0-bea2-188d536f4f37",
+      "xid": "757",
+      "state": "executing",
+      "leased": true,
+      "attempt": 1,
+      "effects": 0,
+      "attempts": []
+    }
+  },
+  "final": {
+    "claim-b": {
+      "id": "706de97e-05a6-4b39-b0d2-30f2aecc3be4",
+      "xid": "808",
+      "state": "completed",
+      "leased": false,
+      "attempt": 2,
+      "effects": 1,
+      "attempts": [
+        2
+      ]
+    },
+    "claim-a": {
+      "id": "99905d3b-ba8d-4aa0-bea2-188d536f4f37",
+      "xid": "808",
+      "state": "completed",
+      "leased": false,
+      "attempt": 2,
+      "effects": 1,
+      "attempts": [
+        2
+      ]
+    }
+  }
+}

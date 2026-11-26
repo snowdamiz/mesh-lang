@@ -1,0 +1,19 @@
+{
+  "scheduler-drop-gate": {
+    "passed_by_suite": [
+      1
+    ],
+    "exit_code": 0
+  },
+  "postgres-jobs-gate": {
+    "passed_by_suite": [
+      38,
+      72,
+      3
+    ],
+    "exit_code": 0
+  },
+  "workspace-build": {
+    "exit_code": 0
+  }
+}

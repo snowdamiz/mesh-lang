@@ -1,0 +1,52 @@
+{
+  "wire": {
+    "command": "COMMIT",
+    "rows": 0,
+    "idle": true,
+    "receipt_dropped": true
+  },
+  "before_recovery": {
+    "claim-b": {
+      "id": "e829f68d-8bb7-4844-9fab-71ff71cdb1a8",
+      "xid": "757",
+      "state": "executing",
+      "attempt": 1,
+      "effects": 0,
+      "attempts": [],
+      "lease_expires_at_ms": 1795475111018
+    },
+    "claim-a": {
+      "id": "e4b9eaea-9a08-4eac-9458-2a26c1fc3b05",
+      "xid": "757",
+      "state": "executing",
+      "attempt": 1,
+      "effects": 0,
+      "attempts": [],
+      "lease_expires_at_ms": 1795475111018
+    }
+  },
+  "final": {
+    "claim-b": {
+      "id": "e829f68d-8bb7-4844-9fab-71ff71cdb1a8",
+      "xid": "809",
+      "state": "completed",
+      "attempt": 2,
+      "effects": 1,
+      "attempts": [
+        2
+      ],
+      "lease_expires_at_ms": null
+    },
+    "claim-a": {
+      "id": "e4b9eaea-9a08-4eac-9458-2a26c1fc3b05",
+      "xid": "808",
+      "state": "completed",
+      "attempt": 2,
+      "effects": 1,
+      "attempts": [
+        2
+      ],
+      "lease_expires_at_ms": null
+    }
+  }
+}

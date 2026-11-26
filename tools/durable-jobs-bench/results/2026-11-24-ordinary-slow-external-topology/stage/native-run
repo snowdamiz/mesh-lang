@@ -1,0 +1,35 @@
+#!/bin/bash
+set -euo pipefail
+overlay="$(cd "$(dirname "$0")" && pwd -P)"
+base=/var/lib/durable-jobs-bench/native
+engine="${1:?engine}"
+policy="${2:?policy}"
+arm="${3:?pinned adapter}"
+profile="${4:?profile}"
+out="${5:?evidence directory}"
+artifact="${NATIVE_JOBS_ARTIFACTS:?pinned release artifact}"
+[[ "$#" == 5 && "$arm" == "$base"/source-*/* && "$profile" == slow && "$out" == /* && ! -L "$out" ]]
+[[ "$artifact" == "$base"/builds/* && -d "$artifact" ]]
+case "$engine" in mesh|oban) ;; *) exit 2 ;; esac
+case "$policy" in default|external) ;; *) exit 2 ;; esac
+
+exec 9<"$base/native.lock"
+flock -n 9
+tool="$base/toolchain"
+env_args=(env -i
+    "PATH=$tool/otp-29.1.1/bin:$tool/elixir-1.20.4/bin:/usr/sbin:/usr/bin:/bin"
+    LC_ALL=C.UTF-8 "PG_BIN_DIR=$tool/pgsql-17.11/bin"
+    ERL_CRASH_DUMP=/dev/null
+    "DURABLE_JOBS_PHASE=${DURABLE_JOBS_PHASE:-diagnostic}"
+    "NATIVE_JOBS_STATE=$base" "NATIVE_JOBS_ARTIFACTS=$artifact"
+    "MESH_EXTERNAL_TOPOLOGY=${MESH_EXTERNAL_TOPOLOGY:?set topology}"
+    MESH_JOBS_SET_BASED_ENQUEUE=1)
+cd "$(dirname "$arm")"
+command=(python3 -B "$overlay/native_overlay.py" "$engine" "$policy" "$arm" "$engine" "$profile" "$out")
+if [[ "$(id -u)" == 0 ]]; then
+    [[ -d "$out" && -z "$(find "$out" -mindepth 1 -maxdepth 1 -print -quit)" ]]
+    chown nobody:nogroup "$out"
+    chmod 0700 "$out"
+    exec runuser -u nobody -- "${env_args[@]}" "${command[@]}"
+fi
+exec "${env_args[@]}" "${command[@]}"

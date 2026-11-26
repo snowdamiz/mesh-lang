@@ -1,0 +1,190 @@
+{
+  "after": {
+    "cancelled": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795493726211,
+      "key": "cancelled",
+      "state": "executing",
+      "token": "b4bb711e-4ce9-4df6-866d-015879b11914",
+      "xid": "760"
+    },
+    "expired": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 0,
+      "key": "expired",
+      "state": "executing",
+      "token": "51fa759b-68c6-4e82-9b2e-794024a9042f",
+      "xid": "760"
+    },
+    "refill-a": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795493726742,
+      "key": "refill-a",
+      "state": "executing",
+      "token": "bab1b688-5f7f-4047-bb21-d04988a4912c",
+      "xid": "762"
+    },
+    "refill-b": {
+      "attempt": 0,
+      "attempts": [],
+      "effect": null,
+      "expiry": null,
+      "key": "refill-b",
+      "state": "available",
+      "token": null,
+      "xid": "759"
+    },
+    "settled": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": null,
+      "key": "settled",
+      "state": "completed",
+      "token": null,
+      "xid": "762"
+    },
+    "stale": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795493726212,
+      "key": "stale",
+      "state": "executing",
+      "token": "3cf9a5b3-d235-4e49-9c3f-2c6be58e8e93",
+      "xid": "757"
+    }
+  },
+  "before": {
+    "cancelled": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795493726211,
+      "key": "cancelled",
+      "state": "executing",
+      "token": "b4bb711e-4ce9-4df6-866d-015879b11914",
+      "xid": "760"
+    },
+    "expired": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 0,
+      "key": "expired",
+      "state": "executing",
+      "token": "51fa759b-68c6-4e82-9b2e-794024a9042f",
+      "xid": "760"
+    },
+    "refill-a": {
+      "attempt": 0,
+      "attempts": [],
+      "effect": null,
+      "expiry": null,
+      "key": "refill-a",
+      "state": "available",
+      "token": null,
+      "xid": "759"
+    },
+    "refill-b": {
+      "attempt": 0,
+      "attempts": [],
+      "effect": null,
+      "expiry": null,
+      "key": "refill-b",
+      "state": "available",
+      "token": null,
+      "xid": "759"
+    },
+    "settled": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795493726151,
+      "key": "settled",
+      "state": "executing",
+      "token": "1186c343-eef5-47e1-9ad5-b84134e72436",
+      "xid": "756"
+    },
+    "stale": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795493726212,
+      "key": "stale",
+      "state": "executing",
+      "token": "3cf9a5b3-d235-4e49-9c3f-2c6be58e8e93",
+      "xid": "757"
+    }
+  },
+  "legacy_and_cursor": true,
+  "paused": {
+    "cancelled": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795493726211,
+      "key": "cancelled",
+      "state": "executing",
+      "token": "b4bb711e-4ce9-4df6-866d-015879b11914",
+      "xid": "760"
+    },
+    "expired": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 0,
+      "key": "expired",
+      "state": "executing",
+      "token": "51fa759b-68c6-4e82-9b2e-794024a9042f",
+      "xid": "760"
+    },
+    "refill-a": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": null,
+      "key": "refill-a",
+      "state": "completed",
+      "token": null,
+      "xid": "764"
+    },
+    "refill-b": {
+      "attempt": 0,
+      "attempts": [],
+      "effect": null,
+      "expiry": null,
+      "key": "refill-b",
+      "state": "available",
+      "token": null,
+      "xid": "759"
+    },
+    "settled": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": null,
+      "key": "settled",
+      "state": "completed",
+      "token": null,
+      "xid": "762"
+    },
+    "stale": {
+      "attempt": 1,
+      "attempts": [],
+      "effect": null,
+      "expiry": 1795493726212,
+      "key": "stale",
+      "state": "executing",
+      "token": "3cf9a5b3-d235-4e49-9c3f-2c6be58e8e93",
+      "xid": "757"
+    }
+  },
+  "rollback": true
+}

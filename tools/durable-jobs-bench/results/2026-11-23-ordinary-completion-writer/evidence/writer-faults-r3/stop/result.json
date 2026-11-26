@@ -1,0 +1,30 @@
+{
+  "prime_wire": {
+    "command": "SELECT 1",
+    "rows": 1,
+    "idle": true,
+    "receipt_dropped": false
+  },
+  "final": {
+    "after-stop": {
+      "id": "b074f160-7fa3-43ac-a89f-11584293acc4",
+      "xid": "764",
+      "state": "available",
+      "attempt": 0,
+      "effects": 0,
+      "attempts": [],
+      "lease_expires_at_ms": null
+    },
+    "prime": {
+      "id": "0a425882-9294-4486-8da1-8803965cbef5",
+      "xid": "761",
+      "state": "completed",
+      "attempt": 1,
+      "effects": 1,
+      "attempts": [
+        1
+      ],
+      "lease_expires_at_ms": null
+    }
+  }
+}

@@ -1,0 +1,17 @@
+--- a/compiler/mesh-rt/src/jobs/enqueue_schema.sql
++++ b/compiler/mesh-rt/src/jobs/enqueue_schema.sql
+@@ -29,7 +29,13 @@
+         UNION ALL
+         SELECT jsonb_build_array('column', t.relname, a.attnum, a.attname,
+             a.atttypid, a.atttypmod, a.attcollation, a.attnotnull, a.attidentity,
+-            a.attgenerated, a.attstorage, a.attcompression, a.attisdropped,
++            a.attgenerated,
++            -- Treat only the jobs argument's two supported physical formats
++            -- as the same layout. Compression and all other fields still match.
++            CASE WHEN t.oid = 'mesh_jobs.jobs'::regclass AND a.attname = 'args'
++                      AND a.attstorage IN ('x', 'e') THEN 'x'::"char"
++                 ELSE a.attstorage END,
++            a.attcompression, a.attisdropped,
+             pg_get_expr(d.adbin, d.adrelid))
+         FROM tables t JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum > 0
+         LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum

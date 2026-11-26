@@ -122,6 +122,11 @@ func runWorker(schema string, slots, index int, readyPath string) error {
 	}
 	workerCtx, abort := context.WithCancel(context.Background())
 	defer abort()
+	if os.Getenv(readinessEnv) == "warm" {
+		if err := prewarmSharedPool(signals, pool, slots+1, filepath.Dir(readyPath)); err != nil {
+			return err
+		}
+	}
 	if err := client.Start(workerCtx); err != nil {
 		return err
 	}

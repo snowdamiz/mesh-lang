@@ -1,0 +1,6 @@
+{
+  "pid": 2573,
+  "slots": 64,
+  "peak_concurrent_handlers": 64,
+  "handler_calls": 512
+}

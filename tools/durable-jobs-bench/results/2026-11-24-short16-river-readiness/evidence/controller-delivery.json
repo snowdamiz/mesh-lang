@@ -1,0 +1,10 @@
+{
+  "threadId": "thread:delegated-task:command%3Amcp%3A824787c5-935c-433b-8c9b-93389c4f3694%3Adelegate-task%3Alinode-native-stepchange-controller-v1",
+  "messageId": "message:mcp:67fb4b76-05c8-42d9-b33c-2d6215d96d8c:thread-send:short16-river-readiness-ready-792eeaacc852-v1",
+  "runId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A824787c5-935c-433b-8c9b-93389c4f3694%253Adelegate-task%253Alinode-native-stepchange-controller-v1:ordinal:5",
+  "taskId": "node:delegated-task:command%3Amcp%3A106e28b9-7471-4c7b-ac0d-732e3d019eda%3Athread-send%3Aresume-verified-remote-fences-slow-storage-after-group-1",
+  "status": "running",
+  "delivery": "steered",
+  "request_sha256": "792eeaacc852feb39d8391c0f1dbb4419cdf561e3dcfee9ceaa5b5e84b7f2f11",
+  "request": "target/linode-jobs-stepchange/requests/2026-11-24-short16-river-readiness.json"
+}

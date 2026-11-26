@@ -1,0 +1,476 @@
+{
+  "by_group": {
+    "1": {
+      "column-lz4": {
+        "attempt_to_effect_commit_p50_ms": 105.0445,
+        "attempt_to_effect_commit_p99_ms": 143.637,
+        "bulk_calls": 8,
+        "bulk_rows": 8,
+        "case_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+        "claim_to_entry_p50_ms": 5.346,
+        "claim_to_entry_p99_ms": 26.204,
+        "claim_to_last_settlement_ms": 1579.128,
+        "commit_jobs_per_s": 323.76334417181715,
+        "commit_to_claim_p50_ms": 764.274,
+        "commit_to_claim_p99_ms": 1459.274,
+        "commit_to_last_settlement_ms": 1581.402,
+        "commit_to_pickup_p50_ms": 776.4575,
+        "commit_to_pickup_p99_ms": 1462.0,
+        "commit_to_settlement_p50_ms": 883.7955,
+        "commit_to_settlement_p99_ms": 1578.39,
+        "completed": 512,
+        "compressed_rows": 512,
+        "control": false,
+        "effect_commit_to_settlement_p50_ms": 14.381499999999999,
+        "effect_commit_to_settlement_p99_ms": 120.279,
+        "entry_to_attempt_commit_p50_ms": 1.917,
+        "entry_to_attempt_commit_p99_ms": 12.875,
+        "failed": 0,
+        "first_claim_from_commit_ms": 2.274,
+        "first_commit_us": 1795474516297726,
+        "first_submit_to_commit_ms": 697.571,
+        "first_submit_us": 1795474515600155,
+        "heap_bytes": 188416,
+        "label": "column-lz4",
+        "last_settlement_us": 1795474517879128,
+        "ordered_independent_writes": 512,
+        "payload_column_bytes": 8171728,
+        "peak_connections": 13,
+        "peak_executing": 64,
+        "peak_runner_rss_bytes": 22446080,
+        "producer_ack_ms": 705.717,
+        "producer_backend_cpu_ms": 241.17637499999998,
+        "producer_cpu_ms": 85.85862499999999,
+        "producer_sql_exec_ms": 275.2126229999999,
+        "producer_sql_wal_bytes": 9332323,
+        "producer_wall_ms": 705.756792,
+        "runner_cpu_ms_per_job": 0.4769140625,
+        "scalar_calls": 512,
+        "scalar_rows": 512,
+        "submit_jobs_per_s": 224.6626002150969,
+        "submit_to_last_settlement_ms": 2278.973,
+        "submit_to_pickup_p50_ms": 1474.0285,
+        "submit_to_pickup_p99_ms": 2159.571,
+        "submit_to_settlement_p50_ms": 1581.3665,
+        "submit_to_settlement_p99_ms": 2275.961,
+        "toast_heap_bytes": 8404992,
+        "total_bytes": 9084928
+      },
+      "external": {
+        "attempt_to_effect_commit_p50_ms": 123.4435,
+        "attempt_to_effect_commit_p99_ms": 199.86,
+        "bulk_calls": 8,
+        "bulk_rows": 8,
+        "case_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+        "claim_to_entry_p50_ms": 5.6105,
+        "claim_to_entry_p99_ms": 291.802,
+        "claim_to_last_settlement_ms": 1912.624,
+        "commit_jobs_per_s": 258.2932566794283,
+        "commit_to_claim_p50_ms": 1138.119,
+        "commit_to_claim_p99_ms": 1860.619,
+        "commit_to_last_settlement_ms": 1982.243,
+        "commit_to_pickup_p50_ms": 1146.4655,
+        "commit_to_pickup_p99_ms": 1863.361,
+        "commit_to_settlement_p50_ms": 1353.704,
+        "commit_to_settlement_p99_ms": 1979.918,
+        "completed": 512,
+        "compressed_rows": 0,
+        "control": false,
+        "effect_commit_to_settlement_p50_ms": 9.9525,
+        "effect_commit_to_settlement_p99_ms": 88.472,
+        "entry_to_attempt_commit_p50_ms": 1.154,
+        "entry_to_attempt_commit_p99_ms": 100.993,
+        "failed": 0,
+        "first_claim_from_commit_ms": 69.619,
+        "first_commit_us": 1795474454452381,
+        "first_submit_to_commit_ms": 2141.994,
+        "first_submit_us": 1795474452310387,
+        "heap_bytes": 188416,
+        "label": "external",
+        "last_settlement_us": 1795474456434624,
+        "ordered_independent_writes": 512,
+        "payload_column_bytes": 8431616,
+        "peak_connections": 13,
+        "peak_executing": 64,
+        "peak_runner_rss_bytes": 22118400,
+        "producer_ack_ms": 2232.22,
+        "producer_backend_cpu_ms": 249.4454583333333,
+        "producer_cpu_ms": 93.71291666666666,
+        "producer_sql_exec_ms": 1564.3144129999994,
+        "producer_sql_wal_bytes": 9633070,
+        "producer_wall_ms": 2232.327834,
+        "runner_cpu_ms_per_job": 0.44260156249999993,
+        "scalar_calls": 512,
+        "scalar_rows": 512,
+        "submit_jobs_per_s": 124.14417503164827,
+        "submit_to_last_settlement_ms": 4124.237,
+        "submit_to_pickup_p50_ms": 3288.4595,
+        "submit_to_pickup_p99_ms": 4005.355,
+        "submit_to_settlement_p50_ms": 3495.6980000000003,
+        "submit_to_settlement_p99_ms": 4121.912,
+        "toast_heap_bytes": 8740864,
+        "total_bytes": 9428992
+      },
+      "scalar": {
+        "attempt_to_effect_commit_p50_ms": 100.65299999999999,
+        "attempt_to_effect_commit_p99_ms": 156.544,
+        "bulk_calls": 0,
+        "bulk_rows": 0,
+        "case_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+        "claim_to_entry_p50_ms": 3.376,
+        "claim_to_entry_p99_ms": 9.349,
+        "claim_to_last_settlement_ms": 1210.358,
+        "commit_jobs_per_s": 422.56008688891785,
+        "commit_to_claim_p50_ms": 505.304,
+        "commit_to_claim_p99_ms": 1084.304,
+        "commit_to_last_settlement_ms": 1211.662,
+        "commit_to_pickup_p50_ms": 531.723,
+        "commit_to_pickup_p99_ms": 1087.712,
+        "commit_to_settlement_p50_ms": 666.0605,
+        "commit_to_settlement_p99_ms": 1209.145,
+        "completed": 512,
+        "compressed_rows": 0,
+        "control": false,
+        "effect_commit_to_settlement_p50_ms": 7.6025,
+        "effect_commit_to_settlement_p99_ms": 22.124,
+        "entry_to_attempt_commit_p50_ms": 1.5110000000000001,
+        "entry_to_attempt_commit_p99_ms": 9.288,
+        "failed": 0,
+        "first_claim_from_commit_ms": 1.304,
+        "first_commit_us": 1795474441483696,
+        "first_submit_to_commit_ms": 502.333,
+        "first_submit_us": 1795474440981363,
+        "heap_bytes": 196608,
+        "label": "scalar",
+        "last_settlement_us": 1795474442695358,
+        "ordered_independent_writes": 512,
+        "payload_column_bytes": 8431616,
+        "peak_connections": 13,
+        "peak_executing": 64,
+        "peak_runner_rss_bytes": 22937600,
+        "producer_ack_ms": 511.301,
+        "producer_backend_cpu_ms": 287.659625,
+        "producer_cpu_ms": 71.27475000000001,
+        "producer_sql_exec_ms": 261.1967420000002,
+        "producer_sql_wal_bytes": 9633462,
+        "producer_wall_ms": 511.3355,
+        "runner_cpu_ms_per_job": 0.44153320312499994,
+        "scalar_calls": 512,
+        "scalar_rows": 512,
+        "submit_jobs_per_s": 298.7173241462198,
+        "submit_to_last_settlement_ms": 1713.995,
+        "submit_to_pickup_p50_ms": 1034.056,
+        "submit_to_pickup_p99_ms": 1590.045,
+        "submit_to_settlement_p50_ms": 1168.3935000000001,
+        "submit_to_settlement_p99_ms": 1711.478,
+        "toast_heap_bytes": 8740864,
+        "total_bytes": 9437184
+      }
+    }
+  },
+  "distributions": {
+    "column-lz4": {
+      "commit_to_last_settlement_ms": {
+        "max": 1581.402,
+        "median": 1581.402,
+        "min": 1581.402,
+        "n": 1
+      },
+      "commit_to_pickup_p99_ms": {
+        "max": 1462.0,
+        "median": 1462.0,
+        "min": 1462.0,
+        "n": 1
+      },
+      "compressed_rows": {
+        "max": 512,
+        "median": 512,
+        "min": 512,
+        "n": 1
+      },
+      "effect_commit_to_settlement_p99_ms": {
+        "max": 120.279,
+        "median": 120.279,
+        "min": 120.279,
+        "n": 1
+      },
+      "first_submit_to_commit_ms": {
+        "max": 697.571,
+        "median": 697.571,
+        "min": 697.571,
+        "n": 1
+      },
+      "payload_column_bytes": {
+        "max": 8171728,
+        "median": 8171728,
+        "min": 8171728,
+        "n": 1
+      },
+      "peak_executing": {
+        "max": 64,
+        "median": 64,
+        "min": 64,
+        "n": 1
+      },
+      "producer_ack_ms": {
+        "max": 705.717,
+        "median": 705.717,
+        "min": 705.717,
+        "n": 1
+      },
+      "producer_backend_cpu_ms": {
+        "max": 241.17637499999998,
+        "median": 241.17637499999998,
+        "min": 241.17637499999998,
+        "n": 1
+      },
+      "producer_cpu_ms": {
+        "max": 85.85862499999999,
+        "median": 85.85862499999999,
+        "min": 85.85862499999999,
+        "n": 1
+      },
+      "producer_sql_exec_ms": {
+        "max": 275.2126229999999,
+        "median": 275.2126229999999,
+        "min": 275.2126229999999,
+        "n": 1
+      },
+      "producer_sql_wal_bytes": {
+        "max": 9332323,
+        "median": 9332323,
+        "min": 9332323,
+        "n": 1
+      },
+      "runner_cpu_ms_per_job": {
+        "max": 0.4769140625,
+        "median": 0.4769140625,
+        "min": 0.4769140625,
+        "n": 1
+      },
+      "submit_to_last_settlement_ms": {
+        "max": 2278.973,
+        "median": 2278.973,
+        "min": 2278.973,
+        "n": 1
+      },
+      "toast_heap_bytes": {
+        "max": 8404992,
+        "median": 8404992,
+        "min": 8404992,
+        "n": 1
+      },
+      "total_bytes": {
+        "max": 9084928,
+        "median": 9084928,
+        "min": 9084928,
+        "n": 1
+      }
+    },
+    "external": {
+      "commit_to_last_settlement_ms": {
+        "max": 1982.243,
+        "median": 1982.243,
+        "min": 1982.243,
+        "n": 1
+      },
+      "commit_to_pickup_p99_ms": {
+        "max": 1863.361,
+        "median": 1863.361,
+        "min": 1863.361,
+        "n": 1
+      },
+      "compressed_rows": {
+        "max": 0,
+        "median": 0,
+        "min": 0,
+        "n": 1
+      },
+      "effect_commit_to_settlement_p99_ms": {
+        "max": 88.472,
+        "median": 88.472,
+        "min": 88.472,
+        "n": 1
+      },
+      "first_submit_to_commit_ms": {
+        "max": 2141.994,
+        "median": 2141.994,
+        "min": 2141.994,
+        "n": 1
+      },
+      "payload_column_bytes": {
+        "max": 8431616,
+        "median": 8431616,
+        "min": 8431616,
+        "n": 1
+      },
+      "peak_executing": {
+        "max": 64,
+        "median": 64,
+        "min": 64,
+        "n": 1
+      },
+      "producer_ack_ms": {
+        "max": 2232.22,
+        "median": 2232.22,
+        "min": 2232.22,
+        "n": 1
+      },
+      "producer_backend_cpu_ms": {
+        "max": 249.4454583333333,
+        "median": 249.4454583333333,
+        "min": 249.4454583333333,
+        "n": 1
+      },
+      "producer_cpu_ms": {
+        "max": 93.71291666666666,
+        "median": 93.71291666666666,
+        "min": 93.71291666666666,
+        "n": 1
+      },
+      "producer_sql_exec_ms": {
+        "max": 1564.3144129999994,
+        "median": 1564.3144129999994,
+        "min": 1564.3144129999994,
+        "n": 1
+      },
+      "producer_sql_wal_bytes": {
+        "max": 9633070,
+        "median": 9633070,
+        "min": 9633070,
+        "n": 1
+      },
+      "runner_cpu_ms_per_job": {
+        "max": 0.44260156249999993,
+        "median": 0.44260156249999993,
+        "min": 0.44260156249999993,
+        "n": 1
+      },
+      "submit_to_last_settlement_ms": {
+        "max": 4124.237,
+        "median": 4124.237,
+        "min": 4124.237,
+        "n": 1
+      },
+      "toast_heap_bytes": {
+        "max": 8740864,
+        "median": 8740864,
+        "min": 8740864,
+        "n": 1
+      },
+      "total_bytes": {
+        "max": 9428992,
+        "median": 9428992,
+        "min": 9428992,
+        "n": 1
+      }
+    },
+    "scalar": {
+      "commit_to_last_settlement_ms": {
+        "max": 1211.662,
+        "median": 1211.662,
+        "min": 1211.662,
+        "n": 1
+      },
+      "commit_to_pickup_p99_ms": {
+        "max": 1087.712,
+        "median": 1087.712,
+        "min": 1087.712,
+        "n": 1
+      },
+      "compressed_rows": {
+        "max": 0,
+        "median": 0,
+        "min": 0,
+        "n": 1
+      },
+      "effect_commit_to_settlement_p99_ms": {
+        "max": 22.124,
+        "median": 22.124,
+        "min": 22.124,
+        "n": 1
+      },
+      "first_submit_to_commit_ms": {
+        "max": 502.333,
+        "median": 502.333,
+        "min": 502.333,
+        "n": 1
+      },
+      "payload_column_bytes": {
+        "max": 8431616,
+        "median": 8431616,
+        "min": 8431616,
+        "n": 1
+      },
+      "peak_executing": {
+        "max": 64,
+        "median": 64,
+        "min": 64,
+        "n": 1
+      },
+      "producer_ack_ms": {
+        "max": 511.301,
+        "median": 511.301,
+        "min": 511.301,
+        "n": 1
+      },
+      "producer_backend_cpu_ms": {
+        "max": 287.659625,
+        "median": 287.659625,
+        "min": 287.659625,
+        "n": 1
+      },
+      "producer_cpu_ms": {
+        "max": 71.27475000000001,
+        "median": 71.27475000000001,
+        "min": 71.27475000000001,
+        "n": 1
+      },
+      "producer_sql_exec_ms": {
+        "max": 261.1967420000002,
+        "median": 261.1967420000002,
+        "min": 261.1967420000002,
+        "n": 1
+      },
+      "producer_sql_wal_bytes": {
+        "max": 9633462,
+        "median": 9633462,
+        "min": 9633462,
+        "n": 1
+      },
+      "runner_cpu_ms_per_job": {
+        "max": 0.44153320312499994,
+        "median": 0.44153320312499994,
+        "min": 0.44153320312499994,
+        "n": 1
+      },
+      "submit_to_last_settlement_ms": {
+        "max": 1713.995,
+        "median": 1713.995,
+        "min": 1713.995,
+        "n": 1
+      },
+      "toast_heap_bytes": {
+        "max": 8740864,
+        "median": 8740864,
+        "min": 8740864,
+        "n": 1
+      },
+      "total_bytes": {
+        "max": 9437184,
+        "median": 9437184,
+        "min": 9437184,
+        "n": 1
+      }
+    }
+  },
+  "missing": [],
+  "order": [
+    [
+      "scalar",
+      "external",
+      "column-lz4"
+    ]
+  ],
+  "paired": {}
+}

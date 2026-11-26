@@ -1,0 +1,476 @@
+{
+  "sessions": [
+    {
+      "application_name": "apalis:producer_observer",
+      "listener": false,
+      "pid": 3292,
+      "ssl": true,
+      "user": "parity_producer"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3295,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3296,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": true,
+      "pid": 3297,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3298,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3299,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3300,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3301,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3302,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3303,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3304,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3306,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3307,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3308,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3309,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3310,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3311,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3312,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3313,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3314,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3315,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3316,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3317,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3318,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3319,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3320,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3321,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3322,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3324,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3325,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3326,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3327,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3328,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3329,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3330,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3331,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3332,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3334,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3335,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3336,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3337,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3338,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3339,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3340,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3341,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3342,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3343,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3345,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3347,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3348,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3349,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3350,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3351,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3352,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3353,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3354,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3355,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3357,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3361,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3365,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3369,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3372,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3374,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3378,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3383,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3384,
+      "ssl": true,
+      "user": "parity_subject"
+    },
+    {
+      "application_name": "apalis:runner-0",
+      "listener": false,
+      "pid": 3389,
+      "ssl": true,
+      "user": "parity_subject"
+    }
+  ],
+  "workers": [
+    "runner-0"
+  ]
+}

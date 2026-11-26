@@ -1,0 +1,98 @@
+[
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 397.5275833333334,
+    "bulk_calls": 0,
+    "commit_ms": 15430.298,
+    "group": 1,
+    "load": [
+      82.85302734375,
+      60.79638671875,
+      55.9990234375
+    ],
+    "producer_cpu_ms": 1017.8144166666667,
+    "profile": "slow",
+    "scalar_calls": 512,
+    "wall_ms": 15440.32725
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 380.46925000000005,
+    "bulk_calls": 0,
+    "commit_ms": 5963.553,
+    "group": 1,
+    "load": [
+      84.8046875,
+      62.4111328125,
+      56.6650390625
+    ],
+    "producer_cpu_ms": 110.47274999999999,
+    "profile": "slow",
+    "scalar_calls": 512,
+    "wall_ms": 5976.039834
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 211.273625,
+    "bulk_calls": 8,
+    "commit_ms": 2814.615,
+    "group": 1,
+    "load": [
+      81.74365234375,
+      62.482421875,
+      56.7568359375
+    ],
+    "producer_cpu_ms": 74.23945833333333,
+    "profile": "slow",
+    "scalar_calls": 8,
+    "wall_ms": 2816.555375
+  },
+  {
+    "arm": "stock_a",
+    "backend_cpu_ms": 9.324333333333332,
+    "bulk_calls": 0,
+    "commit_ms": 145.519,
+    "group": 1,
+    "load": [
+      81.28369140625,
+      62.70654296875,
+      56.869140625
+    ],
+    "producer_cpu_ms": 7.457458333333335,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 146.143875
+  },
+  {
+    "arm": "stock_b",
+    "backend_cpu_ms": 8.273166666666668,
+    "bulk_calls": 0,
+    "commit_ms": 14.01,
+    "group": 1,
+    "load": [
+      81.8212890625,
+      63.1259765625,
+      57.05126953125
+    ],
+    "producer_cpu_ms": 1.8002499999999984,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 17.012417
+  },
+  {
+    "arm": "bulk",
+    "backend_cpu_ms": 7.926583333333333,
+    "bulk_calls": 0,
+    "commit_ms": 92.508,
+    "group": 1,
+    "load": [
+      81.8212890625,
+      63.1259765625,
+      57.05126953125
+    ],
+    "producer_cpu_ms": 1.3090833333333318,
+    "profile": "small",
+    "scalar_calls": 2,
+    "wall_ms": 92.811708
+  }
+]

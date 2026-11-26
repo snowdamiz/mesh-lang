@@ -1,0 +1,1 @@
+differential=ok fixed_vector=ok exact_limit=67108864 above_limit=ok max_count=32767 32_bit_sum=ok partial_writes=ok

@@ -1,0 +1,146 @@
+[
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 0,
+      "prefix": "dup"
+    },
+    "request_key": "dup-0",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 0,
+      "prefix": "dup"
+    },
+    "request_key": "dup-0",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 0,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-0",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 1,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-1",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 2,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-2",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 3,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-3",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 4,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-4",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 5,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-5",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 6,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-6",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 7,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-7",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 8,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-8",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 9,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-9",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 10,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-10",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 11,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-11",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 12,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-12",
+    "worker": "Proof"
+  },
+  {
+    "args": {
+      "ch": "\ud83c\udf4f",
+      "ordinal": 13,
+      "prefix": "dup-extra"
+    },
+    "request_key": "dup-extra-13",
+    "worker": "Proof"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "architecture": "arm64",
+  "host_logical_cpus": 15,
+  "kernel": "27.0.0",
+  "loadavg": [
+    31.39990234375,
+    45.9130859375,
+    48.04736328125
+  ],
+  "python": "3.14.8",
+  "system": "Darwin"
+}

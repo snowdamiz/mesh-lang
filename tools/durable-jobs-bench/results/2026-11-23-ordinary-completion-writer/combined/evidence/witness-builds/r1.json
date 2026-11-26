@@ -1,0 +1,22 @@
+{
+  "system": "Darwin",
+  "architecture": "arm64",
+  "version": "3618be08a9dda3122f7161148fc5ad810cd2ebc4",
+  "capsule": "bulk-v2-completion-writer-exit-r2",
+  "source_patch_sha256": "3618be08a9dda3122f7161148fc5ad810cd2ebc4a6233f84775e046c988e14ee",
+  "base_revision": "dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+  "execution_contract": "ordinary-trusted-shared-process-v2",
+  "queue_base_sha": "bd7851b9398198955b4c8df630310a29b38cddd4",
+  "admission_proof_sha": "2381cbc15dc9280cebc9800cdc5c2d54e511b429",
+  "compiler_sha256": "e0335a24050689a78be19928a649dccbe93ace82aaa8308a86a2cc44433f6201",
+  "runtime_sha256": "d6f56ffdb160c59303a198a982cffe84f707f5768c0f188f03fd04634d6002e0",
+  "files": {
+    "mesh": "6b1f16e2ccac4519c68baf85dbeddcaaf5a1b15f03715e7710289bb685ce0ee4",
+    "main.mpl": "87bcefdca02aa553e9fd6524f0a95507e005e396f0f53b47ea94cdc280674c0a",
+    "writes.mpl": "1b5ab2f2459ce2e33d04d7d4c96d9c9e3cf0ac7cf7de90eeb1ec2ca838e9bee0",
+    "worker_identity.mpl": "3d3abf052591ea1309b5c06f94436980a252ba25eb929f7cf7887aaec9f4466c",
+    "worker_identity.c": "fe8b7b2cb1bde5ec25c857750608e244795c9336a1b2aeb0c8b51486504e10c7",
+    "libworker_identity.a": "601ba11e02f19d878e9e4f9345b9fd7108c494704d30dce56efdfdfea3936491",
+    "mesh.toml": "40c8bee5c1a6391602b7ed6bb4bb8e6be7222583e42bcf93a2128429d1dfebcc"
+  }
+}

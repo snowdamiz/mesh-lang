@@ -1,0 +1,8 @@
+{
+  "engine": "mesh",
+  "execution_contract": "ordinary-trusted-shared-process-v2",
+  "local_smoke": true,
+  "phase": "diagnostic",
+  "profile": "short",
+  "queue_policy": "set_based"
+}

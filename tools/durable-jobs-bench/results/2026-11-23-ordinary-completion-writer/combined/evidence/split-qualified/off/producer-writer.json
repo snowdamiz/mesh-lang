@@ -1,0 +1,8 @@
+{
+  "bulk": 1,
+  "enabled": true,
+  "scalar": 0,
+  "statements": {
+    "SELECT ordinal, receipt FROM mesh_jobs.enqueue_batch_v1($1, $2::jsonb)\n         ORDER BY ordinal::integer": 1
+  }
+}

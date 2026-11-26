@@ -1,0 +1,15 @@
+{
+  "broker_manifest_sha256": "ac239c8296a50d6439b1c5f86e626a138c70a36b4442a8c27d72fc979564d18a",
+  "broker_sha256": "25f1f9bb0bee23a14e93d0090a01f394f49ccea6515eb791ccd143dfd7942ba8",
+  "migrator": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-completion-writer/combined/broker-artifacts/mesh",
+  "producer": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-completion-writer/combined/broker-artifacts/mesh",
+  "runner": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-completion-writer/combined/runner-artifacts/mesh",
+  "runner_manifest_sha256": "2e1c6a1b56a2b8a67e0659c7f8960420311a47ea80225affb35bfb8be498d3cb",
+  "runner_pids": [
+    93226
+  ],
+  "runner_sha256": "38da7dfc2512f7ab33b9209f2d231c8fb8b1068380cbbf1e46ecf23bac08dd28",
+  "runner_version": "3618be08a9dda3122f7161148fc5ad810cd2ebc4",
+  "warmed_application_sessions": 8,
+  "writer_mode": "zero"
+}

@@ -1,0 +1,276 @@
+{
+  "amendment": "staged-topology-import",
+  "candidate_patch_sha256": "f01bace320a84adc13dae034984d1efc376a3eef9a4a2cbbd80ce9d5577a6931",
+  "clock_ticks": 100,
+  "command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/replay/controller.py setup",
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "decision": "Judge dense on primary observer-off full-submit, first-entry-to-first-commit and drain gains over the faster duplicate in at least 5 of 6 groups, with median drain gain >=62.4 ms. Use observed lanes and observer tax to attribute the lookup interval.",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/evidence",
+  "expected_setup_minutes": 25,
+  "group_plan": [
+    {
+      "group": 1,
+      "order": [
+        "service-a",
+        "direct",
+        "service-b",
+        "service-observed",
+        "direct-observed",
+        "v1"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 1,
+      "order": [
+        "service-a",
+        "direct",
+        "service-b",
+        "service-observed",
+        "direct-observed",
+        "v1"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 2,
+      "order": [
+        "direct",
+        "service-observed",
+        "service-a",
+        "v1",
+        "service-b",
+        "direct-observed"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 2,
+      "order": [
+        "direct",
+        "service-observed",
+        "service-a",
+        "v1",
+        "service-b",
+        "direct-observed"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 3,
+      "order": [
+        "service-observed",
+        "v1",
+        "direct",
+        "direct-observed",
+        "service-a",
+        "service-b"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 3,
+      "order": [
+        "service-observed",
+        "v1",
+        "direct",
+        "direct-observed",
+        "service-a",
+        "service-b"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 4,
+      "order": [
+        "v1",
+        "direct-observed",
+        "service-observed",
+        "service-b",
+        "direct",
+        "service-a"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 4,
+      "order": [
+        "v1",
+        "direct-observed",
+        "service-observed",
+        "service-b",
+        "direct",
+        "service-a"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 5,
+      "order": [
+        "direct-observed",
+        "service-b",
+        "v1",
+        "service-a",
+        "service-observed",
+        "direct"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    },
+    {
+      "group": 5,
+      "order": [
+        "direct-observed",
+        "service-b",
+        "v1",
+        "service-a",
+        "service-observed",
+        "direct"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 6,
+      "order": [
+        "service-b",
+        "service-a",
+        "direct-observed",
+        "direct",
+        "v1",
+        "service-observed"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 6,
+      "order": [
+        "service-b",
+        "service-a",
+        "direct-observed",
+        "direct",
+        "v1",
+        "service-observed"
+      ],
+      "phases": [
+        "warmup",
+        "measured"
+      ],
+      "profile": "noop"
+    }
+  ],
+  "id": "2026-11-24-trusted-handler-app-pool",
+  "input_sha256": {
+    "noop": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "short": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1"
+  },
+  "kind": "Controller-owned native SETUP and exclusive build-free TIMING",
+  "linux_import_witness": "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/import-fix/linux-import.serial",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/arm.py": "7cf3f626f9e242ed176c69e0577ef89fb7439f6b2bf7c1332e0545fdaebfaee5",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/import-fix/dispatch.py": "2868e5dc97f14c96328c1942d08a31a8a64e1aa3705fbb5d84d454da5adb25b4",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/import-fix/linux-import-check.py": "46f6d59fbff38a070c761bd117dfb1bdf12039d0791ce6dce8ff73850a9e38d3",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/import-fix/linux-import.serial": "b89a1d85a7a1803ac4b405b1aa9101883da97fa96ccdaaa6f1aa2d4cbea886b6",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/import-fix/native-arm.py": "ccfe998d8f33dab1550c1907d01b6012a5d9b2197774df470913127cb6db3368",
+    "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/replay/native-arm.sh": "2bc6aded3264b71ff19cd8bf44fc82112f565f4514da33d591f144d14be10e4b"
+  },
+  "native_host": [
+    "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+    "6.8.0-149-generic",
+    "8:0"
+  ],
+  "offline_check": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/import-fix/dispatch.py check",
+  "operator_id": "trusted-handler-app-pool-v1",
+  "original_request_sha256": "4c739166fafaef829a807308b4cd9d48b349176fc7fb0d0e98bd45875623c831",
+  "postgres_sha256": "b70863988c4762b6b914ac54d194fa5a1723201100d8155caf7781edba29faa1",
+  "prerequisites": "Original pinned boot, kernel, disk, PG17.11 executable and frozen V1 broker/migrator. SETUP must pass and release before TIMING. Replay groups 1 and 2 before dispatching 3 through 6.",
+  "priority": "Use the existing booking and its original grant ID. This amendment requests no additional slot, groups, or setup.",
+  "ready": true,
+  "remaining_timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/import-fix/dispatch.py timing 3 4 5 6",
+  "replay_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/import-fix/dispatch.py replay",
+  "requested_at": "2026-11-24T02:40:56.227098+00:00",
+  "requested_timing_windows_minutes": [
+    22,
+    42
+  ],
+  "requested_window_minutes": 28,
+  "resource_bounds": {
+    "arm_adapter_timeout_seconds": 180,
+    "arms": 108,
+    "cpu_steal_percent_max": 1,
+    "cpus": [
+      0,
+      1
+    ],
+    "native_build_in_timing": false,
+    "native_build_workers": 4,
+    "one_arm_at_a_time": true,
+    "profiles": {
+      "noop": {
+        "jobs": 1024,
+        "postgres_connection_cap": 96,
+        "runners": 2,
+        "slots_each": 32,
+        "tls_app_sessions_each": 16
+      },
+      "short": {
+        "jobs": 128,
+        "postgres_connection_cap": 20,
+        "runners": 1,
+        "slots_each": 16,
+        "tls_app_sessions_each": 8
+      }
+    },
+    "repeats_per_workload": 6,
+    "setups": 1
+  },
+  "scope": "Launcher-only amendment to the existing dense 2x32 and short booking. Keep the original SETUP and all six rotations.",
+  "setup_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/replay/controller.py setup",
+  "source_archive": "tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/candidate-source.tar.gz",
+  "source_archive_sha256": "f10e6683a29f16f1e7e646e6d7e30e6b4011c83200274fc5410a017e7ac6cdda",
+  "source_sha": "db5937e7e8988f935e9be16b68a2561c2250cc27",
+  "staging_path": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool",
+  "state": "ready-launcher-amendment",
+  "timing_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/import-fix/dispatch.py timing 1 2",
+  "verify_setup_command": "cd /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe && python3 -B tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/replay/controller.py verify-setup"
+}

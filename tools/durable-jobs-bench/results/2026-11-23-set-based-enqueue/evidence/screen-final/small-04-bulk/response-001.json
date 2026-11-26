@@ -1,0 +1,31 @@
+{
+  "acknowledged_us": 1795466749946569,
+  "backend_cpu_ms": 5.577458333333333,
+  "producer_cpu_ms": 0.5134999999999996,
+  "response": {
+    "count": 2,
+    "ids": {
+      "job_000000": "3c248cbd-50eb-4dab-94f5-d6936676eb79",
+      "job_000001": "82838ccf-ff8f-47f5-89d7-687af74312ea"
+    },
+    "receipts": [
+      {
+        "conflict": false,
+        "effect_key": "3c248cbd-50eb-4dab-94f5-d6936676eb79/1",
+        "id": "3c248cbd-50eb-4dab-94f5-d6936676eb79",
+        "inserted": true,
+        "state": "available"
+      },
+      {
+        "conflict": false,
+        "effect_key": "82838ccf-ff8f-47f5-89d7-687af74312ea/1",
+        "id": "82838ccf-ff8f-47f5-89d7-687af74312ea",
+        "inserted": true,
+        "state": "available"
+      }
+    ],
+    "xid": "2304"
+  },
+  "submitted_us": 1795466749939850,
+  "wall_ms": 6.714625
+}

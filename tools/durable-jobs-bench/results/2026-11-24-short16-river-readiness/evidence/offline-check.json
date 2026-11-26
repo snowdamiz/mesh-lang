@@ -1,0 +1,104 @@
+{
+  "id": "2026-11-24-short16-river-readiness",
+  "candidate_elf": "8176db6dd7731097a2f3df5c8d741335d87ec0c159a45f8dcf93d6a3b0e3b4b0",
+  "stock_blocks": 5,
+  "planned_groups": [
+    {
+      "group": 1,
+      "order": [
+        "r2-off",
+        "river-cold",
+        "oban",
+        "river",
+        "r2-d2",
+        "river-warm",
+        "apalis"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 2,
+      "order": [
+        "apalis",
+        "river-warm",
+        "r2-d2",
+        "river",
+        "oban",
+        "river-cold",
+        "r2-off"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 3,
+      "order": [
+        "river-warm",
+        "r2-d2",
+        "apalis",
+        "oban",
+        "river-cold",
+        "r2-off",
+        "river"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 4,
+      "order": [
+        "river",
+        "r2-off",
+        "river-cold",
+        "oban",
+        "apalis",
+        "r2-d2",
+        "river-warm"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 5,
+      "order": [
+        "oban",
+        "apalis",
+        "river",
+        "r2-off",
+        "river-warm",
+        "r2-d2",
+        "river-cold"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    },
+    {
+      "group": 6,
+      "order": [
+        "river-cold",
+        "r2-d2",
+        "river-warm",
+        "r2-off",
+        "river",
+        "apalis",
+        "oban"
+      ],
+      "phases": [
+        "measured"
+      ],
+      "profile": "short"
+    }
+  ],
+  "native_work_performed": false
+}

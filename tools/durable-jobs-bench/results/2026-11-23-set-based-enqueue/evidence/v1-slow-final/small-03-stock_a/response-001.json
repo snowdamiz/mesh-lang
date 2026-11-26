@@ -1,0 +1,31 @@
+{
+  "acknowledged_us": 1795470679729395,
+  "backend_cpu_ms": 8.827583333333335,
+  "producer_cpu_ms": 2.1337083333333347,
+  "response": {
+    "count": 2,
+    "ids": {
+      "job_000000": "448c44bf-fdd5-45ee-97fa-73f16c8c15f3",
+      "job_000001": "888367f5-0c83-4f27-abc0-63762d45f091"
+    },
+    "receipts": [
+      {
+        "conflict": false,
+        "effect_key": "448c44bf-fdd5-45ee-97fa-73f16c8c15f3/1",
+        "id": "448c44bf-fdd5-45ee-97fa-73f16c8c15f3",
+        "inserted": true,
+        "state": "available"
+      },
+      {
+        "conflict": false,
+        "effect_key": "888367f5-0c83-4f27-abc0-63762d45f091/1",
+        "id": "888367f5-0c83-4f27-abc0-63762d45f091",
+        "inserted": true,
+        "state": "available"
+      }
+    ],
+    "xid": "1047"
+  },
+  "submitted_us": 1795470679706145,
+  "wall_ms": 23.246666
+}

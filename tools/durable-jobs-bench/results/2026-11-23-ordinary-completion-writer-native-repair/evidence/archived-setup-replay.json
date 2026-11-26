@@ -1,0 +1,72 @@
+{
+  "attempt": "bulk-writer-b1dcd34af288",
+  "exit_status": 1,
+  "fault_cases": [
+    "ambiguous-claim",
+    "ambiguous-completion",
+    "cancelled-member",
+    "expired-middle",
+    "held-middle",
+    "renew-priority",
+    "stop"
+  ],
+  "host": {
+    "clock_ticks": 100,
+    "host": [
+      "90ec1c24-08c8-4bc1-aa28-79b6db1bd13a",
+      "6.8.0-149-generic",
+      "8:0"
+    ]
+  },
+  "off_smoke": "failed before enqueue",
+  "packet_sha256": "87334bda19cd2f0e97a81f937b632bfce965d9804fd234375bbe820870c23b36",
+  "raw_sha256": "eb39628d011afa879b0205dc6333ec53fd16fb05eefb8333d3f896f6ac9887ed",
+  "runner_manifest_sha256": "361f10d2c2866f694989198bb8359d29c91dd9928dcd95e8f92293293f226d29",
+  "runner_sha256": "93fef96704ae412cf3c55fae73cc2aac405c8b423670826b4876954a44c8b010",
+  "teardown_witnesses": {
+    "off": {
+      "after_callback_state": {
+        "attempt": 1,
+        "attempt_xid": "760",
+        "effect_xid": "761",
+        "job_xid": "771",
+        "state": "completed"
+      },
+      "broker_sha256": "55d7000d562a6ad395f5e64e33e0e973fac0084ed05ad6c30a33db2a3fc6303a",
+      "callback_held_witness": "entered present and finished absent before release",
+      "held_callback_state": {
+        "attempt": 1,
+        "attempt_xid": "760",
+        "effect_xid": "761",
+        "job_xid": "758",
+        "state": "executing"
+      },
+      "mode": "off",
+      "normal_exit": true,
+      "runner_sha256": "277f42270ed293b9bc5384aa650f6baf0d667ab022e5e81daf663b423a8c0440"
+    },
+    "zero": {
+      "after_callback_state": {
+        "attempt": 1,
+        "attempt_xid": "760",
+        "effect_xid": "761",
+        "job_xid": "771",
+        "state": "completed"
+      },
+      "broker_sha256": "55d7000d562a6ad395f5e64e33e0e973fac0084ed05ad6c30a33db2a3fc6303a",
+      "callback_held_witness": "entered present and finished absent before release",
+      "held_callback_state": {
+        "attempt": 1,
+        "attempt_xid": "760",
+        "effect_xid": "761",
+        "job_xid": "758",
+        "state": "executing"
+      },
+      "mode": "zero",
+      "normal_exit": true,
+      "runner_sha256": "277f42270ed293b9bc5384aa650f6baf0d667ab022e5e81daf663b423a8c0440"
+    }
+  },
+  "timing_groups_started": [],
+  "zero_smoke": "not started"
+}

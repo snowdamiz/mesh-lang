@@ -1,0 +1,87 @@
+{
+  "native_host_contact": false,
+  "unchanged_controls": [
+    "bulk",
+    "river",
+    "oban",
+    "apalis"
+  ],
+  "same_runner": true,
+  "plan": [
+    {
+      "group": 1,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "bulk",
+        "writer-off",
+        "river",
+        "writer-zero",
+        "oban",
+        "apalis"
+      ]
+    },
+    {
+      "group": 2,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "apalis",
+        "oban",
+        "writer-zero",
+        "river",
+        "writer-off",
+        "bulk"
+      ]
+    },
+    {
+      "group": 3,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "river",
+        "apalis",
+        "writer-zero",
+        "bulk",
+        "writer-off",
+        "oban"
+      ]
+    },
+    {
+      "group": 4,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "oban",
+        "writer-off",
+        "bulk",
+        "writer-zero",
+        "apalis",
+        "river"
+      ]
+    },
+    {
+      "group": 5,
+      "profile": "short",
+      "phases": [
+        "measured"
+      ],
+      "order": [
+        "writer-zero",
+        "writer-off",
+        "apalis",
+        "river",
+        "bulk",
+        "oban"
+      ]
+    }
+  ]
+}

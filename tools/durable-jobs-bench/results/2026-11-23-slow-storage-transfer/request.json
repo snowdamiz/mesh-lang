@@ -1,0 +1,114 @@
+{
+  "canonical_input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+  "controller": "linode-native-stepchange-controller-v1",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer",
+  "frozen_candidate": {
+    "cpus": [
+      0,
+      1
+    ],
+    "engines": [
+      "Mesh bulk",
+      "River",
+      "Oban",
+      "Apalis"
+    ],
+    "groups": 5,
+    "max_warmup_and_measured_arms": 80,
+    "orders": [
+      [
+        "bulk-pglz",
+        "river-lz4",
+        "apalis-pglz",
+        "oban-pglz",
+        "oban-lz4",
+        "apalis-lz4",
+        "river-pglz",
+        "bulk-lz4"
+      ],
+      [
+        "river-pglz",
+        "oban-lz4",
+        "bulk-lz4",
+        "apalis-pglz",
+        "apalis-lz4",
+        "bulk-pglz",
+        "oban-pglz",
+        "river-lz4"
+      ],
+      [
+        "oban-pglz",
+        "apalis-lz4",
+        "river-lz4",
+        "bulk-lz4",
+        "bulk-pglz",
+        "river-pglz",
+        "apalis-pglz",
+        "oban-lz4"
+      ],
+      [
+        "apalis-pglz",
+        "bulk-pglz",
+        "oban-lz4",
+        "river-lz4",
+        "river-pglz",
+        "oban-pglz",
+        "bulk-lz4",
+        "apalis-lz4"
+      ],
+      [
+        "bulk-lz4",
+        "river-pglz",
+        "apalis-lz4",
+        "oban-lz4",
+        "oban-pglz",
+        "apalis-pglz",
+        "river-lz4",
+        "bulk-pglz"
+      ]
+    ],
+    "policies": [
+      "pglz",
+      "lz4"
+    ],
+    "profiles": [
+      "slow"
+    ],
+    "separate_setup_smokes": 8
+  },
+  "id": "ordinary-slow-storage-transfer",
+  "kind": "Native compatibility hold",
+  "local_gate": "Six canonical Mesh crossover blocks and eight overlay smokes on all engines under both policies passed. Canonical Mesh saves 105 ms paired median producer DB CPU and 159 ms submit-to-commit; full drain beat both controls in only 2/6 blocks. The retained native bulk-Mesh versus Apalis gap is predominantly post-commit.",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/evidence/canonical/summary.json": "7841f6b8c0e48de5318d99e8bf965bca8bcf71cbc8dc657320e2c7013cb01143",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/evidence/compressible-external/summary.json": "6dfe0781eda27103e396dd990b7aec6bbd0b7dc2c3158c216755c50c3405e0a3",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/evidence/compressible/summary.json": "acee93020c0ddbddd8313676249616992904f8bc591ecd39ca60e315b3b2f970",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/evidence/ddl-fallback/summary.json": "8ddaa2f96eea3ca0c5fe6c1d114500fbc31da9d3c9580e0a2fc37c20654b1230",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/evidence/local-peers/summary.json": "6197c126c536e27c81b37b6474965afdf083e92f9fbb10cc44115f0a7be582a5",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/evidence/retained-native-v1-slow.json": "bc16b2bfe49843af103fa6c3cda6f1d009651c44f6da1ba4f02ddacf782f0da1",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/frozen/canonical-input.json": "7d4f454efd2891b2c5b50e1ca2b050ae8bf2fcb0853448a89c50a34747fe9e9f",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/frozen/local-pins.json": "4a7fff9a95c99ceb48cbf924b3d19e3f989f38e6d48ff14ea8cb95ea34785c82",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/frozen/native-config.json": "29b92a14b564307f67196717e865714a175625ef993634c6b8170f61c7131e6b",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/frozen/native-install.sh": "fc278fd979be297141a25be2ffd5070c12c1f3f36ef19c5afef21faf394c7a14",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/frozen/native-overlay.tar": "6495443cc4d22bfd7f5f5fa0e3026dfdaf314807e2652a07ab8cb190c2783800",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/frozen/native-postgres-capability.json": "ed988428630792a9eafecb184e3f2189351eb3329dc4ac26a7f7658e289d3f02",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/frozen/native-postgres-identity.txt": "e1c6f1b0781ecc7e420ea035aa4c277f2c9031b458ddcf04086d1e8773268967",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/frozen/native-source-inventory.json": "b71a9056bc41e1746dc6f1a443ec4902bdc815e42d95140f0b131025195dbd60",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/replay/native-run": "079c8f2416733d9da7835660f36ee57a625601150d42e4af8b32b14280ba2cb3",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/replay/native.py": "33d048812b59f075dc6e146ddc11d065316c0ec0a606d964af3bf891d466641b",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/replay/native_overlay.py": "ee7610c8d7dd1298a3e75c2b520d8879ddefa1993c16f52e04f61279e92fb4bc",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/replay/slow-river.sql": "ba0f572751f4c1b3d4fd25edeaa769fde80cdef9d848b7bfe5bad9c832f26275",
+    "tools/durable-jobs-bench/results/2026-11-23-slow-storage-transfer/replay/storage.py": "4c3769dc6c87cb232275348fbd494195cc5c3f8e8c382aa7ec77e3ff016b922c",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "native_contact_performed": false,
+  "operator_id": "compiled-ordinary-slow-storage-transfer",
+  "ready": false,
+  "reason": "The PostgreSQL 17.11 binary pinned in the native inventory was built without LZ4. Its SHA-256 matches the retained bootstrap and installed-binary identity receipts.",
+  "recorded_at": "2026-11-23T22:58:21.959177+00:00",
+  "release_condition": "To consider a future timing grant, qualify one isolated LZ4-capable PostgreSQL 17.11 build for both PGLZ and LZ4 across all four engines. Preserve the original PostgreSQL and native runs. This hold requests zero host work.",
+  "source_sha": "ce5e551d079e83bfab5e6ba1d52b47892bf35319",
+  "state": "hold"
+}

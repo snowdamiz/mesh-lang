@@ -1,0 +1,10 @@
+stack-runtime	0
+exit-order	0
+workspace-build	0
+examples-lint-format	0
+fuzz-check	0
+diagnostics-no-terminal	0
+runtime-dependencies	0
+workspace-tests	0
+laws	0
+postgres-jobs	0

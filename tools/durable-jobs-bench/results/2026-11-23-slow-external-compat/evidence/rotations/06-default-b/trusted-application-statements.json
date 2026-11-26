@@ -1,0 +1,20 @@
+[
+  {
+    "calls": 1024,
+    "execution_ms": 1.4109859999999979,
+    "query": "SELECT $1",
+    "rows": 1024
+  },
+  {
+    "calls": 512,
+    "execution_ms": 13.385574999999989,
+    "query": "INSERT INTO public.mesh_jobs_parity_attempts\n  (engine, namespace, job_key, effect_key, job_id, job_generation, attempt, entered_at, worker_pid)\nVALUES ($8, $1, $2, $2, $3::uuid, $4, $5::integer,\n  to_timestamp(($6::bigint / $9)::double precision)\n    + ($6::bigint % $10) * interval $11, $7::integer)\nON CONFLICT (namespace, job_id, job_generation, attempt) DO NOTHING",
+    "rows": 512
+  },
+  {
+    "calls": 512,
+    "execution_ms": 9.090016000000002,
+    "query": "INSERT INTO public.mesh_jobs_parity_effects\n  (engine, namespace, job_key, effect_key, effected_at)\nVALUES ($3, $1, $2, $2, clock_timestamp())\nON CONFLICT (engine, namespace, effect_key) DO NOTHING",
+    "rows": 512
+  }
+]

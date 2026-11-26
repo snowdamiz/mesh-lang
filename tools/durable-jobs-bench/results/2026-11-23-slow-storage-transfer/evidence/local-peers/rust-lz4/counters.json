@@ -1,0 +1,23 @@
+{
+  "after": {
+    "application": 1024,
+    "claims": 23,
+    "dealloc": 0,
+    "producer_observer": 29,
+    "runner": 1192
+  },
+  "after_idle": {
+    "application": 0,
+    "claims": 13,
+    "dealloc": 0,
+    "producer_observer": 10,
+    "runner": 57
+  },
+  "before_idle": {
+    "application": 0,
+    "claims": 1,
+    "dealloc": 0,
+    "producer_observer": 8,
+    "runner": 9
+  }
+}

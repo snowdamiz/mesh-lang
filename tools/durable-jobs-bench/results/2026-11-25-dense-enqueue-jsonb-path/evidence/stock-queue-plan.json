@@ -1,0 +1,80 @@
+[
+  {
+    "Plan": {
+      "Node Type": "ModifyTable",
+      "Operation": "Insert",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "queues",
+      "Schema": "mesh_jobs",
+      "Alias": "queues",
+      "Conflict Resolution": "NOTHING",
+      "Plans": [
+        {
+          "Node Type": "Subquery Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Alias": "*SELECT*",
+          "Output": [
+            "\"*SELECT*\".\"?column?\"",
+            "\"*SELECT*\".\"?column?_1\"",
+            "1",
+            "'active'::text"
+          ],
+          "Plans": [
+            {
+              "Node Type": "Sort",
+              "Parent Relationship": "Subquery",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Output": [
+                "($1)",
+                "(((x.value -> 'spec'::text) ->> 'queue'::text))",
+                "(min(x.i))"
+              ],
+              "Sort Key": [
+                "(min(x.i))"
+              ],
+              "Plans": [
+                {
+                  "Node Type": "Aggregate",
+                  "Strategy": "Hashed",
+                  "Partial Mode": "Simple",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Output": [
+                    "$1",
+                    "(((x.value -> 'spec'::text) ->> 'queue'::text))",
+                    "min(x.i)"
+                  ],
+                  "Group Key": [
+                    "((x.value -> 'spec'::text) ->> 'queue'::text)"
+                  ],
+                  "Plans": [
+                    {
+                      "Node Type": "Function Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Function Name": "jsonb_array_elements",
+                      "Schema": "pg_catalog",
+                      "Alias": "x",
+                      "Output": [
+                        "((x.value -> 'spec'::text) ->> 'queue'::text)",
+                        "x.i"
+                      ],
+                      "Function Call": "jsonb_array_elements($2)"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "Query Identifier": -2784024870961582048
+  }
+]

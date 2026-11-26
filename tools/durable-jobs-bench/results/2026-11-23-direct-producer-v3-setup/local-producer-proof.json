@@ -1,0 +1,424 @@
+{
+  "accepted": [
+    {
+      "id": "0d4bc507-a387-4910-a5ca-92bb64fe78cd",
+      "key": "job_000000",
+      "payload": "3b8241d08978fda3e655a53c63edb3fe7b995909ddc6bd7b5bf4e61770918dc7"
+    },
+    {
+      "id": "62d7697c-7271-4572-8d15-ffc4fe89b711",
+      "key": "job_000001",
+      "payload": "88617ccb9ba3727464a2bc69e492ce3044af4633eea9504c842cebe683b38859"
+    },
+    {
+      "id": "83cdfd84-00da-4e22-9de0-b53874eedbbe",
+      "key": "job_000002",
+      "payload": "4e2051e9634359be255d8f4396caf2f6a7a022f3001e360997cce83a7c364ae4"
+    },
+    {
+      "id": "3365b2c7-55cf-4770-a1b2-cfdac4152ac8",
+      "key": "job_000003",
+      "payload": "b2df1362a520afdf6f6cb661118dc8aeb388a59626b814f41336820f5f25d628"
+    },
+    {
+      "id": "f00b95d0-b0c0-4900-b538-b815740afc61",
+      "key": "job_000004",
+      "payload": "c1627fe88432c573aa394dc9adbe8d614873af574683f4303947f9324f1f22d1"
+    },
+    {
+      "id": "e4305a64-b2df-465e-bae9-43e8ea02c990",
+      "key": "job_000005",
+      "payload": "56530d3854dc2384a2156502301cd9511618640ca272377e01a2186a56831531"
+    },
+    {
+      "id": "62eae6b8-9949-4c07-af2a-6325736e81ee",
+      "key": "job_000006",
+      "payload": "3b13a2566a2e86aa4a6cd684db93bff511d082abf0069d45845cabed89d75637"
+    },
+    {
+      "id": "1e659521-2021-4af2-b813-01e622513b1c",
+      "key": "job_000007",
+      "payload": "eecc16d3f6283d14c162405fdac4fc1a543289e304a3b656bf20597bb63253d1"
+    },
+    {
+      "id": "b2a01d3e-0b51-4b4c-a3fb-b521d823347a",
+      "key": "job_000008",
+      "payload": "b0e1ed0474e99b3f7f28807e86cb1010943caa44e0f0064ae035452c4a95f091"
+    },
+    {
+      "id": "bd2fe4b7-00ca-4bd7-8484-d75001d1411a",
+      "key": "job_000009",
+      "payload": "c09c91ba32494b91526e4c8f81a9235768ad55b869ca018cb2b884362a6b660f"
+    },
+    {
+      "id": "d1790bea-6657-4c98-a270-338416dcc49f",
+      "key": "job_000010",
+      "payload": "8a6e63a11b11d8c7a1d25713e13cc96e26e06f9e04526b6e0dcbb950975ea6c6"
+    },
+    {
+      "id": "66a4e7bb-0a1f-4da5-915b-b1c51b742ece",
+      "key": "job_000011",
+      "payload": "eeb2af430e3623324a7d0d14f552ce1bf59a45a59d88e1996089e95e89a3cb4b"
+    },
+    {
+      "id": "75a67f39-e323-4faa-9d63-45b83f975805",
+      "key": "job_000012",
+      "payload": "6d61e13479411897478075d47d838958104c05b0743f7537a354389ebcf64322"
+    },
+    {
+      "id": "ff3af386-831d-4ffd-aa8f-b8c2c9f57216",
+      "key": "job_000013",
+      "payload": "d36bddb29ecb011f7ed4748bb0809a4412e8066b258f5670890fbeae34a88d1a"
+    },
+    {
+      "id": "38bb78fa-6b44-4a0e-9b5e-3197ba7bcdba",
+      "key": "job_000014",
+      "payload": "68b819a5220d13440d0059b517b652dcd3094c6847fe96c2235767e96a062869"
+    },
+    {
+      "id": "06c08c36-e901-4d73-8b71-d935a1edf666",
+      "key": "job_000015",
+      "payload": "0675fd78a9175efba9a06dac8e2f8c67aed2dae6aeeae6d6993759d19e3feed7"
+    },
+    {
+      "id": "0f3034c3-bbc8-40a7-aed4-b0c9ea989848",
+      "key": "job_000016",
+      "payload": "1bbe70d2cbe82dd4881bff0cc43eaff7a78f5e2be9c1c8685ca03f69827b0a8b"
+    },
+    {
+      "id": "486dde67-b1ab-4f04-bb30-a954c8101d27",
+      "key": "job_000017",
+      "payload": "02376c8ac7d5eea80841835166642a32b0e843c58c28dd57a32c3ea4e8544b7c"
+    },
+    {
+      "id": "63b65c29-7549-4e5e-b65c-e315b6f3bcdc",
+      "key": "job_000018",
+      "payload": "aba2c73840a4907ad46e7735cdaf3412381ea368914d0b94cd39f462eb24685e"
+    },
+    {
+      "id": "aed416a1-2d04-4481-9d87-90134ab8322b",
+      "key": "job_000019",
+      "payload": "d79223110e755f3fdefd958478ad26e4c1c3b5b35ebe6155b5d1dbbc6a992794"
+    },
+    {
+      "id": "be99a645-514b-414c-b9b1-d46d6e9a9407",
+      "key": "job_000020",
+      "payload": "8d780d01387f36aef00ec020f0245606d66ef03535679ac8ca9268cb2d51b33f"
+    },
+    {
+      "id": "cc58e374-c95c-46ba-9bea-9a48e232a1b9",
+      "key": "job_000021",
+      "payload": "1078321f102886e93ea5f6d94684bac78eed1b5b40e52ee59e6e9ece7927bcc1"
+    },
+    {
+      "id": "c4419516-7668-4714-8608-835f83a0f8c2",
+      "key": "job_000022",
+      "payload": "068b85ae2aaa7b173fb8a9d65956aac84d431f6337dbc00d8afa873f1f837926"
+    },
+    {
+      "id": "4f39452b-0722-43bc-aa8c-93d38c8fed3c",
+      "key": "job_000023",
+      "payload": "9e77f1e0658f964c36212387546a47c055acdfc5b291d6aee8c633cf2f3aaaa5"
+    },
+    {
+      "id": "4e0ebf8e-b2f3-4a68-a68a-eb586f62c0a9",
+      "key": "job_000024",
+      "payload": "ecab060ed6c2c6cf3819cdbdbfb77ced93c368c306adfd2407d439bd5768b2c9"
+    },
+    {
+      "id": "02df1dc6-1143-414b-8104-51d883dfb08e",
+      "key": "job_000025",
+      "payload": "9c2887232d015c990eb8419c0f0a31a7c172999a72417c33ab65061137b9e5ee"
+    },
+    {
+      "id": "c1f803cb-0b97-4b47-a0ec-01ea206b0302",
+      "key": "job_000026",
+      "payload": "9baf7a619ecd49420470dfb18b05ffc476492ce83e35199e7f25cb874cf95b59"
+    },
+    {
+      "id": "48b9fb4c-ce18-4b4d-9edf-58440a39350c",
+      "key": "job_000027",
+      "payload": "bc3e80ffbee105ed81d8960d1203b989c53fdde477d143f3dd63aaac985b4ba8"
+    },
+    {
+      "id": "65bc04d6-e34b-44a3-bdf2-8fca46de156c",
+      "key": "job_000028",
+      "payload": "1b40765db6468fe739557a45795b7f2746bd498f49d1e9e05f9bd3f89aa6cadb"
+    },
+    {
+      "id": "78def798-027c-4cdc-802a-94ccdc275b59",
+      "key": "job_000029",
+      "payload": "a74443eed9f0753e49d3b14bbe81aba8d4ea9f4d1e62045327f83ab5dd44a42d"
+    },
+    {
+      "id": "8e4f03d5-548d-46a5-835b-f64fe2cf8abf",
+      "key": "job_000030",
+      "payload": "465d2cbe5b5316def8d2fb72f73531473995d6f8d1c3fcb7fdc2d82f78662e02"
+    },
+    {
+      "id": "9c093369-1aa7-413d-ad15-3209217cb57c",
+      "key": "job_000031",
+      "payload": "3e5cf62c2ed3ee97f13ded848e9a67a5e67b79cc794e612231d2c94c74efb114"
+    },
+    {
+      "id": "df3123bf-0a58-4a82-8bde-dea860eb6faf",
+      "key": "job_000032",
+      "payload": "de883ca24f11fbdb88590d059e0cc1cbd99a7f4fd9a77525c8f6f85b0918a785"
+    },
+    {
+      "id": "cddf790f-6cc3-4b7f-9003-9a8b5d2ce8e0",
+      "key": "job_000033",
+      "payload": "5f62506373a82d9304dd8978962544ca4299890fc7b04e774fbac462747ead2e"
+    },
+    {
+      "id": "2a98ce16-263b-4db9-ba12-70f46a7b5e67",
+      "key": "job_000034",
+      "payload": "8a0fa9fc869486db6305299829fde6800840af7ddc98d711e6ea5a043e8f5363"
+    },
+    {
+      "id": "381c7f9f-174a-45d3-a3f2-327653b0209a",
+      "key": "job_000035",
+      "payload": "c654cf5ffeb5cf7ff744431d3eceaa3fee5e241966bd8efff761e44944021473"
+    },
+    {
+      "id": "cb9ad4e5-5cc0-49ec-bcbd-438f505be431",
+      "key": "job_000036",
+      "payload": "1fadd4ca097f128c0f9849f50ae06c3b6d061491769e9a4e2024880541744a6e"
+    },
+    {
+      "id": "03176ac3-8d78-493f-bb65-e947463d1f73",
+      "key": "job_000037",
+      "payload": "1f6fdca4a3c884d97b7397b2628f0089228ca08239052ed61d02e909bf123850"
+    },
+    {
+      "id": "345e9597-bcda-4ff7-a616-00879c77de26",
+      "key": "job_000038",
+      "payload": "32d40a8b532591a5329d8d4eeacfead47bc230ec6b866ae38f24fe6168ec3f0a"
+    },
+    {
+      "id": "80f10c52-c119-48e9-9083-653491543a58",
+      "key": "job_000039",
+      "payload": "33866c394bea5367d795eea0b9c29e261385abff1e7a984db362cc82861c8a9d"
+    },
+    {
+      "id": "6f5560ce-5f94-4657-941b-0f1eeda121b2",
+      "key": "job_000040",
+      "payload": "ac6e99205e75bc4f0205445b07302aece5e20d77ad9f251b2705da3278079b3a"
+    },
+    {
+      "id": "c5a489cb-abc8-4d57-af09-570259b592af",
+      "key": "job_000041",
+      "payload": "ccb53baabad388e3d7ca594b01dc285cb9f31fc891f8e705358b487494ebf301"
+    },
+    {
+      "id": "70354c63-f3f1-49d3-87b2-b7dc80f66baf",
+      "key": "job_000042",
+      "payload": "105417a1602a2bbb72c4f0d1b9f255ff94364e352e3a40c502ef0424aabe1579"
+    },
+    {
+      "id": "472dcd7b-f497-4330-935c-4d18fb467e81",
+      "key": "job_000043",
+      "payload": "fbd7dfadf662896b3a161583c00384af06ca8e428f4629348d5857521f58277e"
+    },
+    {
+      "id": "e34a7f8b-ec99-42b6-8985-3bb1f2649db2",
+      "key": "job_000044",
+      "payload": "d6cd69b096cfdc5d93e08671cb3af3a9b8066e29c1b1dd0596c9b19b4e8887f7"
+    },
+    {
+      "id": "593226cd-e090-47b7-929a-a15b16d38ef5",
+      "key": "job_000045",
+      "payload": "003894ead4364a2661d35f6cac5faf0902f8249481f0e89c3d635a0451349c28"
+    },
+    {
+      "id": "b5783b05-6a5f-4e70-9165-d23d1d978db6",
+      "key": "job_000046",
+      "payload": "29a451647657dc834364d7564aef12ec2fbe9b9ea2116b6901a4e2a11682fb9f"
+    },
+    {
+      "id": "3311e3e4-7201-450f-b108-047b0bfd8456",
+      "key": "job_000047",
+      "payload": "944bbaafd8f4542bc1456e0df4bd21807e904ad1191774d2429dcc53c71d8cee"
+    },
+    {
+      "id": "6a422525-04cc-48fe-97b1-decf24aa10cd",
+      "key": "job_000048",
+      "payload": "49e27431c5c5f61a135f64e3992a34c8dfa7d4c0d5ed6e4c0f3d2142d22fa073"
+    },
+    {
+      "id": "b21047e9-b499-4389-b6f9-3a6e41e5dc7a",
+      "key": "job_000049",
+      "payload": "5ee38a11b3e9df6ea02409527bd9ce57f92178c6fba26c2457109d14ad3ab716"
+    },
+    {
+      "id": "ccdd080a-5c63-40db-a99a-e6bf8fbcc210",
+      "key": "job_000050",
+      "payload": "1916ae5f09adfd6cf232c108d510f25a5443b4ca171d5163ebb0a0d0dd93483c"
+    },
+    {
+      "id": "a1f5a649-0bc6-419a-857e-622e63584034",
+      "key": "job_000051",
+      "payload": "fb9e1a526f9d464ae8917a572676c8f40d64a9a9d547b5559fb7cb744bf3f1ba"
+    },
+    {
+      "id": "65dcce9b-ed7d-41a0-afdc-10ed64dd6adb",
+      "key": "job_000052",
+      "payload": "4de6fbcdb3cd7aea70e31f52b16f55d7104aa25a95e26d7b8c8aaae15a5e0bd3"
+    },
+    {
+      "id": "63cf15bf-f992-4bc8-a0ff-aa15802eda0b",
+      "key": "job_000053",
+      "payload": "28acc17e8742dfcd9b1241ad1419e9dbad2da457ef7fcf92fa17843ec29cb9cb"
+    },
+    {
+      "id": "232c483e-f3cc-447e-b135-041f09cdffb5",
+      "key": "job_000054",
+      "payload": "e842842fe5f09d2177bd07fd24e829b3a3ce853d5407c6edd7e6e28f15dafd75"
+    },
+    {
+      "id": "acb7d08f-fb00-4b33-af21-7c4fef58437f",
+      "key": "job_000055",
+      "payload": "99a100eae2c713594062a9f011caf6ffdfe1588d44ccc3d15ae1726cf5d3ea24"
+    },
+    {
+      "id": "50f73aef-fbfc-45d4-b3eb-4e6dd766c8fa",
+      "key": "job_000056",
+      "payload": "a2829774de845f16b5500f2f4c46f929552668fe801a0d7feceb741dfebcdc50"
+    },
+    {
+      "id": "e070a8b4-00c6-483d-8d35-d23c09209295",
+      "key": "job_000057",
+      "payload": "3231d8bb8839f6eed4282a0e49965c33f4315a765d8f2f2bf6c0615c5d2ebbd3"
+    },
+    {
+      "id": "64ed5bed-073b-40ec-ae72-8dc0aae9e700",
+      "key": "job_000058",
+      "payload": "d49eba23aeea61cfded25d8176a284cb43b48088d8db07dcd59f5a5c7fc8abdf"
+    },
+    {
+      "id": "fea1342c-9c56-4bd9-bc09-515c0374a11a",
+      "key": "job_000059",
+      "payload": "ea404b7369765f9691e886a09fcab1865ea66881491eb46d4d876ee46d8cf8fe"
+    },
+    {
+      "id": "c447ff5d-3560-4293-adf1-8b6f6c2b48fd",
+      "key": "job_000060",
+      "payload": "4b52cff4d0fb0744cf7664190ef5bc2b6110a0c62dfe06d59bd1d4eb107924da"
+    },
+    {
+      "id": "fcd00896-0f18-4479-9f8b-eefd223a45e8",
+      "key": "job_000061",
+      "payload": "622666261cfc66871f2ef7066cff2d0b6cd684edca38f83972a4e3353f3cd882"
+    },
+    {
+      "id": "f2677449-163b-4e76-a54b-e38bf44df8fc",
+      "key": "job_000062",
+      "payload": "1152c9c32441a7a9b25dc4ea14a231b62869091b75b3b0edfe88654f51ac7f2c"
+    },
+    {
+      "id": "6ce8390f-96cf-43b7-a5b0-7aaa4cc394b6",
+      "key": "job_000063",
+      "payload": "68a9258b20a0abc3ae1b6e4d7d4e527a3673ed5135fbc500d22d2611e9225142"
+    }
+  ],
+  "direct_broker_sha256": "abe32f6885344da54aff39d625455a388a17c2c4631328dfe1f0f391a57ead10",
+  "explicit_rollback_xid": "819",
+  "input_bytes": 33561352,
+  "input_created_after_ready_us": 1795462867840220,
+  "input_sha256": "30f91354336fab21dbe85f2933f3347ec53ab7634af3805169a892536747fa1c",
+  "rejections": [
+    "invalid-json",
+    "wrong-request",
+    "after-first-chunk",
+    "relative",
+    "symlink",
+    "outside-scratch"
+  ],
+  "stock_migrator_sha256": "af5d8a42a80eba6e57d4bfc0bb17ace876d200470606277091d1d1f53a95a675",
+  "surviving_product_requests": [
+    "batch_000000"
+  ],
+  "transactions": {
+    "batch_000000": {
+      "acknowledged_us": 1795462868945375,
+      "enqueued_ids": {
+        "job_000000": "0d4bc507-a387-4910-a5ca-92bb64fe78cd",
+        "job_000001": "62d7697c-7271-4572-8d15-ffc4fe89b711",
+        "job_000002": "83cdfd84-00da-4e22-9de0-b53874eedbbe",
+        "job_000003": "3365b2c7-55cf-4770-a1b2-cfdac4152ac8",
+        "job_000004": "f00b95d0-b0c0-4900-b538-b815740afc61",
+        "job_000005": "e4305a64-b2df-465e-bae9-43e8ea02c990",
+        "job_000006": "62eae6b8-9949-4c07-af2a-6325736e81ee",
+        "job_000007": "1e659521-2021-4af2-b813-01e622513b1c",
+        "job_000008": "b2a01d3e-0b51-4b4c-a3fb-b521d823347a",
+        "job_000009": "bd2fe4b7-00ca-4bd7-8484-d75001d1411a",
+        "job_000010": "d1790bea-6657-4c98-a270-338416dcc49f",
+        "job_000011": "66a4e7bb-0a1f-4da5-915b-b1c51b742ece",
+        "job_000012": "75a67f39-e323-4faa-9d63-45b83f975805",
+        "job_000013": "ff3af386-831d-4ffd-aa8f-b8c2c9f57216",
+        "job_000014": "38bb78fa-6b44-4a0e-9b5e-3197ba7bcdba",
+        "job_000015": "06c08c36-e901-4d73-8b71-d935a1edf666",
+        "job_000016": "0f3034c3-bbc8-40a7-aed4-b0c9ea989848",
+        "job_000017": "486dde67-b1ab-4f04-bb30-a954c8101d27",
+        "job_000018": "63b65c29-7549-4e5e-b65c-e315b6f3bcdc",
+        "job_000019": "aed416a1-2d04-4481-9d87-90134ab8322b",
+        "job_000020": "be99a645-514b-414c-b9b1-d46d6e9a9407",
+        "job_000021": "cc58e374-c95c-46ba-9bea-9a48e232a1b9",
+        "job_000022": "c4419516-7668-4714-8608-835f83a0f8c2",
+        "job_000023": "4f39452b-0722-43bc-aa8c-93d38c8fed3c",
+        "job_000024": "4e0ebf8e-b2f3-4a68-a68a-eb586f62c0a9",
+        "job_000025": "02df1dc6-1143-414b-8104-51d883dfb08e",
+        "job_000026": "c1f803cb-0b97-4b47-a0ec-01ea206b0302",
+        "job_000027": "48b9fb4c-ce18-4b4d-9edf-58440a39350c",
+        "job_000028": "65bc04d6-e34b-44a3-bdf2-8fca46de156c",
+        "job_000029": "78def798-027c-4cdc-802a-94ccdc275b59",
+        "job_000030": "8e4f03d5-548d-46a5-835b-f64fe2cf8abf",
+        "job_000031": "9c093369-1aa7-413d-ad15-3209217cb57c",
+        "job_000032": "df3123bf-0a58-4a82-8bde-dea860eb6faf",
+        "job_000033": "cddf790f-6cc3-4b7f-9003-9a8b5d2ce8e0",
+        "job_000034": "2a98ce16-263b-4db9-ba12-70f46a7b5e67",
+        "job_000035": "381c7f9f-174a-45d3-a3f2-327653b0209a",
+        "job_000036": "cb9ad4e5-5cc0-49ec-bcbd-438f505be431",
+        "job_000037": "03176ac3-8d78-493f-bb65-e947463d1f73",
+        "job_000038": "345e9597-bcda-4ff7-a616-00879c77de26",
+        "job_000039": "80f10c52-c119-48e9-9083-653491543a58",
+        "job_000040": "6f5560ce-5f94-4657-941b-0f1eeda121b2",
+        "job_000041": "c5a489cb-abc8-4d57-af09-570259b592af",
+        "job_000042": "70354c63-f3f1-49d3-87b2-b7dc80f66baf",
+        "job_000043": "472dcd7b-f497-4330-935c-4d18fb467e81",
+        "job_000044": "e34a7f8b-ec99-42b6-8985-3bb1f2649db2",
+        "job_000045": "593226cd-e090-47b7-929a-a15b16d38ef5",
+        "job_000046": "b5783b05-6a5f-4e70-9165-d23d1d978db6",
+        "job_000047": "3311e3e4-7201-450f-b108-047b0bfd8456",
+        "job_000048": "6a422525-04cc-48fe-97b1-decf24aa10cd",
+        "job_000049": "b21047e9-b499-4389-b6f9-3a6e41e5dc7a",
+        "job_000050": "ccdd080a-5c63-40db-a99a-e6bf8fbcc210",
+        "job_000051": "a1f5a649-0bc6-419a-857e-622e63584034",
+        "job_000052": "65dcce9b-ed7d-41a0-afdc-10ed64dd6adb",
+        "job_000053": "63cf15bf-f992-4bc8-a0ff-aa15802eda0b",
+        "job_000054": "232c483e-f3cc-447e-b135-041f09cdffb5",
+        "job_000055": "acb7d08f-fb00-4b33-af21-7c4fef58437f",
+        "job_000056": "50f73aef-fbfc-45d4-b3eb-4e6dd766c8fa",
+        "job_000057": "e070a8b4-00c6-483d-8d35-d23c09209295",
+        "job_000058": "64ed5bed-073b-40ec-ae72-8dc0aae9e700",
+        "job_000059": "fea1342c-9c56-4bd9-bc09-515c0374a11a",
+        "job_000060": "c447ff5d-3560-4293-adf1-8b6f6c2b48fd",
+        "job_000061": "fcd00896-0f18-4479-9f8b-eefd223a45e8",
+        "job_000062": "f2677449-163b-4e76-a54b-e38bf44df8fc",
+        "job_000063": "6ce8390f-96cf-43b7-a5b0-7aaa4cc394b6"
+      },
+      "request_id": "batch_000000",
+      "submitted_us": 1795462867915514,
+      "xid": "754"
+    },
+    "batch_000001": {
+      "acknowledged_us": 1795462868982385,
+      "enqueued_ids": {
+        "rollback": "6110911b-6e65-4bba-88cb-b76968288893"
+      },
+      "request_id": "batch_000001",
+      "submitted_us": 1795462868978186,
+      "xid": "819"
+    }
+  }
+}

@@ -1,0 +1,67 @@
+[
+  {
+    "backend": 24761,
+    "role": "parity_producer",
+    "tls": true
+  },
+  {
+    "backend": 24769,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 24772,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 24773,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 24774,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 24775,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 24776,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 24788,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 24789,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 24790,
+    "role": "compiled_caller",
+    "tls": true
+  },
+  {
+    "backend": 24792,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 24793,
+    "role": "parity_subject",
+    "tls": true
+  },
+  {
+    "backend": 24794,
+    "role": "parity_subject",
+    "tls": true
+  }
+]

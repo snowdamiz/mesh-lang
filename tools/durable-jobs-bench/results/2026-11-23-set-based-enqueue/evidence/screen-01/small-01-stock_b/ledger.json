@@ -1,0 +1,56 @@
+{
+  "commits": {
+    "batch_000000": [
+      "780",
+      1795466079002106
+    ]
+  },
+  "counts": [
+    2,
+    2
+  ],
+  "jobs": [
+    {
+      "attempt": 0,
+      "clock": true,
+      "effect": "a68039fb-49bb-4b8e-adcf-8b0cfdff6970/1",
+      "fp": "599eebd54ce9d9c6c4495d3793382311a673f3a2b89fcea98d6be6fb729afdb4",
+      "id": "a68039fb-49bb-4b8e-adcf-8b0cfdff6970",
+      "job_commit": 1795466079002106,
+      "key": "job_000000",
+      "payload": "0a4643f9e21d915a27a0067a2a97f9b33fca22851c7b733472d8c37fdd6b2272",
+      "position": 1,
+      "receipt": {
+        "conflict": false,
+        "effect_key": "a68039fb-49bb-4b8e-adcf-8b0cfdff6970/1",
+        "id": "a68039fb-49bb-4b8e-adcf-8b0cfdff6970",
+        "inserted": true,
+        "state": "available"
+      },
+      "receipt_commit": 1795466079002106,
+      "run": 1,
+      "state": "available"
+    },
+    {
+      "attempt": 0,
+      "clock": true,
+      "effect": "7db3ee8d-4575-4ab3-99b1-f237864a6227/1",
+      "fp": "f813c818ae00897a2a6c320e6a544e32dc9b057cd5d489320822c50f97a47c37",
+      "id": "7db3ee8d-4575-4ab3-99b1-f237864a6227",
+      "job_commit": 1795466079002106,
+      "key": "job_000001",
+      "payload": "6671d4d3fa9c9b5365fc43fc34d4ffac49c3daf8778f0139fdce50ddf008df74",
+      "position": 2,
+      "receipt": {
+        "conflict": false,
+        "effect_key": "7db3ee8d-4575-4ab3-99b1-f237864a6227/1",
+        "id": "7db3ee8d-4575-4ab3-99b1-f237864a6227",
+        "inserted": true,
+        "state": "available"
+      },
+      "receipt_commit": 1795466079002106,
+      "run": 1,
+      "state": "available"
+    }
+  ]
+}

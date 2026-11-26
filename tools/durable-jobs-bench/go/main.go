@@ -68,6 +68,9 @@ func dispatch() error {
 			slots < 1 || slots > 64 || index < 0 || index > 7 {
 			return errors.New("invalid worker configuration")
 		}
+		if os.Getenv(readinessEnv) == "warm" && (runtime.GOOS != "linux" || slots != 16 || index != 0) {
+			return errors.New("warm readiness requires one short16 Linux worker")
+		}
 		return runWorker(schema, slots, index, ready)
 	}
 
@@ -81,6 +84,10 @@ func dispatch() error {
 	if !ok || *input == "" || *out == "" || flag.NArg() != 0 {
 		flag.Usage()
 		return errors.New("profile, input, and out are required")
+	}
+	if mode := os.Getenv(readinessEnv); mode != "" &&
+		((mode != "cold" && mode != "warm") || *name != "short" || !*single || *smoke || runtime.GOOS != "linux") {
+		return errors.New("pool readiness requires cold or warm, a single short arm, and Linux")
 	}
 	if err := os.Mkdir(*out, 0700); err != nil {
 		return err
@@ -122,6 +129,14 @@ func run(ctx context.Context, name string, p profile, input, out string, smoke, 
 	}); err != nil {
 		return err
 	}
+	var producerStart time.Time
+	var producerBefore processCPU
+	if os.Getenv(readinessEnv) != "" {
+		if producerBefore, err = readProcessCPU(os.Getpid()); err != nil {
+			return err
+		}
+		producerStart = time.Now()
+	}
 	preflight, cancel := context.WithTimeout(ctx, 20*time.Second)
 	pool, err := openPool(preflight, "river:producer_observer", 1)
 	if err == nil {
@@ -131,6 +146,18 @@ func run(ctx context.Context, name string, p profile, input, out string, smoke, 
 	cancel()
 	if err != nil {
 		return err
+	}
+	if !producerStart.IsZero() {
+		elapsed := time.Since(producerStart).Microseconds()
+		after, err := readProcessCPU(os.Getpid())
+		if err != nil {
+			return err
+		}
+		if err := writeJSON(filepath.Join(out, "producer-startup.json"), map[string]any{
+			"elapsed_us": elapsed, "before": producerBefore, "after": after,
+		}); err != nil {
+			return err
+		}
 	}
 	if p.FullWarm && !single {
 		if err := trial(ctx, pool, p, name == "sparse", paths, filepath.Join(out, "warmup")); err != nil {
@@ -233,6 +260,22 @@ func trial(parent context.Context, pool *pgxpool.Pool, p profile, sparse bool, p
 	if err != nil {
 		return err
 	}
+	mode := os.Getenv(readinessEnv)
+	var readiness *startupEvidence
+	if mode != "" {
+		readiness = &startupEvidence{Mode: mode, ProducerPID: os.Getpid()}
+		start := time.Now()
+		defer func() {
+			if runErr != nil {
+				runErr = errors.Join(runErr, writeJSON(filepath.Join(out, "startup-partial.json"), readiness))
+			}
+		}()
+		if err := readiness.capture(ctx, pool, schema, "before_runner", start); err != nil {
+			return err
+		}
+		// Record the origin independently of the census that preceded the fork.
+		readiness.start = time.Now()
+	}
 
 	var runners []*runner
 	stopped := false
@@ -255,6 +298,9 @@ func trial(parent context.Context, pool *pgxpool.Pool, p profile, sparse bool, p
 	}
 	if err := waitReady(ctx, runners); err != nil {
 		return err
+	}
+	if readiness != nil {
+		readiness.RunnerPID = runners[0].cmd.Process.Pid
 	}
 	durable := false
 	defer func() {
@@ -281,11 +327,23 @@ func trial(parent context.Context, pool *pgxpool.Pool, p profile, sparse bool, p
 	if _, err = sampler.capture(ctx, true); err != nil {
 		return err
 	}
-	if err := pause(ctx, idleInterval); err != nil {
+	if readiness == nil {
+		if err := pause(ctx, idleInterval); err != nil {
+			return err
+		}
+	} else if err := readiness.observeIdle(ctx, pool, schema); err != nil {
 		return err
 	}
 	if _, err = sampler.capture(ctx, true); err != nil {
 		return err
+	}
+	if readiness != nil {
+		if err := readiness.capture(ctx, pool, schema, "before_submit", readiness.start); err != nil {
+			return err
+		}
+		if err := writeJSON(filepath.Join(out, "startup.json"), readiness); err != nil {
+			return err
+		}
 	}
 
 	batches := make([]batch, 0, len(paths))

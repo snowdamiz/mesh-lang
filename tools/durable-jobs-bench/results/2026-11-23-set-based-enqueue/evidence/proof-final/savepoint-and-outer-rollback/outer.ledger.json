@@ -1,0 +1,32 @@
+{
+  "admission": 0,
+  "business": [
+    [
+      "denied",
+      "00ff80",
+      null,
+      "829"
+    ],
+    [
+      "denied-after",
+      "00ff80",
+      null,
+      "829"
+    ],
+    [
+      "invalid",
+      "00ff80",
+      null,
+      "827"
+    ],
+    [
+      "invalid-after",
+      "00ff80",
+      null,
+      "827"
+    ]
+  ],
+  "queues": 0,
+  "receipts": 0,
+  "rows": []
+}

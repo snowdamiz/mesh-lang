@@ -1,0 +1,435 @@
+{
+  "historical_stock_peers": {
+    "01-slow.1795472893087275000/measured-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1462.591,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "0df0236daa20c7e7499a288985203e3a24616e78eb121d71609964e747c4b978",
+      "submit_ms": 1812.268,
+      "terminal_xids": 26
+    },
+    "01-slow.1795472893087275000/measured-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1503.249,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "25e10a4a28c0776065a241c58e604641011503239fc852a88c4860709347598f",
+      "submit_ms": 1997.006,
+      "terminal_xids": 512
+    },
+    "01-slow.1795472893087275000/measured-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1333.927,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "56317ed3d2f284634dd82802878d71ec452d7468a3d3275ffc57b901af23b4f9",
+      "submit_ms": 1797.298,
+      "terminal_xids": 5
+    },
+    "01-slow.1795472893087275000/warmup-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1129.196,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "ad65be201cceea7edd4a1261ceddcefdef4e6ae9bd81b3a0a15d151b8ac95a36",
+      "submit_ms": 1475.265,
+      "terminal_xids": 21
+    },
+    "01-slow.1795472893087275000/warmup-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1508.365,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "5146318b964b5aedbf7d2974676b953d65106f505c41d315060a4a92a5f19c53",
+      "submit_ms": 2062.939,
+      "terminal_xids": 512
+    },
+    "01-slow.1795472893087275000/warmup-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1306.071,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "bf1ec868f77c8881d069a3e891c99f481b20e540fdfc9f874ed6a8275a6113b7",
+      "submit_ms": 1783.911,
+      "terminal_xids": 5
+    },
+    "02-slow.1795473052961739000/measured-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1042.091,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "4c88fd9c6361d53d2c9d602b90e5bb0af0f28664873f14e0ef83ce46ba7a6acc",
+      "submit_ms": 1370.754,
+      "terminal_xids": 30
+    },
+    "02-slow.1795473052961739000/measured-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1611.168,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "9c65afa393d7cae7d2f89fcbe871d5d2cdc5b2a64d05553d1c072b6b7ba3e82b",
+      "submit_ms": 2087.994,
+      "terminal_xids": 512
+    },
+    "02-slow.1795473052961739000/measured-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1318.246,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "034009876cd4b27787ac62650a0563ebe99b32a0201bb2bf5fc6df318c8fb281",
+      "submit_ms": 1772.336,
+      "terminal_xids": 6
+    },
+    "02-slow.1795473052961739000/warmup-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1171.885,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "66e03165f91b8c0782ce426ad88dc8882973077ba66aa64ae0e51c8d7b6d946e",
+      "submit_ms": 1496.202,
+      "terminal_xids": 31
+    },
+    "02-slow.1795473052961739000/warmup-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1536.729,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "151cf500e4f56cd0dd92eb1fc1ade4b0c3d4099ff406b129ce6c42d019fe61cc",
+      "submit_ms": 2003.927,
+      "terminal_xids": 512
+    },
+    "02-slow.1795473052961739000/warmup-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1548.687,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 68,
+      "peak_executing": 64,
+      "raw_sha256": "741aeff909c0e086f7050dffd078116810854a7d6b0076941ca965ad1b7ea566",
+      "submit_ms": 2029.705,
+      "terminal_xids": 7
+    },
+    "03-slow.1795473210344433000/measured-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1080.5,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "ab42c887da4d648f96c3684ed3d6ce354a3192c70b1e0fd003ed5968f26064a4",
+      "submit_ms": 1423.207,
+      "terminal_xids": 24
+    },
+    "03-slow.1795473210344433000/measured-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1606.385,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "84d7364cddf929b71bfc509465c7df4316236ce2511c534e0e13ebf3e4b3f337",
+      "submit_ms": 2101.296,
+      "terminal_xids": 512
+    },
+    "03-slow.1795473210344433000/measured-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1302.659,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "2b1725a553dccad6c0782253976684bb98f418de1979dcd4fc81b128ae590424",
+      "submit_ms": 1771.877,
+      "terminal_xids": 7
+    },
+    "03-slow.1795473210344433000/warmup-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1128.359,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "bb1622046db6db328e7d8b9760ae54042a0f7b0b1a03fc8653507433a6c24cb6",
+      "submit_ms": 1461.477,
+      "terminal_xids": 23
+    },
+    "03-slow.1795473210344433000/warmup-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1695.54,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "4e1ee957c76d8d84498a8f4aa5a1f9fa51eb88386796705169020a33ceb344fe",
+      "submit_ms": 2159.65,
+      "terminal_xids": 512
+    },
+    "03-slow.1795473210344433000/warmup-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1565.064,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "27d52e7764ec021b991440c5224af947b7e8dc67349b97382d3e6bdc4f9518e9",
+      "submit_ms": 2023.453,
+      "terminal_xids": 8
+    },
+    "04-slow.1795473371258974000/measured-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1165.893,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "13525329e25b141435116778d7ee3d1548232a9600260ffbec6ddbd54d63a784",
+      "submit_ms": 1530.214,
+      "terminal_xids": 29
+    },
+    "04-slow.1795473371258974000/measured-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1544.577,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "82c6306549ef4faf6a50de3eaa1fe8b1a01a47935982ee5dc0e4253624afd0e2",
+      "submit_ms": 2070.581,
+      "terminal_xids": 512
+    },
+    "04-slow.1795473371258974000/measured-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1557.25,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "3cff07b4202bbd064eb3920ff8b367ed1d931cc6eb599cc88d75afe8f13019a6",
+      "submit_ms": 2021.308,
+      "terminal_xids": 6
+    },
+    "04-slow.1795473371258974000/warmup-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1153.871,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "d164500380f6773345232759dc5a8fd6518a2bec93be650062880f70d8ad3e11",
+      "submit_ms": 1479.035,
+      "terminal_xids": 24
+    },
+    "04-slow.1795473371258974000/warmup-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1585.766,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "cf142398edfb764f30935dd47cd5838169dd52d940fbe4003d79784bcfd9b0fc",
+      "submit_ms": 2132.783,
+      "terminal_xids": 512
+    },
+    "04-slow.1795473371258974000/warmup-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1325.636,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "df289803b51c5c3569b4643aad34d69336ca523d726544a4d02689e9cd0556d8",
+      "submit_ms": 1779.62,
+      "terminal_xids": 5
+    },
+    "05-slow.1795473531524654000/measured-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1118.3,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "7b794cd254291ad996e19e8ffbb3889b07553e9005569421a8a554b6727b8c31",
+      "submit_ms": 1440.411,
+      "terminal_xids": 25
+    },
+    "05-slow.1795473531524654000/measured-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1538.947,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "8195d7796f87594b06852015e4ee5a6446b52dc920bcbb80686d36f273f5cb96",
+      "submit_ms": 2010.901,
+      "terminal_xids": 512
+    },
+    "05-slow.1795473531524654000/measured-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1321.053,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "458a32fcade9052274e6d47a70964253f4137f639a3d41def3fdecf1a4656bd4",
+      "submit_ms": 1773.724,
+      "terminal_xids": 6
+    },
+    "05-slow.1795473531524654000/warmup-apalis-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1126.851,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "872fa9515bc3ed6923a681f2b5050ee9b6ac18b555ce20ee3f826965367326f7",
+      "submit_ms": 1443.535,
+      "terminal_xids": 27
+    },
+    "05-slow.1795473531524654000/warmup-oban-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1632.98,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "cacf8159695f6b6ee0e397a0865b94996e7b2019b47ca30cea692538526424d1",
+      "submit_ms": 2099.924,
+      "terminal_xids": 512
+    },
+    "05-slow.1795473531524654000/warmup-river-stock-1x64": {
+      "application_xids": 1024,
+      "completed": 512,
+      "drain_ms": 1536.475,
+      "layout": [
+        1,
+        64
+      ],
+      "peak_connections": 67,
+      "peak_executing": 64,
+      "raw_sha256": "f2ec19b1be04e3a6eb8812bcafea0f7ea2101ff26207dd75fcc8de6216393a5b",
+      "submit_ms": 2024.292,
+      "terminal_xids": 8
+    }
+  },
+  "validator": {
+    "real_jobs": 512,
+    "rejected": {
+      "bulk-shaped scalar fallback": "true-bulk writes, WAL or ordered scalar remainder count drifted",
+      "lost warm backend": "warmed backend topology changed before terminal observation",
+      "physical cap overflow": "physical client cap or observer terminal count differs",
+      "shared Mesh terminal XID": "producer, application and terminal XIDs are not independent",
+      "unknown worker PID": "unknown compiled handler PID",
+      "wrong allocation": "unexpected runner allocation"
+    }
+  }
+}

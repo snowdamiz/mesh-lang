@@ -1,0 +1,16 @@
+{
+  "arm": "bulk",
+  "backend_cpu_ms": 7.008416666666665,
+  "bulk_calls": 0,
+  "commit_ms": 54.64,
+  "group": 1,
+  "load": [
+    100.07666015625,
+    92.31982421875,
+    70.97998046875
+  ],
+  "producer_cpu_ms": 1.013625000000001,
+  "profile": "small",
+  "scalar_calls": 2,
+  "wall_ms": 54.9355
+}

@@ -1,0 +1,806 @@
+{
+  "after_cut": {
+    "admission": 1,
+    "business": [
+      [
+        "cut",
+        "00ff80",
+        null,
+        "845"
+      ]
+    ],
+    "queues": 1,
+    "receipts": 16,
+    "rows": [
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 0,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608963,
+        "due_ms": 1795466608963,
+        "effect": "d79760eb-48df-49f2-889a-39f8b892b364/1",
+        "fp": "d625e1fbb0269ca3741157fffa084c5a77fe3cd8fccd7fc02b8b8266ec88c94f",
+        "id": "d79760eb-48df-49f2-889a-39f8b892b364",
+        "position": 1,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "d79760eb-48df-49f2-889a-39f8b892b364/1",
+          "id": "d79760eb-48df-49f2-889a-39f8b892b364",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 1,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "4f7ca041-0ead-4196-9549-637deca734e9/1",
+        "fp": "2689dd3a114b6584a3a06d2e1f634819436a9b4de873405b144ca9e9d0374b13",
+        "id": "4f7ca041-0ead-4196-9549-637deca734e9",
+        "position": 2,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "4f7ca041-0ead-4196-9549-637deca734e9/1",
+          "id": "4f7ca041-0ead-4196-9549-637deca734e9",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 2,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "9319b8b0-0429-454c-842e-2eaaea3c441c/1",
+        "fp": "65ecca59c9b6940e6a190d2180acde2b5234c0044d9262457cdec0815637440a",
+        "id": "9319b8b0-0429-454c-842e-2eaaea3c441c",
+        "position": 3,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "9319b8b0-0429-454c-842e-2eaaea3c441c/1",
+          "id": "9319b8b0-0429-454c-842e-2eaaea3c441c",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 3,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "65528c57-5648-4a9d-9bc0-443ae0d70f0f/1",
+        "fp": "75eccc39f8f906a33626dc0c9a382ca61427c251f5e2757bbf5f99b7900be5ec",
+        "id": "65528c57-5648-4a9d-9bc0-443ae0d70f0f",
+        "position": 4,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "65528c57-5648-4a9d-9bc0-443ae0d70f0f/1",
+          "id": "65528c57-5648-4a9d-9bc0-443ae0d70f0f",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 4,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "73c15d82-2368-4787-b670-ec19b019a060/1",
+        "fp": "bad4d136633e5fcea6d5b2b932505ae239f2594c399164460b648ea8d8d8e4b5",
+        "id": "73c15d82-2368-4787-b670-ec19b019a060",
+        "position": 5,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "73c15d82-2368-4787-b670-ec19b019a060/1",
+          "id": "73c15d82-2368-4787-b670-ec19b019a060",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 5,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "9063d09e-5c5e-41f8-8297-071646046f78/1",
+        "fp": "0935fab83ca933bb30b7f236bb7b69a84be3ce2ce2afa41dc2196ca3892e9843",
+        "id": "9063d09e-5c5e-41f8-8297-071646046f78",
+        "position": 6,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "9063d09e-5c5e-41f8-8297-071646046f78/1",
+          "id": "9063d09e-5c5e-41f8-8297-071646046f78",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 6,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "f009e28c-457d-43a7-b3c4-794374091165/1",
+        "fp": "8f53b7a4e366a79fbcf7ba82e1da127d3144d45b9508c0c7f262180aece6cdcd",
+        "id": "f009e28c-457d-43a7-b3c4-794374091165",
+        "position": 7,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "f009e28c-457d-43a7-b3c4-794374091165/1",
+          "id": "f009e28c-457d-43a7-b3c4-794374091165",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 7,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "c5ca9dc1-0cce-4f65-95e0-069f331c192d/1",
+        "fp": "633e17bc52bfe27c7927be55ffbf40e4876a4f0207443652d8cad3ba4318c0f5",
+        "id": "c5ca9dc1-0cce-4f65-95e0-069f331c192d",
+        "position": 8,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "c5ca9dc1-0cce-4f65-95e0-069f331c192d/1",
+          "id": "c5ca9dc1-0cce-4f65-95e0-069f331c192d",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 8,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "ce4f8ae5-4704-4800-8b11-84094a2ea0dd/1",
+        "fp": "9548c0c5cb9f1696de488601363b794b5ec85c95b95ad197b2ef8a4852182f67",
+        "id": "ce4f8ae5-4704-4800-8b11-84094a2ea0dd",
+        "position": 9,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "ce4f8ae5-4704-4800-8b11-84094a2ea0dd/1",
+          "id": "ce4f8ae5-4704-4800-8b11-84094a2ea0dd",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 9,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "97ac4c65-665a-4b01-99fe-4c529421fb1f/1",
+        "fp": "50f412ea5d7fd2dd60bcc9ae5977a365c84695083f2d259e251fcbb3903376e3",
+        "id": "97ac4c65-665a-4b01-99fe-4c529421fb1f",
+        "position": 10,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "97ac4c65-665a-4b01-99fe-4c529421fb1f/1",
+          "id": "97ac4c65-665a-4b01-99fe-4c529421fb1f",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 10,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "ea8f4e45-e40c-42b8-9018-82b7dce95ab3/1",
+        "fp": "4798a57a493e1d93681b44e4e72d52cc5358b150aa7d137266894113cbae2ff3",
+        "id": "ea8f4e45-e40c-42b8-9018-82b7dce95ab3",
+        "position": 11,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "ea8f4e45-e40c-42b8-9018-82b7dce95ab3/1",
+          "id": "ea8f4e45-e40c-42b8-9018-82b7dce95ab3",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 11,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "55f0af13-ae1d-467e-b613-f0bc0ea07f62/1",
+        "fp": "38b4590b6a89eedf071112acdffe41fedbc16a4c22fe0890bc736da571ca57d7",
+        "id": "55f0af13-ae1d-467e-b613-f0bc0ea07f62",
+        "position": 12,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "55f0af13-ae1d-467e-b613-f0bc0ea07f62/1",
+          "id": "55f0af13-ae1d-467e-b613-f0bc0ea07f62",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 12,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "1f3e6ce9-906e-4c42-a6e4-f5d46b06d504/1",
+        "fp": "098bcc07505912e929f3ca4ed9dd78cd89c17a37a7bca1aa5e0253f94f255ad2",
+        "id": "1f3e6ce9-906e-4c42-a6e4-f5d46b06d504",
+        "position": 13,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "1f3e6ce9-906e-4c42-a6e4-f5d46b06d504/1",
+          "id": "1f3e6ce9-906e-4c42-a6e4-f5d46b06d504",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 13,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "97006697-8d6e-4f4f-8164-7143f422d62e/1",
+        "fp": "0f4a12f5347aca62c0b975a224b44afc3e32468dc4262ff664f74956ebda132f",
+        "id": "97006697-8d6e-4f4f-8164-7143f422d62e",
+        "position": 14,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "97006697-8d6e-4f4f-8164-7143f422d62e/1",
+          "id": "97006697-8d6e-4f4f-8164-7143f422d62e",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 14,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "c651f264-3816-4827-bbcb-4af2bb3bcf69/1",
+        "fp": "f6dad73568a46190128c7dbf78e8f01d94976536cad09706c95b2f972c1f87a8",
+        "id": "c651f264-3816-4827-bbcb-4af2bb3bcf69",
+        "position": 15,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "c651f264-3816-4827-bbcb-4af2bb3bcf69/1",
+          "id": "c651f264-3816-4827-bbcb-4af2bb3bcf69",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 15,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "16f850cc-b3d9-4a54-9723-0eef5b570cd7/1",
+        "fp": "ce4b6b663e84570b3fdeeb4a716f4f674d7a93b7cc428bb26d0c6b59708ae59b",
+        "id": "16f850cc-b3d9-4a54-9723-0eef5b570cd7",
+        "position": 16,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "16f850cc-b3d9-4a54-9723-0eef5b570cd7/1",
+          "id": "16f850cc-b3d9-4a54-9723-0eef5b570cd7",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      }
+    ]
+  },
+  "after_replay": {
+    "admission": 1,
+    "business": [
+      [
+        "cut",
+        "00ff80",
+        null,
+        "845"
+      ]
+    ],
+    "queues": 1,
+    "receipts": 16,
+    "rows": [
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 0,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608963,
+        "due_ms": 1795466608963,
+        "effect": "d79760eb-48df-49f2-889a-39f8b892b364/1",
+        "fp": "d625e1fbb0269ca3741157fffa084c5a77fe3cd8fccd7fc02b8b8266ec88c94f",
+        "id": "d79760eb-48df-49f2-889a-39f8b892b364",
+        "position": 1,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "d79760eb-48df-49f2-889a-39f8b892b364/1",
+          "id": "d79760eb-48df-49f2-889a-39f8b892b364",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 1,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "4f7ca041-0ead-4196-9549-637deca734e9/1",
+        "fp": "2689dd3a114b6584a3a06d2e1f634819436a9b4de873405b144ca9e9d0374b13",
+        "id": "4f7ca041-0ead-4196-9549-637deca734e9",
+        "position": 2,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "4f7ca041-0ead-4196-9549-637deca734e9/1",
+          "id": "4f7ca041-0ead-4196-9549-637deca734e9",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 2,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "9319b8b0-0429-454c-842e-2eaaea3c441c/1",
+        "fp": "65ecca59c9b6940e6a190d2180acde2b5234c0044d9262457cdec0815637440a",
+        "id": "9319b8b0-0429-454c-842e-2eaaea3c441c",
+        "position": 3,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "9319b8b0-0429-454c-842e-2eaaea3c441c/1",
+          "id": "9319b8b0-0429-454c-842e-2eaaea3c441c",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 3,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "65528c57-5648-4a9d-9bc0-443ae0d70f0f/1",
+        "fp": "75eccc39f8f906a33626dc0c9a382ca61427c251f5e2757bbf5f99b7900be5ec",
+        "id": "65528c57-5648-4a9d-9bc0-443ae0d70f0f",
+        "position": 4,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "65528c57-5648-4a9d-9bc0-443ae0d70f0f/1",
+          "id": "65528c57-5648-4a9d-9bc0-443ae0d70f0f",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 4,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "73c15d82-2368-4787-b670-ec19b019a060/1",
+        "fp": "bad4d136633e5fcea6d5b2b932505ae239f2594c399164460b648ea8d8d8e4b5",
+        "id": "73c15d82-2368-4787-b670-ec19b019a060",
+        "position": 5,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "73c15d82-2368-4787-b670-ec19b019a060/1",
+          "id": "73c15d82-2368-4787-b670-ec19b019a060",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 5,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "9063d09e-5c5e-41f8-8297-071646046f78/1",
+        "fp": "0935fab83ca933bb30b7f236bb7b69a84be3ce2ce2afa41dc2196ca3892e9843",
+        "id": "9063d09e-5c5e-41f8-8297-071646046f78",
+        "position": 6,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "9063d09e-5c5e-41f8-8297-071646046f78/1",
+          "id": "9063d09e-5c5e-41f8-8297-071646046f78",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 6,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "f009e28c-457d-43a7-b3c4-794374091165/1",
+        "fp": "8f53b7a4e366a79fbcf7ba82e1da127d3144d45b9508c0c7f262180aece6cdcd",
+        "id": "f009e28c-457d-43a7-b3c4-794374091165",
+        "position": 7,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "f009e28c-457d-43a7-b3c4-794374091165/1",
+          "id": "f009e28c-457d-43a7-b3c4-794374091165",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 7,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "c5ca9dc1-0cce-4f65-95e0-069f331c192d/1",
+        "fp": "633e17bc52bfe27c7927be55ffbf40e4876a4f0207443652d8cad3ba4318c0f5",
+        "id": "c5ca9dc1-0cce-4f65-95e0-069f331c192d",
+        "position": 8,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "c5ca9dc1-0cce-4f65-95e0-069f331c192d/1",
+          "id": "c5ca9dc1-0cce-4f65-95e0-069f331c192d",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 8,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "ce4f8ae5-4704-4800-8b11-84094a2ea0dd/1",
+        "fp": "9548c0c5cb9f1696de488601363b794b5ec85c95b95ad197b2ef8a4852182f67",
+        "id": "ce4f8ae5-4704-4800-8b11-84094a2ea0dd",
+        "position": 9,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "ce4f8ae5-4704-4800-8b11-84094a2ea0dd/1",
+          "id": "ce4f8ae5-4704-4800-8b11-84094a2ea0dd",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 9,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "97ac4c65-665a-4b01-99fe-4c529421fb1f/1",
+        "fp": "50f412ea5d7fd2dd60bcc9ae5977a365c84695083f2d259e251fcbb3903376e3",
+        "id": "97ac4c65-665a-4b01-99fe-4c529421fb1f",
+        "position": 10,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "97ac4c65-665a-4b01-99fe-4c529421fb1f/1",
+          "id": "97ac4c65-665a-4b01-99fe-4c529421fb1f",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 10,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "ea8f4e45-e40c-42b8-9018-82b7dce95ab3/1",
+        "fp": "4798a57a493e1d93681b44e4e72d52cc5358b150aa7d137266894113cbae2ff3",
+        "id": "ea8f4e45-e40c-42b8-9018-82b7dce95ab3",
+        "position": 11,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "ea8f4e45-e40c-42b8-9018-82b7dce95ab3/1",
+          "id": "ea8f4e45-e40c-42b8-9018-82b7dce95ab3",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 11,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "55f0af13-ae1d-467e-b613-f0bc0ea07f62/1",
+        "fp": "38b4590b6a89eedf071112acdffe41fedbc16a4c22fe0890bc736da571ca57d7",
+        "id": "55f0af13-ae1d-467e-b613-f0bc0ea07f62",
+        "position": 12,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "55f0af13-ae1d-467e-b613-f0bc0ea07f62/1",
+          "id": "55f0af13-ae1d-467e-b613-f0bc0ea07f62",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 12,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "1f3e6ce9-906e-4c42-a6e4-f5d46b06d504/1",
+        "fp": "098bcc07505912e929f3ca4ed9dd78cd89c17a37a7bca1aa5e0253f94f255ad2",
+        "id": "1f3e6ce9-906e-4c42-a6e4-f5d46b06d504",
+        "position": 13,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "1f3e6ce9-906e-4c42-a6e4-f5d46b06d504/1",
+          "id": "1f3e6ce9-906e-4c42-a6e4-f5d46b06d504",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 13,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "97006697-8d6e-4f4f-8164-7143f422d62e/1",
+        "fp": "0f4a12f5347aca62c0b975a224b44afc3e32468dc4262ff664f74956ebda132f",
+        "id": "97006697-8d6e-4f4f-8164-7143f422d62e",
+        "position": 14,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "97006697-8d6e-4f4f-8164-7143f422d62e/1",
+          "id": "97006697-8d6e-4f4f-8164-7143f422d62e",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 14,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "c651f264-3816-4827-bbcb-4af2bb3bcf69/1",
+        "fp": "f6dad73568a46190128c7dbf78e8f01d94976536cad09706c95b2f972c1f87a8",
+        "id": "c651f264-3816-4827-bbcb-4af2bb3bcf69",
+        "position": 15,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "c651f264-3816-4827-bbcb-4af2bb3bcf69/1",
+          "id": "c651f264-3816-4827-bbcb-4af2bb3bcf69",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      },
+      {
+        "args": {
+          "ch": "\ud83c\udf4f",
+          "ordinal": 15,
+          "prefix": "cut"
+        },
+        "commit": "2026-11-23T20:43:28.965593+00:00",
+        "db_ms": 1795466608964,
+        "due_ms": 1795466608964,
+        "effect": "16f850cc-b3d9-4a54-9723-0eef5b570cd7/1",
+        "fp": "ce4b6b663e84570b3fdeeb4a716f4f674d7a93b7cc428bb26d0c6b59708ae59b",
+        "id": "16f850cc-b3d9-4a54-9723-0eef5b570cd7",
+        "position": 16,
+        "queue": "default",
+        "receipt": {
+          "conflict": false,
+          "effect_key": "16f850cc-b3d9-4a54-9723-0eef5b570cd7/1",
+          "id": "16f850cc-b3d9-4a54-9723-0eef5b570cd7",
+          "inserted": true,
+          "state": "available"
+        },
+        "receipt_commit": "2026-11-23T20:43:28.965593+00:00",
+        "state": "available"
+      }
+    ]
+  },
+  "wire": {
+    "command_complete": true,
+    "placement": "after_commit",
+    "query_forwarded": true,
+    "ready_status": "I"
+  }
+}

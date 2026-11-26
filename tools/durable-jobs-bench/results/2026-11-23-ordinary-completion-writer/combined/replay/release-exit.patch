@@ -1,0 +1,458 @@
+diff --git a/compiler/mesh-rt/src/actor/scheduler.rs b/compiler/mesh-rt/src/actor/scheduler.rs
+--- a/compiler/mesh-rt/src/actor/scheduler.rs
++++ b/compiler/mesh-rt/src/actor/scheduler.rs
+@@ -55,7 +55,7 @@
+ /// across worker threads via work-stealing.
+ #[allow(dead_code)]
+ struct SpawnRequest {
+-    owned: Option<Box<dyn FnOnce() + Send>>,
++    owned: Option<OwnedSpawn>,
+     step: Option<Box<BoundedStep>>,
+     movable: bool,
+     pid: ProcessId,
+@@ -71,7 +71,7 @@
+ 
+ enum SpawnMode {
+     Shared,
+-    Owned(Box<dyn FnOnce() + Send>),
++    Owned(OwnedSpawn),
+     Linked {
+         parent: ProcessId,
+         child: LinkedChild,
+@@ -79,6 +79,13 @@
+     Grouped(Option<TerminateCallback>),
+     Step(u32),
+     MovableStep(u32),
++}
++
++type OwnedExit = Box<dyn FnOnce(ExitReason) + Send>;
++
++struct OwnedSpawn {
++    entry: Box<dyn FnOnce() + Send>,
++    on_exit: OwnedExit,
+ }
+ 
+ #[derive(Clone, Copy)]
+@@ -756,14 +763,21 @@
+         )
+     }
+ 
+-    pub(crate) fn spawn_owned(&self, entry: impl FnOnce() + Send + 'static) -> ProcessId {
++    pub(crate) fn spawn_owned(
++        &self,
++        entry: impl FnOnce() + Send + 'static,
++        on_exit: impl FnOnce(ExitReason) + Send + 'static,
++    ) -> ProcessId {
+         self.spawn_process(
+             std::ptr::null(),
+             std::ptr::null(),
+             0,
+             Priority::Normal,
+             std::ptr::null(),
+-            SpawnMode::Owned(Box::new(entry)),
++            SpawnMode::Owned(OwnedSpawn {
++                entry: Box::new(entry),
++                on_exit: Box::new(on_exit),
++            }),
+         )
+     }
+ 
+@@ -1320,6 +1334,7 @@
+ 
+ enum Execution {
+     Stack(CoroutineHandle),
++    Owned(Option<(CoroutineHandle, OwnedExit)>),
+     Step(Box<BoundedStep>),
+ }
+ 
+@@ -1332,6 +1347,11 @@
+     ) -> Result<bool, String> {
+         match self {
+             Self::Stack(handle) => handle.resume_catching_panic(),
++            Self::Owned(run) => run
++                .as_mut()
++                .expect("live owned actor")
++                .0
++                .resume_catching_panic(),
+             Self::Step(step) => {
+                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                     step.run(process, table, shutdown)
+@@ -1761,18 +1781,27 @@
+                         &active_count,
+                         &sleepers,
+                         req.pid,
+-                        reason,
++                        reason.clone(),
+                     );
++                    if let Some(OwnedSpawn { entry, on_exit }) = req.owned {
++                        drop(entry);
++                        on_exit(reason);
++                    }
+                 } else {
+                     // Create the coroutine only after confirming the queued actor is live.
+                     let mut actor = ScheduledActor {
+                         process,
+                         handle: match req.step {
+                             Some(step) => Execution::Step(step),
+-                            None => Execution::Stack(match req.owned {
+-                                Some(entry) => CoroutineHandle::from_entry(entry),
+-                                None => CoroutineHandle::new(req.fn_ptr, req.args_ptr),
+-                            }),
++                            None => match req.owned {
++                                Some(OwnedSpawn { entry, on_exit }) => Execution::Owned(Some((
++                                    CoroutineHandle::from_entry(entry),
++                                    on_exit,
++                                ))),
++                                None => {
++                                    Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr))
++                                }
++                            },
+                         },
+                     };
+                     let outcome = resume_process(
+@@ -2018,7 +2047,7 @@
+         (reason, process.placement)
+     };
+     if let Some(reason) = exited_reason {
+-        finalize_managed_process(process_table, active_count, sleepers, pid, reason);
++        finish_scheduled_actor(process_table, active_count, sleepers, pid, actor, reason);
+         return (Resumed::Finished, None);
+     }
+ 
+@@ -2062,7 +2091,7 @@
+                 }
+             };
+             if let Some(reason) = exited_reason {
+-                finalize_managed_process(process_table, active_count, sleepers, pid, reason);
++                finish_scheduled_actor(process_table, active_count, sleepers, pid, actor, reason);
+                 return (Resumed::Finished, next);
+             }
+             outcome
+@@ -2073,11 +2102,43 @@
+                 Err(message) => ExitReason::Error(message),
+                 Ok(true) => unreachable!(),
+             };
+-            finalize_managed_process(process_table, active_count, sleepers, pid, reason);
++            finish_scheduled_actor(process_table, active_count, sleepers, pid, actor, reason);
+             Resumed::Finished
+         }
+     };
+     (outcome, next)
++}
++
++fn finish_scheduled_actor(
++    table: &ProcessTable,
++    active_count: &AtomicU64,
++    sleepers: &[CachePadded<WorkerSleep>],
++    pid: ProcessId,
++    actor: &mut ScheduledActor,
++    reason: ExitReason,
++) {
++    let on_exit = if let Execution::Owned(run) = &mut actor.handle {
++        let (handle, on_exit) = run.take().expect("owned actor exits once");
++        // Forced exit of a suspended actor must unwind its stack before
++        // making the exit visible to the owner.
++        if !handle.done() {
++            set_current_process(pid, &actor.process);
++            drop(handle);
++            clear_current_pid();
++            CURRENT_YIELDER.with(|current| current.yielder.set(None));
++        }
++        Some(on_exit)
++    } else {
++        None
++    };
++    finalize_managed_process(table, active_count, sleepers, pid, reason);
++    if let Some(on_exit) = on_exit {
++        let reason = match &actor.process.lock().state {
++            ProcessState::Exited(reason) => reason.clone(),
++            _ => unreachable!("owned actor has exited"),
++        };
++        on_exit(reason);
++    }
+ }
+ 
+ enum StepTurn {
+@@ -3175,6 +3236,54 @@
+             assert!(seen.insert(pid.as_u64()), "Duplicate PID: {}", pid);
+         }
+         assert_eq!(seen.len(), 10);
++    }
++
++    #[test]
++    fn owned_actor_reports_exit_after_its_stack_and_registration_are_cleaned_up() {
++        let scheduler = Arc::new(Scheduler::new(1));
++        let (ready, parked) = crossbeam_channel::bounded(1);
++        let (send, completed) = crossbeam_channel::bounded(1);
++        let name = "scheduler-test-owned-exit";
++        let owner = Arc::clone(&scheduler);
++        let pid = scheduler.spawn_owned(
++            move || {
++                let pid = get_current_pid().unwrap();
++                registry::global_registry()
++                    .register(name.into(), pid)
++                    .unwrap();
++                struct NotifyOnUnwind(crossbeam_channel::Sender<()>);
++                impl Drop for NotifyOnUnwind {
++                    fn drop(&mut self) {
++                        let _ = self.0.send(());
++                    }
++                }
++                let (unwound, did_unwind) = crossbeam_channel::bounded(1);
++                let _unwind = NotifyOnUnwind(unwound);
++                crate::actor::current_process()
++                    .unwrap()
++                    .lock()
++                    .set_live_state(ProcessState::Waiting);
++                ready.send((pid, did_unwind)).unwrap();
++                crate::actor::stack::suspend_current();
++                panic!("a cancelled actor resumed its body");
++            },
++            move |reason| {
++                send.send((reason, registry::global_registry().whereis(name)))
++                    .unwrap();
++                owner.signal_shutdown();
++            },
++        );
++        scheduler.start();
++        let (entered, did_unwind) = parked.recv_timeout(Duration::from_secs(5)).unwrap();
++        assert_eq!(entered, pid);
++        let process = scheduler.get_process(pid).unwrap();
++        scheduler.force_exit(pid, process.lock(), ExitReason::Shutdown);
++        let (reason, registered) = completed.recv_timeout(Duration::from_secs(5)).unwrap();
++        assert_eq!(reason, ExitReason::Shutdown);
++        assert!(did_unwind.try_recv().is_ok());
++        assert_eq!(registered, None);
++        assert!(scheduler.get_process(pid).is_none());
++        scheduler.wait();
+     }
+ 
+     #[test]
+diff --git a/compiler/mesh-rt/src/actor/stack.rs b/compiler/mesh-rt/src/actor/stack.rs
+--- a/compiler/mesh-rt/src/actor/stack.rs
++++ b/compiler/mesh-rt/src/actor/stack.rs
+@@ -222,8 +222,7 @@
+         let args = args_ptr as usize;
+         Self::from_entry(move || {
+             // The compiler and scheduler supply the actor entry and argument ABI.
+-            let func: extern "C-unwind" fn(*const u8) =
+-                unsafe { std::mem::transmute(fn_ptr) };
++            let func: extern "C-unwind" fn(*const u8) = unsafe { std::mem::transmute(fn_ptr) };
+             func(args as *const u8);
+         })
+     }
+diff --git a/compiler/mesh-rt/src/jobs/trusted.rs b/compiler/mesh-rt/src/jobs/trusted.rs
+--- a/compiler/mesh-rt/src/jobs/trusted.rs
++++ b/compiler/mesh-rt/src/jobs/trusted.rs
+@@ -16,10 +16,12 @@
+     deadline: u64,
+     lease: u64,
+     stopped: bool,
++    reply: Option<Result<String, String>>,
++    returned_at: Option<Instant>,
+ }
+ 
+ impl Authority {
+-    fn expired(&self, now: u64) -> Option<WorkerPoll> {
++    fn expired_at(&self, now: u64) -> Option<WorkerPoll> {
+         if now < self.deadline.min(self.lease) {
+             None
+         } else if self.deadline <= self.lease {
+@@ -27,6 +29,45 @@
+         } else {
+             Some(WorkerPoll::LeaseExpired)
+         }
++    }
++
++    fn check(&self) -> Result<(), WorkerPoll> {
++        if self.stopped {
++            return Err(WorkerPoll::Exited(Err("trusted job was stopped".into())));
++        }
++        let now = boot_millis().map_err(|error| WorkerPoll::Exited(Err(error.to_string())))?;
++        self.expired_at(now).map_or(Ok(()), Err)
++    }
++
++    fn renew_at(&mut self, lease: u64, now: u64) -> Result<(), String> {
++        if self.stopped {
++            return Ok(());
++        }
++        match self.expired_at(now) {
++            None => self.lease = self.lease.max(lease),
++            Some(WorkerPoll::LeaseExpired) => {
++                return Err("trusted job could not accept renewal after its lease expired".into())
++            }
++            // The attempt already timed out. Leave the deadline in force and
++            // let the supervisor report the timeout when the actor exits.
++            Some(_) => {}
++        }
++        Ok(())
++    }
++
++    fn exited(&mut self, reason: ExitReason) -> WorkerPoll {
++        if let Err(outcome) = self.check() {
++            return outcome;
++        }
++        let result = match reason {
++            ExitReason::Normal => self
++                .reply
++                .take()
++                .unwrap_or_else(|| Err("trusted job actor stopped without an outcome".into())),
++            ExitReason::Error(message) => Err(message),
++            _ => Err("trusted job actor was terminated".into()),
++        };
++        WorkerPoll::Exited(result)
+     }
+ }
+ 
+@@ -50,49 +91,37 @@
+             deadline: host_deadline(deadline)?,
+             lease,
+             stopped: false,
++            reply: None,
++            returned_at: None,
+         }));
+         let (send, result) = crossbeam_channel::bounded(1);
+-        let guard = Arc::clone(&authority);
+-        // Capture the guard before spawning so rejecting a queued actor also drops it.
+-        let completion = Completion { send, wake };
+-        let pid = global_scheduler().spawn_owned(move || {
+-            let completion = completion;
+-            let reply = match check(&guard) {
+-                Ok(()) => {
++        let entry = Arc::clone(&authority);
++        let exit = Arc::clone(&authority);
++        let pid = global_scheduler().spawn_owned(
++            move || {
++                if entry.lock().check().is_ok() {
+                     let reply =
+                         invoke_in_current_context(context, |input| unsafe { handler(input) });
+-                    check(&guard).err().unwrap_or(WorkerPoll::Exited(reply))
++                    let returned_at = timed_replies.then(Instant::now);
++                    let mut authority = entry.lock();
++                    authority.reply = Some(reply);
++                    authority.returned_at = returned_at;
+                 }
+-                Err(reply) => reply,
+-            };
+-            let _ = completion.send.try_send((reply, timed_replies.then(Instant::now)));
+-        });
++            },
++            move |reason| {
++                // The scheduler has unwound the actor and finished exit cleanup.
++                let mut authority = exit.lock();
++                let reply = authority.exited(reason);
++                let _ = send.try_send((reply, authority.returned_at));
++                let _ = wake.try_send(());
++            },
++        );
+         Ok(Self {
+             pid,
+             authority,
+             result,
+             returned_at: None,
+         })
+-    }
+-}
+-
+-fn check(authority: &Mutex<Authority>) -> Result<(), WorkerPoll> {
+-    let state = authority.lock();
+-    if state.stopped {
+-        return Err(WorkerPoll::Exited(Err("trusted job was stopped".into())));
+-    }
+-    let now = boot_millis().map_err(|err| WorkerPoll::Exited(Err(err.to_string())))?;
+-    state.expired(now).map_or(Ok(()), Err)
+-}
+-
+-struct Completion {
+-    send: Sender<(WorkerPoll, Option<Instant>)>,
+-    wake: Sender<()>,
+-}
+-
+-impl Drop for Completion {
+-    fn drop(&mut self) {
+-        let _ = self.wake.try_send(());
+     }
+ }
+ 
+@@ -109,7 +138,7 @@
+             }
+             Err(TryRecvError::Empty) => Ok(WorkerPoll::Running),
+             Err(TryRecvError::Disconnected) => Ok(WorkerPoll::Exited(Err(
+-                "trusted job actor exited without a result (panic or cooperative stop)".into(),
++                "scheduler dropped the trusted job actor".into(),
+             ))),
+         }
+     }
+@@ -120,18 +149,12 @@
+ 
+     fn renew(&mut self, lease: u64) -> Result<(), String> {
+         let mut state = self.authority.lock();
+-        let now = boot_millis().map_err(|err| err.to_string())?;
+-        if state.stopped || state.expired(now).is_some() {
+-            return Err("trusted job could not accept renewal after its deadline".into());
+-        }
+-        state.lease = state.lease.max(lease);
+-        Ok(())
++        let now = boot_millis().map_err(|error| error.to_string())?;
++        state.renew_at(lease, now)
+     }
+ 
+     fn kill(&mut self) -> Result<(), String> {
+-        let mut state = self.authority.lock();
+-        if !state.stopped {
+-            state.stopped = true;
++        if !std::mem::replace(&mut self.authority.lock().stopped, true) {
+             if let Some(process) = crate::actor::process(self.pid) {
+                 global_scheduler().force_exit(self.pid, process.lock(), ExitReason::Shutdown);
+             }
+@@ -140,6 +163,38 @@
+     }
+ }
+ 
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn renewal_cannot_revive_an_expired_or_stopped_attempt() {
++        let mut authority = Authority {
++            deadline: 200,
++            lease: 100,
++            stopped: false,
++            reply: None,
++            returned_at: None,
++        };
++        assert!(authority.renew_at(300, 100).is_err());
++        assert!(matches!(
++            authority.expired_at(100),
++            Some(WorkerPoll::LeaseExpired)
++        ));
++        assert!(authority.renew_at(250, 99).is_ok());
++        assert!(authority.renew_at(300, 200).is_ok());
++        assert!(matches!(
++            authority.expired_at(200),
++            Some(WorkerPoll::TimedOut)
++        ));
++        assert_eq!(authority.lease, 250);
++
++        authority.stopped = true;
++        assert!(authority.renew_at(300, 190).is_ok());
++        assert_eq!(authority.lease, 250);
++    }
++}
++
+ impl Drop for TrustedAttempt {
+     fn drop(&mut self) {
+         let _ = self.kill();
+diff --git a/replay/manifest.py b/replay/manifest.py
+--- a/replay/manifest.py
++++ b/replay/manifest.py
+@@ -13,7 +13,7 @@
+ (out / "mesh.json").write_text(json.dumps(dict(
+     system=platform.system(), architecture=platform.machine(),
+     version=os.environ["COMPLETION_WRITER_SOURCE_SHA256"][:40],
+-    capsule="ordinary-completion-writer-local-r1",
++    capsule="bulk-v2-completion-writer-exit-r2",
+     source_patch_sha256=os.environ["COMPLETION_WRITER_SOURCE_SHA256"],
+     base_revision="dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17",
+     execution_contract="ordinary-trusted-shared-process-v2",

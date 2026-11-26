@@ -1,0 +1,139 @@
+{
+  "command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/controller.py pilot",
+  "config": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/frozen/series.json",
+  "config_sha256": "29d4242e5bbf894d408b4e39b2affb4b1bc1c9aa53fcd91b48614bf5b68488f8",
+  "controller": "linode-native-stepchange-controller-v1",
+  "cpus": [
+    0,
+    1
+  ],
+  "decision_window": "Run 1 and 2 in opposite order first. Continue only when replay passes for both and 2x32 beats the faster duplicate on both late refill and full submit in both rotations. Median late-refill gain \u2265 max(100 ms, median late-refill duplicate spread), and median full-submit gain \u2265 median full-submit duplicate spread. Under a separate grant, run groups 3\u20136 only when eligible. Preserve all raw warmups, measurements and failed attempts.",
+  "evidence_destination": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/evidence/native",
+  "expected_remainder_minutes": 18,
+  "expected_timing_minutes": 12,
+  "first_measured_groups": [
+    1,
+    2
+  ],
+  "groups": [
+    1,
+    2
+  ],
+  "id": "ordinary-slow-external-topology",
+  "kind": "Controller-owned build-free TIMING pilot and gated remainder",
+  "local_gate": "Exact native replay of 40 EXTERNAL source arms and 12 original topology Mesh source arms. All reconciled 64 overlapping holds. Composition profile, socket parser, five continuation cases and all sealed pins verified offline. No local workload run.",
+  "local_sha256": {
+    "tools/durable-jobs-bench/interleave.py": "dd933b3f84e2c4901cf26d34235b36c3b84c44a972a5c936a0cc603c33a12cce",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/arm.py": "7cf3f626f9e242ed176c69e0577ef89fb7439f6b2bf7c1332e0545fdaebfaee5",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-runner-topology/replay.py": "0382e2aa0b61d78e7c879d457b5f59102499027acef4895702edb6651e778d0d",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/evidence/native-import-retry/series.json": "d9c2c5bc2d994b54a0bf8934c4dcf9a02f03bf7308b35b428e252ad71c2d9f4d",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/native.py": "a1be23d736b92d17e903f89c391361f140fc75b1d2286b18e1d25295b7802005",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/replay.py": "af0e90119611d54f56ac30eae10aff522eba279435d8e47c3d2a8a5cf30d88dd",
+    "tools/durable-jobs-bench/results/2026-11-23-ordinary-slow-runner-concentration/slow_arm.py": "73c1d46ef69a492df2f3c1aa8d78567f3a5e86b7955b00975bdd0939ecc1c44a",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/README.md": "0a70198763b23b3cba9f45c0cfbbeff4fb464b4a744d1faf6681ed93d7a8910d",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/controller.py": "9736ed89db2406f2cd8fc039a345f6a8597bf7f15ff3f9398d99e0bbbe212f26",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/evidence/offline.json": "08953e69139c3c0bf31c2b6e1ed83666f8d1d41ec356c34f5addd456d17f64d6",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/frozen/canonical-batch.json.gz": "6d25c3dd06227662e5913eceb7745517b11b132af08a0e1fbaced0bcf6e72b4e",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/frozen/install-mesh.sh": "34f719d0f93edf87d7c11b15e01d699bea6b112bdac691953b9ca8bb97d588f5",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/frozen/mesh-overlay.tar": "ba920836536623e79287621e6d04f6f2ba2144027e4dec2117571aced76b8095",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/frozen/series.json": "29d4242e5bbf894d408b4e39b2affb4b1bc1c9aa53fcd91b48614bf5b68488f8",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/offline.py": "d4fef6ffd8566c5d1170589f4416de3b249cd13ddbfa5e30a549c0cc82ea5f95",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/stage/install-layout.sql": "23ecd45c342bd4ae974eac4dcc936762288518c0d81ce014476bb042f983d16d",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/stage/layout.py": "7db7961d4e35aae2c51e9fbf16f9f9d5a656c1a136e09eaa05a6c0e4bbb35e7d",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/stage/native-run": "fd5b0d6192819eef940250776d4150b5a269c265bac8a0af04dbd94878f5b351",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/stage/native_overlay.py": "f7bbc0a03521c88fa765eb3829eba6300b31e5b427e8f9df01b0264a131e015f",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/stage/storage.py": "4c3769dc6c87cb232275348fbd494195cc5c3f8e8c382aa7ec77e3ff016b922c",
+    "tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/stage/topology.py": "a46dfbe13beb4c3dc661a117b248e980aa1250b17569951444b956a233fd4e65",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/evidence/native/controller-setup-release.json": "d8e02f1d615aa7e7bce5e387d06b6e7b34a55b520176fa1b5c2c4cbfe72d6b2e",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/evidence/native/controller-timing-release.json": "85a10d6d4de467323681336283c809eece773f601eda8422786bdbd91c0e774e",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/evidence/native/summary.json": "a2bc1600f74c9d2e293c6ffbc73d0e8562d4b60928652b2df35cf999ed20044b",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/frozen/canonical-batch.json.gz": "6d25c3dd06227662e5913eceb7745517b11b132af08a0e1fbaced0bcf6e72b4e",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/frozen/native-config.json": "78e75ddaa159fb119e2da807ba750f18c27d941b70e0cca49cd9abcc8543947c",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/frozen/native-install.sh": "77f268e2ccc21688c14774458045fe453fe44a3d3eeaf68688d01e887449d1f1",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/frozen/native-overlay.tar": "be4684d46a801511cf281b34dd9c1af7053ecb1ebb3d542d07c18f9336910fa4",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/replay/layout.py": "7db7961d4e35aae2c51e9fbf16f9f9d5a656c1a136e09eaa05a6c0e4bbb35e7d",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/replay/native.py": "bd855f2cc846e9986f4b0c94f8af502055a18f5152396bccd9a60a87d7c79e16",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/replay/native_overlay.py": "18c6d8c6563bb3b8a322c83afa287fdaf8eab7bb71b1233af50dae73e609e9f2",
+    "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-scorer-input/replay/storage.py": "4c3769dc6c87cb232275348fbd494195cc5c3f8e8c382aa7ec77e3ff016b922c",
+    "tools/durable-jobs-bench/run.py": "d3a49ae11628b723c5fa66f3517d11b3ec630053a10536df64c43a2c5f5eedd8",
+    "tools/durable-jobs-bench/verify.py": "5e5c06284adbeaaeb71708c2ccf885dd7bf3b4783f09515885e427ffbdfc7c2f",
+    "tools/durable-jobs-bench/worker.py": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+  },
+  "max_initial_arms": 24,
+  "max_remainder_arms": 48,
+  "max_timing_arms": 72,
+  "offline_check": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/controller.py check",
+  "operator_id": "ordinary-slow-external-topology",
+  "orders": [
+    [
+      "one-a",
+      "one-b",
+      "apalis-stock-1x64",
+      "two",
+      "oban-stock-1x64",
+      "river-stock-1x64"
+    ],
+    [
+      "river-stock-1x64",
+      "oban-stock-1x64",
+      "two",
+      "apalis-stock-1x64",
+      "one-b",
+      "one-a"
+    ],
+    [
+      "one-b",
+      "two",
+      "one-a",
+      "river-stock-1x64",
+      "apalis-stock-1x64",
+      "oban-stock-1x64"
+    ],
+    [
+      "oban-stock-1x64",
+      "apalis-stock-1x64",
+      "river-stock-1x64",
+      "one-a",
+      "two",
+      "one-b"
+    ],
+    [
+      "two",
+      "river-stock-1x64",
+      "one-b",
+      "oban-stock-1x64",
+      "one-a",
+      "apalis-stock-1x64"
+    ],
+    [
+      "apalis-stock-1x64",
+      "one-a",
+      "oban-stock-1x64",
+      "one-b",
+      "river-stock-1x64",
+      "two"
+    ]
+  ],
+  "prerequisites": "Controller TIMING grant in STATUS.md with exact ID and UTC window. Local timing lock and native active-arm/native locks. Parent EXTERNAL run has released successfully. Stage exact retained peer overlay and new Mesh overlay via idempotent install; no product changes.",
+  "priority": "Behind every already booked controller workload. Keep the existing DEFAULT topology and cap-71 sensitivity separate.",
+  "profiles": [
+    "slow"
+  ],
+  "ready": true,
+  "remaining_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/controller.py remainder",
+  "remaining_groups": [
+    3,
+    4,
+    5,
+    6
+  ],
+  "replay_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/controller.py replay",
+  "requested_at": "2026-11-24T02:55:17.574447+00:00",
+  "requested_window_minutes": 20,
+  "scope": "Genuine ce5e551d V1 true-bulk producer and identical worker/handler ELF in both 1x64/8-app-session duplicates and 2x32/4-app-sessions-per-runner. Same owner-approved EXTERNAL layout across all six arms. Stock 1x64 River, Oban and Apalis. Canonical 512 x 16 KiB slow workload, 100 ms, 64 slots, unchanged PostgreSQL 17.11 cap 68 and CPUs 0,1. Each rotation contains a warmup and measured arm per lane. No builds or package installs.",
+  "source_sha": "ce5e551d079e83bfab5e6ba1d52b47892bf35319",
+  "state": "ready",
+  "timing_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/controller.py pilot",
+  "timing_followup_command": "python3 -B /Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-ordinary-slow-external-topology/controller.py remainder",
+  "timing_id": "ordinary-slow-external-topology"
+}

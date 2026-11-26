@@ -1,0 +1,42 @@
+{
+  "smoke": {
+    "off": {
+      "reconciled_jobs": 128,
+      "terminal_groups_by_size": {
+        "2": 3,
+        "1": 122
+      },
+      "terminal_xids": 125,
+      "warmed_application_sessions": 8
+    },
+    "zero": {
+      "reconciled_jobs": 128,
+      "terminal_groups_by_size": {
+        "1": 43,
+        "2": 26,
+        "5": 1,
+        "3": 8,
+        "4": 1
+      },
+      "terminal_xids": 79,
+      "warmed_application_sessions": 8
+    }
+  },
+  "held_callback": {
+    "v2": "completed",
+    "r1": "completed",
+    "product": "executing",
+    "off": "executing",
+    "zero": "executing"
+  },
+  "fault_cases": [
+    "held-middle",
+    "stop",
+    "ambiguous-completion",
+    "ambiguous-claim",
+    "expired-middle",
+    "renew-priority",
+    "cancelled-member"
+  ],
+  "setup_scope": "local macOS compile from archived source with PostgreSQL 17.11"
+}

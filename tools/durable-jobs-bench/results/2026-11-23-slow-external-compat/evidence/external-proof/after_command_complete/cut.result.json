@@ -1,0 +1,5 @@
+{
+  "exit": 1,
+  "stderr": "read COMMIT: read tag: failed to fill whole buffer\n",
+  "stdout": ""
+}

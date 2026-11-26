@@ -1,0 +1,59 @@
+--- frozen-fixture/main.mpl
++++ direct-broker/main.mpl
+@@ -273,7 +273,18 @@
+   let request = Json.parse(line)?
+   let verb = Json.as_string(Json.object_get(request, "verb")?)?
+   if verb == "enqueue" do
+-    let receipt = transact_batch(conn, Json.object_get(request, "batch")?)?
++    let path = Json.as_string(Json.object_get(request, "batch")?)?
++    let fixture_dir = Env.get("JOBS_PARITY_FIXTURE_DIR", "")
++    let request_id = Json.as_string(Json.object_get(request, "request_id")?)?
++    if !String.starts_with(fixture_dir, "/") || !Regex.is_match(~r/^batch_[0-9]{6}$/, request_id) || path != fixture_dir <> "/" <> request_id <> ".json" do
++      return Err("expected an absolute batch path in the private fixture directory")
++    end
++    let input = read_batch(path)?
++    let current_id = Json.as_string(Json.object_get(input, "request_id")?)?
++    if current_id != request_id do
++      return Err("batch file does not match request ID")
++    end
++    let receipt = transact_batch(conn, input)?
+     println(receipt)
+   else if verb == "query" do
+     let sql = Json.as_string(Json.object_get(request, "sql")?)?
+@@ -351,33 +362,16 @@
+ 
+ fn run() -> String!String do
+   let argv = Env.args()
+-  if List.length(argv) != 2 do
+-    return Err("usage: jobs-parity-mesh migrate|enqueue|run")
++  if List.length(argv) != 2 || List.get(argv, 1) != "session" do
++    return Err("usage: jobs-parity-direct-producer session")
+   end
+-  let action = List.get(argv, 1)
+-  if action != "migrate" && action != "enqueue" && action != "run" && action != "session" do
+-    return Err("usage: jobs-parity-mesh migrate|enqueue|run")
+-  end
+   if !Regex.is_match(~r/^[a-z][a-z0-9_]{0,62}$/, namespace()) do
+     return Err("JOBS_PARITY_NAMESPACE must match [a-z][a-z0-9_]{0,62}")
+   end
+   if database_url() == "" do
+     return Err("JOBS_PARITY_DB_URL is required")
+   end
+-  if action == "session" do return session() end
+-  if action == "enqueue" do
+-    let path = Env.get("JOBS_PARITY_INPUT", "")
+-    if path == "-" do
+-      return enqueue_stream()
+-    end
+-    return enqueue(path)
+-  end
+-  let relay_url = Env.get("JOBS_PARITY_POOL_URL", "")
+-  let pool_url = if action == "run" && relay_url != "" do relay_url else database_url() end
+-  let pool = Pool.open(pool_url, 1, 1, 5000)?
+-  let result = if action == "migrate" do migrate(pool) else serve(pool) end
+-  Pool.close(pool)
+-  result
++  session()
+ end
+ 
+ fn main() do
