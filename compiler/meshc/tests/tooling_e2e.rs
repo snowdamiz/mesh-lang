@@ -2977,6 +2977,13 @@ fn argument_errors_are_coded_for_people_too() {
         assert!(output.stderr.is_empty(), "{output:?}");
         assert!(!output.stdout.is_empty(), "{output:?}");
     }
+    let short = run(&["-V"]);
+    assert!(short.status.success(), "{short:?}");
+    assert!(short.stderr.is_empty(), "{short:?}");
+    assert_eq!(
+        short.stdout,
+        concat!("meshc ", env!("CARGO_PKG_VERSION"), "\n").as_bytes()
+    );
 }
 
 #[test]

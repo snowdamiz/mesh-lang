@@ -67,7 +67,12 @@ use mesh_diagnostics::{Code, Diagnostic, Failed, Format, Reporter, Severity, Sou
 use mesh_typeck::ty::Ty;
 
 #[derive(Parser)]
-#[command(name = "meshc", version, about = "The Mesh compiler")]
+#[command(
+    name = "meshc",
+    version,
+    long_version = env!("MESHC_LONG_VERSION"),
+    about = "The Mesh compiler"
+)]
 struct Cli {
     /// Output diagnostics as NDJSON and use JSON for commands with a JSON product format
     #[arg(long, global = true)]

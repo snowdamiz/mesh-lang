@@ -501,7 +501,7 @@ if [[ -z "$PREBUILT_RELEASE_DIR" || "${M034_S03_REQUIRE_SKILLS:-0}" == 1 ]]; the
   assert_log_contains install "Optional: run 'meshc skills setup'" "$LAST_LOG_PATH"
 fi
 
-run_command version 07-meshc-version "installed meshc --version" "$GOOD_HOME/.mesh/bin/meshc" --version
+run_command version 07-meshc-version "installed meshc -V" "$GOOD_HOME/.mesh/bin/meshc" -V
 [[ "$(cat "$LAST_STDOUT_PATH")" == "meshc ${VERSION}" ]] || fail_phase version "installed meshc version did not match ${VERSION}" "$LAST_LOG_PATH"
 run_command version 08-meshpkg-version "installed meshpkg --version" "$GOOD_HOME/.mesh/bin/meshpkg" --version
 [[ "$(cat "$LAST_STDOUT_PATH")" == "meshpkg ${VERSION}" ]] || fail_phase version "installed meshpkg version did not match ${VERSION}" "$LAST_LOG_PATH"

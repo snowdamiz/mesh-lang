@@ -227,7 +227,9 @@ jobs:
             exit 1
           fi
           cargo test --locked -p mesh-rt --lib --test library --test library_memory
+          bash scripts/tests/meshc-source-version.test.sh
           cargo build --workspace --locked
+          sh scripts/verify-meshc-source-version.sh target/debug/meshc
           # The fuzz crate is its own workspace and only runs at release:
           # compile its targets here, or a runtime rename breaks the release.
           cargo check --locked --manifest-path fuzz/Cargo.toml --bins
