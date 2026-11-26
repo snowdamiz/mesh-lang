@@ -350,3 +350,18 @@ All eight measured R5 arms had more device flush completions during drain than a
 The two Mesh settings have overlapping bounds in each order. Reaching five jobs between their writes on each runner still left at least 318 extra flushes forward and 294 reverse relative to the highest River bound. The device reports completions from all users and time spent servicing flush requests. It cannot identify which commits shared a flush, how long PostgreSQL waited before submitting one, or how many milliseconds of drain a change would recover. The counts give a concrete comparison for a wider scheduler that also advances late writes.
 
 The [device replay](direct4_device_flushes.py) checks all 14 raw hashes and the recorder source. It brackets the actual diskstats read between the frame timestamp and the next complete 200 ms recorder wait, with 2 ms of clock uncertainty. The inner samples fall wholly inside the official drain clock and the outer pair encloses it.
+
+### What changed on the fixed-eight and protected four-worker releases?
+
+Both native series passed strict replay across 16 arms each. The fixed-eight comparison uses the slower eight-worker duplicate and the faster four-worker duplicate for each clock. The protected pilot compares ON with the faster same-image OFF for each clock. Positive values below mean the candidate finished later.
+
+| Candidate | Forward submit / drain | Reverse submit / drain | Middle 512 effects, forward / reverse |
+|---|---:|---:|---:|
+| Eight fixed workers per PID | +58.851 / +47.838 ms | +117.636 / +95.306 ms | +18.081 / +20.898 ms |
+| Four fixed workers with one protected pair | +58.755 / +53.697 ms | −10.942 / +0.538 ms | +22.891 / −10.659 ms |
+
+Eight fixed workers reached six simultaneous jobs between writes on **both PIDs at once** in both orders. The four eight-worker arms used 787–819 runner CPU-ms for 1,024 completions. The four four-worker arms used 582–612 CPU-ms. The slower eight-worker final grant was 57.051 and 109.034 ms later than the fastest corresponding four-worker grant. On the protected path both owners reached a fifth job in each order. Reverse ON took 749.660 ms to drain against 749.122 ms for faster OFF. The original-image forward arm took 1,970.273 ms to drain, while its two same-image OFF controls took 759.405 and 774.576 ms. That original missed calibration. The forward ON also lost to each OFF control.
+
+The fixed-eight duplicates recorded 32–57 ms of device flush time during drain across the four measurements. Their fixed-four controls recorded 37–64 ms. Protected ON recorded 38–60 ms forward and 42–61 ms reverse. Its anomalous forward original recorded 44–58 ms. The storage readings overlap across treatments and cannot explain the original's additional 1.2 s by a comparable increase in reported flush-service time.
+
+Replay the additional 16 measured raw archives with `--fixed-workers` pointing to the released spawn SETUP evidence directory and `--protected` to the quiet pilot directory. [Fixed-worker release](/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-91e704ed/target/direct-fixed-workers-spawn-evidence/controller-release.json) · [Protected same-image replay](/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-53167fa3/target/direct4-protected-owner-quiet-pilot/controller/replay.json)
