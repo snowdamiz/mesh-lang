@@ -26,4 +26,20 @@ The earlier public two-runner reference had 12 and 8 grants with room to grow an
 
 Direct4 already waits for a checked BEGIN before sending its ordinary bounded SELECT. That boundary gives a candidate one opportunity to consume a confirmed release without adding a queue prelock or another exchange. The decisive measurement is how often the effective limit actually changes at that point and how many additional rows reach the workers. Runner CPU, later durable ranks and the full-submit clock determine whether that pays.
 
+## Where the durable effects fall behind
+
+Direct4 reached its 64th durable effect earlier than all six warm River arms. By the 256th effect both Direct4 arms were behind every River arm. Times are milliseconds, measured from each arm's own enqueue commit for the first two rows.
+
+| Durable milestone or interval | Direct4 forward | Direct4 reverse | Warm River range |
+|---|---:|---:|---:|
+| Effect 64 | 60.785 | 62.757 | 65.037–84.634 |
+| Effect 256 | 185.982 | 183.812 | 152.593–175.441 |
+| Effects 256 to 768 | 337.887 | 345.255 | 205.990–227.280 |
+| Effects 768 to 1,024 | 209.995 | 216.654 | 121.942–144.773 |
+| Final effect to final settlement | 8.826 | 10.456 | 178.013–209.890 |
+
+Replacing only Direct4's middle 512 interval with each River arm's measured interval would still leave 0.664–22.211 ms forward and 13.250–34.797 ms reverse to recover to match both submit and drain. This calculation keeps each Direct4 arm's enqueue time, early progress, last 256 effects and final settlement tail fixed.
+
+The first handler entry in a grant witnesses that the runner had received the checked grant for all its members by that time. During the middle 512 effects, both runners simultaneously held at least one such job whose handler had yet to enter for 191.678 ms forward and 184.656 ms reverse. Each held at least four unentered jobs for 67.376 and 72.846 ms. During the last 256 effects, both held an unentered job for 101.450 and 140.301 ms. These durations are lower bounds because the receipt can precede the first handler entry. Publication to the scheduler and the availability of an idle worker are unobserved. A refill change must demonstrate that additional granted jobs reach their durable writes sooner even while earlier grants are still being dispatched.
+
 Run `python3 -B direct4_peer_deadlines.py` in this directory for all 24 deadline comparisons and the individual arm hashes. It checks 1,024 jobs and 2,048 independent application transactions in each of the eight source archives. Jobs with a claim stamp in the cutoff's ambiguous millisecond are reported separately. The [Direct4 idle CPU analysis](DIRECT4-IDLE-BUDGET.md) covers the distinct runner cost question.

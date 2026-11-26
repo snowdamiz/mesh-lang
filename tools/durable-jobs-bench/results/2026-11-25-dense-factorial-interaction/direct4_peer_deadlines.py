@@ -28,6 +28,48 @@ def clocks(jobs, txn):
     return {"submit_us": finish - txn["submitted_us"], "drain_us": finish - txn["committed_us"]}
 
 
+def write_phases(jobs, txn):
+    effects = sorted(r["effect_committed_us"] for r in jobs)
+    return dict(first_64_us=effects[63] - txn["committed_us"],
+                first_256_us=effects[255] - txn["committed_us"],
+                middle_us=effects[767] - effects[255],
+                last_256_us=effects[-1] - effects[767],
+                terminal_tail_us=max(r["settled_us"] for r in jobs) - effects[-1])
+
+
+def owner_supply(jobs, begin, end, stop_field):
+    # An entry witnesses receipt of its entire checked batch. Other members
+    # can still be awaiting local publication or dispatch.
+    received = {}
+    for job in jobs:
+        key = job["worker_pid"], job["claimed_us"]
+        received[key] = min(received.get(key, job["entered_us"]), job["entered_us"])
+    events = []
+    for job in jobs:
+        start = max(begin, received[job["worker_pid"], job["claimed_us"]])
+        stop = min(end, job[stop_field])
+        if start < stop:
+            events.extend(((start, job["worker_pid"], 1), (stop, job["worker_pid"], -1)))
+    left, right = sorted({r["worker_pid"] for r in jobs})
+    live = Counter()
+    both = neither = four_each = 0
+    previous = begin
+    for stamp, pid, delta in sorted(events):
+        duration = stamp - previous
+        if live[left] and live[right]:
+            both += duration
+            if min(live[left], live[right]) >= 4:
+                four_each += duration
+        elif not (live[left] or live[right]):
+            neither += duration
+        live[pid] += delta
+        previous = stamp
+    assert not any(live.values())
+    neither += end - previous
+    return dict(both_us=both, neither_us=neither, one_us=end - begin - both - neither,
+                at_least_four_each_us=four_each)
+
+
 def census(jobs, deadline):
     # Mesh claim stamps are floored to a millisecond. Include the ambiguous bin separately.
     return {
@@ -88,7 +130,9 @@ def replay():
         jobs, txn = ledger(path.read_bytes(), peer["raw_sha256"])
         observed = clocks(jobs, txn)
         assert all(peer[k] == v for k, v in observed.items())
-        peers[group] = dict(**observed, raw_sha256=peer["raw_sha256"])
+        phases = write_phases(jobs, txn)
+        assert phases["middle_us"] == peer["progress"]["second_write"]["middle_512_us"]
+        peers[group] = dict(**observed, phases=phases, raw_sha256=peer["raw_sha256"])
     assert len(peers) == 6
     result = {}
     for group in (1, 2):
@@ -100,6 +144,14 @@ def replay():
         assert all(score[k] == v for k, v in own.items())
         assert all(r["claimed_us"] % 1000 == 0 for r in jobs)
         enqueue = own["submit_us"] - own["drain_us"]
+        phases = write_phases(jobs, txn)
+        assert phases["middle_us"] == score["middle_512_us"]
+        effects = sorted(r["effect_committed_us"] for r in jobs)
+        supply = {}
+        for phase, begin, end in (("middle", effects[255], effects[767]),
+                                  ("last_256", effects[767], effects[-1])):
+            supply[phase] = {field: owner_supply(jobs, begin, end, field)
+                             for field in ("entered_us", "effect_committed_us")}
         comparisons = []
         for peer_group, peer in peers.items():
             # At current producer time both clocks bind. If enqueue matches River,
@@ -107,10 +159,13 @@ def replay():
             for policy, cutoff in (("current_enqueue", min(peer["drain_us"], peer["submit_us"] - enqueue)),
                                    ("matched_enqueue", peer["drain_us"])):
                 deadline = txn["committed_us"] + cutoff
+                middle_saving = phases["middle_us"] - peer["phases"]["middle_us"]
                 comparisons.append(dict(peer_group=peer_group, policy=policy, cutoff_us=cutoff,
                                         drain_advance_us=own["drain_us"] - cutoff,
+                                        remaining_if_peer_middle_us=own["drain_us"] - cutoff - middle_saving,
                                         **census(jobs, deadline)))
         result[group] = dict(**own, enqueue_us=enqueue, raw_sha256=score["raw_sha256"],
+                             phases=phases, checked_batch_supply=supply,
                              claim_room=claim_room(raw, jobs), comparisons=comparisons)
     return dict(warm_river=peers, direct4=result)
 
