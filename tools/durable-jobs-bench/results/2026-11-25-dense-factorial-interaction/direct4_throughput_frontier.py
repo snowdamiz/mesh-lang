@@ -34,7 +34,39 @@ def replay(exposure):
     return rows
 
 
+def rank_768(exposure):
+    """Read both ledgers at the latest warm River rank-768 effect clock."""
+    peers = warm_river()
+    deadlines = {group: row["phases"]["first_256_us"] + row["phases"]["middle_us"]
+                 for group, row in peers.items()}
+    group = max(deadlines, key=deadlines.get)
+    cutoff = deadlines[group]
+    rows = []
+    for name, score, jobs, txn in controls(exposure):
+        origin = txn["committed_us"]
+        stamps = sorted(job["claimed_us"] - origin for job in jobs)
+        first = sorted(job["attempt_committed_us"] - origin for job in jobs)
+        effects = sorted(job["effect_committed_us"] - origin for job in jobs)
+        # A millisecond claim stamp represents a bin. Count ambiguous claims
+        # as available when bounding the improvement on this grant schedule.
+        stamped_upper = sum(stamp <= cutoff for stamp in stamps)
+        effect_count = sum(effect <= cutoff for effect in effects)
+        assert effect_count <= stamped_upper and first[767] <= effects[767]
+        rows.append(dict(control=name, mesh_sha256=score["raw_sha256"],
+                         claims_possibly_stamped=stamped_upper, effects_committed=effect_count,
+                         additional_claims_needed=max(0, 768 - stamped_upper),
+                         claim_768_lag_floor_us=stamps[767] - cutoff,
+                         first_write_768_lag_us=first[767] - cutoff,
+                         first_to_second_rank_gap_us=effects[767] - first[767]))
+    assert len({row["mesh_sha256"] for row in rows}) == 6
+    return dict(river_group=group, river_sha256=peers[group]["raw_sha256"],
+                river_rank_768_us=cutoff, controls=rows)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exposure", type=Path)
-    print(json.dumps(replay(parser.parse_args().exposure), indent=2))
+    parser.add_argument("--rank-768", action="store_true",
+                        help="locate Mesh first writes and grants at River's 768th effect")
+    args = parser.parse_args()
+    print(json.dumps(rank_768(args.exposure) if args.rank_768 else replay(args.exposure), indent=2))

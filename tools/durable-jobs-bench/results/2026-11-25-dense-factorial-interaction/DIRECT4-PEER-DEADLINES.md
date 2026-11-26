@@ -58,6 +58,23 @@ Applying the fastest observed cadence in each arm to all 512 writes gives **292.
 
 These rates describe the released schedule. Supply and completions influence each other, and the ledger cannot show which checked jobs a worker could run immediately. Closing the whole historical middle gap would require a change that also improves on the observed cadence when both owners have work. A fresh comparison can measure whether faster settlement or earlier refill changes that cadence.
 
+### How many jobs had Mesh claimed by River's 768th durable effect?
+
+The slowest of the six warm River arms committed its 768th effect **396.911 ms after enqueue commit**. At that elapsed time the six silent Direct4 controls still needed **160–207 additional stamped jobs** to make 768 effects possible, even if every job already stamped had completed immediately. The count gives Mesh credit for every claim whose millisecond timestamp overlaps the cutoff. Receipt, publication and dispatch can occur later.
+
+| Direct4 control | Jobs possibly stamped at cutoff | Effects at cutoff | Additional claims needed | Earliest observed 768th stamp minus cutoff (ms) | 768th first write minus cutoff (ms) | 768th effect minus 768th first write (ms) |
+|---|---:|---:|---:|---:|---:|---:|
+| Pool supply, forward | 608 | 588 | 160 | 115.563 | 125.031 | 1.927 |
+| Pool supply, reverse | 593 | 577 | 175 | 105.849 | 129.553 | 2.603 |
+| Idle spin, forward | 580 | 563 | 188 | 123.693 | 141.365 | 1.942 |
+| Idle spin, reverse | 561 | 527 | 207 | 129.776 | 162.398 | 0.898 |
+| Event park, forward | 571 | 556 | 197 | 121.694 | 131.110 | 2.821 |
+| Event park, reverse | 597 | 559 | 171 | 105.353 | 125.395 | 2.058 |
+
+The last column compares two independently sorted commit ranks. Different jobs can occupy the two ranks. A change to reply handling could still help substantially if it brings forward subsequent settlements, seat reuse and grants. The product measurement for that mechanism is whether the later grant stamps and first writes advance alongside the effects. These cross-release clocks locate the deficit and leave its cause open.
+
+Run `python3 -B direct4_throughput_frontier.py EXPOSURE_DIR --rank-768` with the released event-park continuation directory. The output includes the selected River and six Mesh raw hashes.
+
 ### How much worker capacity could an unentered handler use?
 
 The commit timestamp on a job's second application write can precede the caller's return from PostgreSQL. Across six silent Direct4 controls on ELF `e836b79a`, using that timestamp as the end of handler occupancy leaves 704–819 apparent worker-ms for checked jobs awaiting handler entry. Using the latest defensible handler return leaves just 2–12 worker-ms in the same calculation. The difference determines whether to target dispatch or the returning database call.
