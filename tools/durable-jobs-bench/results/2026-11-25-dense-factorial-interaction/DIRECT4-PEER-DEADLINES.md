@@ -202,3 +202,14 @@ A second replay takes each job only once. Each spare becomes available again at 
 | Reverse 2 | 43 | 70 | 1 | 87.9% |
 
 The second spare increased distinct pickups by 21–27 per runner in this replay. Most borrowed-worker residence extended beyond the original wait window. The percentages charge the entire borrowed turn, including the tail of a turn still active at rank 768. They measure elapsed occupancy, which includes waiting. Only a native comparison can determine whether these extra jobs improve durable progress enough to pay the CPU cost.
+
+### How much four-worker overlap can the sparse recorder see?
+
+The raw-receive observer selects an application operation after connection checkout if its start falls in a common 2 ms window every 8 ms. All four operations must have been selected to observe a joint wait. The older checked-return traces in release `ace2f2cb` bracket that selection point between the caller's pool-entry and pre-send timestamps. Applying the mask to those traces gives lower and upper bounds on **recorder coverage of send-to-ReadyForQuery overlap**. A certain selection requires every possible start inside the window. A possible selection requires at least one such start. Both use the original monotonic clock. Only the old trace supplies the timings in this table.
+
+| Selected runner in each measured order | Total all-four overlap | Covered at the sealed offset | Whole-arm operations selected | Covered across eight 2-in-8 ms phases | Covered across eight 8-in-32 ms phases |
+|---|---:|---:|---:|---:|---:|
+| Forward, runner 0 | 208.981 ms | 5.603 ms (2.7%) | 227 | 4.9–18.2 ms | 34.7–44.5 ms |
+| Reverse, runner 1 | 257.357 ms | 15.202 ms (5.9%) | 273–277 | 4.6–15.2 ms | 36.4–55.6 ms |
+
+The overlap columns use the middle 512 durable effects. The eight phases are equally spaced within each period. Both masks select starts during one quarter of elapsed time. A longer continuous window covers more four-way overlap on these schedules because the four writes often start at different times. With the 8-in-32 ms mask, the whole-arm counts ranged from 243–292 operations forward and 251–287 reverse across the eight phases. Those counts do not establish equal recorder CPU. Genuine socket EAGAIN, available fresh work and a recently returned connection impose further conditions. A small positive or zero in the sealed native run cannot be scaled into a full-run wait estimate using the nominal duty cycle.

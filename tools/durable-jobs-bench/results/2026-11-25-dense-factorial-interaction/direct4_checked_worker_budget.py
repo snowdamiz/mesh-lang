@@ -46,11 +46,13 @@ def saturated_episodes(jobs, begin, end):
             for width, durations in spans.items()}
 
 
-def base_reply_windows(jobs, begin, end):
+def base_reply_windows(jobs, begin, end, include=None):
     """Preserve the identities of all four original waiters at each common interval."""
     changes = defaultdict(list)
     for job in jobs:
         for seq in (1, 2):
+            if include is not None and not include(job, seq):
+                continue
             start = max(begin, job[f"sent{seq}"])
             stop = min(end, job[f"ready{seq}"])
             if start < stop:
@@ -71,6 +73,45 @@ def base_reply_windows(jobs, begin, end):
         previous = stamp
     assert not waiting
     return windows
+
+
+def sampled_reply_coverage(jobs, begin, end, width, offset):
+    """Project a one-quarter duty mask onto the older checked-return trace."""
+    period = 4 * width
+    possible = set()
+    certain = set()
+    for job in jobs:
+        for seq in (1, 2):
+            # The new observer selects after checkout, before sending. The older
+            # recorder brackets that edge with its POOL and SEND events.
+            lo, hi = job[f"pool{seq}"] + offset, job[f"send{seq}"] + offset
+            assert lo <= hi
+            key = job["id"], seq
+            phase = lo % period
+            if phase < width or hi - lo >= period - phase:
+                possible.add(key)
+            if phase < width and hi - lo < width - phase:
+                certain.add(key)
+    assert certain <= possible
+    result = {}
+    for label, selected in (("certain", certain), ("possible", possible)):
+        spans = base_reply_windows(jobs, begin, end, lambda job, seq: (job["id"], seq) in selected)
+        result[label] = dict(operations=len(selected), four_way_ns=sum(b-a for a, b, _ in spans))
+    assert result["certain"]["four_way_ns"] <= result["possible"]["four_way_ns"]
+    return result
+
+
+def sampling_periods(jobs, begin, end):
+    result = {}
+    for width in (2_000_000, 4_000_000, 8_000_000, 16_000_000):
+        # Eight phases at each duty cycle, including both owner offsets.
+        cuts = [sampled_reply_coverage(jobs, begin, end, width, phase * width // 2)
+                for phase in range(8)]
+        result[width] = {
+            field: [min(c["certain"][field] for c in cuts), max(c["possible"][field] for c in cuts)]
+            for field in ("operations", "four_way_ns")
+        }
+    return result
 
 
 def pickups_before_first_reply(jobs, windows):
@@ -177,7 +218,12 @@ def worker_budget(arm, phase, digest, decode, peers):
             replies.append(dict(send_to_ready_ns=total, definitely_after_commit_ns=post))
         assert sum(r["send_to_ready_ns"] for r in replies) <= handler
         reply_windows = base_reply_windows(own, begin, end)
+        sample_offset = next(i for i, proc in enumerate(runners) if proc["pid"] == pid) * 4_000_000
         owners.append(dict(pid=pid, effects=sum(begin < j["record2"] <= end for j in own),
+                           reply_window_ns=sum(b-a for a, b, _ in reply_windows),
+                           sample_offset_ns=sample_offset,
+                           sampled_reply_bounds=sampled_reply_coverage(own, begin, end, 2_000_000, sample_offset),
+                           sampled_eight_phase_range=sampling_periods(own, begin, end),
                            middle_handler_ns=handler, saturated=saturated_episodes(own, begin, end),
                            before_base_reply=pickups_before_first_reply(own, reply_windows),
                            resident_spares={delay: {n: resident_spares(own, reply_windows, n, delay) for n in (1, 2)}
