@@ -1,9 +1,0 @@
-PLATFORM aarch64 6.12.115-0-virt 3.14.4
-2026-11-23 23:23:54.091 UTC [375] WARNING:  no usable system locales were found
-The files belonging to this database system will be owned by user "nobody".
-SERVER 17.11
-LEGACY REJECTED unexpected TLS role census: {'pg_producer': 1, 'pg_application': 32, 'pg_jobs': 23}
-DYNAMIC mesh uid 65534 charges {'broker': 1, 'pg_application': 32, 'pg_jobs': 32, 'pg_observer': 1, 'pg_producer': 1, 'postmaster': 1, 'runner': 8} wall_ms_p50_max [5.289, 21.785] recorder_cpu_ms_total 190.448 psql_cpu_ms_total 23.45 accepted_frames 60
-LEGACY REJECTED live PostgreSQL client PIDs or role titles differ from the TLS census
-DYNAMIC oban uid 65534 charges {'broker': 1, 'pg_jobs': 80, 'pg_observer': 1, 'pg_producer': 1, 'postmaster': 1, 'runner': 8} wall_ms_p50_max [5.768, 18.643] recorder_cpu_ms_total 215.549 psql_cpu_ms_total 23.527 accepted_frames 60
-ROSTER_SMOKE_EXIT 0

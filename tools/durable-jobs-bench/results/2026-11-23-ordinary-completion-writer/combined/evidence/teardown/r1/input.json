@@ -1,1 +1,0 @@
-{"request_id": "probe", "rollback": false, "jobs": [{"key": "probe", "hold_ms": 0, "fail_first": false, "payload": "callback"}]}

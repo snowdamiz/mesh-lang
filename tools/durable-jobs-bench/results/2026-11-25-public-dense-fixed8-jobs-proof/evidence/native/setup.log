@@ -1,5 +1,0 @@
-/var/lib/durable-jobs-bench/native/source-public-dense-fixed8-jobs-ec82fb2eefcb/source.tar.gz: OK
-/var/lib/durable-jobs-bench/native/builds/mesh-stock-3828f20d/abi/meshc: OK
-/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/postgres: OK
-4924b5880247059032786f43f490cf99bde8a0a69adc790994ee01a51ab91058  /var/lib/durable-jobs-bench/native/builds/public-dense-fixed8-jobs-ec82fb2eefcb/mesh
-f691f2edc80ae054834616e96a66be5f7f794a176f1b15021a6a7f0875acfbdb  /var/lib/durable-jobs-bench/native/builds/public-dense-fixed8-jobs-ec82fb2eefcb/mesh.json

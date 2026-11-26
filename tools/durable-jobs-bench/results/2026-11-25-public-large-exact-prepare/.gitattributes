@@ -1,2 +1,0 @@
-# Preserve empty context lines in the sealed unified diffs.
-*.patch whitespace=-blank-at-eol,-blank-at-eof

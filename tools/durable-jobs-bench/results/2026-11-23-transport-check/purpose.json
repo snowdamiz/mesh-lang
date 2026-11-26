@@ -1,5 +1,0 @@
-{
-  "expectation": "reject unavailable CPU IDs before any queue work",
-  "host_series": "transport-check-83644cac0fe84490a4119c1df52014dc",
-  "phase": "diagnostic"
-}

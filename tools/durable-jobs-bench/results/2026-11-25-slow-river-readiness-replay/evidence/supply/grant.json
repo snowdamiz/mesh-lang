@@ -1,7 +1,0 @@
-{
-  "from_utc": "2026-11-25T19:54:53Z",
-  "id": "2026-11-25-slow-river-toolchain-supply",
-  "kind": "SETUP",
-  "request_sha256": "4fecd8ce881158268ba4061159cc7a5c03b57798191046469fea9db7cd3bbd2e",
-  "until_utc": "2026-11-25T20:14:53Z"
-}

@@ -1,1 +1,0 @@
-{"request_id": "crash-after-effect", "rollback": false, "jobs": [{"key": "crash-after-effect", "hold_ms": 50, "payload": "valid UTF-8: \u00e9tage", "fail_first": false}]}

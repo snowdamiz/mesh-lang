@@ -1,6 +1,0 @@
-{
-  "jobs": 64,
-  "minimum_hold_ms": 1.363,
-  "ordered": 64,
-  "worker_pids": 8
-}

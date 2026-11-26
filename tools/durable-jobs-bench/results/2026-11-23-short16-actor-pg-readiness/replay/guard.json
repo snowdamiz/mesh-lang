@@ -1,8 +1,0 @@
-{
-  "groups": 6,
-  "minimum_groups_faster_than_both_off_controls": 5,
-  "minimum_median_paired_drain_improvement_percent": 15,
-  "minimum_median_paired_second_half_improvement_percent": 15,
-  "minimum_median_paired_submit_improvement_percent": 10,
-  "noise_rule": "Require median paired drain improvement in milliseconds to exceed the median absolute difference between identical controls."
-}

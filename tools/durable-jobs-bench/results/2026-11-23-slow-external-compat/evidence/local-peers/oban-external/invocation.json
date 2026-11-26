@@ -1,6 +1,0 @@
-{
-  "engine": "oban",
-  "local_smoke": true,
-  "phase": "diagnostic",
-  "profile": "slow"
-}

@@ -1,8 +1,0 @@
-{
-  "command_finished_at": "2026-11-23T23:42:32.450706+00:00",
-  "exit_status": 1,
-  "id": "ordinary-hot-checkout",
-  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-hot-checkout/evidence",
-  "released_at": "2026-11-23T23:42:33.219305+00:00",
-  "started": "2026-11-23T23:39:13.758624+00:00"
-}

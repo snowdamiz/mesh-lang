@@ -1,7 +1,0 @@
-{
-  "external_inventory_sha256": "0148971c5bfec5d1c3cf9c390a90db1428a1fca2460c7a64d0bd1965a0515803",
-  "install_command_sha256": "bc1ab4cc378fef5611be6fdceb79070240981650930a5d1c8b2a06bbb63c39d4",
-  "native_path": "/var/lib/durable-jobs-bench/native/payload-storage-peers-811120acf887d24d",
-  "overlay_archive_sha256": "811120acf887d24dbe9798db9877089aa7f21ecd81d4c44b54cb1f14cde418b1",
-  "stock_inventory_sha256": "da8442fa0b06701540cc00a854d095dba0126d24ae8c05229c25ecd45d535a88"
-}

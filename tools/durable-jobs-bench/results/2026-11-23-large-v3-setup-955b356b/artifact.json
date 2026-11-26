@@ -1,9 +1,0 @@
-{
-  "binary_sha256": "bb94ad47b161ce48dbbe9620ee8d0a97812acc575d9edcd6d84df3033010286a",
-  "manifest_sha256": "f030a52900b486deffb50cdf5fff39f8af484f8add8491dc05a821fca6e4bbfe",
-  "source_sha": "955b356b51f0dbef36a2958bc27ed45c15af3582",
-  "verified_files": {
-    "/var/lib/durable-jobs-bench/native/builds/mesh-large-v3-955b356b/mesh": "bb94ad47b161ce48dbbe9620ee8d0a97812acc575d9edcd6d84df3033010286a",
-    "/var/lib/durable-jobs-bench/native/builds/mesh-large-v3-955b356b/mesh.json": "f030a52900b486deffb50cdf5fff39f8af484f8add8491dc05a821fca6e4bbfe"
-  }
-}

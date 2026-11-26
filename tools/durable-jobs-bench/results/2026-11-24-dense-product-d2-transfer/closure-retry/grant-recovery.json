@@ -1,9 +1,0 @@
-{
-  "files": {
-    "amendment.py": "272a0aaf230d54aa4eab599a52e65e7b8cd2a81e41e9ad9a6c93bbdcc7275acf",
-    "grant_recovery.py": "c88c11ec67021b131c565f81836006ad7be53f40c208645a9f1d2a0470526549",
-    "request.json": "38a6a6e561e1a5aef830367683d7a89ad08af332fdf0cc4c8ba510b639544ee2"
-  },
-  "id": "2026-11-24-dense-product-d2-transfer-closure-retry-grant-recovery",
-  "replaces_grant_parser_only": true
-}

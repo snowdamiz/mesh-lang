@@ -1,7 +1,0 @@
-{
-  "broker_sha256": "a5a2d5667c2d7209234d7f1468c40dd4071818010be31364a4e82d04b7ff18a3",
-  "raw_sha256": "b3bab4a1dca4e1b94a3794bde41dcfe937f22a7fb1d35b47504e3d6addd1b383",
-  "relink_sha256": null,
-  "runtime_origin": "rebuilt-exact",
-  "runtime_sha256": "4e81280d27d218a3c1eaba8b10b33455f06280ca2297b48ad0563ddf96873584"
-}

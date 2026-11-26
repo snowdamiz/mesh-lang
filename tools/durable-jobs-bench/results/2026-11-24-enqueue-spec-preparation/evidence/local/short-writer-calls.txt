@@ -1,3 +1,0 @@
-SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt|34
-SELECT ordinal, receipt FROM mesh_jobs.enqueue_batch_v1($1, $2::jsonb)
-         ORDER BY ordinal::integer|7

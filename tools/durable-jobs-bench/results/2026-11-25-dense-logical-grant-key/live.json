@@ -1,8 +1,0 @@
-{
-  "raw_sha256": "0728173f0fb7eb2aa99ee81600ede2f778d3396c7c39b59bb3e638980c687a6f",
-  "samples": 25,
-  "grants": 320,
-  "target_rows": 25600,
-  "join_rejections": 327360,
-  "target_buffer_hits": 27487
-}

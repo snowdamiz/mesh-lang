@@ -1,8 +1,0 @@
-{
-  "command_finished_at": "2026-11-25T01:17:33.418479+00:00",
-  "exit_status": 0,
-  "id": "2026-11-24-dense-hot-readiness-logger-off-setup",
-  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-dense-hot-readiness/evidence/setup",
-  "released_at": "2026-11-25T01:17:33.817014+00:00",
-  "started": "2026-11-25T01:12:41.417027+00:00"
-}

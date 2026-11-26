@@ -1,1 +1,0 @@
-{"request_id": "teardown", "jobs": [{"key": "owned", "hold_ms": 0, "fail_first": false, "payload": "semantic"}], "rollback": false}

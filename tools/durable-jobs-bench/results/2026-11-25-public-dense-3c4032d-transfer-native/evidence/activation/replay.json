@@ -1,8 +1,0 @@
-{
-  "exit_status": 1,
-  "id": "2026-11-25-public-dense-3c4032d-transfer-activation",
-  "raw_sha256": {
-    "blocks/00-noop/diagnostic-bounded-grouped/diagnostic-mesh/raw.tar.gz": "846a6d5a9e7d2a60a01e3ad1dd00a5bfa59cb2c7448c7a02e9e5fd8b08ae9fa9",
-    "blocks/00-noop/diagnostic-checked-individual/diagnostic-mesh/raw.tar.gz": "3405c7115856181b16ab6f307089cbcb5f47658018a40e53c4d06b58abd4b640"
-  }
-}

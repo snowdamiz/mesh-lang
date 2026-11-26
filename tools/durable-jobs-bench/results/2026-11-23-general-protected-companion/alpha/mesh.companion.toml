@@ -1,8 +1,0 @@
-version = 1
-contract = "synchronous-fresh-exec-v1"
-
-[[archive]]
-path = "libidentity.a"
-sha256 = "c419ce23c02e5c9131ae91fd58aa63d8e666f2e427cb8e19d3ead1e37c5af974"
-exports = ["invoice_probe_clock", "invoice_probe_pid"]
-system_imports = ["_GLOBAL_OFFSET_TABLE_", "__dprintf_chk", "__errno_location", "_exit", "clock_gettime", "fcntl", "getpgrp", "getpid", "getrlimit", "prctl", "pthread_create", "pthread_join", "readlink", "strcmp", "strncmp"]

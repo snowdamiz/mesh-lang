@@ -1,8 +1,0 @@
-{
-  "attempt": "265836cb25d949078f13d48fb38a8482",
-  "exit_status": 0,
-  "id": "2026-11-24-dense-producer-1024-smoke-canonical-broker",
-  "released_at": "2026-11-25T02:54:10.881200+00:00",
-  "request_sha256": "2323084f5686ac3c659013fc52dd7d469b90f6d00c9410b53a0e51b52c763810",
-  "started": "2026-11-25T02:53:47.404958+00:00"
-}

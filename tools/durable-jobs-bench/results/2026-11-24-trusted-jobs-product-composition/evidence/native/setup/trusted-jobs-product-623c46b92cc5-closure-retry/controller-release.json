@@ -1,8 +1,0 @@
-{
-  "command_finished_at": "2026-11-24T04:49:27.860510+00:00",
-  "exit_status": 0,
-  "id": "2026-11-24-trusted-jobs-product-composition-closure-retry",
-  "receipt": "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/evidence/native/setup/trusted-jobs-product-623c46b92cc5-closure-retry",
-  "released_at": "2026-11-24T04:49:28.249708+00:00",
-  "started": "2026-11-24T04:49:14.277556+00:00"
-}

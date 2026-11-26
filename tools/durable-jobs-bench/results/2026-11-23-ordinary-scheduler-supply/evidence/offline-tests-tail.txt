@@ -1,7 +1,0 @@
-test_sanitized_export_removes_uri_and_private_key_material (test_matrix.MatrixTests.test_sanitized_export_removes_uri_and_private_key_material) ... ok
-test_two_windows_have_a_common_durable_end (test_matrix.MatrixTests.test_two_windows_have_a_common_durable_end) ... ok
-
-----------------------------------------------------------------------
-Ran 16 tests in 17.107s
-
-OK

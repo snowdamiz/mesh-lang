@@ -1,3 +1,0 @@
-candidate 1
-off-source 1
-changed-files 0

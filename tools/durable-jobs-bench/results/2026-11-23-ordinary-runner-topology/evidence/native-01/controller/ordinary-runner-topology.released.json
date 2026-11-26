@@ -1,8 +1,0 @@
-{
-  "command_finished_at": "2026-11-23T23:28:38.903802+00:00",
-  "exit_status": 0,
-  "id": "ordinary-runner-topology",
-  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/ordinary-runner-topology/native-01",
-  "released_at": "2026-11-23T23:28:39.423728+00:00",
-  "started": "2026-11-23T23:27:01.269539+00:00"
-}

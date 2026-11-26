@@ -1,8 +1,0 @@
-{
-  "command_finished_at": "2026-11-24T00:05:37.929239+00:00",
-  "exit_status": 1,
-  "id": "ordinary-slow-external-compat",
-  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-slow-external-compat/evidence/native",
-  "released_at": "2026-11-24T00:05:38.443626+00:00",
-  "started": "2026-11-24T00:05:05.824222+00:00"
-}

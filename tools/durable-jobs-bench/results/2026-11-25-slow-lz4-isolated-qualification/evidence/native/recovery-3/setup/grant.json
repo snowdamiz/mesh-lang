@@ -1,7 +1,0 @@
-{
-  "from_utc": "2026-11-25T17:20:13Z",
-  "id": "2026-11-25-slow-lz4-isolated-qualification-recovery-3",
-  "kind": "SETUP",
-  "packet_sha256": "19172b745a552aa78ef1157c749752da2f3a2b70915e1c06f9e78f384363df23",
-  "until_utc": "2026-11-25T17:55:13Z"
-}

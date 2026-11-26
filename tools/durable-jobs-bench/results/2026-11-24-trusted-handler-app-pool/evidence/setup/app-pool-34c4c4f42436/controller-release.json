@@ -1,8 +1,0 @@
-{
-  "command_finished_at": "2026-11-24T23:02:48.761887+00:00",
-  "exit_status": 1,
-  "id": "2026-11-24-trusted-handler-app-pool",
-  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-trusted-handler-app-pool/evidence",
-  "released_at": "2026-11-24T23:02:49.326803+00:00",
-  "started": "2026-11-24T23:02:46.689400+00:00"
-}

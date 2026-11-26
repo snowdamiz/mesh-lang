@@ -1,1 +1,0 @@
-{"message":"[Errno 13] Permission denied: '/proc/2787784/fd'","stage":[["arm.py",322,"run_arm"],["jobs-parity.py",930,"run_trial"],["observe.py",87,"calls"],["jobs-parity.py",336,"calls"],["observe.py",105,"sql"],["observe.py",51,"ports"],["pathlib.py",1058,"iterdir"]],"type":"PermissionError"}

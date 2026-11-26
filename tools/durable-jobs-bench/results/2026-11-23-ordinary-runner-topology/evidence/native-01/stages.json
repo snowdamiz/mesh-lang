@@ -1,6 +1,0 @@
-{
-  "stock-a": "/var/tmp/mesh-durable-jobs-matrix/ordinary-runner-topology-caab2b4bce38-stock-a",
-  "stock-b": "/var/tmp/mesh-durable-jobs-matrix/ordinary-runner-topology-caab2b4bce38-stock-b",
-  "tuned-1x64": "/var/tmp/mesh-durable-jobs-matrix/ordinary-runner-topology-caab2b4bce38-tuned-1x64",
-  "tuned-2x32": "/var/tmp/mesh-durable-jobs-matrix/ordinary-runner-topology-caab2b4bce38-tuned-2x32"
-}

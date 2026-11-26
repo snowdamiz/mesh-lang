@@ -1,7 +1,0 @@
-Preparing worktree (detached HEAD ee593226)
-HEAD is now at ee593226 Use the scheduled-at index range in Jobs due probes
-source=ee59322673e9fb5fc861e4a53781a70840adbcde
-workspace_exit=0
-postgres_compatibility_exit=0
-effect_fence_exit=0
-Removed candidate proof workspace

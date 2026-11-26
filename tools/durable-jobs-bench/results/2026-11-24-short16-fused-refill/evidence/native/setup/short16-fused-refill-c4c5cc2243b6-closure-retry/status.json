@@ -1,9 +1,0 @@
-{
-  "exit_status": 0,
-  "export_exit_status": 0,
-  "id": "2026-11-24-short16-fused-refill-closure-retry",
-  "native_exit_status": 0,
-  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-short16-fused-refill/evidence/native/setup/short16-fused-refill-c4c5cc2243b6-closure-retry",
-  "released_at": "2026-11-24T22:27:05.720802+00:00",
-  "started": "2026-11-24T22:26:51.948860+00:00"
-}

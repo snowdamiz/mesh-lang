@@ -1,7 +1,0 @@
-{
-  "attempt": "2bec34c0c43743e5980a8ce66ad271b7",
-  "created": "2026-11-23T16:41:18.369524+00:00",
-  "engine": "oban",
-  "phase": "warmup",
-  "profile": "slow"
-}

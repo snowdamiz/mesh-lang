@@ -1,5 +1,0 @@
-The controller's earlier enqueue-spec-preparation SETUP exited before it
-created its staging directory. Its mount retry confirmed that findmnt table
-output pads MAJ:MIN. This packet used the same findmnt -no form. It was
-resealed before its own SETUP using findmnt -rn -o MAJ:MIN. The expected
-native device remains 8:0. The original ready request and its SHA are retained.

@@ -1,2 +1,0 @@
-{"width": "128", "compiled_broker": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-producer-1024/local-broker-final/mesh", "pid_check": "local child argv", "postgres": "17.11", "tls": true, "session_closed": true, "no_jobs_submitted": true}
-{"width": "1024", "compiled_broker": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/target/dense-producer-1024/local-broker-final/mesh", "pid_check": "local child argv", "postgres": "17.11", "tls": true, "session_closed": true, "no_jobs_submitted": true}

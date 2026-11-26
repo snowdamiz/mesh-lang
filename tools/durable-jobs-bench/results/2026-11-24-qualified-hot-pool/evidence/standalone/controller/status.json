@@ -1,8 +1,0 @@
-{
-  "command_finished_at": "2026-11-24T23:30:16.334219+00:00",
-  "exit_status": 0,
-  "id": "qualified-hot-pool-1e70f18d-standalone",
-  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-24-qualified-hot-pool/evidence/standalone",
-  "released_at": "2026-11-24T23:30:16.832032+00:00",
-  "started": "2026-11-24T23:22:37.143303+00:00"
-}

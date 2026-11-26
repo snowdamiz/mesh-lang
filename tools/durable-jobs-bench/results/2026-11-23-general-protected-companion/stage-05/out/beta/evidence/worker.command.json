@@ -1,9 +1,0 @@
-{
-  "argv": [
-    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/closure",
-    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/projects/beta/capture/compiled.ll",
-    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/beta/evidence/native-symbols",
-    "/var/lib/durable-jobs-bench/native/general-companion.iOhh6j/out/beta/evidence/worker.ll"
-  ],
-  "cwd": null
-}

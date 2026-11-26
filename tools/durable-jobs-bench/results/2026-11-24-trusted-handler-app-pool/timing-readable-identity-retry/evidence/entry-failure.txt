@@ -1,5 +1,0 @@
-usage: source-ordinary-trusted-v1-23fdb3f5530d [-h] [--local-smoke]
-                                               {mesh,oban}
-                                               {noop,slow,sparse,short,large,dense}
-                                               evidence
-source-ordinary-trusted-v1-23fdb3f5530d: error: use a fresh evidence directory

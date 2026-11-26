@@ -1,7 +1,0 @@
-{
-  "command": "python3 -B tools/durable-jobs-bench/results/2026-11-25-public-large-exact-prepare/controller.py pilot",
-  "evidence": "tools/durable-jobs-bench/results/2026-11-25-public-large-exact-prepare/evidence/native-pilot",
-  "id": "2026-11-25-public-large-exact-prepare-pilot",
-  "minutes": 18,
-  "packet_sha256": "c098809a67de34b2818d4bf5b8b10143e05e791e13b4f0290a36240f222bac70"
-}

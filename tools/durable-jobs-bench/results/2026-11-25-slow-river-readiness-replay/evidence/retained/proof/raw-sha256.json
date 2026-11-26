@@ -1,9 +1,0 @@
-{
-  "00/diagnostic-lazy-a/diagnostic-go/raw.tar.gz": "77a6ff4edd52aa9cc6e479c82c8541e9ce8a5cb8aebff6bce992341f0bb416cb",
-  "00/diagnostic-lazy-b/diagnostic-go/raw.tar.gz": "018dcf58c85e7002d6b60627fab9f63580ebe812c1b53bf534012fa7f37efd1d",
-  "00/diagnostic-mesh/diagnostic-mesh/raw.tar.gz": "e12a42717a37efa5348b70ed2c25fe3563ef7886a871a28687a253268936ee8e",
-  "00/diagnostic-oban/diagnostic-oban/raw.tar.gz": "9e1fd82537d2270910150ef9772e77d90a7a725f03526a2663cb6ea32a138e8e",
-  "00/diagnostic-retained-river/diagnostic-go/raw.tar.gz": "cc5ffb94489f130088bda4ed76c8b0d2802e5001e58163e92c9d2c8975704a78",
-  "00/diagnostic-underready-river/diagnostic-go/raw.tar.gz": "8326cc19bce3c1ae522de84f01aa9e30cf0bbe4b36b2cd0b841d17036ae8cf7e",
-  "00/diagnostic-warm-river/diagnostic-go/raw.tar.gz": "9b8b3dde22a5a0c9ebbb135beb9b2ab6823b0a1f308ae2ec4e62bfc7734948f7"
-}

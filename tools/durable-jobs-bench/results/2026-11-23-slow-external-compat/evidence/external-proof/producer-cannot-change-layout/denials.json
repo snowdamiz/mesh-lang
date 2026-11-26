@@ -1,4 +1,0 @@
-[
-  "psql exited 1: ERROR:  must be owner of table jobs",
-  "psql exited 1: ERROR:  permission denied for schema mesh_jobs"
-]

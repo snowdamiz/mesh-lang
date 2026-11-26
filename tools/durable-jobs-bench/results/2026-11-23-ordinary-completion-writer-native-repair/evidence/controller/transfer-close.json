@@ -1,9 +1,0 @@
-{
-  "exit_status": 0,
-  "id": "bulk-v2-completion-writer-exit-r2-identity-retry-transfer-close",
-  "receipt": "/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-9a80aabe/tools/durable-jobs-bench/results/2026-11-23-ordinary-completion-writer-native-repair/evidence/controller/transfer-close.json",
-  "released_at": "2026-11-23T23:58:09.661016+00:00",
-  "result": "already-absent",
-  "started": "2026-11-23T23:58:08.541813+00:00",
-  "transfer_path": "/var/lib/durable-jobs-bench/native/source-bulk-writer-retry-36b2eeee6f07/incoming.tar.gz"
-}

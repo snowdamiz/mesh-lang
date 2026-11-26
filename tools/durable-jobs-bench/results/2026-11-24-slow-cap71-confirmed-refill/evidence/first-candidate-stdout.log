@@ -1,2 +1,0 @@
-SESSION_READY
-{"user" : "parity_producer", "tls" : true, "max_connections" : 71, "database_connection_limit" : 71, "reserve" : 0, "superuser_reserve" : 0, "durable" : true, "commit_timestamps" : true}

@@ -1,8 +1,0 @@
-{
-  "command_finished_at": "2026-11-24T03:33:35.288131+00:00",
-  "exit_status": 0,
-  "id": "set-based-enqueue-product-private-cache",
-  "receipt": "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/evidence/native",
-  "released_at": "2026-11-24T03:33:35.753119+00:00",
-  "started": "2026-11-24T03:11:28.704822+00:00"
-}

@@ -1,2 +1,0 @@
-pg_waldump (PostgreSQL) 17.11
-924c9e685ca62bb7b59bbca3adc8c3d438396b64214d48e5c54b6489f02aeb22  /var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin/pg_waldump

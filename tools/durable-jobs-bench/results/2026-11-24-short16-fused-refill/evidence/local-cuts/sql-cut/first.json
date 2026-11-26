@@ -1,1 +1,0 @@
-{"request_id": "first", "jobs": [{"key": "settled", "hold_ms": 0, "fail_first": false, "payload": "semantic"}, {"key": "cancelled", "hold_ms": 0, "fail_first": false, "payload": "semantic"}, {"key": "expired", "hold_ms": 0, "fail_first": false, "payload": "semantic"}, {"key": "stale", "hold_ms": 0, "fail_first": false, "payload": "semantic"}], "rollback": false}

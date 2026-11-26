@@ -1,9 +1,0 @@
-{
-  "base_revision": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
-  "command": "cargo test --offline --locked -p mesh-common -p mesh-diagnostics -p mesh-lexer -p mesh-parser -p mesh-typeck -p mesh-pkg -p mesh-codegen -p mesh-fmt -p mesh-lint -p mesh-lsp -p mesh-repl -p mesh-test-rt -p meshpkg",
-  "executed_suites": 65,
-  "exit_status": 0,
-  "failed": 0,
-  "ignored": 0,
-  "passed": 2018
-}

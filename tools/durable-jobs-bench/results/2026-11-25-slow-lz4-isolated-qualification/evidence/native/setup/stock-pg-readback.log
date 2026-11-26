@@ -1,2 +1,0 @@
-postgres: postgres (PostgreSQL) 17.11
-pg_config:  '--prefix=/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11' '--with-openssl'

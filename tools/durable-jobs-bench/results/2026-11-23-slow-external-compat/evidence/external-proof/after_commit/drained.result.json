@@ -1,5 +1,0 @@
-{
-  "exit": 0,
-  "stderr": "",
-  "stdout": "{\"budget_hit\":false,\"claimed\":16,\"finished\":16,\"namespace\":\"cut\",\"outcomes\":{\"cancelled\":0,\"completed\":16,\"discarded\":0,\"released_unstarted\":0,\"retryable\":0,\"scheduled\":0},\"recovered\":0,\"remaining\":false,\"stop_reason\":\"idle\"}\n"
-}

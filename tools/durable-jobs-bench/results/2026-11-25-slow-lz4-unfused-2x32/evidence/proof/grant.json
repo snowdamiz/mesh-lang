@@ -1,7 +1,0 @@
-{
-  "from_utc": "2026-11-25T18:48:13Z",
-  "id": "2026-11-25-slow-lz4-unfused-2x32-proof",
-  "kind": "SETUP",
-  "packet_sha256": "8a2b8489ffd5f5e71c72a8e3adadd99c1f443b142cddac5b39f41c48028ffa39",
-  "until_utc": "2026-11-25T19:13:13Z"
-}

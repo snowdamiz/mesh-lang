@@ -1,3 +1,0 @@
-{"canonical_worker": "/clock/canonical_worker.py", "sha256": "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b", "python": "3.14.4", "kernel": "6.12.115-0-virt", "machine": "aarch64"}
-{"cpu_progress_ns": 25113500, "stable_starttime": 1688, "child_uid": 65534, "reporter_uid": 0, "exit_during_sample": "rejected", "after_reap": "rejected"}
-CLOCK_SMOKE_EXIT 0

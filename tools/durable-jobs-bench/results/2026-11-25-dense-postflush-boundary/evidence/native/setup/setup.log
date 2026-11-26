@@ -1,4 +1,0 @@
-postgres (PostgreSQL) 17.11
-includedir-server=/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/include/server
-pkglibdir=/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/lib
-bindir=/var/lib/durable-jobs-bench/native/toolchain/pgsql-17.11/bin

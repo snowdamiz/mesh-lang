@@ -1,8 +1,0 @@
-[
-  {
-    "calls": 1,
-    "query": "SELECT ordinal, receipt FROM mesh_jobs.enqueue_batch_v1($1, $2::jsonb)\n         ORDER BY ordinal::integer",
-    "rows": 16,
-    "wal_bytes": 20431
-  }
-]

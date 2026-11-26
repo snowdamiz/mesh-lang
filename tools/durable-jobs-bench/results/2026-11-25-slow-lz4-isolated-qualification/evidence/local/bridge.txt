@@ -1,1 +1,0 @@
-stock logical export, both codec imports, stock psql round trips and pg_stat_statements, pgcrypto, and hstore passed

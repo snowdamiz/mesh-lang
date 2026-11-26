@@ -1,9 +1,0 @@
-{
-  "/var/lib/durable-jobs-bench/native/source-stock-3828f20d/tools/durable-jobs-bench/mesh-direct-external-storage-v1/arm.py": "8e33b1443129b029533fe12a7d7a49bb936ef4325ad479ad4bee545683a7e33f",
-  "/var/lib/durable-jobs-bench/native/source-stock-3828f20d/tools/durable-jobs-bench/mesh-direct-external-storage-v1/direct-trial.py": "aa71b4a2e638121106de6313d3593f36ea49bc710386a944588d696d70f22e06",
-  "/var/lib/durable-jobs-bench/native/source-stock-3828f20d/tools/durable-jobs-bench/mesh-direct-external-storage-v1/ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
-  "/var/lib/durable-jobs-bench/native/source-stock-3828f20d/tools/durable-jobs-bench/mesh-direct-external-storage-v1/run": "49159d1aeb84c335ed8e8e0f7f0f82d4aad7fc32f33bc0544fb11010972d223c",
-  "/var/lib/durable-jobs-bench/native/source-stock-3828f20d/tools/durable-jobs-bench/mesh-external-storage-v1/arm.py": "6396a01b0f0f5013483e2c7876f00dbc093dfc15fabd98535da0562643bbce33",
-  "/var/lib/durable-jobs-bench/native/source-stock-3828f20d/tools/durable-jobs-bench/mesh-external-storage-v1/ledger.py": "1c4637c8d820b8d9d348057d9c378bdc3e49cb3e1a8a1ed9c61624449a26f5b4",
-  "/var/lib/durable-jobs-bench/native/source-stock-3828f20d/tools/durable-jobs-bench/mesh-external-storage-v1/run": "49159d1aeb84c335ed8e8e0f7f0f82d4aad7fc32f33bc0544fb11010972d223c"
-}

@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "/var/tmp/mesh-durable-jobs-matrix/app-pool-39e79f4abb76-service-a-identity-retry/native-arm.py", line 18, in <module>
-    identity_spec.loader.exec_module(identity)
-  File "<frozen importlib._bootstrap_external>", line 991, in exec_module
-  File "<frozen importlib._bootstrap_external>", line 1128, in get_code
-  File "<frozen importlib._bootstrap_external>", line 1186, in get_data
-PermissionError: [Errno 13] Permission denied: '/var/tmp/mesh-durable-jobs-matrix/app-pool-39e79f4abb76-service-a-identity-retry/identity.py'

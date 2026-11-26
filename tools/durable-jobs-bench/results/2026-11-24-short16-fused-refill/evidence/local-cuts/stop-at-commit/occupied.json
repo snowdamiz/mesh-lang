@@ -1,1 +1,0 @@
-{"request_id": "occupied", "jobs": [{"key": "release", "hold_ms": 850, "fail_first": false, "payload": "semantic"}, {"key": "slower-0", "hold_ms": 2600, "fail_first": false, "payload": "semantic"}, {"key": "slower-1", "hold_ms": 2600, "fail_first": false, "payload": "semantic"}, {"key": "slower-2", "hold_ms": 2600, "fail_first": false, "payload": "semantic"}], "rollback": false}

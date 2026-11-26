@@ -1,8 +1,0 @@
-{
-  "command_finished_at": "2026-11-24T03:06:31.621148+00:00",
-  "exit_status": 1,
-  "id": "set-based-enqueue-product-native-link",
-  "receipt": "tools/durable-jobs-bench/results/2026-11-23-set-based-enqueue-product/evidence/native",
-  "released_at": "2026-11-24T03:06:32.020076+00:00",
-  "started": "2026-11-24T02:50:08.245993+00:00"
-}

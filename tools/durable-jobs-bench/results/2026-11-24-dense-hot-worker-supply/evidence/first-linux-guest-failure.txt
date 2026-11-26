@@ -1,8 +1,0 @@
-The initial local guest stopped in /init before the stage test. The existing
-CPython overlay did not include libffi for its ctypes mount helper.
-
-ImportError: libffi.so.8: cannot open shared object file: No such file or directory
-Kernel panic - not syncing: Attempted to kill init! exitcode=0x00000100
-Linux proof timed out.
-
-The retry reuses the Linux library from the prior native CPU stage proof.

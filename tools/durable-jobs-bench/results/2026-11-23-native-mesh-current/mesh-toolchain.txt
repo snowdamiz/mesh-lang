@@ -1,7 +1,0 @@
-rustc 1.99.0 (b940084d7 2026-09-28)
-21.1.8
-compiler_revision=3828f20d2d6beb683868cce33e6dd1958365914b
-meshc 0.1.8
-e023d5944764878969ca40b7edb59c779498a435b44d308776076f4c7f2e8c19  /var/lib/durable-jobs-bench/native/cargo/release/meshc
-5111d214dcea114720c838d438686c79e061bf0b582e44239098cb741247ab95  /var/lib/durable-jobs-bench/native/cargo/release/libmesh_rt.a
-/var/lib/durable-jobs-bench/native/builds/mesh-stock-3828f20d/mesh: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=437d3d4bf903ea13d6b3d56796ee2536c63de0a2, for GNU/Linux 3.2.0, with debug_info, not stripped

@@ -1,4 +1,0 @@
-Initial offline replay stopped with KeyError: 'local_smoke' in audit.py, times(ledger).
-The native worker already supplies host and exit proof for every arm. The peer Go
-and Rust ledgers omit local_smoke and record returned_us rather than the Mesh
-adapter's acknowledged_us. The reducer now preserves the distinct peer field.

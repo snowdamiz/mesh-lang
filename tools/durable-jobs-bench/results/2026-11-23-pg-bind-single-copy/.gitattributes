@@ -1,2 +1,0 @@
-# Preserve spaces that mark empty context lines in the original Git patch.
-pg-bind-single-copy.patch -whitespace

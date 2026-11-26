@@ -1,6 +1,0 @@
-
-thread 'main' (112164242) panicked at compiler/mesh-rt/src/jobs/enqueue_spec_wire.rs:76:9:
-assertion `left == right` failed
-  left: 16
- right: 0
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

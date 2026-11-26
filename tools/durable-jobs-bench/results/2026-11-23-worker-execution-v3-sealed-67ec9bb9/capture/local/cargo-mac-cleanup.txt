@@ -1,7 +1,0 @@
-path=target/jobs-worker-execution-v3/cargo-mac/debug
-workspace_exit=0
-active_readers=0
-apparent_KiB_before=20013576
-filesystem_free_bytes_before=26968956928
-filesystem_free_bytes_after=34090573824
-retained_named_artifacts=macos-workspace-binaries/SHA256SUMS

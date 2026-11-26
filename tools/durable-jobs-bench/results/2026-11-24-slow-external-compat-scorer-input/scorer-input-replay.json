@@ -1,9 +1,0 @@
-{
-  "mesh_source": "tools/durable-jobs-bench/results/2026-11-24-slow-external-compat-river-export/evidence/native/setup-1d3a6478b2f746f5b77f80bd450f6c7e/00-slow/diagnostic-bulk-default",
-  "mesh_native_score_passed": true,
-  "mesh_jobs": 512,
-  "river_source": "tools/durable-jobs-bench/results/2026-11-23-slow-external-compat/evidence/native/setup-1c579b8d929846f4b4f7082956900532/00-slow/diagnostic-river-external/diagnostic-go/raw.tar.gz",
-  "river_payload_replay_passed": true,
-  "river_payload_bytes": 8431616,
-  "canonical_batch_sha256": "6d25c3dd06227662e5913eceb7745517b11b132af08a0e1fbaced0bcf6e72b4e"
-}

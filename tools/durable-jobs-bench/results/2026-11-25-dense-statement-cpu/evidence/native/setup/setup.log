@@ -1,5 +1,0 @@
-cpu_adapter.py: OK
-measure.py: OK
-mesh-launch.sh: OK
-smoke.py: OK
-stmt_cpu.c: OK

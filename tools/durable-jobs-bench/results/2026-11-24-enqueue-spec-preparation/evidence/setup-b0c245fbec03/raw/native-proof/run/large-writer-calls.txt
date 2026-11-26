@@ -1,1 +1,0 @@
-SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt|82
