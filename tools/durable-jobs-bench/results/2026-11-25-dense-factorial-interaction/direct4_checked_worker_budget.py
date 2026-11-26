@@ -46,37 +46,41 @@ def saturated_episodes(jobs, begin, end):
             for width, durations in spans.items()}
 
 
-def pickups_before_first_reply(jobs, begin, end):
-    """Replay the first two known publications during each distinct four-worker wait."""
+def base_reply_windows(jobs, begin, end):
+    """Preserve the identities of all four original waiters at each common interval."""
     changes = defaultdict(list)
     for job in jobs:
         for seq in (1, 2):
             start = max(begin, job[f"sent{seq}"])
             stop = min(end, job[f"ready{seq}"])
             if start < stop:
-                changes[start].append((1, job["worker"]))
-                changes[stop].append((-1, job["worker"]))
-    waiting = set()
+                changes[start].append((1, job["worker"], job["id"]))
+                changes[stop].append((-1, job["worker"], job["id"]))
+    waiting = {}
     windows = []
     previous = begin
     for stamp, changes_at_stamp in sorted(changes.items()):
         if len(waiting) == 4:
-            windows.append((previous, stamp))
-        for direction, worker in sorted(changes_at_stamp):
+            windows.append((previous, stamp, frozenset(waiting.values())))
+        for direction, worker, identifier in sorted(changes_at_stamp):
             if direction < 0:
-                waiting.remove(worker)
+                assert waiting.pop(worker) == identifier
             else:
                 assert worker not in waiting
-                waiting.add(worker)
+                waiting[worker] = identifier
         previous = stamp
     assert not waiting
+    return windows
 
+
+def pickups_before_first_reply(jobs, windows):
+    """Replay the first two known publications during each distinct four-worker wait."""
     ordered = sorted(jobs, key=lambda job: (job["pub_after"], job["id"]))
     results = {}
     for delay in (0, 500_000, 1_000_000):
         counts = Counter()
         unique = defaultdict(set)
-        for left, right in windows:
+        for left, right, _ in windows:
             chosen = []
             for job in ordered:
                 pickup = max(left, job["pub_after"]) + delay
@@ -94,6 +98,37 @@ def pickups_before_first_reply(jobs, begin, end):
                 unique[edge].update(fits)
         results[delay] = dict(counts=counts, distinct_jobs={k: len(v) for k, v in unique.items()})
     return results
+
+
+def resident_spares(jobs, windows, width, delay):
+    """Keep borrowed workers charged through release and remove moved jobs' old waits."""
+    ordered = sorted(jobs, key=lambda job: (job["pub_after"], job["id"]))
+    available = [0] * width
+    moved = set()
+    residence = carry = fully_checked = 0
+    for left, right, waiters in windows:
+        if moved.intersection(waiters):
+            continue
+        # One launch per spare per window, oldest available spare first.
+        for slot in sorted(range(width), key=available.__getitem__):
+            earliest = max(left, available[slot])
+            for job in ordered:
+                pickup = max(earliest, job["pub_after"]) + delay
+                if pickup >= right:
+                    break
+                if job["id"] in moved or pickup >= job["pick_lower"]:
+                    continue
+                assert job["id"] not in waiters and pickup < job["pick"]
+                moved.add(job["id"])
+                finish = pickup + job["release"] - job["pick"]
+                available[slot] = finish
+                residence += finish - pickup
+                carry += max(0, finish - right)
+                fully_checked += pickup + job["checked2"] - job["pick"] <= right
+                break
+    assert 0 <= carry <= residence and fully_checked <= len(moved)
+    return dict(distinct_jobs=len(moved), both_writes_checked_before_base_reply=fully_checked,
+                residence_ns=residence, residence_after_base_reply_ns=carry)
 
 
 def worker_budget(arm, phase, digest, decode, peers):
@@ -141,9 +176,12 @@ def worker_budget(arm, phase, digest, decode, peers):
             assert 0 <= post <= total
             replies.append(dict(send_to_ready_ns=total, definitely_after_commit_ns=post))
         assert sum(r["send_to_ready_ns"] for r in replies) <= handler
+        reply_windows = base_reply_windows(own, begin, end)
         owners.append(dict(pid=pid, effects=sum(begin < j["record2"] <= end for j in own),
                            middle_handler_ns=handler, saturated=saturated_episodes(own, begin, end),
-                           before_base_reply=pickups_before_first_reply(own, begin, end),
+                           before_base_reply=pickups_before_first_reply(own, reply_windows),
+                           resident_spares={delay: {n: resident_spares(own, reply_windows, n, delay) for n in (1, 2)}
+                                            for delay in (0, 500_000, 1_000_000)},
                            other_than_handler_ns=4*(end-begin)-handler,
                            reply_intervals=replies, published_before_pick_ns=area("pub_after", "pick_lower"),
                            workers_at_slowest_peer_cadence=handler / slowest,

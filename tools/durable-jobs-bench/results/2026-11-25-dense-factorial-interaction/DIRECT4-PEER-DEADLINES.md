@@ -189,3 +189,16 @@ The replay selects by publication order, using the job ID to break ties. Each hy
 | Reverse 2 | 151 | 113 | 7 | 1 |
 
 At this delay, both jobs could send a first write in 433 of 558 windows, but both could check its reply in only 28. The model assumes two usable connections and preserves each job's original service cost with extra requests in flight. Neither assumption has been verified. The qualification needs to follow work past the first base reply and count checked writes, outstanding connections and worker occupancy. Crediting two completed writes at pickup would overstate what the traces support. The reducer reports each runner at 0, 0.5 and 1 ms and deduplicates job IDs for its separate distinct-job counts.
+
+### What changes when a borrowed worker stays occupied?
+
+A second replay takes each job only once. Each spare becomes available again at pickup plus the job's recorded duration through scheduler release. At most one job per spare can start in each window. If a previously moved job appears among the four original waiters later, that entire later window is ineligible. This avoids borrowing from a base wait the moved job would no longer generate. The replay keeps the other three waits, original arrivals and service durations fixed and assumes a usable connection. It omits any new work a base worker might take in a vacated turn. The two configurations each start with their spares free at the middle-window boundary.
+
+| Runner, modeled 0.5 ms activation | Distinct jobs picked by one spare | Distinct jobs picked by two | Two-spare jobs with both replies checked before window end | Two-spare residence beyond window end |
+|---|---:|---:|---:|---:|
+| Forward 1 | 39 | 60 | 3 | 85.9% |
+| Forward 2 | 41 | 65 | 1 | 83.1% |
+| Reverse 1 | 40 | 65 | 6 | 78.8% |
+| Reverse 2 | 43 | 70 | 1 | 87.9% |
+
+The second spare increased distinct pickups by 21–27 per runner in this replay. Most borrowed-worker residence extended beyond the original wait window. The percentages charge the entire borrowed turn, including the tail of a turn still active at rank 768. They measure elapsed occupancy, which includes waiting. Only a native comparison can determine whether these extra jobs improve durable progress enough to pay the CPU cost.
