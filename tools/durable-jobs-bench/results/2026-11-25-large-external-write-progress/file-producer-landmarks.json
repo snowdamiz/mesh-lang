@@ -1,0 +1,136 @@
+{
+  "orders": [
+    {
+      "exact_original_gain_us": {
+        "drain": 35636,
+        "enqueue": 51147,
+        "last_claim_from_commit": 32768,
+        "last_effect_after_last_claim": 2764,
+        "submit": 86783,
+        "tail": 104
+      },
+      "faster_duplicate_gain_us": {
+        "drain": 24667,
+        "enqueue": 72517,
+        "last_claim_from_commit": -299,
+        "last_effect_after_last_claim": 20598,
+        "submit": 97184,
+        "tail": 4368
+      },
+      "faster_submit_duplicate": "control-b",
+      "measured_raw": {
+        "candidate": "21b647c22060b87d6a4a305e7d59acb6b8c5c6838d6458cca2ddb75864ecf334",
+        "control-a": "71fdba9a3764fc30b9172bcdad2eea5f1e2d0dbff0eabe42934703f881bbb16a",
+        "control-b": "d8333717b51c56328804b8b41485f1b7b89ac6249ffbe3c2b608f62c28a7a6b8",
+        "exact-file": "3d05455117dc894177d02c4a3e262c03c7da3eca8bf5d13d7e4f305424435a5b"
+      },
+      "order": 1
+    },
+    {
+      "exact_original_gain_us": {
+        "drain": 98808,
+        "enqueue": -20484,
+        "last_claim_from_commit": 105001,
+        "last_effect_after_last_claim": -7058,
+        "submit": 78324,
+        "tail": 865
+      },
+      "faster_duplicate_gain_us": {
+        "drain": -2462,
+        "enqueue": -1624,
+        "last_claim_from_commit": 30148,
+        "last_effect_after_last_claim": -28234,
+        "submit": -4086,
+        "tail": -4376
+      },
+      "faster_submit_duplicate": "control-b",
+      "measured_raw": {
+        "candidate": "44968f48b6e512e1e729afc17d1ad13c97a267731c31bbff1cb094d53e8183d8",
+        "control-a": "15e1e7fd5301eb023c337e996cdfa963e982627210de72bf45d758748b7b768d",
+        "control-b": "8f6abd123988f4db2bf626783932586afdd42c5b1c58882016e564c6a7c10e4b",
+        "exact-file": "dfb96b8953290890b6a463e41d7f14bcc1e1db151fe8ea2b0ba53250d484c4da"
+      },
+      "order": 2
+    },
+    {
+      "exact_original_gain_us": {
+        "drain": 42745,
+        "enqueue": 46457,
+        "last_claim_from_commit": 11210,
+        "last_effect_after_last_claim": 23990,
+        "submit": 89202,
+        "tail": 7545
+      },
+      "faster_duplicate_gain_us": {
+        "drain": -56182,
+        "enqueue": -14520,
+        "last_claim_from_commit": -64641,
+        "last_effect_after_last_claim": 6969,
+        "submit": -70702,
+        "tail": 1490
+      },
+      "faster_submit_duplicate": "control-b",
+      "measured_raw": {
+        "candidate": "13a2c0247e0e5735c854be50f4103655460d1ae4d6ec1a0032af6e711b4017cf",
+        "control-a": "2281ce48547a2918fec03160908e8531cfd2bedfa42830058af0ca017da34b7a",
+        "control-b": "3a7b87396c318966cde3f4f98ad2fb9c78ef95868f46c2018f4e5e3b1efee74c",
+        "exact-file": "425baeca46637abace2a18fc1cf5c15ab72fd8d3bb12faee90ba240257da4faa"
+      },
+      "order": 3
+    },
+    {
+      "exact_original_gain_us": {
+        "drain": 8777,
+        "enqueue": 57744,
+        "last_claim_from_commit": 28152,
+        "last_effect_after_last_claim": -17477,
+        "submit": 66521,
+        "tail": -1898
+      },
+      "faster_duplicate_gain_us": {
+        "drain": -24623,
+        "enqueue": -32156,
+        "last_claim_from_commit": -27807,
+        "last_effect_after_last_claim": 2333,
+        "submit": -56779,
+        "tail": 851
+      },
+      "faster_submit_duplicate": "control-b",
+      "measured_raw": {
+        "candidate": "af61be969d19025b4bb910a9792068549856fac837d4827214a8a59bf345f8cd",
+        "control-a": "8869e7ae939b192a133b597369ac769383613a6b0e6296ae29132b8179b2dd06",
+        "control-b": "de68d7a8ea643b434ac8120eaf35a9ad1253648d0aea7d1f081a2414cd2e5ea8",
+        "exact-file": "132aad156c7d7e31114d2c10ed4ede4b19d3d8c2bdae3b8ac6a3f8d16c5405b8"
+      },
+      "order": 4
+    },
+    {
+      "exact_original_gain_us": {
+        "drain": -56145,
+        "enqueue": 25330,
+        "last_claim_from_commit": -74450,
+        "last_effect_after_last_claim": 17724,
+        "submit": -30815,
+        "tail": 581
+      },
+      "faster_duplicate_gain_us": {
+        "drain": 541,
+        "enqueue": 24938,
+        "last_claim_from_commit": -25355,
+        "last_effect_after_last_claim": 20020,
+        "submit": 25479,
+        "tail": 5876
+      },
+      "faster_submit_duplicate": "control-b",
+      "measured_raw": {
+        "candidate": "e97f9c6ce32227b8c37e811b597988f5ac10cb715ef53db54539df3bf2e3a0a3",
+        "control-a": "5d525ddfc019055c4f611f7488d1ded585a8335ff04246e8e11dc0d07d1d5246",
+        "control-b": "d6d2d35910c4f8fe4b7014f02742b5392dd7688ae382117acec89e27c4be7511",
+        "exact-file": "9405dbda8684cdfb54717d8813b249a000c3386d14390523a6d4ec11511e9e6e"
+      },
+      "order": 5
+    }
+  ],
+  "release_sha256": "f159c190c7eebcbe90ad36fc15d565763205c28721479b71acacaa5cfd964c92",
+  "replay_sha256": "cf5086485c78c7e8170fe47dc1f59b8a6aca8fe8744c6a29c2846c6dfbea011a"
+}
