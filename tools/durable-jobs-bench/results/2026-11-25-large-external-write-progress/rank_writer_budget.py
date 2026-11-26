@@ -65,15 +65,24 @@ def measure(archive, trace_name):
     assert signature == "file_rank_probe_v1" and int(pid) == doc["session"]["pid"]
     assert int(count) == len(lines) - 1 == 1093
     events = []
+    client_marks = []
     previous = 0
     for line in lines[1:]:
-        prefix, label, start, _, _, end = line.split()
+        prefix, label, start, client_cpu, _, end = line.split()
         start, end = int(start), int(end)
         assert prefix == "file_rank" and previous <= start <= end
         previous = end
         if label in EDGES:
             events.append((label, start, end))
+        if label in ("file_input", "prepare_start", "release_ready"):
+            client_marks.append((label, int(client_cpu)))
     assert [point[0] for point in events] == list(EDGES) * 64
+    assert [label for label, _ in client_marks] == ["file_input"] + ["prepare_start", "release_ready"] * 64
+    assert all(a[1] <= b[1] for a, b in zip(client_marks, client_marks[1:]))
+    starts = [cpu for label, cpu in client_marks if label == "prepare_start"]
+    releases = [cpu for label, cpu in client_marks if label == "release_ready"]
+    ingress_cpu = starts[0] - client_marks[0][1]
+    between_cpu = [start - release for release, start in zip(releases[:-1], starts[1:], strict=True)]
     full_calls = []
     whole = send = pre_reply = tail = 0
     for i in range(0, len(events), 4):
@@ -85,14 +94,15 @@ def measure(archive, trace_name):
         tail += ready[2] - bind[1]
     overlap = max(0, elapsed_ns - send - tail)
     assert elapsed_ns <= whole and overlap <= pre_reply
-    return arm, dict(spikes=executor_spikes(stmt, full_calls), writer_wall_upper_ns=whole, executor_floor_ns=elapsed_ns,
+    return arm, dict(ingress_cpu_ns=ingress_cpu, between_cpu_ns=between_cpu,
+                     spikes=executor_spikes(stmt, full_calls), writer_wall_upper_ns=whole, executor_floor_ns=elapsed_ns,
                      wall_outside_executor_upper_ns=whole - elapsed_ns,
                      sent_to_bind_visible_upper_ns=pre_reply,
                      executor_within_sent_to_bind_lower_ns=overlap,
                      executor_share_lower_percent=100 * overlap / pre_reply)
 
 
-def main(folder, show_spikes):
+def main(folder, show_spikes, show_client):
     release = (folder / "controller-release.json").read_bytes()
     assert sha256(release).hexdigest() == RELEASE and json.loads(release)["exit_status"] == 1
     raw = folder / "raw.tar.gz"
@@ -104,6 +114,13 @@ def main(folder, show_spikes):
     assert len(results) == 12
     for group in range(1, 7):
         assert sorted(k.split("-", 2)[2] for k in results if k.startswith(f"g{group}-")) == ["on-a", "on-b"]
+    if show_client:
+        print("arm             first_input_to_prepare  between_calls  ranks_2_to_16  ranks_17_to_64  (broker CPU-ms)")
+        for arm, values in sorted(results.items()):
+            between = values["between_cpu_ns"]
+            row = (values["ingress_cpu_ns"], sum(between), sum(between[:15]), sum(between[15:]))
+            print(f"{arm:15}", *(f"{ns / 1e6:14.3f}" for ns in row))
+        return
     if show_spikes:
         print("arm              max_SQL_ms  possible_ranks  saved_ms_if_capped_at_5 / 10 / 15_ms")
         for arm, values in sorted(results.items()):
@@ -124,6 +141,8 @@ def main(folder, show_spikes):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path)
-    parser.add_argument("--spikes", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--spikes", action="store_true")
+    mode.add_argument("--client", action="store_true")
     args = parser.parse_args()
-    main(args.evidence, args.spikes)
+    main(args.evidence, args.spikes, args.client)

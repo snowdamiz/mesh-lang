@@ -32,6 +32,12 @@ Even removing the worst SQL execution entirely would save at most **12.608–42.
 
 These bounds use the backend’s count, sum, minimum, maximum and population standard deviation, plus each client call’s wall upper bound. For a threshold T above the measured minimum, subtract T only from the portion of each execution above it. The maximum possible saving is bounded by summing the positive excess of the individual wall bounds, capped by the largest SQL time. The variance supplies a lower bound because for an execution x, (x − min)(x − T) is at most (max − min) times the positive excess above T. The reducer rounds bounds outwards. Even the upper bound assumes one-for-one transfer of saved executor elapsed to enqueue, with no extra work. Run with `--spikes` for the per-arm rank sets and bounds. The clusters’ initial WAL offsets and individual segment allocations are unavailable from these traces.
 
+## Broker CPU before the first write and between later calls
+
+The first FILE command through the start of Rust admission preparation used **120.060–139.337 broker-thread CPU-ms**. The 63 intervals from receipt of the previous savepoint release to the start of the next preparation used **120.047–125.108 CPU-ms** in total. These windows are disjoint. The first includes reading and parsing the 33,561,352-byte file, request validation, transaction setup and the first collection. The later windows include processing the prior receipts, collecting and encoding further specs, and decoding the next batch before the preparation marker. Run the reducer with `--client` to inspect the same-thread clock differences from all 12 arms.
+
+The first 15 of those later intervals used 49.915–54.370 CPU-ms per submission. Even eliminating all that CPU would fall short of 60 ms on a one-for-one transfer to enqueue. The remaining 48 intervals used 69.064–72.311 CPU-ms. Attributing a benefit to a specific encoder or file reader requires measuring its share of the corresponding window on the matched Linux images. The archived observer failed its perturbation gates.
+
 ## Release and reproducibility
 
 Canonical release `04e0e316` is exit 1. All 30 arms ran and exported; strict replay rejected all 12 recorded arms at the per-segment CPU upper bound. The largest enqueue and submit spreads between identical OFF arms were 121.672 and 222.888 ms against the 15 ms limits. The wall-time calculation describes the observed release and supplies no stock-path performance qualification.
