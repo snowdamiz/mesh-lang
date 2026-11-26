@@ -48,7 +48,20 @@ def main():
     summary = read(FROZEN / "summary.json")
     savings = summary["profiles"]["large"]["cpu_saving_vs_faster_stock_ms"]
     assert len(savings) == 6
-    print(json.dumps(dict(frames=eligible, input_bytes=total_input,
+    peer_path = ROOT / "2026-11-25-public-large-file-external/grant-parser-retry/evidence/replay.json"
+    peer_bytes = peer_path.read_bytes()
+    assert hashlib.sha256(peer_bytes).hexdigest() == "e633ff4fcafddf0f05c66affdcc931aa5bef4c829e64b38f15c8d1d2d07694a1"
+    budgets = []
+    for group in json.loads(peer_bytes)["groups"]:
+        clocks = group["clocks"]
+        current = clocks["file"]
+        submit_savings = {
+            peer: round(max(0, current["submit_ms"] - clocks[peer]["submit_ms"] / 1.2), 3)
+            for peer in ("river", "oban", "apalis")
+        }
+        budgets.append(dict(group=group["group"], extra_ms_for_1_2x_submit=submit_savings,
+                            ms_to_tie_oban_drain=round(current["drain_ms"] - clocks["oban"]["drain_ms"], 3)))
+    print(json.dumps(dict(fixed_drain_sensitivity=budgets, frames=eligible, input_bytes=total_input,
                           eligible_string_bytes=total_payload, stock_output_sha256=STOCK_DIGEST,
                           predecessor_saving_ms=savings,
                           extra_saving_for_40ms_median=40-statistics.median(savings)),

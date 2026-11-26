@@ -1,6 +1,53 @@
 {
   "eligible_string_bytes": 33554432,
   "extra_saving_for_40ms_median": 5.458367187500002,
+  "fixed_drain_sensitivity": [
+    {
+      "extra_ms_for_1_2x_submit": {
+        "apalis": 698.058,
+        "oban": 43.267,
+        "river": 0
+      },
+      "group": 1,
+      "ms_to_tie_oban_drain": 197.606
+    },
+    {
+      "extra_ms_for_1_2x_submit": {
+        "apalis": 616.583,
+        "oban": 0,
+        "river": 0
+      },
+      "group": 2,
+      "ms_to_tie_oban_drain": 163.223
+    },
+    {
+      "extra_ms_for_1_2x_submit": {
+        "apalis": 635.197,
+        "oban": 0,
+        "river": 0
+      },
+      "group": 3,
+      "ms_to_tie_oban_drain": 123.382
+    },
+    {
+      "extra_ms_for_1_2x_submit": {
+        "apalis": 931.646,
+        "oban": 254.788,
+        "river": 0
+      },
+      "group": 4,
+      "ms_to_tie_oban_drain": 354.438
+    },
+    {
+      "extra_ms_for_1_2x_submit": {
+        "apalis": 596.8,
+        "oban": 0,
+        "river": 0
+      },
+      "group": 5,
+      "ms_to_tie_oban_drain": 122.907
+    }
+  ],
   "frames": 64,
   "input_bytes": 33566080,
   "predecessor_saving_ms": [
