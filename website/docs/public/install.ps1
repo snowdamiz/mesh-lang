@@ -298,20 +298,21 @@ function Invoke-SkillConfiguration {
     param([switch]$AcceptDefaults)
 
     $meshc = Join-Path $BinDir 'meshc.exe'
-    # Windows PowerShell represents captured native stderr as error records.
+    # Windows PowerShell represents captured native stderr as error records and
+    # clears $? for them, so only the exit code shows whether refresh failed.
     $PSNativeCommandUseErrorActionPreference = $false
     $ErrorActionPreference = 'Continue'
+    $global:LASTEXITCODE = $null
     $output = & $meshc skills refresh 2>&1
-    $refreshed = $?
     $status = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
 
     $lines = ($output -join "`n") -split '\r?\n'
     # Published compilers predating skills report this specific Clap error.
-    if (-not $refreshed -and $status -eq 2 -and $lines -ccontains "error: unrecognized subcommand 'skills'") {
+    if ($status -eq 2 -and $lines -ccontains "error: unrecognized subcommand 'skills'") {
         return
     }
-    if (-not $refreshed) {
+    if ($status -ne 0) {
         Fail-Installer (($lines + "error: Mesh skill refresh failed (exit $status).") -join "`n")
     }
     foreach ($line in $lines) {
