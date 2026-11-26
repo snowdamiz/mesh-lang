@@ -213,3 +213,18 @@ The raw-receive observer selects an application operation after connection check
 | Reverse, runner 1 | 257.357 ms | 15.202 ms (5.9%) | 273–277 | 4.6–15.2 ms | 36.4–55.6 ms |
 
 The overlap columns use the middle 512 durable effects. The eight phases are equally spaced within each period. Both masks select starts during one quarter of elapsed time. A longer continuous window covers more four-way overlap on these schedules because the four writes often start at different times. With the 8-in-32 ms mask, the whole-arm counts ranged from 243–292 operations forward and 251–287 reverse across the eight phases. Those counts do not establish equal recorder CPU. Genuine socket EAGAIN, available fresh work and a recently returned connection impose further conditions. A small positive or zero in the sealed native run cannot be scaled into a full-run wait estimate using the nominal duty cycle.
+
+### Can a fifth connection enter the hot pool?
+
+Release `eb12dc74` stopped on the forward measured OFF-b TLS census. Its forward ON archive contains 244 sampled writes on runner 0, all of which encountered EAGAIN before CommandComplete. ReadyForQuery was already buffered when the client reached it in every write. The warmup recorded another 242 pre-CommandComplete EAGAINs. Four distinct application backends accounted for each arm's waits. Counting the receive records by outstanding leases gives the following whole-arm distribution.
+
+| Outstanding leases when the read blocked | Recently checked-in idle connections | Measured reads | Warmup reads |
+|---:|---:|---:|---:|
+| 1 | 3 | 5 | 4 |
+| 2 | 2 | 9 | 9 |
+| 3 | 1 | 28 | 21 |
+| 4 | 0 | 202 | 208 |
+
+The pool takes the most recently returned connection first. After the initial 500 ms health window expires, four synchronous workers returning healthy connections can maintain at most four hot handles if no other caller uses the pool. At four concurrent leases, the remaining twelve connections require the ordinary checkout health check. A spare that requires an already-hot fifth connection cannot start in this state. The held fixture established that a spare *could* have a hot connection under its own startup and fault schedule. The ordinary measured arm had 20 sampled middle-window intersections of four pre-response waits with fresh jobs published, covering 14.770 ms in total. Each had zero hot idle connections. That duration includes scheduling between kernel readiness and userspace read completion. Neither this partial release nor the historical traces establish a throughput gain.
+
+The older checked-return trace also prices the first ordinary checkouts. On each runner, the first four pool entries belonged to four distinct workers, and all four writes had been sent before any of their checked replies returned. Pool entry to the start of the send ranged from 0.509–6.363 ms in the forward block and 0.357–6.709 ms in reverse. The median for later writes was 0.003 ms on each of the four runner/block pairs. These startup intervals include checkout, caller preparation and scheduling. A spare using a fifth or sixth connection would need its own checked acquisition, which may finish after the first base worker returns. The archives measure neither the extra lease's first-use cost during sustained work nor how often it would stay warm. [Checked-return reducer](direct4_checked_worker_budget.py) · [Pool checkout](../../../../compiler/mesh-rt/src/db/pool.rs)

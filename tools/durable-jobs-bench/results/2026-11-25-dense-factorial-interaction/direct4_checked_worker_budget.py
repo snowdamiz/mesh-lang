@@ -6,6 +6,7 @@ import runpy
 import tarfile
 from collections import Counter, defaultdict
 from pathlib import Path
+from statistics import median
 
 from direct4_peer_deadlines import warm_river
 
@@ -218,8 +219,16 @@ def worker_budget(arm, phase, digest, decode, peers):
             replies.append(dict(send_to_ready_ns=total, definitely_after_commit_ns=post))
         assert sum(r["send_to_ready_ns"] for r in replies) <= handler
         reply_windows = base_reply_windows(own, begin, end)
+        writes = sorted((j[f"pool{n}"], j[f"send{n}"], j[f"sent{n}"], j[f"ready{n}"], j["worker"])
+                        for j in own for n in (1, 2))
+        first = writes[:4]
+        startup = dict(first_four_pool_to_send_ns=[send-pool for pool, send, *_ in first],
+                       distinct_workers=len({write[4] for write in first}),
+                       all_sent_before_first_ready=max(write[2] for write in first) < min(write[3] for write in first),
+                       later_median_pool_to_send_ns=median(send-pool for pool, send, *_ in writes[4:]))
         sample_offset = next(i for i, proc in enumerate(runners) if proc["pid"] == pid) * 4_000_000
         owners.append(dict(pid=pid, effects=sum(begin < j["record2"] <= end for j in own),
+                           checkout_startup=startup,
                            reply_window_ns=sum(b-a for a, b, _ in reply_windows),
                            sample_offset_ns=sample_offset,
                            sampled_reply_bounds=sampled_reply_coverage(own, begin, end, 2_000_000, sample_offset),
