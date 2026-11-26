@@ -90,6 +90,27 @@ In TIMING `d20a6532` all 60 FILE arms finished. Seven of 90 nuisance measurement
 
 For each clock the reference is the fastest of exact stock and both same-image OFF controls. Each enqueue gain fell short of 60 ms. Each submit gain fell below its 5% floor or duplicate spread. The encoder itself saved **38.7–45.0 CPU-ms** against the faster instrumented stock across the six matched blocks. The subsequent accepted re-encodes used **11.3–12.8 CPU-ms** on the fast lane. Even crediting all of them gives a combined **50.0–56.8 CPU-ms** within those encoder visits. A collector change would also need measured savings elsewhere to explain a 60 ms enqueue gain at one-for-one CPU-to-wall transfer. This release closes standalone advancement of the encoder.
 
+## What transferred to the ordinary FILE split writer?
+
+SETUP `80b79e34` passed all 18 semantics cases and the OFF/ON/OFF product controls. TIMING `ced4843e` then ran 18 fresh arms on the public EXTERNAL workload. All six ON arms took longer to enqueue than the faster stock control. The pilot failed its enqueue and submit gates in every block. Both official releases exited zero.
+
+The table adds the ON-minus-control elapsed times in the four middle columns to recover each enqueue difference in milliseconds. Each row uses the same faster-enqueue OFF arm throughout. The writer includes its nested catalog and routine checks. The availability probe column covers its server execution. Other SQL covers the admission fence, both savepoint operations and the independent product insert. Remaining enqueue wall includes broker preparation, PostgreSQL Bind, the parts of each exchange outside recorded execution, and the durable commit. These counters cannot allocate that column to any one operation.
+
+| Block | Enqueue difference | Writer | Availability probe | Other recorded SQL | Remaining wall | Jobs still unstamped at 446.855 ms | Durable effects by then |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | +248.847 | +131.986 | +2.353 | +0.637 | +113.871 | 25 | 31 |
+| 2 | +124.579 | +83.102 | +1.957 | −0.527 | +40.047 | 24 | 32 |
+| 3 | +64.921 | +44.813 | +2.157 | −0.453 | +18.404 | 24 | 40 |
+| 4 | +145.639 | +107.476 | +2.265 | +0.373 | +35.525 | 25 | 32 |
+| 5 | +3.709 | +1.635 | +1.930 | −0.687 | +0.831 | 22 | 39 |
+| 6 | +102.226 | +67.383 | +2.640 | −1.135 | +33.338 | 24 | 33 |
+
+**Price for a writer-only repair.** Give the product the largest split-JSON writer saving observed in the separate component, 58.438 ms over stock, and remove the entire availability executor. Hold the rest of each product arm fixed. Even the most favorable remaining delta, block 5's +0.144 ms outside those two executors, leaves at most 58.294 ms of enqueue gain. The observed pilot required more than 104.783 ms to exceed the stock duplicate spread. A new comparison could have a different spread. Cutting the probe or matching the component writer cost alone cannot explain a pass on this series.
+
+**Drain has a separate limit.** The last two columns use the loosest of the five historical Oban deadlines for 20% higher drain throughput, measured from each ON arm's own durable enqueue. The final settlement missed it by 216.280–270.893 ms. Advancing the producer while preserving that drain schedule leaves 22–25 jobs still awaiting their first claim stamp at the deadline. These are historical targets for the next consumer change. The split pilot itself ran only Mesh.
+
+Run [split_product_cost.py](split_product_cost.py) with the TIMING evidence directory. It checks the raw archive and strict replay digests, reconstructs enqueue and drain from each ledger, and joins the 18 producer statement exports to the official arms.
+
 ## Release and reproducibility
 
 Canonical release `04e0e316` is exit 1. All 30 arms ran and exported; strict replay rejected all 12 recorded arms at the per-segment CPU upper bound. The largest enqueue and submit spreads between identical OFF arms were 121.672 and 222.888 ms against the 15 ms limits. The wall-time calculation describes the observed release and supplies no stock-path performance qualification.
