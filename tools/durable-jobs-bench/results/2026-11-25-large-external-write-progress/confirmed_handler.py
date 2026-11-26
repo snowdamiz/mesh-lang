@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tarfile
 
+from activation_arrival import arrival_bounds
 from factorial_deadlines import checked_json
 from replay import replay as baseline
 
@@ -49,6 +50,7 @@ def read_arm(raw, digest, score):
     before_first_write_removed = [[], []]
     entry_to_first_removed = []
     censored = []
+    activation_turns = []
     for i, (pid, group) in enumerate(turns):
         assert 1 <= len(group) <= 8
         earliest = max(j["claimed_us"] for j in group)
@@ -61,6 +63,7 @@ def read_arm(raw, digest, score):
         else:
             bounds = (earliest, latest)
             censored.append(len(group))
+        activation_turns.append((group[0]["claimed_us"] - zero, earliest - zero, bounds[1] - zero))
         for j in group:
             entry, first, effect = (j[k] for k in ("entered_us", "attempt_committed_us", "effect_committed_us"))
             assert entry <= first <= effect <= j["settled_us"]
@@ -73,6 +76,7 @@ def read_arm(raw, digest, score):
     assert last_receipt == round(score["confirmed_ms"] * 1000)
     assert last_effect == round(score["landmarks"]["effect64_from_commit_ms"] * 1000)
     return dict(raw_sha256=digest, earlier_turn_sizes_with_bounded_receipt=censored,
+                activation_arrival=arrival_bounds(activation["execution_ms"], activation_turns),
                 last_confirmation_us=last_receipt, last_effect_us=last_effect,
                 last_effect_without_entry_to_first_us=max(entry_to_first_removed),
                 last_effect_without_receipt_to_entry_us=list(map(max, receipt_to_entry_removed)),

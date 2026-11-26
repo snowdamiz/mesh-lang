@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tarfile
 
+from activation_arrival import arrival_bounds
 
 CUSTODY = "b5b444052e2729d6038aa552a55ddfa69c33c1a4"
 PACKET = "tools/durable-jobs-bench/results/2026-11-25-public-large-external-prepared-4m-16m-stage-recovery"
@@ -29,6 +30,24 @@ def packed_activation(owners, cutoff):
                 first_observed_stamp_us=ordered[0]["first_activation_stamp_us"],
                 packed_finish_from_first_stamp_us=finish,
                 latest_first_stamp_for_cutoff_us=cutoff - finish)
+
+
+def two_activation_lanes(turns):
+    first_stamp = turns[0]["first_activation_stamp_us"]
+    estimates = {}
+    for endpoint in ("last_activation_stamp_us", "confirmed_us"):
+        available = [first_stamp, first_stamp]
+        last_finish = 0
+        for turn in turns:
+            lane = available.index(min(available))
+            duration = turn[endpoint] - turn["first_activation_stamp_us"]
+            if endpoint == "last_activation_stamp_us":
+                duration = max(0, duration - 1000)
+            available[lane] += duration
+            tail = turn["last_settlement_us"] - turn["confirmed_us"]
+            last_finish = max(last_finish, available[lane] + tail)
+        estimates[endpoint] = last_finish
+    return estimates
 
 
 def measure(raw, arm, cutoff):
@@ -78,11 +97,16 @@ def measure(raw, arm, cutoff):
             crossing_sample_end_us=crossing["end_us"] - zero,
             crossing_sample_processes=crossing["processes"])
     owners.sort(key=lambda o: o["confirmed_us"])
+    activation_turns = sorted((o["first_activation_stamp_us"], o["last_activation_stamp_us"],
+                               o["confirmed_us"]) for o in owners)
     confirmed_late = sum(8 for owner in owners if owner["confirmed_us"] > cutoff)
     effect_late = sum(job["effect_committed_us"] - zero > cutoff for job in jobs)
     terminal_late = sum(job["settled_us"] - zero > cutoff for job in jobs)
     assert confirmed_late <= effect_late <= terminal_late
     return dict(raw_sha256=arm["raw_sha256"], owners=owners, unconfirmed_jobs=confirmed_late,
+                activation_arrival=arrival_bounds(activation["execution_ms"], activation_turns),
+                two_lanes_all_ready_at_first_stamp_finish_us=two_activation_lanes(
+                    sorted(owners, key=lambda o: o["first_activation_stamp_us"])),
                 packed_activation=packed_activation(owners, cutoff),
                 first_activation_observation=first_activation_observation,
                 confirmed_without_effect=effect_late-confirmed_late,

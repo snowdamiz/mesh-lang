@@ -71,6 +71,17 @@
         }
       ],
       "unconfirmed_jobs": 24,
+      "activation_arrival": {
+        "backend_execution_us_floor": 834930,
+        "aggregate_before_own_first_stamp_us_min": 591599,
+        "max_execution_if_no_overlap_with_preceding_turn_us": 575407,
+        "aggregate_lead_before_preceding_last_stamp_us_min": 259523,
+        "longest_single_lead_us_min": 37074
+      },
+      "two_lanes_all_ready_at_first_stamp_finish_us": {
+        "last_activation_stamp_us": 451144,
+        "confirmed_us": 473564
+      },
       "packed_activation": {
         "interior_total_us": 175000,
         "first_observed_stamp_us": 257076,
@@ -166,6 +177,17 @@
         }
       ],
       "unconfirmed_jobs": 16,
+      "activation_arrival": {
+        "backend_execution_us_floor": 887013,
+        "aggregate_before_own_first_stamp_us_min": 604118,
+        "max_execution_if_no_overlap_with_preceding_turn_us": 567376,
+        "aggregate_lead_before_preceding_last_stamp_us_min": 319637,
+        "longest_single_lead_us_min": 45662
+      },
+      "two_lanes_all_ready_at_first_stamp_finish_us": {
+        "last_activation_stamp_us": 420967,
+        "confirmed_us": 454469
+      },
       "packed_activation": {
         "interior_total_us": 207000,
         "first_observed_stamp_us": 209481,
@@ -261,6 +283,17 @@
         }
       ],
       "unconfirmed_jobs": 24,
+      "activation_arrival": {
+        "backend_execution_us_floor": 480479,
+        "aggregate_before_own_first_stamp_us_min": 239303,
+        "max_execution_if_no_overlap_with_preceding_turn_us": 587574,
+        "aggregate_lead_before_preceding_last_stamp_us_min": 0,
+        "longest_single_lead_us_min": 0
+      },
+      "two_lanes_all_ready_at_first_stamp_finish_us": {
+        "last_activation_stamp_us": 344565,
+        "confirmed_us": 359383
+      },
       "packed_activation": {
         "interior_total_us": 163000,
         "first_observed_stamp_us": 132398,

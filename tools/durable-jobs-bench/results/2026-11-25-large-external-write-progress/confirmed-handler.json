@@ -12,6 +12,13 @@
       "lane": "consumer",
       "raw_sha256": "3b4b15e3aad92e1ac513d0be5f7705d754cf0e9054d159df31c3d6dc47905eaf",
       "earlier_turn_sizes_with_bounded_receipt": [],
+      "activation_arrival": {
+        "backend_execution_us_floor": 677763,
+        "aggregate_before_own_first_stamp_us_min": 463009,
+        "max_execution_if_no_overlap_with_preceding_turn_us": 538103,
+        "aggregate_lead_before_preceding_last_stamp_us_min": 139660,
+        "longest_single_lead_us_min": 19951
+      },
       "last_confirmation_us": 479384,
       "last_effect_us": 527481,
       "last_effect_without_entry_to_first_us": 510002,
@@ -36,6 +43,13 @@
       "lane": "both",
       "raw_sha256": "5c6d7e28d2f209452d380b4d7f498d42aae73a9f4020500bf75eed1f6da5ad60",
       "earlier_turn_sizes_with_bounded_receipt": [],
+      "activation_arrival": {
+        "backend_execution_us_floor": 550094,
+        "aggregate_before_own_first_stamp_us_min": 335078,
+        "max_execution_if_no_overlap_with_preceding_turn_us": 516906,
+        "aggregate_lead_before_preceding_last_stamp_us_min": 33188,
+        "longest_single_lead_us_min": 4741
+      },
       "last_confirmation_us": 480122,
       "last_effect_us": 531631,
       "last_effect_without_entry_to_first_us": 521829,
@@ -60,6 +74,13 @@
       "lane": "consumer",
       "raw_sha256": "4bb04eb88301ab6e94b626f943b0b4dd511018855def9fade747968da541345f",
       "earlier_turn_sizes_with_bounded_receipt": [],
+      "activation_arrival": {
+        "backend_execution_us_floor": 416687,
+        "aggregate_before_own_first_stamp_us_min": 207407,
+        "max_execution_if_no_overlap_with_preceding_turn_us": 548653,
+        "aggregate_lead_before_preceding_last_stamp_us_min": 0,
+        "longest_single_lead_us_min": 0
+      },
       "last_confirmation_us": 500438,
       "last_effect_us": 549044,
       "last_effect_without_entry_to_first_us": 531982,
@@ -86,6 +107,13 @@
       "earlier_turn_sizes_with_bounded_receipt": [
         8
       ],
+      "activation_arrival": {
+        "backend_execution_us_floor": 647937,
+        "aggregate_before_own_first_stamp_us_min": 391120,
+        "max_execution_if_no_overlap_with_preceding_turn_us": 530053,
+        "aggregate_lead_before_preceding_last_stamp_us_min": 117884,
+        "longest_single_lead_us_min": 14735
+      },
       "last_confirmation_us": 478987,
       "last_effect_us": 523107,
       "last_effect_without_entry_to_first_us": 510384,
