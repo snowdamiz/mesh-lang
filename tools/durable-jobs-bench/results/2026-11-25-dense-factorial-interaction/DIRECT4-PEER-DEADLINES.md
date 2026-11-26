@@ -44,6 +44,20 @@ The first handler entry in a grant witnesses that the runner had received the ch
 
 Run `python3 -B direct4_peer_deadlines.py` in this directory for all 24 deadline comparisons and the individual arm hashes. It checks 1,024 jobs and 2,048 independent application transactions in each of the eight source archives. Jobs with a claim stamp in the cutoff's ambiguous millisecond are reported separately. The [Direct4 idle CPU analysis](DIRECT4-IDLE-BUDGET.md) covers the distinct runner cost question.
 
+## Durable write cadence while both owners have work
+
+For each second-write commit from rank 257 through 768, the replay counts how many of the two runners had at least four jobs from checked batches still awaiting their second write. It assigns simultaneous commits to the state immediately before their timestamp. Wall time in the same state divided by its commit count gives the aggregate cadence. Each column partitions all 512 writes and the entire interval.
+
+| Runners with at least four such jobs | Forward time / writes | Forward µs per write | Reverse time / writes | Reverse µs per write |
+|---|---:|---:|---:|---:|
+| Neither | 25.767 ms / 29 | 889 | 31.595 ms / 32 | 987 |
+| One | 149.084 ms / 198 | 753 | 158.367 ms / 215 | 737 |
+| Both | 163.036 ms / 285 | 572 | 155.293 ms / 265 | 586 |
+
+Applying the fastest observed cadence in each arm to all 512 writes gives **292.893 ms forward and 300.038 ms reverse**. Even the slowest of the six historical warm River intervals finished in **227.280 ms**. A stricter count using four checked jobs per runner whose handlers had yet to enter gives 111 commits in 67.376 ms forward and 122 in 72.846 ms reverse.
+
+These rates describe the released schedule. Supply and completions influence each other, and the ledger cannot show which checked jobs a worker could run immediately. Closing the whole historical middle gap would require a change that also improves on the observed cadence when both owners have work. A fresh comparison can measure whether faster settlement or earlier refill changes that cadence.
+
 ## Would a 32-row claim keep four workers supplied?
 
 A larger ceiling can change a full grant even when the owner has no new capacity to add after BEGIN. The two Direct4 runs reached the 16-row ceiling 23 and 24 times. For each full grant the replay keeps all preceding grants, credits every durable settlement through the end of the stamp's millisecond and respects both seat limits, same-stamp peer grants and remaining jobs. This gives an optimistic bound on room at the decision. The archives omit the client's checked credit at that instant.

@@ -3,7 +3,7 @@ import hashlib
 import io
 import json
 import tarfile
-from collections import Counter
+from collections import Counter, defaultdict
 
 from direct4_idle_budget import blob
 from warm_river_occupancy import SERIES, STAGES
@@ -44,30 +44,40 @@ def owner_supply(jobs, begin, end, stop_field):
     for job in jobs:
         key = job["worker_pid"], job["claimed_us"]
         received[key] = min(received.get(key, job["entered_us"]), job["entered_us"])
-    events = []
+    events = defaultdict(Counter)
+    writes = Counter()
     for job in jobs:
-        start = max(begin, received[job["worker_pid"], job["claimed_us"]])
+        pid = job["worker_pid"]
+        start = max(begin, received[pid, job["claimed_us"]])
         stop = min(end, job[stop_field])
         if start < stop:
-            events.extend(((start, job["worker_pid"], 1), (stop, job["worker_pid"], -1)))
-    left, right = sorted({r["worker_pid"] for r in jobs})
+            events[start][pid] += 1
+            events[stop][pid] -= 1
+        effect = job["effect_committed_us"]
+        if begin < effect <= end:
+            writes[effect] += 1
+    owners = sorted({r["worker_pid"] for r in jobs})
+    assert len(owners) == 2
     live = Counter()
-    both = neither = four_each = 0
+    occupied_us = Counter()
+    supply = [dict(wall_us=0, effects=0) for _ in range(3)]
     previous = begin
-    for stamp, pid, delta in sorted(events):
+    for stamp in sorted({begin, end, *events, *writes}):
+        # Credit a write to the interval ending at its commit, before applying
+        # any entries or completions with the same timestamp.
         duration = stamp - previous
-        if live[left] and live[right]:
-            both += duration
-            if min(live[left], live[right]) >= 4:
-                four_each += duration
-        elif not (live[left] or live[right]):
-            neither += duration
-        live[pid] += delta
+        occupied_us[sum(live[p] > 0 for p in owners)] += duration
+        bucket = supply[sum(live[p] >= 4 for p in owners)]
+        bucket["wall_us"] += duration
+        bucket["effects"] += writes[stamp]
+        live.update(events[stamp])
+        assert all(live[p] >= 0 for p in owners)
         previous = stamp
     assert not any(live.values())
-    neither += end - previous
-    return dict(both_us=both, neither_us=neither, one_us=end - begin - both - neither,
-                at_least_four_each_us=four_each)
+    assert sum(b["wall_us"] for b in supply) == end - begin
+    assert sum(b["effects"] for b in supply) == sum(writes.values())
+    return dict(both_us=occupied_us[2], neither_us=occupied_us[0], one_us=occupied_us[1],
+                at_least_four_each_us=supply[2]["wall_us"], by_owners_with_four=supply)
 
 
 def census(jobs, deadline):
