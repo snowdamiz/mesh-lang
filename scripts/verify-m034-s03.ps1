@@ -981,8 +981,8 @@ try {
         Assert-LogContains -Phase 'install' -Needle "Optional: run 'meshc skills setup'" -LogPath $LastLogPath
     }
 
-    Invoke-LoggedCommand -Phase 'version' -Label '05-meshc-version' -Display 'installed meshc.exe --version' -Command {
-        & $installedMeshc --version
+    Invoke-LoggedCommand -Phase 'version' -Label '05-meshc-version' -Display 'installed meshc.exe -V' -Command {
+        & $installedMeshc -V
     }
     if ((Get-Content $LastStdoutPath -Raw).TrimEnd("`r", "`n") -cne "meshc $Version") {
         Fail-Phase 'version' "installed meshc version did not match $Version" $LastLogPath

@@ -268,6 +268,7 @@ jobs:
                 libffi-dev libxml2-dev libxml2-static \
                 openssl-dev openssl-libs-static \
                 linux-headers curl git &&
+              git config --global --add safe.directory /workspace &&
               curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable &&
               source "$HOME/.cargo/env" &&
               export LLVM_SYS_211_PREFIX=/usr/lib/llvm21 &&
