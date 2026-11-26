@@ -180,7 +180,47 @@ def resident_spares(jobs, windows, width, delay):
                 residence_ns=residence, residence_after_base_reply_ns=carry)
 
 
-def fixed_publication_ranks(jobs, owners, start, end):
+def credit_crossings(jobs, moves, alignment_ns):
+    """Shift each actual settlement by its last member's change in return time."""
+    cohorts = defaultdict(list)
+    stamps = defaultdict(set)
+    for job in jobs:
+        cohorts[job["settled_xid"]].append(job)
+        stamps[job["pid"]].add(job["claim"])
+    earlier = earlier_rows = 0
+    crossed_jobs, crossed_stamps = set(), set()
+    possible_jobs, possible_stamps = set(), set()
+    advances = []
+    for cohort in cohorts.values():
+        pid, = {job["pid"] for job in cohort}
+        before = max(job["returned"] for job in cohort)
+        after = max(job["returned"] - (moves[job["id"]]["advance"] if job["id"] in moves else 0)
+                    for job in cohort)
+        advance = before - after
+        if advance <= 0:
+            continue
+        earlier += 1
+        earlier_rows += len(cohort)
+        advances.append(advance)
+        for job in cohort:
+            credit = job["credit"]
+            for stamp in stamps[pid]:
+                lower, upper = stamp-alignment_ns, stamp+1_000_000+alignment_ns
+                if credit-advance < upper and credit > lower:
+                    possible_jobs.add(job["id"])
+                    possible_stamps.add((pid, stamp))
+                if credit-advance < lower and credit > upper:
+                    crossed_jobs.add(job["id"])
+                    crossed_stamps.add((pid, stamp))
+    assert crossed_jobs <= possible_jobs and crossed_stamps <= possible_stamps
+    return dict(earlier_cohorts=earlier, earlier_rows=earlier_rows,
+                median_earlier_ns=median(advances) if advances else 0,
+                max_earlier_ns=max(advances, default=0),
+                distinct_credits_crossing_stamp=len(crossed_jobs), distinct_stamps_crossed=len(crossed_stamps),
+                possible_credits=len(possible_jobs), possible_stamps=len(possible_stamps))
+
+
+def fixed_publication_ranks(jobs, owners, start, end, alignment_ns):
     """Move recorded writes of spare-picked jobs, leaving every other job at its observed times."""
     lanes = []
     for pid in owners:
@@ -200,7 +240,8 @@ def fixed_publication_ranks(jobs, owners, start, end):
         records.sort()
         cases[f"{first}/{later}"] = dict(moved_jobs=len(moves),
                                          moved_later=sum(move["advance"] < 0 for move in moves.values()),
-                                         effect_advance_ns={i: original[i-1]-records[i-1] for i in ranks})
+                                         effect_advance_ns={i: original[i-1]-records[i-1] for i in ranks},
+                                         credit_crossings=credit_crossings(jobs, moves, alignment_ns))
     return cases
 
 
@@ -297,7 +338,7 @@ def worker_budget(arm, phase, digest, decode, peers):
                            five_worker_residence_excess_ns=max(0, handler - 5*slowest)))
     assert sum(o["effects"] for o in owners) == 512
     return dict(phase="instrumented warmup" if phase == "warmup" else phase, middle_ns=end-begin, owners=owners,
-                fixed_publication_ranks=fixed_publication_ranks(jobs, trace, windows["first_256"][0], windows["last_256"][1]),
+                fixed_publication_ranks=fixed_publication_ranks(jobs, trace, windows["first_256"][0], windows["last_256"][1], slack),
                 final_effect_bound={n: publication_floor(jobs, n) for n in (4, 5, 6, 1024)},
                 warm_river_middle_us={g: p["phases"]["middle_us"] for g, p in peers.items()},
                 alignment_allowance_ns=slack)
