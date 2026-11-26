@@ -75,6 +75,21 @@ A collector that carries the already-encoded overflow spec would save work from 
 
 Run [file_encode_visits.py](file_encode_visits.py) with the released evidence directory and canonical release JSON to recover each instrumented arm's CPU and wall sums. The reduction checks the raw and replay digests, all 127 ordered visits, the size of each encoded spec, and the original per-arm totals.
 
+### Did the encoder gain reach settlement?
+
+In TIMING `d20a6532` all 60 FILE arms finished. Seven of 90 nuisance measurements exceeded the allowed 4,000 ns difference between CPU and wall clocks. The largest difference was 41,554 ns. The strict replay stopped there and the canonical release exited 1. The complete per-arm records in partial archive `2c341a0d` also determine the product decision independently of that check.
+
+| Quiet block | Enqueue gain vs fastest control (ms) | Submit through settlement gain vs fastest control (ms) |
+|---|---:|---:|
+| 1 | 10.895 | −24.881 |
+| 2 | 0.392 | −31.363 |
+| 3 | −46.375 | −73.489 |
+| 4 | 14.358 | 20.079 |
+| 5 | 43.951 | 52.334 |
+| 6 | −40.753 | −37.923 |
+
+For each clock the reference is the fastest of exact stock and both same-image OFF controls. Each enqueue gain fell short of 60 ms. Each submit gain fell below its 5% floor or duplicate spread. The encoder itself saved **38.7–45.0 CPU-ms** against the faster instrumented stock across the six matched blocks. The subsequent accepted re-encodes used **11.3–12.8 CPU-ms** on the fast lane. Even crediting all of them gives a combined **50.0–56.8 CPU-ms** within those encoder visits. A collector change would also need measured savings elsewhere to explain a 60 ms enqueue gain at one-for-one CPU-to-wall transfer. This release closes standalone advancement of the encoder.
+
 ## Release and reproducibility
 
 Canonical release `04e0e316` is exit 1. All 30 arms ran and exported; strict replay rejected all 12 recorded arms at the per-segment CPU upper bound. The largest enqueue and submit spreads between identical OFF arms were 121.672 and 222.888 ms against the 15 ms limits. The wall-time calculation describes the observed release and supplies no stock-path performance qualification.

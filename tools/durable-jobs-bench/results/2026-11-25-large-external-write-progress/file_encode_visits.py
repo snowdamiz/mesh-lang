@@ -10,7 +10,7 @@ def reduce_visits(evidence, canonical):
     release_bytes = canonical.read_bytes()
     assert release_bytes == (evidence / "controller-release.json").read_bytes()
     release = json.loads(release_bytes)
-    assert release["exit_status"] == 0 and release["id"].startswith("public-file-json-6c1f5eef6e19-")
+    assert release["id"].startswith("public-file-json-6c1f5eef6e19-")
     custody_bytes = (evidence / "custody.json").read_bytes()
     assert hashlib.sha256(custody_bytes).hexdigest() == release["custody_sha256"]
     custody = json.loads(custody_bytes)
@@ -20,10 +20,21 @@ def reduce_visits(evidence, canonical):
     status_bytes = (evidence / "native-status.json").read_bytes()
     assert hashlib.sha256(status_bytes).hexdigest() == custody["native-status.json"]
     status = json.loads(status_bytes)
-    assert replay["complete"] and status["native_exit"] == status["export_exit"] == 0
-    raw = evidence / "raw.tar.gz"
+    assert status["native_exit"] == status["export_exit"] == 0
+    if release["exit_status"] == 0:
+        assert replay["complete"]
+        archive_name = "raw.tar.gz"
+    else:
+        # This release accepted each FILE arm, then rejected a nuisance clock.
+        assert hashlib.sha256(release_bytes).hexdigest() == "d20a65323c082d90de1935019cf64178a8d5c477dcecb41915fc1db8b722b9c4"
+        assert release["exit_status"] == 1 and not replay["complete"]
+        assert replay["problems"] == {"native": "score.py:124 AssertionError"}
+        assert len(replay["arms"]) == 60
+        archive_name = "partial.tar.gz"
+    raw = evidence / archive_name
     with raw.open("rb") as f:
-        assert hashlib.file_digest(f, "sha256").hexdigest() == custody["raw.tar.gz"] == replay["raw_sha256"] == status["sha256"]
+        digest = hashlib.file_digest(f, "sha256").hexdigest()
+        assert digest == custody[archive_name] == replay["raw_sha256"] == status["sha256"]
     with tarfile.open(raw) as archive:
         for name, arm in replay["arms"].items():
             if arm["visit_clocks"] is None:
