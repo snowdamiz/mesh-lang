@@ -273,28 +273,35 @@ fn main() do
   end
 end
 "#;
+    let run = |binary: &Path| {
+        let child = Command::new(binary)
+            .env("MESH_DIAGNOSTICS", "json")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let output =
+            artifacts::wait_with_timeout(child, std::time::Duration::from_secs(10)).unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            ["started", "started", "supervisor exited"]
+        );
+        String::from_utf8(output.stderr).unwrap()
+    };
+    // The optimized child exits without unwinding; it must report exactly
+    // what the unwinding panic of an unoptimized build reports.
+    let (_unoptimized_dir, unoptimized) = compile_at_level(source, "0");
     let (_temp_dir, binary) = compile_at_level(source, "2");
-    let child = Command::new(&binary)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-    let output = artifacts::wait_with_timeout(child, std::time::Duration::from_secs(10)).unwrap();
-    assert!(output.status.success());
+    let stderr = run(&binary);
     assert_eq!(
-        String::from_utf8(output.stdout)
-            .unwrap()
-            .lines()
-            .collect::<Vec<_>>(),
-        ["started", "started", "supervisor exited"]
+        reports(&stderr, "project"),
+        reports(&run(&unoptimized), "project")
     );
-    assert_eq!(
-        String::from_utf8(output.stderr)
-            .unwrap()
-            .lines()
-            .collect::<Vec<_>>(),
-        ["Mesh panic: child failed"; 2]
-    );
+    assert_child_failed_twice(&stderr);
     #[cfg(unix)]
     for explicit_exit in [false, true] {
         restart_with_blocked_stderr(&binary, explicit_exit);
@@ -330,6 +337,7 @@ fn restart_with_blocked_stderr(binary: &Path, explicit_exit: bool) {
         .env("MESH_SCHEDULER_MIN_WORKERS", "1")
         .env("MESH_SCHEDULER_MAX_WORKERS", "1")
         .env("EXIT_AFTER_CRASH", if explicit_exit { "1" } else { "0" })
+        .env("MESH_DIAGNOSTICS", "json")
         .stdout(Stdio::from(OwnedFd::from(stdout)))
         .stderr(Stdio::from(OwnedFd::from(stderr)))
         .spawn()
@@ -349,10 +357,41 @@ fn restart_with_blocked_stderr(binary: &Path, explicit_exit: bool) {
     );
     drained.unwrap();
     assert_eq!(status.code(), Some(if explicit_exit { 17 } else { 0 }));
-    assert_eq!(
-        &bytes[filled..],
-        b"Mesh panic: child failed\nMesh panic: child failed\n"
-    );
+    assert_child_failed_twice(std::str::from_utf8(&bytes[filled..]).unwrap());
+}
+
+/// The JSON reports on `stderr`, with each file named relative to `root`,
+/// so two builds in different temporary directories compare equal.
+fn reports(stderr: &str, root: &str) -> Vec<serde_json::Value> {
+    stderr
+        .lines()
+        .map(|line| {
+            let mut report: serde_json::Value =
+                serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line:?}"));
+            if let Some(file) = report["file"].as_str() {
+                let relative = file.rsplit_once(root).map_or(file, |(_, rest)| rest);
+                report["file"] = relative.into();
+            }
+            report
+        })
+        .collect()
+}
+
+/// Two `R0001` reports of the worker's `panic(reason)`, each at its line.
+/// The supervisor then gives up (`R0102`) once its restart limit is spent.
+fn assert_child_failed_twice(stderr: &str) {
+    let reports = reports(stderr, "project");
+    let codes: Vec<_> = reports
+        .iter()
+        .map(|r| r["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["R0001", "R0001", "R0102"], "{stderr}");
+    for report in &reports[..2] {
+        assert_eq!(report["message"], "child failed", "{report}");
+        assert_eq!(report["file"], "/main.mpl", "{report}");
+        assert_eq!(report["line"], 5, "{report}");
+        assert_eq!(report["col"], 3, "{report}");
+    }
 }
 
 /// Test: supervisor with invalid child spec is rejected at compile time.

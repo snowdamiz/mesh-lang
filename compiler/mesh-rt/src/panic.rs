@@ -350,10 +350,14 @@ pub(crate) fn prepare_supervised_diagnostics() {
 fn report_supervised(diagnostic: &Diagnostic) {
     let format = format();
     let footer = matches!(format, Format::Human { .. }) && first_report_of(diagnostic.code());
-    let text = rendered(format, diagnostic, footer);
+    queue_supervised(rendered(format, diagnostic, footer));
+}
+
+/// Hand `text` to the writer thread and count it until written. A full
+/// queue applies backpressure. A writer that failed to start leaves this
+/// thread to write it itself.
+fn queue_supervised(text: String) {
     *SUPERVISED_PENDING.lock() += 1;
-    // A full queue applies backpressure. A writer that failed to start
-    // leaves this worker to write the report itself.
     if let Err(error) = diagnostic_writer().send(Queued::Supervised(text)) {
         error.0.write();
     }
@@ -435,6 +439,11 @@ pub(crate) fn report(diagnostic: &Diagnostic) {
     let text = rendered(format, diagnostic, footer);
     if DEFER_DIAGNOSTICS.get() {
         enqueue_diagnostic(text);
+    } else if *SUPERVISED_PENDING.lock() > 0 {
+        // Follow the crash reports still queued, such as the ones a
+        // supervisor that gives up reports after, and do not block on a
+        // stderr they are waiting for.
+        queue_supervised(text);
     } else {
         write_stderr(text.as_bytes());
     }
