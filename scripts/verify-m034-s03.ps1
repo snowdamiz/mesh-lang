@@ -475,12 +475,13 @@ function Test-SkillUpgrade {
     $oldDigest = (Get-Content -LiteralPath (Join-Path $clean '.mesh-install.json') -Raw | ConvertFrom-Json).digest
 
     # Exercise the version-change path using seeded prior state and real candidate archives.
+    # `meshc update` runs the installer under Windows PowerShell, not pwsh.
     $versionFile = Join-Path $InstallHome '.mesh/version'
     Set-Content -LiteralPath $versionFile -Value '0.0.0-fixture' -NoNewline
     Push-Location -LiteralPath $Project
     try {
-        Invoke-LoggedCommand -Phase 'skills' -Label '11-skill-upgrade' -Display 'Upgrade seeded skill fixtures with the PowerShell installer -Yes' -Command {
-            pwsh -NoProfile -File $script:InstallScript -Yes
+        Invoke-LoggedCommand -Phase 'skills' -Label '11-skill-upgrade' -Display 'Upgrade seeded skill fixtures with the Windows PowerShell installer -Yes' -Command {
+            powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script:InstallScript -Yes
         }
     } finally {
         Pop-Location
