@@ -10,7 +10,7 @@ import tarfile
 from scalar_lookup_profiles import PROFILES, RESULTS, blob, nodes, read
 
 
-def arm(profile, lane):
+def grant_capture(profile, lane):
     commit, directory, count = PROFILES[profile]
     root = RESULTS / directory
     binding = json.loads(blob(commit, root / "continuation/qualification.json"))
@@ -24,12 +24,20 @@ def arm(profile, lane):
     assert binding["plan_gate"]["passed"] and sha256(data).hexdigest() == digest
     with tarfile.open(fileobj=BytesIO(data)) as archive:
         assert read(archive, "status.json")["exit_code"] == 0
-        jobs = read(archive, "adapter/ledger.json")["jobs"]
+        ledger = read(archive, "adapter/ledger.json")
+        jobs = ledger["jobs"]
         statements = read(archive, "adapter/grant-closed.json")["statements"]
         plans = read(archive, "adapter/grant-plans.json")
     assert len(jobs) == len({j["job_key"] for j in jobs}) == count
     assert all(j["attempt"] == j["attempts"] == j["effects"] == 1 and j["state"] == "completed" for j in jobs)
     assert len({j[key] for j in jobs for key in ("attempt_xid", "effect_xid", "settled_xid")}) == 3 * count
+    txn, = ledger["transactions"]
+    return digest, jobs, txn, statements, plans
+
+
+def arm(profile, lane):
+    digest, jobs, _, statements, plans = grant_capture(profile, lane)
+    count = len(jobs)
     effects = sorted(j["effect_committed_us"] for j in jobs)
     first, last = effects[count // 4 - 1], effects[3 * count // 4 - 1]
     stat, = (s for s in statements if s["role"] == "parity_subject" and

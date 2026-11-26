@@ -32,3 +32,20 @@ A combined grant still has to update and deliver every row, recover an ambiguous
 Both scripts take the released claim-timeline evidence directory containing raw.tar.gz, verified.json and controller-release.json. claim_phase_budget.py pins all three and reconciles the 2,048 independent application transactions in each arm. follower_join.py pins the verified trace reduction and retains each qualifying interior pair. Both outputs are archive arithmetic.
 
 [Phase receipt](claim-phase-budget.json) · [Follower pairs](follower-join.json) · [Uninstrumented first-write comparisons](BEFORE-FIRST-XID.md)
+
+## Did empty set-claim queries occupy the middle of the workload?
+
+In four PG17 plan captures, **zero empty claim bodies and their follow-up eligibility probes overlapped the middle half of durable effects**. The untraced client round trip and queue-lock wait have different boundaries. The result applies to the public DENSE and SLOW plan captures, whose worker topology differs from Direct4.
+
+| Capture | Productive bodies | Empty before enqueue commit | Early or enqueue boundary | Middle | Late or settlement boundary | After final settlement |
+|---|---:|---:|---:|---:|---:|---:|
+| DENSE stock | 251 | 125 | 0 | 0 | 4 | 12 |
+| DENSE logical key | 250 | 121 | 1 | 0 | 3 | 13 |
+| SLOW stock | 48 | 14 | 0 | 0 | 6 | 1 |
+| SLOW logical key | 37 | 14 | 0 | 0 | 7 | 1 |
+
+For DENSE, the four empty body/probe pairs near or inside drain summed to 7.790 ms on stock and 0.942 ms with the logical key. For SLOW the sums were 1.959 and 0.329 ms. The replay matches every zero-row body to the next eligibility probe on its own backend, using plan-log order. It spans both reported executions and includes the uncertainty of the millisecond log timestamps. Each productive body returned at least one row, and the rows summed to all 1,024 DENSE or 512 SLOW jobs in every arm.
+
+The same plans locate the transition from custom to generic planning. Every claim backend used concrete namespace and queue constants on its first five body calls. All five finished before enqueue commit. Every productive call used the parameterized ready-index condition. Forcing a generic plan from startup would therefore change the planning regime of **zero productive calls** on these timelines. Suppressing empty eligibility checks or selecting generic plans earlier has no measured target in the middle of these runs. The evidence leaves work inside productive grants open.
+
+Run `python3 -B grant_poll_phases.py | cmp - grant-poll-phases.json` from this directory. [Counts and archive digests](grant-poll-phases.json) · [Replay](grant_poll_phases.py)
