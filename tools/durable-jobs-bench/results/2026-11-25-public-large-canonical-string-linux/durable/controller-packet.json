@@ -1,0 +1,89 @@
+{
+  "capsule_sha256": "62151a95cd8feca06d945a6fa479d9822531a6c4add8915bb1e6fcede4380499",
+  "id": "2026-11-25-public-large-canonical-string-linux-file",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-file-session/evidence/trace-file-replay.json": "630bfd64dc4729990276e898c855cca5bf46e5dacf4562f2599383405a645f42",
+    "tools/durable-jobs-bench/results/2026-11-24-public-large-file-session/resume/stage.tar.gz": "10a57080c0e14a707ec76864881938679042645c8ba30ee75ce769dcba3a3596",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/controller-packet.json": "aef871ed9e6554df6ca1569289f8e1f407298309e1414dd98b148789dfc0c152",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/durable/README.md": "5feacfd1d6ccb7df6155cfa8918678af62c59ff230c5ecba62862dbe0eaafa91",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/durable/file.py": "1857965835dc4b6e513ef0a936c7719f4561cd367678645d94e60285b11d6d60",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/durable/native-file.sh": "e58d3aaeb27210f5963deab5101fdee461d352eab548b9973bde2114e7b3c244",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/durable/pack-file.py": "6e05d913d870a0e6785155fbd07ff4e346f0103dd7868fe40a5405c717236b78",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-file-external/grant-parser-retry/controller-packet.json": "8948deb0ce60432a627532f3c6a7d916de93f61fc04d9cc27ac9bdf5f8182f8d",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-file-external/grant-parser-retry/evidence/native/controller-release.json": "a1e3a4187a2e8ab84db8ec094fd768c5fe9c335c4298c0f4624a776f80769df5",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-file-external/grant-parser-retry/evidence/native/file/inventory.json": "25ef8924e60d1d7a082ad5e44ac6bd773010bb6c964ed1493dd7d75ffc437786",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-file-external/grant-parser-retry/evidence/native/series.json": "d7cc1a1b3a81f327e8e9b1aba1ca029a00e77ed338ac2d181fa6262ef3eb03ea"
+  },
+  "pack_argv": [
+    "python3",
+    "-B",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/durable/pack-file.py"
+  ],
+  "phases": {
+    "export": {
+      "remote_argv": [
+        "bash",
+        "-c",
+        "{native-file.sh bytes}",
+        "--",
+        "export",
+        "{suffix}",
+        "{screen_sha256}",
+        "{qualified_sha256}"
+      ],
+      "stdin": "closed",
+      "stdout": "raw.tar.gz"
+    },
+    "file_qualification": {
+      "grant": "SETUP",
+      "id": "2026-11-25-public-large-canonical-string-linux-file-qualification",
+      "release_requires": [
+        "suffix",
+        "screen_sha256",
+        "qualified_sha256",
+        "request_sha256",
+        "raw_sha256"
+      ],
+      "remote_argv": [
+        "bash",
+        "-c",
+        "{native-file.sh bytes}",
+        "--",
+        "link",
+        "{suffix}",
+        "{screen_sha256}",
+        "62151a95cd8feca06d945a6fa479d9822531a6c4add8915bb1e6fcede4380499"
+      ],
+      "requires": "released, replayed earned screen",
+      "stdin": "capsule bytes"
+    },
+    "file_timing": {
+      "controller_argv": [
+        "python3",
+        "-B",
+        "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/durable/file.py",
+        "timing",
+        "{qualification-dir}",
+        "{screen-dir}",
+        "{file-link-dir}",
+        "{file-timing-dir}"
+      ],
+      "grant": "TIMING",
+      "id": "2026-11-25-public-large-canonical-string-linux-file-timing",
+      "requires": "released, replayed FILE qualification"
+    },
+    "replay": {
+      "controller_argv": [
+        "python3",
+        "-B",
+        "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/durable/file.py",
+        "replay",
+        "{qualification-dir}",
+        "{screen-dir}",
+        "{file-link-dir}",
+        "{file-timing-dir}"
+      ]
+    }
+  },
+  "state": "parked-until-earned"
+}

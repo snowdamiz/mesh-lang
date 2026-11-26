@@ -1,0 +1,22 @@
+{
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/evidence/timing-be34d253e19e/controller-release.json": "b09ae8c42193d731d195a82f66bc2d90648469fe7abc3c71d6cdeec9c19b5a02",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/evidence/timing-be34d253e19e/raw.tar.gz": "efb88f8f883ed1357c67ce24c82e3904e446e9ea81542da961bd1539ca51ea99",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/evidence/verified-result.json": "f8a10b06a2f7dc98d4d03cd13d3fd03a96f5457912d5b98b25deedd2b5750e0e",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/large-capture.json": "4108c507dc3167bb3d1900e4c5841ae3d53e8c2581669568266c3a58035b974c",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/materialize.py": "b0e43716b04f38f9b2689c9fa3083ce413d3d49171c2f111b49a1f85e59cf557",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/native-amd64-source.tar.gz": "f3acb107cc28bb384ea63748c49eb79ccec9b57c6c2e63d31025cd66e515e18a",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/probe.rs": "757930eee87f25902adc30587e37d4306a5f0a2e63325f29671d0fee318a01c6",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/request-mount-retry.json": "225359096fac2af87b1e1542a5739055732bf8ed4e8eb2a8e5cdd3b4d7e70edc",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/rotation.py": "8ba96a909e394b40884b0b7a414e1fe005583599113681629a57244629972a3e",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/wire-check.py": "345e04e8c862a8e83d7220c571f608e936b3092182e6eea17ff75c72b5dd1f8e",
+  "tools/durable-jobs-bench/results/2026-11-24-enqueue-spec-preparation/wire.rs": "fdde7555d1662b3b6ba88648cfba90fe3dfd1ddc78160a783d290eb5e1fa24f0",
+  "tools/durable-jobs-bench/results/2026-11-24-public-large-file-session/evidence/trace-file-replay.json": "630bfd64dc4729990276e898c855cca5bf46e5dacf4562f2599383405a645f42",
+  "tools/durable-jobs-bench/results/2026-11-24-public-large-file-session/resume/stage.tar.gz": "10a57080c0e14a707ec76864881938679042645c8ba30ee75ce769dcba3a3596",
+  "tools/durable-jobs-bench/results/2026-11-24-trusted-jobs-product-composition/source.tar.gz": "623c46b92cc5f94eb19d455e36e6fca1e1b800231441a6de480e2c35aa091b02",
+  "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string/archive-price.json": "f777b644f40fc59d3cbe5c0062bc148cb39d82e4a52db0ee803e910964a86b31",
+  "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string/candidate.patch": "f07de5788797a7fafbfaad57cb71112feb00f111349a2e7b06e4a7518dd2cf98",
+  "tools/durable-jobs-bench/results/2026-11-25-public-large-file-external/grant-parser-retry/controller-packet.json": "8948deb0ce60432a627532f3c6a7d916de93f61fc04d9cc27ac9bdf5f8182f8d",
+  "tools/durable-jobs-bench/results/2026-11-25-public-large-file-external/grant-parser-retry/evidence/native/controller-release.json": "a1e3a4187a2e8ab84db8ec094fd768c5fe9c335c4298c0f4624a776f80769df5",
+  "tools/durable-jobs-bench/results/2026-11-25-public-large-file-external/grant-parser-retry/evidence/native/file/inventory.json": "25ef8924e60d1d7a082ad5e44ac6bd773010bb6c964ed1493dd7d75ffc437786",
+  "tools/durable-jobs-bench/results/2026-11-25-public-large-file-external/grant-parser-retry/evidence/native/series.json": "d7cc1a1b3a81f327e8e9b1aba1ca029a00e77ed338ac2d181fa6262ef3eb03ea"
+}

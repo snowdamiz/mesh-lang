@@ -1,0 +1,88 @@
+{
+  "candidate_origin": "c9d9ef05209eb85e93b6a96de09d4980c1c8f4c9",
+  "capsule_sha256": "032afc583863257881332c68948a09e281489ad3ecb91aeb1d45b1cb7e33fe72",
+  "id": "2026-11-25-public-large-canonical-string-linux",
+  "local_sha256": {
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/README.md": "e022982839db9b7af603afaffa7f4c2a19b0260d19597eae619ba4effe97be4f",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/candidate-store.sha256": "fed62ad3ffb1fb33b0af2e6d8d66f8c93d8c09fbe00d5649c50529638a337bdc",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/candidate.patch": "25733bd0ee758109405f68967a9c6ee8e3c7be244cdd9d5afb9692b67faa163a",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/dependencies.json": "8a0c265a9fae1ca70cb5bf190dab1d5a0b44fe972580067b4a95a7c9b8c0b4d7",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/frames.py": "94873f6f3e6fcac1bfca5480749619b0bc2f95f19c68ebac71e9acd4baea9120",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/materialize.py": "fd360daed5164b7ee3a4d34b967ceb75d77900f9077c649277ecfd57592ad635",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/move-store.sha256": "457ac1b2c7cf9499e6960c209b3fa0a10b3e7d0e831bad100502a6788338905c",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/move.patch": "dbc009d59bdd3f2d0c8c18035792117f278468fbae6421d7ced941fa97b1bb86",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/native.sh": "df48a4254f548115fed22f4005f78eacd474df0615ab19399b1974a199a50dc7",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/pack.py": "d7b72725b73889152b39a55057180810817d196e93fc6ab23ad872afe00640f4",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/probe.rs": "9d9e2fbf31a57cbfc19301ef1add84116b17bf3ea401fe763b3165f571255bff",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/public-preimage.sha256": "63c5467d7b8e791715044c4d7ebbf39ca46dbf49a3302b290c71a435f8b940c3",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/replay.py": "d6d634753a09eb8cad988fd504708a2a0be5d7f366c8a577745109d4144a8be7",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/rotation.py": "56d7f59f59beea7550d5133e681dc0b3007f52447488b19c864d19aa7e03f4d3",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/wire-check.py": "75a13b835b35908d5d57722d2df5a8e2c5aef3d26c325577ec314d8185df7f30"
+  },
+  "pack_argv": [
+    "python3",
+    "-B",
+    "tools/durable-jobs-bench/results/2026-11-25-public-large-canonical-string-linux/pack.py"
+  ],
+  "phases": {
+    "export": {
+      "remote_argv": [
+        "bash",
+        "-c",
+        "{native.sh bytes}",
+        "--",
+        "export",
+        "{suffix}",
+        "{phase_summary_sha256}"
+      ],
+      "stdin": "closed",
+      "stdout": "raw.tar.gz"
+    },
+    "qualification": {
+      "grant": "SETUP",
+      "id": "2026-11-25-public-large-canonical-string-linux-qualification",
+      "release_requires": [
+        "suffix",
+        "request_sha256",
+        "raw_sha256"
+      ],
+      "remote_argv": [
+        "bash",
+        "-c",
+        "{native.sh bytes}",
+        "--",
+        "qualify",
+        "{suffix}",
+        "032afc583863257881332c68948a09e281489ad3ecb91aeb1d45b1cb7e33fe72"
+      ],
+      "stdin": "capsule bytes"
+    },
+    "screen": {
+      "grant": "TIMING",
+      "id": "2026-11-25-public-large-canonical-string-linux-screen",
+      "release_requires": [
+        "suffix",
+        "request_sha256",
+        "raw_sha256",
+        "qualification_sha256"
+      ],
+      "remote_argv": [
+        "bash",
+        "-c",
+        "{native.sh bytes}",
+        "--",
+        "screen",
+        "{suffix}",
+        "{qualification_sha256}"
+      ],
+      "requires": "successful qualification release and raw replay",
+      "stdin": "closed"
+    }
+  },
+  "source": "b3557273d72be3802bf189b284e7caaf5f3caa0f",
+  "store_sha256": {
+    "candidate": "c6795f70f43dc1bd7d169873ebc6512a181621ea84c1db3c03c9ad5dea35f213",
+    "move": "6f1ae9a96a4e65a759fd3c95c8a44bb9d1da8bb4fb826f58c9a4cee132de12cd",
+    "stock": "d7bebfcf384e488ba25e8f40d294d55c1efdb4006a3613cb899ac6b08c8782ab"
+  }
+}
