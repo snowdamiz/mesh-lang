@@ -55,3 +55,21 @@ The [15-arm replay](confirmed_entry_supply.py) binds each raw to the controller 
 The queue lock also supplies an independent witness before a batch's first handler entry. In the bounded SQL, the claim stamp follows acquisition of the queue row lock and the transaction holds that lock through COMMIT. A different productive grant with a strictly later stamp on that queue proves the earlier rows became visible in PostgreSQL. A later grant by the same runner additionally proves the earlier claim lane received its COMMIT. The replay permits the full 999 µs of stamp rounding and makes no ordering inference from equal stamps. This comparison assumes the shared realtime clock advanced normally. [Bounded claim SQL](../../../../compiler/mesh-rt/src/jobs/grouped_schema.sql)
 
 Using the database visibility witness, the middle windows contained at least **9.398, 16.392, 3.429, 8.723 and 6.538 ms** respectively where a runner had a granted job still awaiting entry and zero entered handlers awaiting effects. The same-runner client witness adds zero such time in these B windows. The confirmed-claim and database-visible bounds answer different questions. These milliseconds establish a post-commit wait at the server, while its division between client receipt, dispatch and scheduling remains open.
+
+## Concurrent jobs between their two durable writes
+
+River led Mesh B in **78 of 80** consecutive 32-effect intervals between effects 256 and 768. Even giving Mesh River's time in its three worst intervals per rotation leaves a middle-write deficit in every rotation. The last column gives the sum of the signed differences in the other thirteen intervals. The intervals are subdivisions of five paired runs and share the scheduling and host conditions of their run.
+
+| Rotation | Intervals where River was faster, of 16 | Mean runners with a job between commits, Mesh / River | Residual Mesh deficit after replacing its three worst intervals |
+|---|---:|---:|---:|
+| 1 | 15 | 2.13 / 3.29 | 118.9 ms |
+| 2 | 16 | 3.40 / 3.32 | 490.8 ms |
+| 3 | 15 | 2.24 / 3.15 | 145.3 ms |
+| 4 | 16 | 2.19 / 3.45 | 179.5 ms |
+| 5 | 16 | 2.08 / 3.17 | 171.9 ms |
+
+For each job, the replay counts the time from the PostgreSQL commit of its first application write to the commit of its second. It clips that interval to each engine's middle 512 effects and groups jobs by their original runner PID. On Mesh, a runner had at most two such jobs at once in B and both same-image OFF arms. Among the runner-time with at least one job between commits, B had two jobs for 15.5–22.5%. River spent 48.0–54.5% of its corresponding runner-time with **three or more**. Oban also spent 43.1–48.8% with three or more, yet its middle writes were slower than Mesh's in four rotations. This occupancy includes client work, scheduling and response waits. More jobs between commits can mean longer waits as well as more concurrent service.
+
+Rotation 2 is especially informative for a worker-supply change. Mesh already had slightly more runners carrying jobs between the two writes than River and still lost 947.0 ms in the middle. A third worker could overlap another handler on an occupied runner only when another handler has work to do. The ledger records PostgreSQL commits and handler entry. The pending work at each scheduler worker and the time it can execute on the two CPUs require separate evidence.
+
+The [replay](owner_cadence.py) uses the 25 original measured arm hashes, including both Mesh OFF controls. It recovers River's runner PIDs from its product attempt rows by job key and transaction ID. The [receipt](owner-cadence.json) retains all 16 intervals, the wall-time distribution by active runner count, and runner-time by job count for both entry-to-second-commit and first-to-second-commit.
