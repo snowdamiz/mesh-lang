@@ -2,6 +2,7 @@
 import argparse
 from collections import Counter, defaultdict
 import hashlib
+import json
 from pathlib import Path
 import re
 import statistics
@@ -73,10 +74,72 @@ def measure(lanes):
           round(median_wait, 3), "later sends and checks", milestone_counts)
 
 
+def relay_bounds(raw):
+    """Bound actual first-to-second commit intervals by server round trips."""
+    assert hashlib.sha256(raw.read_bytes()).hexdigest() == "07233af4fcd3cd09c6398f2f4f75813ff734d92dfd708edd8835728ab3cc7b1a"
+    with tarfile.open(raw) as archive:
+        for mode in (0, 1):
+            prefix = f"./semantic-root/cold/{mode}-intact/"
+            wire = json.load(archive.extractfile(prefix + "wire.json"))
+            releases = []
+            for owner in range(2):
+                for line in archive.extractfile(prefix + f"gates-{owner}.log"):
+                    edge = json.loads(line)
+                    if edge["edge"] == "resolved":
+                        releases.append(edge["ns"])
+            jobs = {}
+            starts = []
+            ends = []
+            for owner, (calls, completions) in enumerate(zip(wire["operations"], wire["completions"], strict=True)):
+                receipts = {tuple(r[:2]): r[2:] for r in completions}
+                assert len(receipts) == len(completions)
+                for epoch, sequence, backend, key, sql, arrived in calls:
+                    ready, tag, rows, status = receipts[epoch, sequence]
+                    if sql == "SELECT 1":
+                        continue
+                    assert tag == "INSERT 0 1" and rows == 0 and status == "I" and arrived <= ready
+                    job = jobs.setdefault(key, {"owner": owner})
+                    assert job["owner"] == owner and backend in wire["rosters"][owner]
+                    if sql.startswith("INSERT INTO public.mesh_jobs_parity_attempts"):
+                        assert "first" not in job
+                        job["first"] = arrived, ready
+                    else:
+                        assert sql.startswith("INSERT INTO public.mesh_jobs_parity_effects") and "effect" not in job
+                        job["effect"] = arrived, ready
+                        starts.append(arrived)
+                        ends.append(ready)
+            assert len(jobs) == 1024 and jobs.keys() == wire["jobs"].keys()
+            assert len(starts) == len(ends) == 1024
+            starts.sort()
+            ends.sort()
+            for owner in range(2):
+                lower, upper = [], []
+                for key, job in jobs.items():
+                    begin, first_ready = job["first"]
+                    effect_arrived, end = job["effect"]
+                    assert first_ready <= effect_arrived
+                    assert wire["jobs"][key]["state"] == "completed"
+                    if job["owner"] == owner:
+                        lower.append((first_ready, effect_arrived))
+                        upper.append((begin, end))
+                windows = [("full", 0, ends[-1], 0, ends[-1]),
+                           ("after holds", max(releases), ends[-1], max(releases), ends[-1]),
+                           ("ranks 256-768", ends[255], starts[767], starts[255], ends[767])]
+                for label, inner_start, inner_end, outer_start, outer_end in windows:
+                    assert outer_start <= inner_start < inner_end <= outer_end
+                    bounds = []
+                    for intervals, left, right in ((lower, inner_start, inner_end), (upper, outer_start, outer_end)):
+                        clipped = [(max(lo, left), min(hi, right)) for lo, hi in intervals if max(lo, left) < min(hi, right)]
+                        bounds.append(spans_at_five(clipped))
+                    print("R4", mode, owner, label, "peak and five-way ms, lower/upper", bounds)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("raw", type=Path)
-    raw = parser.parse_args().raw
+    parser.add_argument("--r4-relay", type=Path)
+    args = parser.parse_args()
+    raw = args.raw
     assert hashlib.sha256(raw.read_bytes()).hexdigest() == RAW
     cases = defaultdict(dict)
     with tarfile.open(raw) as archive:
@@ -96,3 +159,5 @@ if __name__ == "__main__":
         assert set(lanes) == set(range(4 + (mode == 1 and owner == 0)))
         print("mode", mode, "runner", owner, end=": ")
         measure(lanes)
+    if args.r4_relay:
+        relay_bounds(args.r4_relay)
