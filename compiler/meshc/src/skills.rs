@@ -262,17 +262,24 @@ fn apply(
             Ok(Some(message)) => reporter.status(format_args!("{message} {}", path.display())),
             Ok(None) => {}
             Err(error) => {
-                let diagnostic = match error.kind() {
-                    io::ErrorKind::InvalidData | io::ErrorKind::AlreadyExists => Diagnostic::new(
-                        Code::SkillsInstallConflict,
-                        format!("Kept {} ({error}).", path.display()),
-                    ),
-                    _ => Diagnostic::new(
-                        Code::PathNotFound,
-                        format!("Could not update {} ({error}).", path.display()),
-                    ),
+                let kept = matches!(
+                    error.kind(),
+                    io::ErrorKind::InvalidData | io::ErrorKind::AlreadyExists
+                );
+                let message = if kept {
+                    format!("Kept {} ({error}).", path.display())
+                } else {
+                    format!("Could not update {} ({error}).", path.display())
                 };
-                failure = Some(reporter.fail(diagnostic));
+                let code = match (kept, setup) {
+                    (true, false) => {
+                        reporter.status(message);
+                        continue;
+                    }
+                    (true, true) => Code::SkillsInstallConflict,
+                    (false, _) => Code::PathNotFound,
+                };
+                failure = Some(reporter.fail(Diagnostic::new(code, message)));
             }
         }
     }
