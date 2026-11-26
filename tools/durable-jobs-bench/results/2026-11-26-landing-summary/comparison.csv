@@ -1,0 +1,17 @@
+workload,jobs,rotations,engine,median_ms,source
+short,128,6,Mesh,216.607,2026-11-24-short16-river-readiness/evidence/summary.json
+short,128,6,Oban,461.039,2026-11-24-short16-river-readiness/evidence/summary.json
+short,128,6,River,270.084,2026-11-24-short16-river-readiness/evidence/summary.json
+short,128,6,Apalis,154.673,2026-11-24-short16-river-readiness/evidence/summary.json
+slow,512,8,Mesh,1803.189,2026-11-24-ordinary-slow-equal-topology-cap71/evidence/native-analysis/paired-scorecard.json
+slow,512,8,Oban,1914.142,2026-11-24-ordinary-slow-equal-topology-cap71/evidence/native-analysis/paired-scorecard.json
+slow,512,8,River,2003.345,2026-11-24-ordinary-slow-equal-topology-cap71/evidence/native-analysis/paired-scorecard.json
+slow,512,8,Apalis,1449.137,2026-11-24-ordinary-slow-equal-topology-cap71/evidence/native-analysis/paired-scorecard.json
+large,64,5,Mesh,1362.942,2026-11-25-public-large-file-external/grant-parser-retry/evidence/replay.json
+large,64,5,Oban,1663.176,2026-11-25-public-large-file-external/grant-parser-retry/evidence/replay.json
+large,64,5,River,2322.171,2026-11-25-public-large-file-external/grant-parser-retry/evidence/replay.json
+large,64,5,Apalis,866.135,2026-11-25-public-large-file-external/grant-parser-retry/evidence/replay.json
+dense,1024,5,Mesh,1003.271,2026-11-25-dense-fixed8-logical-factorial/PEER-RESULTS.md
+dense,1024,5,Oban,1321.836,2026-11-25-dense-fixed8-logical-factorial/PEER-RESULTS.md
+dense,1024,5,River,1021.191,2026-11-25-dense-fixed8-logical-factorial/PEER-RESULTS.md
+dense,1024,5,Apalis,739.792,2026-11-25-dense-fixed8-logical-factorial/PEER-RESULTS.md

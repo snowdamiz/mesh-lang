@@ -1,5 +1,5 @@
 export interface BenchmarkPanel {
-  id: 'actors' | 'cpu' | 'recovery' | 'http'
+  id: string
   label: string
   headline: string
   unit: string

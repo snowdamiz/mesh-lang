@@ -10,6 +10,7 @@ import meshDark from '../../shiki/mesh-dark.json'
 import { compileStep, type Seg, type Step, type TermRow } from './demo'
 import { clusterFigure, type Callout } from './isometric'
 import { benchmarkPanels, RUN, type BenchmarkPanel } from './benchmarks'
+import { jobsPanels, JOBS_RUN } from './jobs'
 import { GITHUB_URL } from '../../site'
 
 const COUNTER = `type Message do
@@ -112,6 +113,31 @@ fn main() do
     |> HTTP.on_post("/events/:name", track)
   HTTP.serve(router, Env.get_int("PORT", 8080))
 end`
+
+const JOBS = `fn create_order(conn :: borrow PgConn) -> Int!String do
+  Pg.execute(conn, "INSERT INTO orders (id) VALUES ($1::bigint)", ["42"])?
+  Jobs.enqueue_in(conn,
+    "shop",
+    json { worker: "send-receipt", args: json { order_id: 42 }, request_key: "order-42-receipt" })?
+  Ok(42)
+end
+
+fn submit_order(pool :: PoolHandle) -> Int!String do
+  Repo.transaction(pool, create_order)
+end`
+
+// The diagnostic `meshc build . --json` prints for a mismatched annotation,
+// abridged to the fields an agent acts on (see docs/tooling, JSON diagnostics).
+const DIAGNOSTIC = {
+  code: 'E0001',
+  message: 'type mismatch: expected `Int`, found `String`',
+  file: './main.mpl',
+  line: 2,
+  col: 9,
+  fix: 'Convert the value (`Int.to_float(...)`, `Some(...)`, `Ok(...)`), change it, or change the annotation so both sides name one type.',
+  guide: { explain: 'meshc explain E0001', skill: 'references/diagnostics.md#e0001', topic: 'types' },
+  docs_url: 'https://meshlang.dev/docs/errors/#e0001',
+}
 
 const WRONG_SEND = `send(pid, "forty")`
 
@@ -262,18 +288,20 @@ export interface LandingData {
   }
   distribution: { title: [string, string]; lead: string; link: { text: string; href: string }; figure: { lg: string; sm: string; label: string }; code: string }
   benchmarks: { title: [string, string]; panels: BenchmarkPanel[]; footnote: string; link: { text: string; href: string } }
+  jobs: { title: [string, string]; lead: string; link: { text: string; href: string }; code: string; benchmarks: LandingData['benchmarks'] }
+  agents: { title: [string, string]; lead: string; link: { text: string; href: string }; command: string; diagnostic: string; items: { command: string; line: string }[] }
   toolchain: { title: [string, string]; commands: { id: string; command: string; gloss: string }[]; note: string }
   stdlib: { title: [string, string]; file: string; lines: { html: string; modules: string[]; groups: string[] }[]; groups: { name: string; modules: string[]; sample?: { line: number; html: string } }[]; link: { text: string; href: string } }
   quote: { text: string; author: string; role: string }
   close: { title: string }
 }
 
-type Copy = Omit<LandingData, 'demo' | 'art' | 'distribution' | 'benchmarks' | 'stdlib'>
+type Copy = Omit<LandingData, 'demo' | 'art' | 'distribution' | 'benchmarks' | 'jobs' | 'agents' | 'stdlib'>
 
 const COPY: Copy = {
   hero: {
     title: ['Typed actors.', 'Native binaries.'],
-    lead: 'Mesh is a statically typed, actor\u2011based language for native services and distributed systems.',
+    lead: 'Mesh is a statically typed, actor\u2011based language for native services and distributed systems, with a durable job queue built in and a toolchain made for coding agents.',
     cta: { text: 'Read the docs', href: '/docs/getting-started/' },
     firstRun: ['meshc init hello_mesh', 'cd hello_mesh', 'meshc build .', './output'],
   },
@@ -317,7 +345,7 @@ const MODULE_GROUPS = [
   { name: 'Collections and text', modules: ['String', 'List', 'Map', 'Set', 'Tuple', 'Range', 'Queue', 'Iter', 'Regex'] },
   { name: 'Values and encoding', modules: ['Bytes', 'U64', 'U128', 'I128', 'Checked', 'Json', 'Base64', 'Hex'] },
   { name: 'System and time', modules: ['IO', 'Env', 'File', 'Math', 'DateTime', 'Monotonic', 'Duration', 'Random', 'Crypto'] },
-  { name: 'Concurrency', modules: ['Job', 'Timer', 'Channel', 'Process', 'Test'] },
+  { name: 'Concurrency', modules: ['Job', 'Jobs', 'Timer', 'Channel', 'Process', 'Test'] },
   { name: 'Web', modules: ['HTTP', 'Request', 'Ws', 'Http', 'WsClient'] },
   { name: 'Databases', modules: ['Sqlite', 'Pg', 'Pool', 'Orm', 'Query', 'Repo', 'Changeset', 'Migration'] },
   { name: 'Distribution', modules: ['Node', 'Global', 'Continuity', 'Cluster'] },
@@ -374,12 +402,12 @@ export default defineLoader({
   async load(): Promise<LandingData> {
     const hl: HighlighterCore = await createHighlighter({
       themes: [meshLight as any, meshDark as any],
-      langs: [{ ...meshGrammar, name: 'mesh' } as any],
+      langs: [{ ...meshGrammar, name: 'mesh' } as any, 'json'],
     })
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     // Token spans carrying both palettes; CSS picks one per surface.
-    const html = (code: string) =>
-      hl.codeToTokens(code, { lang: 'mesh', themes: { light: 'mesh-light', dark: 'mesh-dark' }, defaultColor: false })
+    const html = (code: string, lang = 'mesh') =>
+      hl.codeToTokens(code, { lang, themes: { light: 'mesh-light', dark: 'mesh-dark' }, defaultColor: false })
         .tokens.map((line) => line.map((t) => {
           const style = Object.entries(t.htmlStyle ?? {}).map(([k, v]) => `${k}:${v}`).join(';')
           return `<span style="${style}">${esc(t.content)}</span>`
@@ -433,6 +461,32 @@ export default defineLoader({
         panels: benchmarkPanels(readFileSync(new URL(`../../../../../../${RUN.dir}/comparison.csv`, import.meta.url), 'utf8')),
         footnote: RUN.footnote,
         link: { text: 'Full results', href: `${GITHUB_URL}/blob/main/${RUN.dir}/README.md` },
+      },
+      jobs: {
+        title: ['A durable job queue, built in.', 'Faster than Oban on every workload.'],
+        lead: '<code class="ic">Jobs</code> stores work in the PostgreSQL you already run. Enqueue in the same transaction as your business write, and a rollback takes both back. Retries, scheduling, uniqueness, priorities and leases come with it.',
+        link: { text: 'Durable jobs', href: '/docs/concurrency/#durable-jobs' },
+        code: html(JOBS),
+        benchmarks: {
+          title: ['', ''],
+          panels: jobsPanels(readFileSync(new URL(`../../../../../../${JOBS_RUN.dir}/comparison.csv`, import.meta.url), 'utf8')),
+          footnote: JOBS_RUN.footnote,
+          link: { text: 'Full results', href: `${GITHUB_URL}/blob/main/${JOBS_RUN.dir}/README.md` },
+        },
+      },
+      agents: {
+        title: ['Built for coding agents.', 'Errors an agent can act on.'],
+        lead: 'Every diagnostic carries its code, a repair, and where to read more. Add <code class="ic">--json</code> and an agent gets the same report as data, with edits it can apply.',
+        link: { text: 'JSON diagnostics', href: '/docs/tooling/#json-diagnostics' },
+        command: 'meshc build . --json',
+        diagnostic: html(JSON.stringify(DIAGNOSTIC, null, 2), 'json'),
+        items: [
+          { command: 'meshc skills setup', line: 'Installs the Mesh skill for Claude Code, Codex, Cursor, Gemini CLI and GitHub Copilot CLI.' },
+          { command: 'meshc explain E0001', line: 'Prints the catalog entry and repair for any diagnostic code, offline.' },
+          { command: 'meshc guide syntax', line: 'The language guide ships inside the compiler, so it always matches the build.' },
+          { command: 'meshc test --json', line: 'Each failing assertion is a diagnostic at its line, as a JSON line.' },
+          { command: 'meshc verify .', line: 'Checks .law policies and proofs. With --preserve, CI fails when a change drops a requirement.' },
+        ],
       },
       stdlib: {
         title: ['Batteries included.', 'Built in, with no import.'],

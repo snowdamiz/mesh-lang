@@ -9,8 +9,9 @@ import ClusterFigure from './ClusterFigure.vue'
 import BenchmarkChart from './BenchmarkChart.vue'
 import ToolchainTabs from './ToolchainTabs.vue'
 import StdlibEditor from './StdlibEditor.vue'
+import AgentTools from './AgentTools.vue'
 
-const { hero, install, demo, features, art, distribution, benchmarks, toolchain, stdlib, quote, close } = data
+const { hero, install, demo, features, art, distribution, jobs, benchmarks, agents, toolchain, stdlib, quote, close } = data
 </script>
 
 <template>
@@ -33,6 +34,20 @@ const { hero, install, demo, features, art, distribution, benchmarks, toolchain,
       </div>
     </section>
 
+    <section id="jobs" class="section" aria-labelledby="h-jobs">
+      <div class="wrap">
+        <div v-reveal class="section-head">
+          <h2 id="h-jobs" class="h2">{{ jobs.title[0] }} <span class="grey">{{ jobs.title[1] }}</span></h2>
+          <div class="lead">
+            <p style="margin: 0" v-html="jobs.lead" />
+            <a class="link-arrow" :href="jobs.link.href">{{ jobs.link.text }} <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a>
+          </div>
+        </div>
+        <BenchmarkChart v-reveal :benchmarks="jobs.benchmarks" />
+        <div v-reveal class="codecard on-night jobs-code"><pre class="code"><code v-html="jobs.code" /></pre></div>
+      </div>
+    </section>
+
     <section id="distribution" class="section" aria-labelledby="h-dist">
       <div class="wrap">
         <div v-reveal class="section-head">
@@ -44,6 +59,19 @@ const { hero, install, demo, features, art, distribution, benchmarks, toolchain,
         </div>
         <ClusterFigure :figure="distribution.figure" />
         <div v-reveal class="codecard on-night"><pre class="code"><code v-html="distribution.code" /></pre></div>
+      </div>
+    </section>
+
+    <section id="agents" class="section" aria-labelledby="h-agents">
+      <div class="wrap">
+        <div v-reveal class="section-head">
+          <h2 id="h-agents" class="h2">{{ agents.title[0] }} <span class="grey">{{ agents.title[1] }}</span></h2>
+          <div class="lead">
+            <p style="margin: 0" v-html="agents.lead" />
+            <a class="link-arrow" :href="agents.link.href">{{ agents.link.text }} <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a>
+          </div>
+        </div>
+        <AgentTools :agents="agents" />
       </div>
     </section>
 
