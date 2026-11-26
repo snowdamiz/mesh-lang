@@ -1,0 +1,304 @@
+{
+  "default/1/span-a": {
+    "oban": {
+      "drain_limit_us": 380427,
+      "full_credit_late_us": -28712,
+      "observed_late_us": 213964,
+      "positive_window_us": 254952,
+      "submit_limit_after_enqueue_us": 517369,
+      "uniform_share_needed_percent": 87.36,
+      "windows_us": [
+        52529,
+        13349,
+        46049,
+        44592,
+        36237,
+        4368,
+        13678,
+        16376,
+        27774
+      ]
+    },
+    "river": {
+      "drain_limit_us": 667039,
+      "full_credit_late_us": -315324,
+      "observed_late_us": -72648,
+      "positive_window_us": 254952,
+      "submit_limit_after_enqueue_us": 1031972,
+      "uniform_share_needed_percent": 0.0,
+      "windows_us": [
+        52529,
+        13349,
+        46049,
+        44592,
+        36237,
+        4368,
+        13678,
+        16376,
+        27774
+      ]
+    }
+  },
+  "default/1/span-b": {
+    "oban": {
+      "drain_limit_us": 380427,
+      "full_credit_late_us": -20575,
+      "observed_late_us": 172474,
+      "positive_window_us": 193049,
+      "submit_limit_after_enqueue_us": 479956,
+      "uniform_share_needed_percent": 89.34,
+      "windows_us": [
+        10468,
+        47389,
+        19880,
+        17182,
+        23989,
+        28238,
+        45903
+      ]
+    },
+    "river": {
+      "drain_limit_us": 667039,
+      "full_credit_late_us": -307187,
+      "observed_late_us": -114138,
+      "positive_window_us": 193049,
+      "submit_limit_after_enqueue_us": 994559,
+      "uniform_share_needed_percent": 0.0,
+      "windows_us": [
+        10468,
+        47389,
+        19880,
+        17182,
+        23989,
+        28238,
+        45903
+      ]
+    }
+  },
+  "default/2/span-a": {
+    "oban": {
+      "drain_limit_us": 370687,
+      "full_credit_late_us": 13392,
+      "observed_late_us": 190172,
+      "positive_window_us": 185005,
+      "submit_limit_after_enqueue_us": 499693,
+      "uniform_share_needed_percent": 107.67,
+      "windows_us": [
+        42340,
+        27360,
+        26508,
+        29588,
+        12486,
+        9607,
+        26810,
+        10306
+      ]
+    },
+    "river": {
+      "drain_limit_us": 657299,
+      "full_credit_late_us": -273220,
+      "observed_late_us": -96440,
+      "positive_window_us": 185005,
+      "submit_limit_after_enqueue_us": 1014296,
+      "uniform_share_needed_percent": 0.0,
+      "windows_us": [
+        42340,
+        27360,
+        26508,
+        29588,
+        12486,
+        9607,
+        26810,
+        10306
+      ]
+    }
+  },
+  "default/2/span-b": {
+    "oban": {
+      "drain_limit_us": 370687,
+      "full_credit_late_us": -13121,
+      "observed_late_us": 241402,
+      "positive_window_us": 271235,
+      "submit_limit_after_enqueue_us": 480688,
+      "uniform_share_needed_percent": 94.84,
+      "windows_us": [
+        60217,
+        39808,
+        8668,
+        53967,
+        19614,
+        45210,
+        27039,
+        16712
+      ]
+    },
+    "river": {
+      "drain_limit_us": 657299,
+      "full_credit_late_us": -299733,
+      "observed_late_us": -45210,
+      "positive_window_us": 271235,
+      "submit_limit_after_enqueue_us": 995291,
+      "uniform_share_needed_percent": 0.0,
+      "windows_us": [
+        60217,
+        39808,
+        8668,
+        53967,
+        19614,
+        45210,
+        27039,
+        16712
+      ]
+    }
+  },
+  "external-4m/1/span-a": {
+    "oban": {
+      "drain_limit_us": 264697,
+      "full_credit_late_us": 73108,
+      "observed_late_us": 306680,
+      "positive_window_us": 233572,
+      "submit_limit_after_enqueue_us": 425275,
+      "uniform_share_needed_percent": 132.02,
+      "windows_us": [
+        82427,
+        37876,
+        39285,
+        18498,
+        13391,
+        20014,
+        12337,
+        9744
+      ]
+    },
+    "river": {
+      "drain_limit_us": 562374,
+      "full_credit_late_us": -224569,
+      "observed_late_us": 9003,
+      "positive_window_us": 233572,
+      "submit_limit_after_enqueue_us": 974437,
+      "uniform_share_needed_percent": 3.85,
+      "windows_us": [
+        82427,
+        37876,
+        39285,
+        18498,
+        13391,
+        20014,
+        12337,
+        9744
+      ]
+    }
+  },
+  "external-4m/1/span-b": {
+    "oban": {
+      "drain_limit_us": 264697,
+      "full_credit_late_us": 121097,
+      "observed_late_us": 284509,
+      "positive_window_us": 163412,
+      "submit_limit_after_enqueue_us": 445490,
+      "uniform_share_needed_percent": 174.11,
+      "windows_us": [
+        19509,
+        37879,
+        26652,
+        12626,
+        23809,
+        10794,
+        17491,
+        14652
+      ]
+    },
+    "river": {
+      "drain_limit_us": 562374,
+      "full_credit_late_us": -176580,
+      "observed_late_us": -13168,
+      "positive_window_us": 163412,
+      "submit_limit_after_enqueue_us": 994652,
+      "uniform_share_needed_percent": 0.0,
+      "windows_us": [
+        19509,
+        37879,
+        26652,
+        12626,
+        23809,
+        10794,
+        17491,
+        14652
+      ]
+    }
+  },
+  "external-4m/2/span-a": {
+    "oban": {
+      "drain_limit_us": 404662,
+      "full_credit_late_us": -66795,
+      "observed_late_us": 145870,
+      "positive_window_us": 212665,
+      "submit_limit_after_enqueue_us": 635627,
+      "uniform_share_needed_percent": 68.59,
+      "windows_us": [
+        52458,
+        12172,
+        13506,
+        30694,
+        31543,
+        35937,
+        36355
+      ]
+    },
+    "river": {
+      "drain_limit_us": 702339,
+      "full_credit_late_us": -364472,
+      "observed_late_us": -151807,
+      "positive_window_us": 212665,
+      "submit_limit_after_enqueue_us": 1184789,
+      "uniform_share_needed_percent": 0.0,
+      "windows_us": [
+        52458,
+        12172,
+        13506,
+        30694,
+        31543,
+        35937,
+        36355
+      ]
+    }
+  },
+  "external-4m/2/span-b": {
+    "oban": {
+      "drain_limit_us": 404662,
+      "full_credit_late_us": -71671,
+      "observed_late_us": 127127,
+      "positive_window_us": 198798,
+      "submit_limit_after_enqueue_us": 613631,
+      "uniform_share_needed_percent": 63.95,
+      "windows_us": [
+        42352,
+        27610,
+        31937,
+        27302,
+        4909,
+        16154,
+        30906,
+        17628
+      ]
+    },
+    "river": {
+      "drain_limit_us": 702339,
+      "full_credit_late_us": -369348,
+      "observed_late_us": -170550,
+      "positive_window_us": 198798,
+      "submit_limit_after_enqueue_us": 1162793,
+      "uniform_share_needed_percent": 0.0,
+      "windows_us": [
+        42352,
+        27610,
+        31937,
+        27302,
+        4909,
+        16154,
+        30906,
+        17628
+      ]
+    }
+  }
+}
