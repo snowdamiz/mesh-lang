@@ -3,7 +3,7 @@
 @@ -456,8 +456,73 @@
      }
  }
-
+ 
 +// The stock compact JSON encoder emits these UTF-8 bytes verbatim between quotes.
 +// Check in blocks so an escaped value can take the ordinary encoder promptly.
 +fn plain_json_string(text: &str) -> bool {
@@ -111,5 +111,5 @@
 -        .map(|mut spec| spec.prepare())
 +        .map(|mut spec| spec.prepare_selected(Some(input_len)))
          .collect::<Result<Vec<_>, _>>()?;
-
+ 
      db.simple("SAVEPOINT mesh_jobs_enqueue")?;

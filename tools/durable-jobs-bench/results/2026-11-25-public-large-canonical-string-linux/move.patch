@@ -1,7 +1,7 @@
 --- a/compiler/mesh-rt/src/jobs/store.rs
 +++ b/compiler/mesh-rt/src/jobs/store.rs
 @@ -458,6 +458,14 @@
-
+ 
  impl JobSpec {
      fn prepare(&mut self) -> Result<Admission, String> {
 +        self.prepare_with_payload(false)
@@ -47,5 +47,5 @@
 -        .map(|mut spec| spec.prepare())
 +        .map(JobSpec::prepare_for_enqueue)
          .collect::<Result<Vec<_>, _>>()?;
-
+ 
      db.simple("SAVEPOINT mesh_jobs_enqueue")?;
