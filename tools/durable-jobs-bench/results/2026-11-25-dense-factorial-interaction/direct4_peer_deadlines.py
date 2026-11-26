@@ -9,11 +9,13 @@ from direct4_idle_budget import blob
 from warm_river_occupancy import SERIES, STAGES
 
 
-def ledger(raw, digest):
+def ledger(raw, digest, *, topology=None):
     assert hashlib.sha256(raw).hexdigest() == digest
     with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
         assert json.load(archive.extractfile("status.json"))["exit_code"] == 0
         data = json.load(archive.extractfile("adapter/ledger.json"))
+    if topology is not None:
+        assert (data["runners"], data["slots"]) == topology
     jobs = data["jobs"]
     assert len(jobs) == len({r["job_key"] for r in jobs}) == 1024
     assert len({r[k] for r in jobs for k in ("attempt_xid", "effect_xid")}) == 2048

@@ -47,14 +47,24 @@ def rank_768(exposure):
         stamps = sorted(job["claimed_us"] - origin for job in jobs)
         first = sorted(job["attempt_committed_us"] - origin for job in jobs)
         effects = sorted(job["effect_committed_us"] - origin for job in jobs)
+        settled = sorted(job["settled_us"] - origin for job in jobs)
         # A millisecond claim stamp represents a bin. Count ambiguous claims
         # as available when bounding the improvement on this grant schedule.
         stamped_upper = sum(stamp <= cutoff for stamp in stamps)
         effect_count = sum(effect <= cutoff for effect in effects)
+        settled_count = sum(stamp <= cutoff for stamp in settled)
+        # Starting job 768 on 64 seats needs at least 704 releases. Even
+        # an immediate receipt for every effect cannot precede its record.
+        release_rank = 768 - 64
+        assert settled_count <= effect_count
+        assert effects[release_rank - 1] <= settled[release_rank - 1] <= stamps[767] + 999
         assert effect_count <= stamped_upper and first[767] <= effects[767]
         rows.append(dict(control=name, mesh_sha256=score["raw_sha256"],
                          claims_possibly_stamped=stamped_upper, effects_committed=effect_count,
                          additional_claims_needed=max(0, 768 - stamped_upper),
+                         completed_effects_waiting_for_settlement=effect_count - settled_count,
+                         additional_effects_needed_to_fund_claim_768=max(0, release_rank - effect_count),
+                         earliest_release_lag_with_instant_settlement_us=effects[release_rank - 1] - cutoff,
                          claim_768_lag_floor_us=stamps[767] - cutoff,
                          first_write_768_lag_us=first[767] - cutoff,
                          first_to_second_rank_gap_us=effects[767] - first[767]))

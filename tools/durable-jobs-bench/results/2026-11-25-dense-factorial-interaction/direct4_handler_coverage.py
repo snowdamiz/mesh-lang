@@ -89,7 +89,7 @@ def controls(exposure):
         path = f"{block}/measured-direct4/measured-mesh/raw.tar.gz"
         score = scores["direct4"]
         raw = read(path)
-        jobs, txn = ledger(raw, score["raw_sha256"])
+        jobs, txn = ledger(raw, score["raw_sha256"], topology=(2, 64))
         with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
             processes = json.load(archive.extractfile("adapter/process-identity.json"))
             assert len(processes) == 3 and all(p["executable_sha256"] ==

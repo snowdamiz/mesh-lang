@@ -73,6 +73,8 @@ The slowest of the six warm River arms committed its 768th effect **396.911 ms a
 
 The last column compares two independently sorted commit ranks. Different jobs can occupy the two ranks. A change to reply handling could still help substantially if it brings forward subsequent settlements, seat reuse and grants. The product measurement for that mechanism is whether the later grant stamps and first writes advance alongside the effects. These cross-release clocks locate the deficit and leave its cause open.
 
+All six Mesh ledgers record 64 slots and a successful effect for every job. To start job 768, at least 704 earlier jobs must have freed a seat. At the cutoff, only **2–22** completed effects were awaiting a terminal commit record. Even granting immediate seat reuse for every recorded effect across both runners, **116–177 more effects** were needed to make the 768th claim possible. The six actual 704th effects came **82.967–117.029 ms after the cutoff**. This is a lower bound with the observed application-write schedule held fixed. Faster settlement can still help by bringing forward *new* application writes through earlier refill. A change that closes the gap must demonstrate that feedback in the ledger.
+
 Run `python3 -B direct4_throughput_frontier.py EXPOSURE_DIR --rank-768` with the released event-park continuation directory. The output includes the selected River and six Mesh raw hashes.
 
 ### How much worker capacity could an unentered handler use?
