@@ -3232,6 +3232,41 @@ fn skills_setup_supports_piped_stdin_with_explicit_targets() {
 }
 
 #[test]
+fn skills_refresh_keeps_an_edited_account_copy_and_succeeds() {
+    let home = tempfile::tempdir().unwrap();
+    let skill = home.path().join(".claude/skills/mesh");
+    write_file(&skill.join("SKILL.md"), "local edits");
+    write_file(
+        &skill.join(".mesh-install.json"),
+        &format!(
+            r#"{{"schema":1,"scope":"account","digest":"{}"}}"#,
+            "0".repeat(64)
+        ),
+    );
+    let output = Command::new(meshc_bin())
+        .args(["skills", "refresh"])
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .current_dir(home.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let printed = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        printed.contains(&format!("Kept {}", skill.display())),
+        "{printed}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+        "local edits"
+    );
+}
+
+#[test]
 fn check_tests_compiles_the_test_dsl_without_running_it() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path();
