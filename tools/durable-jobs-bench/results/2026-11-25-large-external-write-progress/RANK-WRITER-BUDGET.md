@@ -18,6 +18,27 @@ The same producer backend serviced 64 serial top-level executions of the exact s
 
 The medians summarize each paired quantity separately. Read each arm’s own bounds before subtracting or forming ratios.
 
+## Where the split-bind component saved time
+
+In screen `03e15310`, the split-JSON writer saved **101.283–140.706 ms** per 64 admissions against the faster stock duplicate in each of six blocks. The writer's measured executor elapsed accounted for **40.572–58.438 ms** of those savings. Split text saved **106.869–146.818 ms** overall, including **44.287–59.555 ms** inside the writer executor. Both estimates use the same stock arm for every term in the subtraction. All 24 arms committed the independent product write and 64 jobs. The preceding unscored release `eef3ab3e` verified physical args, ordered fingerprints and the normalized savepoint and release keys.
+
+| Block | Faster stock by enqueue | Split JSON executor saving (ms) | Split JSON remaining wall saving (ms) | Split text executor saving (ms) | Split text remaining wall saving (ms) |
+|---|---|---:|---:|---:|---:|
+| 1 | B | 58.438 | 82.268 | 59.555 | 87.263 |
+| 2 | B | 49.711 | 51.572 | 46.615 | 60.254 |
+| 3 | B | 56.981 | 71.982 | 53.039 | 86.795 |
+| 4 | B | 40.572 | 72.573 | 51.935 | 85.642 |
+| 5 | B | 49.823 | 83.054 | 57.066 | 82.095 |
+| 6 | A | 51.909 | 85.878 | 44.287 | 93.600 |
+
+The component starts after constructing the binds and stops after receiving COMMIT. Its remaining wall includes the rest of the writer exchange, all 64 namespace fence statements, savepoints and releases, the independent insert and the outer transaction. In five split-text blocks and three split-JSON blocks this saving alone exceeded **77.491 ms**, the largest upper bound for all non-executor time inside the 64 stock writer exchanges in the separate, instrumented FILE series. Those measurements use different clients and runs. Charging the entire residual saving to the FILE writer's Bind phase would exceed the available clock in those cases.
+
+If the observed executor gains transferred in full, split JSON would need another **6.524–25.079 ms** of net savings per block to clear the component's elapsed floors. Split text would need **5.407–22.430 ms**. Any added broker preparation cost increases the required saving elsewhere. The product comparison must measure enqueue through durable commit and submit through last settlement with the private writer exercised on the eligible path. Its drain clock starts at commit.
+
+For the separate historical EXTERNAL FILE series, the fourth Oban rotation required **254.8 ms** of submit savings to reach 1.20× throughput at fixed drain. Even transferring the largest split-text saving in full leaves about **108 ms** to find there. Across all five rotations the independent drain requirement remains **208.7–439.1 ms**. [Matched peer deadlines](README.md#which-clock-still-needs-to-move-on-public-file)
+
+Run `rank_writer_budget.py RANK_EVIDENCE --split-bind SCREEN_EVIDENCE` to reproduce the table. It rehashes both raw archives and controller releases, joins each component snapshot to its writer and arm, and checks the 12 FILE traces.
+
 ## Where the longest SQL calls occurred
 
 One backend executed the 64 writes serially. Its recorded maximum executor time can belong only to a call whose client send-to-ready upper bound is at least that large. In 11 of 12 arms exactly one call fits. Ten of those maxima fall at ranks **16–19 or 42–49**; the other is rank 1. In the remaining arm ranks 1 and 45 both fit. **No arm’s longest SQL execution falls in ranks 2–11.** The single worst call therefore cannot explain the repeated difference between the first two groups of five writer exchanges. Storage, WAL and scheduling causes remain unassigned.

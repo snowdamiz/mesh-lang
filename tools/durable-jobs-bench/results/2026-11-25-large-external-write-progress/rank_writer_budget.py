@@ -102,7 +102,45 @@ def measure(archive, trace_name):
                      executor_share_lower_percent=100 * overlap / pre_reply)
 
 
-def main(folder, show_spikes, show_client):
+def split_bind_budget(screen, measurements):
+    """Partition the component contrast on one stock reference per block."""
+    release = (screen / "controller-release.json").read_bytes()
+    assert sha256(release).hexdigest() == "03e153105b0401fb2bfca56e2485def919f9148a795cebf298886d1803d2a59d"
+    assert json.loads(release)["exit_status"] == 0
+    raw = screen / "raw.tar.gz"
+    assert sha256(raw.read_bytes()).hexdigest() == "f15829bdc4b28c64b673f8fcfc365a462bcf505458cad95b840cfb9bb94dea24"
+    residuals = [value["wall_outside_executor_upper_ns"] for value in measurements.values()]
+    print(f"FILE stock writer exchange residual upper bounds: {min(residuals)/1e6:.3f} to {max(residuals)/1e6:.3f} ms")
+    print("block  stock     lane        wall_gain_ms  executor_gain_ms  other_gain_ms  other_needed_ms")
+    with tarfile.open(raw) as archive:
+        report = json.load(archive.extractfile("report.json"))
+        assert report["component_eligibility"] and len(report["blocks"]) == 6
+        floors = report["seal"]["full_submit_floor_us"]
+        for index, (block, floor_us) in enumerate(zip(report["blocks"], floors, strict=True), 1):
+            assert set(block) == {"stock_a", "stock_b", "split_json", "split_text"}
+            executor = {}
+            for lane, arm in block.items():
+                label = f"split_{index}_{lane}"
+                observed = json.load(archive.extractfile(f"stats-{label}.json"))
+                detail = json.load(archive.extractfile(f"{label}.json"))
+                assert observed["stats"] == arm["stats"] and detail["arm"] == arm
+                assert detail["product"] == arm["commit"] and len(detail["rows"]) == arm["subxids"] == 64
+                writer, = [row for row in observed["stats"] if row[0] == observed["writer"]]
+                assert writer[1:3] == ["64", "64"]
+                executor[lane] = Decimal(writer[3]) * 1_000_000
+            ref = min(("stock_a", "stock_b"), key=lambda lane: block[lane]["enqueue_wall_ns"])
+            spread = abs(block["stock_a"]["enqueue_wall_ns"] - block["stock_b"]["enqueue_wall_ns"])
+            wall_floor = max(60_000_000, floor_us * 1000, spread)
+            for lane in ("split_json", "split_text"):
+                elapsed = block[ref]["enqueue_wall_ns"] - block[lane]["enqueue_wall_ns"]
+                inside = executor[ref] - executor[lane]
+                outside = elapsed - inside
+                needed = max(0, wall_floor - inside)
+                print(f"{index:5}  {ref:7}  {lane:10}", *(f"{v/1_000_000:14.3f}" for v in
+                      (elapsed, inside, outside, needed)))
+
+
+def main(folder, show_spikes, show_client, screen):
     release = (folder / "controller-release.json").read_bytes()
     assert sha256(release).hexdigest() == RELEASE and json.loads(release)["exit_status"] == 1
     raw = folder / "raw.tar.gz"
@@ -114,6 +152,9 @@ def main(folder, show_spikes, show_client):
     assert len(results) == 12
     for group in range(1, 7):
         assert sorted(k.split("-", 2)[2] for k in results if k.startswith(f"g{group}-")) == ["on-a", "on-b"]
+    if screen is not None:
+        split_bind_budget(screen, results)
+        return
     if show_client:
         print("arm             first_input_to_prepare  between_calls  ranks_2_to_16  ranks_17_to_64  (broker CPU-ms)")
         for arm, values in sorted(results.items()):
@@ -144,5 +185,7 @@ if __name__ == "__main__":
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--spikes", action="store_true")
     mode.add_argument("--client", action="store_true")
+    mode.add_argument("--split-bind", type=Path, metavar="SCREEN",
+                      help="compare the qualified split-bind screen with these FILE exchanges")
     args = parser.parse_args()
-    main(args.evidence, args.spikes, args.client)
+    main(args.evidence, args.spikes, args.client, args.split_bind)
