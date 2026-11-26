@@ -1,0 +1,242 @@
+{
+  "1": {
+    "mesh_raw_sha256": "e8cfeb321b9eab9aaefc760aaf90399a1b46553973332943a7d377a7d3c837b8",
+    "peers": {
+      "apalis": {
+        "drain_saving_needed_us": 532303,
+        "effects_by_cutoff": 8,
+        "entered_by_cutoff": 8,
+        "last_stamp_minus_cutoff_us": 496703,
+        "late_claim_jobs_max": 55,
+        "late_claim_jobs_min": 55,
+        "late_claim_owners_min": 4,
+        "peer_raw_sha256": "cc9e74aeff30eb2087841f0030e044d38b99a51999fed314535520f53465cec2",
+        "settled_by_cutoff": 8,
+        "submit_saving_needed_us": 698058,
+        "target_drain_us": 156993,
+        "target_submit_us": 721779
+      },
+      "oban": {
+        "drain_saving_needed_us": 279555,
+        "effects_by_cutoff": 32,
+        "entered_by_cutoff": 32,
+        "last_stamp_minus_cutoff_us": 243955,
+        "late_claim_jobs_max": 25,
+        "late_claim_jobs_min": 25,
+        "late_claim_owners_min": 3,
+        "peer_raw_sha256": "d3afea1e3751a5d281dedc42ed6e8d792a3e605c3e2c1a4bd5cb15781462b653",
+        "settled_by_cutoff": 32,
+        "submit_saving_needed_us": 43267,
+        "target_drain_us": 409741,
+        "target_submit_us": 1376570
+      },
+      "river": {
+        "drain_saving_needed_us": -20232,
+        "effects_by_cutoff": 64,
+        "entered_by_cutoff": 64,
+        "last_stamp_minus_cutoff_us": -55832,
+        "late_claim_jobs_max": 0,
+        "late_claim_jobs_min": 0,
+        "late_claim_owners_min": 0,
+        "peer_raw_sha256": "571a685ac5abe5e4abc6062c7534ba6d761ecb1ba87c8c64db68dc81f6b18bf1",
+        "settled_by_cutoff": 64,
+        "submit_saving_needed_us": -492363,
+        "target_drain_us": 709528,
+        "target_submit_us": 1912200
+      }
+    },
+    "productive_runners": 4
+  },
+  "2": {
+    "mesh_raw_sha256": "f501507714e50cc3c6932fcc4437b00430fc0d352c71dc8ae341ca3da9afb503",
+    "peers": {
+      "apalis": {
+        "drain_saving_needed_us": 462040,
+        "effects_by_cutoff": 8,
+        "entered_by_cutoff": 12,
+        "last_stamp_minus_cutoff_us": 429905,
+        "late_claim_jobs_max": 48,
+        "late_claim_jobs_min": 48,
+        "late_claim_owners_min": 3,
+        "peer_raw_sha256": "60d58862ed4d480a888278d96cb2dc6ae008b4f093b81424c2a028ae7f0b6384",
+        "settled_by_cutoff": 8,
+        "submit_saving_needed_us": 616583,
+        "target_drain_us": 186803,
+        "target_submit_us": 746359
+      },
+      "oban": {
+        "drain_saving_needed_us": 244160,
+        "effects_by_cutoff": 32,
+        "entered_by_cutoff": 32,
+        "last_stamp_minus_cutoff_us": 212025,
+        "late_claim_jobs_max": 28,
+        "late_claim_jobs_min": 28,
+        "late_claim_owners_min": 3,
+        "peer_raw_sha256": "40b3dfb2944d7a70f28082ab5e7e1f3606ce0998abad92f3514a74a7d7f96f4f",
+        "settled_by_cutoff": 32,
+        "submit_saving_needed_us": -3580,
+        "target_drain_us": 404683,
+        "target_submit_us": 1366522
+      },
+      "river": {
+        "drain_saving_needed_us": -126762,
+        "effects_by_cutoff": 64,
+        "entered_by_cutoff": 64,
+        "last_stamp_minus_cutoff_us": -158897,
+        "late_claim_jobs_max": 0,
+        "late_claim_jobs_min": 0,
+        "late_claim_owners_min": 0,
+        "peer_raw_sha256": "4817a4fa4d8d6e592096800e8b01f8fe76bbf450f9a463193e4210ce5b1373b1",
+        "settled_by_cutoff": 64,
+        "submit_saving_needed_us": -633904,
+        "target_drain_us": 775605,
+        "target_submit_us": 1996846
+      }
+    },
+    "productive_runners": 3
+  },
+  "3": {
+    "mesh_raw_sha256": "72bb4a0aa69392bc737a0f0a817911daa9121f3630d065b531eb3a7732b25fba",
+    "peers": {
+      "apalis": {
+        "drain_saving_needed_us": 470837,
+        "effects_by_cutoff": 8,
+        "entered_by_cutoff": 8,
+        "last_stamp_minus_cutoff_us": 447713,
+        "late_claim_jobs_max": 56,
+        "late_claim_jobs_min": 56,
+        "late_claim_owners_min": 4,
+        "peer_raw_sha256": "ca51f63b29d2c8e45c6e0512ec6797442d8917bdbeeb8557a5b33563d7cf89ba",
+        "settled_by_cutoff": 3,
+        "submit_saving_needed_us": 635197,
+        "target_drain_us": 164299,
+        "target_submit_us": 686163
+      },
+      "oban": {
+        "drain_saving_needed_us": 208675,
+        "effects_by_cutoff": 36,
+        "entered_by_cutoff": 39,
+        "last_stamp_minus_cutoff_us": 185551,
+        "late_claim_jobs_max": 25,
+        "late_claim_jobs_min": 25,
+        "late_claim_owners_min": 3,
+        "peer_raw_sha256": "5d761c14ec7a96fb0bb65273ed611266b0846aea6a3d0fafb6b288652bba4e93",
+        "settled_by_cutoff": 32,
+        "submit_saving_needed_us": -133010,
+        "target_drain_us": 426461,
+        "target_submit_us": 1454370
+      },
+      "river": {
+        "drain_saving_needed_us": -123466,
+        "effects_by_cutoff": 64,
+        "entered_by_cutoff": 64,
+        "last_stamp_minus_cutoff_us": -146590,
+        "late_claim_jobs_max": 0,
+        "late_claim_jobs_min": 0,
+        "late_claim_owners_min": 0,
+        "peer_raw_sha256": "1449a4538562af2d7ebc749673f88121e00edbde0c3a271c66d047732ac38b4a",
+        "settled_by_cutoff": 64,
+        "submit_saving_needed_us": -741078,
+        "target_drain_us": 758602,
+        "target_submit_us": 2062438
+      }
+    },
+    "productive_runners": 4
+  },
+  "4": {
+    "mesh_raw_sha256": "cd65c7217b7c7e29ee9a79bee501ebe40ca5811245f113f539ddd3e63c9d5e4e",
+    "peers": {
+      "apalis": {
+        "drain_saving_needed_us": 695094,
+        "effects_by_cutoff": 8,
+        "entered_by_cutoff": 8,
+        "last_stamp_minus_cutoff_us": 636491,
+        "late_claim_jobs_max": 48,
+        "late_claim_jobs_min": 48,
+        "late_claim_owners_min": 5,
+        "peer_raw_sha256": "621b1acd50f0d0bcccb7bee23d8f9867de6b07aa929115c4ecc268085dbde893",
+        "settled_by_cutoff": 8,
+        "submit_saving_needed_us": 931647,
+        "target_drain_us": 167430,
+        "target_submit_us": 709121
+      },
+      "oban": {
+        "drain_saving_needed_us": 439119,
+        "effects_by_cutoff": 24,
+        "entered_by_cutoff": 31,
+        "last_stamp_minus_cutoff_us": 380516,
+        "late_claim_jobs_max": 32,
+        "late_claim_jobs_min": 32,
+        "late_claim_owners_min": 4,
+        "peer_raw_sha256": "c0c1a1bf9b51dfc0bcf3b5e495973e991453d22b3ae3ca60a908ca4fe29ab327",
+        "settled_by_cutoff": 24,
+        "submit_saving_needed_us": 254788,
+        "target_drain_us": 423405,
+        "target_submit_us": 1385980
+      },
+      "river": {
+        "drain_saving_needed_us": 171091,
+        "effects_by_cutoff": 42,
+        "entered_by_cutoff": 48,
+        "last_stamp_minus_cutoff_us": 112488,
+        "late_claim_jobs_max": 16,
+        "late_claim_jobs_min": 16,
+        "late_claim_owners_min": 2,
+        "peer_raw_sha256": "17c171e625a3b5e0a1a769004270654647e74a2d9816d281e323820fbdd6af73",
+        "settled_by_cutoff": 41,
+        "submit_saving_needed_us": -263036,
+        "target_drain_us": 691433,
+        "target_submit_us": 1903804
+      }
+    },
+    "productive_runners": 6
+  },
+  "5": {
+    "mesh_raw_sha256": "884a041449fa1f19b93c9d65e1de83a3d49262f1aaf7461d70318ce8d5d23c5a",
+    "peers": {
+      "apalis": {
+        "drain_saving_needed_us": 518876,
+        "effects_by_cutoff": 1,
+        "entered_by_cutoff": 8,
+        "last_stamp_minus_cutoff_us": 501731,
+        "late_claim_jobs_max": 56,
+        "late_claim_jobs_min": 56,
+        "late_claim_owners_min": 4,
+        "peer_raw_sha256": "3355b98e516920e0fbc54621d59a9221e42afab8a652ced6bd5ebb02f9c2802d",
+        "settled_by_cutoff": 0,
+        "submit_saving_needed_us": 596801,
+        "target_drain_us": 140257,
+        "target_submit_us": 728505
+      },
+      "oban": {
+        "drain_saving_needed_us": 212278,
+        "effects_by_cutoff": 40,
+        "entered_by_cutoff": 40,
+        "last_stamp_minus_cutoff_us": 195133,
+        "late_claim_jobs_max": 21,
+        "late_claim_jobs_min": 20,
+        "late_claim_owners_min": 3,
+        "peer_raw_sha256": "13c0be9139ad2342af6621bdfd2e8537617f25adbb80090c1908e533f3d11896",
+        "settled_by_cutoff": 40,
+        "submit_saving_needed_us": -133198,
+        "target_drain_us": 446855,
+        "target_submit_us": 1458504
+      },
+      "river": {
+        "drain_saving_needed_us": -61949,
+        "effects_by_cutoff": 64,
+        "entered_by_cutoff": 64,
+        "last_stamp_minus_cutoff_us": -79094,
+        "late_claim_jobs_max": 0,
+        "late_claim_jobs_min": 0,
+        "late_claim_owners_min": 0,
+        "peer_raw_sha256": "62f72db2d49203aadbfc6b3a4e82e7605741ca9a19a065aefb971d25112fbe27",
+        "settled_by_cutoff": 64,
+        "submit_saving_needed_us": -609836,
+        "target_drain_us": 721082,
+        "target_submit_us": 1935142
+      }
+    },
+    "productive_runners": 4
+  }
+}

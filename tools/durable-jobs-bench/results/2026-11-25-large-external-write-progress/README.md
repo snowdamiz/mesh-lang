@@ -10,6 +10,22 @@ The public Mesh FILE producer settled 64 × 512 KiB jobs sooner than River and O
 
 Median full-submit throughputs were 46.96 jobs/s for Mesh, 27.56 for River, 38.48 for Oban and 73.89 for Apalis. Ratios in the table use matched rotations. The 20% column is descriptive.
 
+### Which clock still needs to move on public FILE
+
+At fixed drain, Mesh needed 43.3 ms and 254.8 ms of producer savings to reach 1.20× Oban's full-submit throughput in rotations 1 and 4. The other three already cleared that mark. At fixed enqueue, each rotation still required substantial drain savings to reach the same throughput ratio **on the drain clock**. A component timing in CPU-ms cannot be substituted for either elapsed saving.
+
+| Rotation | Additional submit saving needed, ms | Additional drain saving needed, ms | Jobs whose claim stamp was still ahead at the drain deadline | Durable effects reached, of 64 |
+|---|---:|---:|---:|---:|
+| 1 | 43.3 | 279.6 | 25 | 32 |
+| 2 | 0 | 244.2 | 28 | 32 |
+| 3 | 0 | 208.7 | 25 | 36 |
+| 4 | 254.8 | 439.1 | 32 | 24 |
+| 5 | 0 | 212.3 | 20–21 | 40 |
+
+The deadline starts at Mesh's producer commit and allows five sixths of the same rotation's Oban drain. In rotation 4 the final Mesh claim stamp was still **380.5 ms ahead** at that cutoff. Four different runner PIDs later handled the 32 jobs whose stamps definitely missed it. Even instant handling at those stamps would still miss that deadline on the recorded schedule. Across the five rotations, Mesh had three to six productive runner PIDs out of eight; the run with six had the largest deficit.
+
+The [replay](peer_budgets.py) joins the released ledgers and raw hashes for FILE, River, Oban and Apalis. It bounds each millisecond-rounded claim stamp by the earlier of handler entry and the end of its rounding interval. The [receipt](peer-budgets.json) keeps signed headroom for all three peers. These are stock, same-rotation deadlines. The prepared consumer and optimized producer each need their own matched controls.
+
 ## Where the differences accrued
 
 Elapsed times below are paired median Mesh minus peer values in milliseconds. Negative values mean Mesh took less time. Each arm starts at its own submission, and the application milestones count durable second writes in completion order. Intervals partition each individual run exactly. Medians across runs need not add to the median total.
