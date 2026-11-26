@@ -367,3 +367,19 @@ The fixed-eight duplicates recorded 32–57 ms of device flush time during drain
 During that same forward original, the PostgreSQL device recorded **1,339–1,648 ms busy** and **1,506–2,016 cumulative ms servicing writes**. The two OFF controls recorded 129–203 and 103–182 ms busy, respectively. Write time was 147–299 and 99–282 ms. Combining the inner time and outer completion counts puts the original at **at least 1.09 ms of device write time per completed write**. Both OFF controls were below 0.26 ms even with their outer time and inner counts. All four forward arms recorded zero device reads. Written sector bounds overlapped. This locates a physical difference during the failed calibration. The device served all users, and the archive has no per-write mapping to a PostgreSQL backend or transaction.
 
 Replay the additional 16 measured raw archives with `--fixed-workers` pointing to the released spawn SETUP evidence directory and `--protected` to the quiet pilot directory. [Fixed-worker release](/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-91e704ed/target/direct-fixed-workers-spawn-evidence/controller-release.json) · [Protected same-image replay](/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-53167fa3/target/direct4-protected-owner-quiet-pilot/controller/replay.json)
+
+### How many application writes had demonstrably reached XID assignment together?
+
+During effects 256 through 768, the protected pair produced a witnessed peak of three concurrent assigned application XIDs in each order. Two or more overlapped for at least 0.457 ms forward and 2.222 ms reverse. The two recording-off controls gave 0.794 and 1.426 ms forward, then zero and 1.819 ms reverse. The handler evidence that five jobs per runner were between writes includes time before assignment and after the commit record. It cannot establish that five writes on a runner had assigned XIDs at once.
+
+| Measured lane | Forward peak floor across both PIDs | Reverse peak floor across both PIDs |
+|---|---:|---:|
+| Four fixed workers, duplicate arms | 1, 2 | 2, 2 |
+| Eight fixed workers, duplicate arms | 2, 2 | 8, 3 |
+| Protected ON | 3 | 3 |
+
+In reverse fixed-eight, one arm reached four assigned writes per owner simultaneously. The full-submit and drain gates still failed. Across all 24 Mesh measurements, including the earlier cold-spare pilot, the ledger witnesses no interval with nine concurrent assigned writes. In four of six historical warm River arms it witnesses nine or more, for 0.271–3.643 ms per arm. The other two reached four. Insetting both ends of every witness by 2 ms reduces the highest middle-window River floor from 21 to seven and the highest Mesh floor from eight to two. The qualified comparison still requires fresh peer clocks.
+
+For each application transaction, any higher ordinary XID must have been assigned before its commit record. Use the earliest such record among the 2,048 application writes and all distinct settlement XIDs in the same fresh cluster. Count only the earlier application's interval from that witness to its own commit timestamp. Transactions that commit in assignment order can overlap without producing a witness. The calculation cannot identify a shared WAL flush, a ready client, or an opportunity to remove elapsed time. The extra workers demonstrated more concurrent database work in one order without improving the scored outcome.
+
+The [overlap replay](direct4_assigned_writes.py) accepts the cold-spare, fixed-worker and protected pilot evidence directories in that order. It verifies all 30 measured raw archives and reports both the original and 2 ms inset intervals. The historical River ledgers record global XIDs and omit the owner PID, so only global overlap is compared across engines.

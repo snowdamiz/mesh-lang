@@ -50,7 +50,7 @@ def measure(path, digest, drain_us, boot):
     return result
 
 
-def replay(directory, fixed_workers=None, protected=None):
+def measured_archives(directory, fixed_workers=None, protected=None):
     worker = Path(__file__).resolve().parents[2] / "worker.py"
     assert sha256(worker.read_bytes()).hexdigest() == RECORDER
     release = json.loads(read(directory / "controller-release.json", RELEASE))
@@ -58,15 +58,13 @@ def replay(directory, fixed_workers=None, protected=None):
     report = json.loads(read(directory / "controller/replay.json", REPLAY))
     assert release["exit_status"] == 0 and report["complete"] and not report["errors"]
     boot = request["host"][0]
-    results = {}
     for block, phases in report["arms"].items():
         for lane, score in phases["measured"].items():
             name = f"{block}/measured-{lane}/measured-mesh/raw.tar.gz"
-            results[name] = measure(directory / name, report["evidence_sha256s"][name], score["drain_us"], boot)
+            yield name, directory / name, report["evidence_sha256s"][name], score["drain_us"], boot
     for group, score in warm_river().items():
         path, = SERIES.glob(f"blocks/{group:02}-*/measured-river-warm/*/raw.tar.gz")
-        results[str(path.relative_to(SERIES))] = measure(path, score["raw_sha256"], score["drain_us"], boot)
-    assert len(results) == 14
+        yield str(path.relative_to(SERIES)), path, score["raw_sha256"], score["drain_us"], boot
     if fixed_workers is not None:
         fixed = json.loads(read(fixed_workers / "controller-release.json",
                                 "529bc600a6d74400a17565b22582353bcde94033084bc76e40f8a63c7bf25001"))
@@ -75,8 +73,7 @@ def replay(directory, fixed_workers=None, protected=None):
         measured = {n: a for n, a in score["arms"].items() if n.endswith("/measured-mesh")}
         assert len(measured) == 8
         for name, arm in measured.items():
-            results["fixed/" + name] = measure(fixed_workers / name / "raw.tar.gz", arm["raw_sha256"],
-                                                arm["drain_us"], boot)
+            yield "fixed/" + name, fixed_workers / name / "raw.tar.gz", arm["raw_sha256"], arm["drain_us"], boot
     if protected is not None:
         pilot = json.loads(read(protected / "controller-release.json",
                                 "8e7ae41878b0b386dbb8531d020d6c8372ec897ee49afd588d7387ef3505def0"))
@@ -89,8 +86,13 @@ def replay(directory, fixed_workers=None, protected=None):
             assert set(phases["measured"]) == {"original", "off-a", "off-b", "on"}
             for lane, arm in phases["measured"].items():
                 name = f"{block}/measured-{lane}/measured-mesh/raw.tar.gz"
-                results["protected/" + name] = measure(protected / name, score["evidence_sha256s"][name],
-                                                        arm["drain_us"], boot)
+                yield "protected/" + name, protected / name, score["evidence_sha256s"][name], arm["drain_us"], boot
+
+
+def replay(directory, fixed_workers=None, protected=None):
+    inputs = measured_archives(directory, fixed_workers, protected)
+    results = {name: measure(path, digest, drain_us, boot) for name, path, digest, drain_us, boot in inputs}
+    assert len(results) == 14 + 8 * (fixed_workers is not None) + 8 * (protected is not None)
     return results
 
 
