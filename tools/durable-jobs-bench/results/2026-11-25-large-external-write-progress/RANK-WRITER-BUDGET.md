@@ -61,6 +61,20 @@ The first FILE command through the start of Rust admission preparation used **12
 
 The first 15 of those later intervals used 49.915–54.370 CPU-ms per submission. Even eliminating all that CPU would fall short of 60 ms on a one-for-one transfer to enqueue. The remaining 48 intervals used 69.064–72.311 CPU-ms. Attributing a benefit to a specific encoder or file reader requires measuring its share of the corresponding window on the matched Linux images. The archived observer failed its perturbation gates.
 
+## How much encoder CPU is in overflow peeks?
+
+In native FILE encoder SETUP `12faf76a`, the collector encoded each of 64 accepted specs and also encoded the next spec on each of the first 63 calls to check the batch limit. The next call encoded that same spec again. The table gives same-thread CPU in milliseconds from one instrumented submission per image.
+
+| Encoder | 64 accepted encodes | 63 overflow peeks | 63 accepted re-encodes after a peek |
+|---|---:|---:|---:|
+| Stock | 38.668 | 28.124 | 37.316 |
+| Copy control | 27.095 | 14.767 | 25.851 |
+| Fast | 12.324 | 13.433 | 11.685 |
+
+A collector that carries the already-encoded overflow spec would save work from the last column. A collector that can establish overflow before encoding would save work from the middle column. These are alternative ways to eliminate one encode per overflow. The first column already includes the last column. Both alternatives would need to preserve the supplier's observable behavior. With the fast encoder, removing all 63 accepted re-encodes from its measured 25.757 CPU-ms gives a combined encoder saving of **52.720 CPU-ms** against the stock total of 66.792. The product enqueue gate requires 60 ms of wall time. The quiet product arms measure that clock.
+
+Run [file_encode_visits.py](file_encode_visits.py) with the released evidence directory and canonical release JSON to recover each instrumented arm's CPU and wall sums. The reduction checks the raw and replay digests, all 127 ordered visits, the size of each encoded spec, and the original per-arm totals.
+
 ## Release and reproducibility
 
 Canonical release `04e0e316` is exit 1. All 30 arms ran and exported; strict replay rejected all 12 recorded arms at the per-segment CPU upper bound. The largest enqueue and submit spreads between identical OFF arms were 121.672 and 222.888 ms against the 15 ms limits. The wall-time calculation describes the observed release and supplies no stock-path performance qualification.
