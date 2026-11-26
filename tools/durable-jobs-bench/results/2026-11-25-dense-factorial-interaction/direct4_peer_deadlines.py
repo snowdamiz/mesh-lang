@@ -130,7 +130,7 @@ def claim_room(raw, jobs):
                 partials_with_room=eligible, partials_with_room_for_16=full)
 
 
-def replay():
+def warm_river():
     peer_score = json.loads((SERIES / "replay-rest.json").read_bytes())["groups"]
     peers = {}
     for group in range(1, 7):
@@ -144,6 +144,11 @@ def replay():
         assert phases["middle_us"] == peer["progress"]["second_write"]["middle_512_us"]
         peers[group] = dict(**observed, phases=phases, raw_sha256=peer["raw_sha256"])
     assert len(peers) == 6
+    return peers
+
+
+def replay():
+    peers = warm_river()
     result = {}
     for group in (1, 2):
         block = f"blocks/{group:02}-noop"

@@ -77,6 +77,23 @@ These intervals do not identify an idle thread. A checked member may still await
 
 Run `python3 -B direct4_handler_coverage.py EXPOSURE_DIR` here with the released event-park continuation directory. The reducer verifies the release and its replay, reads the other four controls from their pinned Git objects and checks all six native ledgers and process identities.
 
+## Enqueue cost at River's later write cadence
+
+Even if Direct4 matched warm River from the 256th through the 1,024th effect, its current enqueue time would leave it **44.255–75.293 ms short** of 20% higher throughput from submission. Under the same assumption it would already clear the 20% drain-throughput target by 13.538–59.858 ms. The difference matters when choosing between further runner work and accelerating the producer.
+
+This sensitivity crosses six silent Direct4 controls with six historical warm River ledgers. Each calculation keeps Direct4's measured time to the 256th effect after enqueue commit and its final effect-to-settlement interval. It inserts one River arm's elapsed time for all 768 intervening effects. At 1,024 jobs each, a 20% throughput lead permits five-sixths of the peer's elapsed time. Subtracting modeled drain from that submit deadline gives the time available for enqueue.
+
+| Direct4 control | Actual enqueue (ms) | Enqueue saving required across six River arms (ms) |
+|---|---:|---:|
+| Pool supply, forward | 166.596 | 47.867–65.462 |
+| Pool supply, reverse | 173.063 | 53.794–71.389 |
+| Idle spin, forward | 170.314 | 44.255–61.850 |
+| Idle spin, reverse | 160.222 | 57.698–75.293 |
+| Event park, forward | 164.450 | 51.402–68.997 |
+| Event park, reverse | 156.078 | 46.087–63.682 |
+
+Giving Mesh the same River arm's enqueue time as well would put 35 of 36 combinations inside both deadlines. The remaining one misses submit by 0.740 ms. The calculation uses twelve measured arms from separate runs. Each arm appears in six comparisons. Actual joint performance requires a matched native run. Run `python3 -B direct4_throughput_frontier.py EXPOSURE_DIR` with the same exposure directory as the handler coverage replay to reproduce the individual margins and source hashes.
+
 ## Would a 32-row claim keep four workers supplied?
 
 A larger ceiling can change a full grant even when the owner has no new capacity to add after BEGIN. The two Direct4 runs reached the 16-row ceiling 23 and 24 times. For each full grant the replay keeps all preceding grants, credits every durable settlement through the end of the stamp's millisecond and respects both seat limits, same-stamp peer grants and remaining jobs. This gives an optimistic bound on room at the decision. The archives omit the client's checked credit at that instant.

@@ -65,7 +65,7 @@ def coverage(jobs):
     return result
 
 
-def replay(exposure):
+def controls(exposure):
     digest = lambda data: hashlib.sha256(data).hexdigest()
     release = (exposure / "controller/release.json").read_bytes()
     assert digest(release) == "139ebf36ffe58bb0b30aa88b63f0e8cb7017cf3dec27487359f82e76d90e11f1"
@@ -74,7 +74,6 @@ def replay(exposure):
     verified = json.loads(proof)
     assert verified["release_sha256"] == digest(release)
     root = "tools/durable-jobs-bench/results/2026-11-25-direct4-hot-idle/evidence/native"
-    results = {}
     for group in (1, 2):
         block = f"blocks/{group:02}-noop"
         path = f"{block}/measured-direct4/measured-mesh/raw.tar.gz"
@@ -83,7 +82,7 @@ def replay(exposure):
                              ("event_park", lambda p: (exposure / p).read_bytes())):
             score = json.loads(read(f"{block}/reconciled.json"))["measured"]["direct4"]
             raw = read(path)
-            jobs, _ = ledger(raw, score["raw_sha256"])
+            jobs, txn = ledger(raw, score["raw_sha256"])
             with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
                 processes = json.load(archive.extractfile("adapter/process-identity.json"))
                 assert len(processes) == 3 and all(p["executable_sha256"] ==
@@ -92,8 +91,12 @@ def replay(exposure):
                 assert supply["binding"] == "direct" and supply["scheduler_workers"] == 4
             if series == "event_park":
                 assert verified["raw_sha256"][path] == score["raw_sha256"]
-            results[f"{series}-{group}"] = dict(raw_sha256=score["raw_sha256"], worker_us=coverage(jobs))
-    return results
+            yield f"{series}-{group}", score, jobs, txn
+
+
+def replay(exposure):
+    return {name: dict(raw_sha256=score["raw_sha256"], worker_us=coverage(jobs))
+            for name, score, jobs, _ in controls(exposure)}
 
 
 if __name__ == "__main__":
