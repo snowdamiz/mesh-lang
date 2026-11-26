@@ -19,3 +19,19 @@ To reproduce the table and overlap bounds, point the script at the `evidence/nat
 ```sh
 python3 -B pool_supply_work.py "$native_evidence" | cmp - pool-supply-work.json
 ```
+
+## CPU available for a cooperative application write
+
+Direct binding with two scheduler workers per runner finished below the larger service2 duplicate's lifetime CPU in six silent controls. The tightest margin was **1.058 CPU-ms over 2,048 application writes**, or **0.517 µs per call**. Changing both writes to post an asynchronous request on every call would have to recover almost all of its cost elsewhere in that block.
+
+| Silent control pair | Net CPU available forward / reverse (ms) | Per application write forward / reverse (µs) |
+|---|---:|---:|
+| Pool supply | 55.684 / 23.939 | 27.189 / 11.689 |
+| Idle spin | 1.058 / 20.279 | 0.517 / 9.902 |
+| Event park | 25.309 / 13.629 | 12.358 / 6.655 |
+
+Each arm issued 1,024 first writes and 1,024 second writes, all on jobs with zero configured hold. Between effect ranks 256 and 768, direct2 averaged 1.90–2.04 jobs between their first and second commits. Direct4 averaged 3.25–3.54 on the same image. Warm River averaged 9.02–11.14 in its separate six-block release. These intervals include the first acknowledgement, application work and the second write. The ledger cannot assign the interval to the network or establish how many socket waits can release a worker. [Warm River occupancy](WARM-RIVER.md)
+
+The earlier shared-readiness prototype at `e5e6da50c` specialized plain TCP. TLS took its connection-worker path. Its direct-socket throughput result does not measure a cooperative TLS reply on this workload. The native discriminator is whether a second admitted job makes durable progress while a first reply is held, with the original scheduler worker count, pool size, and independent commit acknowledgements. The CPU figures above describe net historical margins. Time saved through earlier completion could offset new runtime CPU.
+
+Run `python3 -B direct2_wait_budget.py EXPOSURE_DIR` from this directory with the released event-park continuation. It checks all 24 arm archives, including process identities, per-statement row and call counts, lifetime CPU, and durable write ranks.

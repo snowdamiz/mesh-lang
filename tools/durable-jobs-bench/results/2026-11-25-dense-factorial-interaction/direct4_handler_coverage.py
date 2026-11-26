@@ -65,7 +65,7 @@ def coverage(jobs):
     return result
 
 
-def controls(exposure):
+def control_blocks(exposure):
     digest = lambda data: hashlib.sha256(data).hexdigest()
     release = (exposure / "controller/release.json").read_bytes()
     assert digest(release) == "139ebf36ffe58bb0b30aa88b63f0e8cb7017cf3dec27487359f82e76d90e11f1"
@@ -76,22 +76,29 @@ def controls(exposure):
     root = "tools/durable-jobs-bench/results/2026-11-25-direct4-hot-idle/evidence/native"
     for group in (1, 2):
         block = f"blocks/{group:02}-noop"
-        path = f"{block}/measured-direct4/measured-mesh/raw.tar.gz"
         for series, read in (("pool_supply", blob),
                              ("idle_spin", lambda p: subprocess.check_output(["git", "show", f"cb4f825c10:{root}/{p}"])),
                              ("event_park", lambda p: (exposure / p).read_bytes())):
-            score = json.loads(read(f"{block}/reconciled.json"))["measured"]["direct4"]
-            raw = read(path)
-            jobs, txn = ledger(raw, score["raw_sha256"])
-            with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
-                processes = json.load(archive.extractfile("adapter/process-identity.json"))
-                assert len(processes) == 3 and all(p["executable_sha256"] ==
-                    "e836b79a2dbd5ee0e10897de8d3d07fbf789ea038e122d2403799b9879bbbaf4" for p in processes)
-                supply = json.load(archive.extractfile("adapter/pool-supply.json"))
-                assert supply["binding"] == "direct" and supply["scheduler_workers"] == 4
-            if series == "event_park":
-                assert verified["raw_sha256"][path] == score["raw_sha256"]
-            yield f"{series}-{group}", score, jobs, txn
+            scores = json.loads(read(f"{block}/reconciled.json"))["measured"]
+            pins = verified["raw_sha256"] if series == "event_park" else {}
+            yield f"{series}-{group}", block, read, scores, pins
+
+
+def controls(exposure):
+    for name, block, read, scores, pins in control_blocks(exposure):
+        path = f"{block}/measured-direct4/measured-mesh/raw.tar.gz"
+        score = scores["direct4"]
+        raw = read(path)
+        jobs, txn = ledger(raw, score["raw_sha256"])
+        with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
+            processes = json.load(archive.extractfile("adapter/process-identity.json"))
+            assert len(processes) == 3 and all(p["executable_sha256"] ==
+                "e836b79a2dbd5ee0e10897de8d3d07fbf789ea038e122d2403799b9879bbbaf4" for p in processes)
+            supply = json.load(archive.extractfile("adapter/pool-supply.json"))
+            assert supply["binding"] == "direct" and supply["scheduler_workers"] == 4
+        if pins:
+            assert pins[path] == score["raw_sha256"]
+        yield name, score, jobs, txn
 
 
 def replay(exposure):
