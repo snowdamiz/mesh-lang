@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, ExitStatus};
 
 fn main() {
     let guide = "../../tools/skill/mesh";
@@ -118,10 +118,16 @@ fn watch_symbolic_refs(workspace: &Path, common_dir: &Path) -> Option<()> {
     let shared_refs = common_dir.join("refs");
     let mut seen = HashSet::new();
     let mut reference = "HEAD".to_owned();
-    while let Some(target) = git_output(
-        workspace,
-        &["symbolic-ref", "--quiet", "--no-recurse", &reference],
-    ) {
+    loop {
+        let (status, target) = git_result(
+            workspace,
+            &["symbolic-ref", "--quiet", "--no-recurse", &reference],
+        )?;
+        match status.code() {
+            Some(0) => {}
+            Some(1) => return Some(()),
+            _ => return None,
+        }
         if !target.starts_with("refs/") || !seen.insert(target.clone()) {
             return None;
         }
@@ -137,17 +143,18 @@ fn watch_symbolic_refs(workspace: &Path, common_dir: &Path) -> Option<()> {
         if !path.exists() && path.starts_with(&shared_refs) && packed_refs.is_file() {
             watch(&packed_refs);
             // A packed branch can gain a loose ref without changing packed-refs.
-            // Watch its parent when available so missing paths do not rebuild every time.
+            // Pack-refs can prune the immediate parent of a slash-named branch.
             let loose = path
-                .parent()
-                .filter(|parent| *parent != shared_refs && parent.is_dir());
+                .ancestors()
+                .skip(1)
+                .take_while(|parent| *parent != shared_refs)
+                .find(|parent| parent.is_dir());
             watch(loose.unwrap_or(path));
         } else {
             watch(path);
         }
         reference = target;
     }
-    Some(())
 }
 
 fn watch(path: &Path) {
@@ -155,6 +162,11 @@ fn watch(path: &Path) {
 }
 
 fn git_output(workspace: &Path, args: &[&str]) -> Option<String> {
+    let (status, stdout) = git_result(workspace, args)?;
+    status.success().then_some(stdout)
+}
+
+fn git_result(workspace: &Path, args: &[&str]) -> Option<(ExitStatus, String)> {
     let output = Command::new("git")
         .current_dir(workspace)
         .env_remove("GIT_DIR")
@@ -163,9 +175,9 @@ fn git_output(workspace: &Path, args: &[&str]) -> Option<String> {
         .args(args)
         .output()
         .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let output = String::from_utf8(output.stdout).ok()?;
-    Some(output.trim_end_matches(['\r', '\n']).to_owned())
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    Some((
+        output.status,
+        stdout.trim_end_matches(['\r', '\n']).to_owned(),
+    ))
 }
