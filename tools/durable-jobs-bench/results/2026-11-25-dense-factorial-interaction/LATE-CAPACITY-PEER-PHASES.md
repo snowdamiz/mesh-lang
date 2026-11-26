@@ -73,3 +73,20 @@ For each job, the replay counts the time from the PostgreSQL commit of its first
 Rotation 2 is especially informative for a worker-supply change. Mesh already had slightly more runners carrying jobs between the two writes than River and still lost 947.0 ms in the middle. A third worker could overlap another handler on an occupied runner only when another handler has work to do. The ledger records PostgreSQL commits and handler entry. The pending work at each scheduler worker and the time it can execute on the two CPUs require separate evidence.
 
 The [replay](owner_cadence.py) uses the 25 original measured arm hashes, including both Mesh OFF controls. It recovers River's runner PIDs from its product attempt rows by job key and transaction ID. The [receipt](owner-cadence.json) retains all 16 intervals, the wall-time distribution by active runner count, and runner-time by job count for both entry-to-second-commit and first-to-second-commit.
+## How much of the middle gap can occur with few runners between writes?
+
+On exact public DENSE B, each measured middle interval starts at the 256th effect commit and ends at the 768th. In four orders at least one handler had entered and had yet to commit its effect throughout that interval. The fifth order had 3.26 ms with zero such handlers. Global lack of entered work occupies little of the measured deficit. A particular runner can still lack work while others carry jobs.
+
+For a more generous bound, count every microsecond when **at most one of the eight runner PIDs** had any job between its first and second PostgreSQL commit timestamps. Subtract *all* that time from B's interval, even though some of those jobs did productive work. Keep the rest of the schedule and the peer clocks fixed. Mesh still trails River in every order.
+
+| Order | Mesh middle (ms) | Mesh minus River (ms) | Time with 0–1 PIDs between commits (ms) | Residual vs River (ms) | Mean entered jobs awaiting their first commit |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 507.1 | +191.1 | 146.5 | +44.6 | 9.55 |
+| 2 | 1,238.2 | +947.0 | 81.2 | +865.8 | 15.05 |
+| 3 | 525.5 | +227.4 | 155.3 | +72.1 | 10.93 |
+| 4 | 537.8 | +257.9 | 150.3 | +107.6 | 10.08 |
+| 5 | 534.3 | +238.5 | 175.7 | +62.8 | 10.60 |
+
+Order 2 also retains a **506.3 ms** deficit to Oban after the subtraction. Mesh was already faster through the middle than Oban in each of the other four orders. For a worker-supply change to recover the whole River gap, it must advance work during intervals with concurrent writes on multiple runners, or bring later grants and writes forward. A component that detects both workers blocked needs to show that the same PID also has a published, still-runnable attempt at that time. The ledgers delimit these windows but cannot identify socket waits or scheduler publication.
+
+The [five-order receipt](owner-cadence.json) has SHA-256 `3941995e892bba9f8fafb20b95d92467d56a8962aad4ca874d046b2c2d0dbaa4`. The time with 0–1 PIDs sums bins 0 and 1 of `between_commits.wall_us_by_owners`. For the final column, weight each `owner_us_by_jobs` bin by its job count, subtract the between-commits sum from the entered sum, and divide by `span_us`. The calculation clips both boundaries to the same window and counts each overlapping job once per unit of wall time. This includes handler code, service handoff, scheduling and time to the first database commit.
