@@ -321,3 +321,16 @@ Each runner had 32 seats. To admit all 1,024 jobs, the two runners needed at lea
 At each historical warm River deadline, use the earlier of River’s drain and the time remaining on River’s full-submit clock after ON’s own enqueue. Even with 64 pooled seats and immediate credit, forward ON would have needed **122–129** more second writes and reverse ON **127–149** more just to fund the last claim. Their 960th effects crossed those deadlines **117.699–134.321 ms** and **133.351–149.973 ms** late, respectively. Completing all 1,024 jobs still required the remaining writes and settlement. These historical comparisons quantify the change in application progress needed on this schedule. A different refill policy could change the effect schedule itself.
 
 The [seat-release reducer](direct4_last_claim_floor.py) takes the quiet R5 pilot directory. It verifies the eight measured Mesh archives and the six warm River ledgers used for the deadlines.
+
+### Can more concurrent handlers reach the peer clocks on the same CPU budget?
+
+The quiet pilot recorded cumulative busy ticks on both shared CPUs. The [CPU replay](direct4_quiet_cpu.py) applies the existing [sampling and rounding bounds](../2026-11-25-dense-host-cpu-budget/README.md) to each measured arm's own submit, drain and middle-write intervals. Across six historical warm River arms the middle 512 effects took 205.990–227.280 ms, giving at most 411.980–454.560 CPU-ms for all work during that interval.
+
+| Quiet R5 arm | Measured middle (ms) | Minimum busy CPU in middle (CPU-ms) | Work to remove or move outside the middle to tie River (CPU-ms) | Work to remove or move outside full submit for 20% higher throughput (CPU-ms) |
+|---|---:|---:|---:|---:|
+| Forward faster OFF | 343.086 | 472.934 | 18.374–60.954 | 63.713–91.416 |
+| Forward ON | 366.074 | 500.146 | 45.586–88.166 | 59.865–87.568 |
+| Reverse faster OFF | 332.770 | 496.494 | 41.934–84.514 | 8.215–35.918 |
+| Reverse ON | 370.117 | 467.256 | 12.696–55.276 | 163.123–190.826 |
+
+For full-submit or drain parity, the lower bound on busy work in each of these four arms fits inside the corresponding River interval. The coarse samples therefore leave room for improved overlap to change the end-to-end result. For middle-write parity, every one of the eight measured Mesh arms exceeded the two-core budget of every historical warm River arm. A concurrency change would have to reduce CPU work or shift some of it across those write ranks to reproduce that cadence on the same host load. The counters include PostgreSQL, runtime, kernel and incidental activity. They cannot identify a component to remove. The middle and full-submit budgets overlap and must be evaluated separately.
