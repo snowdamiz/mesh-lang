@@ -1,0 +1,177 @@
+{
+  "release_sha256": "e829a6a9fac059e2afadd0c8dd4b48e89573c32d0e6d9d0bff957d8e2ecde96c",
+  "historical_cutoff_us": 446855,
+  "arms": {
+    "prepared-4a": {
+      "raw_sha256": "3c67697e16a03692e2d2cb8173963b88da096314921cd52f7d8990b74e408e50",
+      "owners": [
+        {
+          "pid": 3584605,
+          "confirmed_us": 294273,
+          "last_effect_us": 371849,
+          "last_settlement_us": 425350
+        },
+        {
+          "pid": 3584587,
+          "confirmed_us": 337114,
+          "last_effect_us": 401224,
+          "last_settlement_us": 422290
+        },
+        {
+          "pid": 3584527,
+          "confirmed_us": 356939,
+          "last_effect_us": 436627,
+          "last_settlement_us": 481832
+        },
+        {
+          "pid": 3584532,
+          "confirmed_us": 380979,
+          "last_effect_us": 451240,
+          "last_settlement_us": 472800
+        },
+        {
+          "pid": 3584617,
+          "confirmed_us": 423791,
+          "last_effect_us": 520428,
+          "last_settlement_us": 528691
+        },
+        {
+          "pid": 3584556,
+          "confirmed_us": 451396,
+          "last_effect_us": 508404,
+          "last_settlement_us": 577464
+        },
+        {
+          "pid": 3584564,
+          "confirmed_us": 485934,
+          "last_effect_us": 531684,
+          "last_settlement_us": 577369
+        },
+        {
+          "pid": 3584540,
+          "confirmed_us": 521513,
+          "last_effect_us": 591833,
+          "last_settlement_us": 608689
+        }
+      ],
+      "unconfirmed_jobs": 24,
+      "confirmed_without_effect": 10,
+      "effect_without_settlement": 8,
+      "settled": 22
+    },
+    "prepared-16": {
+      "raw_sha256": "85d9ba249f01d35218f1ae1b4565b68b73e88670d9b8666151e959cfdcc55c3d",
+      "owners": [
+        {
+          "pid": 3584955,
+          "confirmed_us": 226118,
+          "last_effect_us": 273325,
+          "last_settlement_us": 328771
+        },
+        {
+          "pid": 3584968,
+          "confirmed_us": 297535,
+          "last_effect_us": 377447,
+          "last_settlement_us": 395561
+        },
+        {
+          "pid": 3584918,
+          "confirmed_us": 314052,
+          "last_effect_us": 407853,
+          "last_settlement_us": 437147
+        },
+        {
+          "pid": 3584941,
+          "confirmed_us": 332869,
+          "last_effect_us": 401608,
+          "last_settlement_us": 463230
+        },
+        {
+          "pid": 3584895,
+          "confirmed_us": 352619,
+          "last_effect_us": 420934,
+          "last_settlement_us": 491467
+        },
+        {
+          "pid": 3584909,
+          "confirmed_us": 394929,
+          "last_effect_us": 458358,
+          "last_settlement_us": 540415
+        },
+        {
+          "pid": 3584961,
+          "confirmed_us": 454071,
+          "last_effect_us": 529152,
+          "last_settlement_us": 551676
+        },
+        {
+          "pid": 3584900,
+          "confirmed_us": 510550,
+          "last_effect_us": 565125,
+          "last_settlement_us": 584196
+        }
+      ],
+      "unconfirmed_jobs": 16,
+      "confirmed_without_effect": 4,
+      "effect_without_settlement": 13,
+      "settled": 31
+    },
+    "prepared-4b": {
+      "raw_sha256": "3359f548ec960c5c9308a9eca0c34f2bcaf16285e09d4c95e40efb85947f01d2",
+      "owners": [
+        {
+          "pid": 3585294,
+          "confirmed_us": 175216,
+          "last_effect_us": 259316,
+          "last_settlement_us": 359383
+        },
+        {
+          "pid": 3585276,
+          "confirmed_us": 212505,
+          "last_effect_us": 283355,
+          "last_settlement_us": 374584
+        },
+        {
+          "pid": 3585268,
+          "confirmed_us": 272441,
+          "last_effect_us": 388350,
+          "last_settlement_us": 411953
+        },
+        {
+          "pid": 3585311,
+          "confirmed_us": 389931,
+          "last_effect_us": 434865,
+          "last_settlement_us": 456851
+        },
+        {
+          "pid": 3585331,
+          "confirmed_us": 414719,
+          "last_effect_us": 486897,
+          "last_settlement_us": 541959
+        },
+        {
+          "pid": 3585340,
+          "confirmed_us": 447488,
+          "last_effect_us": 506247,
+          "last_settlement_us": 562106
+        },
+        {
+          "pid": 3585263,
+          "confirmed_us": 498286,
+          "last_effect_us": 567769,
+          "last_settlement_us": 595056
+        },
+        {
+          "pid": 3585353,
+          "confirmed_us": 525774,
+          "last_effect_us": 580337,
+          "last_settlement_us": 598082
+        }
+      ],
+      "unconfirmed_jobs": 24,
+      "confirmed_without_effect": 8,
+      "effect_without_settlement": 3,
+      "settled": 29
+    }
+  }
+}
