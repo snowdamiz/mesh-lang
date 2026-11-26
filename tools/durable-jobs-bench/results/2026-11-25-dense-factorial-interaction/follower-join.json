@@ -1,0 +1,640 @@
+[
+  {
+    "counts": {
+      "consecutive_and_rows_fit": 35,
+      "consecutive_and_rows_fit_interior": 20,
+      "empty_or_failed_leader_0_follower_1": 1,
+      "empty_or_failed_leader_1_follower_1": 3,
+      "follower_loses_rows": 6,
+      "joined": 67,
+      "nonconsecutive_durable_grants": 22
+    },
+    "interior_pairs": [
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520508,
+          23
+        ],
+        "follower_commit_ns": 3281911,
+        "follower_prelock_ns": 41522860,
+        "follower_rows": 8,
+        "follower_select_ns": 1782066,
+        "leader": [
+          3520450,
+          21
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520494,
+          19
+        ],
+        "follower_commit_ns": 4274954,
+        "follower_prelock_ns": 46112805,
+        "follower_rows": 8,
+        "follower_select_ns": 8507530,
+        "leader": [
+          3520479,
+          20
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520455,
+          21
+        ],
+        "follower_commit_ns": 1034914,
+        "follower_prelock_ns": 38985501,
+        "follower_rows": 8,
+        "follower_select_ns": 7216035,
+        "leader": [
+          3520487,
+          19
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520463,
+          22
+        ],
+        "follower_commit_ns": 3076870,
+        "follower_prelock_ns": 26600131,
+        "follower_rows": 8,
+        "follower_select_ns": 2314828,
+        "leader": [
+          3520514,
+          19
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520479,
+          21
+        ],
+        "follower_commit_ns": 1902287,
+        "follower_prelock_ns": 30645944,
+        "follower_rows": 8,
+        "follower_select_ns": 7532446,
+        "leader": [
+          3520450,
+          22
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520494,
+          20
+        ],
+        "follower_commit_ns": 1613376,
+        "follower_prelock_ns": 22528926,
+        "follower_rows": 8,
+        "follower_select_ns": 2417508,
+        "leader": [
+          3520508,
+          24
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520463,
+          23
+        ],
+        "follower_commit_ns": 2551728,
+        "follower_prelock_ns": 29161249,
+        "follower_rows": 8,
+        "follower_select_ns": 2959800,
+        "leader": [
+          3520514,
+          20
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520479,
+          22
+        ],
+        "follower_commit_ns": 714152,
+        "follower_prelock_ns": 26479169,
+        "follower_rows": 8,
+        "follower_select_ns": 6651553,
+        "leader": [
+          3520450,
+          23
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520455,
+          23
+        ],
+        "follower_commit_ns": 696512,
+        "follower_prelock_ns": 46014545,
+        "follower_rows": 8,
+        "follower_select_ns": 5038798,
+        "leader": [
+          3520487,
+          21
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520450,
+          24
+        ],
+        "follower_commit_ns": 1777156,
+        "follower_prelock_ns": 40108565,
+        "follower_rows": 8,
+        "follower_select_ns": 3282382,
+        "leader": [
+          3520514,
+          21
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520479,
+          23
+        ],
+        "follower_commit_ns": 1767716,
+        "follower_prelock_ns": 46196406,
+        "follower_rows": 8,
+        "follower_select_ns": 3425431,
+        "leader": [
+          3520463,
+          25
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520494,
+          22
+        ],
+        "follower_commit_ns": 1468355,
+        "follower_prelock_ns": 26804230,
+        "follower_rows": 8,
+        "follower_select_ns": 3297351,
+        "leader": [
+          3520508,
+          26
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520455,
+          24
+        ],
+        "follower_commit_ns": 564143,
+        "follower_prelock_ns": 22308215,
+        "follower_rows": 8,
+        "follower_select_ns": 2173367,
+        "leader": [
+          3520487,
+          22
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520450,
+          25
+        ],
+        "follower_commit_ns": 1292665,
+        "follower_prelock_ns": 24043301,
+        "follower_rows": 8,
+        "follower_select_ns": 4217414,
+        "leader": [
+          3520514,
+          22
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 22740,
+        "follower": [
+          3520479,
+          24
+        ],
+        "follower_commit_ns": 390771,
+        "follower_prelock_ns": 20778631,
+        "follower_rows": 7,
+        "follower_select_ns": 3755273,
+        "leader": [
+          3520463,
+          26
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 13836,
+        "follower": [
+          3520479,
+          25
+        ],
+        "follower_commit_ns": 3437182,
+        "follower_prelock_ns": 23616930,
+        "follower_rows": 1,
+        "follower_select_ns": 2188827,
+        "leader": [
+          3520455,
+          25
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520463,
+          27
+        ],
+        "follower_commit_ns": 2905900,
+        "follower_prelock_ns": 35950301,
+        "follower_rows": 8,
+        "follower_select_ns": 3852174,
+        "leader": [
+          3520450,
+          26
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520479,
+          26
+        ],
+        "follower_commit_ns": 9885513,
+        "follower_prelock_ns": 33435842,
+        "follower_rows": 8,
+        "follower_select_ns": 2302109,
+        "leader": [
+          3520508,
+          28
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520455,
+          26
+        ],
+        "follower_commit_ns": 1398545,
+        "follower_prelock_ns": 29357338,
+        "follower_rows": 8,
+        "follower_select_ns": 1881377,
+        "leader": [
+          3520494,
+          24
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3520508,
+          29
+        ],
+        "follower_commit_ns": 465242,
+        "follower_prelock_ns": 30142901,
+        "follower_rows": 8,
+        "follower_select_ns": 6659232,
+        "leader": [
+          3520450,
+          27
+        ],
+        "leader_rows": 8
+      }
+    ],
+    "summed_follower_commit_ms": 44.499892,
+    "summed_follower_select_ms": 81.455501
+  },
+  {
+    "counts": {
+      "consecutive_and_rows_fit": 38,
+      "consecutive_and_rows_fit_interior": 18,
+      "empty_or_failed_leader_1_follower_0": 1,
+      "empty_or_failed_leader_1_follower_1": 6,
+      "follower_loses_rows": 11,
+      "joined": 71,
+      "nonconsecutive_durable_grants": 15
+    },
+    "interior_pairs": [
+      {
+        "bytes_both_selects": 22740,
+        "follower": [
+          3521915,
+          20
+        ],
+        "follower_commit_ns": 4068834,
+        "follower_prelock_ns": 41812842,
+        "follower_rows": 7,
+        "follower_select_ns": 1779826,
+        "leader": [
+          3521924,
+          20
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521911,
+          22
+        ],
+        "follower_commit_ns": 1768495,
+        "follower_prelock_ns": 54791704,
+        "follower_rows": 8,
+        "follower_select_ns": 3211241,
+        "leader": [
+          3521935,
+          20
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521915,
+          22
+        ],
+        "follower_commit_ns": 2892619,
+        "follower_prelock_ns": 36920456,
+        "follower_rows": 8,
+        "follower_select_ns": 4565135,
+        "leader": [
+          3521924,
+          21
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 22740,
+        "follower": [
+          3521883,
+          22
+        ],
+        "follower_commit_ns": 3626022,
+        "follower_prelock_ns": 25490587,
+        "follower_rows": 8,
+        "follower_select_ns": 1932466,
+        "leader": [
+          3521878,
+          21
+        ],
+        "leader_rows": 7
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521911,
+          23
+        ],
+        "follower_commit_ns": 4849406,
+        "follower_prelock_ns": null,
+        "follower_rows": 8,
+        "follower_select_ns": 21499923,
+        "leader": [
+          3521935,
+          21
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 13836,
+        "follower": [
+          3521924,
+          22
+        ],
+        "follower_commit_ns": 824792,
+        "follower_prelock_ns": 28162495,
+        "follower_rows": 6,
+        "follower_select_ns": 1673776,
+        "leader": [
+          3521878,
+          22
+        ],
+        "leader_rows": 3
+      },
+      {
+        "bytes_both_selects": 15320,
+        "follower": [
+          3521891,
+          22
+        ],
+        "follower_commit_ns": 3813493,
+        "follower_prelock_ns": 27144863,
+        "follower_rows": 4,
+        "follower_select_ns": 1717195,
+        "leader": [
+          3521915,
+          23
+        ],
+        "leader_rows": 6
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521935,
+          22
+        ],
+        "follower_commit_ns": 368211,
+        "follower_prelock_ns": 33694405,
+        "follower_rows": 8,
+        "follower_select_ns": 2783259,
+        "leader": [
+          3521878,
+          23
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521905,
+          23
+        ],
+        "follower_commit_ns": 9304212,
+        "follower_prelock_ns": 43436797,
+        "follower_rows": 8,
+        "follower_select_ns": 2011136,
+        "leader": [
+          3521924,
+          23
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521891,
+          23
+        ],
+        "follower_commit_ns": 1083473,
+        "follower_prelock_ns": 51029272,
+        "follower_rows": 8,
+        "follower_select_ns": 4551776,
+        "leader": [
+          3521915,
+          24
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 13836,
+        "follower": [
+          3521883,
+          24
+        ],
+        "follower_commit_ns": 3182150,
+        "follower_prelock_ns": 47165050,
+        "follower_rows": 1,
+        "follower_select_ns": 1699636,
+        "leader": [
+          3521911,
+          25
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521878,
+          24
+        ],
+        "follower_commit_ns": 2099807,
+        "follower_prelock_ns": 42745664,
+        "follower_rows": 8,
+        "follower_select_ns": 4051274,
+        "leader": [
+          3521935,
+          23
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521905,
+          24
+        ],
+        "follower_commit_ns": 662472,
+        "follower_prelock_ns": 36271693,
+        "follower_rows": 8,
+        "follower_select_ns": 2566638,
+        "leader": [
+          3521924,
+          24
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521935,
+          24
+        ],
+        "follower_commit_ns": 3689012,
+        "follower_prelock_ns": 23346920,
+        "follower_rows": 8,
+        "follower_select_ns": 1714636,
+        "leader": [
+          3521878,
+          25
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 19772,
+        "follower": [
+          3521935,
+          25
+        ],
+        "follower_commit_ns": 2301478,
+        "follower_prelock_ns": 35721041,
+        "follower_rows": 8,
+        "follower_select_ns": 3764193,
+        "leader": [
+          3521924,
+          26
+        ],
+        "leader_rows": 5
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521878,
+          27
+        ],
+        "follower_commit_ns": 4687787,
+        "follower_prelock_ns": 36299622,
+        "follower_rows": 8,
+        "follower_select_ns": 6254021,
+        "leader": [
+          3521905,
+          26
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 24224,
+        "follower": [
+          3521915,
+          27
+        ],
+        "follower_commit_ns": 828002,
+        "follower_prelock_ns": 29659330,
+        "follower_rows": 8,
+        "follower_select_ns": 1866817,
+        "leader": [
+          3521883,
+          27
+        ],
+        "leader_rows": 8
+      },
+      {
+        "bytes_both_selects": 19772,
+        "follower": [
+          3521878,
+          28
+        ],
+        "follower_commit_ns": 7681715,
+        "follower_prelock_ns": 26940551,
+        "follower_rows": 5,
+        "follower_select_ns": 2217379,
+        "leader": [
+          3521905,
+          27
+        ],
+        "leader_rows": 8
+      }
+    ],
+    "summed_follower_commit_ms": 57.73198,
+    "summed_follower_select_ms": 69.860327
+  }
+]
