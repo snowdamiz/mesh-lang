@@ -4,6 +4,7 @@ import hashlib
 import json
 import runpy
 import tarfile
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from direct4_peer_deadlines import warm_river
@@ -11,6 +12,38 @@ from direct4_peer_deadlines import warm_river
 
 def pinned(path, expected):
     assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, path
+
+
+def saturated_episodes(jobs, begin, end):
+    """Contiguous all-four reply intervals with one or two fresh jobs provably unpicked."""
+    events = defaultdict(Counter)
+    for job in jobs:
+        for name, left, right in (("reply", "sent1", "ready1"), ("reply", "sent2", "ready2"),
+                                  ("fresh", "pub_after", "pick_lower")):
+            start, stop = max(begin, job[left]), min(end, job[right])
+            if start < stop:
+                events[start][name] += 1
+                events[stop][name] -= 1
+
+    live = Counter()
+    opened = {}
+    spans = {1: [], 2: []}
+    for stamp in sorted(events):
+        live.update(events[stamp])
+        assert 0 <= live["reply"] <= 4 and live["fresh"] >= 0
+        for width in spans:
+            eligible = live["reply"] == 4 and live["fresh"] >= width
+            if eligible and width not in opened:
+                opened[width] = stamp
+            elif not eligible and width in opened:
+                spans[width].append(stamp - opened.pop(width))
+    assert not opened and not any(live.values())
+    assert sum(spans[2]) <= sum(spans[1]) <= end-begin
+    return {width: dict(episodes=len(durations), total_ns=sum(durations),
+                        longest_ns=max(durations, default=0),
+                        after_half_ms_ns=sum(max(0, d - 500_000) for d in durations),
+                        after_one_ms_ns=sum(max(0, d - 1_000_000) for d in durations))
+            for width, durations in spans.items()}
 
 
 def worker_budget(arm, phase, digest, decode, peers):
@@ -59,7 +92,8 @@ def worker_budget(arm, phase, digest, decode, peers):
             replies.append(dict(send_to_ready_ns=total, definitely_after_commit_ns=post))
         assert sum(r["send_to_ready_ns"] for r in replies) <= handler
         owners.append(dict(pid=pid, effects=sum(begin < j["record2"] <= end for j in own),
-                           middle_handler_ns=handler, other_than_handler_ns=4*(end-begin)-handler,
+                           middle_handler_ns=handler, saturated=saturated_episodes(own, begin, end),
+                           other_than_handler_ns=4*(end-begin)-handler,
                            reply_intervals=replies, published_before_pick_ns=area("pub_after", "pick_lower"),
                            workers_at_slowest_peer_cadence=handler / slowest,
                            five_worker_residence_excess_ns=max(0, handler - 5*slowest)))

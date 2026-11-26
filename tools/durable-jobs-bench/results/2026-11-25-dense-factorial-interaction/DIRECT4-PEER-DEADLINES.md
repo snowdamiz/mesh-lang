@@ -163,3 +163,16 @@ The corrected counter allowed native release `ace2f2cb` to complete all 16 arms.
 Even with perfect packing, one owner in each arm would have to reduce total handler residence by at least 69.936 or 180.943 worker-ms for five workers to hit that reference. In those two ON arms the reply intervals overlapped actual queued work, but the failed controls leave the amount on the uninstrumented path undetermined. Neither interval is recoverable wall time. This result supports examining whether an already-admitted coroutine can release its worker during an actual socket wait. It supplies no qualified speedup for doing so and earns no peer comparison.
 
 Use `--measured` with the preceding command and the released `exposure-settlement-v3` directory. The reducer checks the sealed replay digest, both ON archive hashes and all 2,048 job identities across the two arms.
+
+### Could a second spare find another published job?
+
+Both measured ON arms of `ace2f2cb` had stretches where all four workers on the same runner were between sending an application write and accepting ReadyForQuery, while **two distinct fresh attempts** had been published and had yet to be picked. The independent trace join counts the two writes separately. A window starts only after the later publication bound and ends at the earliest possible pickup. This counts eligible jobs in the recorded flow; the trace does not identify when an underlying socket actually blocked or how many healthy database leases were available to a spare.
+
+| Measured ON runner | All four in replies, ≥1 fresh (ms) | All four in replies, ≥2 fresh (ms) | Episodes with ≥2 fresh | Longest such episode (ms) | Time still eligible for the second spare after 0.5 / 1.0 ms per episode (ms) |
+|---|---:|---:|---:|---:|---:|
+| Forward 1 | 197.831 | 180.933 | 344 | 4.091 | 68.864 / 31.644 |
+| Forward 2 | 227.053 | 209.604 | 395 | 4.189 | 80.497 / 35.491 |
+| Reverse 1 | 223.449 | 207.261 | 315 | 7.029 | 100.400 / 57.477 |
+| Reverse 2 | 245.053 | 230.264 | 394 | 4.126 | 95.507 / 49.982 |
+
+The second column includes the third. Subtracting a hypothetical activation delay once per continuous episode shows why the wake cost matters: a 1 ms delay leaves 17–28% of the recorded time with two fresh attempts. An admitted handler can keep running after an original worker gets its reply, so a spare can also impose CPU cost outside these windows. The duration calculation gives neither the number of additional completions nor a predicted gain. It supplies two concrete requirements for the source proof: measure time to actual pickup after a raw socket wait, and account for how long the borrowed worker stays occupied after the original reply arrives. The official parity verdict remains the one above.
