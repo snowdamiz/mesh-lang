@@ -1,4 +1,5 @@
 """Replay the prepared pilot's client-confirmed gaps from immutable Git blobs."""
+import argparse
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -15,7 +16,48 @@ def blob(path):
     return subprocess.check_output(["git", "show", f"{REV}:{ROOT}/{path}"])
 
 
-def reduce_arm(raw, score):
+def activation_budget(jobs, turns, zero, score, group):
+    # Eliminate all elapsed time from the first stamp through checked receipt,
+    # even when one receipt overlaps the following turn. This overcredits UPDATE.
+    credit = 0
+    owners = {}
+    for ordinal, (first, _, receipt, pid) in enumerate(turns, 1):
+        credit += receipt - first
+        owners[pid] = (8 * ordinal, credit)
+    enqueue = round(score["enqueue_ms"] * 1000)
+    drain = max(job["settled_us"] for job in jobs) - zero
+    assert drain == round(score["drain_ms"] * 1000)
+    assert drain + enqueue == round(score["submit_ms"] * 1000)
+    assert all(prior[1] <= following[0] for prior, following in zip(turns, turns[1:]))
+    assert max(t[2] for t in turns) - zero == round(score["confirmed_ms"] * 1000)
+    margins = group["gate"]["margins"]
+    deadlines = {}
+    for clock, event in (("submit_ms", "settled_us"), ("drain_ms", "settled_us"),
+                         ("effect_committed_us/commit/64", "effect_committed_us")):
+        margin = margins["material_" + clock]
+        end = round(1000 * (margin["reference"] - margin["threshold"]))
+        deadlines[clock] = (event, end - enqueue if clock == "submit_ms" else end)
+    peer = group["historical"]["clocks"]["oban_drain_ms"]
+    for label, cutoff in (("loose", max(peer["deadlines"])), ("tight", min(peer["deadlines"]))):
+        deadlines["historical_oban_" + label] = ("settled_us", round(1000 * (cutoff - peer["noise"])))
+    result = {}
+    for name, (event, deadline) in deadlines.items():
+        required_per_update = 0
+        residuals = []
+        for job in jobs:
+            prefix_rows, gross_credit = owners[job["worker_pid"]]
+            deficit = job[event] - zero - deadline
+            required_per_update = max(required_per_update, deficit / prefix_rows)
+            residuals.append((deficit - gross_credit, prefix_rows // 8, gross_credit))
+        residual, ordinal, gross_credit = max(residuals)
+        result[name] = dict(deadline_from_commit_us=deadline,
+                            uniform_saving_to_reach_cutoff_us_per_update=round(required_per_update, 3),
+                            residual_after_full_credit_us=residual, limiting_turn=ordinal,
+                            gross_prefix_credit_us=gross_credit)
+    return result
+
+
+def reduce_arm(raw, score, group=None):
     assert sha256(raw).hexdigest() == score["raw_sha256"]
     with tarfile.open(fileobj=BytesIO(raw)) as archive:
         def member(path):
@@ -44,6 +86,8 @@ def reduce_arm(raw, score):
             turns.append((min(stamps), max(stamps), receipt, runner["pid"]))
 
     turns.sort()
+    if group is not None:
+        return activation_budget(jobs, turns, zero, score, group)
     gaps = []
     for prior, following in zip(turns, turns[1:]):
         start, end = prior[2], following[0]
@@ -76,7 +120,7 @@ def reduce_arm(raw, score):
                 commits_inside={k: sum(g["commits_inside"][k] for g in gaps) for k in EVENTS}, gaps=gaps)
 
 
-def replay():
+def replay(activation=False):
     raw_score = blob("scored-before-release.json")
     assert sha256(raw_score).hexdigest() == SCORE
     groups = json.loads(raw_score)["groups"]
@@ -89,11 +133,15 @@ def replay():
             for label, score in arms.items():
                 if label == "bridge":
                     continue
+                if activation and (phase != "measured" or label not in {"span-a", "span-b"}):
+                    continue
                 path = f"blocks/{directory}/{phase}-{label}/{phase}-mesh/raw.tar.gz"
-                result[f'{group["group"]}/{phase}/{label}'] = reduce_arm(blob(path), score)
-    assert len(result) == 20
+                result[f'{group["group"]}/{phase}/{label}'] = reduce_arm(blob(path), score, group if activation else None)
+    assert len(result) == (4 if activation else 20)
     return dict(custody=REV, score_sha256=SCORE, arms=result)
 
 
 if __name__ == "__main__":
-    print(json.dumps(replay(), indent=2, sort_keys=True))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--activation", action="store_true", help="price changes after the first row stamp of each turn")
+    print(json.dumps(replay(parser.parse_args().activation), indent=2, sort_keys=True))
