@@ -8,6 +8,20 @@
         "settled_us": 1
       },
       "confirmed_us": 412082,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 20449,
+          "settled_us": 21238
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 5908,
+          "settled_us": 11793
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 37235,
+          "settled_us": 39010
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 8166,
@@ -103,6 +117,20 @@
         "settled_us": 4
       },
       "confirmed_us": 355172,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 3573,
+          "settled_us": 6733
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 9059,
+          "settled_us": 4280
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 33567,
+          "settled_us": 22370
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 6646,
@@ -198,6 +226,20 @@
         "settled_us": 1
       },
       "confirmed_us": 291456,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 17069,
+          "settled_us": 15582
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 8725,
+          "settled_us": 14740
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 41960,
+          "settled_us": 35504
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 6510,
@@ -293,6 +335,20 @@
         "settled_us": 9
       },
       "confirmed_us": 398388,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 7486,
+          "settled_us": 5117
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 4297,
+          "settled_us": 7943
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 21392,
+          "settled_us": 22981
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 1409,
@@ -388,6 +444,20 @@
         "settled_us": 4
       },
       "confirmed_us": 479710,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 18684,
+          "settled_us": 21786
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 14863,
+          "settled_us": 14800
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 28129,
+          "settled_us": 34133
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 40487,
@@ -483,6 +553,20 @@
         "settled_us": 4
       },
       "confirmed_us": 373165,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 7166,
+          "settled_us": 2823
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 5337,
+          "settled_us": 6881
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 28102,
+          "settled_us": 22328
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 632,
@@ -578,6 +662,20 @@
         "settled_us": 1
       },
       "confirmed_us": 414370,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 5853,
+          "settled_us": 5853
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 8632,
+          "settled_us": 8238
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 25152,
+          "settled_us": 21260
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 5907,
@@ -673,6 +771,20 @@
         "settled_us": 1
       },
       "confirmed_us": 363715,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 24517,
+          "settled_us": 22496
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 12383,
+          "settled_us": 9143
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 34584,
+          "settled_us": 24778
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 8506,
@@ -768,6 +880,20 @@
         "settled_us": 5
       },
       "confirmed_us": 452565,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 17883,
+          "settled_us": 12957
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 10216,
+          "settled_us": 10625
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 37412,
+          "settled_us": 29961
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 6675,
@@ -863,6 +989,20 @@
         "settled_us": 8
       },
       "confirmed_us": 415514,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 15822,
+          "settled_us": 11072
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 14833,
+          "settled_us": 10140
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 37955,
+          "settled_us": 31776
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 113117,
@@ -958,6 +1098,20 @@
         "settled_us": 0
       },
       "confirmed_us": 326549,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 21560,
+          "settled_us": 36005
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 9272,
+          "settled_us": 15978
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 45090,
+          "settled_us": 44891
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 3876,
@@ -1053,6 +1207,20 @@
         "settled_us": 13
       },
       "confirmed_us": 373235,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 27330,
+          "settled_us": 8114
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 12967,
+          "settled_us": 7703
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 31710,
+          "settled_us": 11274
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 6566,
@@ -1148,6 +1316,20 @@
         "settled_us": 10
       },
       "confirmed_us": 360985,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 21927,
+          "settled_us": 22012
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 7717,
+          "settled_us": 7683
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 36259,
+          "settled_us": 23076
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 6857,
@@ -1243,6 +1425,20 @@
         "settled_us": 11
       },
       "confirmed_us": 434844,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 14041,
+          "settled_us": 19046
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 9123,
+          "settled_us": 2684
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 37431,
+          "settled_us": 20018
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 3629,
@@ -1338,6 +1534,20 @@
         "settled_us": 19
       },
       "confirmed_us": 438289,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 8573,
+          "settled_us": 7642
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 7098,
+          "settled_us": 7264
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 30689,
+          "settled_us": 21912
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 783,
@@ -1433,6 +1643,20 @@
         "settled_us": 0
       },
       "confirmed_us": 374477,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 16976,
+          "settled_us": 15003
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 10581,
+          "settled_us": 4272
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 30788,
+          "settled_us": 26858
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 10365,
@@ -1528,6 +1752,20 @@
         "settled_us": 3
       },
       "confirmed_us": 349925,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 12621,
+          "settled_us": 7223
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 16053,
+          "settled_us": 7150
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 33659,
+          "settled_us": 25500
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 7025,
@@ -1623,6 +1861,20 @@
         "settled_us": 2
       },
       "confirmed_us": 392257,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 12511,
+          "settled_us": 12059
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 7671,
+          "settled_us": 7917
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 26915,
+          "settled_us": 27161
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 737,
@@ -1718,6 +1970,20 @@
         "settled_us": 5
       },
       "confirmed_us": 423686,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 6971,
+          "settled_us": 6971
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 10467,
+          "settled_us": 8694
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 30958,
+          "settled_us": 27524
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 1559,
@@ -1813,6 +2079,20 @@
         "settled_us": 9
       },
       "confirmed_us": 404162,
+      "fixed_schedule_gain_ceiling_us": {
+        "entry_to_first_write": {
+          "effect_committed_us": 17460,
+          "settled_us": 19176
+        },
+        "receipt_to_entry": {
+          "effect_committed_us": 11329,
+          "settled_us": 9974
+        },
+        "receipt_to_first_write": {
+          "effect_committed_us": 49033,
+          "settled_us": 36666
+        }
+      },
       "gaps": [
         {
           "after_receipt_us": 120146,

@@ -57,7 +57,21 @@ def reduce_arm(raw, score):
                  between_turns_us=sum(g["stamp_gap_us"] for g in gaps),
                  final_receipt_tail_us=last_receipt - turns[-1][1])
     assert sum(parts.values()) == last_receipt - zero
-    return dict(raw_sha256=score["raw_sha256"], parts=parts, confirmed_us=last_receipt - zero,
+    receipts = {pid: checked for _, _, checked, pid in turns}
+    # Shift each job separately, then find the latest across all 64 shifted jobs.
+    # Keep later grants and all downstream per-job durations at their observed values.
+    ceilings = {}
+    for phase, start, stop in (
+        ("receipt_to_entry", [receipts[j["worker_pid"]] for j in jobs], "entered_us"),
+        ("entry_to_first_write", [j["entered_us"] for j in jobs], "attempt_committed_us"),
+        ("receipt_to_first_write", [receipts[j["worker_pid"]] for j in jobs], "attempt_committed_us"),
+    ):
+        elapsed = [j[stop] - begin for j, begin in zip(jobs, start)]
+        ceilings[phase] = {
+            k: max(j[k] for j in jobs) - max(j[k] - dt for j, dt in zip(jobs, elapsed))
+            for k in ("effect_committed_us", "settled_us")
+        }
+    return dict(raw_sha256=score["raw_sha256"], fixed_schedule_gain_ceiling_us=ceilings, parts=parts, confirmed_us=last_receipt - zero,
                 after_receipt_us=sum(g["after_receipt_us"] for g in gaps),
                 commits_inside={k: sum(g["commits_inside"][k] for g in gaps) for k in EVENTS}, gaps=gaps)
 

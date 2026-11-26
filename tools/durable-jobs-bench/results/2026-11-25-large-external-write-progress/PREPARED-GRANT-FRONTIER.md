@@ -128,3 +128,18 @@ Across both pilot blocks, each of eight prepared runners received one batch of e
 For span-a, 45.820 ms elapsed after the third receipt before the fourth turn’s first stamp. Fourteen first writes, fifteen second writes, and two settlements committed inside that single interval. In eager the fourth turn had already stamped its first row by the third runner’s receipt. Both stock controls also had substantial post-receipt intervals in this block, totaling 96.416 and 113.502 ms. Forward stock-a and stock-b spent nearly equal time in these intervals, 95.791 and 96.861 ms, despite their 99.836 ms drain spread.
 
 The preceding transaction’s queue lock cannot account for time after its checked receipt. The next transaction could still be preparing contexts, moving data, waiting for execution, or working under its own queue lock before its first stamp. Earlier handlers also committed work on the same host. A direct measurement of the next owner’s positive PREPARE completion, ACTIVATE arrival and queue-lock acquisition can distinguish these cases. These intervals alone supply no removable-time estimate. The raw-hash replay covers the ten measured prepared arms and their ten warmups. The ordinary bridge uses a different claim protocol. [Per-turn receipts and durable event counts](prepared-turn-gaps.json) · [Archive reducer](prepared_turn_gaps.py)
+
+### Cost ceiling for the trusted worker’s context copy
+
+In runner source `f3b3612d9`, `prepare_manifest` moves the owned context string into the checked row. `validate_claim_context` checks the envelope before ACTIVATE. Its args map deserializes values as `IgnoredAny`. The subsequent row reorder and dispatcher launch move the same string. In `worker::invoke_in_current_context`, `mesh_str(&context)` copies the bytes into the actor heap. The handler records entry after this copy, then parses the context, looks up its application pool and commits the first write.
+
+To bound the gain from eliminating the actor input copy, move **each** job’s entry back to its own runner’s checked COMMIT receipt and shift its later events by that amount. Keep all eight grant receipts fixed. Take the latest effect and settlement across the shifted jobs. This gives the copy credit for all intervening launch and scheduling work as well. Separately, moving the first durable write back to entry gives the JSON parser credit for the application checkout, SQL and COMMIT. The two ceilings can have different limiting jobs and cannot be added.
+
+| Measured span arm | Maximum final-effect / drain gain from receipt to entry, ms | Maximum final-effect / drain gain from entry to first write, ms |
+|---|---:|---:|
+| Forward A | 9.059 / 4.280 | 3.573 / 6.733 |
+| Forward B | 8.725 / 14.740 | 17.069 / 15.582 |
+| Reverse A | 12.967 / 7.703 | 27.330 / 8.114 |
+| Reverse B | 7.717 / 7.683 | 21.927 / 22.012 |
+
+Forward span-a needed another 58.311 ms on drain to cover the measured stock spread. Even the combined fixed-schedule ceiling, moving its first durable writes all the way back to their own receipts, was 22.370 ms. Reverse span-a needed roughly 13.3 ms on the last effect to meet the eager allowance. Removing the entire receipt-to-entry interval fell short there too. An actor-copy change would need a measurable advance in later grants to clear these results. Pre-ACTIVATE validation has a different position on the timeline and receives no price from this calculation. [Per-arm bounds from the 20 raw archives](prepared-turn-gaps.json)
