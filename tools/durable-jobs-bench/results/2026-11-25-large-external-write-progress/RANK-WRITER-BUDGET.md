@@ -18,11 +18,25 @@ The same producer backend serviced 64 serial top-level executions of the exact s
 
 The medians summarize each paired quantity separately. Read each arm’s own bounds before subtracting or forming ratios.
 
+## Where the longest SQL calls occurred
+
+One backend executed the 64 writes serially. Its recorded maximum executor time can belong only to a call whose client send-to-ready upper bound is at least that large. In 11 of 12 arms exactly one call fits. Ten of those maxima fall at ranks **16–19 or 42–49**; the other is rank 1. In the remaining arm ranks 1 and 45 both fit. **No arm’s longest SQL execution falls in ranks 2–11.** The single worst call therefore cannot explain the repeated difference between the first two groups of five writer exchanges. Storage, WAL and scheduling causes remain unassigned.
+
+Even removing the worst SQL execution entirely would save at most **12.608–42.135 ms** per observed arm. To price multiple stalls, the reducer also asks what the aggregate executor saving would be if every SQL call above a threshold finished at that threshold instead, with everything else held fixed. Thresholds are sensitivity assumptions. The existing 60 ms enqueue gate stays fixed.
+
+| Assumed cap on individual SQL execution | Arms where even the upper bound falls below 60 ms (of 12) |
+|---|---:|
+| 15 ms | 12 |
+| 10 ms | 11 |
+| 5 ms | 4 |
+
+These bounds use the backend’s count, sum, minimum, maximum and population standard deviation, plus each client call’s wall upper bound. For a threshold T above the measured minimum, subtract T only from the portion of each execution above it. The maximum possible saving is bounded by summing the positive excess of the individual wall bounds, capped by the largest SQL time. The variance supplies a lower bound because for an execution x, (x − min)(x − T) is at most (max − min) times the positive excess above T. The reducer rounds bounds outwards. Even the upper bound assumes one-for-one transfer of saved executor elapsed to enqueue, with no extra work. Run with `--spikes` for the per-arm rank sets and bounds. The clusters’ initial WAL offsets and individual segment allocations are unavailable from these traces.
+
 ## Release and reproducibility
 
 Canonical release `04e0e316` is exit 1. All 30 arms ran and exported; strict replay rejected all 12 recorded arms at the per-segment CPU upper bound. The largest enqueue and submit spreads between identical OFF arms were 121.672 and 222.888 ms against the 15 ms limits. The wall-time calculation describes the observed release and supplies no stock-path performance qualification.
 
-From the repository root, run the [raw reducer](rank_writer_budget.py) with the directory containing the controller release, native status and raw archive. It verifies all three bindings, the 12 trace/backend identities, all 768 scalar calls and the complete ordered marker sequence for each writer.
+From the repository root, run the [raw reducer](rank_writer_budget.py) with the directory containing the controller release, native status and raw archive. It verifies all three bindings, the 12 trace/backend identities, all 768 scalar calls and the four ordered boundary markers used for each writer.
 
 ```sh
 d=tools/durable-jobs-bench/results/2026-11-25-large-external-write-progress

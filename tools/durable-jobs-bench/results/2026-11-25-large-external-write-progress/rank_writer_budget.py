@@ -16,6 +16,38 @@ QUERY = "SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt"
 EDGES = ("writer_send", "writer_sent", "writer_bind_reply", "writer_ready")
 
 
+def executor_spikes(statement, upper_ns):
+    """Bound the elapsed saved by clipping only the slow SQL calls."""
+    assert statement["stats_since"] == statement["minmax_stats_since"]
+    low = statement["min_exec_time"]
+    high = statement["max_exec_time"]
+    count = len(upper_ns)
+    total = statement["total_exec_time"]
+    mean = total / count
+    square_sum = count * (mean * mean + statement["stddev_exec_time"] ** 2)
+    assert 0 < low <= mean < high
+    upper = [Decimal(ns) / 1_000_000 for ns in upper_ns]
+    # Accept one nanosecond of rounding when locating the largest execution.
+    ranks = [i for i, wall in enumerate(upper, 1) if wall + Decimal("0.000001") >= high]
+    assert ranks
+    bands = {}
+    for threshold in (5, 10, 15):
+        assert low < threshold
+        # For x <= threshold, (x-low)*(x-threshold) <= 0.
+        # Above threshold its value is at most (high-low)*(x-threshold).
+        moment = (square_sum - (low + threshold) * total + count * low * threshold) / (high - low)
+        floor = max(0, high - threshold, total - count * threshold, moment)
+        ceiling = min(total - count * low,
+                      sum(max(0, min(wall, high) - threshold) for wall in upper))
+        # Welford statistics and extrema were exported as decimal representations
+        # of floating-point milliseconds. Round the reported bounds outwards.
+        floor_us = max(0, math.floor(floor * 1000) - 1)
+        ceiling_us = math.ceil(ceiling * 1000) + 1
+        assert floor_us <= ceiling_us
+        bands[threshold] = (floor_us, ceiling_us)
+    return dict(ranks=ranks, max_ms=high, bands=bands)
+
+
 def measure(archive, trace_name):
     arm = trace_name.split("/")[0]
     doc = json.load(archive.extractfile(f"{arm}/file-producer-budget.json"), parse_float=Decimal)
@@ -42,23 +74,25 @@ def measure(archive, trace_name):
         if label in EDGES:
             events.append((label, start, end))
     assert [point[0] for point in events] == list(EDGES) * 64
+    full_calls = []
     whole = send = pre_reply = tail = 0
     for i in range(0, len(events), 4):
         start, sent, bind, ready = events[i:i + 4]
-        whole += ready[2] - start[1]
+        full_calls.append(ready[2] - start[1])
+        whole += full_calls[-1]
         send += sent[2] - start[1]
         pre_reply += bind[2] - sent[1]
         tail += ready[2] - bind[1]
     overlap = max(0, elapsed_ns - send - tail)
     assert elapsed_ns <= whole and overlap <= pre_reply
-    return arm, dict(writer_wall_upper_ns=whole, executor_floor_ns=elapsed_ns,
+    return arm, dict(spikes=executor_spikes(stmt, full_calls), writer_wall_upper_ns=whole, executor_floor_ns=elapsed_ns,
                      wall_outside_executor_upper_ns=whole - elapsed_ns,
                      sent_to_bind_visible_upper_ns=pre_reply,
                      executor_within_sent_to_bind_lower_ns=overlap,
                      executor_share_lower_percent=100 * overlap / pre_reply)
 
 
-def main(folder):
+def main(folder, show_spikes):
     release = (folder / "controller-release.json").read_bytes()
     assert sha256(release).hexdigest() == RELEASE and json.loads(release)["exit_status"] == 1
     raw = folder / "raw.tar.gz"
@@ -70,6 +104,13 @@ def main(folder):
     assert len(results) == 12
     for group in range(1, 7):
         assert sorted(k.split("-", 2)[2] for k in results if k.startswith(f"g{group}-")) == ["on-a", "on-b"]
+    if show_spikes:
+        print("arm              max_SQL_ms  possible_ranks  saved_ms_if_capped_at_5 / 10 / 15_ms")
+        for arm, values in sorted(results.items()):
+            spikes = values["spikes"]
+            bands = [f"{lo/1000:.3f}–{hi/1000:.3f}" for lo, hi in spikes["bands"].values()]
+            print(f"{arm:14} {spikes['max_ms']:10.3f}  {str(spikes['ranks']):15}", "  ".join(bands))
+        return
     print("arm              executor_ms  residual_max_ms  overlap_min_ms  overlap_min_pct")
     rows = []
     for arm, values in sorted(results.items()):
@@ -83,4 +124,6 @@ def main(folder):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("evidence", type=Path)
-    main(parser.parse_args().evidence)
+    parser.add_argument("--spikes", action="store_true")
+    args = parser.parse_args()
+    main(args.evidence, args.spikes)
