@@ -142,14 +142,13 @@ def pickups_before_first_reply(jobs, windows):
     return results
 
 
-def resident_spares(jobs, windows, width, delay):
+def spare_schedule(jobs, windows, width, delay, first_checkout=0, later_checkout=0):
     """Keep borrowed workers charged through release and remove moved jobs' old waits."""
     ordered = sorted(jobs, key=lambda job: (job["pub_after"], job["id"]))
     available = [0] * width
-    moved = set()
-    residence = carry = fully_checked = 0
+    moved = {}
     for left, right, waiters in windows:
-        if moved.intersection(waiters):
+        if any(identifier in moved for identifier in waiters):
             continue
         # One launch per spare per window, oldest available spare first.
         for slot in sorted(range(width), key=available.__getitem__):
@@ -161,16 +160,71 @@ def resident_spares(jobs, windows, width, delay):
                 if job["id"] in moved or pickup >= job["pick_lower"]:
                     continue
                 assert job["id"] not in waiters and pickup < job["pick"]
-                moved.add(job["id"])
-                finish = pickup + job["release"] - job["pick"]
+                checkout = later_checkout if moved else first_checkout
+                finish = pickup + checkout + job["release"] - job["pick"]
                 available[slot] = finish
-                residence += finish - pickup
-                carry += max(0, finish - right)
-                fully_checked += pickup + job["checked2"] - job["pick"] <= right
+                moved[job["id"]] = dict(advance=job["pick"]-pickup-checkout, residence=finish-pickup,
+                                        carry=max(0, finish-right),
+                                        checked=pickup+checkout+job["checked2"]-job["pick"] <= right)
                 break
-    assert 0 <= carry <= residence and fully_checked <= len(moved)
-    return dict(distinct_jobs=len(moved), both_writes_checked_before_base_reply=fully_checked,
+    return moved
+
+
+def resident_spares(jobs, windows, width, delay):
+    moves = spare_schedule(jobs, windows, width, delay)
+    residence = sum(move["residence"] for move in moves.values())
+    carry = sum(move["carry"] for move in moves.values())
+    fully_checked = sum(move["checked"] for move in moves.values())
+    assert 0 <= carry <= residence and fully_checked <= len(moves)
+    return dict(distinct_jobs=len(moves), both_writes_checked_before_base_reply=fully_checked,
                 residence_ns=residence, residence_after_base_reply_ns=carry)
+
+
+def fixed_publication_ranks(jobs, owners, start, end):
+    """Move recorded writes of spare-picked jobs, leaving every other job at its observed times."""
+    lanes = []
+    for pid in owners:
+        own = [job for job in jobs if job["pid"] == pid]
+        lanes.append((own, base_reply_windows(own, start, end)))
+    ranks = (64, 256, 512, 768, 960, 1024)
+    original = sorted(job["record2"] for job in jobs)
+    cases = {}
+    for first, later in ((0, 0), (357_000, 0), (6_709_000, 0), (6_709_000, 6_709_000)):
+        moves = {}
+        for own, windows in lanes:
+            selected = spare_schedule(own, windows, 1, 500_000, first, later)
+            assert moves.keys().isdisjoint(selected)
+            moves.update(selected)
+        records = [job["record2"] - moves[job["id"]]["advance"] if job["id"] in moves else job["record2"]
+                   for job in jobs]
+        records.sort()
+        cases[f"{first}/{later}"] = dict(moved_jobs=len(moves),
+                                         moved_later=sum(move["advance"] < 0 for move in moves.values()),
+                                         effect_advance_ns={i: original[i-1]-records[i-1] for i in ranks})
+    return cases
+
+
+def publication_floor(jobs, workers):
+    """Earliest possible final effect with fixed publication and pickup-to-effect durations."""
+    earliest = 0
+    binding = {}
+    for pid in {job["pid"] for job in jobs}:
+        work = 0
+        newest = sorted((j for j in jobs if j["pid"] == pid), key=lambda j: -j["pub_before"])
+        for count, job in enumerate(newest, 1):
+            published = job["pub_before"]
+            service = job["record2"] - job["pick"]
+            assert service > 0
+            work += service
+            capacity = (work + workers - 1) // workers
+            finish = published + max(service, capacity)
+            if finish > earliest:
+                earliest = finish
+                binding = dict(pid=pid, job=job["key"], jobs_from_cut=count,
+                               constraint="single_job" if service >= capacity else "worker_capacity")
+    last = max(job["record2"] for job in jobs)
+    assert earliest <= last
+    return dict(maximum_advance_ns=last-earliest, **binding)
 
 
 def worker_budget(arm, phase, digest, decode, peers):
@@ -243,6 +297,8 @@ def worker_budget(arm, phase, digest, decode, peers):
                            five_worker_residence_excess_ns=max(0, handler - 5*slowest)))
     assert sum(o["effects"] for o in owners) == 512
     return dict(phase="instrumented warmup" if phase == "warmup" else phase, middle_ns=end-begin, owners=owners,
+                fixed_publication_ranks=fixed_publication_ranks(jobs, trace, windows["first_256"][0], windows["last_256"][1]),
+                final_effect_bound={n: publication_floor(jobs, n) for n in (4, 5, 6, 1024)},
                 warm_river_middle_us={g: p["phases"]["middle_us"] for g, p in peers.items()},
                 alignment_allowance_ns=slack)
 
