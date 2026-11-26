@@ -88,3 +88,17 @@ In the 16 MiB arm the last owner's checked grant landed at 510.550 ms. At that p
 The grant timestamp also limits what a faster reply alone can achieve. For each productive turn, give every job the entire interval from its last row's activation stamp through the checked COMMIT receipt, moving its subsequent milestones earlier by that amount. Hold row stamps, other grants and per-job service durations fixed. This credits even final update and commit work and the millisecond rounding of the row stamp. For the single turn with a censored receipt, credit through the first handler entry. The maximum advances in final settlement are 4.035, 19.232, 9.065 and 5.751 ms in the four factorial arms above, then 6.437, 11.069 and 8.376 ms in the three diagnostic arms. Crediting that entire interval in the 16 MiB arm would leave 36.901 ms to the slowest historical Oban finish. Any larger gain from changing grant service would have to advance other events too, such as the next owner's actual activation stamps.
 
 [Per-arm job counts at every historical Oban finish and fixed-schedule bounds](post-grant.json) · [Seven-archive replay](post_grant.py)
+
+## What changed when PostgreSQL rendered long clean string spans?
+
+Build-free SETUP `b0437003` released exit zero. At 16 MiB the renderer saved 92.584 backend CPU-ms for 64 plain contexts versus the faster stock reading, and 82.842 ms versus the eager renderer. Those are single-backend component clocks. The separate eight product diagnostics used the real producer and prepared consumer. All four 16 MiB stock/span duplicate arms reconciled 64 jobs and 192 distinct attempt, effect and terminal XIDs. [Native proof and price](../../../../../t3-0d3dce37/tools/durable-jobs-bench/results/2026-11-25-public-large-prepared-render-spans/evidence/setup-r1/verified.json)
+
+The slower span arm drained in 438.165 ms, 52.451 ms ahead of the faster stock arm at 490.616 ms. For each rank independently, compare the later of the two span timestamps to the earlier of the two stock timestamps, all from the respective enqueue commit. Both span arms led both stock controls at **every effect rank and every settlement rank**. Over all 64 ranks the smallest effect lead was 4.229 ms and the smallest settlement lead was 2.446 ms. The first-write comparison missed at rank 18 by 0.651 ms. Claim stamps and handler entries lost their lead at ranks 17–24 and regained it at rank 25.
+
+| Durable event | Rank 1 | Rank 8 | Rank 32 | Rank 56 | Rank 64 |
+|---|---:|---:|---:|---:|---:|
+| First-write lead (ms) | 7.119 | 6.838 | 27.716 | 42.716 | 48.471 |
+| Effect lead (ms) | 9.550 | 10.857 | 21.828 | 35.532 | 47.348 |
+| Settlement lead (ms) | 2.446 | 34.339 | 28.794 | 45.727 | 52.451 |
+
+The span drains of 396.229 and 438.165 ms were both below the fastest earlier Oban drain of 485.620 ms. Only the faster span arm cleared the corresponding 404.683 ms threshold for a 20% throughput lead. These controls support a separate mirrored timing pilot. A peer claim requires the fresh matched comparison. [Rank arithmetic and archive digest](render-progress.json) · [Offline replay](render_progress.py)

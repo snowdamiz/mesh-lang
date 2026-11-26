@@ -1,0 +1,130 @@
+{
+  "raw_sha256": "5ddc191ae55fa1b2280a2e0850307a1d843fe192027a8712a2cac744fc7b6097",
+  "arms": {
+    "stock-16a": {
+      "case_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "enqueue_us": 775941,
+      "drain_us": 490616,
+      "submit_to_settlement_us": 1266557
+    },
+    "stock-16b": {
+      "case_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "enqueue_us": 737261,
+      "drain_us": 507114,
+      "submit_to_settlement_us": 1244375
+    },
+    "span-16a": {
+      "case_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "enqueue_us": 731918,
+      "drain_us": 438165,
+      "submit_to_settlement_us": 1170083
+    },
+    "span-16b": {
+      "case_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+      "enqueue_us": 716332,
+      "drain_us": 396229,
+      "submit_to_settlement_us": 1112561
+    }
+  },
+  "faster_stock_minus_slower_span_at_each_rank": {
+    "claimed_us": {
+      "positive_ranks": 56,
+      "lagging_or_tied_ranks": [
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24
+      ],
+      "min_us": -23586,
+      "max_us": 61445,
+      "gain_us_at_rank": {
+        "1": 11524,
+        "8": 11524,
+        "16": 15524,
+        "32": 42414,
+        "48": 42445,
+        "56": 43445,
+        "64": 40445
+      }
+    },
+    "entered_us": {
+      "positive_ranks": 56,
+      "lagging_or_tied_ranks": [
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24
+      ],
+      "min_us": -15032,
+      "max_us": 62129,
+      "gain_us_at_rank": {
+        "1": 11227,
+        "8": 8493,
+        "16": 17508,
+        "32": 29832,
+        "48": 52118,
+        "56": 34894,
+        "64": 26441
+      }
+    },
+    "attempt_committed_us": {
+      "positive_ranks": 63,
+      "lagging_or_tied_ranks": [
+        18
+      ],
+      "min_us": -651,
+      "max_us": 71686,
+      "gain_us_at_rank": {
+        "1": 7119,
+        "8": 6838,
+        "16": 39785,
+        "32": 27716,
+        "48": 57496,
+        "56": 42716,
+        "64": 48471
+      }
+    },
+    "effect_committed_us": {
+      "positive_ranks": 64,
+      "lagging_or_tied_ranks": [],
+      "min_us": 4229,
+      "max_us": 73580,
+      "gain_us_at_rank": {
+        "1": 9550,
+        "8": 10857,
+        "16": 37100,
+        "32": 21828,
+        "48": 63482,
+        "56": 35532,
+        "64": 47348
+      }
+    },
+    "settled_us": {
+      "positive_ranks": 64,
+      "lagging_or_tied_ranks": [],
+      "min_us": 2446,
+      "max_us": 76766,
+      "gain_us_at_rank": {
+        "1": 2446,
+        "8": 34339,
+        "16": 43884,
+        "32": 28794,
+        "48": 59227,
+        "56": 45727,
+        "64": 52451
+      }
+    }
+  }
+}
