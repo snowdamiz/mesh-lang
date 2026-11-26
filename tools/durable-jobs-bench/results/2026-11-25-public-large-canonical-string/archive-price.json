@@ -1,0 +1,15 @@
+{
+  "eligible_string_bytes": 33554432,
+  "extra_saving_for_40ms_median": 5.458367187500002,
+  "frames": 64,
+  "input_bytes": 33566080,
+  "predecessor_saving_ms": [
+    34.428833374999996,
+    31.644744625,
+    35.125933875,
+    34.65443225,
+    34.864393625000005,
+    31.990047250000003
+  ],
+  "stock_output_sha256": "c98a0cd9500d920dfb07b040ffc7a90eb2628f82681eed196f2ea987db376e18"
+}
