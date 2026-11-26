@@ -334,3 +334,19 @@ The quiet pilot recorded cumulative busy ticks on both shared CPUs. The [CPU rep
 | Reverse ON | 370.117 | 467.256 | 12.696–55.276 | 163.123–190.826 |
 
 For full-submit or drain parity, the lower bound on busy work in each of these four arms fits inside the corresponding River interval. The coarse samples therefore leave room for improved overlap to change the end-to-end result. For middle-write parity, every one of the eight measured Mesh arms exceeded the two-core budget of every historical warm River arm. A concurrency change would have to reduce CPU work or shift some of it across those write ranks to reproduce that cadence on the same host load. The counters include PostgreSQL, runtime, kernel and incidental activity. They cannot identify a component to remove. The middle and full-submit budgets overlap and must be evaluated separately.
+
+### Did the fifth worker bring device flush activity down to the historical River range?
+
+All eight measured R5 arms had more device flush completions during drain than any of the six historical warm River arms. The smallest Mesh lower bound was 494. The largest River upper bound was 449. All 14 arms ran on the same boot and PostgreSQL device and completed the two independent application transactions for each of 1,024 jobs.
+
+| Arm | Flush completions during drain | Device flush time during drain |
+|---|---:|---:|
+| Forward faster OFF | 594–891 | 42–64 ms |
+| Forward ON | 767–856 | 56–62 ms |
+| Reverse faster OFF | 614–898 | 44–63 ms |
+| Reverse ON | 743–854 | 57–66 ms |
+| Six historical warm River arms, range of bounds | 324–449 | 24–37 ms |
+
+The two Mesh settings have overlapping bounds in each order. Reaching five jobs between their writes on each runner still left at least 318 extra flushes forward and 294 reverse relative to the highest River bound. The device reports completions from all users and time spent servicing flush requests. It cannot identify which commits shared a flush, how long PostgreSQL waited before submitting one, or how many milliseconds of drain a change would recover. The counts give a concrete comparison for a wider scheduler that also advances late writes.
+
+The [device replay](direct4_device_flushes.py) checks all 14 raw hashes and the recorder source. It brackets the actual diskstats read between the frame timestamp and the next complete 200 ms recorder wait, with 2 ms of clock uncertainty. The inner samples fall wholly inside the official drain clock and the outer pair encloses it.
