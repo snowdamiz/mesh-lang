@@ -58,6 +58,25 @@ Applying the fastest observed cadence in each arm to all 512 writes gives **292.
 
 These rates describe the released schedule. Supply and completions influence each other, and the ledger cannot show which checked jobs a worker could run immediately. Closing the whole historical middle gap would require a change that also improves on the observed cadence when both owners have work. A fresh comparison can measure whether faster settlement or earlier refill changes that cadence.
 
+### How much worker capacity could an unentered handler use?
+
+The commit timestamp on a job's second application write can precede the caller's return from PostgreSQL. Across six silent Direct4 controls on ELF `e836b79a`, using that timestamp as the end of handler occupancy leaves 704–819 apparent worker-ms for checked jobs awaiting handler entry. Using the latest defensible handler return leaves just 2–12 worker-ms in the same calculation. The difference determines whether to target dispatch or the returning database call.
+
+| Release and order | Through second write | Allow 1 ms to return | Allow 2 ms to return | Through terminal XID assignment upper bound |
+|---|---:|---:|---:|---:|
+| Pool supply, forward | 755.248 | 394.868 | 171.832 | 2.140 |
+| Pool supply, reverse | 749.294 | 392.848 | 157.298 | 11.908 |
+| Idle spin, forward | 724.232 | 368.874 | 147.870 | 10.652 |
+| Idle spin, reverse | 818.871 | 459.820 | 215.286 | 4.080 |
+| Event park, forward | 751.629 | 409.291 | 199.453 | 9.919 |
+| Event park, reverse | 704.225 | 366.527 | 165.842 | 12.306 |
+
+Each entry sums worker-ms over both runners from effect rank 256 to 768. For each runner the replay starts counting waiting members at the first handler entry from their checked batch. It subtracts the number of entered handlers covered by the assumed return times from four, floors at zero and caps the result at the number of witnessed waiting members. The last column extends every handler to the earliest recorded commit of an equal or higher XID than its terminal writer. That writer could only select handlers with confirmed exits. The two fixed-lag columns cap each return at the same upper bound.
+
+These intervals do not identify an idle thread. A checked member may still await individual publication, and a worker may be doing other runtime work. The older two-worker direct-handler trace measured a median 0.793–1.280 ms from commit record to application return across its six instrumented arms. The missing measurements on these four-worker controls are the return from the second write and publication of the next eligible attempt. [Two-worker trace](../2026-11-25-dense-handler-commit-return/README.md)
+
+Run `python3 -B direct4_handler_coverage.py EXPOSURE_DIR` here with the released event-park continuation directory. The reducer verifies the release and its replay, reads the other four controls from their pinned Git objects and checks all six native ledgers and process identities.
+
 ## Would a 32-row claim keep four workers supplied?
 
 A larger ceiling can change a full grant even when the owner has no new capacity to add after BEGIN. The two Direct4 runs reached the 16-row ceiling 23 and 24 times. For each full grant the replay keeps all preceding grants, credits every durable settlement through the end of the stamp's millisecond and respects both seat limits, same-stamp peer grants and remaining jobs. This gives an optimistic bound on room at the decision. The archives omit the client's checked credit at that instant.
