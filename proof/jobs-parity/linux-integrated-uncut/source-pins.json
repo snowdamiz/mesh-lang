@@ -1,0 +1,44 @@
+{
+  "checkout_parent": "2abab9c9cee38f861697aee24e9e2769a90d1942",
+  "frozen_source": "f1e646f015b5d308457ac0a702fa9f15a7104c87",
+  "pre_patch_compiler_equivalent": "a00637fec90a3cc8a6490e9954046e0ab59e67b1",
+  "patch_sha256": "aeed122c2c04d15a99280365fe29f327f7a2c66e52806ce2b91ab866e6486a22",
+  "patched_files_sha256": {
+    "compiler/mesh-rt/src/actor/scheduler.rs": "a0d221216d09a82aaad8035c324a5dadc56f9fd998862afd49045d2a04a5e291",
+    "compiler/mesh-rt/src/dist/telemetry.rs": "50de9c5cec926e4e1c80644774841aae897850911d6319c53dc101de7af058b2"
+  },
+  "rust": "1.99.0 (b940084d7eb6a299eb4bfeb8e34901bc051e7ac4)",
+  "zig": "0.15.2",
+  "fixture_compiler_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+  "fixture_sources_sha256": {
+    "fixture/main.mpl": "0c72aaa2f0f34c49d07fd2f6cad2d39f491c0857897a0ac7a0facb6b85b4464d",
+    "fixture/mesh.toml": "2bc7399cc1aefd3341f669efca2f16917272d33e0f83890f09990cfe636a6a71",
+    "fixture/worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca"
+  },
+  "selection_plan_sha256": "58e37f3bca3af2133ff166bc775a994bf2b4b125324d311af7335972e7c85f7e",
+  "abi_audit_sha256": "c73628e930d39034a9234721a1a76114db7e4e52d3d77a94589478fe9101bf1b",
+  "training": {
+    "elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+    "worker_count": 512,
+    "completed": 512,
+    "not_sampled_pids": [],
+    "base_page_bytes": 4096,
+    "fault_window_bytes": 4096,
+    "fault_window_restored": 65536,
+    "residency_sha256": "8f6bf64bea40849a268642d37128cbe78f580792385b7f1e9a59855b2d06625a",
+    "ordered_sha256": "2fc55bc0684d699b73cd1e5ac17f6ecbe55c4a9c9435ec6cb62e753f6ef17dbe",
+    "boot_sha256": "b9bbb8c6985f0fa099499c750c6c03310e720e8a28ec464da6426da2b0c22b9a"
+  },
+  "validation": {
+    "elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+    "worker_count": 512,
+    "completed": 512,
+    "not_sampled_pids": [],
+    "base_page_bytes": 4096,
+    "fault_window_bytes": 4096,
+    "fault_window_restored": 65536,
+    "residency_sha256": "6e9e9a261149f78cd46cfdf8b4dc3b14292ca168e6c5b9baf7a3142d8d817977",
+    "ordered_sha256": "ddb937c223fd9f8e9143a3abdc1ef969955796e1cf9658e9a18e4a52f624c5db",
+    "boot_sha256": "23fb72374fdad740223cc301ac8a5bc896bacb90dd2eda799250f760f54a56c4"
+  }
+}

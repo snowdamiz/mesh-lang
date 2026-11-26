@@ -1,0 +1,44 @@
+  def run(["session"]) do
+    {:ok, _} = Application.ensure_all_started(:jobs_parity_oban)
+    namespace = System.fetch_env!("JOBS_PARITY_NAMESPACE")
+    validate_namespace!(namespace)
+
+    {:ok, repo} =
+      Repo.start_link(
+        connection_options(System.fetch_env!("JOBS_PARITY_DB_URL")) ++
+          [pool_size: 1, log: false, parameters: [application_name: "jobs_parity_oban:producer_observer"]]
+      )
+
+    try do
+      {:ok, oban} = Oban.start_link(oban_options(namespace, "producer_observer") ++ [stager: false, peer: false])
+
+      try do
+        Repo.query!("SELECT 1")
+        IO.puts("SESSION_READY")
+
+        Enum.reduce_while(IO.stream(:stdio, :line), :ok, fn line, :ok ->
+          case String.trim_trailing(line, "\n") do
+            "stop" ->
+              print_json(%{})
+              {:halt, :ok}
+
+            request ->
+              case Jason.decode!(request) do
+                %{"verb" => "enqueue", "batch" => path} ->
+                  print_json(enqueue_file(namespace, path))
+
+                %{"verb" => "query", "sql" => sql} ->
+                  %{rows: [[value]]} = Repo.query!(sql)
+                  IO.puts(value)
+              end
+
+              {:cont, :ok}
+          end
+        end)
+      after
+        Supervisor.stop(oban)
+      end
+    after
+      Supervisor.stop(repo)
+    end
+  end

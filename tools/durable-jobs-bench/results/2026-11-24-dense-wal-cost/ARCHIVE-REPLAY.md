@@ -1,0 +1,9 @@
+# Archived dense device comparison
+
+Offline replay verified the SHA-256 of each of the 24 accepted dense raw arms. The Linux flush count bounds separate hot R2 from every stock peer in all six blocks. Mesh's lower bound exceeded the peer's upper bound by at least 427 flushes against River, 443 against Apalis, and 12 against Oban. The paired median gaps between the 103rd and 922nd second writes were 531.93, 406.73, and 45.14 ms respectively. The device scope is the entire ext4 disk from enqueue commit through final settlement. [Per-arm digests and bounds](evidence/archived-dense-device-replay.json)
+
+At River's observed middle-write pace, the older host CPU replay also places the minimum busy-CPU charge above the available two-CPU time in five of six rotations. A group-commit change that reduces cumulative I/O time alone may leave a CPU or scheduling bottleneck. [Archived CPU allowance](../2026-11-23-iteration-comparison/application-intervals.md#cpu-allowance-at-rivers-middle-write-pace)
+
+The WAL observation is separate from the stock comparison. The workspace check, 47 driver and benchmark-suite tests, and the untimed PostgreSQL effect-fence proof passed. The local recorder proof used two independent writes and verified delayed sync publication when the client disconnected. The native driver rejected execution without a controller grant. [Verification](evidence/verification.json) · [PostgreSQL proof](evidence/pg17-proof.json)
+
+The sealed Python stage also passed an untimed permissions check in the existing ARM64 Linux guest. UID/GID 65534 loaded the exact read-only driver and stock adapter bytes from a root-owned 0711 directory. With a single CPU all four entry points rejected the probe before touching an executable or PostgreSQL. This checks deployment mechanics. The real PostgreSQL proof above covers the counter behavior. [Linux stage receipt](evidence/linux-stage.json)

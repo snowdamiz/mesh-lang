@@ -232,6 +232,21 @@ button.sup-node:hover { box-shadow: 0 0 0 1px var(--ink); }
 .bench-meta .link-arrow { color: var(--on-night); }
 .bench-meta .link-arrow:hover { color: var(--accent-hi); }
 
+/* durable jobs */
+.jobs-code { max-width: none; margin-top: 16px; }
+
+/* coding agents */
+.agents { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: clamp(32px, 5vw, 64px); align-items: start; }
+.agents-code { max-width: none; margin: 0; }
+.agents-cmd { margin: 0; padding: 18px 26px 0; font-family: var(--mono); font-size: var(--fs-code); color: var(--on-night); }
+.agents-cmd span { color: var(--night-mute); }
+.agents-code pre { padding-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.agents-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 22px; }
+.agents-list li { display: grid; gap: 6px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.agents-list li:last-child { padding-bottom: 0; border-bottom: 0; }
+.agents-item-cmd { font-family: var(--mono); font-size: 14.5px; color: var(--ink); }
+.agents-list p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--mute); text-wrap: pretty; }
+
 /* toolchain */
 .toolbox { border-radius: var(--r-xl); background: var(--tint); padding: clamp(28px, 4vw, 52px); display: grid; gap: clamp(32px, 4vw, 48px); }
 .prompt { margin: 0; font-family: var(--mono); font-size: clamp(20px, 2.5vw, 34px); line-height: 1.3; letter-spacing: -.025em; color: var(--ink); overflow-wrap: anywhere; }
@@ -308,6 +323,7 @@ button.sup-node:hover { box-shadow: 0 0 0 1px var(--ink); }
   .bench-panel { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .bench .stack > :not(.on) { display: none; }
   .bench-meta { align-items: flex-start; gap: 10px; text-align: left; }
+  .agents { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 720px) {
   .ed-code { display: none; }
@@ -337,6 +353,7 @@ button.sup-node:hover { box-shadow: 0 0 0 1px var(--ink); }
   .cluster-fig .fig-lg { display: none; }
   .cluster-fig .fig-sm { display: block; }
   .codecard pre { font-size: 11.5px; padding: 18px; }
+  .agents-cmd { padding: 16px 18px 0; font-size: 11.5px; }
   .bench { gap: 28px; padding: 22px 20px 20px; border-radius: var(--r-lg); }
   .bench-tabs button { height: 32px; padding: 0 12px; font-size: 13.5px; }
   .bench-measure { margin-top: 12px; font-size: 19px; }

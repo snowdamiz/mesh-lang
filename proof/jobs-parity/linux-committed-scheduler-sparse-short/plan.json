@@ -1,0 +1,23 @@
+{
+  "baseline_commit": "6c5ca318",
+  "source_commit": "f8f8ed21cef0dc59fc7683bc873bac896e57069a",
+  "arms": {
+    "sparse": [
+      ["ordinary", "layout", "oban"],
+      ["oban", "layout", "ordinary"],
+      ["layout", "oban", "ordinary"],
+      ["ordinary", "oban", "layout"],
+      ["oban", "ordinary", "layout"]
+    ],
+    "short": [
+      ["layout", "ordinary", "oban"],
+      ["oban", "ordinary", "layout"],
+      ["ordinary", "oban", "layout"],
+      ["layout", "oban", "ordinary"],
+      ["oban", "layout", "ordinary"]
+    ]
+  },
+  "execution": "Alternate sparse then short16 for groups 01 through 05. Independently pair each exact Mesh arm with that guest's stock Oban arm.",
+  "retry": "Keep every attempt. Retry a failed setup under the same group, order and canonical settings, up to three attempts. Valid measured gate misses are included on the first successful boot.",
+  "workload": "Original sparse and short16 canonical profiles with three-second idle, two vCPUs and 2 GiB, PostgreSQL 17.11 and physical caps 5 and 20, compiled named effects, scoped TLS, pinned inetrc and stock flags."
+}

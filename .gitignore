@@ -102,3 +102,13 @@ tmp/
 # extended attributes (exFAT, FAT, network shares). Keep this last: a later
 # `!` rule, like the one for compiler/mesh-rt/src/dist/*.rs, would let them back in.
 ._*
+
+# Durable-jobs benchmark runs write raw evidence (ledgers, receipts, logs,
+# archives) that stays local. Track only each run's Markdown write-up and the
+# summary the landing page builds from.
+/tools/durable-jobs-bench/results/**
+!/tools/durable-jobs-bench/results/**/
+!/tools/durable-jobs-bench/results/**/*.md
+!/tools/durable-jobs-bench/results/2026-11-26-landing-summary/**
+/tools/durable-jobs-bench/__pycache__/
+/tools/durable-jobs-bench/inventory.local.json

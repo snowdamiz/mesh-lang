@@ -218,16 +218,22 @@ impl CoroutineHandle {
     /// The coroutine installs its Yielder into the thread-local before
     /// calling the entry function, so `mesh_reduction_check()` can yield.
     pub fn new(entry_fn: *const u8, args_ptr: *const u8) -> Self {
+        let fn_ptr = entry_fn as usize;
+        let args = args_ptr as usize;
+        Self::from_entry(move || {
+            // The compiler and scheduler supply the actor entry and argument ABI.
+            let func: extern "C-unwind" fn(*const u8) = unsafe { std::mem::transmute(fn_ptr) };
+            func(args as *const u8);
+        })
+    }
+
+    pub(super) fn from_entry(entry: impl FnOnce() + 'static) -> Self {
         let stack =
             DefaultStack::new(DEFAULT_STACK_SIZE).expect("failed to allocate coroutine stack");
         let stack_limit = {
             use corosensei::stack::Stack;
             stack.limit().get()
         };
-
-        // Capture the function pointer and args for the closure.
-        let fn_ptr = entry_fn as usize;
-        let args = args_ptr as usize;
 
         let coro = Coroutine::with_stack(stack, move |yielder: &Yielder<(), ()>, _input: ()| {
             // Capture the stack base at the very start of the coroutine body.
@@ -245,16 +251,11 @@ impl CoroutineHandle {
                     .set(Some(yielder as *const Yielder<(), ()> as *const ()));
             });
 
-            // Call the actor entry function.
-            // Safety: The fn_ptr was provided by the scheduler from a valid extern "C" fn.
-            let func: extern "C-unwind" fn(*const u8) =
-                unsafe { std::mem::transmute::<usize, extern "C-unwind" fn(*const u8)>(fn_ptr) };
-
             // During cancellation corosensei must distinguish its own unwind
             // from a new panic. During resume the scheduler can handle the
             // payload as a return value across the stack switch.
             // The scheduler clears CURRENT_YIELDER after either outcome.
-            match catch_unwind(AssertUnwindSafe(|| func(args as *const u8))) {
+            match catch_unwind(AssertUnwindSafe(entry)) {
                 Err(panic) if DROPPING_STACK_LIMIT.get() == stack_limit => resume_unwind(panic),
                 result => result,
             }

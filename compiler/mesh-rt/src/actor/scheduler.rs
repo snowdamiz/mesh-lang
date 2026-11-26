@@ -55,6 +55,7 @@ use super::stack::{
 /// across worker threads via work-stealing.
 #[allow(dead_code)]
 struct SpawnRequest {
+    owned: Option<OwnedSpawn>,
     step: Option<Box<BoundedStep>>,
     movable: bool,
     pid: ProcessId,
@@ -70,6 +71,7 @@ unsafe impl Send for SpawnRequest {}
 
 enum SpawnMode {
     Shared,
+    Owned(OwnedSpawn),
     Linked {
         parent: ProcessId,
         child: LinkedChild,
@@ -77,6 +79,13 @@ enum SpawnMode {
     Grouped(Option<TerminateCallback>),
     Step(u32),
     MovableStep(u32),
+}
+
+type OwnedExit = Box<dyn FnOnce(ExitReason) + Send>;
+
+struct OwnedSpawn {
+    entry: Box<dyn FnOnce() + Send>,
+    on_exit: OwnedExit,
 }
 
 #[derive(Clone, Copy)]
@@ -89,6 +98,9 @@ enum LinkedChild {
 // Only a grouped actor resuming on its owner can hand off to another
 // suspended grouped actor there. Overflow takes the normal notification path.
 const MAX_GROUP_HANDOFFS: usize = 3;
+const IDLE_SPIN_CYCLES: u32 = 100;
+const IDLE_POLL_INTERVAL: Duration = Duration::from_micros(1_100);
+const COLD_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(16);
 
 #[derive(Clone, Copy)]
 enum HandoffSlot {
@@ -751,6 +763,24 @@ impl Scheduler {
         )
     }
 
+    pub(crate) fn spawn_owned(
+        &self,
+        entry: impl FnOnce() + Send + 'static,
+        on_exit: impl FnOnce(ExitReason) + Send + 'static,
+    ) -> ProcessId {
+        self.spawn_process(
+            std::ptr::null(),
+            std::ptr::null(),
+            0,
+            Priority::Normal,
+            std::ptr::null(),
+            SpawnMode::Owned(OwnedSpawn {
+                entry: Box::new(entry),
+                on_exit: Box::new(on_exit),
+            }),
+        )
+    }
+
     pub(super) fn spawn_job(
         &self,
         fn_ptr: *const u8,
@@ -905,7 +935,12 @@ impl Scheduler {
         }
 
         // Enqueue spawn request.
+        let owned = match mode {
+            SpawnMode::Owned(entry) => Some(entry),
+            _ => None,
+        };
         let request = SpawnRequest {
+            owned,
             step,
             movable,
             pid,
@@ -1034,6 +1069,9 @@ impl Scheduler {
     /// Signal the scheduler to shut down.
     pub fn signal_shutdown(&self) {
         self.shutdown.store(true, Ordering::SeqCst);
+        for worker in self.sleepers.iter() {
+            worker.wake();
+        }
     }
 
     /// Check if shutdown has been signaled.
@@ -1296,6 +1334,7 @@ impl MovableStep {
 
 enum Execution {
     Stack(CoroutineHandle),
+    Owned(Option<(CoroutineHandle, OwnedExit)>),
     Step(Box<BoundedStep>),
 }
 
@@ -1308,6 +1347,11 @@ impl Execution {
     ) -> Result<bool, String> {
         match self {
             Self::Stack(handle) => handle.resume_catching_panic(),
+            Self::Owned(run) => run
+                .as_mut()
+                .expect("live owned actor")
+                .0
+                .resume_catching_panic(),
             Self::Step(step) => {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     step.run(process, table, shutdown)
@@ -1482,7 +1526,10 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
     let mut prefer_grouped = false;
     let mut step_rescue = StepRescue::default();
 
-    let mut spin_count: u32 = 0;
+    // Scan immediately, then publish idle and scan again before the first park.
+    // The spin budget is useful after a dispatch, when more work may be imminent.
+    let mut spin_count = IDLE_SPIN_CYCLES;
+    let mut may_extend_cold_park = sleepers.len() == 1;
     let sleep = &*sleepers[worker_index];
     CURRENT_WORKER.set(sleep);
     CURRENT_WORKER_INDEX.set(worker_index);
@@ -1734,17 +1781,27 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                         &active_count,
                         &sleepers,
                         req.pid,
-                        reason,
+                        reason.clone(),
                     );
+                    if let Some(OwnedSpawn { entry, on_exit }) = req.owned {
+                        drop(entry);
+                        on_exit(reason);
+                    }
                 } else {
                     // Create the coroutine only after confirming the queued actor is live.
                     let mut actor = ScheduledActor {
                         process,
                         handle: match req.step {
                             Some(step) => Execution::Step(step),
-                            None => {
-                                Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr))
-                            }
+                            None => match req.owned {
+                                Some(OwnedSpawn { entry, on_exit }) => Execution::Owned(Some((
+                                    CoroutineHandle::from_entry(entry),
+                                    on_exit,
+                                ))),
+                                None => {
+                                    Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr))
+                                }
+                            },
                         },
                     };
                     let outcome = resume_process(
@@ -1833,19 +1890,34 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             }
         }
 
-        // Backoff when idle to avoid burning CPU: spin, then park for as long
-        // as this used to sleep. `WorkerSleep::wake` cuts the park short.
+        // Preserve spin and sweep cadence after a dispatch. Before the first
+        // dispatch, a single worker with no managed actors has no suspended
+        // actors to sweep or peers to rescue. A producer or shutdown can wake
+        // it after it publishes idle, and the next scan covers earlier work.
         if !did_work && defer_shared {
             std::thread::yield_now();
         } else if !did_work {
             spin_count = spin_count.saturating_add(1);
-            if spin_count > 100 {
-                idle.park(std::time::Duration::from_micros(1_100));
+            if spin_count > IDLE_SPIN_CYCLES {
+                if may_extend_cold_park
+                    && idle.published
+                    && !movable
+                    && active_count.load(Ordering::SeqCst) == 0
+                    && !shutdown.load(Ordering::SeqCst)
+                {
+                    let telemetry = crate::dist::telemetry::runtime_telemetry();
+                    telemetry.record_scheduler_cycle(false, cycle_started_at.elapsed());
+                    let _park = telemetry.track_scheduler_idle_park();
+                    idle.park(COLD_IDLE_POLL_INTERVAL);
+                    continue;
+                }
+                idle.park(IDLE_POLL_INTERVAL);
             } else {
                 std::hint::spin_loop();
             }
         } else {
             spin_count = 0;
+            may_extend_cold_park = false;
         }
         crate::dist::telemetry::runtime_telemetry()
             .record_scheduler_cycle(did_work, cycle_started_at.elapsed());
@@ -1975,7 +2047,7 @@ fn resume_process(
         (reason, process.placement)
     };
     if let Some(reason) = exited_reason {
-        finalize_managed_process(process_table, active_count, sleepers, pid, reason);
+        finish_scheduled_actor(process_table, active_count, sleepers, pid, actor, reason);
         return (Resumed::Finished, None);
     }
 
@@ -2019,7 +2091,7 @@ fn resume_process(
                 }
             };
             if let Some(reason) = exited_reason {
-                finalize_managed_process(process_table, active_count, sleepers, pid, reason);
+                finish_scheduled_actor(process_table, active_count, sleepers, pid, actor, reason);
                 return (Resumed::Finished, next);
             }
             outcome
@@ -2030,11 +2102,43 @@ fn resume_process(
                 Err(message) => ExitReason::Error(message),
                 Ok(true) => unreachable!(),
             };
-            finalize_managed_process(process_table, active_count, sleepers, pid, reason);
+            finish_scheduled_actor(process_table, active_count, sleepers, pid, actor, reason);
             Resumed::Finished
         }
     };
     (outcome, next)
+}
+
+fn finish_scheduled_actor(
+    table: &ProcessTable,
+    active_count: &AtomicU64,
+    sleepers: &[CachePadded<WorkerSleep>],
+    pid: ProcessId,
+    actor: &mut ScheduledActor,
+    reason: ExitReason,
+) {
+    let on_exit = if let Execution::Owned(run) = &mut actor.handle {
+        let (handle, on_exit) = run.take().expect("owned actor exits once");
+        // Forced exit of a suspended actor must unwind its stack before
+        // making the exit visible to the owner.
+        if !handle.done() {
+            set_current_process(pid, &actor.process);
+            drop(handle);
+            clear_current_pid();
+            CURRENT_YIELDER.with(|current| current.yielder.set(None));
+        }
+        Some(on_exit)
+    } else {
+        None
+    };
+    finalize_managed_process(table, active_count, sleepers, pid, reason);
+    if let Some(on_exit) = on_exit {
+        let reason = match &actor.process.lock().state {
+            ProcessState::Exited(reason) => reason.clone(),
+            _ => unreachable!("owned actor has exited"),
+        };
+        on_exit(reason);
+    }
 }
 
 enum StepTurn {
@@ -3135,6 +3239,54 @@ mod tests {
     }
 
     #[test]
+    fn owned_actor_reports_exit_after_its_stack_and_registration_are_cleaned_up() {
+        let scheduler = Arc::new(Scheduler::new(1));
+        let (ready, parked) = crossbeam_channel::bounded(1);
+        let (send, completed) = crossbeam_channel::bounded(1);
+        let name = "scheduler-test-owned-exit";
+        let owner = Arc::clone(&scheduler);
+        let pid = scheduler.spawn_owned(
+            move || {
+                let pid = get_current_pid().unwrap();
+                registry::global_registry()
+                    .register(name.into(), pid)
+                    .unwrap();
+                struct NotifyOnUnwind(crossbeam_channel::Sender<()>);
+                impl Drop for NotifyOnUnwind {
+                    fn drop(&mut self) {
+                        let _ = self.0.send(());
+                    }
+                }
+                let (unwound, did_unwind) = crossbeam_channel::bounded(1);
+                let _unwind = NotifyOnUnwind(unwound);
+                crate::actor::current_process()
+                    .unwrap()
+                    .lock()
+                    .set_live_state(ProcessState::Waiting);
+                ready.send((pid, did_unwind)).unwrap();
+                crate::actor::stack::suspend_current();
+                panic!("a cancelled actor resumed its body");
+            },
+            move |reason| {
+                send.send((reason, registry::global_registry().whereis(name)))
+                    .unwrap();
+                owner.signal_shutdown();
+            },
+        );
+        scheduler.start();
+        let (entered, did_unwind) = parked.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(entered, pid);
+        let process = scheduler.get_process(pid).unwrap();
+        scheduler.force_exit(pid, process.lock(), ExitReason::Shutdown);
+        let (reason, registered) = completed.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(reason, ExitReason::Shutdown);
+        assert!(did_unwind.try_recv().is_ok());
+        assert_eq!(registered, None);
+        assert!(scheduler.get_process(pid).is_none());
+        scheduler.wait();
+    }
+
+    #[test]
     fn test_single_actor_completes() {
         let initial = SPAWN_COUNTER.load(Ordering::SeqCst);
         let sched = Scheduler::new(1);
@@ -3289,6 +3441,46 @@ mod tests {
         workers[1].shared_claims.fetch_add(1, Ordering::Relaxed);
         assert!(claim.defer(next, 4, &workers, COROUTINE_CLAIM));
         assert_eq!(claim.offer.as_ref().unwrap().peer, 1);
+    }
+
+    #[test]
+    fn first_actor_runs_after_cold_workers_advertise_idle() {
+        extern "C" fn send_started(args: *const u8) {
+            let sender = unsafe { &*args.cast::<std::sync::mpsc::Sender<usize>>() };
+            let _ = sender.send(CURRENT_WORKER_INDEX.get());
+        }
+
+        let timeout = Duration::from_secs(5);
+        for workers in [1, 2] {
+            for priority in [0, 1] {
+                let scheduler = Scheduler::new(workers);
+                let (started, event) = std::sync::mpsc::channel::<usize>();
+                scheduler.start();
+                let deadline = Instant::now() + timeout;
+                let all_idle = || {
+                    scheduler
+                        .sleepers
+                        .iter()
+                        .all(|worker| worker.idle.load(Ordering::SeqCst))
+                };
+                while !all_idle() && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                let worker = all_idle().then(|| {
+                    scheduler.spawn(
+                        send_started as *const u8,
+                        std::ptr::from_ref(&started).cast(),
+                        0,
+                        priority,
+                    );
+                    event.recv_timeout(timeout)
+                });
+                scheduler.signal_shutdown();
+                scheduler.wait();
+                assert!(matches!(worker, Some(Ok(index)) if index < workers as usize));
+                assert_eq!(scheduler.active_count(), 0);
+            }
+        }
     }
 
     #[test]

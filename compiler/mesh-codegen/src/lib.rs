@@ -769,6 +769,8 @@ fn main() do
 end
 "#,
         );
+        assert!(!llvm.contains("call ptr @mesh_jobs_start_effects_v1("));
+        assert!(!llvm.contains("call ptr @mesh_jobs_effect_v1("));
         for (symbol, arguments) in [
             ("migrate", "i64"),
             ("enqueue", "i64, ptr, ptr"),
@@ -789,6 +791,23 @@ end
                     && line.ends_with("ptr @handle, ptr null)")),
             "{llvm}"
         );
+    }
+
+    #[test]
+    fn compiled_jobs_effect_fixture_uses_the_versioned_abi() {
+        let llvm = llvm_of(include_str!(
+            "../../../scripts/fixtures/jobs-effect-compiled/main.mpl"
+        ));
+        assert!(
+            llvm.lines().any(|line| {
+                line.contains("call ptr @mesh_jobs_start_effects_v1(")
+                    && line.contains("ptr @handler, ptr null, ptr")
+            }),
+            "{llvm}"
+        );
+        assert!(llvm.contains("call ptr @mesh_jobs_effect_v1("));
+        assert!(llvm.contains("call void @mesh_jobs_register_handler("));
+        assert!(llvm.contains("call void @mesh_jobs_enter_worker("));
     }
 
     #[test]

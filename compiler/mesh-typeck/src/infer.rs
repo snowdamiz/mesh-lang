@@ -3227,6 +3227,22 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             Ty::result(Ty::int(), Ty::string()),
         ),
         (
+            "start_effects",
+            vec![
+                pool_handle_t.clone(),
+                Ty::string(),
+                jobs_handler_type(),
+                Ty::string(),
+                json_t.clone(),
+            ],
+            Ty::result(Ty::int(), Ty::string()),
+        ),
+        (
+            "effect",
+            vec![Ty::string(), json_t],
+            Ty::result(Ty::bool(), Ty::string()),
+        ),
+        (
             "drain",
             vec![
                 pool_handle_t,
@@ -5340,7 +5356,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         if !called {
             ctx.errors.push(TypeError::JobsStartInvalid {
                 reason:
-                    "call Jobs.start or Jobs.drain directly so the compiler can check the handler",
+                    "call the Jobs runner function directly so the compiler can check the handler",
                 span,
             });
         }
@@ -10040,12 +10056,14 @@ fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Resu
                     name_ref.syntax().text_range(),
                 ));
             }
-            let jobs_runner = matches!(name.as_str(), "jobs_start" | "jobs_drain")
-                || (matches!(name.as_str(), "start" | "drain")
-                    && ctx
-                        .stdlib_imports
-                        .get(&name)
-                        .is_some_and(|module| module == "Jobs"));
+            let jobs_runner = matches!(
+                name.as_str(),
+                "jobs_start" | "jobs_start_effects" | "jobs_drain"
+            ) || (matches!(name.as_str(), "start" | "start_effects" | "drain")
+                && ctx
+                    .stdlib_imports
+                    .get(&name)
+                    .is_some_and(|module| module == "Jobs"));
             if jobs_runner
                 && !env.is_local(&name)
                 && !ctx.top_level_function_visibility.contains_key(&name)
@@ -13620,7 +13638,9 @@ fn infer_field_access(
             .get(&base_name)
             .and_then(|functions| functions.get(&field_name))
         {
-            if base_name == "Jobs" && matches!(field_name.as_str(), "start" | "drain") {
+            if base_name == "Jobs"
+                && matches!(field_name.as_str(), "start" | "start_effects" | "drain")
+            {
                 ctx.jobs_runner_references
                     .entry(fa.syntax().text_range())
                     .or_default();

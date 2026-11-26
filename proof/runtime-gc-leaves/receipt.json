@@ -1,0 +1,3575 @@
+{
+  "candidate_commit": "6ae02449083df5b43f4dddc27404454134a2ce21",
+  "release_archive_sha256": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7",
+  "attribution_archive_sha256": "288da8e7a299dd3702823f00100351b8a5bb4fdb69d19b9871eed9ded8ff13a2",
+  "archive_audit": {
+    "members": 1235,
+    "identical": 1219,
+    "changed": [
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.00.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.01.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.02.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.03.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.04.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.05.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.06.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.07.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.08.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.09.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.10.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.11.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.12.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.13.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.14.rcgu.o",
+      "mesh_rt-c40841fc8f1ab825.mesh_rt.8ef7412bbf869877-cgu.15.rcgu.o"
+    ]
+  },
+  "source_sha256": {
+    "compiler/mesh-rt/src/actor/heap.rs": "f6704e45c1c0c9bc836a7126afe9902f4a1e357264a289e5572940c638ff7d48",
+    "compiler/mesh-rt/src/gc.rs": "b6e415a02ce59897fa354ba0a83468b12ac09334c2a724121e7fa297bf629532",
+    "compiler/mesh-rt/src/string.rs": "39263d33aaf641af3a60a610ba71680c76509270a0ae2ea6be5d3a2cd8e0b51d",
+    "compiler/mesh-rt/src/bytes.rs": "db977dcfb58fd5eea958449163a66970c73fa58fdcf15a5cf8029bbe7fbe0186"
+  },
+  "ordinary": [
+    {
+      "name": "ordinary-release-01",
+      "host_load": [
+        93.67626953125,
+        71.728515625,
+        68.18212890625
+      ],
+      "oracle_config": {
+        "files": {
+          "run.sh": "20617e37a44b4b33842107895a5cda98aee1552be909e2a153b9d78a7a2b71c9",
+          "probe.py": "18272438a857dd8d13664bbadf6f1aab62d6829a756c6ff449d43ddf3b3b179c",
+          "text.txt": "7576ef3267b6aedbb6019da27400261f26c43b7684b57f59397e8e8911c0802a",
+          "ordinary.json": "0ecfaa31cbef9799fb5b3b479c274af878cae2337406afd110ebf44fa8e9b37f",
+          "parent-utf8": "3d96209e6debf3b81267a259b36990e7f037889b1832c739bf11b88e58e97867",
+          "parent-bytes": "84a9fb1b2cd909169529a1020a737fa3f6e8c301da0154e5b986f07d16cfd53d",
+          "parent-json": "3fb72e56157074ea5f844940036b1e85cdc9a049041307a2c7b62856e1305239",
+          "parent-small": "782e44063be40659dfe83f49510a7d112cb883e8e5ec6b5ca82537daaabee9c3",
+          "parent-refs": "47ee3bca59a04fa3998dd6070c6fc3c5f037b16c78142bace2786de4bf03bccb",
+          "candidate-utf8": "87a6f37408e1e3cdbec1957118d9792b81d76b0cb8139b24d47726414af2760e",
+          "candidate-bytes": "c07127ea38c17a53159c35321eedb26b877f8c2eb1156ab65a006b81d9290fc6",
+          "candidate-json": "1a95e916a71b6e6328cfe006cb827686248197be06ce63ae8db574b340d94818",
+          "candidate-small": "eb5b8e179eca96d135029957c29e64c9c00a37e01a6a8405bef5b11e3283b0e7",
+          "candidate-refs": "f17f06d0c47557a6709eb4bf3b2335438866178fc2b509349b9cf8067c237102",
+          "gc_live_register_roots": "c30af4a331537942db5d8f3240bf60b87308a5959561d878efb6393b5da65f7c",
+          "actors_send_string_survives_gc": "f4992ddf626dffe8fbd214d1c962e8ba89eb082e0e164909fa2f258ed733902c",
+          "actors_spawn_arg_survives_gc": "0811d04119626dfe6e5f6827262d81103f70f3873eac3afdcdb95cf7aff345a4",
+          "actors_timer_send_string_survives_gc": "36e5805bc6a82f45d65dff49fc28b4b27f4535845acf9f3c35e6e2b23252785a",
+          "actors_send_shapes_survive_gc": "36ec7535e5063e5eb30aaccad6dc197cd94e3167fa19690e71b26894b40cff6a"
+        },
+        "stress": {
+          "gc_live_register_roots": "gc live register roots preserved\n",
+          "actors_send_string_survives_gc": "payload-42\n",
+          "actors_spawn_arg_survives_gc": "payload-42\n",
+          "actors_timer_send_string_survives_gc": "payload-42\n",
+          "actors_send_shapes_survive_gc": [
+            "named=named-1001",
+            "pair=paired-102/7",
+            "wrapped=boxjob-103/3",
+            "tuple=tupled-104/4",
+            "struct=struct-105/5",
+            "batch=batch-a-115+batch-b-116/15",
+            "list=listed-106+listed-107",
+            "jobs=jobs-b-109/9",
+            "map=mapped-110",
+            "option=option-111",
+            "result=result-112",
+            "pairs=pairs-b-114/14",
+            "json={\"name\":\"json-117\",\"tags\":[\"tag-118\"]}"
+          ]
+        },
+        "counts": {
+          "utf8": 4000,
+          "bytes": 4000,
+          "json": 1600,
+          "small": 1000000,
+          "refs": 350000
+        },
+        "separate": true,
+        "orders": [
+          [
+            "A1",
+            "B",
+            "A2"
+          ],
+          [
+            "A2",
+            "B",
+            "A1"
+          ],
+          [
+            "B",
+            "A1",
+            "A2"
+          ],
+          [
+            "A2",
+            "A1",
+            "B"
+          ],
+          [
+            "A1",
+            "B",
+            "A2"
+          ],
+          [
+            "B",
+            "A2",
+            "A1"
+          ]
+        ]
+      },
+      "links": {
+        "actors_send_shapes_survive_gc": {
+          "sha256": "36ec7535e5063e5eb30aaccad6dc197cd94e3167fa19690e71b26894b40cff6a",
+          "object": "e80df1620a050b27f73420a33c996f4625eff9d2468c4506d4559a22af6d398a",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "actors_send_string_survives_gc": {
+          "sha256": "f4992ddf626dffe8fbd214d1c962e8ba89eb082e0e164909fa2f258ed733902c",
+          "object": "3f10f10b6824b5c3fb3686117533342b939fb90dcafe99dc0d4a2559b6df5a37",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "actors_spawn_arg_survives_gc": {
+          "sha256": "0811d04119626dfe6e5f6827262d81103f70f3873eac3afdcdb95cf7aff345a4",
+          "object": "754864a87dbe8590dfcff90d85794c1f81b29b8166e5fe97ec21cadd8fc34eee",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "actors_timer_send_string_survives_gc": {
+          "sha256": "36e5805bc6a82f45d65dff49fc28b4b27f4535845acf9f3c35e6e2b23252785a",
+          "object": "f103557182aa3fbda91445199e92022f3c74ceb0d71733d93ccafb64b2d98bdf",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-bytes": {
+          "sha256": "c07127ea38c17a53159c35321eedb26b877f8c2eb1156ab65a006b81d9290fc6",
+          "object": "17b0e48a540a69502953ed5a6ec1e3ce90eca092791f64500aca906cb7e70876",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-json": {
+          "sha256": "1a95e916a71b6e6328cfe006cb827686248197be06ce63ae8db574b340d94818",
+          "object": "a85d92c6047079fd6b0e5e791156497ade12cdfa059ba46c287d4cfb678e33af",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-refs": {
+          "sha256": "f17f06d0c47557a6709eb4bf3b2335438866178fc2b509349b9cf8067c237102",
+          "object": "8c514d59b475221affc44ec01a6ba91fbe0500a145d1e5e464f2b7091aa49248",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-small": {
+          "sha256": "eb5b8e179eca96d135029957c29e64c9c00a37e01a6a8405bef5b11e3283b0e7",
+          "object": "d7a98a2272b3b556a759a65b67c1b441ab8db48a1715c00f11e4b5fc7ec60162",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-utf8": {
+          "sha256": "87a6f37408e1e3cdbec1957118d9792b81d76b0cb8139b24d47726414af2760e",
+          "object": "a19f00c00aa04389bbb20b7a465cbc6ef978fcb71d9d2ec661e61b84d8ab07ca",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "gc_live_register_roots": {
+          "sha256": "c30af4a331537942db5d8f3240bf60b87308a5959561d878efb6393b5da65f7c",
+          "object": "06066c223139ae0ed96a4e4e67cd76b864df7c3da49c13a434665215060286ec",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "parent-bytes": {
+          "sha256": "84a9fb1b2cd909169529a1020a737fa3f6e8c301da0154e5b986f07d16cfd53d",
+          "object": "17b0e48a540a69502953ed5a6ec1e3ce90eca092791f64500aca906cb7e70876",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        },
+        "parent-json": {
+          "sha256": "3fb72e56157074ea5f844940036b1e85cdc9a049041307a2c7b62856e1305239",
+          "object": "a85d92c6047079fd6b0e5e791156497ade12cdfa059ba46c287d4cfb678e33af",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        },
+        "parent-refs": {
+          "sha256": "47ee3bca59a04fa3998dd6070c6fc3c5f037b16c78142bace2786de4bf03bccb",
+          "object": "8c514d59b475221affc44ec01a6ba91fbe0500a145d1e5e464f2b7091aa49248",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        },
+        "parent-small": {
+          "sha256": "782e44063be40659dfe83f49510a7d112cb883e8e5ec6b5ca82537daaabee9c3",
+          "object": "d7a98a2272b3b556a759a65b67c1b441ab8db48a1715c00f11e4b5fc7ec60162",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        },
+        "parent-utf8": {
+          "sha256": "3d96209e6debf3b81267a259b36990e7f037889b1832c739bf11b88e58e97867",
+          "object": "a19f00c00aa04389bbb20b7a465cbc6ef978fcb71d9d2ec661e61b84d8ab07ca",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        }
+      },
+      "samples": [
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 241011000,
+          "wall_ns": 240898709,
+          "output": "4000",
+          "guest_load": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 143805000,
+          "wall_ns": 142730958,
+          "output": "4000",
+          "guest_load": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 279925000,
+          "wall_ns": 281543959,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 434224000,
+          "wall_ns": 433690750,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 112988000,
+          "wall_ns": 113380583,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 344259000,
+          "wall_ns": 343962333,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 215245000,
+          "wall_ns": 214930208,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 352542000,
+          "wall_ns": 352267667,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 350147000,
+          "wall_ns": 349878250,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 390959000,
+          "wall_ns": 390913208,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 309557000,
+          "wall_ns": 309167000,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 262867000,
+          "wall_ns": 262061251,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 207347000,
+          "wall_ns": 206854709,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 73856000,
+          "wall_ns": 73934000,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 218628000,
+          "wall_ns": 218515500,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 70502000,
+          "wall_ns": 70741542,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 223377000,
+          "wall_ns": 223234542,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 220860000,
+          "wall_ns": 220893542,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 190711000,
+          "wall_ns": 190580417,
+          "output": "993721",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 63034000,
+          "wall_ns": 63151959,
+          "output": "993721",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 207171000,
+          "wall_ns": 207618417,
+          "output": "993721",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 223674000,
+          "wall_ns": 224171250,
+          "output": "993721",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 55247000,
+          "wall_ns": 55346584,
+          "output": "993721",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 189678000,
+          "wall_ns": 189890125,
+          "output": "993721",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 60852000,
+          "wall_ns": 60874458,
+          "output": "993721",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 184336000,
+          "wall_ns": 184249126,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 176555000,
+          "wall_ns": 176655333,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 200682000,
+          "wall_ns": 200693042,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 171532000,
+          "wall_ns": 172786334,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 220656000,
+          "wall_ns": 221817708,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 201031000,
+          "wall_ns": 201035167,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 57822000,
+          "wall_ns": 57960500,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 190547000,
+          "wall_ns": 190723041,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 56844000,
+          "wall_ns": 56984667,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 184582000,
+          "wall_ns": 184377958,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 183800000,
+          "wall_ns": 183829708,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 441123000,
+          "wall_ns": 442642834,
+          "output": "1600",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 457461000,
+          "wall_ns": 457680375,
+          "output": "1600",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 480629000,
+          "wall_ns": 480194167,
+          "output": "1600",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 553252000,
+          "wall_ns": 553286375,
+          "output": "1600",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 361040000,
+          "wall_ns": 360692709,
+          "output": "1600",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 812391000,
+          "wall_ns": 810198376,
+          "output": "1600",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 464764000,
+          "wall_ns": 464461958,
+          "output": "1600",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 509809000,
+          "wall_ns": 509114042,
+          "output": "1600",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 556471000,
+          "wall_ns": 555888667,
+          "output": "1600",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 485078000,
+          "wall_ns": 484514208,
+          "output": "1600",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 472259000,
+          "wall_ns": 472200000,
+          "output": "1600",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 749372000,
+          "wall_ns": 749615750,
+          "output": "1600",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 603778000,
+          "wall_ns": 602981250,
+          "output": "1600",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 365613000,
+          "wall_ns": 365347750,
+          "output": "1600",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 475532000,
+          "wall_ns": 475861625,
+          "output": "1600",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 596393000,
+          "wall_ns": 595008417,
+          "output": "1600",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 463583000,
+          "wall_ns": 463409000,
+          "output": "1600",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 459487000,
+          "wall_ns": 459215458,
+          "output": "1600",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 102700000,
+          "wall_ns": 105998667,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 80154000,
+          "wall_ns": 80371334,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 80437000,
+          "wall_ns": 80852334,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 82084000,
+          "wall_ns": 82308416,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 80216000,
+          "wall_ns": 80419625,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 83164000,
+          "wall_ns": 86091917,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 85962000,
+          "wall_ns": 86512416,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 79993000,
+          "wall_ns": 80398917,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 82569000,
+          "wall_ns": 82742459,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 72727000,
+          "wall_ns": 72839375,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 99421000,
+          "wall_ns": 99533208,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 89512000,
+          "wall_ns": 89724792,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 122580000,
+          "wall_ns": 122764208,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 234386000,
+          "wall_ns": 232427000,
+          "output": "3793693",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 101374000,
+          "wall_ns": 103270500,
+          "output": "3793693",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 94589000,
+          "wall_ns": 94877208,
+          "output": "3793693",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 364926000,
+          "wall_ns": 371704584,
+          "output": "3793693",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 86975000,
+          "wall_ns": 89058083,
+          "output": "3793693",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 288317000,
+          "wall_ns": 277032375,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 82257000,
+          "wall_ns": 83034875,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 364092000,
+          "wall_ns": 362848625,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 80800000,
+          "wall_ns": 81088583,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 214755000,
+          "wall_ns": 202543709,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 97198000,
+          "wall_ns": 97290584,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 78061000,
+          "wall_ns": 78287375,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 126505000,
+          "wall_ns": 126885167,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 232555000,
+          "wall_ns": 232646376,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 76456000,
+          "wall_ns": 76588083,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 83987000,
+          "wall_ns": 84832500,
+          "output": "122457658128",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 264900000,
+          "wall_ns": 260467458,
+          "output": "122457658128",
+          "guest_load": [
+            0.39453125,
+            0.0966796875,
+            0.0322265625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 382523000,
+          "wall_ns": 399789250,
+          "output": "122457658128",
+          "guest_load": [
+            0.39453125,
+            0.0966796875,
+            0.0322265625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 96536000,
+          "wall_ns": 98033250,
+          "output": "122457658128",
+          "guest_load": [
+            0.39453125,
+            0.0966796875,
+            0.0322265625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 348964000,
+          "wall_ns": 348583126,
+          "output": "122457658128",
+          "guest_load": [
+            0.39453125,
+            0.0966796875,
+            0.0322265625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 83873000,
+          "wall_ns": 83619209,
+          "output": "122457658128",
+          "guest_load": [
+            0.39453125,
+            0.0966796875,
+            0.0322265625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 71634000,
+          "wall_ns": 72135500,
+          "output": "122457658128",
+          "guest_load": [
+            0.39453125,
+            0.0966796875,
+            0.0322265625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 162438000,
+          "wall_ns": 170113167,
+          "output": "122457658128",
+          "guest_load": [
+            0.39453125,
+            0.0966796875,
+            0.0322265625
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ordinary-release-02",
+      "host_load": [
+        49.34375,
+        54.46484375,
+        60.7255859375
+      ],
+      "oracle_config": {
+        "files": {
+          "run.sh": "20617e37a44b4b33842107895a5cda98aee1552be909e2a153b9d78a7a2b71c9",
+          "probe.py": "f7ec0396ce570a57277b8efe99d886547dc4fbf38bc1bb13d80e81ee3ac985a0",
+          "text.txt": "7576ef3267b6aedbb6019da27400261f26c43b7684b57f59397e8e8911c0802a",
+          "ordinary.json": "0ecfaa31cbef9799fb5b3b479c274af878cae2337406afd110ebf44fa8e9b37f",
+          "parent-utf8": "3d96209e6debf3b81267a259b36990e7f037889b1832c739bf11b88e58e97867",
+          "parent-bytes": "84a9fb1b2cd909169529a1020a737fa3f6e8c301da0154e5b986f07d16cfd53d",
+          "parent-json": "3fb72e56157074ea5f844940036b1e85cdc9a049041307a2c7b62856e1305239",
+          "parent-small": "782e44063be40659dfe83f49510a7d112cb883e8e5ec6b5ca82537daaabee9c3",
+          "parent-refs": "47ee3bca59a04fa3998dd6070c6fc3c5f037b16c78142bace2786de4bf03bccb",
+          "candidate-utf8": "87a6f37408e1e3cdbec1957118d9792b81d76b0cb8139b24d47726414af2760e",
+          "candidate-bytes": "c07127ea38c17a53159c35321eedb26b877f8c2eb1156ab65a006b81d9290fc6",
+          "candidate-json": "1a95e916a71b6e6328cfe006cb827686248197be06ce63ae8db574b340d94818",
+          "candidate-small": "eb5b8e179eca96d135029957c29e64c9c00a37e01a6a8405bef5b11e3283b0e7",
+          "candidate-refs": "f17f06d0c47557a6709eb4bf3b2335438866178fc2b509349b9cf8067c237102",
+          "gc_live_register_roots": "c30af4a331537942db5d8f3240bf60b87308a5959561d878efb6393b5da65f7c",
+          "actors_send_string_survives_gc": "f4992ddf626dffe8fbd214d1c962e8ba89eb082e0e164909fa2f258ed733902c",
+          "actors_spawn_arg_survives_gc": "0811d04119626dfe6e5f6827262d81103f70f3873eac3afdcdb95cf7aff345a4",
+          "actors_timer_send_string_survives_gc": "36e5805bc6a82f45d65dff49fc28b4b27f4535845acf9f3c35e6e2b23252785a",
+          "actors_send_shapes_survive_gc": "36ec7535e5063e5eb30aaccad6dc197cd94e3167fa19690e71b26894b40cff6a"
+        },
+        "stress": {
+          "gc_live_register_roots": "gc live register roots preserved\n",
+          "actors_send_string_survives_gc": "payload-42\n",
+          "actors_spawn_arg_survives_gc": "payload-42\n",
+          "actors_timer_send_string_survives_gc": "payload-42\n",
+          "actors_send_shapes_survive_gc": [
+            "named=named-1001",
+            "pair=paired-102/7",
+            "wrapped=boxjob-103/3",
+            "tuple=tupled-104/4",
+            "struct=struct-105/5",
+            "batch=batch-a-115+batch-b-116/15",
+            "list=listed-106+listed-107",
+            "jobs=jobs-b-109/9",
+            "map=mapped-110",
+            "option=option-111",
+            "result=result-112",
+            "pairs=pairs-b-114/14",
+            "json={\"name\":\"json-117\",\"tags\":[\"tag-118\"]}"
+          ]
+        },
+        "counts": {
+          "utf8": 4000,
+          "bytes": 4000,
+          "json": 1600,
+          "small": 1000000,
+          "refs": 350000
+        },
+        "separate": true,
+        "attribution": false,
+        "orders": [
+          [
+            "A1",
+            "A2",
+            "B"
+          ],
+          [
+            "A2",
+            "B",
+            "A1"
+          ],
+          [
+            "B",
+            "A1",
+            "A2"
+          ],
+          [
+            "A2",
+            "A1",
+            "B"
+          ],
+          [
+            "A1",
+            "B",
+            "A2"
+          ],
+          [
+            "A2",
+            "B",
+            "A1"
+          ]
+        ]
+      },
+      "links": {
+        "actors_send_shapes_survive_gc": {
+          "sha256": "36ec7535e5063e5eb30aaccad6dc197cd94e3167fa19690e71b26894b40cff6a",
+          "object": "e80df1620a050b27f73420a33c996f4625eff9d2468c4506d4559a22af6d398a",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "actors_send_string_survives_gc": {
+          "sha256": "f4992ddf626dffe8fbd214d1c962e8ba89eb082e0e164909fa2f258ed733902c",
+          "object": "3f10f10b6824b5c3fb3686117533342b939fb90dcafe99dc0d4a2559b6df5a37",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "actors_spawn_arg_survives_gc": {
+          "sha256": "0811d04119626dfe6e5f6827262d81103f70f3873eac3afdcdb95cf7aff345a4",
+          "object": "754864a87dbe8590dfcff90d85794c1f81b29b8166e5fe97ec21cadd8fc34eee",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "actors_timer_send_string_survives_gc": {
+          "sha256": "36e5805bc6a82f45d65dff49fc28b4b27f4535845acf9f3c35e6e2b23252785a",
+          "object": "f103557182aa3fbda91445199e92022f3c74ceb0d71733d93ccafb64b2d98bdf",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-bytes": {
+          "sha256": "c07127ea38c17a53159c35321eedb26b877f8c2eb1156ab65a006b81d9290fc6",
+          "object": "17b0e48a540a69502953ed5a6ec1e3ce90eca092791f64500aca906cb7e70876",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-json": {
+          "sha256": "1a95e916a71b6e6328cfe006cb827686248197be06ce63ae8db574b340d94818",
+          "object": "a85d92c6047079fd6b0e5e791156497ade12cdfa059ba46c287d4cfb678e33af",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-refs": {
+          "sha256": "f17f06d0c47557a6709eb4bf3b2335438866178fc2b509349b9cf8067c237102",
+          "object": "8c514d59b475221affc44ec01a6ba91fbe0500a145d1e5e464f2b7091aa49248",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-small": {
+          "sha256": "eb5b8e179eca96d135029957c29e64c9c00a37e01a6a8405bef5b11e3283b0e7",
+          "object": "d7a98a2272b3b556a759a65b67c1b441ab8db48a1715c00f11e4b5fc7ec60162",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "candidate-utf8": {
+          "sha256": "87a6f37408e1e3cdbec1957118d9792b81d76b0cb8139b24d47726414af2760e",
+          "object": "a19f00c00aa04389bbb20b7a465cbc6ef978fcb71d9d2ec661e61b84d8ab07ca",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "gc_live_register_roots": {
+          "sha256": "c30af4a331537942db5d8f3240bf60b87308a5959561d878efb6393b5da65f7c",
+          "object": "06066c223139ae0ed96a4e4e67cd76b864df7c3da49c13a434665215060286ec",
+          "archive": "943609e89e238c93e22f54674fd63115279acd231d296f2e2dcc7c1afc39bcd7"
+        },
+        "parent-bytes": {
+          "sha256": "84a9fb1b2cd909169529a1020a737fa3f6e8c301da0154e5b986f07d16cfd53d",
+          "object": "17b0e48a540a69502953ed5a6ec1e3ce90eca092791f64500aca906cb7e70876",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        },
+        "parent-json": {
+          "sha256": "3fb72e56157074ea5f844940036b1e85cdc9a049041307a2c7b62856e1305239",
+          "object": "a85d92c6047079fd6b0e5e791156497ade12cdfa059ba46c287d4cfb678e33af",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        },
+        "parent-refs": {
+          "sha256": "47ee3bca59a04fa3998dd6070c6fc3c5f037b16c78142bace2786de4bf03bccb",
+          "object": "8c514d59b475221affc44ec01a6ba91fbe0500a145d1e5e464f2b7091aa49248",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        },
+        "parent-small": {
+          "sha256": "782e44063be40659dfe83f49510a7d112cb883e8e5ec6b5ca82537daaabee9c3",
+          "object": "d7a98a2272b3b556a759a65b67c1b441ab8db48a1715c00f11e4b5fc7ec60162",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        },
+        "parent-utf8": {
+          "sha256": "3d96209e6debf3b81267a259b36990e7f037889b1832c739bf11b88e58e97867",
+          "object": "a19f00c00aa04389bbb20b7a465cbc6ef978fcb71d9d2ec661e61b84d8ab07ca",
+          "archive": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82"
+        }
+      },
+      "samples": [
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 1170500000,
+          "wall_ns": 1171615543,
+          "output": "4000",
+          "guest_load": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 787634000,
+          "wall_ns": 783778208,
+          "output": "4000",
+          "guest_load": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 160349000,
+          "wall_ns": 160079250,
+          "output": "4000",
+          "guest_load": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 723935000,
+          "wall_ns": 729179209,
+          "output": "4000",
+          "guest_load": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 119057000,
+          "wall_ns": 124316292,
+          "output": "4000",
+          "guest_load": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 775312000,
+          "wall_ns": 771779292,
+          "output": "4000",
+          "guest_load": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 119512000,
+          "wall_ns": 120331458,
+          "output": "4000",
+          "guest_load": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 1263375000,
+          "wall_ns": 1266715959,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 1039218000,
+          "wall_ns": 1036506459,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 791510000,
+          "wall_ns": 866137208,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 881957000,
+          "wall_ns": 886424376,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 181286000,
+          "wall_ns": 182354500,
+          "output": "4000",
+          "guest_load": [
+            0.080078125,
+            0.0166015625,
+            0.00537109375
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 1128555000,
+          "wall_ns": 1124661750,
+          "output": "4000",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 132127000,
+          "wall_ns": 132289709,
+          "output": "4000",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 924505000,
+          "wall_ns": 921427501,
+          "output": "4000",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 979877000,
+          "wall_ns": 999516500,
+          "output": "4000",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 104907000,
+          "wall_ns": 105951125,
+          "output": "4000",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "utf8",
+          "count": 4000,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 1255155000,
+          "wall_ns": 1255571459,
+          "output": "4000",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 726976000,
+          "wall_ns": 820555958,
+          "output": "993721",
+          "guest_load": [
+            0.15380859375,
+            0.033203125,
+            0.0107421875
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 685600000,
+          "wall_ns": 681608125,
+          "output": "993721",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 182338000,
+          "wall_ns": 196324625,
+          "output": "993721",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 989761000,
+          "wall_ns": 985024459,
+          "output": "993721",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 183995000,
+          "wall_ns": 194392250,
+          "output": "993721",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 1048427000,
+          "wall_ns": 1047228417,
+          "output": "993721",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 119761000,
+          "wall_ns": 125373333,
+          "output": "993721",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 1010299000,
+          "wall_ns": 1017877417,
+          "output": "993721",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 764499000,
+          "wall_ns": 867506459,
+          "output": "993721",
+          "guest_load": [
+            0.2216796875,
+            0.04931640625,
+            0.01611328125
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 794910000,
+          "wall_ns": 794774250,
+          "output": "993721",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 537966000,
+          "wall_ns": 535891083,
+          "output": "993721",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 352745000,
+          "wall_ns": 354501333,
+          "output": "993721",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 776587000,
+          "wall_ns": 765204250,
+          "output": "993721",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 413073000,
+          "wall_ns": 430964209,
+          "output": "993721",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 1080285000,
+          "wall_ns": 1046136959,
+          "output": "993721",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 903191000,
+          "wall_ns": 906375876,
+          "output": "993721",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 70293000,
+          "wall_ns": 70415084,
+          "output": "993721",
+          "guest_load": [
+            0.2841796875,
+            0.0654296875,
+            0.021484375
+          ]
+        },
+        {
+          "case": "bytes",
+          "count": 4000,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 1055362000,
+          "wall_ns": 1041807417,
+          "output": "993721",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 3611988000,
+          "wall_ns": 3587059126,
+          "output": "1600",
+          "guest_load": [
+            0.341796875,
+            0.0810546875,
+            0.02685546875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 2963929000,
+          "wall_ns": 2961513877,
+          "output": "1600",
+          "guest_load": [
+            0.31396484375,
+            0.07958984375,
+            0.0263671875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 1651260000,
+          "wall_ns": 1665135501,
+          "output": "1600",
+          "guest_load": [
+            0.31396484375,
+            0.07958984375,
+            0.0263671875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 1989039000,
+          "wall_ns": 1991832834,
+          "output": "1600",
+          "guest_load": [
+            0.369140625,
+            0.09521484375,
+            0.03173828125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 1836934000,
+          "wall_ns": 1847111001,
+          "output": "1600",
+          "guest_load": [
+            0.369140625,
+            0.09521484375,
+            0.03173828125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 2112415000,
+          "wall_ns": 2095463834,
+          "output": "1600",
+          "guest_load": [
+            0.369140625,
+            0.09521484375,
+            0.03173828125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 2037351000,
+          "wall_ns": 2037206084,
+          "output": "1600",
+          "guest_load": [
+            0.419921875,
+            0.1103515625,
+            0.037109375
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 1986581000,
+          "wall_ns": 1989403626,
+          "output": "1600",
+          "guest_load": [
+            0.419921875,
+            0.1103515625,
+            0.037109375
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 2347806000,
+          "wall_ns": 2328223793,
+          "output": "1600",
+          "guest_load": [
+            0.466796875,
+            0.12548828125,
+            0.04248046875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 2303109000,
+          "wall_ns": 2252494668,
+          "output": "1600",
+          "guest_load": [
+            0.466796875,
+            0.12548828125,
+            0.04248046875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 1770684000,
+          "wall_ns": 1763482875,
+          "output": "1600",
+          "guest_load": [
+            0.42919921875,
+            0.123046875,
+            0.0419921875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 1575598000,
+          "wall_ns": 1576392626,
+          "output": "1600",
+          "guest_load": [
+            0.42919921875,
+            0.123046875,
+            0.0419921875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 1073274000,
+          "wall_ns": 1070788584,
+          "output": "1600",
+          "guest_load": [
+            0.42919921875,
+            0.123046875,
+            0.0419921875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 912771000,
+          "wall_ns": 912108876,
+          "output": "1600",
+          "guest_load": [
+            0.42919921875,
+            0.123046875,
+            0.0419921875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 1216595000,
+          "wall_ns": 1212604917,
+          "output": "1600",
+          "guest_load": [
+            0.42919921875,
+            0.123046875,
+            0.0419921875
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 774911000,
+          "wall_ns": 776583042,
+          "output": "1600",
+          "guest_load": [
+            0.47509765625,
+            0.1376953125,
+            0.04736328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 781545000,
+          "wall_ns": 781901000,
+          "output": "1600",
+          "guest_load": [
+            0.47509765625,
+            0.1376953125,
+            0.04736328125
+          ]
+        },
+        {
+          "case": "json",
+          "count": 1600,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 796392000,
+          "wall_ns": 793971917,
+          "output": "1600",
+          "guest_load": [
+            0.47509765625,
+            0.1376953125,
+            0.04736328125
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 94377000,
+          "wall_ns": 94676917,
+          "output": "3793693",
+          "guest_load": [
+            0.47509765625,
+            0.1376953125,
+            0.04736328125
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 123070000,
+          "wall_ns": 123495792,
+          "output": "3793693",
+          "guest_load": [
+            0.47509765625,
+            0.1376953125,
+            0.04736328125
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 177205000,
+          "wall_ns": 181472625,
+          "output": "3793693",
+          "guest_load": [
+            0.47509765625,
+            0.1376953125,
+            0.04736328125
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 196543000,
+          "wall_ns": 197625000,
+          "output": "3793693",
+          "guest_load": [
+            0.47509765625,
+            0.1376953125,
+            0.04736328125
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 116622000,
+          "wall_ns": 124905291,
+          "output": "3793693",
+          "guest_load": [
+            0.47509765625,
+            0.1376953125,
+            0.04736328125
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 220450000,
+          "wall_ns": 226163209,
+          "output": "3793693",
+          "guest_load": [
+            0.43701171875,
+            0.13525390625,
+            0.046875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 194893000,
+          "wall_ns": 201245000,
+          "output": "3793693",
+          "guest_load": [
+            0.43701171875,
+            0.13525390625,
+            0.046875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 382333000,
+          "wall_ns": 508589167,
+          "output": "3793693",
+          "guest_load": [
+            0.43701171875,
+            0.13525390625,
+            0.046875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 801500000,
+          "wall_ns": 866394292,
+          "output": "3793693",
+          "guest_load": [
+            0.43701171875,
+            0.13525390625,
+            0.046875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 555911000,
+          "wall_ns": 561362709,
+          "output": "3793693",
+          "guest_load": [
+            0.40185546875,
+            0.1328125,
+            0.04638671875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 352206000,
+          "wall_ns": 404710167,
+          "output": "3793693",
+          "guest_load": [
+            0.40185546875,
+            0.1328125,
+            0.04638671875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 894614000,
+          "wall_ns": 909527001,
+          "output": "3793693",
+          "guest_load": [
+            0.40185546875,
+            0.1328125,
+            0.04638671875
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 638068000,
+          "wall_ns": 628550000,
+          "output": "3793693",
+          "guest_load": [
+            0.36962890625,
+            0.13037109375,
+            0.0458984375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 534966000,
+          "wall_ns": 534716750,
+          "output": "3793693",
+          "guest_load": [
+            0.36962890625,
+            0.13037109375,
+            0.0458984375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 141960000,
+          "wall_ns": 244899375,
+          "output": "3793693",
+          "guest_load": [
+            0.36962890625,
+            0.13037109375,
+            0.0458984375
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 697853000,
+          "wall_ns": 724496209,
+          "output": "3793693",
+          "guest_load": [
+            0.33984375,
+            0.1279296875,
+            0.04541015625
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 118180000,
+          "wall_ns": 196499541,
+          "output": "3793693",
+          "guest_load": [
+            0.33984375,
+            0.1279296875,
+            0.04541015625
+          ]
+        },
+        {
+          "case": "small",
+          "count": 1000000,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 461433000,
+          "wall_ns": 462392875,
+          "output": "3793693",
+          "guest_load": [
+            0.33984375,
+            0.1279296875,
+            0.04541015625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 1,
+          "arm": "A1",
+          "cpu_ns": 842335000,
+          "wall_ns": 889796293,
+          "output": "122457658128",
+          "guest_load": [
+            0.3125,
+            0.12548828125,
+            0.044921875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 1,
+          "arm": "A2",
+          "cpu_ns": 605595000,
+          "wall_ns": 637936126,
+          "output": "122457658128",
+          "guest_load": [
+            0.3125,
+            0.12548828125,
+            0.044921875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 1,
+          "arm": "B",
+          "cpu_ns": 981286000,
+          "wall_ns": 1018282042,
+          "output": "122457658128",
+          "guest_load": [
+            0.3125,
+            0.12548828125,
+            0.044921875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 2,
+          "arm": "A2",
+          "cpu_ns": 1587172000,
+          "wall_ns": 1615914959,
+          "output": "122457658128",
+          "guest_load": [
+            0.3125,
+            0.12548828125,
+            0.044921875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 2,
+          "arm": "B",
+          "cpu_ns": 931686000,
+          "wall_ns": 1008557917,
+          "output": "122457658128",
+          "guest_load": [
+            0.287109375,
+            0.123046875,
+            0.04443359375
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 2,
+          "arm": "A1",
+          "cpu_ns": 716126000,
+          "wall_ns": 790088584,
+          "output": "122457658128",
+          "guest_load": [
+            0.287109375,
+            0.123046875,
+            0.04443359375
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 3,
+          "arm": "B",
+          "cpu_ns": 525285000,
+          "wall_ns": 621858709,
+          "output": "122457658128",
+          "guest_load": [
+            0.287109375,
+            0.123046875,
+            0.04443359375
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 3,
+          "arm": "A1",
+          "cpu_ns": 255034000,
+          "wall_ns": 319922292,
+          "output": "122457658128",
+          "guest_load": [
+            0.287109375,
+            0.123046875,
+            0.04443359375
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 3,
+          "arm": "A2",
+          "cpu_ns": 2251411000,
+          "wall_ns": 2275137335,
+          "output": "122457658128",
+          "guest_load": [
+            0.287109375,
+            0.123046875,
+            0.04443359375
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 4,
+          "arm": "A2",
+          "cpu_ns": 1305508000,
+          "wall_ns": 1318940459,
+          "output": "122457658128",
+          "guest_load": [
+            0.263671875,
+            0.12060546875,
+            0.0439453125
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 4,
+          "arm": "A1",
+          "cpu_ns": 3123844000,
+          "wall_ns": 3136497710,
+          "output": "122457658128",
+          "guest_load": [
+            0.32275390625,
+            0.13525390625,
+            0.04931640625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 4,
+          "arm": "B",
+          "cpu_ns": 1095607000,
+          "wall_ns": 1091410208,
+          "output": "122457658128",
+          "guest_load": [
+            0.32275390625,
+            0.13525390625,
+            0.04931640625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 5,
+          "arm": "A1",
+          "cpu_ns": 667986000,
+          "wall_ns": 687013751,
+          "output": "122457658128",
+          "guest_load": [
+            0.32275390625,
+            0.13525390625,
+            0.04931640625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 5,
+          "arm": "B",
+          "cpu_ns": 494330000,
+          "wall_ns": 508229001,
+          "output": "122457658128",
+          "guest_load": [
+            0.32275390625,
+            0.13525390625,
+            0.04931640625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 5,
+          "arm": "A2",
+          "cpu_ns": 386950000,
+          "wall_ns": 423865167,
+          "output": "122457658128",
+          "guest_load": [
+            0.32275390625,
+            0.13525390625,
+            0.04931640625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 6,
+          "arm": "A2",
+          "cpu_ns": 766086000,
+          "wall_ns": 820067250,
+          "output": "122457658128",
+          "guest_load": [
+            0.32275390625,
+            0.13525390625,
+            0.04931640625
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 6,
+          "arm": "B",
+          "cpu_ns": 706516000,
+          "wall_ns": 621683709,
+          "output": "122457658128",
+          "guest_load": [
+            0.37744140625,
+            0.14990234375,
+            0.0546875
+          ]
+        },
+        {
+          "case": "refs",
+          "count": 350000,
+          "group": 6,
+          "arm": "A1",
+          "cpu_ns": 356003000,
+          "wall_ns": 372096833,
+          "output": "122457658128",
+          "guest_load": [
+            0.37744140625,
+            0.14990234375,
+            0.0546875
+          ]
+        }
+      ]
+    }
+  ],
+  "ordinary_attribution": [
+    {
+      "case": "utf8",
+      "count": 1000,
+      "collections": 57,
+      "body_words": 65866549,
+      "string_words": 65864713,
+      "bytes_words": 0,
+      "transitive_scan_cpu_ms": 49.223205
+    },
+    {
+      "case": "bytes",
+      "count": 1000,
+      "collections": 57,
+      "body_words": 65866539,
+      "string_words": 0,
+      "bytes_words": 65864685,
+      "transitive_scan_cpu_ms": 154.835209
+    },
+    {
+      "case": "json",
+      "count": 1000,
+      "collections": 90,
+      "body_words": 101198190,
+      "string_words": 101061040,
+      "bytes_words": 0,
+      "transitive_scan_cpu_ms": 87.824998
+    },
+    {
+      "case": "small",
+      "count": 100000,
+      "collections": 54,
+      "body_words": 35191,
+      "string_words": 20917,
+      "bytes_words": 0,
+      "transitive_scan_cpu_ms": 0.182747
+    },
+    {
+      "case": "refs",
+      "count": 100000,
+      "collections": 256,
+      "body_words": 1204986,
+      "string_words": 0,
+      "bytes_words": 0,
+      "transitive_scan_cpu_ms": 3.109705
+    }
+  ],
+  "queue": [
+    {
+      "name": "queue-trace-cpu-01",
+      "arms": [
+        {
+          "arm": "trace",
+          "submit_to_commit_ms": 3370.575,
+          "transport_send_to_commit_ms": 3224.712,
+          "submit_to_receipt_ms": 3372.057,
+          "producer_cpu_through_reply_ms": 576.339,
+          "commit_to_last_settlement_ms": 707.862,
+          "jobs": 64,
+          "confirmed_enqueue_receipts": 64,
+          "transactions": 1,
+          "claim_calls": 168,
+          "reconciled_writes": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.914,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+          "attribution_clock": "thread-cpu",
+          "runner_and_children_cpu_through_shutdown_ms": 3714.38,
+          "attribution": {
+            "producer": {
+              "before_commit": {
+                "cycles": 7,
+                "processes_collecting": 1,
+                "body_words": 30097926,
+                "string_objects": 2978,
+                "string_words": 30086405,
+                "string_bytes": 240691240,
+                "bytes_objects": 0,
+                "bytes_words": 0,
+                "bytes_bytes": 0,
+                "transitive_scan_ms": 19.757
+              },
+              "after_commit": {
+                "cycles": 0,
+                "processes_collecting": 0,
+                "body_words": 0,
+                "string_objects": 0,
+                "string_words": 0,
+                "string_bytes": 0,
+                "bytes_objects": 0,
+                "bytes_words": 0,
+                "bytes_bytes": 0,
+                "transitive_scan_ms": 0.0
+              }
+            },
+            "worker": {
+              "before_commit": {
+                "cycles": 0,
+                "processes_collecting": 0,
+                "body_words": 0,
+                "string_objects": 0,
+                "string_words": 0,
+                "string_bytes": 0,
+                "bytes_objects": 0,
+                "bytes_words": 0,
+                "bytes_bytes": 0,
+                "transitive_scan_ms": 0.0
+              },
+              "after_commit": {
+                "cycles": 128,
+                "processes_collecting": 64,
+                "body_words": 8394112,
+                "string_objects": 192,
+                "string_words": 8394112,
+                "string_bytes": 67152896,
+                "bytes_objects": 0,
+                "bytes_words": 0,
+                "bytes_bytes": 0,
+                "transitive_scan_ms": 5.115
+              }
+            },
+            "runner": {
+              "before_commit": {
+                "cycles": 0,
+                "processes_collecting": 0,
+                "body_words": 0,
+                "string_objects": 0,
+                "string_words": 0,
+                "string_bytes": 0,
+                "bytes_objects": 0,
+                "bytes_words": 0,
+                "bytes_bytes": 0,
+                "transitive_scan_ms": 0.0
+              },
+              "after_commit": {
+                "cycles": 0,
+                "processes_collecting": 0,
+                "body_words": 0,
+                "string_objects": 0,
+                "string_words": 0,
+                "string_bytes": 0,
+                "bytes_objects": 0,
+                "bytes_words": 0,
+                "bytes_bytes": 0,
+                "transitive_scan_ms": 0.0
+              }
+            }
+          }
+        }
+      ],
+      "host_load": [
+        {
+          "event": "boot_start",
+          "time": 1795407859.6434948,
+          "load": [
+            43.8876953125,
+            54.22509765625,
+            60.8759765625
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured trace",
+          "time": 1795407865.0029051,
+          "load": [
+            44.697265625,
+            54.22119140625,
+            60.83544921875
+          ],
+          "cores": 15
+        },
+        {
+          "event": "boot_end",
+          "time": 1795407878.395586,
+          "load": [
+            45.02392578125,
+            53.80615234375,
+            60.56982421875
+          ],
+          "cores": 15
+        }
+      ],
+      "guest": {
+        "base_cpio_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+        "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+        "full_input_warmup": false
+      },
+      "elfs": {
+        "proof/mesh-current": "653aa7d42c34596bc4afb218e7324202fa883b133496786f621fd35ab683c6d7"
+      },
+      "trial_sha256": "da376e6c2cf5cd7660215705b82c4d25f8592afe650da5a27c3583a30b896c9f"
+    },
+    {
+      "name": "queue-waits-01",
+      "arms": [
+        {
+          "arm": "waits",
+          "submit_to_commit_ms": 2354.921,
+          "transport_send_to_commit_ms": 2138.336,
+          "submit_to_receipt_ms": 2359.408,
+          "producer_cpu_through_reply_ms": 377.667,
+          "commit_to_last_settlement_ms": 1455.05,
+          "jobs": 64,
+          "confirmed_enqueue_receipts": 64,
+          "transactions": 1,
+          "claim_calls": 164,
+          "reconciled_writes": {
+            "jobs": 64,
+            "minimum_hold_ms": 2.508,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+          "exact_successful_consuming_waits": 64
+        }
+      ],
+      "host_load": [
+        {
+          "event": "boot_start",
+          "time": 1795408222.121551,
+          "load": [
+            39.0830078125,
+            60.90087890625,
+            63.3037109375
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured waits",
+          "time": 1795408228.044842,
+          "load": [
+            38.8359375,
+            60.4873046875,
+            63.1435546875
+          ],
+          "cores": 15
+        },
+        {
+          "event": "boot_end",
+          "time": 1795408241.2528598,
+          "load": [
+            40.619140625,
+            59.78564453125,
+            62.84423828125
+          ],
+          "cores": 15
+        }
+      ],
+      "guest": {
+        "base_cpio_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+        "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+        "full_input_warmup": false
+      },
+      "elfs": {
+        "proof/mesh-current": "21c403a51c5060caffce782386a7cc766537829f6b53735bbcef24ac0cab87ae"
+      },
+      "trial_sha256": "e5ca6c3f6423cbb019696db997bae8b9e443d4fc090d235280f3d9d6f722e34b"
+    },
+    {
+      "name": "queue-release-01",
+      "arms": [
+        {
+          "arm": "parent",
+          "submit_to_commit_ms": 1276.138,
+          "transport_send_to_commit_ms": 1169.487,
+          "submit_to_receipt_ms": 1278.259,
+          "producer_cpu_through_reply_ms": 251.995,
+          "commit_to_last_settlement_ms": 345.351,
+          "jobs": 64,
+          "confirmed_enqueue_receipts": 64,
+          "transactions": 1,
+          "claim_calls": 116,
+          "reconciled_writes": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.472,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1"
+        },
+        {
+          "arm": "parent-repeat",
+          "submit_to_commit_ms": 1884.424,
+          "transport_send_to_commit_ms": 1776.906,
+          "submit_to_receipt_ms": 1905.874,
+          "producer_cpu_through_reply_ms": 304.413,
+          "commit_to_last_settlement_ms": 1022.798,
+          "jobs": 64,
+          "confirmed_enqueue_receipts": 64,
+          "transactions": 1,
+          "claim_calls": 137,
+          "reconciled_writes": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.514,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1"
+        },
+        {
+          "arm": "candidate",
+          "submit_to_commit_ms": 2400.878,
+          "transport_send_to_commit_ms": 2213.593,
+          "submit_to_receipt_ms": 2403.044,
+          "producer_cpu_through_reply_ms": 365.133,
+          "commit_to_last_settlement_ms": 2727.092,
+          "jobs": 64,
+          "confirmed_enqueue_receipts": 64,
+          "transactions": 1,
+          "claim_calls": 190,
+          "reconciled_writes": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.417,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1"
+        }
+      ],
+      "host_load": [
+        {
+          "event": "boot_start",
+          "time": 1795408345.8173,
+          "load": [
+            134.64208984375,
+            83.88525390625,
+            71.66259765625
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup parent",
+          "time": 1795408356.489156,
+          "load": [
+            121.384765625,
+            82.70556640625,
+            71.38623046875
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup parent-repeat",
+          "time": 1795408370.490647,
+          "load": [
+            105.498046875,
+            81.099609375,
+            71.01171875
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup candidate",
+          "time": 1795408378.96172,
+          "load": [
+            92.48095703125,
+            79.119140625,
+            70.4267578125
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured parent",
+          "time": 1795408385.6918452,
+          "load": [
+            87.8779296875,
+            78.38623046875,
+            70.21875
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured parent-repeat",
+          "time": 1795408391.651737,
+          "load": [
+            82.6826171875,
+            77.46630859375,
+            69.94189453125
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured candidate",
+          "time": 1795408400.174281,
+          "load": [
+            73.89404296875,
+            75.7548828125,
+            69.421875
+          ],
+          "cores": 15
+        },
+        {
+          "event": "boot_end",
+          "time": 1795408418.396398,
+          "load": [
+            67.94677734375,
+            74.25390625,
+            69.02783203125
+          ],
+          "cores": 15
+        }
+      ],
+      "guest": {
+        "base_cpio_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+        "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+        "full_input_warmup": true
+      },
+      "elfs": {
+        "proof/mesh-candidate": "21c403a51c5060caffce782386a7cc766537829f6b53735bbcef24ac0cab87ae",
+        "proof/mesh-current": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070"
+      },
+      "trial_sha256": "e5ca6c3f6423cbb019696db997bae8b9e443d4fc090d235280f3d9d6f722e34b"
+    },
+    {
+      "name": "queue-release-02",
+      "arms": [
+        {
+          "arm": "candidate",
+          "submit_to_commit_ms": 2267.504,
+          "transport_send_to_commit_ms": 2018.971,
+          "submit_to_receipt_ms": 2280.657,
+          "producer_cpu_through_reply_ms": 357.025,
+          "commit_to_last_settlement_ms": 353.404,
+          "jobs": 64,
+          "confirmed_enqueue_receipts": 64,
+          "transactions": 1,
+          "claim_calls": 148,
+          "reconciled_writes": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.533,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1"
+        },
+        {
+          "arm": "parent-repeat",
+          "submit_to_commit_ms": 3441.917,
+          "transport_send_to_commit_ms": 3004.993,
+          "submit_to_receipt_ms": 3455.988,
+          "producer_cpu_through_reply_ms": 697.351,
+          "commit_to_last_settlement_ms": 533.052,
+          "jobs": 64,
+          "confirmed_enqueue_receipts": 64,
+          "transactions": 1,
+          "claim_calls": 182,
+          "reconciled_writes": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.5,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1"
+        },
+        {
+          "arm": "parent",
+          "submit_to_commit_ms": 2299.775,
+          "transport_send_to_commit_ms": 2197.549,
+          "submit_to_receipt_ms": 2306.334,
+          "producer_cpu_through_reply_ms": 389.253,
+          "commit_to_last_settlement_ms": 1468.002,
+          "jobs": 64,
+          "confirmed_enqueue_receipts": 64,
+          "transactions": 1,
+          "claim_calls": 162,
+          "reconciled_writes": {
+            "jobs": 64,
+            "minimum_hold_ms": 1.725,
+            "ordered": 64,
+            "worker_pids": 64
+          },
+          "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1"
+        }
+      ],
+      "host_load": [
+        {
+          "event": "boot_start",
+          "time": 1795409224.225867,
+          "load": [
+            46.97412109375,
+            75.044921875,
+            74.71484375
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup candidate",
+          "time": 1795409227.383008,
+          "load": [
+            46.97412109375,
+            75.044921875,
+            74.71484375
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup parent-repeat",
+          "time": 1795409233.941535,
+          "load": [
+            42.6025390625,
+            73.169921875,
+            74.05224609375
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large warmup parent",
+          "time": 1795409241.157401,
+          "load": [
+            40.63232421875,
+            72.25390625,
+            73.7236328125
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured candidate",
+          "time": 1795409249.221128,
+          "load": [
+            39.1767578125,
+            70.92236328125,
+            73.23486328125
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured parent-repeat",
+          "time": 1795409256.817112,
+          "load": [
+            39.88330078125,
+            70.54150390625,
+            73.0869140625
+          ],
+          "cores": 15
+        },
+        {
+          "event": "FROZEN_DIAGNOSTIC_ARM large measured parent",
+          "time": 1795409266.4378712,
+          "load": [
+            38.8662109375,
+            69.31982421875,
+            72.62353515625
+          ],
+          "cores": 15
+        },
+        {
+          "event": "boot_end",
+          "time": 1795409276.2576451,
+          "load": [
+            41.044921875,
+            68.75634765625,
+            72.3828125
+          ],
+          "cores": 15
+        }
+      ],
+      "guest": {
+        "base_cpio_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+        "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+        "full_input_warmup": true
+      },
+      "elfs": {
+        "proof/mesh-candidate": "21c403a51c5060caffce782386a7cc766537829f6b53735bbcef24ac0cab87ae",
+        "proof/mesh-current": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070"
+      },
+      "trial_sha256": "e5ca6c3f6423cbb019696db997bae8b9e443d4fc090d235280f3d9d6f722e34b"
+    }
+  ],
+  "gates": [
+    {
+      "name": "rustfmt",
+      "status": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "scheduler",
+      "status": 0,
+      "sha256": "cff5fecd59b99705ac0af3a162845dcd98703505c3acba8a034e1bb470b85433"
+    },
+    {
+      "name": "telemetry",
+      "status": 0,
+      "sha256": "86d97980a906c10973df9771aae245e08c5ba164478277c07ce8daf64ca8bc48"
+    },
+    {
+      "name": "core",
+      "status": 0,
+      "sha256": "5d0f7752feb6938e4bab5f7017d5a9789dbb571e4ee5c16d2d584851350bf5d5"
+    },
+    {
+      "name": "diagnostics",
+      "status": 0,
+      "sha256": "8dde71112e50693755adea579fa559515fe20a095de68a3e6e7c37f3cfad3b0d"
+    },
+    {
+      "name": "runtime-dependencies",
+      "status": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "runtime",
+      "status": 0,
+      "sha256": "e1b8879bec69de7084a67090cbb03c95d23a295ff81262dfe5fd1d8508fefd57"
+    },
+    {
+      "name": "build",
+      "status": 0,
+      "sha256": "9fd391cc4131b869835727facc6ca37eac28b43eb6b11f6c195ce69c3bf7f831"
+    },
+    {
+      "name": "fuzz",
+      "status": 0,
+      "sha256": "7cb3a79664818300b4bdc1f8a70652918b522a6458cb3eb8bf542be8b8eb8f4f"
+    },
+    {
+      "name": "examples",
+      "status": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compiled",
+      "status": 0,
+      "sha256": "737f9d6b67e575368bc77309c3f67f9cb368390431338ad07edaec89c019ccbd"
+    },
+    {
+      "name": "laws",
+      "status": 0,
+      "sha256": "958671c3aee43f22466a0b74ae15ab652f51c271672dbcf3e9d5a7f8f93a0cf0"
+    },
+    {
+      "name": "actor-gc-stress",
+      "status": 0,
+      "sha256": "702ccccf30266ad50a2588e251364577b79818e027f7fe90d0b14ad3a75ccfee"
+    },
+    {
+      "name": "native-gc-stress",
+      "status": 0,
+      "sha256": "58a9ebda274a70d98816b44efea6039a20299b5468e40d71355fc37fc6fd8427"
+    },
+    {
+      "name": "z3",
+      "status": 0,
+      "sha256": "8c677bba09e6e7d313cb1b910bb3def04d9e922dc2e74d5e0a101cac5eb17b6a"
+    },
+    {
+      "name": "pg-17.11",
+      "status": 0,
+      "sha256": "273852a6546604bb03297ce887749a1e925e6d9b01ad752e003b447fb0589917"
+    },
+    {
+      "name": "effect-fence-17.11",
+      "status": 0,
+      "sha256": "e8e038abf97689b211c3ac898b4cdf49119a72740e10f8e2a1dbf8b6ce670d87"
+    },
+    {
+      "name": "pg-18.7",
+      "status": 0,
+      "sha256": "c8b477b15d6d355c280316e3bd4489936c22dc3985eb5c34165af67025ee5204"
+    },
+    {
+      "name": "effect-fence-18.7",
+      "status": 0,
+      "sha256": "2bf56cfd87d9ccd8b90e3c83c3131fa1126d7b03905be914bd3094eba8c04c09"
+    },
+    {
+      "name": "pg-19.0",
+      "status": 0,
+      "sha256": "bee50c63ac8cef31643940ff0a44b39e38c120bbe615f5eedd4e32a4950c8748"
+    },
+    {
+      "name": "effect-fence-19.0",
+      "status": 0,
+      "sha256": "a9836e344d807e052e4aa6d03b25e7a281c54e7a0c215a4313ec30da2468633d"
+    }
+  ]
+}

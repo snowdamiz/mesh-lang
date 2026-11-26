@@ -75,6 +75,17 @@ end
 
 `Pool.open(url, min_size, max_size, checkout_timeout_ms)` eagerly creates the minimum connections and bounds concurrent checkouts at the maximum.
 
+For an application that frequently reuses its PostgreSQL connections, add
+`mesh_pool_hot_checkout=1` to the pool URL. A connection returned less than
+500 ms ago can serve the next query immediately. Older idle connections
+still receive the usual `SELECT 1` health check. The option applies only to
+that pool. With the default settings, every idle checkout runs the check.
+
+If a recently returned connection has silently failed, the application
+statement can wait for a socket failure. The driver sends each write once.
+If the server committed before its reply was lost, reconcile the write using
+an application request key before retrying.
+
 A URL is `postgres://user:password@host:port/database` (an IPv6 host in
 brackets, `[::1]`), with `sslmode` and `sslrootcert` in its query. Mesh verifies every TLS server's certificate and
 name, so `require`, `verify-ca` and `verify-full` all mean what libpq calls

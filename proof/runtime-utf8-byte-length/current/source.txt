@@ -1,0 +1,18 @@
+compiler baseline e2e72b2d0eb4ce8e742164bf35d861d39de49a88
+product parent acc8a6cb44adede548a1e6f45fd79678d28a97a5
+product candidate ba8dab0381e8c8be12853faea9c1351c1ba42dde
+candidate tree 8fa391404f66a7d1878ddd68d4a4be110f86b7c4
+Jobs runtime base 3f69b150820fd01ba716d533be4f2eedea25ed27
+runtime source tree at runtime base and candidate
+61cecf21c4fc2e60bcbdd10d418e351f128f88d3
+61cecf21c4fc2e60bcbdd10d418e351f128f88d3
+compiled source differences between baseline build and product parent
+product commit files
+M	compiler/mesh-codegen/src/codegen/expr.rs
+M	compiler/meshc/tests/e2e.rs
+Jobs producer fixture inputs SHA-256
+0c72aaa2f0f34c49d07fd2f6cad2d39f491c0857897a0ac7a0facb6b85b4464d  proof/jobs-parity/linux-integrated-uncut/fixture/main.mpl
+e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca  proof/jobs-parity/linux-integrated-uncut/fixture/worker_identity.mpl
+2808ca2bd2a286b79c8bf071a99453227395265b761571075a4f6c06780a63a0  tests/e2e/durable_jobs/.parity/worker_identity.c
+03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24  scripts/jobs-parity.py
+1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297  scripts/jobs-parity-profiles.json

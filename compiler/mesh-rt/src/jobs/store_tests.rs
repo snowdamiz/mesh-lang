@@ -38,7 +38,7 @@ impl Database for Connection {
     }
 
     fn simple(&mut self, sql: &str) -> Result<(), String> {
-        if sql == include_str!("schema.sql") {
+        if sql == include_str!("schema.sql") || sql == include_str!("enqueue_schema.sql") {
             // The public native test driver exposes extended queries only.
             let sql = format!("DO $install$ BEGIN EXECUTE $schema${sql}$schema$; END $install$");
             native_pg_execute(&mut self.native, &sql, &[])?;
@@ -132,6 +132,87 @@ fn parse(text: &str) -> Value {
 
 fn id(value: &Value) -> &str {
     value["id"].as_str().unwrap()
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn next_due_uses_one_clock_for_the_first_eligible_future_job() {
+    let fixture = Fixture::new();
+    let mut db = Connection::open(&fixture.url);
+    db.simple("BEGIN").unwrap();
+    // Roll back the clock replacement before fixture cleanup. Advancing the
+    // test clock on every call detects independently sampled cutoffs and delays.
+    db.simple("CREATE TEMP SEQUENCE due_clock START WITH 1000")
+        .unwrap();
+    db.simple(
+        "CREATE OR REPLACE FUNCTION mesh_jobs.now_ms() RETURNS bigint
+         LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp
+         AS $$ SELECT nextval('pg_temp.due_clock') $$",
+    )
+    .unwrap();
+    let ns = fixture.ns.as_str();
+    db.query(
+        "INSERT INTO mesh_jobs.queues (namespace, name) VALUES ($1, 'default'), ($1, '')",
+        &[ns],
+    )
+    .unwrap();
+    let probe = |db: &mut Connection, workers: &str, now_ms: u64, expected: Option<u64>| {
+        let now_ms = now_ms.to_string();
+        db.query(
+            "SELECT setval('pg_temp.due_clock', $1::bigint, false)",
+            &[&now_ms],
+        )
+        .unwrap();
+        assert_eq!(next_due_ms(db, ns, "default", workers).unwrap(), expected);
+        if expected.is_some() {
+            assert_eq!(
+                response(db, "SELECT currval('pg_temp.due_clock')::text", &[]).unwrap(),
+                now_ms
+            );
+        }
+    };
+    probe(&mut db, WORKERS, 1000, None);
+    db.query(
+        "INSERT INTO mesh_jobs.jobs (namespace, worker, version, queue, args, metadata,
+             tags, state, priority, attempt, max_attempts, timeout_ms, backoff_base_ms,
+             backoff_max_ms, inserted_at_ms, scheduled_at_ms)
+         SELECT $1, 'Deliver', version, 'default', '{}', '{}', '[]', state, 0, attempt,
+                3, 1000, 0, 0, 0, scheduled_at_ms
+         FROM (VALUES (2, 'scheduled', 0, 1001), (1, 'scheduled', 3, 1002),
+                      (1, 'suspended', 0, 1003), (1, 'retryable', 1, 1004),
+                      (1, 'scheduled', 0, 1005), (1, 'available', 0, 1006)
+               UNION ALL SELECT 1, 'available', 0, n FROM generate_series(0, 1000) n
+         ) AS seed(version, state, attempt, scheduled_at_ms)",
+        &[ns],
+    )
+    .unwrap();
+    db.query(
+        "UPDATE mesh_jobs.jobs SET state = 'executing', attempt = 1,
+             lease_token = gen_random_uuid(), lease_expires_at_ms = 5000
+         WHERE namespace = $1 AND scheduled_at_ms = 0",
+        &[ns],
+    )
+    .unwrap();
+    probe(&mut db, "[]", 1000, None);
+    probe(&mut db, WORKERS, 1000, Some(4));
+    probe(&mut db, WORKERS, 1004, Some(1));
+    probe(&mut db, WORKERS, 1005, Some(1));
+    probe(&mut db, WORKERS, 1006, None);
+    for queue in ["default", ""] {
+        db.query(
+            "UPDATE mesh_jobs.queues SET state = 'paused' WHERE namespace = $1 AND name = $2",
+            &[ns, queue],
+        )
+        .unwrap();
+        probe(&mut db, WORKERS, 1000, None);
+        db.query(
+            "UPDATE mesh_jobs.queues SET state = 'active' WHERE namespace = $1 AND name = $2",
+            &[ns, queue],
+        )
+        .unwrap();
+        probe(&mut db, WORKERS, 1000, Some(4));
+    }
+    db.simple("ROLLBACK").unwrap();
 }
 
 fn batch_row(fields: [&str; 8]) -> Vec<(String, String)> {
@@ -1456,4 +1537,803 @@ fn locked_job_operations_leave_the_claim_for_retry() {
     );
     assert_eq!(f.get(&claim.id)["state"], "executing");
     assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
+}
+
+struct CheckedSession {
+    pool: u64,
+    session: crate::db::jobs_connection::JobSession,
+}
+
+impl CheckedSession {
+    fn open(url: &str) -> Self {
+        use crate::db::pool::{mesh_pool_open, unbox_u64_payload};
+        use crate::io::MeshResult;
+        use crate::string::mesh_str;
+
+        crate::gc::mesh_rt_init();
+        let pool = unsafe { &*mesh_pool_open(mesh_str(url), 0, 1, 500).cast::<MeshResult>() };
+        assert_eq!(pool.tag, 0);
+        let pool = unsafe { unbox_u64_payload(pool.value) };
+        let session = unsafe { crate::db::jobs_connection::JobSession::from_pool(pool) }.unwrap();
+        Self { pool, session }
+    }
+
+    fn set(&mut self, ns: &str) -> SetClaimBatch {
+        self.session
+            .with(|db| claim_batch_set(db, ns, "default", WORKERS, 60_000, 16, true))
+            .unwrap()
+    }
+}
+
+impl Drop for CheckedSession {
+    fn drop(&mut self) {
+        crate::db::pool::mesh_pool_close(self.pool);
+    }
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn checked_set_batch_shares_capacity_with_existing_claimers_and_controls() {
+    let mut fixture = Fixture::new();
+    fixture.ops(json!({"action":"configure","queue":"default","concurrency":3}));
+    let jobs = fixture.enqueue(json!([
+        {"worker":"Deliver","priority":0},{"worker":"Deliver","priority":1},
+        {"worker":"Deliver","priority":2},{"worker":"Deliver","priority":3},
+        {"worker":"Deliver","priority":4},{"worker":"Deliver","priority":5}
+    ]));
+    let ns = fixture.ns.clone();
+    let ready = |db: SetClaimBatch| match db {
+        SetClaimBatch::Batch(batch) => batch.claims,
+        SetClaimBatch::Empty(_) => Vec::new(),
+        SetClaimBatch::Fallback => panic!("small grants should not need the cursor"),
+    };
+    let mut set = CheckedSession::open(&fixture.url);
+    let mut legacy = Connection::open(&fixture.url);
+    let legacy_grant = claim(&mut legacy, &ns, "default", WORKERS, 60_000)
+        .unwrap()
+        .unwrap();
+    assert_eq!(legacy_grant.id, id(&jobs[0]));
+
+    // A producer's foreign-key check must remain compatible with the
+    // admission lock held while a batch waits for its own commit.
+    let mut precommit = Connection::open(&fixture.url);
+    precommit.simple("BEGIN").unwrap();
+    assert_eq!(
+        response(
+            &mut precommit,
+            "SELECT id FROM mesh_jobs.claim_batch_set_v1($1,'default',$2::jsonb,60000,1,NULL)",
+            &[&ns, WORKERS]
+        )
+        .unwrap(),
+        id(&jobs[1])
+    );
+    fixture.db.simple("SET lock_timeout = '250ms'").unwrap();
+    fixture.enqueue(json!({"worker":"Deliver","priority":9}));
+    fixture.db.simple("RESET lock_timeout").unwrap();
+    precommit.simple("ROLLBACK").unwrap();
+
+    let mut admin = Connection::open(&fixture.url);
+    admin.simple("BEGIN").unwrap();
+    admin
+        .query(
+            "SELECT mesh_jobs.queue_control($1,'default','scale',2)",
+            &[&ns],
+        )
+        .unwrap();
+    assert!(
+        claim_batch(&mut legacy, &ns, "default", WORKERS, 60_000, 16, None)
+            .unwrap()
+            .claims
+            .is_empty()
+    );
+    assert!(matches!(
+        set.set(&ns),
+        SetClaimBatch::Batch(ClaimBatch {
+            contention_hint: true,
+            ..
+        })
+    ));
+    admin.simple("COMMIT").unwrap();
+
+    let grant = ready(set.set(&ns)).pop().unwrap();
+    assert_eq!(grant.id, id(&jobs[1]));
+    assert!(grant.observed_at_ms.is_some());
+    assert!(ready(set.set(&ns)).is_empty());
+    assert!(fixture.try_claim().is_none());
+
+    // Namespace control may take its advisory lock before touching queues.
+    // Admission must return while that exclusive lock is still held.
+    admin.simple("BEGIN").unwrap();
+    admin
+        .query("SELECT mesh_jobs.set_namespace_paused($1,true)", &[&ns])
+        .unwrap();
+    assert_eq!(
+        fixture.finish(&legacy_grant, Outcome::Complete),
+        Settlement::Completed
+    );
+    assert!(ready(set.set(&ns)).is_empty());
+    admin
+        .query(
+            "SELECT mesh_jobs.queue_control($1,'default','pause',NULL)",
+            &[&ns],
+        )
+        .unwrap();
+    admin.simple("COMMIT").unwrap();
+    assert!(ready(set.set(&ns)).is_empty());
+
+    fixture.ops(json!({"action":"cancel","id":grant.id}));
+    assert_eq!(
+        renew(&mut legacy, &ns, &grant.id, &grant.token, 60_000).unwrap(),
+        LeaseStatus::Cancelled
+    );
+    fixture.expire(&grant.id);
+    assert_eq!(fixture.finish(&grant, Outcome::Complete), Settlement::Stale);
+    assert_eq!(recover(&mut legacy, &ns, 1, None).unwrap(), 1);
+    assert_eq!(fixture.get(&grant.id)["state"], "cancelled");
+    admin
+        .query("SELECT mesh_jobs.set_namespace_paused($1,false)", &[&ns])
+        .unwrap();
+    fixture.ops(json!({"action":"resume","queue":"default"}));
+
+    admin.simple("BEGIN").unwrap();
+    admin
+        .query(
+            "SELECT id FROM mesh_jobs.jobs WHERE namespace=$1 AND id=$2::uuid FOR NO KEY UPDATE",
+            &[&ns, id(&jobs[2])],
+        )
+        .unwrap();
+    assert_eq!(
+        ready(set.set(&ns))
+            .iter()
+            .map(|grant| grant.id.as_str())
+            .collect::<Vec<_>>(),
+        [id(&jobs[3]), id(&jobs[4])]
+    );
+    admin.simple("ROLLBACK").unwrap();
+}
+
+#[test]
+#[ignore = "requires the claim admission wire proof relay"]
+fn checked_grant_never_escapes_an_invalid_or_uncertain_reply() {
+    let Ok(url) = std::env::var("MESH_TEST_CLAIM_RELAY_URL") else {
+        return;
+    };
+    let ns = std::env::var("MESH_TEST_CLAIM_RELAY_NAMESPACE").expect("wire proof namespace");
+    let mut session = CheckedSession::open(&url);
+    let result = session.session.with(|db| {
+        if std::env::var_os("MESH_TEST_CLAIM_RELAY_CURSOR").is_some() {
+            claim_batch_cursor_checked(db, &ns, "default", WORKERS, 60_000, 2, false)
+                .map(SetClaimBatch::Batch)
+        } else {
+            claim_batch_set(db, &ns, "default", WORKERS, 60_000, 2, false)
+        }
+    });
+    if std::env::var("MESH_TEST_CLAIM_RELAY_CASE").as_deref() == Ok("reply_budget") {
+        assert!(matches!(&result, Err(error) if error.contains("32 MiB reply limit")));
+    }
+    assert!(
+        result.is_err(),
+        "the checked client returned a launchable grant"
+    );
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn checked_batch_keeps_the_ordered_prefix_when_the_set_reply_needs_cursor_sizing() {
+    let mut fixture = Fixture::new();
+    fixture.ops(json!({"action":"configure","queue":"default","concurrency":2}));
+    let jobs = fixture.enqueue(json!([
+        {"worker":"Deliver","priority":0},
+        {"worker":"Deliver","priority":1},
+        {"worker":"Deliver","priority":2}
+    ]));
+    let large = id(&jobs[1]);
+    fixture
+        .db
+        .query(
+            "UPDATE mesh_jobs.jobs SET args = jsonb_build_object(
+           'blob',(SELECT string_agg(md5(x::text), '') FROM generate_series(1,4096) x))
+         WHERE namespace=$1 AND id=$2::uuid",
+            &[&fixture.ns, large],
+        )
+        .unwrap();
+    let mut set = CheckedSession::open(&fixture.url);
+    assert!(matches!(set.set(&fixture.ns), SetClaimBatch::Fallback));
+    assert_eq!(fixture.get(id(&jobs[0]))["attempt"], 0);
+    assert_eq!(fixture.get(large)["attempt"], 0);
+    let batch = set
+        .session
+        .with(|db| {
+            claim_batch_cursor_checked(db, &fixture.ns, "default", WORKERS, 60_000, 2, false)
+        })
+        .unwrap();
+    assert_eq!(
+        batch
+            .claims
+            .iter()
+            .map(|job| job.id.as_str())
+            .collect::<Vec<_>>(),
+        [id(&jobs[0]), large]
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&batch.claims[1].context).unwrap()["args"]["blob"]
+            .as_str()
+            .unwrap()
+            .len(),
+        131_072
+    );
+    assert!(fixture.try_claim().is_none());
+}
+
+/// Records each statement a writer sends so a test can tell which route ran.
+struct Recorded<'a> {
+    db: &'a mut Connection,
+    sql: Vec<String>,
+}
+
+impl Database for Recorded<'_> {
+    fn query(&mut self, sql: &str, params: &[&str]) -> Result<Vec<Vec<(String, String)>>, String> {
+        self.sql.push(sql.to_owned());
+        self.db.query(sql, params)
+    }
+
+    fn acknowledge(
+        &mut self,
+        sql: &str,
+        params: &[&str],
+    ) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
+        self.sql.push(sql.to_owned());
+        self.db.acknowledge(sql, params)
+    }
+
+    fn simple(&mut self, sql: &str) -> Result<(), String> {
+        self.sql.push(sql.to_owned());
+        self.db.simple(sql)
+    }
+
+    fn in_transaction(&self) -> bool {
+        self.db.in_transaction()
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Writer {
+    SetBased,
+    Ordered,
+}
+
+const BATCH_SQL: &str = "FROM mesh_jobs.enqueue_batch_v1(";
+const SCALAR_SQL: &str = "SELECT mesh_jobs.enqueue(";
+
+/// Enqueues in an outer transaction and reports the route the writer took.
+fn enqueue_recorded(
+    db: &mut Connection,
+    ns: &str,
+    specs: &Value,
+    set_based: bool,
+    setup: &[&str],
+) -> (Result<Value, String>, Writer, Vec<String>) {
+    db.simple("BEGIN").unwrap();
+    for sql in setup {
+        db.simple(sql).unwrap();
+    }
+    let mut recorded = Recorded {
+        db: &mut *db,
+        sql: Vec::new(),
+    };
+    let result = enqueue_with(&mut recorded, ns, &specs.to_string(), set_based).map(|r| parse(&r));
+    let sql = recorded.sql;
+    let batch = sql.iter().filter(|s| s.contains(BATCH_SQL)).count();
+    let scalar = sql.iter().filter(|s| s.starts_with(SCALAR_SQL)).count();
+    let writer = if result.is_ok() && batch == 1 && scalar == 0 {
+        Writer::SetBased
+    } else {
+        Writer::Ordered
+    };
+    db.simple(if result.is_ok() { "COMMIT" } else { "ROLLBACK" })
+        .unwrap();
+    (result, writer, sql)
+}
+
+fn set_based_server(db: &mut Connection) -> bool {
+    response(
+        db,
+        "SELECT (pg_catalog.to_regprocedure('mesh_jobs.enqueue_batch_v1(text,jsonb)') IS NOT NULL)::text",
+        &[],
+    )
+    .unwrap()
+        == "true"
+}
+
+/// Rows in position order without the generated identity and clock columns.
+fn stored_rows(db: &mut Connection, ns: &str) -> Vec<Value> {
+    let rows = response(
+        db,
+        "SELECT coalesce(json_agg(to_jsonb(j) - '{id,namespace,position,inserted_at_ms,scheduled_at_ms}'::text[]
+                 || jsonb_build_object('delay', j.scheduled_at_ms - j.inserted_at_ms,
+                                       'scheduled', j.scheduled_at_ms)
+                 ORDER BY j.position), '[]')::text
+         FROM mesh_jobs.jobs j WHERE j.namespace = $1",
+        &[ns],
+    )
+    .unwrap();
+    parse(&rows).as_array().unwrap().clone()
+}
+
+fn receipt_rows(db: &mut Connection, ns: &str) -> Vec<(String, String, Value)> {
+    db.query(
+        "SELECT request_key, fingerprint, receipt::text FROM mesh_jobs.receipts
+         WHERE namespace = $1 ORDER BY request_key",
+        &[ns],
+    )
+    .unwrap()
+    .into_iter()
+    .map(|row| (row[0].1.clone(), row[1].1.clone(), parse(&row[2].1)))
+    .collect()
+}
+
+/// Specs that cover every independent field, including unusual JSON values.
+fn varied_specs(tag: &str) -> Value {
+    let far = 4_102_444_800_000_u64;
+    let specs = (0..20)
+        .map(|n| {
+            let mut spec = json!({
+                "worker": if n % 3 == 0 { "Deliver" } else { "Report" },
+                "args": {
+                    "n": n,
+                    "text": "quote \" backslash \\ slash / tab \t é 漢字 🙂",
+                    "nested": {"list": [1, -2.5, 1e300, null, true, {"k": []}], "empty": {}},
+                    "big": 123456789012345678901234567890_u128.to_string(),
+                    "precise": 0.1,
+                },
+                "metadata": {"trace": format!("{tag}-{n}")},
+                "tags": [format!("t{}", n % 4)],
+                "priority": n % 10,
+                "max_attempts": 1 + n % 5,
+                "timeout_ms": 1_000 + n,
+                "backoff_base_ms": n,
+                "backoff_max_ms": 10_000,
+            });
+            match n % 5 {
+                1 => spec["delay_ms"] = json!(60_000 + n),
+                2 => spec["scheduled_at_ms"] = json!(far + n as u64),
+                3 => spec["suspended"] = json!(true),
+                _ => {}
+            }
+            if n % 2 == 0 {
+                spec["request_key"] = json!(format!("{tag}-key-{n}"));
+            }
+            if n >= 17 {
+                spec["queue"] = json!(format!("q-{tag}-{}", n % 2));
+            }
+            spec
+        })
+        .collect::<Vec<_>>();
+    Value::Array(specs)
+}
+
+fn without_identity(receipt: &Value) -> Value {
+    let mut receipt = receipt.clone();
+    assert_eq!(
+        receipt["effect_key"],
+        json!(format!("{}/1", receipt["id"].as_str().unwrap()))
+    );
+    receipt.as_object_mut().unwrap().remove("id");
+    receipt.as_object_mut().unwrap().remove("effect_key");
+    receipt
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn set_based_enqueue_matches_the_ordered_writer_for_every_independent_field() {
+    let mut ordered = Fixture::new();
+    let mut set = Fixture::new();
+    let server = set_based_server(&mut set.db);
+    let specs = varied_specs("eq");
+
+    let (expected, route, _) = enqueue_recorded(&mut ordered.db, &ordered.ns, &specs, false, &[]);
+    assert_eq!(route, Writer::Ordered);
+    let (actual, route, _) = enqueue_recorded(&mut set.db, &set.ns, &specs, true, &[]);
+    assert_eq!(
+        route,
+        if server {
+            Writer::SetBased
+        } else {
+            Writer::Ordered
+        }
+    );
+    let (expected, actual) = (expected.unwrap(), actual.unwrap());
+    let strip = |receipts: &Value| {
+        receipts
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(without_identity)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(strip(&actual), strip(&expected));
+
+    let (expected_rows, actual_rows) = (
+        stored_rows(&mut ordered.db, &ordered.ns),
+        stored_rows(&mut set.db, &set.ns),
+    );
+    assert_eq!(actual_rows.len(), 20);
+    for (n, (actual, expected)) in actual_rows.iter().zip(&expected_rows).enumerate() {
+        let spec = &specs[n];
+        // Each writer samples the database clock for every row.
+        match (spec.get("scheduled_at_ms"), spec.get("delay_ms")) {
+            (Some(at), _) => assert_eq!(actual["scheduled"], *at),
+            (None, Some(delay)) => assert_eq!(actual["delay"], *delay),
+            (None, None) => assert_eq!(actual["delay"], 0),
+        }
+        let mut actual = actual.clone();
+        let mut expected = expected.clone();
+        // Absolute schedules compare by value, relative ones by their delay.
+        let clock = if spec.get("scheduled_at_ms").is_some() {
+            "delay"
+        } else {
+            "scheduled"
+        };
+        for row in [&mut actual, &mut expected] {
+            row.as_object_mut().unwrap().remove(clock);
+        }
+        assert_eq!(actual, expected, "row {n}");
+    }
+
+    // Receipts are bound to the same canonical spec fingerprint by either route.
+    let receipts = |rows: Vec<(String, String, Value)>| {
+        rows.into_iter()
+            .map(|(key, fingerprint, receipt)| (key, fingerprint, without_identity(&receipt)))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        receipts(receipt_rows(&mut set.db, &set.ns)),
+        receipts(receipt_rows(&mut ordered.db, &ordered.ns))
+    );
+    assert_eq!(receipt_rows(&mut set.db, &set.ns).len(), 10);
+
+    // A replay of the committed batch returns its receipts through the ordered writer.
+    let (replayed, route, _) = enqueue_recorded(&mut set.db, &set.ns, &specs, true, &[]);
+    assert_eq!(route, Writer::Ordered);
+    let keyed = |receipts: &Value| {
+        receipts
+            .as_array()
+            .unwrap()
+            .iter()
+            .zip(specs.as_array().unwrap())
+            .filter(|(_, spec)| spec.get("request_key").is_some())
+            .map(|(receipt, _)| receipt.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(keyed(&replayed.unwrap()), keyed(&actual));
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn set_based_enqueue_keeps_the_ordered_writer_for_unqualified_batches() {
+    let mut f = Fixture::new();
+    let server = set_based_server(&mut f.db);
+    let plain = |n: usize, key: &str| {
+        Value::Array(
+            (0..n)
+                .map(|i| json!({"worker":"Deliver","args":{"i":i},"request_key":format!("{key}-{i}")}))
+                .collect(),
+        )
+    };
+    let expect = |route: Writer, set: bool| {
+        assert_eq!(
+            route,
+            if set && server {
+                Writer::SetBased
+            } else {
+                Writer::Ordered
+            }
+        )
+    };
+
+    // Too small for the checked writer: no capability query at all.
+    let (result, route, sql) = enqueue_recorded(&mut f.db, &f.ns, &plain(15, "small"), true, &[]);
+    result.unwrap();
+    expect(route, false);
+    assert!(!sql.iter().any(|s| s.contains("enqueue_batch")));
+
+    // Opt-in off: never asks the server.
+    let (result, route, sql) = enqueue_recorded(&mut f.db, &f.ns, &plain(16, "off"), false, &[]);
+    result.unwrap();
+    expect(route, false);
+    assert!(!sql.iter().any(|s| s.contains("enqueue_batch")));
+
+    // Qualified batch uses the checked writer.
+    let (result, route, _) = enqueue_recorded(&mut f.db, &f.ns, &plain(16, "on"), true, &[]);
+    result.unwrap();
+    expect(route, true);
+
+    // Uniqueness and replacement policies use the ordered writer in Rust.
+    let mut unique = plain(16, "unique");
+    unique[3]["unique"] = json!({"fields":["worker","args"]});
+    unique[3]["args"] = json!({"i":"unique"});
+    let (result, route, sql) = enqueue_recorded(&mut f.db, &f.ns, &unique, true, &[]);
+    result.unwrap();
+    expect(route, false);
+    assert!(!sql.iter().any(|s| s.contains("enqueue_batch")));
+
+    // A duplicate key inside the batch and an existing key fall back on the server.
+    let mut duplicate = plain(16, "dup");
+    duplicate[9]["request_key"] = duplicate[2]["request_key"].clone();
+    duplicate[9]["args"] = duplicate[2]["args"].clone();
+    let (result, route, _) = enqueue_recorded(&mut f.db, &f.ns, &duplicate, true, &[]);
+    let receipts = result.unwrap();
+    expect(route, false);
+    assert_eq!(receipts[9], receipts[2]);
+    let mut existing = plain(16, "exist");
+    existing[0] = plain(16, "on")[5].clone();
+    let (result, route, _) = enqueue_recorded(&mut f.db, &f.ns, &existing, true, &[]);
+    result.unwrap();
+    expect(route, false);
+
+    // Outer REPEATABLE READ keeps the stale-snapshot retry of the ordered writer.
+    let (result, route, _) = enqueue_recorded(
+        &mut f.db,
+        &f.ns,
+        &plain(16, "rr"),
+        true,
+        &["SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"],
+    );
+    result.unwrap();
+    expect(route, false);
+
+    // A migration holding the schema lock routes new batches to the ordered writer.
+    let mut migrator = Connection::open(&f.url);
+    migrator.simple("BEGIN").unwrap();
+    migrator
+        .simple("SELECT pg_catalog.pg_advisory_xact_lock(1782495102, 1)")
+        .unwrap();
+    let (result, route, _) = enqueue_recorded(&mut f.db, &f.ns, &plain(16, "ddl"), true, &[]);
+    result.unwrap();
+    expect(route, false);
+    migrator.simple("ROLLBACK").unwrap();
+
+    // An encoded NUL is rejected identically by both writers.
+    let mut nul = plain(16, "nul");
+    nul[4]["args"] = json!({"bad":"\0"});
+    let (set_error, route, _) = enqueue_recorded(&mut f.db, &f.ns, &nul, true, &[]);
+    assert_eq!(route, Writer::Ordered);
+    let (ordered_error, _, _) = enqueue_recorded(&mut f.db, &f.ns, &nul, false, &[]);
+    assert_eq!(set_error.unwrap_err(), ordered_error.unwrap_err());
+
+    let total = response(
+        &mut f.db,
+        "SELECT count(*)::text FROM mesh_jobs.jobs WHERE namespace = $1",
+        &[&f.ns],
+    )
+    .unwrap();
+    // 15 + 16 + 16 + 16 unique + 15 (one in-batch duplicate) + 15 (one replayed key) + 16 + 16.
+    assert_eq!(total, "125");
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn set_based_enqueue_layout_guard_tracks_catalog_changes_not_session_settings() {
+    let mut f = Fixture::new();
+    if !set_based_server(&mut f.db) {
+        // PostgreSQL other than 17 installs no batch functions and keeps the ordered writer.
+        let specs = varied_specs("other");
+        let (result, route, sql) = enqueue_recorded(&mut f.db, &f.ns, &specs, true, &[]);
+        result.unwrap();
+        assert_eq!(route, Writer::Ordered);
+        assert!(!sql.iter().any(|s| s.contains(BATCH_SQL)));
+        return;
+    }
+    let layout = |db: &mut Connection| {
+        db.simple("BEGIN").unwrap();
+        let ok = response(db, "SELECT mesh_jobs.enqueue_batch_layout_v1()::text", &[]).unwrap();
+        db.simple("ROLLBACK").unwrap();
+        ok == "true"
+    };
+    assert!(layout(&mut f.db), "default migrated schema");
+
+    // The optional set-based claim grant and a repeated migration keep the layout.
+    f.db.simple("DO $$ BEGIN CREATE ROLE mesh_jobs_layout_worker; EXCEPTION WHEN duplicate_object THEN NULL; END $$")
+        .unwrap();
+    f.db.simple(
+        &include_str!("../../../../scripts/fixtures/jobs-set-based-claim-grant.sql")
+            .replace(":\"worker\"", "mesh_jobs_layout_worker"),
+    )
+    .unwrap();
+    migrate(&mut f.db).unwrap();
+    assert!(layout(&mut f.db), "claim opt-in schema after migration");
+
+    let specs = |tag: &str| {
+        Value::Array(
+            (0..16)
+                .map(|i| json!({"worker":"Deliver","args":{"payload":format!("{tag}{i}").repeat(1024)}}))
+                .collect(),
+        )
+    };
+    // A session compression default changes new values, not the catalog layout.
+    let lz4 = response(
+        &mut f.db,
+        "SELECT ('lz4' = ANY(enumvals))::text FROM pg_settings WHERE name = 'default_toast_compression'",
+        &[],
+    )
+    .unwrap()
+        == "true";
+    if lz4 {
+        let (result, route, _) = enqueue_recorded(
+            &mut f.db,
+            &f.ns,
+            &specs("lz4"),
+            true,
+            &["SET LOCAL default_toast_compression = 'lz4'"],
+        );
+        result.unwrap();
+        assert_eq!(route, Writer::SetBased);
+    }
+
+    // EXTERNAL argument storage is the one supported physical variant.
+    f.db.simple("ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE EXTERNAL")
+        .unwrap();
+    assert!(layout(&mut f.db), "EXTERNAL argument storage");
+    let (result, route, _) = enqueue_recorded(&mut f.db, &f.ns, &specs("ext"), true, &[]);
+    let receipts = result.unwrap();
+    assert_eq!(route, Writer::SetBased);
+    assert_eq!(
+        f.get(id(&receipts[15]))["args"]["payload"],
+        json!("ext15".repeat(1024))
+    );
+    f.db.simple("ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE EXTENDED")
+        .unwrap();
+    assert!(layout(&mut f.db), "restored argument storage");
+
+    // Other storage, compression, a row trigger and row security each change the
+    // catalog. Each selects the ordered writer until the table owner restores it.
+    let cases: [(&[&str], &[&str]); 5] = [
+        (
+            &["ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE MAIN"],
+            &["ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET STORAGE EXTENDED"],
+        ),
+        (
+            &["ALTER TABLE mesh_jobs.jobs ALTER COLUMN metadata SET STORAGE EXTERNAL"],
+            &["ALTER TABLE mesh_jobs.jobs ALTER COLUMN metadata SET STORAGE EXTENDED"],
+        ),
+        (
+            &["ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET COMPRESSION pglz"],
+            &["ALTER TABLE mesh_jobs.jobs ALTER COLUMN args SET COMPRESSION DEFAULT"],
+        ),
+        (
+            &[
+                "CREATE FUNCTION public.mesh_jobs_layout_probe() RETURNS trigger LANGUAGE plpgsql
+                 AS $$ BEGIN RETURN NEW; END $$",
+                "CREATE TRIGGER layout_probe BEFORE INSERT ON mesh_jobs.receipts
+                 FOR EACH ROW EXECUTE FUNCTION public.mesh_jobs_layout_probe()",
+            ],
+            &[
+                "DROP TRIGGER layout_probe ON mesh_jobs.receipts",
+                "DROP FUNCTION public.mesh_jobs_layout_probe()",
+            ],
+        ),
+        (
+            &["ALTER TABLE mesh_jobs.jobs ENABLE ROW LEVEL SECURITY"],
+            &["ALTER TABLE mesh_jobs.jobs DISABLE ROW LEVEL SECURITY"],
+        ),
+    ];
+    for (change, restore) in cases {
+        for sql in change {
+            f.db.simple(sql).unwrap();
+        }
+        let (change, restore) = (change[change.len() - 1], restore[0]);
+        assert!(!layout(&mut f.db), "{change}");
+        let (result, route, _) = enqueue_recorded(&mut f.db, &f.ns, &specs("c"), true, &[]);
+        assert_eq!(result.unwrap().as_array().unwrap().len(), 16);
+        assert_eq!(route, Writer::Ordered, "{change}");
+        for sql in cases.iter().find(|(_, r)| r[0] == restore).unwrap().1 {
+            f.db.simple(sql).unwrap();
+        }
+        assert!(layout(&mut f.db), "{restore}");
+    }
+    let (result, route, _) = enqueue_recorded(&mut f.db, &f.ns, &specs("r"), true, &[]);
+    result.unwrap();
+    assert_eq!(route, Writer::SetBased);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn set_based_and_ordered_writers_share_the_namespace_fence_and_roll_back() {
+    let mut f = Fixture::new();
+    let batch = |tag: &str| {
+        Value::Array(
+            (0..32)
+                .map(|i| json!({"worker":"Deliver","args":{"i":i},"request_key":format!("{tag}-{i}")}))
+                .collect(),
+        )
+    };
+    // An outer rollback discards a set-based batch, its queue and its receipts.
+    let mut rolled = Connection::open(&f.url);
+    rolled.simple("BEGIN").unwrap();
+    let mut specs = batch("rolled");
+    specs[0]["queue"] = json!("rolled-back-queue");
+    enqueue_with(&mut rolled, &f.ns, &specs.to_string(), true).unwrap();
+    rolled.simple("ROLLBACK").unwrap();
+    assert_eq!(
+        response(
+            &mut f.db,
+            "SELECT (SELECT count(*) FROM mesh_jobs.jobs WHERE namespace = $1)
+                 || '/' || (SELECT count(*) FROM mesh_jobs.receipts WHERE namespace = $1)
+                 || '/' || (SELECT count(*) FROM mesh_jobs.queues WHERE namespace = $1
+                            AND name = 'rolled-back-queue')",
+            &[&f.ns],
+        )
+        .unwrap(),
+        "0/0/0"
+    );
+
+    // Old and new producers in one namespace serialize on the fence.
+    let barrier = std::sync::Arc::new(Barrier::new(2));
+    let writers = [false, true].map(|set| {
+        let (url, ns, barrier) = (f.url.clone(), f.ns.clone(), barrier.clone());
+        thread::spawn(move || {
+            let mut db = Connection::open(&url);
+            let specs = batch(if set { "new" } else { "old" });
+            barrier.wait();
+            db.simple("BEGIN").unwrap();
+            let receipts = parse(&enqueue_with(&mut db, &ns, &specs.to_string(), set).unwrap());
+            thread::sleep(Duration::from_millis(50));
+            db.simple("COMMIT").unwrap();
+            receipts
+        })
+    });
+    let receipts = writers.map(|writer| writer.join().unwrap());
+    let rows =
+        f.db.query(
+            "SELECT id::text, args->>'i', position FROM mesh_jobs.jobs WHERE namespace = $1
+             ORDER BY position",
+            &[&f.ns],
+        )
+        .unwrap();
+    assert_eq!(rows.len(), 64);
+    // Each transaction's positions are contiguous and in input order.
+    let first = rows[0][0].1.clone();
+    let leading = usize::from(
+        !receipts[0]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["id"] == first),
+    );
+    for (block, receipts) in [&receipts[leading], &receipts[1 - leading]]
+        .iter()
+        .enumerate()
+    {
+        for (i, receipt) in receipts.as_array().unwrap().iter().enumerate() {
+            let row = &rows[block * 32 + i];
+            assert_eq!(receipt["id"], json!(row[0].1));
+            assert_eq!(row[1].1, i.to_string());
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires the set-based enqueue wire proof relay"]
+fn set_based_enqueue_never_reports_an_uncertain_reply() {
+    let Ok(url) = std::env::var("MESH_TEST_ENQUEUE_RELAY_URL") else {
+        return;
+    };
+    let ns = std::env::var("MESH_TEST_ENQUEUE_RELAY_NAMESPACE").expect("wire proof namespace");
+    let specs = Value::Array(
+        (0..20)
+            .map(|i| json!({"worker":"Deliver","args":{"i":i},"request_key":format!("wire-{i}")}))
+            .collect(),
+    );
+    let mut session = CheckedSession::open(&url);
+    let result = session
+        .session
+        .with(|db| db.transaction(|tx| enqueue_with(tx, &ns, &specs.to_string(), true)));
+    if std::env::var_os("MESH_TEST_ENQUEUE_RELAY_REPLAY").is_some() {
+        println!("RECEIPTS {}", result.unwrap());
+        return;
+    }
+    assert!(
+        result.is_err(),
+        "the writer reported an uncertain batch: {result:?}"
+    );
 }

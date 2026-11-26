@@ -1,0 +1,50 @@
+# Response time for sparse durable jobs
+
+Each arm submits 24 jobs individually. After each settlement the producer waits 250 ms before its next submission. Each job commits its two application writes independently. The pause falls outside each job’s response time. Times are milliseconds.
+
+Each percentile column shows the median of the per-rotation percentiles. With 24 jobs, the matrix’s nearest-rank p99 is the slowest job in that arm. The final column shows the slowest response across all rotations.
+
+## Selected public build
+
+5 matched Linode rotations.
+
+| Engine | Submit to settle p50 | Submit to settle p99 | Commit to pickup p99 | Commit to settle p99 | Worst submit to settle |
+|---|---:|---:|---:|---:|---:|
+| Public trusted Mesh | 10.53 | 16.43 | 6.06 | 11.19 | 47.73 |
+| Oban | 190.86 | 236.98 | 228.14 | 231.44 | 239.97 |
+| River | 194.52 | 241.47 | 2.33 | 239.61 | 248.76 |
+| Apalis | 9.21 | 15.98 | 6.20 | 12.75 | 16.22 |
+
+Submit to settlement p99 in each rotation, in milliseconds.
+
+| Rotation | Public trusted Mesh | Oban | River | Apalis |
+|---|---:|---:|---:|---:|
+| 1 | 15.22 | 239.97 | 248.76 | 16.13 |
+| 2 | 16.16 | 237.09 | 248.26 | 16.22 |
+| 3 | 18.36 | 233.86 | 241.47 | 15.42 |
+| 4 | 16.43 | 234.02 | 238.75 | 13.48 |
+| 5 | 47.73 | 236.98 | 240.13 | 15.98 |
+
+## Original runners
+
+5 matched Linode rotations.
+
+| Engine | Submit to settle p50 | Submit to settle p99 | Commit to pickup p99 | Commit to settle p99 | Worst submit to settle |
+|---|---:|---:|---:|---:|---:|
+| Trusted Mesh V1 | 12.75 | 23.36 | 9.77 | 16.17 | 50.70 |
+| Protected Mesh | 21.82 | 32.22 | 16.11 | 27.50 | 33.67 |
+| Oban | 172.65 | 232.74 | 225.70 | 229.16 | 236.02 |
+| River | 194.37 | 242.60 | 2.26 | 241.20 | 248.69 |
+| Apalis | 9.31 | 16.09 | 5.62 | 12.75 | 18.69 |
+
+Submit to settlement p99 in each rotation, in milliseconds.
+
+| Rotation | Trusted Mesh V1 | Protected Mesh | Oban | River | Apalis |
+|---|---:|---:|---:|---:|---:|
+| 1 | 18.95 | 28.89 | 226.02 | 242.60 | 18.69 |
+| 2 | 23.36 | 32.97 | 232.74 | 246.45 | 16.46 |
+| 3 | 25.10 | 31.48 | 231.88 | 242.17 | 14.50 |
+| 4 | 19.53 | 32.22 | 233.00 | 248.69 | 16.09 |
+| 5 | 50.70 | 33.67 | 236.02 | 239.91 | 13.86 |
+
+[Time spent between submissions](sparse-windows.md) · [Arm identities, orders, and source digests](scores.json) · [All workload scores](four-engine-scorecard.md)

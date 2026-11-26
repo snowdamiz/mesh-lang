@@ -5359,3 +5359,440 @@ runtime tests, all three compiled Jobs suites, and the compiled scoped
 login proof on fresh and upgraded schemas. All 18 parity self-checks
 and 12 fault-driver tests passed for each server version.
 [Integrated PostgreSQL matrix receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare ordinary Jobs on macOS
+
+The local stock comparison used release Mesh `e7abb534`, Oban Basic
+2.24.2 with Isolated notification, and PostgreSQL 17.11 over verified
+TLS and SCRAM. Mesh used batch claims and LISTEN with a 250 ms fallback.
+The host was a 15-logical-CPU Apple M5 Pro. Each comparison alternated
+five pairs and reconciled the same seeded workload, including a
+durable attempt and a separate durable effect for every completed job.
+
+The earlier Linux comparisons used two virtual CPUs and fenced warm
+app sessions. The ordinary macOS fixture opens a database connection
+inside each worker. In the five stock dense trials, mean handler
+entry to first commit ranged from 40.1 to 170.0 ms for Mesh and from
+0.4 to 1.1 ms for Oban. At the fastest measured Mesh mean, full
+occupancy of 64 slots would sustain at most 1,596 jobs/s if that stage
+cost persisted. The stage includes connection setup and scheduling.
+
+The `e4c8fc94` trial groups batch claim updates, gives the due query
+an index range, uses one Unix worker watchdog, and defers the single
+worker scheduler until the first actor spawn. Each row shows median
+throughput and its full range, median runner CPU and pickup p99, and
+median sampled peak resident memory.
+
+| Profile | Mesh | Mesh jobs/s (range) | Oban jobs/s (range) | Runner CPU-ms/job, Mesh and Oban | Pickup p99 in ms, Mesh and Oban | RSS MiB, Mesh and Oban |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| No-op, 8 runners, 64 slots | Stock | 720 (311–779) | 2,893 (2,428–4,593) | 7.14, 5.54 | 1,360, 352 | 150.5, 843.1 |
+| Slow, 1 runner, 64 slots | Stock | 362 (323–407) | 447 (421–513) | 7.56, 1.94 | 1,277, 1,043 | 405.0, 120.0 |
+| No-op, 8 runners, 64 slots | Trial | 497 (354–570) | 2,770 (1,870–2,879) | 7.31, 6.68 | 1,971, 363 | 259.5, 839.8 |
+| Slow, 1 runner, 64 slots | Trial | 71 (52–393) | 352 (210–466) | 8.68, 2.42 | 6,892, 1,329 | 94.2, 121.8 |
+| Short, 1 runner, 16 slots | Trial | 496 (459–642) | 885 (401–1,257) | 6.32, 4.80 | 238, 142 | 13.4, 106.8 |
+| Large, 8 runners, 64 slots | Trial | 316 (278–338) | 412 (337–737) | 15.67, 88.64 | 188, 149 | 126.7, 854.9 |
+
+Mesh missed throughput in all six comparisons. Connection, process,
+thread, and queued-context limits passed. The receipt reports the
+relative CPU, pickup, and RSS misses per profile. The one-minute
+host load reached 148 during the separate slow trial. Mesh sampled
+41–53 executing jobs in three arms, so the 94.2 MiB median reflects
+reduced occupancy in those arms.
+
+In a direct release comparison with the same Mesh settings, the trial
+cut runner CPU in all five pairs on each key profile. The median
+paired saving was 0.445 CPU-ms/job for dense and 0.581 CPU-ms/job for
+slow. Dense throughput medians were 437 and 442 jobs/s for trial and
+stock. On slow, stock won four pairs, the medians were 328 and
+361 jobs/s, and pickup p99 was 1,436 and 1,267 ms. All trial slow arms
+sampled 64 executing jobs. The ordinary startup and claim changes
+were removed from the default path at `cc8379d4`.
+[Per-trial receipt](../proof/jobs-parity/ordinary-jobs-macos-20261122.json)
+
+Use the same PostgreSQL installation for both commands. Build the
+release toolchains with the smoke command under
+[Record a baseline](#record-a-baseline) before reusing them.
+
+```sh
+python3 -B scripts/jobs-parity.py --load --mesh-batch --mesh-listen \
+  --postgres-version 17.11 --mesh-ref e7abb534 \
+  --toolchains target/jobs-parity/build --workload noop --runners 8 --slots 64
+
+python3 -B scripts/jobs-parity.py --load --mesh-batch --mesh-listen \
+  --postgres-version 17.11 --mesh-ref e4c8fc94 --against-ref e7abb534 \
+  --baseline-matches-mesh --toolchains target/jobs-parity/build \
+  --workload slow --runners 1 --slots 64
+```
+
+### Verify the opt-in warm session path
+
+The `d8741576` checkout passed the PostgreSQL compatibility and
+effect-fence checks on 17.11, 18.7, and 19.0 on macOS ARM64. Each
+version passed 36 PostgreSQL driver tests, 68 Jobs runtime tests,
+and three compiled Jobs suites. The compiled suites exercised scoped
+roles on fresh and upgraded databases. The effect-fence proof checked
+separate committed writes, idempotent replay, cancellation, and lease
+expiry.
+
+A two-vCPU Linux ARM64 guest used the same revision's release runtime
+and the standard debug proof fixture. PostgreSQL 17.11 used verified
+TLS and SCRAM. The fixture invoked `Jobs.start_effects` and
+`Jobs.effect` with polling and with LISTEN. In each mode, two ordered
+transactions committed through the same warm backend within a
+five-connection cap. The attempt remained executing while the
+worker was held and settled after the worker was reaped. Disconnecting
+the backend during an operation retired the session and forced a
+retry. A replacement attempt preserved the original committed
+effect and completed the second effect. The LISTEN run observed
+the notification with zero fallback scans.
+
+Run the polling proof on Linux GNU ARM64 with PostgreSQL 17.11.
+
+```sh
+env -u MESH_TEST_DATABASE_URL \
+  PG_BIN_DIR=/path/to/postgresql-17.11/bin \
+  bash scripts/verify-postgres-jobs.sh --effect-compiled
+```
+
+Set `MESH_EFFECT_LISTEN=1` and repeat for the LISTEN proof. The
+[compiled fixture](../scripts/fixtures/jobs-effect-compiled/README.md)
+describes the application routines and session reset.
+
+### Compare the warm-session Linux runtime with Oban
+
+The reconstructed Linux GNU ARM64 guest used two vCPUs, PostgreSQL
+17.11, and the frozen 8-runner no-op and 1-runner slow inputs at 64
+slots. Each engine ran a full-input warmup. Five groups per comparison
+rotated the three arms on the same postmaster with tracing disabled.
+Mesh used batch claims, LISTEN, and four warm application sessions
+per runner for no-op or eight for slow. Oban used its Basic 2.24.2
+engine and Isolated notifier with OTP 29.1.1 and Elixir 1.20.4. The
+reconstruction reused the frozen jobs and workload settings. It used
+a replacement native build of OTP and the reconstructed producer
+and observer. The slow cap was 68 sessions and the dense cap was 96.
+Oban's enqueue-only pool used one connection. Its migration and runner
+pools retained their existing settings.
+
+The comparison counted `wait4` runner-tree CPU, including startup
+and idle. Pickup p99 measures enqueue commit to handler entry.
+Sampled peak RSS sums the runner process tree. Each arm reconciled one
+attempt and one effect, in distinct ordered transactions, for every
+completed input.
+
+The original comparison scripts sampled connections and SQL for
+`parity_subject` and `parity_producer`. The Mesh named operations
+used `compiled_caller`, a separate authenticated role. The historical
+sampled connections are therefore role-scoped counts. The receipt names
+the configured application lanes and hard PostgreSQL cap without
+adding inferred connections to the samples. The committed driver now
+counts all three workload roles for both engines and reports application
+SQL separately from `parity_subject` SQL. The observer retains the same
+connection and sampling cadence.
+
+| Five paired groups per cell | Arm | Median jobs/s | Median CPU-ms/job | Median pickup p99, ms | Median sampled RSS, MiB |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Dense, retained runtime | Current warm sessions | 967 | 1.050 | 1,045 | 325.0 |
+| Dense, retained runtime | Historical warm control | 1,174 | 0.867 | 860 | 311.2 |
+| Dense, retained runtime | Oban | 1,992 | 3.140 | 508 | 1,042.4 |
+| Slow, retained runtime | Current warm sessions | 485 | 1.336 | 948 | 305.8 |
+| Slow, retained runtime | Historical warm control | 533 | 0.805 | 857 | 296.7 |
+| Slow, retained runtime | Oban | 421 | 1.336 | 1,099 | 158.3 |
+| Dense, watchdog trial | Current warm sessions | 997 | 0.977 | 1,015 | 317.7 |
+| Dense, watchdog trial | Single watchdog and deferred scheduler | 915 | 0.981 | 1,100 | 323.4 |
+| Dense, watchdog trial | Oban | 2,289 | 3.266 | 441 | 1,040.6 |
+| Slow, watchdog trial | Current warm sessions | 518 | 1.063 | 881 | 312.8 |
+| Slow, watchdog trial | Single watchdog and deferred scheduler | 485 | 1.112 | 951 | 315.7 |
+| Slow, watchdog trial | Oban | 431 | 1.203 | 1,079 | 161.9 |
+
+The historical warm control is the `e905b1d0` runtime linked with
+the frozen named path from `8526a5bd`. The previously recorded
+851 versus 1,796 jobs/s dense comparison used `8526a5bd` itself.
+The retained arm uses the runtime from `d8741576`. The ordinary
+`Jobs.start` path keeps its existing dispatcher and startup.
+
+In the retained series, Oban won all five dense throughput pairs.
+Warm Mesh won four slow throughput pairs and saved a median 0.226
+CPU-ms/job within the five slow pairs. Its median sampled slow RSS
+was 1.93 times Oban, exceeding the 1.50 limit. Mesh sampled a slow
+occupancy peak of 64 in three pairs and 62 in two. Oban sampled 64
+in all five. Dense peak connection samples in the retained series
+had medians of 33 and 80 for Mesh and Oban within the two measured
+roles. Slow had medians of five and 67. The Mesh configuration
+allowed 32 and eight additional application sessions respectively.
+
+The single watchdog trial reduced median peak Mesh threads from
+144 to 117 in dense and from 434 to 303 in slow. It won three of
+five direct dense throughput pairs by a median paired 21 jobs/s.
+It won two of five direct slow throughput pairs and its slow
+median pickup p99 increased from 881 to 951 ms. The retained runtime
+keeps the existing watchdog and scheduler. The fixture keeps the
+public actor and deadline cases for either runtime. All 46,080
+measured jobs in the two series reconciled two committed writes each.
+The receipt retains every pair and its host load, including the
+dense pair in which all arms slowed.
+
+[Warm-session Linux paired receipts](../proof/jobs-parity/linux-warm-jobs-20261122.json)
+[Warm-session Linux replay sources](../proof/jobs-parity/linux-warm-replay-20261122.tar.gz)
+
+### Screen sparse, short and large contexts on the retained runtime
+
+The regression replay used the retained named-effects release ELF
+with the frozen input digests, PostgreSQL 17.11 and Oban Basic
+2.24.2 Isolated. Both arms shared one backend for enqueue and
+observation. The observer counted Jobs runner, producer and
+application sessions and reported their SQL separately. Each
+profile used its original runner count, slot count, payload size
+and 250 ms fallback. Sparse used a physical cap of five, short
+used 20, and the large 512 KiB payloads ran with a cap of 96 in a
+4 GiB guest. The large profile warmed both engines with the
+entire batch before measurement.
+
+| Screen | Jobs/s, Mesh / Oban | Runner CPU-ms/job | Pickup p99, ms | Peak sampled RSS, MiB | Peak workload connections |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sparse, one slot | 2.90 / 2.02 | 8.68 / 19.10 | 5.9 / 246.3 | 28.7 / 131.6 | 5 / 4 |
+| Short, 16 slots | 1,156 / 449 | 1.09 / 4.24 | 108.4 / 281.7 | 36.8 / 135.1 | 13 / 19 |
+| Large, Mesh first | 128 / 258 | 15.51 / 81.85 | 491.7 / 241.4 | 245.5 / 1,103.5 | 65 / 81 |
+| Large, Oban first | 121 / 179 | 19.08 / 175.98 | 522.9 / 341.0 | 234.6 / 1,114.5 | 65 / 81 |
+
+The four screens reconciled 560 measured jobs and 1,120 ordered
+committed writes. Sparse and short preserved their throughput
+advantage in these screens. Large lost throughput and pickup in
+both orders while using less CPU and memory. Large Mesh claim
+p99 was 415 and 512 ms, compared with 168 and 150 ms for Oban.
+The replay uses a reconstructed guest and cannot establish a
+regression against a historical ELF measured on a separate run.
+The earlier large win remains historical evidence for that
+specific build.
+
+The initial sparse run reached reconciliation and hit a verifier
+SQL error while reading the settlement transaction ID. The
+corrected replay completed both arms. The public Linux fixture
+on the retained release runtime passed with polling and LISTEN.
+It covered handler actor startup, two committed effects, exact
+reap, a held deadline and reconciliation after session retirement.
+The corrected parity driver passed its 19 self-checks.
+
+[Regression ledgers and resource receipts](../proof/jobs-parity/linux-regression-screens-20261122.json)
+[Regression replay](../proof/jobs-parity/linux-regression/README.md)
+
+The two retained large screens spread their 64 claims over 393
+and 503 ms, versus 157 and 102 ms for Oban. The median time
+from claim to handler entry was 45 and 54 ms on Mesh, versus
+79 and 163 ms. Time spent dispatching claims explains the
+pickup gap in these pairs.
+
+A separate large control relinked the same fixture with the
+original `8526a5bd` runtime. It took 499 ms to issue its 64
+claims, with a 54 ms median from claim to handler entry. It
+completed 104 jobs/s versus Oban's 71, with the host one-minute
+load rising from 61 to 77 across the measured arms on 15
+logical CPUs. The control shows a long claim span before the
+current integration. The changing host load prevents a
+runtime-to-runtime speed comparison across these runs.
+[Original-runtime large control](../proof/jobs-parity/linux-large-historical-control-20261122.json)
+
+### Separate the Oban emulator configurations
+
+The reconstructed Linux warm-session groups, initial regression
+screens and original-runtime replay used the two-scheduler launcher.
+Its static guest init starts the driver with an explicit four-entry
+environment. The driver did not set `ERL_FLAGS`. An unscored replay
+captured live BEAM argv and confirmed that `-S 2:2` was the only
+explicit scheduler or async-pool flag. It observed two dirty CPU
+schedulers, 10 dirty I/O schedulers and one async thread. Its
+`ERL_FLAGS`, `ERL_AFLAGS`, `ERL_ZFLAGS` and
+`ELIXIR_ERL_OPTIONS` values were all absent.
+
+The historical sparse bundle pins the Git profile containing
+`+S 2:2 +SDcpu 1:1 +SDio 1 +A 2`. Its saved runner records have
+PID, cgroup, thread and backend observations. The archived launch
+adapter and live argv or environment were unavailable for the
+old hard-cap runs. The top-level driver at the historical revision
+does export the pinned flags when invoked through its normal entry
+point, as did the macOS ordinary comparison. Keep the older guest
+measurements in their historical series.
+
+The canonical guest driver reads all four flags from
+the frozen profile and verifies each runner's live argv and effective
+Erlang scheduler and async-pool values. The canonical pairs use
+their own series label and receipt.
+
+[Oban emulator provenance and live diagnostic audit](../proof/jobs-parity/linux-oban-emulator-modes-20261122.json)
+
+Five pairs per preserved profile completed with this diagnostic
+launcher and byte-matched inputs and components. The resulting
+scores apply locally to the reconstructed two-scheduler series.
+
+| Diagnostic profile | Mesh throughput wins | Median jobs/s, Mesh / Oban | Median pickup p99, ms | Median runner CPU-ms/job | Max sampled workload connections |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sparse | 5/5 | 2.878 / 2.012 | 5.9 / 241.7 | 8.68 / 22.15 | 5 / 4 |
+| Short | 4/5 | 728 / 444 | 164.2 / 283.9 | 1.58 / 6.88 | 13 / 19 |
+| Large | 2/5 | 169 / 215 | 357.6 / 286.8 | 10.31 / 75.82 | 65 / 81 |
+
+Short passed its local limits. Large missed throughput. Oban
+exceeded the sparse process limit in one or more samples. The
+receipt preserves all measured arms, host load and the initial
+Oban-first large pair as a separate diagnostic. Its generated
+broker source differed by one blank line, so the exact-hash
+series used a repeat in the same arm order.
+
+### Complete the canonical Linux comparison
+
+The 25 pairs recorded at `c7212bed` form the resolver-unset series.
+Their manifests pin the emulator flags and omit the `8526a5bd` Erlang
+hosts fixture. Keep its receipts under the original `canonical-oban-flags`
+label. The corrected package uses `canonical-oban-flags-inetrc`.
+[Resolver-corrected replay](../proof/jobs-parity/linux-regression/README.md)
+
+In the resolver-unset series, short and large passed every configured
+gate. Dense missed throughput and pickup, slow exceeded the RSS ratio,
+and sparse exceeded the Oban process limit. The comparison used the
+retained named-effects ELF and the pinned guest, kernel, and input
+hashes. The guest verified
+`+S 2:2 +SDcpu 1:1 +SDio 1 +A 2` for all 95 measured Oban runners.
+[Environment pins](../proof/jobs-parity/linux-performance-checkpoint-20261122.md)
+
+Each profile ran five pairs in alternating arm order. Throughput runs
+from the first committed enqueue to final durable settlement. Runner CPU
+includes startup and idle. Each metric column lists Mesh first.
+
+| Profile | Median jobs/s (range) | Mesh throughput wins | Median pickup p99, ms | Median runner CPU-ms/job | Median peak RSS, MiB | Failed gates |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Dense | 936 (703–1,158) / 2,284 (1,565–2,869) | 0/5 | 1,075 / 441 | 1.02 / 3.45 | 319 / 925 | Throughput 0.410×, pickup 2.436× |
+| Slow | 490 (258–533) / 470 (421–482) | 4/5 | 936 / 983 | 1.56 / 1.32 | 330 / 146 | RSS 2.257× |
+| Sparse | 2.900 (2.866–2.904) / 2.037 (2.013–2.052) | 5/5 | 5.74 / 247.15 | 8.47 / 22.67 | 28.7 / 115.0 | Oban processes 4 of 2 allowed |
+| Short | 647 (225–903) / 379 (334–985) | 3/5 | 186 / 334 | 1.58 / 4.56 | 61.4 / 120.1 | None |
+| Large | 250 (188–387) / 204 (116–299) | 4/5 | 251 / 298 | 8.02 / 79.80 | 234 / 992 | None |
+
+The median throughput gate requires a ratio strictly above 1.00×.
+The median pickup, CPU, and RSS limits are 1.25×, 1.25×, and 1.50×.
+Mesh won 0, 4, 5, 3, and 4 pickup pairs in table order. It used less
+runner CPU in 5, 3, 5, 5, and 5 pairs and less peak RSS in all five
+pairs on each profile except slow. The median paired throughput
+differences were −1,280, +45, +0.85, +123, and +72 jobs/s.
+
+| Profile | Peak connections, Mesh / Oban (cap) | Peak processes (cap) | Peak threads (cap) |
+| --- | ---: | ---: | ---: |
+| Dense | 65 / 81 (96) | 18 / 32 (128) | 157 / 112 (672) |
+| Slow | 13 / 67 (68) | 65 / 4 (128) | 456 / 14 (588) |
+| Sparse | 5 / 4 (5) | 2 / 4 (2) | 14 / 14 (84) |
+| Short | 13 / 19 (20) | 11 / 4 (32) | 71 / 14 (204) |
+| Large | 65 / 81 (96) | 13 / 32 (128) | 100 / 112 (672) |
+
+Connection samples include the shared producer and observer backend and
+`compiled_caller`. Both sparse arms stayed within the 750 ms absolute
+pickup limit. Mesh's worst sparse claim p99 was 4.38 ms against 100 ms.
+The largest Mesh queued-context sample was 4,196,960 bytes against 32 MiB.
+
+All 25 boots returned proof status zero. The ledgers reconcile 17,520
+measured jobs and 35,040 writes. Every job had one attempt and one effect
+in distinct ordered commits by settlement. The 16,000 warmup jobs
+passed the same reconciliation. Measured-arm start load ranged from
+7.12 to 57.00 on 15 host logical CPUs. Slow's one throughput loss was
+258 versus 470 jobs/s at loads of 21.62 and 23.24. The large pair with
+the highest load reached 198 versus 123 jobs/s at 57.00 and 54.60. The
+score includes both pairs and all other observations.
+
+[Configured limits](../scripts/jobs-parity-profiles.json)
+[Resolver-unset score](../proof/jobs-parity/linux-canonical-score-20261122.json)
+[Paired receipt](../proof/jobs-parity/linux-canonical-receipt-20261122.json)
+[Raw receipts](../proof/jobs-parity/linux-canonical-raw-20261122.tar.gz)
+[Reproduction](../proof/jobs-parity/linux-regression/README.md#reproduce-the-resolver-unset-score)
+
+### Restore the pinned Oban resolver
+
+The pinned `8526a5bd` driver exports a fixture-local `ERL_INETRC` after
+dependency setup. The repaired Linux packer uses the same 57 bytes,
+SHA-256 `ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c`.
+The wrapper exports `/proof/oban.inetrc` to preflight, migration, the
+broker, and every runner. The preflight confirms Erlang's `[file]`
+resolver, `127.0.0.1`, and the four configured emulator flags.
+
+The sparse resolver-unset diagnostic reproduced a four-process peak.
+The runner and broker both used `[native]`. Each live tree contained
+`beam.smp`, its `erl_child_setup` child, and two nested `inet_gethost`
+processes. With `ERL_INETRC` applied, both roles used `[file]`, resolved
+the same address, and had only `beam.smp` and `erl_child_setup`. Both
+corrected sparse orders sampled two Oban runner processes against the
+limit of two. The Mesh ELF, database, workloads, and limits stayed pinned.
+
+| Pilot | First arm | Jobs/s, Mesh / Oban | Oban peak runner-tree processes | Measured host load, Mesh / Oban |
+| --- | --- | ---: | ---: | ---: |
+| Sparse, resolver unset | Mesh | 2.910 / 2.016 | 4 | 65.27 / 55.69 |
+| Sparse, fixture resolver | Mesh | 2.869 / 2.020 | 2 | 26.82 / 22.92 |
+| Sparse, fixture resolver | Oban | 2.897 / 2.021 | 2 | 70.69 / 76.67 |
+| Dense, fixture resolver | Oban | 840 / 1,915 | 16 | 32.60 / 35.00 |
+| Slow, fixture resolver | Mesh | 542 / 443 | 2 | 13.16 / 12.42 |
+
+The pilots reconciled 3,216 measured jobs and 6,432 ordered commits.
+They verified the package before starting a fresh five-pair series.
+[Resolver pilot receipts](../proof/jobs-parity/linux-oban-resolver-pilots-20261122.json)
+[Resolver-pinned results](#canonical-linux-comparison-with-the-pinned-resolver)
+
+### Canonical Linux comparison with the pinned resolver
+
+Dense no-op, slow, sparse, and large missed at least one configured limit.
+Short passed all configured limits.
+The `canonical-oban-flags-inetrc` series used the frozen Mesh ELF and
+five fresh pairs per profile, alternating which engine ran first.
+All 25 guest proofs exited zero. The ledgers reconcile 17,520 measured
+jobs and 16,000 warmup jobs. Each job recorded one attempt and one effect
+in distinct ordered commits before or at settlement. The preflight,
+95 measured Oban runners, and each Oban broker used the pinned `[file]`
+resolver. Measured arms started at host load averages of 8.73 to 275.61
+on 15 logical CPUs.
+
+The highest measured start load was in `large-04`. Mesh started at
+275.61 and Oban at 183.65. The score includes every verified pair.
+
+Ratios use each engine's median across the five measured arms. The
+throughput gate requires Mesh to exceed 1.00× Oban. The pickup p99,
+runner CPU per job, and peak RSS limits are 1.25×, 1.25×, and 1.50×.
+Throughput runs from the first committed enqueue to durable settlement.
+Runner CPU includes startup and idle.
+
+| Profile | Mesh jobs/s (range) | Oban jobs/s (range) | Mesh throughput wins | Throughput | Pickup p99 | Runner CPU | Peak RSS | Failed gates |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Dense no-op | 522.6 (461.5 to 1123.9) | 2195.2 (1162.2 to 2445.9) | 0 of 5 | 0.238× | 4.207× | 0.438× | 0.380× | Throughput, Pickup p99 |
+| Slow | 447.7 (206.8 to 477.6) | 440.5 (348.0 to 506.3) | 2 of 5 | 1.016× | 0.978× | 1.017× | 2.326× | Peak RSS |
+| Sparse | 2.875 (2.154 to 2.915) | 2.016 (1.984 to 2.045) | 5 of 5 | 1.426× | 0.032× | 0.632× | 0.270× | Mesh listener claim p99 |
+| Short | 787.2 (180.8 to 1018.0) | 357.0 (182.3 to 846.2) | 4 of 5 | 2.205× | 0.448× | 0.350× | 0.427× | None |
+| Large | 141.8 (59.6 to 367.1) | 235.6 (107.6 to 293.2) | 1 of 5 | 0.602× | 1.777× | 0.109× | 0.264× | Throughput, Pickup p99 |
+
+| Profile | Connections, Mesh / Oban (cap) | Processes, Mesh / Oban (cap) | Threads, Mesh / Oban (cap) |
+| --- | ---: | ---: | ---: |
+| Dense no-op | 65 / 81 (96) | 27 / 16 (128) | 180 / 96 (672) |
+| Slow | 13 / 67 (68) | 65 / 2 (128) | 456 / 12 (588) |
+| Sparse | 5 / 4 (5) | 2 / 2 (2) | 14 / 12 (84) |
+| Short | 13 / 19 (20) | 7 / 2 (32) | 47 / 12 (204) |
+| Large | 65 / 81 (96) | 18 / 16 (128) | 149 / 96 (672) |
+
+The worst sparse pickup p99 was 170.17 ms for Mesh and 285.74 ms for
+Oban against the 750 ms limit. The worst Mesh sparse claim p99 was
+143.19 ms in `sparse-05` against 100 ms. Both engines stayed within
+the connection, process, and thread caps. The largest Mesh queued-context
+sample was 4,196,960 bytes against 33,554,432 bytes.
+
+The tracked evidence has these SHA-256 digests.
+
+- `dd751a9d8a4baa35146956b1716d3bc8e49035ce3a66a084b684a55ddd78eb76` [Raw archive](../proof/jobs-parity/linux-canonical-inetrc-raw-20261122.tar.gz)
+- `d412a7362a2fbd003c2a491cdeee291c588fa8ae567b77f2cee6b1e4b2c5b8fe` [Paired receipt](../proof/jobs-parity/linux-canonical-inetrc-receipt-20261122.json)
+- `6cfe8fe930fe29e828ca2b36c3e70559b76f25f0ecc28b342964ee9e6c856665` [Score](../proof/jobs-parity/linux-canonical-inetrc-score-20261122.json)
+
+[Replay and verification commands](../proof/jobs-parity/linux-regression/README.md#reproduce-the-resolver-pinned-score)
+
+### Score the integrated default on Linux
+
+The normal `9eda8768` ELF from the `f1e646f0` link handoff includes JSON
+`235a38cc` and PostgreSQL `a00637fe`. It passed five groups each for sparse
+and short against resolver-pinned Oban. Large missed rate and pickup in
+both preselected pilots. Dense passed one of three pilots. Slow retained an
+RSS miss across both portable-layout rotations. The separate `df2c2f3c`
+exact-input layout cleared RSS once at matched 64-worker occupancy and
+missed throughput in both pilots. The checkpoint includes the duplicate
+controls, source hashes, a clean-checkout score replay, and the scratch
+commands for the measurement host. [Integrated default checkpoint](../proof/jobs-parity/linux-integrated-default/README.md)
+
+The workspace fmt, build, and test and PostgreSQL 17.11 proof receipts
+cover the runtime at `a00637fe`. They record 4,809 tests passed and 62
+ignored. The current layout pilots supply the packaging evidence.

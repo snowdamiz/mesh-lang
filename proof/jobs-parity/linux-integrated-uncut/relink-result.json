@@ -1,0 +1,9 @@
+{
+  "unarranged_elf_sha256": "32ceecf560ef70c5f1443d0688690a77a206070a897156a58b7ba321cd2f3070",
+  "layout_elf_sha256": "f14316c56d193cedd74b9d1b2be1940eff2d4844cd5532750dcae773885c17f4",
+  "actual_order_sha256": "1f804d680a87bca59072c0485432f94c28ea927d145996f63b52c8a4401ef982",
+  "placed_sections": {
+    ".rodata.profile": 1594,
+    ".text.profile": 2255
+  }
+}

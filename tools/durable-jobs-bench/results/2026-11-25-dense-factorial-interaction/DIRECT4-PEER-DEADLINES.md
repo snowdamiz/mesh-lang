@@ -1,0 +1,385 @@
+# How early Direct4 needs more grants
+
+The two private Direct4 arms finished in 909.286 and 929.240 ms from submit. Six separately released warm River arms finished in 770.658–787.280 ms. At the current Direct4 enqueue times, **at least 137 forward and 153 reverse jobs had yet to receive their database claim stamp** by the time Mesh would have had to finish. Giving every already-entered handler an immediate success at those deadlines would leave those jobs outstanding. A change that saves only idle CPU can help the pilot's resource gate. A change aimed at matching warm River must also advance productive claims or the earlier work that frees their seats.
+
+Each row compares one original Direct4 arm to all six historical warm River arms. The cutoff is the latest time after the Mesh enqueue commit that would tie or beat the peer on both submit and drain. In the matched-enqueue sensitivity, Mesh gets the peer's actual enqueue duration and keeps its own subsequent schedule. The four right columns count jobs that have yet to reach each event. Columns overlap.
+
+| Direct4 arm | Enqueue assumption | Cutoff from commit (ms) | Drain advance required (ms) | Certainly unstamped | Awaiting handler entry | Awaiting second write | Awaiting settlement |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Forward | Actual 166.596 ms | 604.062–620.684 | 122.006–138.628 | 137–171 | 155–186 | 161–190 | 177–193 |
+| Reverse | Actual 173.063 ms | 597.595–614.217 | 141.960–158.582 | 153–165 | 176–196 | 182–202 | 204 |
+| Forward | Matched to River | 684.688–715.131 | 27.559–58.002 | 6–35 | 20–65 | 25–70 | 51–88 |
+| Reverse | Matched to River | 684.688–715.131 | 41.046–71.489 | 12–48 | 32–67 | 35–71 | 45–95 |
+
+The stock peer comparison with River and Oban used a different readiness policy. Warm River had 67 ready sessions and Direct4 had 41. The deadlines compare workloads from separate releases and preserve each release's measured session supply. A peer qualification requires fresh matched arms. [Warm River release](../2026-11-25-dense-fixed8-river-readiness/NATIVE-RESULTS.md)
+
+## Capacity at the original claim stamp
+
+The original Direct4 runs had 107 and 102 productive grants. The PostgreSQL row counts independently reconcile the number of grant groups, and all four runner logs have zero contention hints. Only 23 and 24 grants were full at 16 rows. For each partial grant the replay counts same-owner terminal commits in the four milliseconds before its stamp through the end of its one-millisecond stamp bin. It caps any potential increase by remaining local and global seats, preserves the other owner's rows at the same stamp, and counts only future rows still available in the recorded workload.
+
+| Direct4 arm | Partial grants | Partials with room to grow | Partials with room to reach 16 |
+|---|---:|---:|---:|
+| Forward | 84 | 35 | 17 |
+| Reverse | 78 | 48 | 23 |
+
+The earlier public two-runner reference had 12 and 8 grants with room to grow and zero that could reach 16. Direct4's faster handlers changed the opportunity. Checking remaining workload supply removes one forward growth opportunity from the initial 36-grant estimate. A durable commit can precede the original reservation or follow the claimant's SELECT. Even a timely commit needs a checked receipt applied to the right reservation before it can release a seat. These counts cannot be totaled into transactions saved or elapsed time.
+
+Direct4 already waits for a checked BEGIN before sending its ordinary bounded SELECT. That boundary gives a candidate one opportunity to consume a confirmed release without adding a queue prelock or another exchange. The decisive measurement is how often the effective limit actually changes at that point and how many additional rows reach the workers. Runner CPU, later durable ranks and the full-submit clock determine whether that pays.
+
+## Where the durable effects fall behind
+
+Direct4 reached its 64th durable effect earlier than all six warm River arms. By the 256th effect both Direct4 arms were behind every River arm. Times are milliseconds, measured from each arm's own enqueue commit for the first two rows.
+
+| Durable milestone or interval | Direct4 forward | Direct4 reverse | Warm River range |
+|---|---:|---:|---:|
+| Effect 64 | 60.785 | 62.757 | 65.037–84.634 |
+| Effect 256 | 185.982 | 183.812 | 152.593–175.441 |
+| Effects 256 to 768 | 337.887 | 345.255 | 205.990–227.280 |
+| Effects 768 to 1,024 | 209.995 | 216.654 | 121.942–144.773 |
+| Final effect to final settlement | 8.826 | 10.456 | 178.013–209.890 |
+
+Replacing only Direct4's middle 512 interval with each River arm's measured interval would still leave 0.664–22.211 ms forward and 13.250–34.797 ms reverse to recover to match both submit and drain. This calculation keeps each Direct4 arm's enqueue time, early progress, last 256 effects and final settlement tail fixed.
+
+The first handler entry in a grant witnesses that the runner had received the checked grant for all its members by that time. During the middle 512 effects, both runners simultaneously held at least one such job whose handler had yet to enter for 191.678 ms forward and 184.656 ms reverse. Each held at least four unentered jobs for 67.376 and 72.846 ms. During the last 256 effects, both held an unentered job for 101.450 and 140.301 ms. These durations are lower bounds because the receipt can precede the first handler entry. Publication to the scheduler and the availability of an idle worker are unobserved. A refill change must demonstrate that additional granted jobs reach their durable writes sooner even while earlier grants are still being dispatched.
+
+Run `python3 -B direct4_peer_deadlines.py` in this directory for all 24 deadline comparisons and the individual arm hashes. It checks 1,024 jobs and 2,048 independent application transactions in each of the eight source archives. Jobs with a claim stamp in the cutoff's ambiguous millisecond are reported separately. The [Direct4 idle CPU analysis](DIRECT4-IDLE-BUDGET.md) covers the distinct runner cost question.
+
+## Durable write cadence while both owners have work
+
+For each second-write commit from rank 257 through 768, the replay counts how many of the two runners had at least four jobs from checked batches still awaiting their second write. It assigns simultaneous commits to the state immediately before their timestamp. Wall time in the same state divided by its commit count gives the aggregate cadence. Each column partitions all 512 writes and the entire interval.
+
+| Runners with at least four such jobs | Forward time / writes | Forward µs per write | Reverse time / writes | Reverse µs per write |
+|---|---:|---:|---:|---:|
+| Neither | 25.767 ms / 29 | 889 | 31.595 ms / 32 | 987 |
+| One | 149.084 ms / 198 | 753 | 158.367 ms / 215 | 737 |
+| Both | 163.036 ms / 285 | 572 | 155.293 ms / 265 | 586 |
+
+Applying the fastest observed cadence in each arm to all 512 writes gives **292.893 ms forward and 300.038 ms reverse**. Even the slowest of the six historical warm River intervals finished in **227.280 ms**. A stricter count using four checked jobs per runner whose handlers had yet to enter gives 111 commits in 67.376 ms forward and 122 in 72.846 ms reverse.
+
+These rates describe the released schedule. Supply and completions influence each other, and the ledger cannot show which checked jobs a worker could run immediately. Closing the whole historical middle gap would require a change that also improves on the observed cadence when both owners have work. A fresh comparison can measure whether faster settlement or earlier refill changes that cadence.
+
+### How many jobs had Mesh claimed by River's 768th durable effect?
+
+The slowest of the six warm River arms committed its 768th effect **396.911 ms after enqueue commit**. At that elapsed time the six silent Direct4 controls still needed **160–207 additional stamped jobs** to make 768 effects possible, even if every job already stamped had completed immediately. The count gives Mesh credit for every claim whose millisecond timestamp overlaps the cutoff. Receipt, publication and dispatch can occur later.
+
+| Direct4 control | Jobs possibly stamped at cutoff | Effects at cutoff | Additional claims needed | Earliest observed 768th stamp minus cutoff (ms) | 768th first write minus cutoff (ms) | 768th effect minus 768th first write (ms) |
+|---|---:|---:|---:|---:|---:|---:|
+| Pool supply, forward | 608 | 588 | 160 | 115.563 | 125.031 | 1.927 |
+| Pool supply, reverse | 593 | 577 | 175 | 105.849 | 129.553 | 2.603 |
+| Idle spin, forward | 580 | 563 | 188 | 123.693 | 141.365 | 1.942 |
+| Idle spin, reverse | 561 | 527 | 207 | 129.776 | 162.398 | 0.898 |
+| Event park, forward | 571 | 556 | 197 | 121.694 | 131.110 | 2.821 |
+| Event park, reverse | 597 | 559 | 171 | 105.353 | 125.395 | 2.058 |
+
+The last column compares two independently sorted commit ranks. Different jobs can occupy the two ranks. A change to reply handling could still help substantially if it brings forward subsequent settlements, seat reuse and grants. The product measurement for that mechanism is whether the later grant stamps and first writes advance alongside the effects. These cross-release clocks locate the deficit and leave its cause open.
+
+All six Mesh ledgers record 64 slots and a successful effect for every job. To start job 768, at least 704 earlier jobs must have freed a seat. At the cutoff, only **2–22** completed effects were awaiting a terminal commit record. Even granting immediate seat reuse for every recorded effect across both runners, **116–177 more effects** were needed to make the 768th claim possible. The six actual 704th effects came **82.967–117.029 ms after the cutoff**. This is a lower bound with the observed application-write schedule held fixed. Faster settlement can still help by bringing forward *new* application writes through earlier refill. A change that closes the gap must demonstrate that feedback in the ledger.
+
+Run `python3 -B direct4_throughput_frontier.py EXPOSURE_DIR --rank-768` with the released event-park continuation directory. The output includes the selected River and six Mesh raw hashes.
+
+### How much worker capacity could an unentered handler use?
+
+The commit timestamp on a job's second application write can precede the caller's return from PostgreSQL. Across six silent Direct4 controls on ELF `e836b79a`, using that timestamp as the end of handler occupancy leaves 704–819 apparent worker-ms for checked jobs awaiting handler entry. Using the latest defensible handler return leaves just 2–12 worker-ms in the same calculation. The difference determines whether to target dispatch or the returning database call.
+
+| Release and order | Through second write | Allow 1 ms to return | Allow 2 ms to return | Through terminal XID assignment upper bound |
+|---|---:|---:|---:|---:|
+| Pool supply, forward | 755.248 | 394.868 | 171.832 | 2.140 |
+| Pool supply, reverse | 749.294 | 392.848 | 157.298 | 11.908 |
+| Idle spin, forward | 724.232 | 368.874 | 147.870 | 10.652 |
+| Idle spin, reverse | 818.871 | 459.820 | 215.286 | 4.080 |
+| Event park, forward | 751.629 | 409.291 | 199.453 | 9.919 |
+| Event park, reverse | 704.225 | 366.527 | 165.842 | 12.306 |
+
+Each entry sums worker-ms over both runners from effect rank 256 to 768. For each runner the replay starts counting waiting members at the first handler entry from their checked batch. It subtracts the number of entered handlers covered by the assumed return times from four, floors at zero and caps the result at the number of witnessed waiting members. The last column extends every handler to the earliest recorded commit of an equal or higher XID than its terminal writer. That writer could only select handlers with confirmed exits. The two fixed-lag columns cap each return at the same upper bound.
+
+These intervals do not identify an idle thread. A checked member may still await individual publication, and a worker may be doing other runtime work. The older two-worker direct-handler trace measured a median 0.793–1.280 ms from commit record to application return across its six instrumented arms. The missing measurements on these four-worker controls are the return from the second write and publication of the next eligible attempt. [Two-worker trace](../2026-11-25-dense-handler-commit-return/README.md)
+
+Run `python3 -B direct4_handler_coverage.py EXPOSURE_DIR` here with the released event-park continuation directory. The reducer verifies the release and its replay, reads the other four controls from their pinned Git objects and checks all six native ledgers and process identities.
+
+## Enqueue cost at River's later write cadence
+
+Even if Direct4 matched warm River from the 256th through the 1,024th effect, its current enqueue time would leave it **44.255–75.293 ms short** of 20% higher throughput from submission. Under the same assumption it would already clear the 20% drain-throughput target by 13.538–59.858 ms. The difference matters when choosing between further runner work and accelerating the producer.
+
+This sensitivity crosses six silent Direct4 controls with six historical warm River ledgers. Each calculation keeps Direct4's measured time to the 256th effect after enqueue commit and its final effect-to-settlement interval. It inserts one River arm's elapsed time for all 768 intervening effects. At 1,024 jobs each, a 20% throughput lead permits five-sixths of the peer's elapsed time. Subtracting modeled drain from that submit deadline gives the time available for enqueue.
+
+| Direct4 control | Actual enqueue (ms) | Enqueue saving required across six River arms (ms) |
+|---|---:|---:|
+| Pool supply, forward | 166.596 | 47.867–65.462 |
+| Pool supply, reverse | 173.063 | 53.794–71.389 |
+| Idle spin, forward | 170.314 | 44.255–61.850 |
+| Idle spin, reverse | 160.222 | 57.698–75.293 |
+| Event park, forward | 164.450 | 51.402–68.997 |
+| Event park, reverse | 156.078 | 46.087–63.682 |
+
+Giving Mesh the same River arm's enqueue time as well would put 35 of 36 combinations inside both deadlines. The remaining one misses submit by 0.740 ms. The calculation uses twelve measured arms from separate runs. Each arm appears in six comparisons. Actual joint performance requires a matched native run. Run `python3 -B direct4_throughput_frontier.py EXPOSURE_DIR` with the same exposure directory as the handler coverage replay to reproduce the individual margins and source hashes.
+
+## Would a 32-row claim keep four workers supplied?
+
+A larger ceiling can change a full grant even when the owner has no new capacity to add after BEGIN. The two Direct4 runs reached the 16-row ceiling 23 and 24 times. For each full grant the replay keeps all preceding grants, credits every durable settlement through the end of the stamp's millisecond and respects both seat limits, same-stamp peer grants and remaining jobs. This gives an optimistic bound on room at the decision. The archives omit the client's checked credit at that instant.
+
+| On the original schedule | Forward | Reverse |
+|---|---:|---:|
+| Full grants with room for any extra jobs | 16 | 14 |
+| Full grants with room for the next entire same-owner batch | 13 | 10 |
+| Such pairs with no intervening or same-stamp peer grant | 4 | 3 |
+| Such uninterrupted pairs starting in the middle 512 | 2 | 0 |
+
+For the four and three uninterrupted pairs, the first entry of the earlier batch proves the owner already had its checked receipt. Up to the first entry of the later batch, the owner always had at least one previously received job whose second write was outstanding. It had fewer than four such jobs for at most **8.551 ms out of 69.902 summed owner-ms** forward and **3.333 ms out of 49.555** reverse. The count uses only grants already proved received at the start. A job awaiting its second write may be running, waiting or awaiting dispatch. The other pairs would require reasoning about how an earlier, wider claim redistributes the ordered prefix between the two owners.
+
+Widening might reduce fixed transaction overhead or change the later schedule. It would also put more row work before the first checked receipt. The original ledgers supply little evidence that contiguous pairs delayed a worker for lack of received jobs. The [earlier width-32 experiment](../2026-11-23-wide-trusted-grant/README.md) used two-worker runners and scalar settlement. Its noisy local rotations supply no measured Direct4 CPU saving. Keep the 16-row ceiling for the current native comparison. Run `python3 -B direct4_wide_claim.py` here to reproduce the per-grant bounds from the two original native archives.
+
+## What would one extra worker have to recover?
+
+The first Direct4 checked-return series stopped during warmup. Its ON arm nevertheless recorded a complete application trace for all 1,024 jobs. During the middle 512 second-write commits, preserving the recorded handler residence and owner assignment would require **5.34 and 5.53 continuously occupied workers** on the two runners to reach the slowest historical warm River interval of 227.280 ms. Improving pickup alone with one extra worker per runner would still leave at least **24.239 ms** to recover in this comparison.
+
+| Instrumented warmup, middle 350.921 ms | Runner 1 | Runner 2 |
+|---|---:|---:|
+| Durable effects in the window | 258 | 254 |
+| Handler dispatch through release (worker-ms) | 1,213.397 | 1,257.595 |
+| First SQL send through ReadyForQuery (worker-ms) | 642.585 | 627.086 |
+| Second SQL send through ReadyForQuery (worker-ms) | 539.261 | 597.260 |
+| Both sends, portion certainly after their commit records (worker-ms) | 959.186 | 1,008.746 |
+| Handler residence above five workers × 227.280 ms (worker-ms) | 76.997 | 121.195 |
+
+The replay clips each actual handler turn at the two rank boundaries, including turns already in flight at rank 256. It sums residence separately on the two runners. Dividing the larger sum by five gives **251.519 ms** even with instantaneous pickup and perfect packing of that work. The arithmetic holds recorded service durations fixed. Extra concurrency could change those durations, in either direction. The first and second SQL intervals are disjoint and measure elapsed time on a worker. The after-record sums exclude the clock alignment allowance of 1.055 µs at each commit. PostgreSQL can timestamp the commit before flushing WAL. The trace also includes server scheduling and reply delivery. It cannot attribute the interval to any one of those costs. [Earlier post-flush screen](../2026-11-25-dense-postflush-boundary/screen-loader-retry/evidence/README.md)
+
+The ON warmup is diagnostic. Native release `65115b81` exited 1 on a settlement counter comparison before either measured block ran. The trace distinguishes a receipt delivered by the grouped writer from the SQL that writer uses for a one-member group. The fresh mirrored controls must qualify before using observed reply or dispatch exposure to advance a candidate. A readiness-based suspension would need to show an actual socket wait with another published actor available, while preserving the first write's checked outcome before sending the second.
+
+Run `python3 -B direct4_checked_worker_budget.py EXPOSURE_ARGV_V2 REDUCE_PY` in this directory. The replay pins the failed release, ON warmup archive and original trace decoder from `23df94494`. It verifies the six historical warm River ledgers through the existing peer reducer.
+
+### Fresh mirrored series
+
+The corrected counter allowed native release `ace2f2cb` to complete all 16 arms. Strict replay matched `verified.json` byte for byte. Both measured orders failed the original observer parity checks, including submit, middle span and host CPU comparisons. The forward OFF duplicates alone differed by 39.976 ms in the middle. The reverse submit spread was 53.708 ms against a 50.656 ms allowance. The recorder's estimated CPU charges passed at 1.059 and 0.961 CPU-ms. All measured arms had complete PostgreSQL PID attribution.
+
+| Measured ON, middle 512 effects | Forward | Reverse |
+|---|---:|---:|
+| Observed span (ms) | 359.442 | 375.106 |
+| Handler residence by runner (worker-ms) | 1,077.905 / 1,206.336 | 1,216.891 / 1,317.343 |
+| Minimum span at that residence with five workers on each runner (ms) | 241.267 | 263.469 |
+| Excess over the 227.280 ms historical River interval (ms) | 13.987 | 36.189 |
+| Reply with definitely queued work, clipped at two cores (slot-ms) | 648.445 | 722.345 |
+| Upper bound on between-turn dispatch gaps with queued work, same clipping (slot-ms) | 44.636 | 54.844 |
+
+Even with perfect packing, one owner in each arm would have to reduce total handler residence by at least 69.936 or 180.943 worker-ms for five workers to hit that reference. In those two ON arms the reply intervals overlapped actual queued work, but the failed controls leave the amount on the uninstrumented path undetermined. Neither interval is recoverable wall time. This result supports examining whether an already-admitted coroutine can release its worker during an actual socket wait. It supplies no qualified speedup for doing so and earns no peer comparison.
+
+Use `--measured` with the preceding command and the released `exposure-settlement-v3` directory. The reducer checks the sealed replay digest, both ON archive hashes and all 2,048 job identities across the two arms.
+
+### Could a second spare find another published job?
+
+Both measured ON arms of `ace2f2cb` had stretches where all four workers on the same runner were between sending an application write and accepting ReadyForQuery, while **two distinct fresh attempts** had been published and had yet to be picked. The independent trace join counts the two writes separately. A window starts only after the later publication bound and ends at the earliest possible pickup. This counts eligible jobs in the recorded flow; the trace does not identify when an underlying socket actually blocked or how many healthy database leases were available to a spare.
+
+| Measured ON runner | All four in replies, ≥1 fresh (ms) | All four in replies, ≥2 fresh (ms) | Episodes with ≥2 fresh | Longest such episode (ms) | Time still eligible for the second spare after 0.5 / 1.0 ms per episode (ms) |
+|---|---:|---:|---:|---:|---:|
+| Forward 1 | 197.831 | 180.933 | 344 | 4.091 | 68.864 / 31.644 |
+| Forward 2 | 227.053 | 209.604 | 395 | 4.189 | 80.497 / 35.491 |
+| Reverse 1 | 223.449 | 207.261 | 315 | 7.029 | 100.400 / 57.477 |
+| Reverse 2 | 245.053 | 230.264 | 394 | 4.126 | 95.507 / 49.982 |
+
+The second column includes the third. Subtracting a hypothetical activation delay once per continuous episode shows why the wake cost matters: a 1 ms delay leaves 17–28% of the recorded time with two fresh attempts. An admitted handler can keep running after an original worker gets its reply, so a spare can also impose CPU cost outside these windows. The duration calculation gives neither the number of additional completions nor a predicted gain. It supplies two concrete requirements for the source proof: measure time to actual pickup after a raw socket wait, and account for how long the borrowed worker stays occupied after the original reply arrives. The official parity verdict remains the one above.
+
+### How far could two fresh jobs get before the first base worker received its reply?
+
+The replay selects by publication order, using the job ID to break ties. Each hypothetical spare can start one job per four-worker reply window. It must wait for the fourth worker to enter its reply interval and for the job's publication, then pay the modeled pickup delay while the job is still known to be queued. The calculation shifts that job's own recorded pickup-to-send and pickup-to-checked-reply durations to this earlier pickup. The middle-window boundaries also clip the calculation. Every window is evaluated independently, so an actor can appear in multiple windows. The counts describe opportunities in the observed schedules.
+
+| Runner | Windows with two pickups at 0.5 ms | Both send first write before boundary | Both check first reply | Both check second reply |
+|---|---:|---:|---:|---:|
+| Forward 1 | 129 | 93 | 6 | 0 |
+| Forward 2 | 151 | 120 | 4 | 1 |
+| Reverse 1 | 127 | 107 | 11 | 2 |
+| Reverse 2 | 151 | 113 | 7 | 1 |
+
+At this delay, both jobs could send a first write in 433 of 558 windows, but both could check its reply in only 28. The model assumes two usable connections and preserves each job's original service cost with extra requests in flight. Neither assumption has been verified. The qualification needs to follow work past the first base reply and count checked writes, outstanding connections and worker occupancy. Crediting two completed writes at pickup would overstate what the traces support. The reducer reports each runner at 0, 0.5 and 1 ms and deduplicates job IDs for its separate distinct-job counts.
+
+### What changes when a borrowed worker stays occupied?
+
+A second replay takes each job only once. Each spare becomes available again at pickup plus the job's recorded duration through scheduler release. At most one job per spare can start in each window. If a previously moved job appears among the four original waiters later, that entire later window is ineligible. This avoids borrowing from a base wait the moved job would no longer generate. The replay keeps the other three waits, original arrivals and service durations fixed and assumes a usable connection. It omits any new work a base worker might take in a vacated turn. The two configurations each start with their spares free at the middle-window boundary.
+
+| Runner, modeled 0.5 ms activation | Distinct jobs picked by one spare | Distinct jobs picked by two | Two-spare jobs with both replies checked before window end | Two-spare residence beyond window end |
+|---|---:|---:|---:|---:|
+| Forward 1 | 39 | 60 | 3 | 85.9% |
+| Forward 2 | 41 | 65 | 1 | 83.1% |
+| Reverse 1 | 40 | 65 | 6 | 78.8% |
+| Reverse 2 | 43 | 70 | 1 | 87.9% |
+
+The second spare increased distinct pickups by 21–27 per runner in this replay. Most borrowed-worker residence extended beyond the original wait window. The percentages charge the entire borrowed turn, including the tail of a turn still active at rank 768. They measure elapsed occupancy, which includes waiting. Only a native comparison can determine whether these extra jobs improve durable progress enough to pay the CPU cost.
+
+### How much four-worker overlap can the sparse recorder see?
+
+The raw-receive observer selects an application operation after connection checkout if its start falls in a common 2 ms window every 8 ms. All four operations must have been selected to observe a joint wait. The older checked-return traces in release `ace2f2cb` bracket that selection point between the caller's pool-entry and pre-send timestamps. Applying the mask to those traces gives lower and upper bounds on **recorder coverage of send-to-ReadyForQuery overlap**. A certain selection requires every possible start inside the window. A possible selection requires at least one such start. Both use the original monotonic clock. Only the old trace supplies the timings in this table.
+
+| Selected runner in each measured order | Total all-four overlap | Covered at the sealed offset | Whole-arm operations selected | Covered across eight 2-in-8 ms phases | Covered across eight 8-in-32 ms phases |
+|---|---:|---:|---:|---:|---:|
+| Forward, runner 0 | 208.981 ms | 5.603 ms (2.7%) | 227 | 4.9–18.2 ms | 34.7–44.5 ms |
+| Reverse, runner 1 | 257.357 ms | 15.202 ms (5.9%) | 273–277 | 4.6–15.2 ms | 36.4–55.6 ms |
+
+The overlap columns use the middle 512 durable effects. The eight phases are equally spaced within each period. Both masks select starts during one quarter of elapsed time. A longer continuous window covers more four-way overlap on these schedules because the four writes often start at different times. With the 8-in-32 ms mask, the whole-arm counts ranged from 243–292 operations forward and 251–287 reverse across the eight phases. Those counts do not establish equal recorder CPU. Genuine socket EAGAIN, available fresh work and a recently returned connection impose further conditions. A small positive or zero in the sealed native run cannot be scaled into a full-run wait estimate using the nominal duty cycle.
+
+### Can a fifth connection enter the hot pool?
+
+Release `eb12dc74` stopped on the forward measured OFF-b TLS census. Its forward ON archive contains 244 sampled writes on runner 0, all of which encountered EAGAIN before CommandComplete. ReadyForQuery was already buffered when the client reached it in every write. The warmup recorded another 242 pre-CommandComplete EAGAINs. Four distinct application backends accounted for each arm's waits. Counting the receive records by outstanding leases gives the following whole-arm distribution.
+
+| Outstanding leases when the read blocked | Recently checked-in idle connections | Measured reads | Warmup reads |
+|---:|---:|---:|---:|
+| 1 | 3 | 5 | 4 |
+| 2 | 2 | 9 | 9 |
+| 3 | 1 | 28 | 21 |
+| 4 | 0 | 202 | 208 |
+
+The pool takes the most recently returned connection first. After the initial 500 ms health window expires, four synchronous workers returning healthy connections can maintain at most four hot handles if no other caller uses the pool. At four concurrent leases, the remaining twelve connections require the ordinary checkout health check. A spare that requires an already-hot fifth connection cannot start in this state. The held fixture established that a spare *could* have a hot connection under its own startup and fault schedule. The ordinary measured arm had 20 sampled middle-window intersections of four pre-response waits with fresh jobs published, covering 14.770 ms in total. Each had zero hot idle connections. That duration includes scheduling between kernel readiness and userspace read completion. Neither this partial release nor the historical traces establish a throughput gain.
+
+The older checked-return trace also prices the first ordinary checkouts. On each runner, the first four pool entries belonged to four distinct workers, and all four writes had been sent before any of their checked replies returned. Pool entry to the start of the send ranged from 0.509–6.363 ms in the forward block and 0.357–6.709 ms in reverse. The median for later writes was 0.003 ms on each of the four runner/block pairs. These startup intervals include checkout, caller preparation and scheduling. A spare using a fifth or sixth connection would need its own checked acquisition, which may finish after the first base worker returns. The archives measure neither the extra lease's first-use cost during sustained work nor how often it would stay warm. [Checked-return reducer](direct4_checked_worker_budget.py) · [Pool checkout](../../../../compiler/mesh-rt/src/db/pool.rs)
+
+### How much can an extra worker change with the same published jobs?
+
+In the measured checked-return traces, a fifth worker on each runner could advance the last durable effect by at most **7.462 ms forward and 14.545 ms reverse** if publication times, owner assignment and each job's pickup-to-effect duration stayed fixed. This bound allows the fifth worker to run continuously, gives every checkout zero added cost and allows all five workers to share work perfectly. The reverse limit comes from the publication and service time of the last job itself.
+
+| Always available workers per runner | Maximum final-effect advance, forward | Maximum final-effect advance, reverse |
+|---|---:|---:|
+| 4 | 6.124 ms | 14.545 ms |
+| 5 | 7.462 ms | 14.545 ms |
+| 6 | 8.353 ms | 14.545 ms |
+| Unlimited for this workload | 8.553 ms | 14.545 ms |
+
+For each runner, the replay takes the earliest recorded publication bound of each job in turn. All jobs published at or after that cut still need their pickup-to-second-write time. The final effect cannot occur earlier than the cut plus the sum of those durations divided by the worker count. It must also allow each individual job to finish. The forward five-worker bound comes from twelve jobs on the owner of `job_001012`. The reverse bound depends on `job_001023`. These limits concern the final application write. A real change can advance later publications by returning checked credits earlier or change service durations by increasing backend concurrency.
+
+The pickup replay separately models one spare per runner with a 0.5 ms activation delay, applies it over the entire trial and recalculates all 1,024 durable second-write ranks. It moves each selected job's effect by its pickup advance less the extra checkout charge. The spare stays occupied until scheduler release, including that charge. Other jobs keep their recorded write times. With a single 6.709 ms cold charge per runner and free later reuse, 156 forward and 164 reverse jobs moved. Rank 256 advanced 0.348 ms forward, and rank 960 advanced 0.510 ms reverse. Ranks 64, 512, 768 and 1,024 stayed at their original times in both orders. Charging 6.709 ms at every pickup instead left the final effect **3.160 and 2.427 ms later**. The charge is a sensitivity based on the startup brackets above. The two measured traces failed observer parity. A native comparison has to measure actual checkout costs and whether gains reach the later checked grants and durable write ranks. [Reproducible rank and capacity calculations](direct4_checked_worker_budget.py)
+
+For the same one-time cold charge, the replay also holds the membership of every settlement XID fixed. It shifts each member's checked credit by the change in the last scheduler return in its group. That assumption moved 23 groups covering 149 credits earlier forward, and 26 groups covering 164 credits earlier reverse. Among the groups that advanced, the median shifts were 0.627 and 0.408 ms and the maxima were 1.744 and 2.768 ms. Zero modeled credits moved from definitely after to definitely before an existing same-owner claim stamp in either order. The one-millisecond resolution allows possible crossings for 26 credits at four distinct stamps forward and six credits at one stamp reverse. Each comparison includes the trace's clock-alignment allowance.
+
+An earlier credit could start the next claim earlier even if both old and new credit times precede its recorded stamp. Earlier exits could also change the eight-job group membership, timer, writer queue or the reservation width. The native test must establish whether any of those changes advances publication enough to affect the final writes. The crossing counts alone cannot answer that question.
+
+For the 32 local slots, publication *k* needs at least *k* − 32 earlier jobs on that runner to have returned checked credit. Holding the preceding publications fixed, the replay takes the later of the preceding publication and that required credit, before and after moving the settlement groups. It repeats the calculation at both edges of the preceding publication's measured bracket. In each rotation 960 of the 1,024 jobs came after the first 32 on their respective runner.
+
+With one 6.709 ms checkout charge per runner and free later reuse, this capacity floor moved earlier for only **2 of 960** publications forward (at most **1.391 ms**) and **3 of 960** in reverse (at most **0.453 ms**). One reverse floor moved **2.161 ms later**. The final publication on each runner had zero shift. Charging every additional checkout moved 13 forward and 17 reverse floors later and none earlier. Both publication brackets gave the same counts. These are individual seat constraints at fixed prior publications. A claim can reserve several seats together, and an earlier checked grant could shift a whole series of publications. Only the linked native grant and write clocks can measure that feedback.
+
+### How much of a shift survives successive refills?
+
+The same two traces contained 101 and 105 same-owner claim-stamp groups, each spanning one to sixteen rows. The replay keeps these groups and the actual terminal XID memberships. It moves each group's publications together. It allows the group to move after its predecessor's last publication and once enough earlier checked credits exist for **every row** under the 32-seat cap. The full-transfer case preserves the recorded delay from the later of these prerequisites to first publication. Earlier publication then feeds through member returns and the last return of each terminal group into later credits. The one-spare pickup selection and first cold checkout charge are the same as above.
+
+| Amount of prerequisite shift passed to the next group | Forward rank 768 / final effect advance | Reverse rank 768 / final effect advance |
+|---|---:|---:|
+| Zero | 0 / 0 ms | 0 / 0 ms |
+| Half | <0.001 / 0 ms | 0 / 0 ms |
+| Full | 0.273 / 0.273 ms | −2.161 / 0.073 ms |
+
+At full transfer 26 forward groups moved earlier. In reverse 35 moved earlier and 48 later. A delayed first cold checkout can propagate through the same mechanism as an early credit. This sensitivity keeps the original owner order, group sizes and service durations. It omits contention between owners, changes in which job the spare can pick, and any change in server service at higher concurrency. The millisecond claim stamps do not identify a checked grant. These instrumented arms failed observer parity. A material product gain would need a larger change in pickup, group formation or service time than the modeled credit feedback delivers.
+
+### Can the ordinary ledger show a fifth job making progress?
+
+The two application commits give a recorder-free check. For each physical runner, count a job from its first durable write until its second durable write, excluding the end of the interval. Five overlapping intervals establish that five distinct jobs on that owner had committed their first write and still had an outstanding effect. The broader entry-to-effect interval can also show a fifth job entering before an earlier effect finishes. Neither interval identifies a scheduler thread or the time spent executing SQL.
+
+In all six quiet Direct4 controls, each owner's full-run entry-to-effect peak was four. Each also reached four between commits in the middle 512 effects. The six historical warm River arms had a different pattern. All twelve owner/block pairs reached **20–32** jobs between the two commits in that middle window. Each owner spent **66.266–102.302 ms** at five or more. Summed over both owners, the area above five per owner was **1,042–1,424 job-ms** per block. This area quantifies how much of River's recorded concurrency a five-per-owner ceiling would exclude on the same schedule. A Mesh job could have a shorter interval or a different arrival pattern. The area does not establish a wall-time deficit.
+
+For any earned one-spare pilot, the same offline sweep can establish whether additional job concurrency appeared in the uninstrumented ON arms and whether it coincided with earlier effect ranks. Zero overlap at five leaves open a short use of the spare before first commit or after an earlier effect. Run `direct4_handler_coverage.py EXPOSURE_DIR --warm-river` for the control and peer counts. River's physical attempt ledger supplies the owner PID through a one-to-one join on job key and first-write XID. [Reducer](direct4_handler_coverage.py)
+
+### What did the fifth worker complete before the four original reads returned?
+
+The R3 intact traces cover 1,024 actors per arm, each with two successful checked application writes. On the runner with compensation enabled, five post-send requests were simultaneously awaiting checked replies for a total of 1,227.808 ms. The other runner and both OFF runners peaked at four. The ON trace covers 571 jobs on that runner and 453 on the other. The spare handled 106 of the 571. This case includes deliberate wire holds, a health probe and full tracing.
+
+For every spare pickup, each of the four base lanes had a recorded pre-CommandComplete socket-read interval covering the pickup. The cold pickup sent its first write before any of those reads returned. Its checked reply arrived later. For the subsequent 105 pickups, the median time to the earliest base read return was 1.334 ms. Before that return the spare sent 102 first writes, received 9 successful first replies, sent 9 second writes and received 1 successful second reply. A request already in flight can still overlap useful work after the first base read returns. Socket readiness can precede the observed userspace return.
+
+The ON fixture exited before exporting its per-job database ledger. The interval from first checked reply to start of the second application operation lies inside the two durable commits. Those intervals reached a peak of one on the compensated runner. The outer interval from the start of the first operation through the second checked reply reached five. Actual five-way overlap between durable commits remains unresolved. The silent matched pilot can measure this directly from its per-job ledger if full correctness qualifies.
+
+The [offline reducer](direct4_cold_trace_overlap.py) accepts the R3 raw archive with SHA-256 `9291b708bb815f50fdc8f2afbb350008f0df7564bdb2b186ac7ac5f8f82adbf7`.
+
+R4 exported both intact ledgers and both relay histories. The relay recorded the first INSERT arriving before forwarding it to PostgreSQL, and recorded its idle ReadyForQuery after the implicit commit. The same two boundaries bracket the separate effect commit. A job was certainly between durable commits from its first ReadyForQuery until its effect INSERT arrived at the relay, and possibly between commits from the first arrival to the second ReadyForQuery. The 256th and 768th effect commits are themselves bounded by the corresponding ranks of arrivals and of ReadyForQuery records across both owners.
+
+On the compensated runner, five-way durable overlap lasted **53.221–685.809 ms** over the full intact arm. It lasted **0.693–591.454 ms** after the last deliberate hold resolved and **0.693–293.340 ms** between global effect ranks 256 and 768. Both OFF runners and the other ON runner had a full-arm upper bound of four concurrent jobs between commits. The lower bound proves the spare enabled five jobs to make durable progress on one PID, including within the middle window. The relay and trace were active throughout. These brackets leave the duration in a quiet product run and any advance of the final settlement unmeasured.
+
+Pass `--r4-relay` with the R4 raw archive to the same reducer. The two intact cases passed the independent partial replay. The overall R4 release `61f024d7` exited 1 on separate fault cases.
+
+### Did the fifth worker advance later grants in the silent pilot?
+
+The R5 cold-spare pilot released all 16 arms. OFF-B had the faster submit, drain and middle-512 clocks of the two identical OFF controls in both orders. ON lost to OFF-B on each clock. Its last claim stamp came **47.994 ms later forward and 85.067 ms later reverse** from enqueue commit. From that stamp to the final effect, ON recovered 1.946 and 9.997 ms respectively. At final settlement it was still **40.439 and 78.016 ms behind**. The two OFF drain clocks differed by 76.737 and 84.669 ms. The pilot establishes failure of the predeclared improvement gate; the variation precludes assigning the observed penalty to the spare alone.
+
+| Middle 512 second commits | Forward OFF-B | Forward ON | Reverse OFF-B | Reverse ON |
+|---|---:|---:|---:|---:|
+| Elapsed (ms) | 343.086 | 366.074 | 332.770 | 370.117 |
+| Mean entered jobs awaiting their effect, across both runners | 4.17 | 4.44 | 4.40 | 4.46 |
+| Entry through first commit (job-ms) | 236.7 | 297.6 | 266.8 | 282.3 |
+| First commit through second commit (job-ms) | 1,194.5 | 1,329.3 | 1,199.0 | 1,367.0 |
+| Second commit through terminal settlement (job-ms) | 5,089.0 | 5,831.1 | 5,348.8 | 6,165.1 |
+
+Each job contributes only the portion of its interval inside global effect ranks 256–768. Dividing the sum of the first two residence intervals by the wall interval gives mean in-flight jobs. The additional concurrency coincided with more cumulative time between application commits in both orders, and with more cumulative time between effects and settlement. These are elapsed job intervals across concurrent owners. They cannot separate client scheduling, SQL service or resource waits.
+
+Both ON runners had periods with five jobs simultaneously between their independent commits, **14.864 and 16.790 ms** forward and **8.398 and 9.068 ms** reverse in the middle window. Every measured exact-original or OFF arm peaked at four per runner. Increasing active jobs did not bring the final grant forward. The cooperative candidate needs its own quiet progress and resource comparison before a peer stage.
+
+[Middle-window and final-grant reducer](direct4_quiet_cost.py) · [Official pilot replay](/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-d974b994/target/direct4-cold-one-pilot/controller/replay.json)
+
+### How many effects had to move earlier to fund the last grant?
+
+Each runner had 32 seats. To admit all 1,024 jobs, the two runners needed at least 960 earlier seat releases. Keeping the recorded assignment charges each runner one release per job after its first 32. A terminal receipt can arrive after its durable settlement. As a generous alternative, give each job its seat back as soon as its second application write commits, then let a new claim consume that seat immediately. This retains the measured effect times and charges zero time for settlement, dispatch and the claim itself.
+
+| At the end of faster OFF’s final claim-stamp millisecond | Forward ON | Reverse ON |
+|---|---:|---:|
+| Elapsed from each arm’s enqueue commit | 730.039 ms | 709.270 ms |
+| Additional settlements needed under the observed owner assignment | 31 | 94 |
+| Additional effects needed even with immediate credit on the second write | 17 | 59 |
+| Earliest time those required effects completed, relative to the deadline | +16.427 ms | +52.192 ms |
+| Same lag with all 64 seats pooled across owners | +7.703 ms | +47.300 ms |
+
+At each historical warm River deadline, use the earlier of River’s drain and the time remaining on River’s full-submit clock after ON’s own enqueue. Even with 64 pooled seats and immediate credit, forward ON would have needed **122–129** more second writes and reverse ON **127–149** more just to fund the last claim. Their 960th effects crossed those deadlines **117.699–134.321 ms** and **133.351–149.973 ms** late, respectively. Completing all 1,024 jobs still required the remaining writes and settlement. These historical comparisons quantify the change in application progress needed on this schedule. A different refill policy could change the effect schedule itself.
+
+The [seat-release reducer](direct4_last_claim_floor.py) takes the quiet R5 pilot directory. It verifies the eight measured Mesh archives and the six warm River ledgers used for the deadlines.
+
+### Can more concurrent handlers reach the peer clocks on the same CPU budget?
+
+The quiet pilot recorded cumulative busy ticks on both shared CPUs. The [CPU replay](direct4_quiet_cpu.py) applies the existing [sampling and rounding bounds](../2026-11-25-dense-host-cpu-budget/README.md) to each measured arm's own submit, drain and middle-write intervals. Across six historical warm River arms the middle 512 effects took 205.990–227.280 ms, giving at most 411.980–454.560 CPU-ms for all work during that interval.
+
+| Quiet R5 arm | Measured middle (ms) | Minimum busy CPU in middle (CPU-ms) | Work to remove or move outside the middle to tie River (CPU-ms) | Work to remove or move outside full submit for 20% higher throughput (CPU-ms) |
+|---|---:|---:|---:|---:|
+| Forward faster OFF | 343.086 | 472.934 | 18.374–60.954 | 63.713–91.416 |
+| Forward ON | 366.074 | 500.146 | 45.586–88.166 | 59.865–87.568 |
+| Reverse faster OFF | 332.770 | 496.494 | 41.934–84.514 | 8.215–35.918 |
+| Reverse ON | 370.117 | 467.256 | 12.696–55.276 | 163.123–190.826 |
+
+For full-submit or drain parity, the lower bound on busy work in each of these four arms fits inside the corresponding River interval. The coarse samples therefore leave room for improved overlap to change the end-to-end result. For middle-write parity, every one of the eight measured Mesh arms exceeded the two-core budget of every historical warm River arm. A concurrency change would have to reduce CPU work or shift some of it across those write ranks to reproduce that cadence on the same host load. The counters include PostgreSQL, runtime, kernel and incidental activity. They cannot identify a component to remove. The middle and full-submit budgets overlap and must be evaluated separately.
+
+### Did the fifth worker bring device flush activity down to the historical River range?
+
+All eight measured R5 arms had more device flush completions during drain than any of the six historical warm River arms. The smallest Mesh lower bound was 494. The largest River upper bound was 449. All 14 arms ran on the same boot and PostgreSQL device and completed the two independent application transactions for each of 1,024 jobs.
+
+| Arm | Flush completions during drain | Device flush time during drain |
+|---|---:|---:|
+| Forward faster OFF | 594–891 | 42–64 ms |
+| Forward ON | 767–856 | 56–62 ms |
+| Reverse faster OFF | 614–898 | 44–63 ms |
+| Reverse ON | 743–854 | 57–66 ms |
+| Six historical warm River arms, range of bounds | 324–449 | 24–37 ms |
+
+The two Mesh settings have overlapping bounds in each order. Reaching five jobs between their writes on each runner still left at least 318 extra flushes forward and 294 reverse relative to the highest River bound. The device reports completions from all users and time spent servicing flush requests. It cannot identify which commits shared a flush, how long PostgreSQL waited before submitting one, or how many milliseconds of drain a change would recover. The counts give a concrete comparison for a wider scheduler that also advances late writes.
+
+The [device replay](direct4_device_flushes.py) checks all 14 raw hashes and the recorder source. It brackets the actual diskstats read between the frame timestamp and the next complete 200 ms recorder wait, with 2 ms of clock uncertainty. The inner samples fall wholly inside the official drain clock and the outer pair encloses it.
+
+### What changed on the fixed-eight and protected four-worker releases?
+
+Both native series passed strict replay across 16 arms each. The fixed-eight comparison uses the slower eight-worker duplicate and the faster four-worker duplicate for each clock. The protected pilot compares ON with the faster same-image OFF for each clock. Positive values below mean the candidate finished later.
+
+| Candidate | Forward submit / drain | Reverse submit / drain | Middle 512 effects, forward / reverse |
+|---|---:|---:|---:|
+| Eight fixed workers per PID | +58.851 / +47.838 ms | +117.636 / +95.306 ms | +18.081 / +20.898 ms |
+| Four fixed workers with one protected pair | +58.755 / +53.697 ms | −10.942 / +0.538 ms | +22.891 / −10.659 ms |
+
+Eight fixed workers reached six simultaneous jobs between writes on **both PIDs at once** in both orders. The four eight-worker arms used 787–819 runner CPU-ms for 1,024 completions. The four four-worker arms used 582–612 CPU-ms. The slower eight-worker final grant was 57.051 and 109.034 ms later than the fastest corresponding four-worker grant. On the protected path both owners reached a fifth job in each order. Reverse ON took 749.660 ms to drain against 749.122 ms for faster OFF. The original-image forward arm took 1,970.273 ms to drain, while its two same-image OFF controls took 759.405 and 774.576 ms. That original missed calibration. The forward ON also lost to each OFF control.
+
+The fixed-eight duplicates recorded 32–57 ms of device flush time during drain across the four measurements. Their fixed-four controls recorded 37–64 ms. Protected ON recorded 38–60 ms forward and 42–61 ms reverse. Its anomalous forward original recorded 44–58 ms. The storage readings overlap across treatments and cannot explain the original's additional 1.2 s by a comparable increase in reported flush-service time.
+
+During that same forward original, the PostgreSQL device recorded **1,339–1,648 ms busy** and **1,506–2,016 cumulative ms servicing writes**. The two OFF controls recorded 129–203 and 103–182 ms busy, respectively. Write time was 147–299 and 99–282 ms. Combining the inner time and outer completion counts puts the original at **at least 1.09 ms of device write time per completed write**. Both OFF controls were below 0.26 ms even with their outer time and inner counts. All four forward arms recorded zero device reads. Written sector bounds overlapped. This locates a physical difference during the failed calibration. The device served all users, and the archive has no per-write mapping to a PostgreSQL backend or transaction.
+
+Replay the additional 16 measured raw archives with `--fixed-workers` pointing to the released spawn SETUP evidence directory and `--protected` to the quiet pilot directory. [Fixed-worker release](/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-91e704ed/target/direct-fixed-workers-spawn-evidence/controller-release.json) · [Protected same-image replay](/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-53167fa3/target/direct4-protected-owner-quiet-pilot/controller/replay.json)
+
+### How many application writes had demonstrably reached XID assignment together?
+
+During effects 256 through 768, the protected pair produced a witnessed peak of three concurrent assigned application XIDs in each order. Two or more overlapped for at least 0.457 ms forward and 2.222 ms reverse. The two recording-off controls gave 0.794 and 1.426 ms forward, then zero and 1.819 ms reverse. The handler evidence that five jobs per runner were between writes includes time before assignment and after the commit record. It cannot establish that five writes on a runner had assigned XIDs at once.
+
+| Measured lane | Forward peak floor across both PIDs | Reverse peak floor across both PIDs |
+|---|---:|---:|
+| Four fixed workers, duplicate arms | 1, 2 | 2, 2 |
+| Eight fixed workers, duplicate arms | 2, 2 | 8, 3 |
+| Protected ON | 3 | 3 |
+
+In reverse fixed-eight, one arm reached four assigned writes per owner simultaneously. The full-submit and drain gates still failed. Across all 24 Mesh measurements, including the earlier cold-spare pilot, the ledger witnesses no interval with nine concurrent assigned writes. In four of six historical warm River arms it witnesses nine or more, for 0.271–3.643 ms per arm. The other two reached four. Insetting both ends of every witness by 2 ms reduces the highest middle-window River floor from 21 to seven and the highest Mesh floor from eight to two. The qualified comparison still requires fresh peer clocks.
+
+For each application transaction, any higher ordinary XID must have been assigned before its commit record. Use the earliest such record among the 2,048 application writes and all distinct settlement XIDs in the same fresh cluster. Count only the earlier application's interval from that witness to its own commit timestamp. Transactions that commit in assignment order can overlap without producing a witness. The calculation cannot identify a shared WAL flush, a ready client, or an opportunity to remove elapsed time. The extra workers demonstrated more concurrent database work in one order without improving the scored outcome.
+
+The [overlap replay](direct4_assigned_writes.py) accepts the cold-spare, fixed-worker and protected pilot evidence directories in that order. It verifies all 30 measured raw archives and reports both the original and 2 ms inset intervals. The historical River ledgers record global XIDs and omit the owner PID, so only global overlap is compared across engines.

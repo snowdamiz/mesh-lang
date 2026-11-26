@@ -25,7 +25,7 @@ while (( $# > 0 )); do
       j6_roles=true
       shift
       ;;
-    --effect-transaction|--effect-fence)
+    --effect-transaction|--effect-fence|--effect-compiled)
       if [[ -n "$sql_proof" && "$sql_proof" != "${1#--}" ]]; then
         echo "Select one standalone Jobs SQL proof." >&2
         exit 2
@@ -34,7 +34,7 @@ while (( $# > 0 )); do
       shift
       ;;
     *)
-      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check] [--j6-roles] | --effect-transaction | --effect-fence\n' "$0" >&2
+      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check] [--j6-roles] | --effect-transaction | --effect-fence | --effect-compiled\n' "$0" >&2
       exit 2
       ;;
   esac
@@ -42,6 +42,18 @@ done
 if [[ -n "$sql_proof" ]] && { [[ -n "$postgres_version" ]] || "$parity_driver_check" || "$j6_roles"; }; then
   echo "--$sql_proof runs on its own." >&2
   exit 2
+fi
+
+if [[ "$sql_proof" == effect-compiled ]]; then
+  case "$(uname -m)" in
+    aarch64|x86_64) effect_arch_supported=true ;;
+    *) effect_arch_supported=false ;;
+  esac
+  if ! "$effect_arch_supported" || [[ "$(uname -s)" != Linux ||
+      "$(getconf GNU_LIBC_VERSION 2>/dev/null)" != glibc* || "$(getconf LONG_BIT 2>/dev/null)" != 64 ]]; then
+    echo "--effect-compiled requires GNU/Linux ARM64 or x86-64." >&2
+    exit 2
+  fi
 fi
 
 if revision=$(git rev-parse --verify HEAD 2>/dev/null); then
@@ -56,7 +68,7 @@ fi
 
 verify() {
   export MESH_JOBS_TEST_PG_URL="$MESH_TEST_DATABASE_URL"
-  cargo build --locked -p meshc
+  cargo build --locked -p meshc -p mesh-rt
   if [[ -n "$postgres_version" ]]; then
     MESH_TEST_POSTGRES_VERSION="$postgres_version" \
       cargo test --locked -p mesh-rt --test postgres_compatibility -- --ignored --nocapture
@@ -186,3 +198,7 @@ if "$j6_roles"; then
   bash scripts/verify-jobs-roles.sh
 fi
 verify
+if [[ -n "$postgres_version" ]]; then
+  python3 -B scripts/fixtures/jobs-claim-admission/prove.py "$data"
+  python3 -B scripts/fixtures/jobs-set-based-enqueue/prove.py "$data"
+fi

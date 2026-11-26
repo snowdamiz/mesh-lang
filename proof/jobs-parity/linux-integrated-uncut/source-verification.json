@@ -1,0 +1,384 @@
+{
+  "source_parent": "2abab9c9cee38f861697aee24e9e2769a90d1942",
+  "patched_files_sha256": {
+    "compiler/mesh-rt/src/actor/scheduler.rs": "a0d221216d09a82aaad8035c324a5dadc56f9fd998862afd49045d2a04a5e291",
+    "compiler/mesh-rt/src/dist/telemetry.rs": "50de9c5cec926e4e1c80644774841aae897850911d6319c53dc101de7af058b2"
+  },
+  "os": "Darwin arm64",
+  "rust": "1.99.0 (b940084d7eb6a299eb4bfeb8e34901bc051e7ac4)",
+  "gates": {
+    "rustfmt": {
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_result_totals": []
+    },
+    "scheduler": {
+      "exit": 0,
+      "log_sha256": "fc849a7fcda661c1055d208272debc14992ab3cd5060c858f4b8a4e8026af502",
+      "test_result_totals": [
+        "test result: ok."
+      ]
+    },
+    "telemetry": {
+      "exit": 0,
+      "log_sha256": "739783fe6f7bea86116308e9e00c82807048dae0fa2550bf4aff7a69b0488e08",
+      "test_result_totals": [
+        "test result: ok."
+      ]
+    },
+    "core": {
+      "exit": 0,
+      "log_sha256": "af74acc9d8d3881d020de373191cc0ef91b40f2bb71939f8fb5d458910cc6ff5",
+      "test_result_totals": [
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok."
+      ]
+    },
+    "diagnostics": {
+      "exit": 0,
+      "log_sha256": "dcb8ab3a6e3190ac357f4eff384d56fe2f2375641c7961d44327f758e601827e",
+      "test_result_totals": []
+    },
+    "runtime-dependencies": {
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_result_totals": []
+    },
+    "runtime": {
+      "exit": 0,
+      "log_sha256": "85f63972b879b4783c9a6b7404e34398c28bb608b955d00f77035f0326b6af30",
+      "test_result_totals": [
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok."
+      ]
+    },
+    "build": {
+      "exit": 0,
+      "log_sha256": "bbc61ce394d6b812ded23fd191644faf88ed289a5c5b31c05269f0beafdf6101",
+      "test_result_totals": []
+    },
+    "fuzz": {
+      "exit": 0,
+      "log_sha256": "f326723d8654accebdeb2450c654e5b38f6f593547804cd66917450480e3110f",
+      "test_result_totals": []
+    },
+    "examples": {
+      "exit": 0,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "test_result_totals": []
+    },
+    "compiled": {
+      "exit": 0,
+      "log_sha256": "443d71ec331bcfc0b191df53a2de5e1cb28471a931a0e8e30e44c80132988104",
+      "test_result_totals": [
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok."
+      ]
+    },
+    "laws": {
+      "exit": 0,
+      "log_sha256": "9004db63ec02ed7c81e1a0d5af6553e5a7c10d40d09acf1d8a33da6ce7844c0e",
+      "test_result_totals": [
+        "test result: ok.",
+        "test result: ok."
+      ]
+    },
+    "z3": {
+      "exit": 0,
+      "log_sha256": "5371ea76f894f8b5cda3b1003e5f26fbb83a59144ea289b9735ed50cc13cc4a5",
+      "test_result_totals": [
+        "test result: ok."
+      ]
+    },
+    "pg-17.11": {
+      "exit": 0,
+      "log_sha256": "abf0be94c38dfaed55af341bccb644ea224d19375404181eded15f650fd1042e",
+      "test_result_totals": [
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok."
+      ]
+    },
+    "effect-fence-17.11": {
+      "exit": 0,
+      "log_sha256": "9ad48248abd37c02d01f504e0faaa04e40671a0b9078e734cbc42dcac5957346",
+      "test_result_totals": []
+    },
+    "pg-18.7": {
+      "exit": 0,
+      "log_sha256": "2550352699d9d41a37da0bc2246ffd48b479bcc8b5fddb249b5628474561e745",
+      "test_result_totals": [
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok."
+      ]
+    },
+    "effect-fence-18.7": {
+      "exit": 0,
+      "log_sha256": "d8f91ff3d91cda945faafe220c4c84eb5ca573c4b0dc1121d132544932fd6b13",
+      "test_result_totals": []
+    },
+    "pg-19.0": {
+      "exit": 0,
+      "log_sha256": "c018b80bff920e9b4652afac52af910e800ec9ed2b6754f812b2d86ba91dfebc",
+      "test_result_totals": [
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok.",
+        "test result: ok."
+      ]
+    },
+    "effect-fence-19.0": {
+      "exit": 0,
+      "log_sha256": "a0838b0bce73214234cf5672f8e34257cebd4ab23f78d56560d28dba94498a72",
+      "test_result_totals": []
+    }
+  },
+  "initial_tool_resolution_attempt": {
+    "rustfmt": 1,
+    "scheduler": 1,
+    "telemetry": 1,
+    "core": 1,
+    "diagnostics": 1,
+    "runtime-dependencies": 127,
+    "runtime": 1,
+    "build": 1,
+    "fuzz": 127,
+    "examples": 127,
+    "compiled": 1,
+    "laws": 1,
+    "z3": 1
+  },
+  "authoritative_commands": ".github/workflows/authoritative-verification.yml",
+  "linux_release_archive_sha256": "fcb9f02c93e1ae519f9471212aa4b1c938db244908f6e976db9eb240c6865a82",
+  "linux_compiled_fixtures": {
+    "latest_receipt_sha256": "968dc8bdc11077d30a4416db9c27f3b731d514bc2a2a8ed75c04ffcf4d5a1e9f",
+    "passed_cases": 15,
+    "rows": [
+      {
+        "case": "wake100",
+        "bounds": [
+          1,
+          1
+        ],
+        "output": "wake 75125",
+        "status": 0
+      },
+      {
+        "case": "wake100",
+        "bounds": [
+          2,
+          2
+        ],
+        "output": "wake 219917",
+        "status": 0
+      },
+      {
+        "case": "wake100",
+        "bounds": [
+          1,
+          2
+        ],
+        "output": "wake 81959",
+        "status": 0
+      },
+      {
+        "case": "timer_service",
+        "bounds": [
+          1,
+          1
+        ],
+        "output": "timer 41",
+        "status": 0
+      },
+      {
+        "case": "timer_service",
+        "bounds": [
+          2,
+          2
+        ],
+        "output": "timer 41",
+        "status": 0
+      },
+      {
+        "case": "timer_service",
+        "bounds": [
+          1,
+          2
+        ],
+        "output": "timer 41",
+        "status": 0
+      },
+      {
+        "case": "gc_live_register_roots",
+        "bounds": [
+          1,
+          1
+        ],
+        "output": "gc live register roots preserved",
+        "status": 0
+      },
+      {
+        "case": "gc_live_register_roots",
+        "bounds": [
+          2,
+          2
+        ],
+        "output": "gc live register roots preserved",
+        "status": 0
+      },
+      {
+        "case": "gc_live_register_roots",
+        "bounds": [
+          1,
+          2
+        ],
+        "output": "gc live register roots preserved",
+        "status": 0
+      },
+      {
+        "case": "gc_main_roots",
+        "bounds": [
+          1,
+          1
+        ],
+        "output": "gc live register roots preserved",
+        "status": 0
+      },
+      {
+        "case": "gc_main_roots",
+        "bounds": [
+          2,
+          2
+        ],
+        "output": "gc live register roots preserved",
+        "status": 0
+      },
+      {
+        "case": "gc_main_roots",
+        "bounds": [
+          1,
+          2
+        ],
+        "output": "gc live register roots preserved",
+        "status": 0
+      },
+      {
+        "case": "idle100",
+        "bounds": [
+          1,
+          1
+        ],
+        "output": "idle 100",
+        "status": 0
+      },
+      {
+        "case": "idle100",
+        "bounds": [
+          2,
+          2
+        ],
+        "output": "idle 100",
+        "status": 0
+      },
+      {
+        "case": "idle100",
+        "bounds": [
+          1,
+          2
+        ],
+        "output": "idle 100",
+        "status": 0
+      }
+    ],
+    "serial_sha256": "b3fae27752c5e12f6226d7c141737a61ce5adbc2afcd56b041f00c06543b8f07"
+  },
+  "verified_source_commit": "f8f8ed21cef0dc59fc7683bc873bac896e57069a"
+}

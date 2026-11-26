@@ -1,0 +1,578 @@
+{
+  "environment": {
+    "host_cpu": "Apple M5 Pro",
+    "host_logical_cpus": 15,
+    "postgres": "17.11 Homebrew on loopback with verified TLS and SCRAM",
+    "rust": "1.99.0",
+    "llvm": "21.1.8",
+    "oban": "2.24.2 Basic with Isolated notifier",
+    "elixir": "1.20.4",
+    "erlang": "29.1.1",
+    "seed": 5938,
+    "mesh_poll_ms": 250,
+    "mesh_listen": true,
+    "mesh_batch": true,
+    "sample_note": "Sampled RSS, threads, connections and executing jobs can miss a short-lived peak. CPU includes process startup and idle."
+  },
+  "trial_columns": [
+    "pair",
+    "engine",
+    "completed",
+    "jobs_per_second",
+    "cpu_ms_per_job",
+    "pickup_p99_ms",
+    "peak_rss_mib",
+    "peak_connections",
+    "peak_processes",
+    "peak_threads",
+    "peak_queued_context_bytes",
+    "peak_executing",
+    "estimated_peak_executing",
+    "starting_host_load_average_1m",
+    "peak_host_load_average_1m",
+    "sql_calls_per_job",
+    "claim_calls_per_job",
+    "claim_to_entry_mean_ms",
+    "entry_to_first_commit_mean_ms",
+    "first_to_second_commit_mean_ms",
+    "durable_attempt_rows",
+    "durable_effect_rows",
+    "statement_counter_deallocations"
+  ],
+  "runs": {
+    "baseline-noop": {
+      "profile": "noop-8r-64s",
+      "manifest": {
+        "baseline_executable_sha256": null,
+        "baseline_mesh_sha": null,
+        "elixir": "1.20.4",
+        "harness_sha": "e7abb534f38b97ba2cbfac097518c06b0ae619c2",
+        "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "load_average_at_start": [
+          9.28125,
+          11.435546875,
+          11.142578125
+        ],
+        "logical_cpus": 15,
+        "mesh_batch": true,
+        "mesh_executable_sha256": "0362135456c5dd35e524bb7f369f27155776fad0d3775b5e234e053f964a838d",
+        "mesh_listen": true,
+        "mesh_sha": "e7abb534f38b97ba2cbfac097518c06b0ae619c2",
+        "oban": "2.24.2",
+        "poll_ms": 250,
+        "postgres_settings": {
+          "fsync": "on",
+          "full_page_writes": "on",
+          "max_connections": "128",
+          "pg_stat_statements.max": "5000",
+          "pg_stat_statements.track": "top",
+          "server_version": "17.11 (Homebrew)",
+          "server_version_num": "170011",
+          "shared_buffers": "16384",
+          "synchronous_commit": "on",
+          "track_commit_timestamp": "on"
+        },
+        "session_transport": "SCRAM with verified TLS"
+      },
+      "result": {
+        "budget_breaches": [
+          {
+            "metric": "cpu_seconds_per_job",
+            "profile": "noop-8r-64s",
+            "scope": "budgets"
+          },
+          {
+            "metric": "jobs_per_second",
+            "profile": "noop-8r-64s",
+            "scope": "comparison"
+          },
+          {
+            "metric": "pickup_p99_ms",
+            "profile": "noop-8r-64s",
+            "scope": "comparison"
+          }
+        ],
+        "five_paired_trials": true,
+        "mode": "load",
+        "status": "passed"
+      },
+      "input_sha256": [
+        "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a"
+      ],
+      "trials": [
+        [0, "mesh", 1024, 730.8189, 6.698, 1329.708, 105.5469, 34, 8, 168, 10848, 49, 64, 9.3047, 13.2041, 6.7461, 0.627, 9.5849, 41.294, 0.8469, 1024, 1024, 0],
+        [0, "oban", 1024, 4593.3313, 5.6015, 220.177, 842.4375, 82, 16, 96, null, 7, 54, 13.2041, 13.2041, 3.5352, 0.1338, 2.3523, 0.5594, 0.6408, 1024, 1024, 0],
+        [1, "mesh", 1024, 719.8386, 7.1445, 1360.1592, 150.4688, 35, 15, 192, 10848, 60, 64, 11.856, 11.856, 6.7705, 0.6436, 10.4437, 47.9749, 0.822, 1024, 1024, 0],
+        [1, "oban", 1024, 2892.9487, 5.5103, 351.7161, 843.8281, 80, 16, 96, null, 16, 56, 12.627, 12.627, 3.5635, 0.1328, 1.9648, 0.4456, 0.5316, 1024, 1024, 0],
+        [2, "mesh", 1024, 778.6824, 6.7773, 1272.7771, 144.5, 40, 14, 180, 10848, 48, 63, 11.0664, 11.0664, 6.6396, 0.6133, 9.9012, 40.1129, 0.8619, 1024, 1024, 0],
+        [2, "oban", 1024, 2664.8013, 5.5366, 381.6169, 843.1406, 82, 16, 96, null, 16, 48, 10.5005, 10.5005, 3.5439, 0.1328, 1.8682, 0.4383, 0.5147, 1024, 1024, 0],
+        [3, "mesh", 1024, 310.5873, 8.3046, 3180.71, 508.1562, 36, 59, 390, 10848, 62, 64, 9.1709, 11.479, 7.7705, 0.8271, 9.8101, 169.9618, 0.7819, 1024, 1024, 0],
+        [3, "oban", 1024, 4496.1581, 5.4865, 225.543, 842.7969, 82, 16, 96, null, 0, 56, 9.2729, 9.2729, 3.5361, 0.1328, 2.3633, 0.526, 0.6602, 1024, 1024, 0],
+        [4, "mesh", 1024, 314.9939, 8.3014, 3037.229, 604.0625, 34, 72, 448, 10848, 64, 64, 11.479, 15.1587, 7.5059, 0.7578, 9.3234, 166.4684, 0.8755, 1024, 1024, 0],
+        [4, "oban", 1024, 2428.3934, 6.1182, 417.7849, 844.4375, 82, 16, 96, null, 16, 61, 16.667, 17.0938, 3.6631, 0.1348, 5.7765, 1.069, 1.2888, 1024, 1024, 0]
+      ]
+    },
+    "baseline-slow": {
+      "profile": "slow-1r-64s",
+      "manifest": {
+        "baseline_executable_sha256": null,
+        "baseline_mesh_sha": null,
+        "elixir": "1.20.4",
+        "harness_sha": "e7abb534f38b97ba2cbfac097518c06b0ae619c2",
+        "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "load_average_at_start": [
+          20.13818359375,
+          13.9814453125,
+          12.12451171875
+        ],
+        "logical_cpus": 15,
+        "mesh_batch": true,
+        "mesh_executable_sha256": "e4d17a81a05c27472f072485dcbd5c7d55798651809a728ef23ff9f81b276a2e",
+        "mesh_listen": true,
+        "mesh_sha": "e7abb534f38b97ba2cbfac097518c06b0ae619c2",
+        "oban": "2.24.2",
+        "poll_ms": 250,
+        "postgres_settings": {
+          "fsync": "on",
+          "full_page_writes": "on",
+          "max_connections": "128",
+          "pg_stat_statements.max": "5000",
+          "pg_stat_statements.track": "top",
+          "server_version": "17.11 (Homebrew)",
+          "server_version_num": "170011",
+          "shared_buffers": "16384",
+          "synchronous_commit": "on",
+          "track_commit_timestamp": "on"
+        },
+        "session_transport": "SCRAM with verified TLS"
+      },
+      "result": {
+        "budget_breaches": [
+          {
+            "metric": "cpu_seconds_per_job",
+            "profile": "slow-1r-64s",
+            "scope": "budgets"
+          },
+          {
+            "metric": "peak_rss_bytes",
+            "profile": "slow-1r-64s",
+            "scope": "budgets"
+          },
+          {
+            "metric": "jobs_per_second",
+            "profile": "slow-1r-64s",
+            "scope": "comparison"
+          }
+        ],
+        "five_paired_trials": true,
+        "mode": "load",
+        "status": "passed"
+      },
+      "input_sha256": [
+        "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd"
+      ],
+      "trials": [
+        [0, "mesh", 512, 362.3732, 7.5604, 1277.104, 455.1719, 68, 47, 317, 267488, 64, 64, 18.8384, 18.9312, 4.9961, 0.2188, 17.0856, 16.4135, 104.5476, 512, 512, 0],
+        [0, "oban", 512, 456.9894, 1.9106, 1015.27, 120.7188, 68, 2, 12, null, 64, 64, 18.0557, 19.0918, 3.2559, 0.0508, 8.8154, 1.1763, 104.8414, 512, 512, 0],
+        [1, "mesh", 512, 323.1735, 7.4467, 1439.4221, 299.9688, 63, 36, 274, 267488, 62, 64, 17.6934, 17.6934, 4.7891, 0.166, 20.2347, 19.9637, 104.5735, 512, 512, 0],
+        [1, "oban", 512, 512.7851, 1.9444, 892.783, 121.8438, 68, 2, 12, null, 64, 64, 18.3633, 18.3633, 3.1699, 0.0273, 8.9506, 0.8153, 102.5764, 512, 512, 0],
+        [2, "mesh", 512, 335.4867, 7.6215, 1361.1831, 405.0312, 62, 45, 312, 267488, 63, 64, 17.2373, 17.2373, 4.8945, 0.1914, 15.2095, 33.2389, 104.7402, 512, 512, 0],
+        [2, "oban", 512, 424.7863, 2.1189, 1100.947, 118.4375, 68, 2, 12, null, 64, 64, 16.1309, 16.1309, 3.207, 0.0371, 9.0701, 1.4801, 105.1282, 512, 512, 0],
+        [3, "mesh", 512, 407.3611, 7.7013, 1129.7432, 433.5312, 66, 43, 274, 267488, 64, 64, 19.1631, 19.1631, 5.2773, 0.2891, 11.1429, 12.1403, 104.0237, 512, 512, 0],
+        [3, "oban", 512, 420.6807, 2.0868, 1113.5911, 119.9844, 68, 2, 12, null, 64, 64, 19.4385, 19.4385, 3.2676, 0.0547, 9.769, 2.9857, 106.1816, 512, 512, 0],
+        [4, "mesh", 512, 406.5212, 7.4115, 1086.3281, 392.3906, 59, 40, 289, 267488, 64, 64, 18.5894, 18.5894, 5.3984, 0.3203, 9.6925, 10.6896, 103.9128, 512, 512, 0],
+        [4, "oban", 512, 446.6373, 1.5552, 1043.262, 119.8438, 68, 2, 12, null, 64, 64, 17.4209, 17.4209, 3.1738, 0.0312, 5.2995, 0.7265, 101.9403, 512, 512, 0]
+      ]
+    },
+    "candidate-large": {
+      "profile": "large-8r-64s",
+      "manifest": {
+        "baseline_executable_sha256": null,
+        "baseline_matches_mesh": false,
+        "baseline_mesh_sha": null,
+        "elixir": "1.20.4",
+        "harness_sha": "aa83eb0c66bf0429b1898853f916d4159bba2e3a",
+        "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "load_average_at_start": [
+          18.1806640625,
+          31.1513671875,
+          35.22314453125
+        ],
+        "logical_cpus": 15,
+        "mesh_batch": true,
+        "mesh_executable_sha256": "d9cae81e5387920a47181b23bfb46d40650f807bec916051ee04ab7bf93b6eba",
+        "mesh_listen": true,
+        "mesh_sha": "e4c8fc947f1efc7e4f3e7b33a041ebf441a62833",
+        "oban": "2.24.2",
+        "poll_ms": 250,
+        "postgres_settings": {
+          "fsync": "on",
+          "full_page_writes": "on",
+          "max_connections": "128",
+          "pg_stat_statements.max": "5000",
+          "pg_stat_statements.track": "top",
+          "server_version": "17.11 (Homebrew)",
+          "server_version_num": "170011",
+          "shared_buffers": "16384",
+          "synchronous_commit": "on",
+          "track_commit_timestamp": "on"
+        },
+        "session_transport": "SCRAM with verified TLS"
+      },
+      "result": {
+        "budget_breaches": [
+          {
+            "metric": "jobs_per_second",
+            "profile": "large-8r-64s",
+            "scope": "comparison"
+          },
+          {
+            "metric": "pickup_p99_ms",
+            "profile": "large-8r-64s",
+            "scope": "comparison"
+          }
+        ],
+        "five_paired_trials": true,
+        "mode": "load",
+        "status": "passed"
+      },
+      "input_sha256": [
+        "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1"
+      ],
+      "trials": [
+        [0, "mesh", 64, 291.1514, 15.8409, 199.7061, 129.4531, 39, 8, 80, 4196960, 8, 16, 18.0669, 18.0669, 16.3906, 1.7344, 15.1932, 8.8939, 2.0934, 64, 64, 0],
+        [0, "oban", 64, 336.9482, 104.0329, 180.0471, 854.8906, 82, 16, 96, null, 0, 29, 18.9629, 18.9629, 10.0469, 0.2656, 28.5087, 2.0092, 3.8467, 64, 64, 0],
+        [1, "mesh", 64, 335.9369, 15.5217, 172.8779, 126.6719, 33, 8, 80, 4196960, 0, 16, 18.8887, 18.8887, 15.9531, 1.6875, 12.8834, 8.2753, 1.7846, 64, 64, 0],
+        [1, "oban", 64, 344.5935, 99.1827, 177.1841, 865.2188, 82, 16, 96, null, 0, 40, 19.3145, 19.3145, 9.5, 0.2188, 30.0238, 2.9767, 3.6085, 64, 64, 0],
+        [2, "mesh", 64, 278.3226, 15.7495, 206.9731, 122.1094, 33, 8, 95, 4196960, 11, 23, 18.0967, 18.0967, 16.4688, 1.7656, 23.4922, 10.959, 2.5189, 64, 64, 0],
+        [2, "oban", 64, 434.4196, 88.6415, 141.491, 861.0312, 82, 16, 96, null, 0, 48, 16.1694, 16.1694, 8.7812, 0.25, 21.1963, 1.6736, 2.9909, 64, 64, 0],
+        [3, "mesh", 64, 316.0604, 15.4784, 188.0298, 121.125, 33, 8, 65, 4196960, 8, 16, 14.1626, 14.1626, 15.7812, 1.6562, 15.2379, 8.1859, 1.7462, 64, 64, 0],
+        [3, "oban", 64, 412.1217, 85.4616, 149.198, 845.9844, 82, 16, 96, null, 8, 32, 15.355, 15.355, 8.7188, 0.25, 19.1172, 1.0531, 2.4946, 64, 64, 0],
+        [4, "mesh", 64, 338.4919, 15.6724, 171.1479, 130.25, 35, 8, 64, 4196960, 14, 17, 13.5889, 13.5889, 15.5156, 1.5781, 13.381, 8.4138, 1.7496, 64, 64, 0],
+        [4, "oban", 64, 737.0386, 85.2417, 81.262, 849.2969, 82, 16, 96, null, 0, 32, 13.1411, 13.1411, 6.8438, 0.1875, 19.7729, 1.248, 2.534, 64, 64, 0]
+      ]
+    },
+    "candidate-noop": {
+      "profile": "noop-8r-64s",
+      "manifest": {
+        "baseline_executable_sha256": null,
+        "baseline_mesh_sha": null,
+        "elixir": "1.20.4",
+        "harness_sha": "e4c8fc947f1efc7e4f3e7b33a041ebf441a62833",
+        "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "load_average_at_start": [
+          12.6015625,
+          13.626953125,
+          12.4638671875
+        ],
+        "logical_cpus": 15,
+        "mesh_batch": true,
+        "mesh_executable_sha256": "d16b484a0ed1fd31ea53d47f7d77bab392bebd735a35531894cfdca0186030c0",
+        "mesh_listen": true,
+        "mesh_sha": "e4c8fc947f1efc7e4f3e7b33a041ebf441a62833",
+        "oban": "2.24.2",
+        "poll_ms": 250,
+        "postgres_settings": {
+          "fsync": "on",
+          "full_page_writes": "on",
+          "max_connections": "128",
+          "pg_stat_statements.max": "5000",
+          "pg_stat_statements.track": "top",
+          "server_version": "17.11 (Homebrew)",
+          "server_version_num": "170011",
+          "shared_buffers": "16384",
+          "synchronous_commit": "on",
+          "track_commit_timestamp": "on"
+        },
+        "session_transport": "SCRAM with verified TLS"
+      },
+      "result": {
+        "budget_breaches": [
+          {
+            "metric": "jobs_per_second",
+            "profile": "noop-8r-64s",
+            "scope": "comparison"
+          },
+          {
+            "metric": "pickup_p99_ms",
+            "profile": "noop-8r-64s",
+            "scope": "comparison"
+          }
+        ],
+        "five_paired_trials": true,
+        "mode": "load",
+        "status": "passed"
+      },
+      "input_sha256": [
+        "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a"
+      ],
+      "trials": [
+        [0, "mesh", 1024, 496.657, 7.2785, 1970.865, 138.0, 38, 15, 162, 10848, 48, 64, 15.1943, 15.2588, 6.7383, 0.5977, 15.5821, 47.061, 1.9952, 1024, 1024, 0],
+        [0, "oban", 1024, 2873.8286, 6.3623, 349.4299, 838.9844, 82, 16, 96, null, 20, 63, 15.478, 15.478, 3.6475, 0.1387, 4.147, 1.0173, 1.3369, 1024, 1024, 0],
+        [1, "mesh", 1024, 570.0157, 7.3119, 1744.8938, 224.0781, 35, 26, 200, 10848, 58, 64, 14.8555, 17.6694, 7.0117, 0.6855, 14.6511, 63.3121, 1.4663, 1024, 1024, 0],
+        [1, "oban", 1024, 2769.8064, 6.3732, 362.9399, 835.2031, 80, 16, 96, null, 32, 58, 15.564, 15.564, 3.6328, 0.1338, 4.5006, 1.1683, 1.6169, 1024, 1024, 0],
+        [2, "mesh", 1024, 500.1522, 7.2955, 1939.9131, 259.5312, 35, 28, 204, 10848, 58, 64, 17.6694, 17.6694, 7.1143, 0.7041, 13.7616, 72.7735, 1.3352, 1024, 1024, 0],
+        [2, "oban", 1024, 2879.0482, 6.683, 349.281, 839.8125, 80, 16, 96, null, 9, 64, 18.1172, 19.0684, 3.7793, 0.1396, 4.5248, 1.4417, 1.9668, 1024, 1024, 0],
+        [3, "mesh", 1024, 420.3658, 7.6052, 2314.687, 380.7969, 35, 44, 242, 10848, 56, 64, 25.1177, 27.3604, 6.7256, 0.585, 13.6063, 89.318, 2.135, 1024, 1024, 0],
+        [3, "oban", 1024, 1870.1187, 7.0548, 524.418, 843.0625, 82, 16, 96, null, 40, 64, 23.4741, 25.1177, 3.9365, 0.1465, 8.0777, 2.674, 3.7584, 1024, 1024, 0],
+        [4, "mesh", 1024, 353.7233, 7.5748, 2764.2649, 478.125, 35, 56, 286, 10848, 64, 64, 27.3604, 28.0518, 6.7471, 0.5898, 12.0995, 130.1502, 1.6305, 1024, 1024, 0],
+        [4, "oban", 1024, 2122.9705, 6.7487, 476.0981, 841.4531, 80, 16, 96, null, 19, 61, 29.5688, 30.0254, 3.7812, 0.1445, 7.994, 1.5067, 2.8617, 1024, 1024, 0]
+      ]
+    },
+    "candidate-short": {
+      "profile": "short-1r-16s",
+      "manifest": {
+        "baseline_executable_sha256": null,
+        "baseline_matches_mesh": false,
+        "baseline_mesh_sha": null,
+        "elixir": "1.20.4",
+        "harness_sha": "b36ee0105d1fa9f3bbf7af7ec0880cdd19d2683a",
+        "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "load_average_at_start": [
+          40.759765625,
+          62.15966796875,
+          44.98583984375
+        ],
+        "logical_cpus": 15,
+        "mesh_batch": true,
+        "mesh_executable_sha256": "88f304c30e93621f7706dd8bd293a9f25feb1fdc243c1e2e70826f91c5bf29dc",
+        "mesh_listen": true,
+        "mesh_sha": "e4c8fc947f1efc7e4f3e7b33a041ebf441a62833",
+        "oban": "2.24.2",
+        "poll_ms": 250,
+        "postgres_settings": {
+          "fsync": "on",
+          "full_page_writes": "on",
+          "max_connections": "128",
+          "pg_stat_statements.max": "5000",
+          "pg_stat_statements.track": "top",
+          "server_version": "17.11 (Homebrew)",
+          "server_version_num": "170011",
+          "shared_buffers": "16384",
+          "synchronous_commit": "on",
+          "track_commit_timestamp": "on"
+        },
+        "session_transport": "SCRAM with verified TLS"
+      },
+      "result": {
+        "budget_breaches": [
+          {
+            "metric": "cpu_seconds_per_job",
+            "profile": "short-1r-16s",
+            "scope": "budgets"
+          },
+          {
+            "metric": "jobs_per_second",
+            "profile": "short-1r-16s",
+            "scope": "comparison"
+          },
+          {
+            "metric": "pickup_p99_ms",
+            "profile": "short-1r-16s",
+            "scope": "comparison"
+          }
+        ],
+        "five_paired_trials": true,
+        "mode": "load",
+        "status": "passed"
+      },
+      "input_sha256": [
+        "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1"
+      ],
+      "trials": [
+        [0, "mesh", 128, 459.3461, 6.5953, 256.7849, 13.5469, 5, 1, 40, 21696, 9, 16, 35.335, 35.335, 5.4219, 0.3281, 9.9161, 11.6028, 2.4303, 128, 128, 0],
+        [0, "oban", 128, 824.1747, 4.7534, 151.6899, 106.3594, 20, 2, 12, null, 0, 16, 33.4663, 33.4663, 3.3516, 0.0703, 2.5317, 0.6782, 2.2851, 128, 128, 0],
+        [1, "mesh", 128, 628.7573, 6.2625, 186.6841, 13.125, 5, 1, 18, 21696, 1, 16, 29.3105, 29.3105, 5.5625, 0.3672, 7.2296, 7.9823, 1.878, 128, 128, 0],
+        [1, "oban", 128, 885.0535, 4.8118, 141.6641, 107.9531, 19, 2, 12, null, 0, 16, 31.4268, 31.4268, 3.4141, 0.0703, 3.3954, 0.6424, 2.3514, 128, 128, 0],
+        [2, "mesh", 128, 496.2583, 6.3261, 238.3472, 13.4375, 7, 1, 40, 21696, 11, 16, 27.5239, 27.5239, 5.25, 0.2891, 9.3527, 10.1744, 2.2297, 128, 128, 0],
+        [2, "oban", 128, 1256.8514, 4.7968, 98.9519, 108.5312, 20, 2, 12, null, 0, 16, 25.7202, 25.7202, 3.3516, 0.0703, 2.2564, 0.5944, 2.2515, 128, 128, 0],
+        [3, "mesh", 128, 460.521, 6.1713, 258.3071, 13.3594, 8, 1, 35, 21696, 16, 16, 22.5342, 22.5713, 5.0469, 0.2344, 10.3866, 10.3545, 2.4955, 128, 128, 0],
+        [3, "oban", 128, 906.6758, 4.1533, 138.239, 105.9688, 20, 2, 12, null, 0, 16, 24.0605, 24.0605, 3.3516, 0.0703, 2.2123, 0.6197, 2.2516, 128, 128, 0],
+        [4, "mesh", 128, 642.4287, 6.3203, 186.5, 13.3125, 7, 1, 8, 21696, 10, 16, 22.5713, 22.5713, 5.4688, 0.3438, 7.6019, 7.7982, 1.856, 128, 128, 0],
+        [4, "oban", 128, 401.2376, 5.4533, 316.2129, 106.7969, 18, 2, 12, null, 0, 16, 21.4844, 21.4844, 3.3828, 0.0703, 1.8933, 0.5534, 2.2246, 128, 128, 0]
+      ]
+    },
+    "candidate-slow": {
+      "profile": "slow-1r-64s",
+      "manifest": {
+        "baseline_executable_sha256": null,
+        "baseline_mesh_sha": null,
+        "elixir": "1.20.4",
+        "harness_sha": "e4c8fc947f1efc7e4f3e7b33a041ebf441a62833",
+        "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "load_average_at_start": [
+          26.60888671875,
+          19.037109375,
+          14.81787109375
+        ],
+        "logical_cpus": 15,
+        "mesh_batch": true,
+        "mesh_executable_sha256": "7053ee83b4033a4c6a0ed33eac342fba77925d64803ff71d0557b1e502777d67",
+        "mesh_listen": true,
+        "mesh_sha": "e4c8fc947f1efc7e4f3e7b33a041ebf441a62833",
+        "oban": "2.24.2",
+        "poll_ms": 250,
+        "postgres_settings": {
+          "fsync": "on",
+          "full_page_writes": "on",
+          "max_connections": "128",
+          "pg_stat_statements.max": "5000",
+          "pg_stat_statements.track": "top",
+          "server_version": "17.11 (Homebrew)",
+          "server_version_num": "170011",
+          "shared_buffers": "16384",
+          "synchronous_commit": "on",
+          "track_commit_timestamp": "on"
+        },
+        "session_transport": "SCRAM with verified TLS"
+      },
+      "result": {
+        "budget_breaches": [
+          {
+            "metric": "cpu_seconds_per_job",
+            "profile": "slow-1r-64s",
+            "scope": "budgets"
+          },
+          {
+            "metric": "jobs_per_second",
+            "profile": "slow-1r-64s",
+            "scope": "comparison"
+          },
+          {
+            "metric": "pickup_p99_ms",
+            "profile": "slow-1r-64s",
+            "scope": "comparison"
+          }
+        ],
+        "five_paired_trials": true,
+        "mode": "load",
+        "status": "passed"
+      },
+      "input_sha256": [
+        "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd"
+      ],
+      "trials": [
+        [0, "mesh", 512, 60.8258, 8.6813, 8217.417, 94.25, 25, 12, 73, 267488, 47, 64, 74.4771, 120.2261, 4.9727, 0.1172, 200.4544, 108.8391, 117.1504, 512, 512, 0],
+        [0, "oban", 512, 385.4466, 2.3392, 1215.4651, 121.8125, 68, 2, 12, null, 64, 64, 148.1533, 148.1533, 3.3223, 0.0664, 17.6382, 3.5235, 105.626, 512, 512, 0],
+        [1, "mesh", 512, 361.3658, 7.0265, 1275.2139, 531.0156, 63, 56, 230, 267488, 64, 64, 119.708, 119.708, 4.8516, 0.1816, 16.7061, 13.4573, 104.4171, 512, 512, 0],
+        [1, "oban", 512, 465.8942, 2.4024, 994.0989, 119.6406, 68, 2, 12, null, 64, 64, 129.084, 129.084, 3.3145, 0.0703, 8.566, 2.0482, 103.5465, 512, 512, 0],
+        [2, "mesh", 512, 392.826, 6.6734, 1149.0659, 412.8594, 68, 44, 222, 267488, 64, 64, 103.6157, 103.6157, 4.9336, 0.2031, 13.0454, 12.3719, 104.0889, 512, 512, 0],
+        [2, "oban", 512, 218.2736, 2.4249, 2047.197, 127.3281, 68, 2, 12, null, 64, 64, 96.3594, 96.3594, 3.5293, 0.0586, 40.1683, 14.653, 156.2929, 512, 512, 0],
+        [3, "mesh", 512, 70.7272, 9.0693, 6892.2051, 14.3906, 16, 1, 89, 267488, 41, 64, 98.9067, 98.9067, 4.8008, 0.1016, 168.7719, 75.6382, 114.7815, 512, 512, 0],
+        [3, "oban", 512, 210.2677, 2.8405, 2225.8101, 123.125, 66, 2, 12, null, 50, 64, 118.6929, 118.6929, 3.4902, 0.0742, 46.9828, 16.3556, 147.8759, 512, 512, 0],
+        [4, "mesh", 512, 51.5786, 9.3582, 9692.127, 53.2188, 30, 6, 46, 267488, 53, 62, 95.9932, 103.5693, 4.7949, 0.0918, 243.4163, 97.9645, 117.8699, 512, 512, 0],
+        [4, "oban", 512, 351.8027, 2.6534, 1329.1802, 120.3125, 68, 2, 12, null, 64, 64, 101.6714, 101.6714, 3.3203, 0.0566, 22.2874, 3.6838, 112.7433, 512, 512, 0]
+      ]
+    },
+    "matched-noop": {
+      "profile": "noop-8r-64s",
+      "manifest": {
+        "baseline_executable_sha256": "10c80efde7eaef57130fd62de76ae50699b43c506706b89fda453ba9bed1a79a",
+        "baseline_matches_mesh": true,
+        "baseline_mesh_sha": "e7abb534f38b97ba2cbfac097518c06b0ae619c2",
+        "harness_sha": "b36ee0105d1fa9f3bbf7af7ec0880cdd19d2683a",
+        "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "load_average_at_start": [
+          79.23876953125,
+          64.626953125,
+          41.939453125
+        ],
+        "logical_cpus": 15,
+        "mesh_batch": true,
+        "mesh_executable_sha256": "0ed01169383c341981746f2847d3794ecd7c94980d4ead59e3af224af411a4bf",
+        "mesh_listen": true,
+        "mesh_sha": "e4c8fc947f1efc7e4f3e7b33a041ebf441a62833",
+        "poll_ms": 250,
+        "postgres_settings": {
+          "fsync": "on",
+          "full_page_writes": "on",
+          "max_connections": "128",
+          "pg_stat_statements.max": "5000",
+          "pg_stat_statements.track": "top",
+          "server_version": "17.11 (Homebrew)",
+          "server_version_num": "170011",
+          "shared_buffers": "16384",
+          "synchronous_commit": "on",
+          "track_commit_timestamp": "on"
+        },
+        "session_transport": "SCRAM with verified TLS"
+      },
+      "result": {
+        "budget_breaches": [],
+        "five_paired_trials": true,
+        "mode": "load",
+        "status": "passed"
+      },
+      "input_sha256": [
+        "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a"
+      ],
+      "trials": [
+        [0, "baseline", 1024, 85.8159, 11.7868, 11394.4529, 453.1094, 34, 52, 360, 10848, 64, 64, 87.4277, 111.0527, 8.9492, 0.8994, 38.176, 577.8331, 7.7609, 1024, 1024, 0],
+        [0, "mesh", 1024, 304.7331, 8.3494, 3234.7351, 496.2969, 42, 58, 281, 10848, 63, 64, 85.6895, 87.4277, 7.3398, 0.6992, 17.9306, 144.6222, 1.9775, 1024, 1024, 0],
+        [1, "baseline", 1024, 282.7014, 9.0601, 3519.2788, 508.1719, 37, 59, 388, 10848, 62, 64, 111.0527, 114.8398, 7.2451, 0.6709, 18.7213, 142.3323, 1.9803, 1024, 1024, 0],
+        [1, "mesh", 1024, 400.4911, 7.9045, 2326.1851, 329.625, 34, 37, 228, 10848, 61, 64, 114.8398, 114.8398, 7.1074, 0.6885, 12.8865, 103.6947, 1.4482, 1024, 1024, 0],
+        [2, "baseline", 1024, 578.0141, 7.8877, 1719.686, 349.5938, 33, 39, 303, 10848, 62, 64, 101.2563, 101.2563, 7.1641, 0.7178, 9.8605, 71.5187, 0.9622, 1024, 1024, 0],
+        [2, "mesh", 1024, 452.5179, 7.8519, 2193.615, 246.3594, 35, 31, 224, 10848, 54, 64, 108.8521, 108.8521, 6.9062, 0.6357, 14.3165, 79.4025, 2.3308, 1024, 1024, 0],
+        [3, "baseline", 1024, 525.3823, 7.655, 1904.366, 310.3594, 36, 37, 291, 10848, 61, 64, 87.3057, 87.3057, 6.6416, 0.5898, 15.2238, 51.5294, 1.3187, 1024, 1024, 0],
+        [3, "mesh", 1024, 495.0583, 7.4332, 1987.8252, 295.0938, 35, 36, 221, 10848, 50, 64, 83.8374, 83.8374, 6.7402, 0.5938, 13.0144, 63.9607, 1.4585, 1024, 1024, 0],
+        [4, "baseline", 1024, 441.775, 8.262, 2233.415, 402.5156, 36, 49, 344, 10848, 57, 64, 70.7134, 70.7134, 7.0098, 0.665, 11.8226, 85.0803, 1.3674, 1024, 1024, 0],
+        [4, "mesh", 1024, 436.6678, 7.8171, 2258.6938, 294.1719, 36, 39, 245, 10848, 56, 64, 78.0044, 78.0044, 6.7812, 0.6035, 13.3675, 85.3435, 1.5017, 1024, 1024, 0]
+      ]
+    },
+    "matched-slow": {
+      "profile": "slow-1r-64s",
+      "manifest": {
+        "baseline_executable_sha256": "50adee257d6c0d1d985b042909041307b569e6c1cb1340a9915c04236734f895",
+        "baseline_matches_mesh": true,
+        "baseline_mesh_sha": "e7abb534f38b97ba2cbfac097518c06b0ae619c2",
+        "harness_sha": "48b99a09946afc41c2636c9201b767f2c2af8447",
+        "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "load_average_at_start": [
+          36.19970703125,
+          37.50244140625,
+          37.70703125
+        ],
+        "logical_cpus": 15,
+        "mesh_batch": true,
+        "mesh_executable_sha256": "d085edec1ffc946ff06da05e59b4af2b80a5513d620edb85c20b51723c7027f0",
+        "mesh_listen": true,
+        "mesh_sha": "e4c8fc947f1efc7e4f3e7b33a041ebf441a62833",
+        "poll_ms": 250,
+        "postgres_settings": {
+          "fsync": "on",
+          "full_page_writes": "on",
+          "max_connections": "128",
+          "pg_stat_statements.max": "5000",
+          "pg_stat_statements.track": "top",
+          "server_version": "17.11 (Homebrew)",
+          "server_version_num": "170011",
+          "shared_buffers": "16384",
+          "synchronous_commit": "on",
+          "track_commit_timestamp": "on"
+        },
+        "session_transport": "SCRAM with verified TLS"
+      },
+      "result": {
+        "budget_breaches": [],
+        "five_paired_trials": true,
+        "mode": "load",
+        "status": "passed"
+      },
+      "input_sha256": [
+        "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd"
+      ],
+      "trials": [
+        [0, "baseline", 512, 367.82, 7.9962, 1254.0969, 326.7812, 59, 34, 253, 267488, 63, 64, 33.854, 33.854, 5.0469, 0.2305, 14.3863, 20.3652, 104.5981, 512, 512, 0],
+        [0, "mesh", 512, 253.6913, 7.8592, 1882.4729, 213.7969, 63, 22, 127, 267488, 64, 64, 34.1025, 34.1025, 4.7949, 0.1602, 34.3585, 27.679, 106.81, 512, 512, 0],
+        [1, "baseline", 512, 376.3944, 7.7222, 1234.6602, 350.0156, 68, 41, 278, 267488, 64, 64, 31.2173, 31.9204, 5.0195, 0.2246, 14.4657, 13.7751, 104.2996, 512, 512, 0],
+        [1, "mesh", 512, 328.9089, 7.2762, 1418.613, 416.0625, 57, 46, 199, 267488, 64, 64, 31.9204, 31.9204, 4.7891, 0.166, 17.6416, 24.5997, 105.0014, 512, 512, 0],
+        [2, "baseline", 512, 360.5639, 7.8329, 1267.229, 442.3125, 57, 44, 284, 267488, 64, 64, 28.9248, 28.9248, 4.8164, 0.1738, 15.5206, 19.1711, 104.6371, 512, 512, 0],
+        [2, "mesh", 512, 327.6247, 7.2516, 1436.0688, 369.0, 59, 37, 182, 267488, 64, 64, 30.4854, 30.4854, 4.8477, 0.1797, 20.9136, 19.1025, 105.1591, 512, 512, 0],
+        [3, "baseline", 512, 359.8773, 8.282, 1289.1108, 471.1094, 63, 48, 314, 267488, 64, 64, 28.1543, 28.1543, 4.9922, 0.2168, 16.3316, 16.3221, 104.7044, 512, 512, 0],
+        [3, "mesh", 512, 417.5463, 6.874, 1093.9141, 526.2031, 64, 53, 236, 267488, 64, 64, 28.1416, 28.1416, 5.3164, 0.2988, 11.4911, 13.3062, 104.0945, 512, 512, 0],
+        [4, "baseline", 512, 357.479, 8.2574, 1287.907, 303.5312, 51, 30, 239, 267488, 62, 64, 25.2109, 25.2109, 4.9453, 0.2051, 17.5949, 16.8999, 104.3928, 512, 512, 0],
+        [4, "mesh", 512, 316.4594, 7.2813, 1477.5229, 360.1406, 51, 40, 192, 267488, 64, 64, 26.4482, 26.4482, 4.7148, 0.1465, 23.8436, 19.4639, 105.4046, 512, 512, 0]
+      ]
+    }
+  }
+}

@@ -6,8 +6,9 @@ use parking_lot::{Condvar, Mutex};
 use socket2::{SockRef, TcpKeepalive};
 
 use super::pg::{
-    commit, connect, connect_with_socket, pg_jobs_ack, pg_simple_command, pg_text_query,
-    JobsAckError, PgConn, PgNotifications,
+    commit, connect, connect_with_socket, pg_jobs_ack, pg_jobs_claim_command, pg_jobs_claim_rows,
+    pg_simple_command, pg_text_query, JobsAckError, JobsClaimCommand, JobsClaimRow, PgConn,
+    PgNotifications,
 };
 use super::pool::{connection_url, NativeLease};
 
@@ -170,8 +171,25 @@ impl PgJobDb<'_> {
         self.timed(|conn| pg_jobs_ack(conn, sql, params))
     }
 
+    pub(crate) fn claim_command(&mut self, command: JobsClaimCommand) -> Result<(), String> {
+        self.timed(|conn| pg_jobs_claim_command(conn, command))
+    }
+
+    pub(crate) fn claim_rows(
+        &mut self,
+        sql: &str,
+        params: &[&str],
+        limit: usize,
+    ) -> Result<Option<Vec<JobsClaimRow>>, String> {
+        self.timed(|conn| pg_jobs_claim_rows(conn, sql, params, limit))
+    }
+
     pub(crate) fn in_transaction(&self) -> bool {
         self.0.txn_status == b'T'
+    }
+
+    pub(crate) fn is_idle(&self) -> bool {
+        !self.0.is_broken() && self.0.txn_status == b'I'
     }
 
     pub(crate) fn transaction<T>(

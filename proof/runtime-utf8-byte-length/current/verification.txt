@@ -1,0 +1,141 @@
+head-start ba8dab0381e8c8be12853faea9c1351c1ba42dde
+fmt 0
+workspace-build 0
+postgres-17.11 0
+effect-fence 0
+workspace-core 0
+diagnostics-minimal 0
+runtime-dependencies 0
+runtime 0
+fuzz-build 0
+lint-examples 0
+mesh-fmt-examples 0
+lint-packages 0
+mesh-fmt-packages 0
+lint-mesh-slug 0
+mesh-fmt-mesh-slug 0
+laws 0
+z3 0
+compiled 0
+head-end 69f6ad1acd4e80e00e9c5cfb947992c96b4c828d
+
+Focused compiled regression
+test e2e_utf8_byte_length ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 396 filtered out; finished in 37.70s
+
+workspace-core
+unittests src/lib.rs test result: ok. 334 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+unittests src/lib.rs test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+unittests src/lib.rs test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+tests/artifacts.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+tests/catalog.rs test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+tests/emitters.rs test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.12s
+tests/render.rs test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+unittests src/lib.rs test result: ok. 174 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+tests/corpus.rs test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.59s
+unittests src/lib.rs test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+tests/lexer_tests.rs test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+unittests src/lib.rs test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+tests/website_examples.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+unittests src/lib.rs test result: ok. 111 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+tests/parity.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.24s
+tests/server.rs test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+unittests src/lib.rs test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+tests/parser_tests.rs test result: ok. 314 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.61s
+unittests src/lib.rs test result: ok. 136 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+tests/catalog_examples.rs test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.18s
+unittests src/lib.rs test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+unittests src/lib.rs test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+tests/after_shutdown.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+unittests src/lib.rs test result: ok. 113 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+tests/actors.rs test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+tests/assoc_types.rs test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+tests/crypto_v2.rs test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+tests/db_values.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+tests/diagnostics.rs test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+tests/edge_cases.rs test result: ok. 83 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+tests/exhaustiveness_integration.rs test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+tests/export.rs test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+tests/http_client_refinement.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+tests/http_clustered_routes.rs test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+tests/inference.rs test result: ok. 43 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+tests/integration.rs test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+tests/jobs.rs test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+tests/native.rs test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+tests/partial_programs.rs test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.62s
+tests/pg_conn_ownership.rs test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+tests/plaintext.rs test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+tests/proof_values.rs test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+tests/rendering.rs test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+tests/resources.rs test result: ok. 70 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+tests/structs.rs test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+tests/sum_types.rs test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+tests/supervisors.rs test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+tests/test_builtins.rs test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+tests/traits.rs test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+tests/ws_client.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+unittests src/main.rs test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+tests/registry_cli.rs test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+tests/update_cli.rs test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+Doc-tests mesh_codegen test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Doc-tests mesh_common test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Doc-tests mesh_diagnostics test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Doc-tests mesh_fmt test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+Doc-tests mesh_lexer test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Doc-tests mesh_lint test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Doc-tests mesh_lsp test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Doc-tests mesh_parser test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Doc-tests mesh_pkg test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Doc-tests mesh_repl test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+Doc-tests mesh_test_rt test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+Doc-tests mesh_typeck test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+runtime
+unittests src/lib.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1640 filtered out; finished in 0.00s
+unittests src/lib.rs test result: ok. 1592 passed; 0 failed; 49 ignored; 0 measured; 0 filtered out; finished in 27.40s
+tests/library.rs test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+tests/library_memory.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+laws
+unittests src/main.rs test result: ok. 119 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 15.12s
+tests/e2e_laws.rs test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 39.05s
+
+z3
+unittests src/main.rs test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 119 filtered out; finished in 0.18s
+
+compiled
+tests/catalog_examples.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.61s
+tests/e2e.rs test result: ok. 397 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 111.54s
+tests/e2e_crypto_v2.rs test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.59s
+tests/e2e_language_fixes.rs test result: ok. 213 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 37.25s
+tests/e2e_library.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.53s
+tests/e2e_lsp.rs test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+tests/e2e_migrate.rs test result: ok. 2 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.37s
+tests/e2e_native.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s
+tests/e2e_performance.rs test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+tests/e2e_plaintext.rs test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.81s
+tests/e2e_secret.rs test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.16s
+tests/e2e_stdlib.rs test result: ok. 126 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 130.43s
+tests/e2e_supervisors.rs test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.30s
+tests/tooling_e2e.rs test result: ok. 67 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.93s
+
+postgres-17.11
+Jobs proof checkout: ba8dab0381e8c8be12853faea9c1351c1ba42dde
+Jobs proof host: Darwin arm64
+Disposable Jobs proof server: PostgreSQL 17.11 (Homebrew)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 28.66s
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 7.82s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 1.01s
+test result: ok. 38 passed; 0 failed; 6 ignored; 0 measured; 1597 filtered out; finished in 0.39s
+test result: ok. 68 passed; 0 failed; 0 ignored; 0 measured; 1573 filtered out; finished in 11.57s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 143.36s
+
+effect-fence
+Jobs proof checkout: c2ac885755a3c897630ec22e4b6909639ec96992
+Jobs proof host: Darwin arm64
+Disposable Jobs proof server: PostgreSQL 17.11 (Homebrew)
+Jobs effect fence proof passed. Two independent commits, owner replay, cancellation, and expiry verified.
+
+Source check
+Build and gate source inputs match the product commit across concurrent proof-only commits.

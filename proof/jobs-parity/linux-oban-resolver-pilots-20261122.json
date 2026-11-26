@@ -1,0 +1,2864 @@
+{
+  "groups": [
+    {
+      "arms": [
+        {
+          "claim_span_ms": 8235,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.8079833984375,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 3.0,
+            "claim_p99_ms": 2.35693359375,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.005584666666666666,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 12.125,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.1367533659416,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.910082465953865,
+            "pair": 0,
+            "peak_connections": 5,
+            "peak_executing": 0,
+            "peak_host_load_average_1m": 0.080078125,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": 1356,
+            "peak_rss_bytes": 30142464,
+            "peak_threads": 14,
+            "pickup_p99_ms": 5.2109375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 18.166666666666668,
+            "settlement_p99_ms": 15.120849609375,
+            "sql_calls_per_job": 34.291666666666664
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.2,
+            "ordered": 24,
+            "worker_pids": 24
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "6ab8d629a622363bee0f7725e1c1a60f2154b35ed6e1093f90a7fe4a38826fb9",
+          "runner_shutdown_sha256": [
+            "c9b2d0201689801a991ac654463beec34cc34533cb6aee9cc3058b8d49f79ff9"
+          ]
+        },
+        {
+          "claim_span_ms": 11685.4638671875,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 0.9140625,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 2.0,
+            "claim_p99_ms": 247.177978515625,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.019482875,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 9.458333333333334,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 957.2802732493249,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.015630196815717,
+            "pair": 0,
+            "peak_connections": 4,
+            "peak_executing": 0,
+            "peak_host_load_average_1m": 0.2275390625,
+            "peak_processes": 4,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 118841344,
+            "peak_threads": 14,
+            "pickup_p99_ms": 247.780029296875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 17.0,
+            "settlement_p99_ms": 250.583984375,
+            "sql_calls_per_job": 26.458333333333332
+          },
+          "oban_broker_emulator": {
+            "async_threads": 2,
+            "dirty_cpu_schedulers": 1,
+            "dirty_cpu_schedulers_online": 1,
+            "dirty_io_schedulers": 1,
+            "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+            "erl_inetrc": null,
+            "flag_argv": {
+              "+A": [
+                "2"
+              ],
+              "+S": [
+                "2:2"
+              ],
+              "+SDcpu": [
+                "1:1"
+              ],
+              "+SDio": [
+                "1"
+              ]
+            },
+            "inetrc_sha256": null,
+            "live_environment": {
+              "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2"
+            },
+            "lookup": [
+              "native"
+            ],
+            "loopback_addresses": [
+              "127.0.0.1"
+            ],
+            "pid": 686,
+            "processes": [
+              {
+                "comm": "beam.smp",
+                "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                "pid": 686,
+                "ppid": 366
+              },
+              {
+                "comm": "erl_child_setup",
+                "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                "pid": 691,
+                "ppid": 686
+              },
+              {
+                "comm": "inet_gethost",
+                "exe": "/opt/otp/erts-17.1/bin/inet_gethost",
+                "pid": 700,
+                "ppid": 691
+              },
+              {
+                "comm": "inet_gethost",
+                "exe": "/opt/otp/erts-17.1/bin/inet_gethost",
+                "pid": 701,
+                "ppid": 700
+              }
+            ],
+            "role": "session",
+            "schedulers": 2,
+            "schedulers_online": 2
+          },
+          "oban_emulator": [
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": null,
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": null,
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2"
+              },
+              "lookup": [
+                "native"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 703,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 703,
+                  "ppid": 366
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 708,
+                  "ppid": 703
+                },
+                {
+                  "comm": "inet_gethost",
+                  "exe": "/opt/otp/erts-17.1/bin/inet_gethost",
+                  "pid": 717,
+                  "ppid": 708
+                },
+                {
+                  "comm": "inet_gethost",
+                  "exe": "/opt/otp/erts-17.1/bin/inet_gethost",
+                  "pid": 718,
+                  "ppid": 717
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          ],
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.395,
+            "ordered": 24,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "5e8a902fc57c38f52c4f85c2b433a6d519fbb9f337c300b359d5d4efac408846",
+          "runner_shutdown_sha256": [
+            "092bff012d371255f4fe09d1d823645d17f3297655e9b958e3219811b81e1f2e"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            69.03515625,
+            37.00537109375,
+            23.81591796875
+          ],
+          "time": 1795378557.106362
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured mesh",
+          "load": [
+            65.2685546875,
+            36.755859375,
+            23.80517578125
+          ],
+          "time": 1795378560.1112692
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+          "load": [
+            55.6943359375,
+            35.64404296875,
+            23.5615234375
+          ],
+          "time": 1795378571.9584682
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            41.48876953125,
+            33.70556640625,
+            23.146484375
+          ],
+          "time": 1795378588.711614
+        }
+      ],
+      "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "0bec59b5fb2c6206547e60a20231440452c205c2a261af11fc51a8fdd42d7c38",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "sparse-unset-01",
+      "oban_erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+      "oban_erl_inetrc": null,
+      "oban_preflight": {
+        "async_threads": 2,
+        "dirty_cpu_schedulers": 1,
+        "dirty_cpu_schedulers_online": 1,
+        "dirty_io_schedulers": 1,
+        "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+        "erl_inetrc": null,
+        "flag_argv": {
+          "+A": [
+            "2"
+          ],
+          "+S": [
+            "2:2"
+          ],
+          "+SDcpu": [
+            "1:1"
+          ],
+          "+SDio": [
+            "1"
+          ]
+        },
+        "inetrc_sha256": null,
+        "lookup": [
+          "native"
+        ],
+        "loopback_addresses": [
+          "127.0.0.1"
+        ],
+        "pid": 367,
+        "role": "preflight",
+        "schedulers": 2,
+        "schedulers_online": 2
+      },
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "sparse",
+      "series": "diagnostic-oban-unset-inetrc",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "opt/otp/erts-17.1/bin/erl_child_setup": "79510b432c238f7f333ba27d29dd84244bbd1f80862340510c7a148a7ea4794f",
+        "opt/otp/erts-17.1/bin/inet_gethost": "cad1f6b2917e8ade3948c02239958085748f4575d4cb97fb7fb479c5ffcbdc7a",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "058552add25e4fe9a386d5782ccb8ba253384ca8e48da95996405ad689502e9d",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "e0b1c3610fee233fd0e3c6f814b6464ca9997b92506d67a31a19d33486eea7f9",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/oban.inetrc": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "proof/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "da5f0ec52227fb24ec4613a571ec0d201d8a626b9bc7a8986823eb48e1cfb26a"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 8357,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 2.262939453125,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 3.0,
+            "claim_p99_ms": 4.69091796875,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.009383875,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 12.125,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.164520140412,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.8690428340296776,
+            "pair": 0,
+            "peak_connections": 5,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": 1356,
+            "peak_rss_bytes": 30093312,
+            "peak_threads": 14,
+            "pickup_p99_ms": 7.7919921875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 18.166666666666668,
+            "settlement_p99_ms": 16.631103515625,
+            "sql_calls_per_job": 34.291666666666664
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.386,
+            "ordered": 24,
+            "worker_pids": 24
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "f7f3f716671e3d7d9a87f7ae3e82c411ad10314a26957ab48f2ebfc71196d266",
+          "runner_shutdown_sha256": [
+            "b2ea2c370cb5334013412747e245035ab20c5cae37fed957d904bf9ce9faca7b"
+          ]
+        },
+        {
+          "claim_span_ms": 11666.802978515625,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.6224365234375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 2.0,
+            "claim_p99_ms": 242.623046875,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.021929166666666666,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 9.458333333333334,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 956.5415834115819,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.020311213915124,
+            "pair": 0,
+            "peak_connections": 4,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.080078125,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 125571072,
+            "peak_threads": 12,
+            "pickup_p99_ms": 244.480224609375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 17.0,
+            "settlement_p99_ms": 247.9140625,
+            "sql_calls_per_job": 26.458333333333332
+          },
+          "oban_broker_emulator": {
+            "async_threads": 2,
+            "dirty_cpu_schedulers": 1,
+            "dirty_cpu_schedulers_online": 1,
+            "dirty_io_schedulers": 1,
+            "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+            "erl_inetrc": "/proof/oban.inetrc",
+            "flag_argv": {
+              "+A": [
+                "2"
+              ],
+              "+S": [
+                "2:2"
+              ],
+              "+SDcpu": [
+                "1:1"
+              ],
+              "+SDio": [
+                "1"
+              ]
+            },
+            "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+            "live_environment": {
+              "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "ERL_INETRC": "/proof/oban.inetrc"
+            },
+            "lookup": [
+              "file"
+            ],
+            "loopback_addresses": [
+              "127.0.0.1"
+            ],
+            "pid": 673,
+            "processes": [
+              {
+                "comm": "beam.smp",
+                "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                "pid": 673,
+                "ppid": 364
+              },
+              {
+                "comm": "erl_child_setup",
+                "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                "pid": 678,
+                "ppid": 673
+              }
+            ],
+            "role": "session",
+            "schedulers": 2,
+            "schedulers_online": 2
+          },
+          "oban_emulator": [
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 686,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 686,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 691,
+                  "ppid": 686
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          ],
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.316,
+            "ordered": 24,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "a2875a3aca8db3fbe5d4fdd2ab9b9b26902a802d0718d023deba07ecccbe12d0",
+          "runner_shutdown_sha256": [
+            "4b6cfd2a02b5f552d782050f6e3929d6cd66ee32b6a36b543ef1af4e558dadd0"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            28.97607421875,
+            31.38330078125,
+            22.6142578125
+          ],
+          "time": 1795378616.331352
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured mesh",
+          "load": [
+            26.8154296875,
+            30.89501953125,
+            22.4931640625
+          ],
+          "time": 1795378618.793138
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+          "load": [
+            22.919921875,
+            29.92626953125,
+            22.24755859375
+          ],
+          "time": 1795378630.793182
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            20.27099609375,
+            28.86279296875,
+            22.0439453125
+          ],
+          "time": 1795378647.72475
+        }
+      ],
+      "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "da85d347824ab7904cf12983df0d557beedfe0332090ee99a96ceb0507b1cd05",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "sparse-fixed-01",
+      "oban_erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+      "oban_erl_inetrc": "/proof/oban.inetrc",
+      "oban_preflight": {
+        "async_threads": 2,
+        "dirty_cpu_schedulers": 1,
+        "dirty_cpu_schedulers_online": 1,
+        "dirty_io_schedulers": 1,
+        "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+        "erl_inetrc": "/proof/oban.inetrc",
+        "flag_argv": {
+          "+A": [
+            "2"
+          ],
+          "+S": [
+            "2:2"
+          ],
+          "+SDcpu": [
+            "1:1"
+          ],
+          "+SDio": [
+            "1"
+          ]
+        },
+        "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "lookup": [
+          "file"
+        ],
+        "loopback_addresses": [
+          "127.0.0.1"
+        ],
+        "pid": 365,
+        "role": "preflight",
+        "schedulers": 2,
+        "schedulers_online": 2
+      },
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "sparse",
+      "series": "canonical-oban-flags-inetrc",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "opt/otp/erts-17.1/bin/erl_child_setup": "79510b432c238f7f333ba27d29dd84244bbd1f80862340510c7a148a7ea4794f",
+        "opt/otp/erts-17.1/bin/inet_gethost": "cad1f6b2917e8ade3948c02239958085748f4575d4cb97fb7fb479c5ffcbdc7a",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "058552add25e4fe9a386d5782ccb8ba253384ca8e48da95996405ad689502e9d",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "e0b1c3610fee233fd0e3c6f814b6464ca9997b92506d67a31a19d33486eea7f9",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/oban.inetrc": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "proof/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "da5f0ec52227fb24ec4613a571ec0d201d8a626b9bc7a8986823eb48e1cfb26a"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 11674.60595703125,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.0849609375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 2.0,
+            "claim_p99_ms": 247.16796875,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.024002291666666665,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 9.458333333333334,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 957.2783774805318,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.021134864841643,
+            "pair": 0,
+            "peak_connections": 4,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 119017472,
+            "peak_threads": 12,
+            "pickup_p99_ms": 248.56005859375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 17.0,
+            "settlement_p99_ms": 251.906982421875,
+            "sql_calls_per_job": 26.458333333333332
+          },
+          "oban_broker_emulator": {
+            "async_threads": 2,
+            "dirty_cpu_schedulers": 1,
+            "dirty_cpu_schedulers_online": 1,
+            "dirty_io_schedulers": 1,
+            "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+            "erl_inetrc": "/proof/oban.inetrc",
+            "flag_argv": {
+              "+A": [
+                "2"
+              ],
+              "+S": [
+                "2:2"
+              ],
+              "+SDcpu": [
+                "1:1"
+              ],
+              "+SDio": [
+                "1"
+              ]
+            },
+            "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+            "live_environment": {
+              "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "ERL_INETRC": "/proof/oban.inetrc"
+            },
+            "lookup": [
+              "file"
+            ],
+            "loopback_addresses": [
+              "127.0.0.1"
+            ],
+            "pid": 455,
+            "processes": [
+              {
+                "comm": "beam.smp",
+                "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                "pid": 455,
+                "ppid": 364
+              },
+              {
+                "comm": "erl_child_setup",
+                "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                "pid": 460,
+                "ppid": 455
+              }
+            ],
+            "role": "session",
+            "schedulers": 2,
+            "schedulers_online": 2
+          },
+          "oban_emulator": [
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 468,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 468,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 473,
+                  "ppid": 468
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          ],
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.44,
+            "ordered": 24,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "a68fb9f0b106edc62165c4791d6d156ea9a8576b64fe7aa0d6766f43998957d9",
+          "runner_shutdown_sha256": [
+            "4e85e09411823111aa1c24a12fa8a45d97087fe799e9f3cb6fc888ae712ad6f0"
+          ]
+        },
+        {
+          "claim_span_ms": 8280,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 5,
+            "durable": true,
+            "max_connections": 5,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 24,
+          "median_claim_to_handler_ms": 1.739990234375,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 3.0,
+            "claim_p99_ms": 2.48193359375,
+            "completed": 24,
+            "cpu_seconds_per_job": 0.006081916666666666,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 12.125,
+            "estimated_peak_executing": 1,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.9852698563072,
+            "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+            "jobs_per_second": 2.897330876960434,
+            "pair": 0,
+            "peak_connections": 5,
+            "peak_executing": 1,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": 1356,
+            "peak_rss_bytes": 30126080,
+            "peak_threads": 14,
+            "pickup_p99_ms": 5.77197265625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 18.083333333333332,
+            "settlement_p99_ms": 16.781982421875,
+            "sql_calls_per_job": 34.208333333333336
+          },
+          "ordered_write_pairs": {
+            "jobs": 24,
+            "minimum_hold_ms": 1.286,
+            "ordered": 24,
+            "worker_pids": 24
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "ae4c0267c1497e806b566239877a6232bf866e4b9b6bd20d4a091112fd6c0282",
+          "runner_shutdown_sha256": [
+            "079f52d38a420e91bd155846503267290f6ca2079dec9c0d41ad2897e0f60c94"
+          ]
+        }
+      ],
+      "full_input_warmup": false,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            76.67041015625,
+            41.64453125,
+            27.81103515625
+          ],
+          "time": 1795378817.772255
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured oban",
+          "load": [
+            76.67041015625,
+            41.64453125,
+            27.81103515625
+          ],
+          "time": 1795378820.283212
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM sparse measured mesh",
+          "load": [
+            70.689453125,
+            42.08935546875,
+            28.2138671875
+          ],
+          "time": 1795378837.180744
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            56.673828125,
+            40.39990234375,
+            27.85400390625
+          ],
+          "time": 1795378849.294317
+        }
+      ],
+      "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "f7e35429b89dfd1be3a04597b7b63f3f5cbf8d23ed058a8fbe6dd3f88984f3af",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "sparse-fixed-02",
+      "oban_erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+      "oban_erl_inetrc": "/proof/oban.inetrc",
+      "oban_preflight": {
+        "async_threads": 2,
+        "dirty_cpu_schedulers": 1,
+        "dirty_cpu_schedulers_online": 1,
+        "dirty_io_schedulers": 1,
+        "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+        "erl_inetrc": "/proof/oban.inetrc",
+        "flag_argv": {
+          "+A": [
+            "2"
+          ],
+          "+S": [
+            "2:2"
+          ],
+          "+SDcpu": [
+            "1:1"
+          ],
+          "+SDio": [
+            "1"
+          ]
+        },
+        "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "lookup": [
+          "file"
+        ],
+        "loopback_addresses": [
+          "127.0.0.1"
+        ],
+        "pid": 365,
+        "role": "preflight",
+        "schedulers": 2,
+        "schedulers_online": 2
+      },
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "sparse",
+      "series": "canonical-oban-flags-inetrc",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "opt/otp/erts-17.1/bin/erl_child_setup": "79510b432c238f7f333ba27d29dd84244bbd1f80862340510c7a148a7ea4794f",
+        "opt/otp/erts-17.1/bin/inet_gethost": "cad1f6b2917e8ade3948c02239958085748f4575d4cb97fb7fb479c5ffcbdc7a",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "058552add25e4fe9a386d5782ccb8ba253384ca8e48da95996405ad689502e9d",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "e0b1c3610fee233fd0e3c6f814b6464ca9997b92506d67a31a19d33486eea7f9",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/oban.inetrc": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "proof/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "da5f0ec52227fb24ec4613a571ec0d201d8a626b9bc7a8986823eb48e1cfb26a"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 406.60009765625,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 3.5660400390625,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.1435546875,
+            "claim_p99_ms": 425.43994140625,
+            "completed": 1024,
+            "cpu_seconds_per_job": 0.003026974609375,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.01953125,
+            "estimated_peak_executing": 61,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 7545.659908006699,
+            "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+            "jobs_per_second": 2335.67069096093,
+            "pair": 0,
+            "peak_connections": 81,
+            "peak_executing": 16,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 16,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 953094144,
+            "peak_threads": 96,
+            "pickup_p99_ms": 430.9599609375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.4970703125,
+            "settlement_p99_ms": 437.261962890625,
+            "sql_calls_per_job": 3.5166015625
+          },
+          "oban_broker_emulator": {
+            "async_threads": 2,
+            "dirty_cpu_schedulers": 1,
+            "dirty_cpu_schedulers_online": 1,
+            "dirty_io_schedulers": 1,
+            "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+            "erl_inetrc": "/proof/oban.inetrc",
+            "flag_argv": {
+              "+A": [
+                "2"
+              ],
+              "+S": [
+                "2:2"
+              ],
+              "+SDcpu": [
+                "1:1"
+              ],
+              "+SDio": [
+                "1"
+              ]
+            },
+            "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+            "live_environment": {
+              "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "ERL_INETRC": "/proof/oban.inetrc"
+            },
+            "lookup": [
+              "file"
+            ],
+            "loopback_addresses": [
+              "127.0.0.1"
+            ],
+            "pid": 455,
+            "processes": [
+              {
+                "comm": "beam.smp",
+                "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                "pid": 455,
+                "ppid": 364
+              },
+              {
+                "comm": "erl_child_setup",
+                "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                "pid": 460,
+                "ppid": 455
+              }
+            ],
+            "role": "session",
+            "schedulers": 2,
+            "schedulers_online": 2
+          },
+          "oban_emulator": [
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 468,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 468,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 481,
+                  "ppid": 468
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 469,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 469,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 495,
+                  "ppid": 469
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 472,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 472,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 522,
+                  "ppid": 472
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 473,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 473,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 491,
+                  "ppid": 473
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 475,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 475,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 527,
+                  "ppid": 475
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 480,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 480,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 510,
+                  "ppid": 480
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 484,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 484,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 518,
+                  "ppid": 484
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 490,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 490,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 523,
+                  "ppid": 490
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          ],
+          "ordered_write_pairs": {
+            "jobs": 1024,
+            "minimum_hold_ms": 0.087,
+            "ordered": 1024,
+            "worker_pids": 8
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "7c933c019629fbe644a34970cb63adbb7e811d6a9516a510283c08e2e53ad0b9",
+          "runner_shutdown_sha256": [
+            "4e85e09411823111aa1c24a12fa8a45d97087fe799e9f3cb6fc888ae712ad6f0",
+            "797b5543b286577554ddbf773d8a082472a957cc13bebd4655afa1e2bd92af28",
+            "95759df460d830d92485560055f2b75cb36da38ccdae1d8cd1974aa34374ee06",
+            "4e72ed37f63646a4ac3d589113b89a5e11935cb6357cbbcc22c29a81f551ffa4",
+            "0a8f976b765b558dcf42baa51d8bb95d9fe6d3e9b52729afc258133430bc05f7",
+            "404e04e99281d6a19c5f4a28bc12ff04c0805d02ec3e9c6c23f3e25a60633fb4",
+            "b58738517fb7193c079a02154b14669565be290c463e4712773e456b8831a16b",
+            "ee5e5778375f42b74678fee7a5a016ecb3271b7916079323a251d8ab94d23e10"
+          ]
+        },
+        {
+          "claim_span_ms": 797,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 8.9320068359375,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.412109375,
+            "claim_p99_ms": 788.76611328125,
+            "completed": 1024,
+            "cpu_seconds_per_job": 0.000745826171875,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.041015625,
+            "estimated_peak_executing": 46,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 13093.176624428836,
+            "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+            "jobs_per_second": 1264.6328277781765,
+            "pair": 0,
+            "peak_connections": 65,
+            "peak_executing": 29,
+            "peak_host_load_average_1m": 0.240234375,
+            "peak_processes": 16,
+            "peak_queued_context_bytes": 10848,
+            "peak_rss_bytes": 346263552,
+            "peak_threads": 130,
+            "pickup_p99_ms": 796.1572265625,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.771484375,
+            "settlement_p99_ms": 804.278076171875,
+            "sql_calls_per_job": 7.8125
+          },
+          "ordered_write_pairs": {
+            "jobs": 1024,
+            "minimum_hold_ms": 0.128,
+            "ordered": 1024,
+            "worker_pids": 1024
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "77d7720fadca420ab85d927f227a15da6b0738841e9aadcd85ad54fd39a07a86",
+          "runner_shutdown_sha256": [
+            "ec2c3be38152649234312b4aa3a4df5ef6bb9d2095e3496a31a454feca8c4ba6",
+            "1ae55dbc5cbab01596ba78662819c1e441bb7012f047c957dec935ad8361275b",
+            "f82c45354784ce3cc339d06ffb444afc2687c0de5e1fc9d296dcbb7c049a6990",
+            "e85fbfdaf0117608c469a81c1087d041d5a626a39b4021d2bcea3fd998879d22",
+            "951a1671dd77941651dcaf6c229b9be9c347daa29fe4d5cf402789564abee181",
+            "23b1cd9e9407e1fb4467b443f3432b3ef0ecad91d1f309aac2a12c362dc783bc",
+            "4b5cb1665b11afc223dd0a4f78dfb5ad3bd18bf00ca75df69b40e9372365fb08",
+            "0930a60d5d868c8a5b5cb802da4328dfd8db1dfe4b58d80ee3169ddcdd73adfd"
+          ]
+        },
+        {
+          "claim_span_ms": 438.39208984375,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 5.4525146484375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.1572265625,
+            "claim_p99_ms": 518.425048828125,
+            "completed": 1024,
+            "cpu_seconds_per_job": 0.0036088740234375,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.0205078125,
+            "estimated_peak_executing": 62,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 7659.817972883592,
+            "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+            "jobs_per_second": 1914.5158073043024,
+            "pair": 0,
+            "peak_connections": 81,
+            "peak_executing": 28,
+            "peak_host_load_average_1m": 1.18212890625,
+            "peak_processes": 16,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 949817344,
+            "peak_threads": 96,
+            "pickup_p99_ms": 524.260986328125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.5498046875,
+            "settlement_p99_ms": 533.318115234375,
+            "sql_calls_per_job": 3.5703125
+          },
+          "oban_broker_emulator": {
+            "async_threads": 2,
+            "dirty_cpu_schedulers": 1,
+            "dirty_cpu_schedulers_online": 1,
+            "dirty_io_schedulers": 1,
+            "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+            "erl_inetrc": "/proof/oban.inetrc",
+            "flag_argv": {
+              "+A": [
+                "2"
+              ],
+              "+S": [
+                "2:2"
+              ],
+              "+SDcpu": [
+                "1:1"
+              ],
+              "+SDio": [
+                "1"
+              ]
+            },
+            "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+            "live_environment": {
+              "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "ERL_INETRC": "/proof/oban.inetrc"
+            },
+            "lookup": [
+              "file"
+            ],
+            "loopback_addresses": [
+              "127.0.0.1"
+            ],
+            "pid": 8102,
+            "processes": [
+              {
+                "comm": "beam.smp",
+                "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                "pid": 8102,
+                "ppid": 364
+              },
+              {
+                "comm": "erl_child_setup",
+                "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                "pid": 8107,
+                "ppid": 8102
+              }
+            ],
+            "role": "session",
+            "schedulers": 2,
+            "schedulers_online": 2
+          },
+          "oban_emulator": [
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 8115,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 8115,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 8128,
+                  "ppid": 8115
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 8116,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 8116,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 8147,
+                  "ppid": 8116
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 8119,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 8119,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 8152,
+                  "ppid": 8119
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 8120,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 8120,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 8157,
+                  "ppid": 8120
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 8122,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 8122,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 8159,
+                  "ppid": 8122
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 8123,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 8123,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 8138,
+                  "ppid": 8123
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 8131,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 8131,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 8144,
+                  "ppid": 8131
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            },
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 8132,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 8132,
+                  "ppid": 364
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 8163,
+                  "ppid": 8132
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          ],
+          "ordered_write_pairs": {
+            "jobs": 1024,
+            "minimum_hold_ms": 0.108,
+            "ordered": 1024,
+            "worker_pids": 8
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "ff58e8af2cc06e92e05b1cd1cc20c47c2821b0b67451a5195b9d8463ed67abd8",
+          "runner_shutdown_sha256": [
+            "338437235a6cea6395ea7de42d948aab1c42370627db65dd184a7ecab6722b4a",
+            "de2288f118ac32fc8ea4a1e15675c01a5bf8f92ced88d391dcec88cb62297957",
+            "7df87fb4ee834b5b4c0d36b21ebb08b60a3800ff8d3f46a48bf7dcda91fc6d2a",
+            "24d61d2086c2dcb5d279832e62f21e6649fea42a5f24b3e6a2cc4e9b2688891e",
+            "bdf740c78367a1c6456a95e838f896b6ac85d15a4fdae7a2eef5e41b9a984ce6",
+            "f833cd63d2b1692ae879365519f25ea17472ec58b2fb46fea175bf07d60dda89",
+            "b5f31682977ace18b1a90c36fc74f02b78d549f2c4c04167b4135843336be5f1",
+            "8b7ed1451beaafaf6c8f039196f3db05b62ee3a5b9624ac5492b510ad3203935"
+          ]
+        },
+        {
+          "claim_span_ms": 1190,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 96,
+            "durable": true,
+            "max_connections": 96,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 11.6669921875,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.4130859375,
+            "claim_p99_ms": 1177.85009765625,
+            "completed": 1024,
+            "cpu_seconds_per_job": 0.0011651220703125,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.04296875,
+            "estimated_peak_executing": 39,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 13844.203811517344,
+            "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+            "jobs_per_second": 840.2167417778812,
+            "pair": 0,
+            "peak_connections": 65,
+            "peak_executing": 27,
+            "peak_host_load_average_1m": 2.12890625,
+            "peak_processes": 13,
+            "peak_queued_context_bytes": 10848,
+            "peak_rss_bytes": 314716160,
+            "peak_threads": 131,
+            "pickup_p99_ms": 1191.023193359375,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.779296875,
+            "settlement_p99_ms": 1202.97900390625,
+            "sql_calls_per_job": 7.822265625
+          },
+          "ordered_write_pairs": {
+            "jobs": 1024,
+            "minimum_hold_ms": 0.143,
+            "ordered": 1024,
+            "worker_pids": 1024
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "149b9aeb51c1856534e657b9057adcd4328691352129be72625f8ffa888fdd2d",
+          "runner_shutdown_sha256": [
+            "aacbf9a1381a0b637acbb1fc6b53d852d37bd83e43b7b3670acc11e9f8feb11c",
+            "90af364bd4719b83e369653f2a5dec4b0be1bc4d2f05cf3d12bd908f869e6188",
+            "d07b4739ee8ef54c6da56344d6f0c38bc9cb252e5247bf3980f05453df6ec01e",
+            "37fd31d6601032d640d49d0d91a53a40ad297474134a31733f8819468944c472",
+            "65993a8c079275cc5a734016c21880af837c3c52fe61f5ac89ebe35b398ecdaf",
+            "01671f69189181dd32719d7b8ba0d16f7808b905f895cae51f0b6218dd1b8f0f",
+            "1d088f0b12a51482cac51bdd2e8b3eafbb8210bb7e42478bbbf81c6bfe5c74ec",
+            "11dcae0e56a15963b9efafa2af80664fd95a91b0efd8555488cbb81a4e99163f"
+          ]
+        }
+      ],
+      "full_input_warmup": true,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            42.548828125,
+            53.50537109375,
+            36.9189453125
+          ],
+          "time": 1795379064.534104
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM noop warmup oban",
+          "load": [
+            42.548828125,
+            53.50537109375,
+            36.9189453125
+          ],
+          "time": 1795379067.173275
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM noop warmup mesh",
+          "load": [
+            37.26220703125,
+            52.00732421875,
+            36.58056640625
+          ],
+          "time": 1795379073.320894
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM noop measured oban",
+          "load": [
+            34.99853515625,
+            51.29296875,
+            36.4189453125
+          ],
+          "time": 1795379077.8132842
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM noop measured mesh",
+          "load": [
+            32.59619140625,
+            50.5244140625,
+            36.234375
+          ],
+          "time": 1795379084.510987
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            30.30615234375,
+            49.751953125,
+            36.04541015625
+          ],
+          "time": 1795379090.1017878
+        }
+      ],
+      "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "c58b937f6b88e174bd590a9e1caef009335b08eae3f0e28177eae52ae4097c27",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "dense-fixed-01",
+      "oban_erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+      "oban_erl_inetrc": "/proof/oban.inetrc",
+      "oban_preflight": {
+        "async_threads": 2,
+        "dirty_cpu_schedulers": 1,
+        "dirty_cpu_schedulers_online": 1,
+        "dirty_io_schedulers": 1,
+        "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+        "erl_inetrc": "/proof/oban.inetrc",
+        "flag_argv": {
+          "+A": [
+            "2"
+          ],
+          "+S": [
+            "2:2"
+          ],
+          "+SDcpu": [
+            "1:1"
+          ],
+          "+SDio": [
+            "1"
+          ]
+        },
+        "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "lookup": [
+          "file"
+        ],
+        "loopback_addresses": [
+          "127.0.0.1"
+        ],
+        "pid": 365,
+        "role": "preflight",
+        "schedulers": 2,
+        "schedulers_online": 2
+      },
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "noop",
+      "series": "canonical-oban-flags-inetrc",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "opt/otp/erts-17.1/bin/erl_child_setup": "79510b432c238f7f333ba27d29dd84244bbd1f80862340510c7a148a7ea4794f",
+        "opt/otp/erts-17.1/bin/inet_gethost": "cad1f6b2917e8ade3948c02239958085748f4575d4cb97fb7fb479c5ffcbdc7a",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "058552add25e4fe9a386d5782ccb8ba253384ca8e48da95996405ad689502e9d",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "e0b1c3610fee233fd0e3c6f814b6464ca9997b92506d67a31a19d33486eea7f9",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/oban.inetrc": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "proof/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "da5f0ec52227fb24ec4613a571ec0d201d8a626b9bc7a8986823eb48e1cfb26a"
+      }
+    },
+    {
+      "arms": [
+        {
+          "claim_span_ms": 860,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 68,
+            "durable": true,
+            "max_connections": 68,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 3.6109619140625,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.34765625,
+            "claim_p99_ms": 862.9580078125,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.001128986328125,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.091796875,
+            "estimated_peak_executing": 65,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.811658362166,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 526.5788814236336,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 348164096,
+            "peak_threads": 456,
+            "pickup_p99_ms": 867.742919921875,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.423828125,
+            "settlement_p99_ms": 970.618896484375,
+            "sql_calls_per_job": 7.515625
+          },
+          "ordered_write_pairs": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.195,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "45f8e8ec25c6ee0cfc69850878925633f8b14e2b8f94062ad94631f5d83c4073",
+          "runner_shutdown_sha256": [
+            "6eb3a6923cd3f28f68281fd9c203d073fb4878d23ae50618555953b16b4cb127"
+          ]
+        },
+        {
+          "claim_span_ms": 898.6640625,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 68,
+            "durable": true,
+            "max_connections": 68,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 5.8333740234375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.052734375,
+            "claim_p99_ms": 935.1318359375,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0012131249999999998,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.04296875,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 956.6323613585156,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 486.74341197487684,
+            "pair": 0,
+            "peak_connections": 67,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 146518016,
+            "peak_threads": 12,
+            "pickup_p99_ms": 941.766845703125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.197265625,
+            "settlement_p99_ms": 1051.02685546875,
+            "sql_calls_per_job": 3.240234375
+          },
+          "oban_broker_emulator": {
+            "async_threads": 2,
+            "dirty_cpu_schedulers": 1,
+            "dirty_cpu_schedulers_online": 1,
+            "dirty_io_schedulers": 1,
+            "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+            "erl_inetrc": "/proof/oban.inetrc",
+            "flag_argv": {
+              "+A": [
+                "2"
+              ],
+              "+S": [
+                "2:2"
+              ],
+              "+SDcpu": [
+                "1:1"
+              ],
+              "+SDio": [
+                "1"
+              ]
+            },
+            "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+            "live_environment": {
+              "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "ERL_INETRC": "/proof/oban.inetrc"
+            },
+            "lookup": [
+              "file"
+            ],
+            "loopback_addresses": [
+              "127.0.0.1"
+            ],
+            "pid": 4100,
+            "processes": [
+              {
+                "comm": "beam.smp",
+                "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                "pid": 4100,
+                "ppid": 365
+              },
+              {
+                "comm": "erl_child_setup",
+                "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                "pid": 4105,
+                "ppid": 4100
+              }
+            ],
+            "role": "session",
+            "schedulers": 2,
+            "schedulers_online": 2
+          },
+          "oban_emulator": [
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 4113,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 4113,
+                  "ppid": 365
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 4118,
+                  "ppid": 4113
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          ],
+          "ordered_write_pairs": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.564,
+            "ordered": 512,
+            "worker_pids": 1
+          },
+          "phase": "warmup",
+          "raw_ledger_and_samples_sha256": "59342bbb174e596fe64bd06f1d8f7a1193ec72c444a68c181379da53edbd5a35",
+          "runner_shutdown_sha256": [
+            "cbdf53fe6161a0277e52001d6b90a03e770ba587a84428827cad62b05f174476"
+          ]
+        },
+        {
+          "claim_span_ms": 838,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 68,
+            "durable": true,
+            "max_connections": 68,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 2.830078125,
+          "metrics": {
+            "application_sql_calls_per_job": 4.0,
+            "claim_calls_per_job": 0.416015625,
+            "claim_p99_ms": 836.843994140625,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.0009759570312499999,
+            "engine": "mesh",
+            "enqueue_sql_calls_per_job": 1.08984375,
+            "estimated_peak_executing": 65,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 1776.0733475187822,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 542.4430256246308,
+            "pair": 0,
+            "peak_connections": 13,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 65,
+            "peak_queued_context_bytes": 267488,
+            "peak_rss_bytes": 344903680,
+            "peak_threads": 456,
+            "pickup_p99_ms": 838.2470703125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 2.693359375,
+            "settlement_p99_ms": 940.180908203125,
+            "sql_calls_per_job": 7.783203125
+          },
+          "ordered_write_pairs": {
+            "jobs": 512,
+            "minimum_hold_ms": 100.148,
+            "ordered": 512,
+            "worker_pids": 512
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "5c1c74ff62df4ee634be731afbea91f32bdb3ae4249f7ddcab14fbf781299f3a",
+          "runner_shutdown_sha256": [
+            "9a484ae49f7ce1ce14983bff8d7db06524123c84e3063d1b3ca01ffeed63370e"
+          ]
+        },
+        {
+          "claim_span_ms": 921.443115234375,
+          "database_and_broker": {
+            "commit_timestamps": true,
+            "database_connection_limit": 68,
+            "durable": true,
+            "max_connections": 68,
+            "reserve": 0,
+            "superuser_reserve": 0,
+            "tls": true,
+            "user": "parity_producer"
+          },
+          "durable_enqueue_transactions": 1,
+          "median_claim_to_handler_ms": 9.3984375,
+          "metrics": {
+            "application_sql_calls_per_job": 0.0,
+            "claim_calls_per_job": 0.01953125,
+            "claim_p99_ms": 1029.43017578125,
+            "completed": 512,
+            "cpu_seconds_per_job": 0.001197580078125,
+            "engine": "oban",
+            "enqueue_sql_calls_per_job": 0.044921875,
+            "estimated_peak_executing": 64,
+            "event_buffer_bytes": null,
+            "event_logs_dropped": 0,
+            "events_dropped": 0,
+            "idle_queries_per_minute": 876.8213880224731,
+            "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+            "jobs_per_second": 442.89890430064423,
+            "pair": 0,
+            "peak_connections": 67,
+            "peak_executing": 64,
+            "peak_host_load_average_1m": 0.0,
+            "peak_processes": 2,
+            "peak_queued_context_bytes": null,
+            "peak_rss_bytes": 144592896,
+            "peak_threads": 12,
+            "pickup_p99_ms": 1046.260986328125,
+            "poll_ms": 250,
+            "runner_sql_calls_per_job": 3.10546875,
+            "settlement_p99_ms": 1155.68017578125,
+            "sql_calls_per_job": 3.150390625
+          },
+          "oban_broker_emulator": {
+            "async_threads": 2,
+            "dirty_cpu_schedulers": 1,
+            "dirty_cpu_schedulers_online": 1,
+            "dirty_io_schedulers": 1,
+            "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+            "erl_inetrc": "/proof/oban.inetrc",
+            "flag_argv": {
+              "+A": [
+                "2"
+              ],
+              "+S": [
+                "2:2"
+              ],
+              "+SDcpu": [
+                "1:1"
+              ],
+              "+SDio": [
+                "1"
+              ]
+            },
+            "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+            "live_environment": {
+              "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "ERL_INETRC": "/proof/oban.inetrc"
+            },
+            "lookup": [
+              "file"
+            ],
+            "loopback_addresses": [
+              "127.0.0.1"
+            ],
+            "pid": 7942,
+            "processes": [
+              {
+                "comm": "beam.smp",
+                "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                "pid": 7942,
+                "ppid": 365
+              },
+              {
+                "comm": "erl_child_setup",
+                "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                "pid": 7947,
+                "ppid": 7942
+              }
+            ],
+            "role": "session",
+            "schedulers": 2,
+            "schedulers_online": 2
+          },
+          "oban_emulator": [
+            {
+              "async_threads": 2,
+              "dirty_cpu_schedulers": 1,
+              "dirty_cpu_schedulers_online": 1,
+              "dirty_io_schedulers": 1,
+              "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+              "erl_inetrc": "/proof/oban.inetrc",
+              "flag_argv": {
+                "+A": [
+                  "2"
+                ],
+                "+S": [
+                  "2:2"
+                ],
+                "+SDcpu": [
+                  "1:1"
+                ],
+                "+SDio": [
+                  "1"
+                ]
+              },
+              "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+              "live_environment": {
+                "ERL_FLAGS": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+                "ERL_INETRC": "/proof/oban.inetrc"
+              },
+              "lookup": [
+                "file"
+              ],
+              "loopback_addresses": [
+                "127.0.0.1"
+              ],
+              "pid": 7955,
+              "processes": [
+                {
+                  "comm": "beam.smp",
+                  "exe": "/opt/otp/erts-17.1/bin/beam.smp",
+                  "pid": 7955,
+                  "ppid": 365
+                },
+                {
+                  "comm": "erl_child_setup",
+                  "exe": "/opt/otp/erts-17.1/bin/erl_child_setup",
+                  "pid": 7960,
+                  "ppid": 7955
+                }
+              ],
+              "role": "run",
+              "schedulers": 2,
+              "schedulers_online": 2
+            }
+          ],
+          "ordered_write_pairs": {
+            "jobs": 512,
+            "minimum_hold_ms": 101.508,
+            "ordered": 512,
+            "worker_pids": 1
+          },
+          "phase": "measured",
+          "raw_ledger_and_samples_sha256": "23064c855c58462726616ecb062b18285d224e7c09ef2a433075884709294d5e",
+          "runner_shutdown_sha256": [
+            "fc49ac6fb207bad3891d0b6fdc56d47714ccc520e16b973c90c86634734db88c"
+          ]
+        }
+      ],
+      "full_input_warmup": true,
+      "guest_base_sha256": "bdfda1a2a78378e57d2067412c2f296bb443d1f671757b80054fe33a8f67bc4b",
+      "host_load": [
+        {
+          "cores": 15,
+          "event": "boot_start",
+          "load": [
+            15.369140625,
+            41.62109375,
+            33.99951171875
+          ],
+          "time": 1795379154.2879932
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM slow warmup mesh",
+          "load": [
+            15.369140625,
+            41.62109375,
+            33.99951171875
+          ],
+          "time": 1795379156.7746859
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM slow warmup oban",
+          "load": [
+            15.01904296875,
+            41.1123046875,
+            33.86474609375
+          ],
+          "time": 1795379161.997698
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM slow measured mesh",
+          "load": [
+            13.15771484375,
+            39.8564453125,
+            33.50341796875
+          ],
+          "time": 1795379167.860558
+        },
+        {
+          "cores": 15,
+          "event": "FROZEN_DIAGNOSTIC_ARM slow measured oban",
+          "load": [
+            12.42431640625,
+            39.2607421875,
+            33.330078125
+          ],
+          "time": 1795379172.942662
+        },
+        {
+          "cores": 15,
+          "event": "boot_end",
+          "load": [
+            11.66943359375,
+            38.65869140625,
+            33.15234375
+          ],
+          "time": 1795379179.058109
+        }
+      ],
+      "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+      "kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "manifest_sha256": "18e05be537ce42b0bdc9ec4bea3da2ed13612d5c6d55465b05760b8c62a2e62c",
+      "mesh_elf_sha256": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+      "name": "slow-fixed-01",
+      "oban_erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+      "oban_erl_inetrc": "/proof/oban.inetrc",
+      "oban_preflight": {
+        "async_threads": 2,
+        "dirty_cpu_schedulers": 1,
+        "dirty_cpu_schedulers_online": 1,
+        "dirty_io_schedulers": 1,
+        "erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+        "erl_inetrc": "/proof/oban.inetrc",
+        "flag_argv": {
+          "+A": [
+            "2"
+          ],
+          "+S": [
+            "2:2"
+          ],
+          "+SDcpu": [
+            "1:1"
+          ],
+          "+SDio": [
+            "1"
+          ]
+        },
+        "inetrc_sha256": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "lookup": [
+          "file"
+        ],
+        "loopback_addresses": [
+          "127.0.0.1"
+        ],
+        "pid": 366,
+        "role": "preflight",
+        "schedulers": 2,
+        "schedulers_online": 2
+      },
+      "oban_revision": "8526a5bd70a1cb37f8fc27611021c90a44a89590",
+      "profile": "slow",
+      "series": "canonical-oban-flags-inetrc",
+      "shared_component_sha256": {
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.Worker.beam": "6977d29f5da1dd0e0e776725b52b8ba42b0d281a307d65c1ab6c3ab6dcc640c7",
+        "opt/fixtures/jobs_parity_oban/ebin/Elixir.JobsParityOban.beam": "f11d6c5d9e6a45cd16f8a6f3e2a07c9dd2905747d7864a93605513e1f6cb2eb9",
+        "opt/otp/erts-17.1/bin/beam.smp": "88d8c97c06be5466a256e67646f28c7dcdda9d30d4cdb76ae71289c9e7406ea2",
+        "opt/otp/erts-17.1/bin/erl_child_setup": "79510b432c238f7f333ba27d29dd84244bbd1f80862340510c7a148a7ea4794f",
+        "opt/otp/erts-17.1/bin/inet_gethost": "cad1f6b2917e8ade3948c02239958085748f4575d4cb97fb7fb479c5ffcbdc7a",
+        "proof/application.sql": "3fcac034158078d04c101ae7d24c60ce8e7331bce6b986ba3dcaa9c937475230",
+        "proof/fence.sql": "312228a0ad538e418c580caa205f57071e52e55566753146eef8a3f3eee8b8dc",
+        "proof/fixture.exs": "058552add25e4fe9a386d5782ccb8ba253384ca8e48da95996405ad689502e9d",
+        "proof/jobs-parity-profiles.json": "1dd2d3472faf1ea2f31de854e391b18c13969315b8d3bd88b8b07da69386e297",
+        "proof/jobs-parity.py": "03252978489916ff37f7c42712bd6dbe9d96254864d8f4d2060c4b39175d6c24",
+        "proof/mesh-current": "fe719b77c033f0c08e61138291eb119487c796476e23fe9fb544711dd50233c8",
+        "proof/oban": "e0b1c3610fee233fd0e3c6f814b6464ca9997b92506d67a31a19d33486eea7f9",
+        "proof/oban-session.ex": "6ebaf0eee822731b06b620d06279a172a5625135259bb75af0bbb7e56a1ec951",
+        "proof/oban.inetrc": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "proof/oban_runtime.py": "0cc775d4323726bee7997866fa9dc4286d5907949c4aba145db48f0562a15d45",
+        "proof/proof_transport.py": "77fb8f26dfeaa9da07869a889b308576d3d7fddd0da803aa6f25759eb1d7ec15",
+        "proof/run.sh": "02b091a50538ed3e4954cc3564837a1d352da5437d24b387fdd5e30312522dcb",
+        "proof/trial.py": "da5f0ec52227fb24ec4613a571ec0d201d8a626b9bc7a8986823eb48e1cfb26a"
+      }
+    }
+  ],
+  "next_pilot": null,
+  "next_series_group_after_pilots": "noop-01",
+  "original_25_pair_record": "c7212bed"
+}

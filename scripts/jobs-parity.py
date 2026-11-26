@@ -337,19 +337,21 @@ timezone = 'UTC'
 SELECT json_build_object(
  'runner', coalesce(sum(calls) FILTER (WHERE rolname='parity_subject'),0),
  'enqueue', coalesce(sum(calls) FILTER (WHERE rolname='parity_producer'),0),
+ 'application', coalesce(sum(calls) FILTER (WHERE rolname='compiled_caller'),0),
  'claims', coalesce(sum(calls) FILTER (WHERE rolname='parity_subject' AND ({claim_query})),0),
  'dealloc', (SELECT dealloc FROM pg_stat_statements_info)
 )
 FROM pg_stat_statements JOIN pg_roles ON userid = pg_roles.oid
 WHERE dbid = (SELECT oid FROM pg_database WHERE datname = '{engine}')
-  AND rolname IN ('parity_subject', 'parity_producer')
+  AND rolname IN ('parity_subject', 'parity_producer', 'compiled_caller')
 """))
 
     def observe(self, engine, namespace):
         relation, scope = job_relation(engine, namespace)
         return json.loads(self.sql(engine, f"""
 SELECT json_build_object(
- 'connections', (SELECT count(*) FROM pg_stat_activity WHERE usename IN ('parity_subject', 'parity_producer')
+ 'connections', (SELECT count(*) FROM pg_stat_activity
+                    WHERE usename IN ('parity_subject', 'parity_producer', 'compiled_caller')
                     AND datname = current_database()),
  'executing', count(*) FILTER (WHERE state = 'executing'),
  'terminal', count(*) FILTER (WHERE state IN ('completed','discarded','cancelled'))
@@ -964,7 +966,8 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
                 raise FixtureError("PostgreSQL evicted statement counters during the trial")
             runner_calls = after["runner"] - idle_calls_after["runner"]
             enqueue_calls = after["enqueue"] - idle_calls_after["enqueue"]
-            calls = runner_calls + enqueue_calls
+            application_calls = after["application"] - idle_calls_after["application"]
+            calls = runner_calls + enqueue_calls + application_calls
             claim_calls = after["claims"] - idle_calls_after["claims"]
             idle_calls = idle_calls_after["runner"] - idle_calls_before["runner"]
             if listener:
@@ -1024,6 +1027,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
            "statement_counter_deallocations": after["dealloc"],
            "raw_runner_sql_calls": runner_calls, "raw_enqueue_sql_calls": enqueue_calls,
+           "raw_application_sql_calls": application_calls,
            "raw_claim_calls": claim_calls, "raw_idle_sql_calls": idle_calls, "idle_seconds": idle_s}
     if listener:
         raw["listener_trial"] = listener_evidence
@@ -1039,6 +1043,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         "sql_calls_per_job": calls / len(rows),
         "runner_sql_calls_per_job": runner_calls / len(rows),
         "enqueue_sql_calls_per_job": enqueue_calls / len(rows),
+        "application_sql_calls_per_job": application_calls / len(rows),
         "claim_calls_per_job": claim_calls / len(rows),
         "idle_queries_per_minute": idle_calls * 60 / idle_s,
         "cpu_seconds_per_job": cpu / len(rows),
@@ -1818,10 +1823,12 @@ def selection(args, settings):
     return [(name, r, s) for name in workloads for r in runners for s in slots if s >= r]
 
 
-def profile_summary(trials, name, workload, settings, runners, slots, variants, mesh_batch, mesh_listen, mesh_events):
+def profile_summary(trials, name, workload, settings, runners, slots, variants, mesh_batch, mesh_listen,
+                    mesh_events, *, matched_baseline=False):
     keys = ("jobs_per_second", "pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms",
             "sql_calls_per_job", "runner_sql_calls_per_job",
-            "enqueue_sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
+            "enqueue_sql_calls_per_job", "application_sql_calls_per_job",
+            "claim_calls_per_job", "idle_queries_per_minute",
             "cpu_seconds_per_job", "peak_rss_bytes", "events_dropped", "event_logs_dropped",
             "peak_host_load_average_1m", "pickup_max_ms")
     summary = {}
@@ -1835,6 +1842,15 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
             summary[engine]["event_buffer_bytes"] = max_event_buffer_bytes(
                 [trial.get("event_buffer_bytes") for trial in values])
     limits = {}
+    if matched_baseline:
+        pair_metrics = ("jobs_per_second", "pickup_p99_ms", "cpu_seconds_per_job", "peak_rss_bytes")
+        by_engine = {engine: {row["pair"]: row for row in trials if row["engine"] == engine}
+                     for engine in ("mesh", "baseline")}
+        summary["paired_candidate_minus_stock"] = {
+            metric: [row[metric] - by_engine["baseline"][pair][metric]
+                     for pair, row in sorted(by_engine["mesh"].items())]
+            for metric in pair_metrics
+        }
     if "oban" in summary:
         for metric, limit in (
                 ("cpu_seconds_per_job", settings["relative_cpu_seconds_per_job"]),
@@ -1876,6 +1892,8 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
             ("jobs_per_second", "oban", "core_throughput_ratio_min"),
             ("pickup_p99_ms", "oban", "core_pickup_p99_ratio_max"),
         ]
+    elif matched_baseline:
+        checks = []
     elif mesh_batch and name == "short":
         checks = [("claim_calls_per_job", "baseline", "batch_claim_calls_ratio_max")]
     elif mesh_batch and workload["mode"] == "sparse" and "baseline" in summary:
@@ -1904,7 +1922,7 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
         comparison["listener_claim_p99_ms"] = {"observed": observed, "limit": limit,
                                                "within_limit": observed <= limit}
         baseline_polls = {trial["poll_ms"] for trial in trials if trial["engine"] == "baseline"}
-        if baseline_polls == {settings["poll_ms"]}:
+        if not matched_baseline and baseline_polls == {settings["poll_ms"]}:
             metric = "idle_queries_per_minute"
             observed = summary["mesh"][metric]["median"]
             baseline = summary["baseline"][metric]["median"]
@@ -2284,11 +2302,14 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "mesh_events": mesh_events,
                     "poll_ms": poll_ms,
                     "baseline_poll_ms": baseline_poll_ms if baseline_ref else None,
+                    "baseline_matches_mesh": args.baseline_matches_mesh,
                     "sparse_producer": "one warm process with database connections scoped to each batch",
                     "mode": lane, "claim_timestamps": {"mesh": "database attempted_at_ms",
                                                        "oban": "Basic engine attempted_at"},
                     "settlement_timestamp": "durable commit timestamp of the terminal row version",
                     "resource_scope": "runner process trees; sampled RSS, processes, threads and connections",
+                    "workload_connection_roles": ["parity_subject", "parity_producer", "compiled_caller"],
+                    "application_sql_role": "compiled_caller",
                 })
                 subjects = {"mesh": Subject("mesh", [str(executable)], ROOT, cluster, env, poll_ms=poll_ms)}
                 if args.j2_lane_7:
@@ -2299,8 +2320,9 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     subjects["disconnected"] = Subject("mesh", [str(executable)], ROOT, cluster, env,
                                                        variant="disconnected", poll_ms=poll_ms)
                 elif baseline_ref:
-                    baseline_env = dict(env, JOBS_PARITY_MESH_BATCH="0", JOBS_PARITY_MESH_LISTEN="0",
-                                        JOBS_PARITY_MESH_EVENTS="")
+                    baseline_env = env if args.baseline_matches_mesh else dict(
+                        env, JOBS_PARITY_MESH_BATCH="0", JOBS_PARITY_MESH_LISTEN="0",
+                        JOBS_PARITY_MESH_EVENTS="")
                     subjects["baseline"] = Subject("mesh", [str(baseline)], ROOT, cluster, baseline_env,
                                                    variant="baseline", poll_ms=baseline_poll_ms)
                 else:
@@ -2383,7 +2405,8 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     validate_pairs(trials, pair_count, slots, variants)
                     write_json(case_evidence / "trials.json", trials)
                     summary = profile_summary(trials, name, workload, settings, runners, slots, variants,
-                                              mesh_batch, mesh_listen, mesh_events)
+                                              mesh_batch, mesh_listen, mesh_events,
+                                              matched_baseline=args.baseline_matches_mesh)
                     write_json(case_evidence / "summary.json", summary)
                     for scope, values in summary.items():
                         for metric, verdict in values.items():
@@ -2533,6 +2556,24 @@ for number, line in enumerate(sys.stdin, 1):
                     comparison = summary["comparison"]["jobs_per_second"]
                     self.assertEqual(comparison["ratio_limit"], 1.0)
                     self.assertEqual(comparison["within_limit"], exceeds)
+
+        def test_matched_revisions_compare_pairs_without_the_single_claim_budget(self):
+            settings = json.loads(CONFIG.read_text())
+            base = {"jobs_per_second": 100, "pickup_p99_ms": 50,
+                    "cpu_seconds_per_job": 1, "peak_rss_bytes": 100,
+                    "peak_connections": 1, "peak_processes": 1, "peak_threads": 1,
+                    "peak_queued_context_bytes": 1}
+            trials = [
+                dict(base, engine="baseline", pair=1, jobs_per_second=80),
+                dict(base, engine="mesh", pair=1),
+                dict(base, engine="mesh", pair=0),
+                dict(base, engine="baseline", pair=0, jobs_per_second=110),
+            ]
+            summary = profile_summary(trials, "short", settings["workloads"]["short"], settings,
+                                      1, 16, ("mesh", "baseline"), True, False, None,
+                                      matched_baseline=True)
+            self.assertNotIn("comparison", summary)
+            self.assertEqual(summary["paired_candidate_minus_stock"]["jobs_per_second"], [-10, 20])
 
         def test_event_buffer_summary_keeps_estimate_bound_and_legacy_distinct(self):
             settings = json.loads(CONFIG.read_text())
@@ -2776,6 +2817,8 @@ def main():
                         help="reuse verified compiler/runtime pairs from a previous Jobs comparison build")
     parser.add_argument("--release", action="store_true", help="use a release toolchain for smoke and fault probes")
     parser.add_argument("--against-ref", help="compare with a second Mesh commit using single claims")
+    parser.add_argument("--baseline-matches-mesh", action="store_true",
+                        help="interleave a stock Mesh commit with the same runner settings")
     parser.add_argument("--mesh-batch", action="store_true", help="enable batch claims for the Mesh runner")
     parser.add_argument("--mesh-listen", action="store_true", help="enable Mesh listener and transactional publishing")
     parser.add_argument("--mesh-events", choices=("disabled", "logged", "backpressured"),
@@ -2795,6 +2838,9 @@ def main():
         parser.error("poll intervals must be between 1 and 60000 ms")
     if args.baseline_poll_ms is not None and not args.against_ref:
         parser.error("--baseline-poll-ms requires --against-ref")
+    if args.baseline_matches_mesh and (not args.load or not args.against_ref
+                                      or args.baseline_poll_ms is not None):
+        parser.error("--baseline-matches-mesh requires --load and --against-ref at the same polling cadence")
     if args.postgres_version and not POSTGRES_VERSION.fullmatch(args.postgres_version):
         parser.error("--postgres-version requires MAJOR.PATCH")
     if args.notify_producer_failures and (not args.postgres_version or args.workload or args.against_ref

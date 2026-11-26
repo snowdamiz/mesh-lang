@@ -1,0 +1,7 @@
+# Controller launch receipt
+
+The 02:00:58 UTC release records an exit before the owner command started. The controller ran its wrapper from the checkout root. That wrapper asserted that the sealed command's `cd` also named the checkout root. The packet instead names the recovery directory and launches `python3 -B controller.py timing` there. The controller's child log was zero bytes. The separate outer traceback records the rejected assertion. Both the actual release and traceback are retained in commit `1a3652d51`. [Release](../native/controller-release.json) · [Exact stderr](../native/controller-wrapper-stderr.txt)
+
+The sole controller corrected its wrapper to validate the sealed directory and use it as the child working directory. `wrapper.py.txt` is the exact corrected source snapshot for offline replay. The original packet, owner code, positive SETUP, module and staging pins, reservation order, and profiling gates are preserved. The failed reservation is closed.
+
+From this directory, run `python3 -B offline-entry.py`. The replay uses the actual wrapper functions and owner entry point with an isolated journal, scratch lock and dummy native effects. It validates the exact child command, rejects an unrelated working directory, checks preflight pins and all 27 staged files, and stops at the first group-1 off-A dispatch. The fixture release never enters the controller journal. [Offline replay](entry-replay.json)

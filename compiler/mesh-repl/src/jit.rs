@@ -53,6 +53,27 @@ extern "C" fn repl_jobs_start(
     mesh_rt::io::mesh_alloc_result(1, text.cast()).cast()
 }
 
+extern "C" fn repl_jobs_start_effects(
+    _pool: u64,
+    _config: *const MeshString,
+    _handler: *const u8,
+    _env: *const u8,
+    _url: *const MeshString,
+    _registry: *const u8,
+) -> *mut MeshResult {
+    repl_jobs_effect_unsupported()
+}
+
+extern "C" fn repl_jobs_effect(_name: *const MeshString, _values: *const u8) -> *mut MeshResult {
+    repl_jobs_effect_unsupported()
+}
+
+fn repl_jobs_effect_unsupported() -> *mut MeshResult {
+    let message = b"Jobs effects require a compiled Mesh program";
+    let text = mesh_rt::mesh_string_new(message.as_ptr(), message.len() as u64);
+    mesh_rt::io::mesh_alloc_result(1, text.cast()).cast()
+}
+
 extern "C" fn repl_jobs_drain(
     _pool: u64,
     _config: *const MeshString,
@@ -1154,6 +1175,11 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ("mesh_jobs_control", mesh_jobs_control as *const ()),
         ("mesh_jobs_start", repl_jobs_start as *const ()),
         ("mesh_jobs_drain", repl_jobs_drain as *const ()),
+        (
+            "mesh_jobs_start_effects_v1",
+            repl_jobs_start_effects as *const (),
+        ),
+        ("mesh_jobs_effect_v1", repl_jobs_effect as *const ()),
         (
             "mesh_jobs_register_handler",
             repl_jobs_register_handler as *const (),
@@ -2968,6 +2994,21 @@ mod tests {
                 text,
                 format!("Jobs.{name} requires a compiled Mesh program")
             );
+        }
+    }
+
+    #[test]
+    fn jobs_effects_reject_repl_execution() {
+        init_runtime();
+        let null = std::ptr::null();
+        for result in [
+            repl_jobs_start_effects(0, null, null.cast(), null.cast(), null, null.cast()),
+            repl_jobs_effect(null, null.cast()),
+        ] {
+            let result = unsafe { &*result };
+            assert_eq!(result.tag, 1);
+            let text = unsafe { (*result.value.cast::<MeshString>()).as_str() };
+            assert_eq!(text, "Jobs effects require a compiled Mesh program");
         }
     }
 

@@ -4,15 +4,15 @@
 //! is `{ len: u64, data: [u8; len] }` -- the data bytes immediately follow
 //! the length field in memory.
 //!
-//! All string functions allocate via `mesh_gc_alloc_actor` so they are managed
-//! by the per-actor GC heap (falling back to the global arena outside actor
-//! context).
+//! Runtime-created text is a leaf in the per-actor heap. The raw native
+//! constructor uses conservative allocation. Both use the global arena
+//! outside actor context.
 
 use std::io::Write;
 use std::ptr;
 
 use crate::collections::list::{mesh_list_builder_new, mesh_list_builder_push};
-use crate::gc::mesh_gc_alloc_actor;
+use crate::gc::{alloc_actor_leaf, mesh_gc_alloc_actor};
 use crate::option::alloc_option;
 
 /// A GC-managed Mesh string.
@@ -81,16 +81,27 @@ impl MeshString {
 /// the string data is zeroed.
 #[no_mangle]
 pub extern "C" fn mesh_string_new(data: *const u8, len: u64) -> *mut MeshString {
-    unsafe {
-        let total = MeshString::HEADER_SIZE + len as usize;
-        let ptr = mesh_gc_alloc_actor(total as u64, 8) as *mut MeshString;
-        (*ptr).len = len;
-        if !data.is_null() && len > 0 {
-            let dst = (*ptr).data_ptr_mut();
-            ptr::copy_nonoverlapping(data, dst, len as usize);
-        }
-        ptr
+    unsafe { copy_string(data, len, false) }
+}
+
+unsafe fn allocate(len: u64, leaf: bool) -> *mut MeshString {
+    let total = MeshString::HEADER_SIZE as u64 + len;
+    let allocation = if leaf {
+        alloc_actor_leaf(total, 8)
+    } else {
+        mesh_gc_alloc_actor(total, 8)
+    };
+    let string = allocation.cast::<MeshString>();
+    (*string).len = len;
+    string
+}
+
+unsafe fn copy_string(data: *const u8, len: u64, leaf: bool) -> *mut MeshString {
+    let string = allocate(len, leaf);
+    if !data.is_null() && len > 0 {
+        ptr::copy_nonoverlapping(data, (*string).data_ptr_mut(), len as usize);
     }
+    string
 }
 
 /// The text of the Mesh string at `pointer`.
@@ -100,7 +111,7 @@ pub(crate) unsafe fn text_of<'a, T>(pointer: *const T) -> &'a str {
 
 /// A new Mesh string holding `text`.
 pub(crate) fn mesh_str(text: &str) -> *mut MeshString {
-    mesh_string_new(text.as_ptr(), text.len() as u64)
+    unsafe { copy_string(text.as_ptr(), text.len() as u64, true) }
 }
 
 /// Concatenate two Mesh strings, returning a new GC-managed string.
@@ -113,7 +124,7 @@ pub extern "C" fn mesh_string_concat(
         let a_len = (*a).len;
         let b_len = (*b).len;
         let new_len = a_len + b_len;
-        let result = mesh_string_new(ptr::null(), new_len);
+        let result = allocate(new_len, true);
         let dst = (*result).data_ptr_mut();
         ptr::copy_nonoverlapping((*a).data_ptr(), dst, a_len as usize);
         ptr::copy_nonoverlapping((*b).data_ptr(), dst.add(a_len as usize), b_len as usize);
@@ -130,7 +141,7 @@ pub extern "C" fn mesh_int_to_string(val: i64) -> *mut MeshString {
     let mut remaining = &mut buf[..];
     write!(remaining, "{val}").expect("an i64 fits in 20 bytes");
     let len = 20 - remaining.len();
-    mesh_string_new(buf.as_ptr(), len as u64)
+    unsafe { copy_string(buf.as_ptr(), len as u64, true) }
 }
 
 /// Convert an f64 float to a GC-managed Mesh string. A whole number keeps
@@ -144,14 +155,14 @@ pub extern "C" fn mesh_float_to_string(val: f64) -> *mut MeshString {
             s.insert_str(e, ".0");
         }
     }
-    mesh_string_new(s.as_ptr(), s.len() as u64)
+    mesh_str(&s)
 }
 
 /// Convert a boolean (i8: 0 = false, non-zero = true) to a GC-managed Mesh string.
 #[no_mangle]
 pub extern "C" fn mesh_bool_to_string(val: i8) -> *mut MeshString {
     let s = if val != 0 { "true" } else { "false" };
-    mesh_string_new(s.as_ptr(), s.len() as u64)
+    mesh_str(s)
 }
 
 /// Identity function for string-to-string conversion.
@@ -184,7 +195,7 @@ pub extern "C" fn mesh_string_inspect(s: *const MeshString) -> *mut MeshString {
         }
     }
     out.push('"');
-    mesh_string_new(out.as_ptr(), out.len() as u64)
+    mesh_str(&out)
 }
 
 /// Print a Mesh string to stdout (no trailing newline).
@@ -238,7 +249,7 @@ pub extern "C" fn mesh_string_slice(s: *const MeshString, start: i64, end: i64) 
         let start = (start.max(0) as usize).min(char_count);
         let end = (end.max(0) as usize).min(char_count).max(start);
         let sliced: String = text.chars().skip(start).take(end - start).collect();
-        mesh_string_new(sliced.as_ptr(), sliced.len() as u64)
+        mesh_str(&sliced)
     }
 }
 
@@ -286,7 +297,7 @@ pub extern "C" fn mesh_string_ends_with(s: *const MeshString, suffix: *const Mes
 pub extern "C" fn mesh_string_trim(s: *const MeshString) -> *mut MeshString {
     unsafe {
         let trimmed = (*s).as_str().trim();
-        mesh_string_new(trimmed.as_ptr(), trimmed.len() as u64)
+        mesh_str(trimmed)
     }
 }
 
@@ -328,7 +339,7 @@ pub extern "C-unwind" fn mesh_string_repeat(
 pub extern "C" fn mesh_string_to_upper(s: *const MeshString) -> *mut MeshString {
     unsafe {
         let upper = (*s).as_str().to_uppercase();
-        mesh_string_new(upper.as_ptr(), upper.len() as u64)
+        mesh_str(&upper)
     }
 }
 
@@ -337,7 +348,7 @@ pub extern "C" fn mesh_string_to_upper(s: *const MeshString) -> *mut MeshString 
 pub extern "C" fn mesh_string_to_lower(s: *const MeshString) -> *mut MeshString {
     unsafe {
         let lower = (*s).as_str().to_lowercase();
-        mesh_string_new(lower.as_ptr(), lower.len() as u64)
+        mesh_str(&lower)
     }
 }
 
@@ -350,7 +361,7 @@ pub extern "C" fn mesh_string_replace(
 ) -> *mut MeshString {
     unsafe {
         let result = (*s).as_str().replace((*from).as_str(), (*to).as_str());
-        mesh_string_new(result.as_ptr(), result.len() as u64)
+        mesh_str(&result)
     }
 }
 
@@ -386,7 +397,7 @@ pub extern "C" fn mesh_string_split(s: *const MeshString, delim: *const MeshStri
         let parts: Vec<&str> = text.split(delimiter).collect();
         let mut list = mesh_list_builder_new(parts.len() as i64);
         for part in &parts {
-            let mesh_str = mesh_string_new(part.as_ptr(), part.len() as u64);
+            let mesh_str = mesh_str(part);
             list = mesh_list_builder_push(list, mesh_str as u64);
         }
         list
@@ -399,17 +410,60 @@ pub extern "C" fn mesh_string_split(s: *const MeshString, delim: *const MeshStri
 #[no_mangle]
 pub extern "C" fn mesh_string_join(list: *mut u8, sep: *const MeshString) -> *mut u8 {
     unsafe {
-        let separator = (*sep).as_str();
-        let (len, data) = crate::collections::list::list_slots(list);
-        let mut parts: Vec<&str> = Vec::with_capacity(len);
-        for i in 0..len {
-            let elem = *data.add(i);
-            let mesh_str = elem as *const MeshString;
-            parts.push((*mesh_str).as_str());
+        let (count, slots) = crate::collections::list::list_slots(list);
+        let slots = std::slice::from_raw_parts(slots, count);
+        let Some((&first, rest)) = slots.split_first() else {
+            return allocate(0, true).cast();
+        };
+        let first = first as *const MeshString;
+        let rest = rest.iter().map(|&slot| slot as *const MeshString);
+        let separator_len = (*sep).len;
+        let len = join_byte_len(
+            (*first).len,
+            separator_len,
+            rest.clone().map(|part| (*part).len),
+        )
+        .expect("String.join: result too large");
+
+        // Actor heaps store the allocation size in a u32. The global arena
+        // can hold larger allocations on 64-bit targets.
+        if len + MeshString::HEADER_SIZE as u64 > u32::MAX as u64 {
+            assert!(
+                crate::actor::stack::with_allocation_process(|_| ()).is_none(),
+                "String.join: result too large for the actor heap"
+            );
         }
-        let result = parts.join(separator);
-        mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
+
+        // Allocation can request GC but collection waits for a safepoint in
+        // compiled code. The immutable slots and input bodies stay live here.
+        let result = allocate(len, true);
+        let mut dst = result.cast::<u8>().add(MeshString::HEADER_SIZE);
+        let mut copy = |part: *const MeshString, len: usize| {
+            ptr::copy_nonoverlapping(part.cast::<u8>().add(MeshString::HEADER_SIZE), dst, len);
+            dst = dst.add(len);
+        };
+        copy(first, (*first).len as usize);
+        for part in rest {
+            copy(sep, separator_len as usize);
+            copy(part, (*part).len as usize);
+        }
+        result.cast()
     }
+}
+
+fn join_byte_len(
+    first: u64,
+    separator: u64,
+    mut rest: impl ExactSizeIterator<Item = u64>,
+) -> Option<u64> {
+    // The largest rounded actor page must fit in a Rust allocation, including
+    // both headers. This also leaves room for the arena's alignment padding.
+    const MAX_PAYLOAD: u64 = ((isize::MAX as usize & !7)
+        - crate::actor::heap::GC_HEADER_SIZE
+        - MeshString::HEADER_SIZE) as u64;
+    let separators = separator.checked_mul(rest.len() as u64)?;
+    let len = rest.try_fold(first.checked_add(separators)?, u64::checked_add)?;
+    (len <= MAX_PAYLOAD).then_some(len)
 }
 
 /// Parse a string to an integer, returning Option<Int>.
@@ -445,7 +499,88 @@ pub extern "C" fn mesh_string_to_float(s: *const MeshString) -> *mut u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::collections::list::{
+        mesh_list_append, mesh_list_drop, mesh_list_from_array, string_list,
+    };
     use crate::gc::mesh_rt_init;
+
+    #[test]
+    fn join_allocates_fresh_strings_and_reads_only_visible_slots() {
+        let sep = mesh_str("\0🙂");
+        let mut prefix = mesh_list_builder_new(8);
+        for text in ["ignored", "é", ""] {
+            prefix = mesh_list_builder_push(prefix, mesh_str(text) as u64);
+        }
+        let view = mesh_list_drop(prefix, 1);
+        let extended = mesh_list_append(view, mesh_str("水") as u64);
+        for (list, separator, expected) in [
+            (prefix, sep, "ignored\0🙂é\0🙂"),
+            (view, sep, "é\0🙂"),
+            (extended, sep, "é\0🙂\0🙂水"),
+            (extended, mesh_str(""), "é水"),
+            (mesh_list_drop(extended, 2), sep, "水"),
+        ] {
+            let result = mesh_string_join(list, separator).cast::<MeshString>();
+            assert_eq!(unsafe { (*result).as_str() }, expected);
+        }
+
+        let empty = string_list::<&str>(&[]);
+        let a = mesh_string_join(empty, sep).cast::<MeshString>();
+        let b = mesh_string_join(empty, sep).cast::<MeshString>();
+        assert_ne!(a, b);
+        assert_eq!(unsafe { (*a).as_str() }, "");
+        assert_eq!(unsafe { (*b).as_str() }, "");
+
+        let singleton = mesh_list_from_array([sep as u64].as_ptr(), 1);
+        let a = mesh_string_join(singleton, sep).cast::<MeshString>();
+        assert_ne!(a, sep);
+        assert_eq!(unsafe { (*a).as_str() }, "\0🙂");
+    }
+
+    #[test]
+    fn join_copies_raw_bytes_to_an_actor_leaf() {
+        use crate::actor::process::{Priority, Process, ProcessId};
+        use crate::actor::stack;
+        use std::sync::Arc;
+
+        let pid = ProcessId(1);
+        let process = Arc::new(parking_lot::Mutex::new(Process::new(pid, Priority::Normal)));
+        process.lock().collects_at_safepoints = true;
+        stack::set_current_process(pid, &process);
+        let child = mesh_gc_alloc_actor(8, 8);
+        let word = (child as u64).to_ne_bytes();
+        let first = mesh_string_new(word.as_ptr(), 8);
+        let last = mesh_string_new([0u8, 0xff].as_ptr(), 2);
+        let sep = mesh_string_new([0xfeu8, 0].as_ptr(), 2);
+        let list = mesh_list_from_array([first as u64, last as u64].as_ptr(), 2);
+        let _ = mesh_gc_alloc_actor(512 * 1024, 8);
+        assert!(process.lock().heap.should_collect());
+        let result = mesh_string_join(list, sep);
+        stack::clear_current_pid();
+
+        // A root into the text retains the result. The address encoded in
+        // the text does not retain the object it happens to name.
+        let body = unsafe { result.add(MeshString::HEADER_SIZE) };
+        let roots = [body as u64];
+        let top = roots.as_ptr().cast();
+        let bottom = unsafe { roots.as_ptr().add(roots.len()) }.cast();
+        let mut process = process.lock();
+        process.heap.collect(bottom, top);
+        assert_eq!(process.heap.live_allocation_size(child), None);
+        assert_eq!(process.heap.live_allocation_size(result), Some(20));
+        let bytes = unsafe { std::slice::from_raw_parts(body, 12) };
+        assert_eq!(&bytes[..8], &word);
+        assert_eq!(&bytes[8..], &[0xfe, 0, 0, 0xff]);
+    }
+
+    #[test]
+    fn join_sizes_are_checked_before_allocation() {
+        assert_eq!(join_byte_len(1, 2, [3, 5].into_iter()), Some(13));
+        assert_eq!(join_byte_len(1, u64::MAX, [].into_iter()), Some(1));
+        assert_eq!(join_byte_len(1, u64::MAX, [0, 0].into_iter()), None);
+        assert_eq!(join_byte_len(u64::MAX, 0, [1].into_iter()), None);
+        assert_eq!(join_byte_len(isize::MAX as u64, 0, [].into_iter()), None);
+    }
 
     /// Output goes out text first, then its ending; a write error other
     /// than a closed pipe returns rather than ending the program.

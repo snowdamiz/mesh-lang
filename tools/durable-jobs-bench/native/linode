@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd -P)"
+root="$(cd "$here/../../.." && pwd -P)"
+access="$root/target/linode-jobs-access"
+state="$root/target/linode-jobs-native"
+remote=/var/lib/durable-jobs-bench/native
+umask 077
+
+ssh_host() {
+    ssh -F /dev/null -T -o BatchMode=yes -o ConnectTimeout=8 -o IdentitiesOnly=yes \
+        -o IdentityAgent=none -o StrictHostKeyChecking=accept-new \
+        -o "UserKnownHostsFile=$access/known_hosts" -o GlobalKnownHostsFile=/dev/null \
+        -i "$access/id_ed25519" root@172.234.135.126 "$@"
+}
+
+action="${1:-check}"
+case "$action" in
+    check)
+        ssh_host 'hostname && uname -sm && cat /etc/os-release && nproc --all && uptime && lscpu'
+        ;;
+    bundle|upload)
+        id="${2:?usage: linode bundle NEW_SOURCE_ID [MESH_REVISION] | linode upload SOURCE_ID}"
+        [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+        mkdir -p "$state/bundles"
+        bundle="$state/bundles/$id"
+        if [[ "$action" == bundle ]]; then
+            mkdir "$bundle"
+            mkdir "$bundle/source"
+            base_revision=dbcb6dbc1de3a6887fc3757c2b91f7974d74ed17
+            revision="$(git -C "$root" rev-parse --verify "${3:-$base_revision}^{commit}")"
+            git -C "$root" merge-base --is-ancestor "$base_revision" "$revision"
+            git -C "$root" archive "$revision" Cargo.toml Cargo.lock .cargo/config.toml compiler \
+                tools/skill/mesh | tar -xf - -C "$bundle/source"
+            git -C "$root" archive "$base_revision" scripts/jobs-parity.py scripts/jobs-parity-profiles.json \
+                scripts/ci-x86_64-linux-gnu-clang scripts/fixtures/jobs-parity-oban/{mix.exs,mix.lock,inetrc,config/config.exs} \
+                proof/jobs-parity/linux-regression/{trial.py,proof_transport.py,oban_runtime.py,application.sql,fence.sql,fixture.exs,oban-session.ex.in} \
+                proof/jobs-parity/linux-warm-replay-20261122.tar.gz | tar -xf - -C "$bundle/source"
+            printf '%s\n' "$revision" > "$bundle/source/NATIVE_MESH_REVISION"
+            adapter="$bundle/source/tools/durable-jobs-bench/native"
+            mkdir -p "$adapter"
+            cp "$here"/{README.md,arm.py,ledger.py,build,build-linux,manifest.py,prepare-oban.py,bootstrap,run} "$adapter/"
+            find "$bundle/source" -type d -exec chmod 755 '{}' +
+            find "$bundle/source" -type f -exec chmod a+r '{}' +
+            COPYFILE_DISABLE=1 tar --no-xattrs -czf "$bundle/source.tar.gz" -C "$bundle/source" .
+            tar -tzf "$bundle/source.tar.gz" > "$bundle/files.txt"
+            shasum -a 256 "$bundle/source.tar.gz" | cut -d' ' -f1 > "$bundle/sha256"
+        else
+            checksum="$(cat "$bundle/sha256")"
+            [[ "$checksum" =~ ^[0-9a-f]{64}$ ]]
+            dest="$remote/source-$id"
+            ssh_host "set -eu; umask 022; mkdir -p '$remote'; mkdir '$dest'; cat > '$dest/source.tar.gz'; printf '%s  %s\n' '$checksum' '$dest/source.tar.gz' | sha256sum -c; tar -xzf '$dest/source.tar.gz' -C '$dest'; rm '$dest/source.tar.gz'" \
+                < "$bundle/source.tar.gz"
+        fi
+        ;;
+    smoke)
+        # The controller reserves timing. This command is for SETUP only.
+        source_id="${2:?missing source ID}"
+        build_id="${3:?missing build ID}"
+        engine="${4:?missing engine}"
+        profile="${5:?missing profile}"
+        cpus="${6:?missing two-CPU list}"
+        id="${7:?missing attempt ID}"
+        for value in "$source_id" "$build_id" "$id"; do
+            [[ "$value" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+        done
+        [[ "$cpus" =~ ^[0-3],[0-3]$ && "${cpus%,*}" != "${cpus#*,}" ]]
+        case "$engine" in mesh|oban) ;; *) exit 2 ;; esac
+        case "$profile" in dense|noop|slow|sparse|short|large) ;; *) exit 2 ;; esac
+        mkdir -p "$state/native-smoke"
+        attempt="$state/native-smoke/$id"
+        mkdir "$attempt"
+        destination="$remote/runs/$id"
+        launcher="$remote/source-$source_id/tools/durable-jobs-bench/native/run"
+        status=0
+        ssh_host "set -eu; mkdir -m 0700 '$destination'; NATIVE_JOBS_ARTIFACTS='$remote/builds/$build_id' DURABLE_JOBS_PHASE=diagnostic taskset -c '$cpus' '$launcher' '$engine' '$profile' '$destination'" \
+            > "$attempt/run.log" 2>&1 || status=$?
+        printf '%s\n' "$status" > "$attempt/exit-status.txt"
+        ssh_host "tar -czf - -C '$destination' ." > "$attempt/evidence.tar.gz" 2> "$attempt/export.log"
+        tar -tzf "$attempt/evidence.tar.gz" > "$attempt/files.txt"
+        shasum -a 256 "$attempt/evidence.tar.gz" > "$attempt/sha256"
+        exit "$status"
+        ;;
+    *)
+        printf '%s\n' 'Usage: linode check | bundle SOURCE_ID [MESH_REVISION] | upload SOURCE_ID' \
+            '       linode smoke SOURCE_ID BUILD_ID ENGINE PROFILE CPU_MASK ATTEMPT_ID' >&2
+        exit 2
+        ;;
+esac

@@ -1,0 +1,9 @@
+test_all_arms_and_original_qualification (__main__.RecoveryTests.test_all_arms_and_original_qualification) ... ok
+test_bad_host_does_not_gain_bounds_from_role_evidence (__main__.RecoveryTests.test_bad_host_does_not_gain_bounds_from_role_evidence) ... ok
+test_bad_roster_cannot_erase_valid_host_evidence (__main__.RecoveryTests.test_bad_roster_cannot_erase_valid_host_evidence) ... ok
+test_partial_rows_excluded_and_identity_drift_rejected (__main__.RecoveryTests.test_partial_rows_excluded_and_identity_drift_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 9.284s
+
+OK

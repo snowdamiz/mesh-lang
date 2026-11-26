@@ -1,0 +1,9 @@
+test_denied_clock_emits_no_cpu_and_cannot_recover (__main__.TraceCase.test_denied_clock_emits_no_cpu_and_cannot_recover) ... ok
+test_equal_pid_with_new_backend_start_is_reuse (__main__.TraceCase.test_equal_pid_with_new_backend_start_is_reuse) ... ok
+test_gate_never_admits_slow_frame (__main__.TraceCase.test_gate_never_admits_slow_frame) ... ok
+test_holds_bad_controls_and_reports_missing_roles (__main__.TraceCase.test_holds_bad_controls_and_reports_missing_roles) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.214s
+
+OK
