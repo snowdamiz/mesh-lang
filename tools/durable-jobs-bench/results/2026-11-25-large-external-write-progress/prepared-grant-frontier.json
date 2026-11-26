@@ -77,6 +77,22 @@
         "packed_finish_from_first_stamp_us": 262176,
         "latest_first_stamp_for_cutoff_us": 184679
       },
+      "first_activation_observation": {
+        "notification_scans_per_runner": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "completed_pg_samples_before_first_stamp": 0,
+        "crossing_sample_begin_us": 54597,
+        "crossing_sample_end_us": 396020,
+        "crossing_sample_processes": 71
+      },
       "confirmed_without_effect": 10,
       "effect_without_settlement": 8,
       "settled": 22
@@ -156,6 +172,22 @@
         "packed_finish_from_first_stamp_us": 280646,
         "latest_first_stamp_for_cutoff_us": 166209
       },
+      "first_activation_observation": {
+        "notification_scans_per_runner": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "completed_pg_samples_before_first_stamp": 0,
+        "crossing_sample_begin_us": 48395,
+        "crossing_sample_end_us": 294652,
+        "crossing_sample_processes": 71
+      },
       "confirmed_without_effect": 4,
       "effect_without_settlement": 13,
       "settled": 31
@@ -234,6 +266,22 @@
         "first_observed_stamp_us": 132398,
         "packed_finish_from_first_stamp_us": 242770,
         "latest_first_stamp_for_cutoff_us": 204085
+      },
+      "first_activation_observation": {
+        "notification_scans_per_runner": [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "completed_pg_samples_before_first_stamp": 0,
+        "crossing_sample_begin_us": 76189,
+        "crossing_sample_end_us": 264505,
+        "crossing_sample_processes": 71
       },
       "confirmed_without_effect": 8,
       "effect_without_settlement": 3,

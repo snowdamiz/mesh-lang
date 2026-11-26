@@ -28,3 +28,17 @@ In the 16 MiB arm, the first job's activation stamp arrived 209.481 ms after enq
 The queue row lock serializes successful activation turns. The budget charges each turn only the time between its first and last job stamp, less a full millisecond for the server clock's rounding. It assigns zero time to all gaps, each turn's leading and trailing SQL, its network reply and COMMIT. It then adds the observed time from that owner's confirmed receipt to that owner's last settlement, allowing all owners' application work to overlap subsequent turns. The maximum of these eight finish times is the modeled settlement. [Activation source](../2026-11-25-public-large-exact-prepare/README.md) · [Per-owner timestamps and arithmetic](prepared-grant-frontier.json)
 
 The two 4 MiB controls put the first stamp 124.678 ms apart. The model therefore sets a target for a fresh matched comparison, without assigning the entire pre-stamp interval to rendering. A cheaper renderer could also reduce competition for the two cores while other owners activate or run handlers. To distinguish those effects, retain the first activation, each interior span, checked receipts, last effect and settlement alongside the separate backend render CPU measurement.
+
+## What ran before the first activation?
+
+All eight runners in each prepared arm recorded one notification-driven queue scan. The released runner counts scans by wake source. Its report omits the time of the notification, the start of the scan, and the identity of the call that produced the first grant. A lost notification therefore has no direct witness here, and the 250 ms fallback polling interval cannot serve as an estimate of pickup delay.
+
+The PostgreSQL observer collected process counters and read memory accounting for 71 processes in each sample below. Each capture began after enqueue commit and ended after the first activation, including its 1 ms timestamp uncertainty. None of the three arms had a complete PostgreSQL sample between commit and first activation.
+
+| Arm | Capture start after commit | First activation stamp | Capture end after commit |
+|---|---:|---:|---:|
+| 4 MiB A | 54.597 ms | 257.076 ms | 396.020 ms |
+| 16 MiB | 48.395 ms | 209.481 ms | 294.652 ms |
+| 4 MiB B | 76.189 ms | 132.398 ms | 264.505 ms |
+
+These are elapsed capture windows. The observer does not record its own CPU consumption or the individual counter read times within each window. The archived samples cannot split the pre-activation delay between PostgreSQL execution, notification delivery, and runner scheduling. [Raw-bound reduction](prepared-grant-frontier.json)

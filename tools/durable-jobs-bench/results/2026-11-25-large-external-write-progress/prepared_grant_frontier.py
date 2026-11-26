@@ -48,11 +48,13 @@ def measure(raw, arm, cutoff):
         activation, = [q for q in read("queue-policy")["queue_statements"] if "activate_batch_v1(" in q["query"]]
         assert activation["rows"] == 72 and activation["calls"] == 8
         owners = []
+        notification_scans = []
         for i, runner in enumerate(runners):
             ready, result = archive.extractfile(f"adapter/runner-{i}.log").read().splitlines()
             report = json.loads(result)
             assert ready == b"READY" and report["drained"] and not report["last_error"]
             assert report["batch_protocol"] == "locked_prepare_pg17_v1"
+            notification_scans.append(report["wakeups"]["notification_scans"])
             owned = [job for job in jobs if job["worker_pid"] == runner["pid"]]
             assert len(owned) == report["claimed"] == report["finished"] == 8
             receipt = report["last_batch_confirmed_us"]
@@ -64,6 +66,17 @@ def measure(raw, arm, cutoff):
                                last_activation_stamp_us=max(job["claimed_us"] for job in owned)-zero,
                                last_effect_us=max(job["effect_committed_us"] for job in owned)-zero,
                                last_settlement_us=max(job["settled_us"] for job in owned)-zero))
+        first = min(owner["first_activation_stamp_us"] for owner in owners)
+        pg = read("workmem-observation")["postgres"]
+        interior_samples = [p for p in pg["points"] if zero <= p["begin_us"] <= p["end_us"] <= zero + first]
+        crossing, = [p for p in pg["points"] if zero < p["begin_us"] <= zero + first
+                     and zero + first + 1000 <= p["end_us"]]
+        first_activation_observation = dict(
+            notification_scans_per_runner=notification_scans,
+            completed_pg_samples_before_first_stamp=len(interior_samples),
+            crossing_sample_begin_us=crossing["begin_us"] - zero,
+            crossing_sample_end_us=crossing["end_us"] - zero,
+            crossing_sample_processes=crossing["processes"])
     owners.sort(key=lambda o: o["confirmed_us"])
     confirmed_late = sum(8 for owner in owners if owner["confirmed_us"] > cutoff)
     effect_late = sum(job["effect_committed_us"] - zero > cutoff for job in jobs)
@@ -71,6 +84,7 @@ def measure(raw, arm, cutoff):
     assert confirmed_late <= effect_late <= terminal_late
     return dict(raw_sha256=arm["raw_sha256"], owners=owners, unconfirmed_jobs=confirmed_late,
                 packed_activation=packed_activation(owners, cutoff),
+                first_activation_observation=first_activation_observation,
                 confirmed_without_effect=effect_late-confirmed_late,
                 effect_without_settlement=terminal_late-effect_late, settled=64-terminal_late)
 
