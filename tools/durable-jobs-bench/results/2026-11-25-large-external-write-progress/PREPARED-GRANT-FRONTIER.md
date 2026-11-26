@@ -102,3 +102,11 @@ The slower span arm drained in 438.165 ms, 52.451 ms ahead of the faster stock a
 | Settlement lead (ms) | 2.446 | 34.339 | 28.794 | 45.727 | 52.451 |
 
 The span drains of 396.229 and 438.165 ms were both below the fastest earlier Oban drain of 485.620 ms. Only the faster span arm cleared the corresponding 404.683 ms threshold for a 20% throughput lead. These controls support a separate mirrored timing pilot. A peer claim requires the fresh matched comparison. [Rank arithmetic and archive digest](render-progress.json) · [Offline replay](render_progress.py)
+
+### Earlier peer clocks locate the remaining delay at startup
+
+All five historical FILE, River and Oban ledgers use the same input digest as the two 16 MiB span diagnostics. In each of the 15 historical arms, the scorer's three timestamps match the ledger's submit, enqueue commit and last durable settlement. River's submit clock includes 242.507–271.469 ms to read and decode the input file. All comparisons below start at each arm's enqueue commit.
+
+At each rank, take the earliest result across the five historical peer arms and subtract the later result across the two span arms. At the eighth durable effect the span arms still trailed River by 15.834 ms and Oban by 105.889 ms on that comparison. The last 56 effect ranks favored span against River. Against Oban, every rank from 29 through 64 favored span on both effect and settlement. The rank-64 effect leads were 225.508 ms versus River and 53.042 ms versus Oban. These are independently sampled series. A fresh matched comparison is needed to measure a peer lead.
+
+This gives a concrete target for work on the initial grants. Earlier pickup helps the first eight effects. Any change to how many eight-row preparations run at once must also preserve the late effect and settlement cadence that the two span arms achieved. [Rank margins and source clocks](peer-progress.json) · [Archive replay](peer_progress.py)

@@ -1,0 +1,69 @@
+{
+  "r1_sha256": "5ddc191ae55fa1b2280a2e0850307a1d843fe192027a8712a2cac744fc7b6097",
+  "input_sha256": "9d7f130f2cc690487582f73c9bea5fbb1f2661f8e416beb2f1574a6f868cc5c1",
+  "river_read_and_decode_us": [
+    259887,
+    260418,
+    242507,
+    260815,
+    271469
+  ],
+  "historical_fastest_minus_r1_slower_by_rank": {
+    "river": {
+      "effect_committed_us": {
+        "positive_ranks": 56,
+        "final_contiguous_lead_starts_at": 9,
+        "margin_us_at_rank": {
+          "1": -40219,
+          "8": -15834,
+          "16": 111395,
+          "32": 162997,
+          "48": 269440,
+          "56": 231699,
+          "64": 225508
+        }
+      },
+      "settled_us": {
+        "positive_ranks": 64,
+        "final_contiguous_lead_starts_at": 1,
+        "margin_us_at_rank": {
+          "1": 76633,
+          "8": 124360,
+          "16": 365854,
+          "32": 376819,
+          "48": 399067,
+          "56": 380764,
+          "64": 391555
+        }
+      }
+    },
+    "oban": {
+      "effect_committed_us": {
+        "positive_ranks": 36,
+        "final_contiguous_lead_starts_at": 29,
+        "margin_us_at_rank": {
+          "1": -89331,
+          "8": -105889,
+          "16": -44718,
+          "32": 19912,
+          "48": 75421,
+          "56": 53927,
+          "64": 53042
+        }
+      },
+      "settled_us": {
+        "positive_ranks": 36,
+        "final_contiguous_lead_starts_at": 29,
+        "margin_us_at_rank": {
+          "1": -128815,
+          "8": -140980,
+          "16": -64496,
+          "32": 3431,
+          "48": 53319,
+          "56": 47809,
+          "64": 47455
+        }
+      }
+    }
+  }
+}
