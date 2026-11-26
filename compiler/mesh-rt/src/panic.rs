@@ -213,6 +213,70 @@ pub extern "C-unwind" fn mesh_panic_str_at(
     )
 }
 
+/// End the running supervised child with the panic `message` at 1-based
+/// `line` and `col` of `file`, without unwinding.
+///
+/// The compiler emits this only at a supervisor child's outermost entry,
+/// immediately before returning to the scheduler. All native calls on that
+/// stack have already returned, so there are no native frames to unwind.
+/// The child reports and exits exactly as a raised panic would.
+///
+/// # Safety
+///
+/// `message` must be a live Mesh string on the running child's heap or in
+/// static storage, and `file` must point to `file_len` valid UTF-8 bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mesh_actor_fail_at(
+    message: *const crate::string::MeshString,
+    file: *const u8,
+    file_len: u64,
+    line: u32,
+    col: u32,
+) {
+    let file = unsafe { text(file, file_len) };
+    fail_actor(
+        || unsafe { (*message).as_str() }.to_string(),
+        file,
+        line,
+        col,
+    );
+}
+
+/// [`mesh_actor_fail_at`] for a panic at no known place.
+///
+/// # Safety
+///
+/// `message` must be a live Mesh string on the running child's heap or in
+/// static storage.
+#[no_mangle]
+pub unsafe extern "C" fn mesh_actor_fail(message: *const crate::string::MeshString) {
+    fail_actor(|| unsafe { (*message).as_str() }.to_string(), "", 0, 0);
+}
+
+/// Report the panic and mark the running actor exited with its reason, as
+/// the panic hook and [`actor_exit_reason`] would for a raised panic.
+fn fail_actor(message: impl FnOnce() -> String, file: &str, line: u32, col: u32) {
+    use crate::actor::process::{ExitReason, ProcessState};
+    let (reason, diagnostic) = match disclosed(message) {
+        Some(message) => (
+            format!("Mesh panic: {message}"),
+            located(Code::Panic, file, line, col, message),
+        ),
+        None => (
+            format!("Mesh panic: {WITHHELD}"),
+            Diagnostic::new(Code::Panic, WITHHELD),
+        ),
+    };
+    if !QUIET.with(|quiet| quiet.get()) {
+        report_supervised(&diagnostic);
+    }
+    let (_, process) = crate::actor::running_process();
+    let mut process = process.lock();
+    if !matches!(process.state, ProcessState::Exited(_)) {
+        process.state = ProcessState::Exited(ExitReason::Error(reason));
+    }
+}
+
 thread_local! {
     /// Set while the test runner runs a test body: it reports the panic.
     static QUIET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -230,33 +294,95 @@ pub(crate) fn defer_diagnostics<T>(f: impl FnOnce() -> T) -> T {
 
 enum Queued {
     Text(String),
+    /// A supervised child's crash report: written in full before exit.
+    Supervised(String),
     Flush(crossbeam_channel::Sender<()>),
+}
+
+impl Queued {
+    fn write(self) {
+        match self {
+            Queued::Text(text) => write_stderr(text.as_bytes()),
+            Queued::Supervised(text) => {
+                write_stderr(text.as_bytes());
+                let mut pending = SUPERVISED_PENDING.lock();
+                *pending -= 1;
+                if *pending == 0 {
+                    SUPERVISED_WRITTEN.notify_all();
+                }
+            }
+            Queued::Flush(done) => {
+                let _ = done.send(());
+            }
+        }
+    }
 }
 
 static DIAGNOSTICS: std::sync::OnceLock<crossbeam_channel::Sender<Queued>> =
     std::sync::OnceLock::new();
+static SUPERVISED_PENDING: parking_lot::Mutex<usize> = parking_lot::Mutex::new(0);
+static SUPERVISED_WRITTEN: parking_lot::Condvar = parking_lot::Condvar::new();
 
-fn enqueue_diagnostic(text: String) {
-    let writer = DIAGNOSTICS.get_or_init(|| {
+fn diagnostic_writer() -> &'static crossbeam_channel::Sender<Queued> {
+    DIAGNOSTICS.get_or_init(|| {
         let (sender, receiver) = crossbeam_channel::bounded(16);
         let _ = std::thread::Builder::new()
             .name("mesh-diagnostics".to_string())
-            .spawn(move || {
-                while let Ok(queued) = receiver.recv() {
-                    match queued {
-                        Queued::Text(text) => write_stderr(text.as_bytes()),
-                        Queued::Flush(done) => {
-                            let _ = done.send(());
-                        }
-                    }
-                }
-            });
+            .spawn(move || receiver.into_iter().for_each(Queued::write));
         sender
-    });
-    let _ = writer.try_send(Queued::Text(text));
+    })
+}
+
+fn enqueue_diagnostic(text: String) {
+    let _ = diagnostic_writer().try_send(Queued::Text(text));
+}
+
+/// Start the writer before the first supervised child can fail, so a crash
+/// report never pays for the thread spawn on the actor's worker.
+#[inline(never)]
+pub(crate) fn prepare_supervised_diagnostics() {
+    diagnostic_writer();
+}
+
+/// Report a supervised child's panic through the writer thread, as
+/// [`report`] would: the worker goes back to running actors at once.
+#[cold]
+fn report_supervised(diagnostic: &Diagnostic) {
+    let format = format();
+    let footer = matches!(format, Format::Human { .. }) && first_report_of(diagnostic.code());
+    queue_supervised(rendered(format, diagnostic, footer));
+}
+
+/// Hand `text` to the writer thread and count it until written. A full
+/// queue applies backpressure. A writer that failed to start leaves this
+/// thread to write it itself.
+fn queue_supervised(text: String) {
+    *SUPERVISED_PENDING.lock() += 1;
+    if let Err(error) = diagnostic_writer().send(Queued::Supervised(text)) {
+        error.0.write();
+    }
+}
+
+/// Wait until every supervised crash report accepted so far is written.
+pub(crate) fn flush_supervised_diagnostics() {
+    if *SUPERVISED_PENDING.lock() == 0 {
+        return;
+    }
+    // Process.exit can race other producers. Wait for the queue prefix
+    // accepted before this barrier, even if new failures keep arriving.
+    let (done, written) = crossbeam_channel::bounded(1);
+    if diagnostic_writer().send(Queued::Flush(done)).is_ok() {
+        let _ = written.recv();
+        return;
+    }
+    let mut pending = SUPERVISED_PENDING.lock();
+    while *pending != 0 {
+        SUPERVISED_WRITTEN.wait(&mut pending);
+    }
 }
 
 pub(crate) fn flush_deferred_diagnostics() {
+    flush_supervised_diagnostics();
     if let Some(writer) = DIAGNOSTICS.get() {
         let deadline = std::time::Instant::now() + std::time::Duration::from_millis(20);
         let (done, receiver) = crossbeam_channel::bounded(1);
@@ -313,6 +439,11 @@ pub(crate) fn report(diagnostic: &Diagnostic) {
     let text = rendered(format, diagnostic, footer);
     if DEFER_DIAGNOSTICS.get() {
         enqueue_diagnostic(text);
+    } else if *SUPERVISED_PENDING.lock() > 0 {
+        // Follow the crash reports still queued, such as the ones a
+        // supervisor that gives up reports after, and do not block on a
+        // stderr they are waiting for.
+        queue_supervised(text);
     } else {
         write_stderr(text.as_bytes());
     }
@@ -387,6 +518,7 @@ pub(crate) fn actor_exit_reason(payload: &(dyn Any + Send)) -> String {
 pub extern "C" fn mesh_run_main(entry: extern "C-unwind" fn()) {
     ignore_sigpipe();
     if std::panic::catch_unwind(|| entry()).is_err() {
+        flush_supervised_diagnostics();
         std::process::exit(101);
     }
 }

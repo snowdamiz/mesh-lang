@@ -12,6 +12,10 @@ use std::process::{Command, Output};
 /// Helper: compile a Mesh source file and assert it compiles successfully.
 /// Returns the path to the compiled binary.
 fn compile_mesh(source: &str) -> (tempfile::TempDir, PathBuf) {
+    compile_at_level(source, "0")
+}
+
+fn compile_at_level(source: &str, level: &str) -> (tempfile::TempDir, PathBuf) {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
@@ -22,7 +26,7 @@ fn compile_mesh(source: &str) -> (tempfile::TempDir, PathBuf) {
     // Build with meshc
     let meshc = find_meshc();
     let output = Command::new(&meshc)
-        .args(["build", project_dir.to_str().unwrap()])
+        .args(["build", "--opt-level", level, project_dir.to_str().unwrap()])
         .output()
         .expect("failed to invoke meshc");
 
@@ -220,6 +224,174 @@ end
         }),
         "{stderr}"
     );
+}
+
+#[test]
+fn optimized_explicit_panic_restarts_a_transient_child() {
+    let source = r#"
+actor worker(reason :: String) do
+  println("started")
+  Timer.sleep(5)
+  panic(reason)
+  println("continued")
+end
+
+supervisor Sup do
+  strategy: one_for_one
+  max_restarts: 1
+  max_seconds: 5
+  child worker do
+    start: fn -> spawn(worker, "child failed") end
+    restart: transient
+    shutdown: 100
+  end
+end
+
+actor watcher() do
+  receive do
+    "start" -> ()
+    _ -> panic("unexpected start message")
+  end
+  let sup = spawn(Sup)
+  Process.monitor(sup, "finished")
+  receive do
+    "finished" -> println("supervisor exited")
+    _ -> panic("unexpected monitor message")
+    after 5000 -> panic("supervisor did not exit")
+  end
+end
+
+fn main() do
+  let watcher_pid = spawn(watcher)
+  Process.register("watcher", watcher_pid)
+  send(watcher_pid, "start")
+  while Process.whereis("watcher") == watcher_pid do
+    Timer.sleep(1)
+  end
+  if Env.get_int("EXIT_AFTER_CRASH", 0) == 1 do
+    Process.exit(17)
+  end
+end
+"#;
+    let run = |binary: &Path| {
+        let child = Command::new(binary)
+            .env("MESH_DIAGNOSTICS", "json")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let output =
+            artifacts::wait_with_timeout(child, std::time::Duration::from_secs(10)).unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            ["started", "started", "supervisor exited"]
+        );
+        String::from_utf8(output.stderr).unwrap()
+    };
+    // The optimized child exits without unwinding; it must report exactly
+    // what the unwinding panic of an unoptimized build reports.
+    let (_unoptimized_dir, unoptimized) = compile_at_level(source, "0");
+    let (_temp_dir, binary) = compile_at_level(source, "2");
+    let stderr = run(&binary);
+    assert_eq!(
+        reports(&stderr, "project"),
+        reports(&run(&unoptimized), "project")
+    );
+    assert_child_failed_twice(&stderr);
+    #[cfg(unix)]
+    for explicit_exit in [false, true] {
+        restart_with_blocked_stderr(&binary, explicit_exit);
+    }
+}
+
+#[cfg(unix)]
+fn restart_with_blocked_stderr(binary: &Path, explicit_exit: bool) {
+    use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
+    use std::os::{fd::OwnedFd, unix::net::UnixStream};
+    use std::process::Stdio;
+    use std::time::Duration;
+
+    let timeout = Duration::from_secs(10);
+    let (reader, stdout) = UnixStream::pair().unwrap();
+    reader.set_read_timeout(Some(timeout)).unwrap();
+    let (mut errors, mut stderr) = UnixStream::pair().unwrap();
+    errors.set_read_timeout(Some(timeout)).unwrap();
+    stderr.set_nonblocking(true).unwrap();
+    let mut filled = 0;
+    // Fill even the last few bytes so the first real diagnostic must wait.
+    for chunk in [&[0; 4096][..], &[0][..]] {
+        loop {
+            match stderr.write(chunk) {
+                Ok(n) if n > 0 => filled += n,
+                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                result => panic!("could not fill stderr: {result:?}"),
+            }
+        }
+    }
+    stderr.set_nonblocking(false).unwrap();
+    let mut child = Command::new(binary)
+        .env("MESH_SCHEDULER_MIN_WORKERS", "1")
+        .env("MESH_SCHEDULER_MAX_WORKERS", "1")
+        .env("EXIT_AFTER_CRASH", if explicit_exit { "1" } else { "0" })
+        .env("MESH_DIAGNOSTICS", "json")
+        .stdout(Stdio::from(OwnedFd::from(stdout)))
+        .stderr(Stdio::from(OwnedFd::from(stderr)))
+        .spawn()
+        .unwrap();
+
+    let progress: std::io::Result<Vec<_>> = BufReader::new(reader).lines().take(3).collect();
+    // Release the writer even if recovery stalled, then reap the process.
+    let mut bytes = Vec::new();
+    let drained = errors.read_to_end(&mut bytes);
+    if drained.is_err() {
+        let _ = child.kill();
+    }
+    let status = child.wait().unwrap();
+    assert_eq!(
+        progress.unwrap(),
+        ["started", "started", "supervisor exited"]
+    );
+    drained.unwrap();
+    assert_eq!(status.code(), Some(if explicit_exit { 17 } else { 0 }));
+    assert_child_failed_twice(std::str::from_utf8(&bytes[filled..]).unwrap());
+}
+
+/// The JSON reports on `stderr`, with each file named relative to `root`,
+/// so two builds in different temporary directories compare equal.
+fn reports(stderr: &str, root: &str) -> Vec<serde_json::Value> {
+    stderr
+        .lines()
+        .map(|line| {
+            let mut report: serde_json::Value =
+                serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line:?}"));
+            if let Some(file) = report["file"].as_str() {
+                let relative = file.rsplit_once(root).map_or(file, |(_, rest)| rest);
+                report["file"] = relative.into();
+            }
+            report
+        })
+        .collect()
+}
+
+/// Two `R0001` reports of the worker's `panic(reason)`, each at its line.
+/// The supervisor then gives up (`R0102`) once its restart limit is spent.
+fn assert_child_failed_twice(stderr: &str) {
+    let reports = reports(stderr, "project");
+    let codes: Vec<_> = reports
+        .iter()
+        .map(|r| r["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["R0001", "R0001", "R0102"], "{stderr}");
+    for report in &reports[..2] {
+        assert_eq!(report["message"], "child failed", "{report}");
+        assert_eq!(report["file"], "/main.mpl", "{report}");
+        assert_eq!(report["line"], 5, "{report}");
+        assert_eq!(report["col"], 3, "{report}");
+    }
 }
 
 /// Test: supervisor with invalid child spec is rejected at compile time.

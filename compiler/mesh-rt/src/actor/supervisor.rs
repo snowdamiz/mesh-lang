@@ -137,14 +137,7 @@ pub fn start_single_child(
     scheduler: &Scheduler,
     sup_pid: ProcessId,
 ) -> ProcessId {
-    let child_pid = scheduler.spawn_linked(
-        child.spec.start_fn,
-        child.spec.start_args_ptr,
-        child.spec.start_args_size,
-        1, // Normal priority
-        sup_pid,
-        false,
-    );
+    let child_pid = scheduler.spawn_supervised(&child.spec, sup_pid);
     child.pid = Some(child_pid);
     child.running = true;
     child_pid
@@ -396,6 +389,7 @@ mod tests {
             restart_type: restart,
             shutdown,
             child_type: ChildType::Worker,
+            message_worker: false,
         }
     }
 
