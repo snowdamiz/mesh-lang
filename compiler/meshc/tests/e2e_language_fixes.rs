@@ -6468,3 +6468,74 @@ end
 "##;
     assert_eq!(run(source), "Point(1)\n2\n");
 }
+
+#[test]
+fn nested_by_value_sum_keeps_its_pointers_visible_to_the_collector() {
+    // `Parsed(FieldValue)` holds a sum by value. Its layout once had byte
+    // alignment, so the string inside sat at offset 9 of a boxed tuple
+    // element, where the conservative collector, which reads aligned words,
+    // never saw it. A collection then freed the string while it was live.
+    // A collection at every allocation makes the loss deterministic.
+    let source = r##"
+type FieldValue do
+  StringValue(String)
+  IntValue(Int)
+  BoolValue(Bool)
+end
+
+type FieldResult do
+  Parsed(FieldValue)
+  Failed(String)
+end
+
+fn lower(v :: FieldValue) -> FieldValue!String do
+  case v do
+    StringValue(s) -> Ok(StringValue(String.to_lower(s)))
+    _ -> Err("type_mismatch")
+  end
+end
+
+fn field(v :: FieldValue) -> FieldResult do
+  case lower(v) do
+    Ok(x) -> Parsed(x)
+    Err(e) -> Failed(e)
+  end
+end
+
+fn churn(i :: Int, acc :: String) -> String do
+  if i == 0 do
+    return acc
+  end
+  churn(i - 1, String.slice("#{i}-" <> acc, 0, 40))
+end
+
+fn show(r :: FieldResult) -> String do
+  case r do
+    Parsed(StringValue(s)) -> s
+    Parsed(BoolValue(b)) -> "#{b}"
+    Parsed(IntValue(n)) -> "#{n}"
+    Failed(e) -> e
+  end
+end
+
+fn main() do
+  let input = String.slice("x=Alice@Example.COM", 2, 19)
+  let kept = ("v", field(StringValue(input)))
+  let flags = [Parsed(BoolValue(true)), Parsed(IntValue(7))]
+  let noise = churn(500, "")
+  let (name, r) = kept
+  println(name <> "=" <> show(r) <> " " <> String.join(List.map(flags, fn f -> show(f) end), ",") <> " " <> String.slice(noise, 0, 2))
+end
+"##;
+    let built = build(source, false);
+    assert!(built.ok, "build failed:\n{}", built.stderr);
+    let output = Command::new(built.dir.path().join("project/project"))
+        .env("MESH_GC_STRESS", "1")
+        .output()
+        .expect("run binary");
+    assert!(output.status.success(), "binary failed: {output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "v=alice@example.com true,7 1-\n"
+    );
+}
