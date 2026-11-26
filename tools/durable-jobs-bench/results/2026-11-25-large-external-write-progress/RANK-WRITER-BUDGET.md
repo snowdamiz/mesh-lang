@@ -37,7 +37,9 @@ If the observed executor gains transferred in full, split JSON would need anothe
 
 For the separate historical EXTERNAL FILE series, the fourth Oban rotation required **254.8 ms** of submit savings to reach 1.20× throughput at fixed drain. Even transferring the largest split-text saving in full leaves about **108 ms** to find there. Across all five rotations the independent drain requirement remains **208.7–439.1 ms**. [Matched peer deadlines](README.md#which-clock-still-needs-to-move-on-public-file)
 
-Run `rank_writer_budget.py RANK_EVIDENCE --split-bind SCREEN_EVIDENCE` to reproduce the table. It rehashes both raw archives and controller releases, joins each component snapshot to its writer and arm, and checks the 12 FILE traces.
+At product source `81629be35`, each eligible scalar call binds the fifth parameter as JSONB, checks availability in a separate SQL exchange, and checks the writer's routine definitions before and after admission. The split-JSON component's remaining wall margin per job after its original floor was **1.183, 0.570, 0.990, 0.742, 1.014 and 1.110 ms** in order. In the tightest block, an extra **36.487 ms per 64 admissions** would consume the margin if all other costs transferred unchanged. The native product run must also account for any broker CPU saved constructing the split spec and for its own measured duplicate spread.
+
+Run `rank_writer_budget.py RANK_EVIDENCE --split-bind SCREEN_EVIDENCE` to reproduce the table and the per-job margins. It rehashes both raw archives and controller releases, joins each component snapshot to its writer and arm, and checks the 12 FILE traces.
 
 ## Where the longest SQL calls occurred
 

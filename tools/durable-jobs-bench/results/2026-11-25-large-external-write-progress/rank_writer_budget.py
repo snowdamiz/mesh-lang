@@ -111,7 +111,7 @@ def split_bind_budget(screen, measurements):
     assert sha256(raw.read_bytes()).hexdigest() == "f15829bdc4b28c64b673f8fcfc365a462bcf505458cad95b840cfb9bb94dea24"
     residuals = [value["wall_outside_executor_upper_ns"] for value in measurements.values()]
     print(f"FILE stock writer exchange residual upper bounds: {min(residuals)/1e6:.3f} to {max(residuals)/1e6:.3f} ms")
-    print("block  stock     lane        wall_gain_ms  executor_gain_ms  other_gain_ms  other_needed_ms")
+    print("block  stock     lane        wall_gain_ms  executor_gain_ms  other_gain_ms  other_needed_ms  margin_ms_per_job")
     with tarfile.open(raw) as archive:
         report = json.load(archive.extractfile("report.json"))
         assert report["component_eligibility"] and len(report["blocks"]) == 6
@@ -136,8 +136,9 @@ def split_bind_budget(screen, measurements):
                 inside = executor[ref] - executor[lane]
                 outside = elapsed - inside
                 needed = max(0, wall_floor - inside)
+                per_job_margin = (elapsed - wall_floor) / block[lane]["subxids"]
                 print(f"{index:5}  {ref:7}  {lane:10}", *(f"{v/1_000_000:14.3f}" for v in
-                      (elapsed, inside, outside, needed)))
+                      (elapsed, inside, outside, needed, per_job_margin)))
 
 
 def main(folder, show_spikes, show_client, screen):
