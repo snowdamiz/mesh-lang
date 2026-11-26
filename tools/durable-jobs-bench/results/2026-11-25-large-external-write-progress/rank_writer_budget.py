@@ -1,0 +1,86 @@
+"""Bound scalar Execute elapsed inside the observed client's pre-BindComplete window."""
+
+import argparse
+from decimal import Decimal
+from hashlib import sha256
+import json
+import math
+from pathlib import Path
+from statistics import median
+import tarfile
+
+
+RAW = "e4ca7e920525479719fdd5ec88a0a0e71a6c9540e7d63f137f46c6a862ec58e2"
+RELEASE = "04e0e316bf3098a2f54891156442ab2227ad64fe98b99e4417e432c02b925520"
+QUERY = "SELECT mesh_jobs.enqueue($1, $2::jsonb, $3, $4)::text AS receipt"
+EDGES = ("writer_send", "writer_sent", "writer_bind_reply", "writer_ready")
+
+
+def measure(archive, trace_name):
+    arm = trace_name.split("/")[0]
+    doc = json.load(archive.extractfile(f"{arm}/file-producer-budget.json"), parse_float=Decimal)
+    before, after = (doc[key]["data"] for key in ("before", "after"))
+    assert before["rows"] == []
+    for key in ("stats_reset", "server_started", "dealloc", "track"):
+        assert before[key] == after[key]
+    stmt, = after["rows"]
+    assert stmt["calls"] == stmt["rows"] == 64 and stmt["toplevel"] and stmt["query"] == QUERY
+    assert stmt["dbid"] == str(doc["session"]["dbid"]) and stmt["userid"] == str(doc["session"]["userid"])
+    elapsed_ns = math.floor(stmt["total_exec_time"] * 1_000_000)
+
+    lines = archive.extractfile(trace_name).read().decode().splitlines()
+    signature, pid, count = lines[0].split()
+    assert signature == "file_rank_probe_v1" and int(pid) == doc["session"]["pid"]
+    assert int(count) == len(lines) - 1 == 1093
+    events = []
+    previous = 0
+    for line in lines[1:]:
+        prefix, label, start, _, _, end = line.split()
+        start, end = int(start), int(end)
+        assert prefix == "file_rank" and previous <= start <= end
+        previous = end
+        if label in EDGES:
+            events.append((label, start, end))
+    assert [point[0] for point in events] == list(EDGES) * 64
+    whole = send = pre_reply = tail = 0
+    for i in range(0, len(events), 4):
+        start, sent, bind, ready = events[i:i + 4]
+        whole += ready[2] - start[1]
+        send += sent[2] - start[1]
+        pre_reply += bind[2] - sent[1]
+        tail += ready[2] - bind[1]
+    overlap = max(0, elapsed_ns - send - tail)
+    assert elapsed_ns <= whole and overlap <= pre_reply
+    return arm, dict(writer_wall_upper_ns=whole, executor_floor_ns=elapsed_ns,
+                     wall_outside_executor_upper_ns=whole - elapsed_ns,
+                     sent_to_bind_visible_upper_ns=pre_reply,
+                     executor_within_sent_to_bind_lower_ns=overlap,
+                     executor_share_lower_percent=100 * overlap / pre_reply)
+
+
+def main(folder):
+    release = (folder / "controller-release.json").read_bytes()
+    assert sha256(release).hexdigest() == RELEASE and json.loads(release)["exit_status"] == 1
+    raw = folder / "raw.tar.gz"
+    assert sha256(raw.read_bytes()).hexdigest() == RAW
+    native = json.loads((folder / "native-status.json").read_bytes())
+    assert native["raw_sha256"] == RAW and native["exit_status"] == native["export_exit_status"] == 0
+    with tarfile.open(raw) as archive:
+        results = dict(measure(archive, name) for name in archive.getnames() if name.endswith("/rank-trace.txt"))
+    assert len(results) == 12
+    for group in range(1, 7):
+        assert sorted(k.split("-", 2)[2] for k in results if k.startswith(f"g{group}-")) == ["on-a", "on-b"]
+    print("arm              executor_ms  residual_max_ms  overlap_min_ms  overlap_min_pct")
+    rows = []
+    for arm, values in sorted(results.items()):
+        row = [values["executor_floor_ns"] / 1e6, values["wall_outside_executor_upper_ns"] / 1e6,
+               values["executor_within_sent_to_bind_lower_ns"] / 1e6, values["executor_share_lower_percent"]]
+        rows.append(row)
+        print(f"{arm:15}", *(f"{x:14.3f}" for x in row))
+    print("median         ", *(f"{median(x):14.3f}" for x in zip(*rows)))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("evidence", type=Path)
+    main(parser.parse_args().evidence)
