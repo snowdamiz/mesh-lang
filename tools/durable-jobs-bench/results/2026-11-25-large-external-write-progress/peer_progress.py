@@ -33,7 +33,30 @@ def compare(span, peer):
     return result
 
 
-def replay(raw):
+def pilot_curves(path, input_digest):
+    score_bytes = (path / "scored-before-release.json").read_bytes()
+    assert sha256(score_bytes).hexdigest() == "2125f771fec5ef5c0e26cb6ec688555f52a48c532b7eee2546d69577e7220e6e"
+    score = json.loads(score_bytes)
+    assert not score["summary"]["peer_stage_earned"]
+    blocks = []
+    for group in score["groups"]:
+        measured_span = []
+        for phase, arms in group["arms"].items():
+            for lane, arm in arms.items():
+                raw, = path.glob(f"blocks/{group['group']:02d}-*/{phase}-{lane}/*/raw.tar.gz")
+                assert sha256(raw.read_bytes()).hexdigest() == arm["raw_sha256"]
+                with tarfile.open(raw) as archive:
+                    ledger = json.load(archive.extractfile("adapter/ledger.json"))
+                points = curves(ledger, input_digest)
+                if phase == "measured" and lane in ("span-a", "span-b"):
+                    measured_span.append(points)
+        assert len(measured_span) == 2
+        blocks.append(measured_span)
+    assert len(blocks) == 2
+    return blocks
+
+
+def replay(raw, pilot):
     assert sha256(raw.read_bytes()).hexdigest() == R1_SHA
     with tarfile.open(raw) as archive:
         ledgers = [json.load(archive.extractfile(f"./span-16{s}/ledger.json")) for s in "ab"]
@@ -63,9 +86,12 @@ def replay(raw):
                 read_decode.append(tx["decoded_us"] - tx["submitted_us"])
     assert all(len(rows) == 5 for rows in peer_rows.values())
     return dict(r1_sha256=R1_SHA, input_sha256=input_digest, river_read_and_decode_us=read_decode,
+                historical_fastest_minus_pilot_slower_by_rank=[
+                    {peer: compare(block, rows) for peer, rows in peer_rows.items()}
+                    for block in pilot_curves(pilot, input_digest)],
                 historical_fastest_minus_r1_slower_by_rank={peer: compare(span, rows)
                                                              for peer, rows in peer_rows.items()})
 
 
 if __name__ == "__main__":
-    print(json.dumps(replay(Path(sys.argv[1])), indent=2))
+    print(json.dumps(replay(*map(Path, sys.argv[1:])), indent=2))
