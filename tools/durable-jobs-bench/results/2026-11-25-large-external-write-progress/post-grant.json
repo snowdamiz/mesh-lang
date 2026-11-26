@@ -1,0 +1,361 @@
+{
+  "historical_oban_drain_us": [
+    491690,
+    485620,
+    511754,
+    508086,
+    536226
+  ],
+  "arms": {
+    "pilot-1-consumer": {
+      "raw_sha256": "3b4b15e3aad92e1ac513d0be5f7705d754cf0e9054d159df31c3d6dc47905eaf",
+      "turns": 8,
+      "censored_turns": 0,
+      "last_receipt_us": 479384,
+      "last_effect_us": 527481,
+      "drain_us": 534929,
+      "jobs_at_last_receipt": {
+        "awaiting_first": 11,
+        "first_done_awaiting_effect": 5,
+        "effect_done_awaiting_settlement": 8,
+        "settled": 40
+      },
+      "earlier_owners_with_unsettled_jobs": 2,
+      "last_other_owner_settled_us": 525404,
+      "max_gain_if_last_owner_finished_at_receipt_us": 9525,
+      "max_gain_if_all_last_stamp_to_receipt_intervals_removed_us": 4035,
+      "jobs_at_oban_settlement": [
+        {
+          "awaiting_first": 9,
+          "first_done_awaiting_effect": 1,
+          "effect_done_awaiting_settlement": 13,
+          "settled": 41
+        },
+        {
+          "awaiting_first": 10,
+          "first_done_awaiting_effect": 4,
+          "effect_done_awaiting_settlement": 10,
+          "settled": 40
+        },
+        {
+          "awaiting_first": 4,
+          "first_done_awaiting_effect": 4,
+          "effect_done_awaiting_settlement": 10,
+          "settled": 46
+        },
+        {
+          "awaiting_first": 7,
+          "first_done_awaiting_effect": 1,
+          "effect_done_awaiting_settlement": 11,
+          "settled": 45
+        },
+        {
+          "awaiting_first": 0,
+          "first_done_awaiting_effect": 0,
+          "effect_done_awaiting_settlement": 0,
+          "settled": 64
+        }
+      ]
+    },
+    "pilot-1-both": {
+      "raw_sha256": "5c6d7e28d2f209452d380b4d7f498d42aae73a9f4020500bf75eed1f6da5ad60",
+      "turns": 8,
+      "censored_turns": 0,
+      "last_receipt_us": 480122,
+      "last_effect_us": 531631,
+      "drain_us": 542803,
+      "jobs_at_last_receipt": {
+        "awaiting_first": 13,
+        "first_done_awaiting_effect": 3,
+        "effect_done_awaiting_settlement": 5,
+        "settled": 43
+      },
+      "earlier_owners_with_unsettled_jobs": 2,
+      "last_other_owner_settled_us": 530630,
+      "max_gain_if_last_owner_finished_at_receipt_us": 12173,
+      "max_gain_if_all_last_stamp_to_receipt_intervals_removed_us": 19232,
+      "jobs_at_oban_settlement": [
+        {
+          "awaiting_first": 11,
+          "first_done_awaiting_effect": 4,
+          "effect_done_awaiting_settlement": 5,
+          "settled": 44
+        },
+        {
+          "awaiting_first": 13,
+          "first_done_awaiting_effect": 3,
+          "effect_done_awaiting_settlement": 4,
+          "settled": 44
+        },
+        {
+          "awaiting_first": 8,
+          "first_done_awaiting_effect": 2,
+          "effect_done_awaiting_settlement": 5,
+          "settled": 49
+        },
+        {
+          "awaiting_first": 9,
+          "first_done_awaiting_effect": 3,
+          "effect_done_awaiting_settlement": 4,
+          "settled": 48
+        },
+        {
+          "awaiting_first": 0,
+          "first_done_awaiting_effect": 0,
+          "effect_done_awaiting_settlement": 6,
+          "settled": 58
+        }
+      ]
+    },
+    "pilot-2-consumer": {
+      "raw_sha256": "4bb04eb88301ab6e94b626f943b0b4dd511018855def9fade747968da541345f",
+      "turns": 8,
+      "censored_turns": 0,
+      "last_receipt_us": 500438,
+      "last_effect_us": 549044,
+      "drain_us": 562844,
+      "jobs_at_last_receipt": {
+        "awaiting_first": 10,
+        "first_done_awaiting_effect": 4,
+        "effect_done_awaiting_settlement": 5,
+        "settled": 45
+      },
+      "earlier_owners_with_unsettled_jobs": 2,
+      "last_other_owner_settled_us": 542026,
+      "max_gain_if_last_owner_finished_at_receipt_us": 20818,
+      "max_gain_if_all_last_stamp_to_receipt_intervals_removed_us": 9065,
+      "jobs_at_oban_settlement": [
+        {
+          "awaiting_first": 13,
+          "first_done_awaiting_effect": 3,
+          "effect_done_awaiting_settlement": 5,
+          "settled": 43
+        },
+        {
+          "awaiting_first": 14,
+          "first_done_awaiting_effect": 4,
+          "effect_done_awaiting_settlement": 3,
+          "settled": 43
+        },
+        {
+          "awaiting_first": 7,
+          "first_done_awaiting_effect": 2,
+          "effect_done_awaiting_settlement": 7,
+          "settled": 48
+        },
+        {
+          "awaiting_first": 8,
+          "first_done_awaiting_effect": 1,
+          "effect_done_awaiting_settlement": 7,
+          "settled": 48
+        },
+        {
+          "awaiting_first": 2,
+          "first_done_awaiting_effect": 5,
+          "effect_done_awaiting_settlement": 4,
+          "settled": 53
+        }
+      ]
+    },
+    "pilot-2-both": {
+      "raw_sha256": "942e3329fdad6ae4ecd52fb6caf5ddda24cb58ca1e58123920a0daaa9e9012a2",
+      "turns": 9,
+      "censored_turns": 1,
+      "last_receipt_us": 478987,
+      "last_effect_us": 523107,
+      "drain_us": 532397,
+      "jobs_at_last_receipt": {
+        "awaiting_first": 10,
+        "first_done_awaiting_effect": 5,
+        "effect_done_awaiting_settlement": 10,
+        "settled": 39
+      },
+      "earlier_owners_with_unsettled_jobs": 3,
+      "last_other_owner_settled_us": 521732,
+      "max_gain_if_last_owner_finished_at_receipt_us": 10665,
+      "max_gain_if_all_last_stamp_to_receipt_intervals_removed_us": 5751,
+      "jobs_at_oban_settlement": [
+        {
+          "awaiting_first": 8,
+          "first_done_awaiting_effect": 3,
+          "effect_done_awaiting_settlement": 12,
+          "settled": 41
+        },
+        {
+          "awaiting_first": 9,
+          "first_done_awaiting_effect": 4,
+          "effect_done_awaiting_settlement": 11,
+          "settled": 40
+        },
+        {
+          "awaiting_first": 2,
+          "first_done_awaiting_effect": 4,
+          "effect_done_awaiting_settlement": 9,
+          "settled": 49
+        },
+        {
+          "awaiting_first": 3,
+          "first_done_awaiting_effect": 4,
+          "effect_done_awaiting_settlement": 10,
+          "settled": 47
+        },
+        {
+          "awaiting_first": 0,
+          "first_done_awaiting_effect": 0,
+          "effect_done_awaiting_settlement": 0,
+          "settled": 64
+        }
+      ]
+    },
+    "prepared-4a": {
+      "raw_sha256": "3c67697e16a03692e2d2cb8173963b88da096314921cd52f7d8990b74e408e50",
+      "turns": 8,
+      "censored_turns": 0,
+      "last_receipt_us": 521513,
+      "last_effect_us": 591833,
+      "drain_us": 608689,
+      "jobs_at_last_receipt": {
+        "awaiting_first": 10,
+        "first_done_awaiting_effect": 3,
+        "effect_done_awaiting_settlement": 13,
+        "settled": 38
+      },
+      "earlier_owners_with_unsettled_jobs": 3,
+      "last_other_owner_settled_us": 577464,
+      "max_gain_if_last_owner_finished_at_receipt_us": 31225,
+      "max_gain_if_all_last_stamp_to_receipt_intervals_removed_us": 6437,
+      "jobs_at_oban_settlement": [
+        {
+          "awaiting_first": 17,
+          "first_done_awaiting_effect": 11,
+          "effect_done_awaiting_settlement": 3,
+          "settled": 33
+        },
+        {
+          "awaiting_first": 18,
+          "first_done_awaiting_effect": 10,
+          "effect_done_awaiting_settlement": 4,
+          "settled": 32
+        },
+        {
+          "awaiting_first": 12,
+          "first_done_awaiting_effect": 6,
+          "effect_done_awaiting_settlement": 11,
+          "settled": 35
+        },
+        {
+          "awaiting_first": 12,
+          "first_done_awaiting_effect": 9,
+          "effect_done_awaiting_settlement": 8,
+          "settled": 35
+        },
+        {
+          "awaiting_first": 8,
+          "first_done_awaiting_effect": 0,
+          "effect_done_awaiting_settlement": 16,
+          "settled": 40
+        }
+      ]
+    },
+    "prepared-16": {
+      "raw_sha256": "85d9ba249f01d35218f1ae1b4565b68b73e88670d9b8666151e959cfdcc55c3d",
+      "turns": 8,
+      "censored_turns": 0,
+      "last_receipt_us": 510550,
+      "last_effect_us": 565125,
+      "drain_us": 584196,
+      "jobs_at_last_receipt": {
+        "awaiting_first": 8,
+        "first_done_awaiting_effect": 5,
+        "effect_done_awaiting_settlement": 6,
+        "settled": 45
+      },
+      "earlier_owners_with_unsettled_jobs": 2,
+      "last_other_owner_settled_us": 551676,
+      "max_gain_if_last_owner_finished_at_receipt_us": 32520,
+      "max_gain_if_all_last_stamp_to_receipt_intervals_removed_us": 11069,
+      "jobs_at_oban_settlement": [
+        {
+          "awaiting_first": 14,
+          "first_done_awaiting_effect": 0,
+          "effect_done_awaiting_settlement": 9,
+          "settled": 41
+        },
+        {
+          "awaiting_first": 14,
+          "first_done_awaiting_effect": 1,
+          "effect_done_awaiting_settlement": 9,
+          "settled": 40
+        },
+        {
+          "awaiting_first": 8,
+          "first_done_awaiting_effect": 4,
+          "effect_done_awaiting_settlement": 7,
+          "settled": 45
+        },
+        {
+          "awaiting_first": 9,
+          "first_done_awaiting_effect": 4,
+          "effect_done_awaiting_settlement": 7,
+          "settled": 44
+        },
+        {
+          "awaiting_first": 6,
+          "first_done_awaiting_effect": 2,
+          "effect_done_awaiting_settlement": 5,
+          "settled": 51
+        }
+      ]
+    },
+    "prepared-4b": {
+      "raw_sha256": "3359f548ec960c5c9308a9eca0c34f2bcaf16285e09d4c95e40efb85947f01d2",
+      "turns": 8,
+      "censored_turns": 0,
+      "last_receipt_us": 525774,
+      "last_effect_us": 580337,
+      "drain_us": 598082,
+      "jobs_at_last_receipt": {
+        "awaiting_first": 14,
+        "first_done_awaiting_effect": 2,
+        "effect_done_awaiting_settlement": 9,
+        "settled": 39
+      },
+      "earlier_owners_with_unsettled_jobs": 3,
+      "last_other_owner_settled_us": 595056,
+      "max_gain_if_last_owner_finished_at_receipt_us": 3026,
+      "max_gain_if_all_last_stamp_to_receipt_intervals_removed_us": 8376,
+      "jobs_at_oban_settlement": [
+        {
+          "awaiting_first": 17,
+          "first_done_awaiting_effect": 3,
+          "effect_done_awaiting_settlement": 11,
+          "settled": 33
+        },
+        {
+          "awaiting_first": 18,
+          "first_done_awaiting_effect": 5,
+          "effect_done_awaiting_settlement": 9,
+          "settled": 32
+        },
+        {
+          "awaiting_first": 15,
+          "first_done_awaiting_effect": 1,
+          "effect_done_awaiting_settlement": 12,
+          "settled": 36
+        },
+        {
+          "awaiting_first": 16,
+          "first_done_awaiting_effect": 0,
+          "effect_done_awaiting_settlement": 13,
+          "settled": 35
+        },
+        {
+          "awaiting_first": 12,
+          "first_done_awaiting_effect": 3,
+          "effect_done_awaiting_settlement": 7,
+          "settled": 42
+        }
+      ]
+    }
+  }
+}

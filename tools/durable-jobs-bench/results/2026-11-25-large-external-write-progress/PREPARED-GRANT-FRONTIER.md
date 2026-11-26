@@ -68,3 +68,23 @@ As a sensitivity check, put all eight turns on two lanes, ready at the observed 
 Consider a cap-64 queue with two eligible jobs and two open transactions. A prepares the head job. B prepares the next job while A holds the head tuple lock. A then activates and receives a positive SQL reply but leaves its transaction open. Stock still holds the queue row lock here. A second productive activation lane would let B commit and start its handler before A commits or rolls back. An independent observer could see B executing while the head remains available, even after A received its positive activation reply. Stock can reach the same final states if A rolls back first. It forbids B's progress during that open queue turn. This is a source-level counterexample on the prepared path.
 
 The 16-attempt limit also applies per call. One top-level transaction can present fresh manifests more than once while another transaction is open. A fixed reservation of 16 seats for the other writer would omit its earlier uncommitted calls. Moving the actual job updates before a final capacity check would introduce another difference, because their recorded timestamps start the leases. Keep the serialized activation through transaction resolution and price a reduction in the cost of each turn separately. [Exact activation and lease contract](../2026-11-25-public-large-exact-prepare/README.md)
+
+## Which work was outstanding when Oban finished?
+
+The five original EXTERNAL FILE Oban drain clocks were 491.690, 485.620, 511.754, 508.086 and 536.226 ms from enqueue commit. The table uses the slowest of those five as a historical reference. Each Mesh arm ran separately. The three rightmost columns count distinct unfinished jobs at 536.226 ms. The two writes are the independently committed attempt and effect.
+
+| Prepared Mesh arm | Drain (ms) | Awaiting first write | First committed, awaiting effect | Effect committed, awaiting settlement |
+|---|---:|---:|---:|---:|
+| Factorial forward, consumer only | 534.929 | 0 | 0 | 0 |
+| Factorial forward, combined | 542.803 | 0 | 0 | 6 |
+| Factorial reverse, consumer only | 562.844 | 2 | 5 | 4 |
+| Factorial reverse, combined | 532.397 | 0 | 0 | 0 |
+| 4 MiB A diagnostic | 608.689 | 8 | 0 | 16 |
+| 16 MiB diagnostic | 584.196 | 6 | 2 | 5 |
+| 4 MiB B diagnostic | 598.082 | 12 | 3 | 7 |
+
+In the 16 MiB arm the last owner's checked grant landed at 510.550 ms. At that point, 45 jobs had settled, six had committed their effect and 13 still needed at least one write. Two earlier owners still held unfinished jobs. If the final owner could finish everything at its grant receipt, with earlier owners' histories fixed, final settlement would still be at 551.676 ms. That is 15.450 ms behind the slowest Oban reference. If every owner could settle at its last effect with the writes fixed, the arm would finish at 565.125 ms.
+
+The grant timestamp also limits what a faster reply alone can achieve. For each productive turn, give every job the entire interval from its last row's activation stamp through the checked COMMIT receipt, moving its subsequent milestones earlier by that amount. Hold row stamps, other grants and per-job service durations fixed. This credits even final update and commit work and the millisecond rounding of the row stamp. For the single turn with a censored receipt, credit through the first handler entry. The maximum advances in final settlement are 4.035, 19.232, 9.065 and 5.751 ms in the four factorial arms above, then 6.437, 11.069 and 8.376 ms in the three diagnostic arms. Crediting that entire interval in the 16 MiB arm would leave 36.901 ms to the slowest historical Oban finish. Any larger gain from changing grant service would have to advance other events too, such as the next owner's actual activation stamps.
+
+[Per-arm job counts at every historical Oban finish and fixed-schedule bounds](post-grant.json) · [Seven-archive replay](post_grant.py)
