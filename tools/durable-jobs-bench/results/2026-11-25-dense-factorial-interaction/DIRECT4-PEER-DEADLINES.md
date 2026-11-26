@@ -287,3 +287,21 @@ R4 exported both intact ledgers and both relay histories. The relay recorded the
 On the compensated runner, five-way durable overlap lasted **53.221–685.809 ms** over the full intact arm. It lasted **0.693–591.454 ms** after the last deliberate hold resolved and **0.693–293.340 ms** between global effect ranks 256 and 768. Both OFF runners and the other ON runner had a full-arm upper bound of four concurrent jobs between commits. The lower bound proves the spare enabled five jobs to make durable progress on one PID, including within the middle window. The relay and trace were active throughout. These brackets leave the duration in a quiet product run and any advance of the final settlement unmeasured.
 
 Pass `--r4-relay` with the R4 raw archive to the same reducer. The two intact cases passed the independent partial replay. The overall R4 release `61f024d7` exited 1 on separate fault cases.
+
+### Did the fifth worker advance later grants in the silent pilot?
+
+The R5 cold-spare pilot released all 16 arms. OFF-B had the faster submit, drain and middle-512 clocks of the two identical OFF controls in both orders. ON lost to OFF-B on each clock. Its last claim stamp came **47.994 ms later forward and 85.067 ms later reverse** from enqueue commit. From that stamp to the final effect, ON recovered 1.946 and 9.997 ms respectively. At final settlement it was still **40.439 and 78.016 ms behind**. The two OFF drain clocks differed by 76.737 and 84.669 ms. The pilot establishes failure of the predeclared improvement gate; the variation precludes assigning the observed penalty to the spare alone.
+
+| Middle 512 second commits | Forward OFF-B | Forward ON | Reverse OFF-B | Reverse ON |
+|---|---:|---:|---:|---:|
+| Elapsed (ms) | 343.086 | 366.074 | 332.770 | 370.117 |
+| Mean entered jobs awaiting their effect, across both runners | 4.17 | 4.44 | 4.40 | 4.46 |
+| Entry through first commit (job-ms) | 236.7 | 297.6 | 266.8 | 282.3 |
+| First commit through second commit (job-ms) | 1,194.5 | 1,329.3 | 1,199.0 | 1,367.0 |
+| Second commit through terminal settlement (job-ms) | 5,089.0 | 5,831.1 | 5,348.8 | 6,165.1 |
+
+Each job contributes only the portion of its interval inside global effect ranks 256–768. Dividing the sum of the first two residence intervals by the wall interval gives mean in-flight jobs. The additional concurrency coincided with more cumulative time between application commits in both orders, and with more cumulative time between effects and settlement. These are elapsed job intervals across concurrent owners. They cannot separate client scheduling, SQL service or resource waits.
+
+Both ON runners had periods with five jobs simultaneously between their independent commits, **14.864 and 16.790 ms** forward and **8.398 and 9.068 ms** reverse in the middle window. Every measured exact-original or OFF arm peaked at four per runner. Increasing active jobs did not bring the final grant forward. The cooperative candidate needs its own quiet progress and resource comparison before a peer stage.
+
+[Middle-window and final-grant reducer](direct4_quiet_cost.py) · [Official pilot replay](/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-d974b994/target/direct4-cold-one-pilot/controller/replay.json)
