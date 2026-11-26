@@ -40,7 +40,7 @@ def timeline(raw, widths, score):
     assert enqueue == round(score["enqueue_ms"] * 1000)
     assert done == round(score["drain_ms"] * 1000)
     assert enqueue + done == round(score["submit_ms"] * 1000)
-    return enqueue, events
+    return enqueue, events, commit, jobs
 
 
 def budget(events, deadline):
@@ -62,6 +62,23 @@ def budget(events, deadline):
                 full_credit_late_us=max(remaining) - deadline,
                 uniform_share_needed_percent=round(100 * float(fraction), 2) if feasible else None,
                 positive_window_us=sum(windows), windows_us=windows)
+
+
+def at_peer_finish(jobs, events, commit, peer_us):
+    cutoff = commit + peer_us
+    final_entry = events[-1]["entry"]
+    last_settle = max(job["settled_us"] for job in jobs)
+    return dict(
+        peer_drain_us=peer_us,
+        first_entry_last_grant_late_us=final_entry - cutoff,
+        last_handler_entry_late_us=max(job["entered_us"] for job in jobs) - cutoff,
+        last_settle_after_first_entry_last_grant_us=last_settle - final_entry,
+        definitely_unstamped=sum(job["claimed_us"] > cutoff for job in jobs),
+        uncertain_stamp=sum(job["claimed_us"] <= cutoff < job["claimed_us"] + 999 for job in jobs),
+        unentered=sum(job["entered_us"] > cutoff for job in jobs),
+        missing_effect=sum(job["effect_committed_us"] > cutoff for job in jobs),
+        unsettled=sum(job["settled_us"] > cutoff for job in jobs),
+    )
 
 
 def main():
@@ -87,7 +104,7 @@ def main():
                 score = group["arms"]["measured"][lane]
                 turn = turns["policies"][policy][str(block)]["measured"][lane]
                 assert turn["partitions"] == 1 and turn["raw_sha256"] == score["raw_sha256"]
-                enqueue, events = timeline(git_blob(name), turn["widths"], score)
+                enqueue, events, commit, jobs = timeline(git_blob(name), turn["widths"], score)
                 out = {}
                 for peer in ("river", "oban"):
                     clocks = gate["historical_screen"][peer]
@@ -98,6 +115,8 @@ def main():
                         limits[clock] = peer_us * 5 // 6 - round(1000 * noise[clock]) - offset
                     out[peer] = dict(drain_limit_us=limits["drain_ms"], submit_limit_after_enqueue_us=limits["submit_ms"],
                                      **budget(events, min(limits.values())))
+                    median_drain = median([round(t * 1200) for t in clocks["drain_ms"]["deadlines_ms"]])
+                    out[peer]["at_unpadded_peer_finish"] = at_peer_finish(jobs, events, commit, median_drain)
                     assert out[peer]["positive_window_us"] == turn["after_previous_handler_entry"]["after_prior_entry_us"]
                 result[f"{policy}/{block}/{lane}"] = out
     print(json.dumps(result, indent=2, sort_keys=True))

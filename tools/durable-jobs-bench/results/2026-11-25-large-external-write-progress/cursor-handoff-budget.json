@@ -1,6 +1,17 @@
 {
   "default/1/span-a": {
     "oban": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 6,
+        "first_entry_last_grant_late_us": 76857,
+        "last_handler_entry_late_us": 78891,
+        "last_settle_after_first_entry_last_grant_us": 11233,
+        "missing_effect": 18,
+        "peer_drain_us": 506301,
+        "uncertain_stamp": 0,
+        "unentered": 14,
+        "unsettled": 20
+      },
       "drain_limit_us": 380427,
       "full_credit_late_us": -28712,
       "observed_late_us": 213964,
@@ -20,6 +31,17 @@
       ]
     },
     "river": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 0,
+        "first_entry_last_grant_late_us": -267077,
+        "last_handler_entry_late_us": -265043,
+        "last_settle_after_first_entry_last_grant_us": 11233,
+        "missing_effect": 0,
+        "peer_drain_us": 850235,
+        "uncertain_stamp": 0,
+        "unentered": 0,
+        "unsettled": 0
+      },
       "drain_limit_us": 667039,
       "full_credit_late_us": -315324,
       "observed_late_us": -72648,
@@ -41,6 +63,17 @@
   },
   "default/1/span-b": {
     "oban": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 6,
+        "first_entry_last_grant_late_us": 27106,
+        "last_handler_entry_late_us": 33739,
+        "last_settle_after_first_entry_last_grant_us": 19494,
+        "missing_effect": 8,
+        "peer_drain_us": 506301,
+        "uncertain_stamp": 0,
+        "unentered": 8,
+        "unsettled": 8
+      },
       "drain_limit_us": 380427,
       "full_credit_late_us": -20575,
       "observed_late_us": 172474,
@@ -58,6 +91,17 @@
       ]
     },
     "river": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 0,
+        "first_entry_last_grant_late_us": -316828,
+        "last_handler_entry_late_us": -310195,
+        "last_settle_after_first_entry_last_grant_us": 19494,
+        "missing_effect": 0,
+        "peer_drain_us": 850235,
+        "uncertain_stamp": 0,
+        "unentered": 0,
+        "unsettled": 0
+      },
       "drain_limit_us": 667039,
       "full_credit_late_us": -307187,
       "observed_late_us": -114138,
@@ -77,6 +121,17 @@
   },
   "default/2/span-a": {
     "oban": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 9,
+        "first_entry_last_grant_late_us": 49591,
+        "last_handler_entry_late_us": 49591,
+        "last_settle_after_first_entry_last_grant_us": 4967,
+        "missing_effect": 11,
+        "peer_drain_us": 506301,
+        "uncertain_stamp": 0,
+        "unentered": 9,
+        "unsettled": 14
+      },
       "drain_limit_us": 370687,
       "full_credit_late_us": 13392,
       "observed_late_us": 190172,
@@ -95,6 +150,17 @@
       ]
     },
     "river": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 0,
+        "first_entry_last_grant_late_us": -294343,
+        "last_handler_entry_late_us": -294343,
+        "last_settle_after_first_entry_last_grant_us": 4967,
+        "missing_effect": 0,
+        "peer_drain_us": 850235,
+        "uncertain_stamp": 0,
+        "unentered": 0,
+        "unsettled": 0
+      },
       "drain_limit_us": 657299,
       "full_credit_late_us": -273220,
       "observed_late_us": -96440,
@@ -115,6 +181,17 @@
   },
   "default/2/span-b": {
     "oban": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 9,
+        "first_entry_last_grant_late_us": 87757,
+        "last_handler_entry_late_us": 87757,
+        "last_settle_after_first_entry_last_grant_us": 18031,
+        "missing_effect": 17,
+        "peer_drain_us": 506301,
+        "uncertain_stamp": 0,
+        "unentered": 17,
+        "unsettled": 17
+      },
       "drain_limit_us": 370687,
       "full_credit_late_us": -13121,
       "observed_late_us": 241402,
@@ -133,6 +210,17 @@
       ]
     },
     "river": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 0,
+        "first_entry_last_grant_late_us": -256177,
+        "last_handler_entry_late_us": -256177,
+        "last_settle_after_first_entry_last_grant_us": 18031,
+        "missing_effect": 0,
+        "peer_drain_us": 850235,
+        "uncertain_stamp": 0,
+        "unentered": 0,
+        "unsettled": 0
+      },
       "drain_limit_us": 657299,
       "full_credit_late_us": -299733,
       "observed_late_us": -45210,
@@ -153,6 +241,17 @@
   },
   "external-4m/1/span-a": {
     "oban": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 8,
+        "first_entry_last_grant_late_us": 49630,
+        "last_handler_entry_late_us": 51207,
+        "last_settle_after_first_entry_last_grant_us": 13661,
+        "missing_effect": 16,
+        "peer_drain_us": 508086,
+        "uncertain_stamp": 0,
+        "unentered": 12,
+        "unsettled": 16
+      },
       "drain_limit_us": 264697,
       "full_credit_late_us": 73108,
       "observed_late_us": 306680,
@@ -171,6 +270,17 @@
       ]
     },
     "river": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 0,
+        "first_entry_last_grant_late_us": -307583,
+        "last_handler_entry_late_us": -306006,
+        "last_settle_after_first_entry_last_grant_us": 13661,
+        "missing_effect": 0,
+        "peer_drain_us": 865299,
+        "uncertain_stamp": 0,
+        "unentered": 0,
+        "unsettled": 0
+      },
       "drain_limit_us": 562374,
       "full_credit_late_us": -224569,
       "observed_late_us": 9003,
@@ -191,6 +301,17 @@
   },
   "external-4m/1/span-b": {
     "oban": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 7,
+        "first_entry_last_grant_late_us": 24786,
+        "last_handler_entry_late_us": 28437,
+        "last_settle_after_first_entry_last_grant_us": 16334,
+        "missing_effect": 11,
+        "peer_drain_us": 508086,
+        "uncertain_stamp": 0,
+        "unentered": 7,
+        "unsettled": 15
+      },
       "drain_limit_us": 264697,
       "full_credit_late_us": 121097,
       "observed_late_us": 284509,
@@ -209,6 +330,17 @@
       ]
     },
     "river": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 0,
+        "first_entry_last_grant_late_us": -332427,
+        "last_handler_entry_late_us": -328776,
+        "last_settle_after_first_entry_last_grant_us": 16334,
+        "missing_effect": 0,
+        "peer_drain_us": 865299,
+        "uncertain_stamp": 0,
+        "unentered": 0,
+        "unsettled": 0
+      },
       "drain_limit_us": 562374,
       "full_credit_late_us": -176580,
       "observed_late_us": -13168,
@@ -229,6 +361,17 @@
   },
   "external-4m/2/span-a": {
     "oban": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 0,
+        "first_entry_last_grant_late_us": 20960,
+        "last_handler_entry_late_us": 30054,
+        "last_settle_after_first_entry_last_grant_us": 21486,
+        "missing_effect": 8,
+        "peer_drain_us": 508086,
+        "uncertain_stamp": 2,
+        "unentered": 8,
+        "unsettled": 12
+      },
       "drain_limit_us": 404662,
       "full_credit_late_us": -66795,
       "observed_late_us": 145870,
@@ -246,6 +389,17 @@
       ]
     },
     "river": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 0,
+        "first_entry_last_grant_late_us": -336253,
+        "last_handler_entry_late_us": -327159,
+        "last_settle_after_first_entry_last_grant_us": 21486,
+        "missing_effect": 0,
+        "peer_drain_us": 865299,
+        "uncertain_stamp": 0,
+        "unentered": 0,
+        "unsettled": 0
+      },
       "drain_limit_us": 702339,
       "full_credit_late_us": -364472,
       "observed_late_us": -151807,
@@ -265,6 +419,17 @@
   },
   "external-4m/2/span-b": {
     "oban": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 1,
+        "first_entry_last_grant_late_us": 10240,
+        "last_handler_entry_late_us": 14187,
+        "last_settle_after_first_entry_last_grant_us": 13463,
+        "missing_effect": 6,
+        "peer_drain_us": 508086,
+        "uncertain_stamp": 1,
+        "unentered": 6,
+        "unsettled": 6
+      },
       "drain_limit_us": 404662,
       "full_credit_late_us": -71671,
       "observed_late_us": 127127,
@@ -283,6 +448,17 @@
       ]
     },
     "river": {
+      "at_unpadded_peer_finish": {
+        "definitely_unstamped": 0,
+        "first_entry_last_grant_late_us": -346973,
+        "last_handler_entry_late_us": -343026,
+        "last_settle_after_first_entry_last_grant_us": 13463,
+        "missing_effect": 0,
+        "peer_drain_us": 865299,
+        "uncertain_stamp": 0,
+        "unentered": 0,
+        "unsettled": 0
+      },
       "drain_limit_us": 702339,
       "full_credit_late_us": -369348,
       "observed_late_us": -170550,
