@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -63,40 +64,94 @@ fn git_revision(workspace: &Path) -> Option<String> {
     let git_marker = workspace.join(".git");
     // A source archive may be unpacked inside a different Git repository.
     if git_marker.is_file() {
-        println!("cargo:rerun-if-changed={}", git_marker.display());
+        watch(&git_marker);
     } else if !git_marker.is_dir() {
         return None;
     }
 
-    // Ask Git for the paths so this also works with worktrees and submodules.
-    // Watch the loose refs directory for branches that gain a loose ref after packing.
-    let paths = git_output(
+    let layout = git_output(
         workspace,
         &[
             "rev-parse",
             "--show-prefix",
             "--path-format=absolute",
-            "--git-path",
-            "HEAD",
-            "--git-path",
-            "refs",
-            "--git-path",
-            "packed-refs",
-            "--git-path",
-            "reftable/tables.list",
+            "--absolute-git-dir",
+            "--git-common-dir",
         ],
     )?;
-    let mut paths = paths.lines();
-    if !paths.next()?.is_empty() {
+    let mut paths = layout.lines();
+    if paths.next()? != "" {
         return None;
     }
-    for path in paths.filter(|path| Path::new(path).exists()) {
-        println!("cargo:rerun-if-changed={path}");
+    let git_dir = Path::new(paths.next()?);
+    let common_dir = Path::new(paths.next()?);
+    // Older Git echoes unrecognized rev-parse flags and can return relative paths.
+    if paths.next().is_some() || !git_dir.is_absolute() || !common_dir.is_absolute() {
+        return None;
+    }
+    let head = git_dir.join("HEAD");
+    if !head.is_file() {
+        return None;
+    }
+    watch(&head);
+    if git_dir != common_dir {
+        watch(&git_dir.join("commondir"));
+    }
+
+    let shared_tables = common_dir.join("reftable/tables.list");
+    if shared_tables.is_file() {
+        watch(&shared_tables);
+        if git_dir != common_dir {
+            watch(&git_dir.join("reftable/tables.list"));
+        }
+    } else {
+        watch_symbolic_refs(workspace, common_dir)?;
     }
 
     git_output(workspace, &["rev-parse", "--verify", "HEAD^{commit}"]).filter(|revision| {
         matches!(revision.len(), 40 | 64) && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
     })
+}
+
+fn watch_symbolic_refs(workspace: &Path, common_dir: &Path) -> Option<()> {
+    let packed_refs = common_dir.join("packed-refs");
+    let shared_refs = common_dir.join("refs");
+    let mut seen = HashSet::new();
+    let mut reference = "HEAD".to_owned();
+    while let Some(target) = git_output(
+        workspace,
+        &["symbolic-ref", "--quiet", "--no-recurse", &reference],
+    ) {
+        if !target.starts_with("refs/") || !seen.insert(target.clone()) {
+            return None;
+        }
+        // Git resolves shared and worktree-private refs against different directories.
+        let path = git_output(
+            workspace,
+            &["rev-parse", "--path-format=absolute", "--git-path", &target],
+        )?;
+        if path.contains('\n') || !Path::new(&path).is_absolute() {
+            return None;
+        }
+        let path = Path::new(&path);
+        if !path.exists() && path.starts_with(&shared_refs) && packed_refs.is_file() {
+            watch(&packed_refs);
+            // A packed branch can gain a loose ref without changing packed-refs.
+            // Watch its parent when available so missing paths do not rebuild every time.
+            let loose = path
+                .parent()
+                .filter(|parent| *parent != shared_refs && parent.is_dir());
+            watch(loose.unwrap_or(path));
+        } else {
+            watch(path);
+        }
+        reference = target;
+    }
+    Some(())
+}
+
+fn watch(path: &Path) {
+    println!("cargo:rerun-if-changed={}", path.display());
 }
 
 fn git_output(workspace: &Path, args: &[&str]) -> Option<String> {
@@ -112,5 +167,5 @@ fn git_output(workspace: &Path, args: &[&str]) -> Option<String> {
         return None;
     }
     let output = String::from_utf8(output.stdout).ok()?;
-    Some(output.trim_end().to_owned())
+    Some(output.trim_end_matches(['\r', '\n']).to_owned())
 }

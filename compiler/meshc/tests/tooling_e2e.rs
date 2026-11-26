@@ -2971,20 +2971,19 @@ fn argument_errors_are_coded_for_people_too() {
     );
     assert!(stderr.contains("  Note: Usage: meshc check"), "{stderr}");
     assert!(stderr.contains("meshc explain X0001"), "{stderr}");
-    let help = run(&["check", "--help"]);
-    assert!(help.status.success(), "{help:?}");
-    assert!(help.stderr.is_empty(), "{help:?}");
-    assert!(!help.stdout.is_empty(), "{help:?}");
-
-    for (flag, version) in [
-        ("-V", env!("CARGO_PKG_VERSION")),
-        ("--version", env!("MESHC_LONG_VERSION")),
-    ] {
-        let output = run(&[flag]);
+    for args in [&["check", "--help"][..], &["--version"]] {
+        let output = run(args);
         assert!(output.status.success(), "{output:?}");
         assert!(output.stderr.is_empty(), "{output:?}");
-        assert_eq!(output.stdout, format!("meshc {version}\n").as_bytes());
+        assert!(!output.stdout.is_empty(), "{output:?}");
     }
+    let short = run(&["-V"]);
+    assert!(short.status.success(), "{short:?}");
+    assert!(short.stderr.is_empty(), "{short:?}");
+    assert_eq!(
+        short.stdout,
+        concat!("meshc ", env!("CARGO_PKG_VERSION"), "\n").as_bytes()
+    );
 }
 
 #[test]

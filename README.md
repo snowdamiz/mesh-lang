@@ -113,6 +113,10 @@ meshc --version
 meshpkg --version
 ```
 
+`meshc --version` includes the checkout's Git `HEAD` when the build can
+verify and track it. Uncommitted source changes may differ from that commit.
+Source archive builds and `meshc -V` report the package version alone.
+
 Refresh an installer-managed toolchain with either command:
 
 ```bash

@@ -273,6 +273,7 @@ jobs:
               source "$HOME/.cargo/env" &&
               export LLVM_SYS_211_PREFIX=/usr/lib/llvm21 &&
               cargo build --release -p meshc --target x86_64-unknown-linux-musl &&
+              sh scripts/verify-meshc-source-version.sh target/x86_64-unknown-linux-musl/release/meshc &&
               cargo build --release -p mesh-rt -p mesh-test-rt --target x86_64-unknown-linux-musl
             '
           sudo chown -R "$(id -u):$(id -g)" target/
@@ -293,6 +294,13 @@ jobs:
           cargo build --release -p mesh-rt -p mesh-test-rt --target ${{ matrix.target }}
         env:
           LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
+
+      - name: Verify compiler source version
+        if: matrix.llvm_method != 'docker'
+        shell: bash
+        env:
+          MESHC_BIN: target/${{ matrix.target }}/release/meshc${{ runner.os == 'Windows' && '.exe' || '' }}
+        run: sh scripts/verify-meshc-source-version.sh "$MESHC_BIN"
 
       # ── Strip & Package ───────────────────────────────────────────
 
