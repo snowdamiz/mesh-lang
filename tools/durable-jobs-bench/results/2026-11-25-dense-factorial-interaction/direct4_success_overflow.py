@@ -1,6 +1,6 @@
 """Find disjoint same-owner terminal transactions that could share one stock flush."""
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from direct4_idle_budget import blob
 from direct4_peer_deadlines import ledger
@@ -9,6 +9,8 @@ from ready_success_capacity import full_groups
 
 def price(jobs):
     coalesced = full_groups(jobs)
+    grants = Counter((j["worker_pid"], j["claimed_us"]) for j in jobs)
+    last_grant = max(stamp for _, stamp in grants)
     owners = defaultdict(lambda: defaultdict(list))
     commits = {}
     for job in jobs:
@@ -49,7 +51,14 @@ def price(jobs):
                     # Adjacent edges in a chain: taking the earliest available
                     # pair gives a maximum count of disjoint pairs.
                     consumed.update((lead, follow))
+                    # Stock grants are floored to milliseconds. Require the full
+                    # stamp bin between the two commits and later work to claim.
+                    partial_grants = sum(1 for (owner, stamp), width in grants.items()
+                                         if owner == pid and width < 16 and stamp < last_grant
+                                         and commits[lead] < stamp and stamp + 999 < commits[follow])
                     pairs.append(dict(owner=pid, lead_xid=lead, absorbed_xid=follow, extra_rows=len(extra),
+                                      original_commit_gap_us=commits[follow]-commits[lead],
+                                      intervening_partial_grants=partial_grants,
                                       middle=effects[255] <= commits[lead] < effects[767]))
             assert len({x for p in pairs for x in (p["lead_xid"], p["absorbed_xid"])}) == 2*len(pairs)
             schedules[f"{boundary}_{lag}us"] = pairs
