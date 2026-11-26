@@ -630,9 +630,12 @@ mod tests {
 
         let selection = Selection::new(Scope::Account, home.path().to_owned(), HOSTS.iter());
         let mut output = Vec::new();
-        let mut reporter = Reporter::new(mesh_diagnostics::Format::Json, &mut output);
-        assert!(apply(&selection, false, &mut reporter).is_err());
-        assert_eq!(reporter.finish().errors, 2);
+        let mut reporter = Reporter::new(
+            mesh_diagnostics::Format::Human { color: false },
+            &mut output,
+        );
+        assert!(apply(&selection, false, &mut reporter).is_ok());
+        assert_eq!(reporter.finish().errors, 0);
 
         assert_eq!(installed(&clean).unwrap(), Some(receipt(Scope::Account)));
         assert_eq!(
@@ -647,16 +650,8 @@ mod tests {
         assert_eq!(installed(&pinned_current).unwrap(), Some(current_project));
         assert!(!home.path().join(".gemini").exists());
         let output = String::from_utf8(output).unwrap();
-        let kept: Vec<_> = output
-            .lines()
-            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
-            .collect();
-        assert!(kept.iter().all(|record| record["code"] == "X0103"));
         for path in [edited, extra] {
-            assert!(kept.iter().any(|record| record["message"]
-                .as_str()
-                .unwrap()
-                .contains(&format!("Kept {}", path.display()))));
+            assert!(output.contains(&format!("Kept {}", path.display())));
         }
 
         let project_receipt = receipt(Scope::Project);
@@ -669,6 +664,34 @@ mod tests {
             update(&project, ".agents", &pinned, &receipt(Scope::Project), true).unwrap(),
             Some("Already installed")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refresh_fails_when_an_account_copy_cannot_be_read() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let home = tempfile::tempdir().unwrap();
+        let path = skill_path(home.path(), ".claude");
+        old_copy(&path, Scope::Account);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let listed = fs::read_dir(&path).is_ok();
+        let selection = Selection::new(Scope::Account, home.path().to_owned(), HOSTS.iter());
+        let mut output = Vec::new();
+        let mut reporter = Reporter::new(
+            mesh_diagnostics::Format::Human { color: false },
+            &mut output,
+        );
+        let result = apply(&selection, false, &mut reporter);
+        let errors = reporter.finish().errors;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        // Permissions do not bind a privileged user.
+        if !listed {
+            assert!(result.is_err());
+            assert_eq!(errors, 1);
+            let output = String::from_utf8(output).unwrap();
+            assert!(output.contains(&format!("Could not update {}", path.display())));
+        }
     }
 
     #[test]
