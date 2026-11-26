@@ -305,3 +305,19 @@ Each job contributes only the portion of its interval inside global effect ranks
 Both ON runners had periods with five jobs simultaneously between their independent commits, **14.864 and 16.790 ms** forward and **8.398 and 9.068 ms** reverse in the middle window. Every measured exact-original or OFF arm peaked at four per runner. Increasing active jobs did not bring the final grant forward. The cooperative candidate needs its own quiet progress and resource comparison before a peer stage.
 
 [Middle-window and final-grant reducer](direct4_quiet_cost.py) · [Official pilot replay](/Users/andreyyurlov/.t3/worktrees/mesh-lang/t3-d974b994/target/direct4-cold-one-pilot/controller/replay.json)
+
+### How many effects had to move earlier to fund the last grant?
+
+Each runner had 32 seats. To admit all 1,024 jobs, the two runners needed at least 960 earlier seat releases. Keeping the recorded assignment charges each runner one release per job after its first 32. A terminal receipt can arrive after its durable settlement. As a generous alternative, give each job its seat back as soon as its second application write commits, then let a new claim consume that seat immediately. This retains the measured effect times and charges zero time for settlement, dispatch and the claim itself.
+
+| At the end of faster OFF’s final claim-stamp millisecond | Forward ON | Reverse ON |
+|---|---:|---:|
+| Elapsed from each arm’s enqueue commit | 730.039 ms | 709.270 ms |
+| Additional settlements needed under the observed owner assignment | 31 | 94 |
+| Additional effects needed even with immediate credit on the second write | 17 | 59 |
+| Earliest time those required effects completed, relative to the deadline | +16.427 ms | +52.192 ms |
+| Same lag with all 64 seats pooled across owners | +7.703 ms | +47.300 ms |
+
+At each historical warm River deadline, use the earlier of River’s drain and the time remaining on River’s full-submit clock after ON’s own enqueue. Even with 64 pooled seats and immediate credit, forward ON would have needed **122–129** more second writes and reverse ON **127–149** more just to fund the last claim. Their 960th effects crossed those deadlines **117.699–134.321 ms** and **133.351–149.973 ms** late, respectively. Completing all 1,024 jobs still required the remaining writes and settlement. These historical comparisons quantify the change in application progress needed on this schedule. A different refill policy could change the effect schedule itself.
+
+The [seat-release reducer](direct4_last_claim_floor.py) takes the quiet R5 pilot directory. It verifies the eight measured Mesh archives and the six warm River ledgers used for the deadlines.
