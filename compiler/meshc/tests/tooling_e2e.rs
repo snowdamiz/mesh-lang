@@ -3234,7 +3234,7 @@ fn skills_setup_supports_piped_stdin_with_explicit_targets() {
 #[test]
 fn skills_refresh_keeps_an_edited_account_copy_and_succeeds() {
     let home = tempfile::tempdir().unwrap();
-    let skill = home.path().join(".claude/skills/mesh");
+    let skill = home.path().join(".claude").join("skills").join("mesh");
     write_file(&skill.join("SKILL.md"), "local edits");
     write_file(
         &skill.join(".mesh-install.json"),

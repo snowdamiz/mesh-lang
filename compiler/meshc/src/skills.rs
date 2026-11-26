@@ -271,13 +271,14 @@ fn apply(
                 } else {
                     format!("Could not update {} ({error}).", path.display())
                 };
-                let code = match (kept, setup) {
-                    (true, false) => {
-                        reporter.status(message);
-                        continue;
-                    }
-                    (true, true) => Code::SkillsInstallConflict,
-                    (false, _) => Code::PathNotFound,
+                if kept && !setup {
+                    reporter.status(message);
+                    continue;
+                }
+                let code = if kept {
+                    Code::SkillsInstallConflict
+                } else {
+                    Code::PathNotFound
                 };
                 failure = Some(reporter.fail(Diagnostic::new(code, message)));
             }

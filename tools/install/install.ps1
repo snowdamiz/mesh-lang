@@ -304,7 +304,7 @@ function Invoke-SkillConfiguration {
     $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = $null
     $output = & $meshc skills refresh 2>&1
-    $status = $LASTEXITCODE
+    $status = $global:LASTEXITCODE
     $ErrorActionPreference = 'Stop'
 
     $lines = ($output -join "`n") -split '\r?\n'
