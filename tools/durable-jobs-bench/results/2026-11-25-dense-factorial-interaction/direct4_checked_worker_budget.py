@@ -4,6 +4,7 @@ import hashlib
 import json
 import runpy
 import tarfile
+from bisect import insort
 from collections import Counter, defaultdict
 from pathlib import Path
 from statistics import median
@@ -180,6 +181,31 @@ def resident_spares(jobs, windows, width, delay):
                 residence_ns=residence, residence_after_base_reply_ns=carry)
 
 
+def local_seat_floor(own, shifted, publication_edge):
+    # Keep previous publications fixed, including the owner's admission order.
+    # Rank k (one-based) needs k-32 credits from earlier jobs on this PID.
+    old, new = [], []
+    gains = []
+    delays = []
+    last_gain = 0
+    for index, job in enumerate(own):
+        if index >= 32:
+            previous = own[index - 1][publication_edge]
+            old_floor = max(previous, old[index - 32])
+            new_floor = max(previous, new[index - 32])
+            assert old_floor <= job["pub_after"]
+            last_gain = old_floor - new_floor
+            if last_gain > 0:
+                gains.append(last_gain)
+            elif last_gain < 0:
+                delays.append(-last_gain)
+        insort(old, job["credit"])
+        insort(new, shifted[job["id"]])
+    return dict(publications=len(own), earlier=len(gains), later=len(delays),
+                largest_advance_ns=max(gains, default=0), largest_delay_ns=max(delays, default=0),
+                last_publication_floor_advance_ns=last_gain)
+
+
 def credit_crossings(jobs, moves, alignment_ns):
     """Shift each actual settlement by its last member's change in return time."""
     cohorts = defaultdict(list)
@@ -191,12 +217,15 @@ def credit_crossings(jobs, moves, alignment_ns):
     crossed_jobs, crossed_stamps = set(), set()
     possible_jobs, possible_stamps = set(), set()
     advances = []
+    shifted = {}
     for cohort in cohorts.values():
         pid, = {job["pid"] for job in cohort}
         before = max(job["returned"] for job in cohort)
         after = max(job["returned"] - (moves[job["id"]]["advance"] if job["id"] in moves else 0)
                     for job in cohort)
         advance = before - after
+        for job in cohort:
+            shifted[job["id"]] = job["credit"] - advance
         if advance <= 0:
             continue
         earlier += 1
@@ -213,11 +242,17 @@ def credit_crossings(jobs, moves, alignment_ns):
                     crossed_jobs.add(job["id"])
                     crossed_stamps.add((pid, stamp))
     assert crossed_jobs <= possible_jobs and crossed_stamps <= possible_stamps
+    owners = {}
+    for pid in sorted(stamps):
+        own = sorted((job for job in jobs if job["pid"] == pid), key=lambda job: job["pub_before"])
+        assert all(a["pub_after"] <= b["pub_before"] for a, b in zip(own, own[1:]))
+        owners[pid] = {edge: local_seat_floor(own, shifted, edge) for edge in ("pub_before", "pub_after")}
     return dict(earlier_cohorts=earlier, earlier_rows=earlier_rows,
                 median_earlier_ns=median(advances) if advances else 0,
                 max_earlier_ns=max(advances, default=0),
                 distinct_credits_crossing_stamp=len(crossed_jobs), distinct_stamps_crossed=len(crossed_stamps),
-                possible_credits=len(possible_jobs), possible_stamps=len(possible_stamps))
+                possible_credits=len(possible_jobs), possible_stamps=len(possible_stamps),
+                local_seat_floor=owners)
 
 
 def fixed_publication_ranks(jobs, owners, start, end, alignment_ns):
