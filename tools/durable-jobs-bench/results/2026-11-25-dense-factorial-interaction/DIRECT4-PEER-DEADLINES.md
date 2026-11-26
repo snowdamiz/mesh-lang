@@ -127,3 +127,22 @@ A larger ceiling can change a full grant even when the owner has no new capacity
 For the four and three uninterrupted pairs, the first entry of the earlier batch proves the owner already had its checked receipt. Up to the first entry of the later batch, the owner always had at least one previously received job whose second write was outstanding. It had fewer than four such jobs for at most **8.551 ms out of 69.902 summed owner-ms** forward and **3.333 ms out of 49.555** reverse. The count uses only grants already proved received at the start. A job awaiting its second write may be running, waiting or awaiting dispatch. The other pairs would require reasoning about how an earlier, wider claim redistributes the ordered prefix between the two owners.
 
 Widening might reduce fixed transaction overhead or change the later schedule. It would also put more row work before the first checked receipt. The original ledgers supply little evidence that contiguous pairs delayed a worker for lack of received jobs. The [earlier width-32 experiment](../2026-11-23-wide-trusted-grant/README.md) used two-worker runners and scalar settlement. Its noisy local rotations supply no measured Direct4 CPU saving. Keep the 16-row ceiling for the current native comparison. Run `python3 -B direct4_wide_claim.py` here to reproduce the per-grant bounds from the two original native archives.
+
+## What would one extra worker have to recover?
+
+The first Direct4 checked-return series stopped during warmup. Its ON arm nevertheless recorded a complete application trace for all 1,024 jobs. During the middle 512 second-write commits, preserving the recorded handler residence and owner assignment would require **5.34 and 5.53 continuously occupied workers** on the two runners to reach the slowest historical warm River interval of 227.280 ms. Improving pickup alone with one extra worker per runner would still leave at least **24.239 ms** to recover in this comparison.
+
+| Instrumented warmup, middle 350.921 ms | Runner 1 | Runner 2 |
+|---|---:|---:|
+| Durable effects in the window | 258 | 254 |
+| Handler dispatch through release (worker-ms) | 1,213.397 | 1,257.595 |
+| First SQL send through ReadyForQuery (worker-ms) | 642.585 | 627.086 |
+| Second SQL send through ReadyForQuery (worker-ms) | 539.261 | 597.260 |
+| Both sends, portion certainly after their commit records (worker-ms) | 959.186 | 1,008.746 |
+| Handler residence above five workers × 227.280 ms (worker-ms) | 76.997 | 121.195 |
+
+The replay clips each actual handler turn at the two rank boundaries, including turns already in flight at rank 256. It sums residence separately on the two runners. Dividing the larger sum by five gives **251.519 ms** even with instantaneous pickup and perfect packing of that work. The arithmetic holds recorded service durations fixed. Extra concurrency could change those durations, in either direction. The first and second SQL intervals are disjoint and measure elapsed time on a worker. The after-record sums exclude the clock alignment allowance of 1.055 µs at each commit. PostgreSQL can timestamp the commit before flushing WAL. The trace also includes server scheduling and reply delivery. It cannot attribute the interval to any one of those costs. [Earlier post-flush screen](../2026-11-25-dense-postflush-boundary/screen-loader-retry/evidence/README.md)
+
+The ON warmup is diagnostic. Native release `65115b81` exited 1 on a settlement counter comparison before either measured block ran. The trace distinguishes a receipt delivered by the grouped writer from the SQL that writer uses for a one-member group. The fresh mirrored controls must qualify before using observed reply or dispatch exposure to advance a candidate. A readiness-based suspension would need to show an actual socket wait with another published actor available, while preserving the first write's checked outcome before sending the second.
+
+Run `python3 -B direct4_checked_worker_budget.py EXPOSURE_ARGV_V2 REDUCE_PY` in this directory. The replay pins the failed release, ON warmup archive and original trace decoder from `23df94494`. It verifies the six historical warm River ledgers through the existing peer reducer.
