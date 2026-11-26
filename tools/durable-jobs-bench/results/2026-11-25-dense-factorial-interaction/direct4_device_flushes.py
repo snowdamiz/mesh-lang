@@ -1,4 +1,4 @@
-"""Bracket device flush completions during the official enqueue-commit to settlement clock."""
+"""Bracket device activity during the official enqueue-commit to settlement clock."""
 import argparse
 import json
 import tarfile
@@ -11,6 +11,8 @@ from direct4_quiet_cost import RELEASE, REPLAY, read
 
 
 RECORDER = "16d1e01d19ee7b325908f07a69c6cdc772caf7d034ad79a6583494d2e107993b"
+DISK_FIELDS = {"reads": 0, "writes": 4, "sectors_written": 6, "write_ms": 7,
+               "busy_ms": 9, "completed_flushes": 15, "flush_ms": 16}
 
 
 def measure(path, digest, drain_us, boot):
@@ -35,15 +37,16 @@ def measure(path, digest, drain_us, boot):
         last = following["epoch_us"] - 200_000 + 2000
         assert first <= last
         device, = [row.split()[3:] for row in sample["diskstats"] if row.split()[:2] == ["8", "0"]]
-        frames.append((first, last, int(device[15]), int(device[16])))
-    assert all(a[2] <= b[2] and a[3] <= b[3] for a, b in zip(frames, frames[1:]))
+        frames.append((first, last, {name: int(device[k]) for name, k in DISK_FIELDS.items()}))
+    for left, right in zip(frames, frames[1:]):
+        assert all(left[2][name] <= right[2][name] for name in DISK_FIELDS)
     inside = [f for f in frames if f[0] >= start and f[1] <= stop]
     assert len(inside) >= 2
     before = max(f for f in frames if f[1] <= start)
     after = next(f for f in frames if f[0] >= stop)
     result = {"drain_us": drain_us, "raw_sha256": digest}
-    for k, field in ((2, "completed_flushes"), (3, "flush_ms")):
-        result[field] = [inside[-1][k] - inside[0][k], after[k] - before[k]]
+    for name in DISK_FIELDS:
+        result[name] = [inside[-1][2][name] - inside[0][2][name], after[2][name] - before[2][name]]
     return result
 
 
