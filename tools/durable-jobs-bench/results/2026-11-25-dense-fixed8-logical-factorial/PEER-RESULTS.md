@@ -33,6 +33,19 @@ Paired deltas below are the median of within-block differences.
 - Apalis beat Mesh by 266.027 ms on submit and 131.626 ms on drain,
   winning all five blocks on each clock.
 
+For the Go and Elixir comparisons, the throughput ratio is the peer's elapsed
+time divided by Mesh's elapsed time for the same 1,024 jobs in the same block.
+Each clock below uses its own five within-block ratios.
+
+| Stock peer | Mesh / peer submit throughput, median | Mesh / peer drain throughput, median | Blocks at least 20% ahead on both clocks |
+|---|---:|---:|---:|
+| River | 1.021× | 1.122× | 0/5 |
+| Oban | 1.325× | 1.412× | 5/5 |
+
+These ratios use the released fixed8+d388 executable. In the separate matched
+run that prewarmed River's connections, River finished sooner on both clocks
+in six of six blocks. [Warm-session comparison](../2026-11-25-dense-fixed8-river-readiness/NATIVE-RESULTS.md)
+
 The pilot and peer decisions are scoped to this build-free composition.
 The prior grouped-refill and logical-key peer decisions remain closed.
 [Pilot results](PILOT-RESULTS.md)
