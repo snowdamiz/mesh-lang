@@ -59,3 +59,13 @@ which exists in 0.9.24):
 
 No consensus, election, replication, network, storage, or other OpenRaft source
 files were modified.
+
+## Mesh integration
+
+Both Mesh workspaces select the same local 0.9.24 crates. The vendored
+`openraft` manifest also pins `openraft-macros` to the exact 0.9.24 version
+instead of permitting a newer, unpatched macro crate. This is a dependency
+selection change only. The independent upstream audit file records the two
+original registry identities; the release evidence validates those identities
+against both workspaces and runs a strict additional advisory scan because
+RustSec does not scan local path packages.

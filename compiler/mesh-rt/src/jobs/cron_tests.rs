@@ -135,6 +135,13 @@ fn ms(utc: &str) -> i64 {
     dt.unix_timestamp() * 1_000 + i64::from(dt.millisecond())
 }
 
+#[test]
+fn cron_fixture_timestamps_preserve_utc_milliseconds() {
+    assert_eq!(ms("1970-01-01T00:00:00Z"), 0);
+    assert_eq!(ms("1969-12-31T23:59:59.999Z"), -1);
+    assert_eq!(ms("2024-01-15T10:30:00Z"), 1_705_314_600_000);
+}
+
 fn register(
     db: &mut impl Database,
     namespace: &str,

@@ -2,6 +2,8 @@
 !Cargo.toml
 !Cargo.lock
 !compiler/**
+!third_party/
+!third_party/**
 !tools/
 !tools/skill/
 !tools/skill/mesh/

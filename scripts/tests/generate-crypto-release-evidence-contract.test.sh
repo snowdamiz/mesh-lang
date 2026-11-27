@@ -43,5 +43,13 @@ grep -Fq 'crypto::mlkem_tests' "${SCRIPT_PATH}" ||
   fail "release evidence does not run the ACVP and OpenSSL ML-KEM vectors"
 grep -Fq 'blind_rsa_sign_timing' "${SCRIPT_PATH}" ||
   fail "release record does not name the blind RSA signing timing result"
+grep -Fq 'cargo audit --json >"${OUTPUT_DIR}/cargo-audit.json"' "${SCRIPT_PATH}" ||
+  fail "release evidence does not audit the actual workspace lockfile"
+grep -Fq 'cargo audit --deny warnings --json --file scripts/openraft-upstream-audit.lock' "${SCRIPT_PATH}" ||
+  fail "release evidence does not retain advisory coverage of vendored OpenRaft"
+grep -Fq 'openraft_upstream_audit' "${SCRIPT_PATH}" ||
+  fail "release record does not name the upstream OpenRaft audit result"
+python3 "${ROOT_DIR}/scripts/verify-openraft-audit-coverage.py"
+python3 "${ROOT_DIR}/scripts/tests/verify-openraft-audit-coverage.test.py"
 
 printf 'release evidence contract passed\n'

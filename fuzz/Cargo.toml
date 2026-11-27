@@ -43,3 +43,7 @@ bench = false
 
 [workspace]
 members = ["."]
+
+[patch.crates-io]
+openraft = { path = "../third_party/openraft" }
+openraft-macros = { path = "../third_party/openraft-macros" }
