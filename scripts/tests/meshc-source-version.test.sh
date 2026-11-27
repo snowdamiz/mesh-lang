@@ -97,11 +97,28 @@ ordinary() {
 assert_fresh() {
   local checkout="$1" log
   log="$(cd "$checkout" && CARGO_TARGET_DIR="$checkout/target" \
-    cargo build --offline --verbose --manifest-path compiler/meshc/Cargo.toml 2>&1)"
+    cargo build --color never --offline --verbose --manifest-path compiler/meshc/Cargo.toml 2>&1)"
   if [[ "$log" != *'Fresh meshc v1.2.3'* ]]; then
     printf '%s\nexpected a fresh Cargo build\n' "$log" >&2
     exit 1
   fi
+}
+
+packed_slash_branch() {
+  local checkout="$tmp/packed-slash" branch=feature/nested/version original updated
+  init_checkout "$checkout"
+  git -C "$checkout" switch -qc "$branch"
+  original="$(git -C "$checkout" rev-parse HEAD)"
+  updated="$(next_commit "$checkout")"
+  assert_version "$checkout" "meshc 1.2.3 (git $original)"
+
+  git -C "$checkout" pack-refs --all
+  test ! -d "$checkout/.git/refs/heads/feature"
+  assert_version "$checkout" "meshc 1.2.3 (git $original)"
+  assert_fresh "$checkout"
+
+  git -C "$checkout" update-ref "refs/heads/$branch" "$updated"
+  assert_version "$checkout" "meshc 1.2.3 (git $updated)"
 }
 
 path_whitespace() {
@@ -162,8 +179,26 @@ EOF
   PATH="$shim:$PATH" REAL_GIT="$real_git" assert_version "$checkout" 'meshc 1.2.3'
 }
 
+legacy_symbolic_ref() {
+  local checkout="$tmp/legacy-symbolic-ref" shim="$tmp/symbolic-ref-bin" real_git
+  init_checkout "$checkout"
+  real_git="$(command -v git)"
+  mkdir "$shim"
+  # Git 2.34 rejects --no-recurse with a usage error.
+  cat >"$shim/git" <<'EOF'
+#!/bin/sh
+if [ "$1" = symbolic-ref ] && [ "${3:-}" = --no-recurse ]; then
+  printf "error: unknown option 'no-recurse'\n" >&2
+  exit 129
+fi
+exec "$REAL_GIT" "$@"
+EOF
+  chmod +x "$shim/git"
+  PATH="$shim:$PATH" REAL_GIT="$real_git" assert_version "$checkout" 'meshc 1.2.3'
+}
+
 if [[ $# -eq 0 ]]; then
-  set -- ordinary path_whitespace files_linked reftable_linked legacy_layout
+  set -- ordinary packed_slash_branch path_whitespace files_linked reftable_linked legacy_layout legacy_symbolic_ref
 fi
 for fixture in "$@"; do
   if [[ "$fixture" == reftable_linked && "$(git init -h 2>&1 || true)" != *--ref-format* ]]; then
@@ -171,7 +206,7 @@ for fixture in "$@"; do
     continue
   fi
   case "$fixture" in
-    ordinary|path_whitespace|files_linked|reftable_linked|legacy_layout) "$fixture" ;;
+    ordinary|packed_slash_branch|path_whitespace|files_linked|reftable_linked|legacy_layout|legacy_symbolic_ref) "$fixture" ;;
     *) printf 'Unknown fixture: %s\n' "$fixture" >&2; exit 2 ;;
   esac
   printf 'PASS %s\n' "$fixture"
