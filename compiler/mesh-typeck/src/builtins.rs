@@ -1405,6 +1405,13 @@ pub fn register_builtins(
             Ty::result(http_resp_t.clone(), Ty::string()),
         )),
     );
+    env.insert(
+        "http_send_bearer".into(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::secret_bytes()],
+            Ty::result(http_resp_t.clone(), Ty::string()),
+        )),
+    );
     // HttpResponse type name available as a type annotation
     env.insert("HttpResponse".into(), Scheme::mono(http_resp_t.clone()));
     // Http.stream(req, fn(String) -> String) -> Int  (Int = cancel handle u64)

@@ -294,6 +294,13 @@ pub(crate) fn check(
     signatures.insert("BytesBuilder.finish".to_string(), finish_builder.clone());
     signatures.insert("bytes_builder_finish".to_string(), finish_builder);
 
+    let send_bearer = FunctionSignature {
+        modes: vec![ParamOwnership::Move, ParamOwnership::Borrow],
+        formal_types: vec![Some(Ty::int()), Some(Ty::secret_bytes())],
+    };
+    signatures.insert("Http.send_bearer".to_string(), send_bearer.clone());
+    signatures.insert("http_send_bearer".to_string(), send_bearer);
+
     register_pg_signature(&mut signatures, "close", vec![ParamOwnership::Consume]);
     for (operation, arity) in [
         ("execute", 3),

@@ -130,6 +130,24 @@ if audit.get("lockfile", {}).get("dependency-count") != 2 or vulnerabilities != 
     raise SystemExit("OpenRaft upstream audit did not cover two clean dependencies")
 PY
 
+# Cargo Audit skips local crates. Check the original ureq registry identities.
+python3 "${SOURCE_A}/scripts/verify-ureq-audit-coverage.py"
+(cd "${SOURCE_A}" && cargo audit --deny warnings --json --file scripts/ureq-upstream-audit.lock >"${OUTPUT_DIR}/ureq-upstream-audit.json") || \
+  fail "ureq upstream audit reported findings; see ${OUTPUT_DIR}/ureq-upstream-audit.json"
+
+python3 - "${OUTPUT_DIR}/ureq-upstream-audit.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as audit_file:
+    audit = json.load(audit_file)
+
+vulnerabilities = audit.get("vulnerabilities", {}).get("count")
+warnings = sum(len(entries) for entries in audit.get("warnings", {}).values())
+if audit.get("lockfile", {}).get("dependency-count") != 2 or vulnerabilities != 0 or warnings != 0:
+    raise SystemExit("ureq upstream audit did not cover two clean dependencies")
+PY
+
 (
   cd "${SOURCE_A}"
   cargo cyclonedx \
@@ -290,6 +308,8 @@ AUDIT_SHA="$(sha256_file "${OUTPUT_DIR}/cargo-audit.json")"
 readonly AUDIT_SHA
 OPENRAFT_AUDIT_SHA="$(sha256_file "${OUTPUT_DIR}/openraft-upstream-audit.json")"
 readonly OPENRAFT_AUDIT_SHA
+UREQ_AUDIT_SHA="$(sha256_file "${OUTPUT_DIR}/ureq-upstream-audit.json")"
+readonly UREQ_AUDIT_SHA
 SBOM_SHA="$(sha256_file "${OUTPUT_DIR}/meshc.cdx.json")"
 readonly SBOM_SHA
 TIMING_SHA="$(sha256_file "${OUTPUT_DIR}/constant-time.json")"
@@ -301,7 +321,7 @@ readonly BLIND_RSA_VECTOR_SHA
 VECTOR_TEST_SHA="$(sha256_file "${OUTPUT_DIR}/known-answer-vectors.log")"
 readonly VECTOR_TEST_SHA
 
-python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${OPENRAFT_AUDIT_SHA}" "${SBOM_SHA}" "${TIMING_SHA}" "${SHA_A}" "${VECTOR_SHA}" "${VECTOR_TEST_SHA}" "${BLIND_RSA_VECTOR_SHA}" <<'PY'
+python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${OPENRAFT_AUDIT_SHA}" "${UREQ_AUDIT_SHA}" "${SBOM_SHA}" "${TIMING_SHA}" "${SHA_A}" "${VECTOR_SHA}" "${VECTOR_TEST_SHA}" "${BLIND_RSA_VECTOR_SHA}" <<'PY'
 from datetime import datetime, timezone
 import json
 import sys
@@ -318,6 +338,7 @@ import sys
     cyclonedx_tool,
     audit_sha,
     openraft_audit_sha,
+    ureq_audit_sha,
     sbom_sha,
     timing_sha,
     artifact_sha,
@@ -387,6 +408,7 @@ record = {
     "results": {
         "dependency_audit": {"status": "passed", "sha256": audit_sha},
         "openraft_upstream_audit": {"status": "passed", "sha256": openraft_audit_sha},
+        "ureq_upstream_audit": {"status": "passed", "sha256": ureq_audit_sha},
         "sbom": {"status": "passed", "format": "CycloneDX 1.5 JSON", "sha256": sbom_sha},
         "secure_equals_timing": {"status": "passed", "sha256": timing_sha},
         "blind_rsa_sign_timing": {"status": "passed", "sha256": timing_sha},
@@ -412,7 +434,7 @@ PY
 
 (
   cd "${OUTPUT_DIR}"
-  for evidence_file in cargo-audit.json openraft-upstream-audit.json meshc.cdx.json constant-time.json reproducibility.json "${MLKEM_VECTOR_FILE}" "${BLIND_RSA_VECTOR_FILE}" known-answer-vectors.log release-record.json; do
+  for evidence_file in cargo-audit.json openraft-upstream-audit.json ureq-upstream-audit.json meshc.cdx.json constant-time.json reproducibility.json "${MLKEM_VECTOR_FILE}" "${BLIND_RSA_VECTOR_FILE}" known-answer-vectors.log release-record.json; do
     printf '%s  %s\n' "$(sha256_file "${evidence_file}")" "${evidence_file}"
   done
 ) >"${OUTPUT_DIR}/SHA256SUMS"

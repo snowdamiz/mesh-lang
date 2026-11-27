@@ -3083,6 +3083,10 @@ impl<'a> Lowerer<'a> {
             "mesh_http_send".to_string(),
             MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
         );
+        self.known_functions.insert(
+            "mesh_http_send_bearer".to_string(),
+            MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
         // Http streaming + cancel + keep-alive (Phase 137 Plan 02)
         // mesh_http_stream(req: i64, fn_ptr: ptr, env_ptr: ptr) -> i64 (cancel handle)
         self.known_functions.insert(
@@ -15216,6 +15220,7 @@ fn map_builtin_name(name: &str) -> String {
         "http_query" => "mesh_http_query".to_string(),
         "http_json" => "mesh_http_json".to_string(),
         "http_send" => "mesh_http_send".to_string(),
+        "http_send_bearer" => "mesh_http_send_bearer".to_string(),
         // Http streaming + cancel + keep-alive (Phase 137 Plan 02)
         "http_stream" => "mesh_http_stream".to_string(),
         "http_stream_bytes" => "mesh_http_stream_bytes".to_string(),

@@ -20,7 +20,13 @@ members = [
 # mesh-rt uses libsqlite3-sys 0.39 (bundled) while sqlx-sqlite requires 0.28.x.
 # Both crates define links = "sqlite3", which Cargo does not allow in the same dep graph.
 # registry/Cargo.toml declares its own [workspace] root to be resolved independently.
-exclude = ["registry", "third_party/openraft", "third_party/openraft-macros"]
+exclude = [
+    "registry",
+    "third_party/openraft",
+    "third_party/openraft-macros",
+    "third_party/ureq",
+    "third_party/ureq-proto",
+]
 resolver = "2"
 
 [patch.crates-io]
@@ -50,5 +56,5 @@ flate2 = "1"
 indicatif = "0.18"
 colored = "2"
 dirs = "5"
-ureq = { version = "3", features = ["gzip"] }
+ureq = { path = "third_party/ureq", version = "=3.5.2", features = ["gzip"] }
 sha2 = "0.10"

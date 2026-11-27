@@ -1032,6 +1032,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::http::client::mesh_http_send as *const (),
         ),
         (
+            "mesh_http_send_bearer",
+            mesh_rt::http::client::mesh_http_send_bearer as *const (),
+        ),
+        (
             "mesh_http_send_with",
             mesh_rt::http::client::mesh_http_send_with as *const (),
         ),

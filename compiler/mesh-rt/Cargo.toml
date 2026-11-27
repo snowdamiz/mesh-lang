@@ -21,7 +21,8 @@ parking_lot = "0.12"
 rustc-hash = { workspace = true }
 serde_json = "1"
 serde = { workspace = true }
-ureq = { version = "3", features = ["gzip"] }
+ureq = { workspace = true }
+bytes = "1.10.1"
 url = "2"
 openraft = { version = "=0.9.24", features = ["serde", "storage-v2"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
@@ -79,4 +80,5 @@ aws-lc-sys = { version = "=0.45.0", default-features = false }
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(mesh_coverage)"] }
 
 [dev-dependencies]
+log = "0.4"
 tempfile = "3"

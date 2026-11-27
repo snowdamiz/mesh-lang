@@ -191,6 +191,94 @@ end
 }
 
 #[test]
+fn mesh_bearer_send_uses_bounds_and_returns_redirects_without_following() {
+    let target = TcpListener::bind("127.0.0.1:0").unwrap();
+    let target_port = target.local_addr().unwrap().port();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        for (path, reply) in [
+            ("/read?page=2", "200 OK\r\nContent-Length: 2\r\n\r\nok".to_string()),
+            ("/same", "302 Found\r\nLocation: /unexpected\r\nContent-Length: 0\r\n\r\n".to_string()),
+            ("/cross", format!("307 Temporary Redirect\r\nLocation: http://127.0.0.1:{target_port}/unexpected\r\nContent-Length: 0\r\n\r\n")),
+            ("/exact", "200 OK\r\nContent-Length: 8\r\n\r\n12345678".to_string()),
+            ("/large", "200 OK\r\nContent-Length: 9\r\n\r\ntoo large".to_string()),
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let request = read_request(&mut stream);
+            assert!(request.starts_with(&format!("GET {path} HTTP/1.1\r\n")));
+            let mut authorization = request.lines().filter_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("authorization").then(|| value.trim())
+            });
+            assert!(authorization.next() == Some("Bearer fixture.token_123="));
+            assert!(authorization.next().is_none());
+            write!(stream, "HTTP/1.1 {reply}").unwrap();
+        }
+        listener
+    });
+
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("http-bearer-client");
+    std::fs::create_dir(&project).unwrap();
+    std::fs::write(
+        project.join("main.mpl"),
+        format!(
+            r##"
+fn fetch(request :: Int, secret :: borrow SecretBytes) do
+  case Http.send_bearer(request, secret) do
+    Ok(response) -> println("#{{response.status}}:#{{response.body}}")
+    Err(error) -> println(error)
+  end
+end
+
+fn exercise() -> ()!CryptoError do
+  let secret = Secret.from_bytes(Bytes.from_utf8("fixture.token_123="))?
+  let origin = "http://127.0.0.1:{port}"
+  let read = Http.build(:get, origin <> "/read")
+    |> Http.query("page", "2")
+    |> Http.timeout(1000)
+    |> Http.stage_timeout(:first_byte, 500)
+  fetch(read, secret)
+  fetch(Http.build(:get, origin <> "/same") |> Http.timeout(1000), secret)
+  let cross = Http.build(:get, origin <> "/cross")
+    |> Http.timeout(1000)
+    |> Http.max_redirects(5)
+  fetch(cross, secret)
+  fetch(Http.build(:get, origin <> "/exact") |> Http.max_response_bytes(8), secret)
+  fetch(Http.build(:get, origin <> "/large") |> Http.max_response_bytes(8), secret)
+  Secret.destroy(secret)
+  Ok(())
+end
+
+fn main() do
+  case exercise() do
+    Ok(_) -> ()
+    Err(_) -> panic("fixture secret creation failed")
+  end
+end
+"##
+        ),
+    )
+    .unwrap();
+
+    let run = build_and_run(&project);
+    assert_eq!(
+        String::from_utf8(run.stdout).unwrap(),
+        "200:ok\n302:\n307:\n200:12345678\nRESPONSE_TOO_LARGE: limit is 8 bytes\n"
+    );
+    assert!(run.stderr.is_empty(), "unexpected bearer diagnostics");
+    for unopened in [server.join().unwrap(), target] {
+        unopened.set_nonblocking(true).unwrap();
+        assert_eq!(
+            unopened.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+    }
+}
+
+#[test]
 fn mesh_http_client_sends_json_bodies_with_http_json() {
     // `json` is a keyword, so `Http.json` used to fail to parse.
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
