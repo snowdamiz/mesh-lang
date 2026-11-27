@@ -1,6 +1,6 @@
 [package]
 name = "mesh-diagnostics"
-version = "0.1.8"
+version = "0.1.10"
 edition = "2021"
 description = "The Mesh diagnostic catalog and the diagnostic value every tool reports"
 

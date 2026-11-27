@@ -11,6 +11,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 const MAX_RANDOM_BYTES: usize = 64 * 1024;
 const MAX_INPUT_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_HMAC_SHA256_TAG_MESSAGE_BYTES: usize = 1024 * 1024;
 const MAX_HKDF_OUTPUT_BYTES: usize = 255 * 32;
 pub(crate) const MIN_ARGON2_SALT_BYTES: usize = 8;
 pub(crate) const MAX_ARGON2_SALT_BYTES: usize = 64;
@@ -36,6 +37,21 @@ impl KeyType for HkdfOutputLength {
     fn len(&self) -> usize {
         self.0
     }
+}
+
+fn sign_hmac_sha256(
+    key: &[u8],
+    message: &[u8],
+    output: &mut [u8; 32],
+    max_message_bytes: usize,
+) -> Result<(), ProviderError> {
+    if key.len() > MAX_INPUT_BYTES || message.len() > max_message_bytes {
+        output.zeroize();
+        return Err(ProviderError::InvalidLength);
+    }
+    let tag = sign(&Key::new(HMAC_SHA256, key), message);
+    output.copy_from_slice(tag.as_ref());
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,13 +93,16 @@ pub(crate) trait CryptoProvider {
         message: &[u8],
         output: &mut [u8; 32],
     ) -> Result<(), ProviderError> {
-        if key.len() > MAX_INPUT_BYTES || message.len() > MAX_INPUT_BYTES {
-            output.zeroize();
-            return Err(ProviderError::InvalidLength);
-        }
-        let tag = sign(&Key::new(HMAC_SHA256, key), message);
-        output.copy_from_slice(tag.as_ref());
-        Ok(())
+        sign_hmac_sha256(key, message, output, MAX_INPUT_BYTES)
+    }
+
+    fn hmac_sha256_tag(
+        &self,
+        key: &[u8],
+        message: &[u8],
+        output: &mut [u8; 32],
+    ) -> Result<(), ProviderError> {
+        sign_hmac_sha256(key, message, output, MAX_HMAC_SHA256_TAG_MESSAGE_BYTES)
     }
 
     fn hkdf_sha256(
@@ -479,6 +498,23 @@ mod tests {
                 [0; 32]
             )
         );
+    }
+
+    #[test]
+    fn hmac_sha256_tag_clears_output_for_oversized_keys_and_messages() {
+        let oversized_key = vec![0x42; 64 * 1024 + 1];
+        let oversized_message = vec![0x13; 1024 * 1024 + 1];
+        for (key, message) in [
+            (oversized_key.as_slice(), &b"message"[..]),
+            (&b"key"[..], oversized_message.as_slice()),
+        ] {
+            let mut tag = [0xaa; 32];
+            assert_eq!(
+                SystemProvider.hmac_sha256_tag(key, message, &mut tag),
+                Err(ProviderError::InvalidLength)
+            );
+            assert_eq!(tag, [0; 32]);
+        }
     }
 
     #[test]

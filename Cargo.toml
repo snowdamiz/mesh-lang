@@ -17,11 +17,15 @@ members = [
     "compiler/meshpkg",
 ]
 # registry/ is excluded from the main workspace to avoid a libsqlite3-sys conflict:
-# mesh-rt uses libsqlite3-sys 0.36 (bundled) while sqlx-sqlite requires 0.28.x.
+# mesh-rt uses libsqlite3-sys 0.39 (bundled) while sqlx-sqlite requires 0.28.x.
 # Both crates define links = "sqlite3", which Cargo does not allow in the same dep graph.
 # registry/Cargo.toml declares its own [workspace] root to be resolved independently.
-exclude = ["registry"]
+exclude = ["registry", "third_party/openraft", "third_party/openraft-macros"]
 resolver = "2"
+
+[patch.crates-io]
+openraft = { path = "third_party/openraft" }
+openraft-macros = { path = "third_party/openraft-macros" }
 
 [workspace.dependencies]
 insta = { version = "1.46", features = ["yaml"] }

@@ -190,6 +190,83 @@ end
     );
 }
 
+#[test]
+fn hmac_sha256_tags_accept_whole_messages_through_one_mib() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "hmac-tag-limits",
+        r##"
+fn check_tag(key :: borrow SecretBytes, repeats :: Int, tail :: String) do
+  let prefix = String.repeat("000180ff", repeats)
+  case Bytes.from_hex("#{prefix}#{tail}") do
+    Ok(body) -> do
+      let length = Bytes.length(body)
+      case Crypto.hmac_sha256_tag(key, body) do
+        Ok(tag) -> println("#{length}:#{Bytes.to_hex(tag)}")
+        Err(InvalidLength(maximum, actual)) -> println("#{length}:invalid_length:#{maximum},#{actual}")
+        Err(_) -> println("unexpected crypto error")
+      end
+    end
+    Err(_) -> println("invalid fixture")
+  end
+end
+
+fn proof() -> Int ! CryptoError do
+  let key = Secret.from_bytes(Bytes.from_utf8("synthetic-webhook-key")) ?
+  check_tag(key, 16384, "")
+  check_tag(key, 16384, "a5")
+  check_tag(key, 262144, "")
+  check_tag(key, 262144, "a5")
+  check_tag(key, 0, "")
+  case Crypto.hmac_sha256(key, Bytes.from_utf8(String.repeat("x", 65537))) do
+    Err(InvalidLength(maximum, actual)) -> println("secret:invalid_length:#{maximum},#{actual}")
+    Err(_) -> println("unexpected secret error")
+    Ok(secret) -> Secret.destroy(secret)
+  end
+  Secret.destroy(key)
+  Ok(0)
+end
+
+fn main() do
+  case proof() do
+    Err(_) -> println("failed")
+    Ok(_) -> nil
+  end
+end
+"##,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("hmac-tag-limits"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(
+        run.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    // Reference tags from Python's hmac.digest(key, body, "sha256").hex().
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "65536:192c27c0228d49c3d09eec33215c937affc1905224bb5725beb07038de6d5345\n\
+         65537:59d29bfc6dd1b04400a3b50554d71fb2e098a6ff9afc1503a72399281e8bf7f4\n\
+         1048576:0b0131ebbdf38ad6eacc303eb92d58ff58be5afe655ed5a4500a09d835a9dfbd\n\
+         1048577:invalid_length:1048576,1048577\n\
+         0:a55806131d83f5637802d82087b27d11ee6dd492c9ce2a7677ce31ff3d8c83ef\n\
+         secret:invalid_length:65536,65537\n"
+    );
+}
+
 /// A private key sealed under a storage key derived from a code someone holds
 /// comes back as the same key under a fresh derivation of that code, and not
 /// under another code. The code arrives as ordinary bytes, as a typed code

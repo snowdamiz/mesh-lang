@@ -3,8 +3,8 @@ use crate::db::jobs_connection::{with_connection, PgJobDb};
 use crate::db::pg::{mesh_pg_close, mesh_pg_connect};
 use crate::io::MeshResult;
 use crate::string::{mesh_str, text_of, MeshString};
-use chrono::DateTime;
 use std::sync::Barrier;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 #[test]
 fn parses_five_fields_and_oban_aliases() {
@@ -131,9 +131,15 @@ fn setup(db: &mut impl Database, name: &str) -> Result<Namespace, String> {
 }
 
 fn ms(utc: &str) -> i64 {
-    DateTime::parse_from_rfc3339(utc)
-        .unwrap()
-        .timestamp_millis()
+    let dt = OffsetDateTime::parse(utc, &Rfc3339).unwrap();
+    dt.unix_timestamp() * 1_000 + i64::from(dt.millisecond())
+}
+
+#[test]
+fn cron_fixture_timestamps_preserve_utc_milliseconds() {
+    assert_eq!(ms("1970-01-01T00:00:00Z"), 0);
+    assert_eq!(ms("1969-12-31T23:59:59.999Z"), -1);
+    assert_eq!(ms("2024-01-15T10:30:00Z"), 1_705_314_600_000);
 }
 
 fn register(

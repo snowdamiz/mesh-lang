@@ -443,8 +443,8 @@ end
 | `Secret.random(length)` | `Result<SecretBytes, CryptoError>` | OS-backed move-only secret bytes |
 | `Secret.concat(first, second)` | `Result<SecretBytes, CryptoError>` | Consume two secrets and join them, up to 64 KiB |
 | `Secret.from_bytes(value)` | `Result<SecretBytes, CryptoError>` | Take in 1 byte to 64 KiB that arrived as ordinary data (a code a person typed) as a secret; the `Bytes` itself is not erased |
-| `Crypto.hmac_sha256(key, message)` | `Result<SecretBytes, CryptoError>` | HMAC with a borrowed secret key, as a secret (for output used as key material) |
-| `Crypto.hmac_sha256_tag(key, message)` | `Result<Bytes, CryptoError>` | HMAC with a borrowed secret key, as a public 32-byte tag (a MAC to store or send; compare with `Bytes.secure_equals`) |
+| `Crypto.hmac_sha256(key, message)` | `Result<SecretBytes, CryptoError>` | HMAC with a borrowed secret key and a message up to 64 KiB. Returns secret key material. |
+| `Crypto.hmac_sha256_tag(key, message)` | `Result<Bytes, CryptoError>` | HMAC with a borrowed secret key and a whole message up to 1 MiB. Returns a public 32-byte tag for comparison with `Bytes.secure_equals`. Larger messages return `InvalidLength(maximum, actual)` in bytes. |
 | `Crypto.hkdf_sha256(key, salt, info, length)` | `Result<SecretBytes, CryptoError>` | Bounded HKDF output |
 | `Crypto.argon2id(password, salt, memory_kib, iterations, parallelism, length)` | `Result<SecretBytes, CryptoError>` | Argon2id v1.3 password KDF with a borrowed secret |
 | `Crypto.x25519_generate()` | `Result<X25519KeyPair, CryptoError>` | Generate an X25519 key pair |
