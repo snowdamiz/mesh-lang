@@ -355,7 +355,7 @@ record = {
             "modulus_bits": 2048,
             "public_exponent": 65537,
             "dependencies": {
-                "blind_finalize": "crypto-bigint 0.7.5",
+                "blind_finalize": "crypto-bigint 0.7.11",
                 "verify": "ring 0.17.14 RSA_PSS_2048_8192_SHA384",
                 "sign_generate_import": "aws-lc-sys 0.45.0 (AWS-LC 5.7.0), Linux and macOS only",
             },

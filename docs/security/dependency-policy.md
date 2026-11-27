@@ -85,7 +85,7 @@ The lockfile resolves this selected and license-reviewed Profile A set:
 | Constant-time comparison | `subtle 2.6.1` | none | BSD-3-Clause |
 | ML-KEM-768 (portable implementation on every target) | `libcrux-ml-kem 0.0.10` | `libcrux-sha3 0.0.10`, `libcrux-intrinsics 0.0.8`, `libcrux-platform 0.0.3`, `libcrux-secrets 0.0.6`, `libcrux-traits 0.0.8`, `hax-lib 0.3.7` (and the `hax-lib-macros 0.3.7` proc macro), `rand_core 0.10.1` through `rand 0.10.3` (trait bounds only) | Apache-2.0 (rand: MIT OR Apache-2.0) |
 | Argon2id v1.3 | `argon2 0.5.3` | `blake2 0.10.6`, `base64ct 1.8.3`, `cpufeatures 0.2.17` on x86, `zeroize 1.8.2` | MIT OR Apache-2.0 |
-| Blind RSA BR1: blind, finalize, EMSA-PSS | `crypto-bigint 0.7.5` | `ctutils 0.4.2`, `cmov 0.5.4`, `cpubits 0.1.1`, `num-traits 0.2.19`, `zeroize 1.8.2`; SHA-384 from `ring 0.17.14` | Apache-2.0 OR MIT |
+| Blind RSA BR1: blind, finalize, EMSA-PSS | `crypto-bigint 0.7.11` | `ctutils 0.4.8`, `cmov 0.5.4`, `cpubits 0.1.1`, `num-traits 0.2.19`, `zeroize 1.8.2`; SHA-384 from `ring 0.17.14` | Apache-2.0 OR MIT |
 | Blind RSA BR1: verify, and the check in finalize | `ring 0.17.14` (`RSA_PSS_2048_8192_SHA384`) | none | Apache-2.0 AND ISC |
 | Blind RSA BR1: sign, generate, PKCS#8 import (Linux and macOS only) | `aws-lc-sys 0.45.0` (AWS-LC 5.7.0) | build only: `cc`, `cmake 0.1.58`, `dunce 1.0.5`, `fs_extra 1.3.0`, `pkg-config` | ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND (Apache-2.0 OR ISC OR MIT) AND (Apache-2.0 OR ISC OR MIT-0) |
 
@@ -125,6 +125,28 @@ from both dependency graphs and archives, and that ML-KEM comes from
 CycloneDX SBOM, and reproducible isolated `meshc` builds from the release
 revision on the workflow host. Android and reproducibility of every advertised
 target archive remain Milestone 10 release gates before production activation.
+
+## Change review: BR1 dependency update (2026-11-26)
+
+The hosted release audit requires replacing the yanked `crypto-bigint 0.7.5`
+and updating `ctutils`. The candidate exact pin is `crypto-bigint =0.7.11`
+(non-yanked, default features disabled, only `zeroize` enabled). Both the
+workspace and fuzz locks resolve `ctutils 0.4.8`; the other workspace BR1
+dependencies remain as listed in the current provider table. Both updated
+crates declare Apache-2.0 OR MIT. Neither replaces the BR1 implementation
+or changes the target selection.
+
+The update changes no Mesh algorithm, parameter, wire representation,
+domain label, fallback, or secret-memory handling. The runtime retains its
+existing arithmetic and zeroization calls; the implementation-level timing
+claims and source locations in the September review describe the earlier
+versions only. The release audit, differential, timing, fuzz, advertised-target
+and other release proof gates still apply to the new lockfile; the earlier
+review is not evidence that those gates passed for this update.
+
+Local candidate checks passed for the workspace, fuzz binary compilation,
+RFC 9474 and RFC 9578 BR1 vectors, and the runtime BR1 round trip and issuer
+key storage. These checks are not the full release qualification.
 
 ## Change review: blind RSA (profile BR1)
 

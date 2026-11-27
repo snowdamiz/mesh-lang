@@ -26,7 +26,7 @@ url = "2"
 openraft = { version = "0.9.21", features = ["serde", "storage-v2"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 redb = "4.1"
-libsqlite3-sys = { version = "0.36", features = ["bundled"] }
+libsqlite3-sys = { version = "0.39", features = ["bundled"] }
 # Phase 54: PostgreSQL wire protocol
 sha2 = "0.10"
 hmac = "0.12"
@@ -63,7 +63,7 @@ poly1305 = { version = "=0.8.0", default-features = false, features = ["zeroize"
 libcrux-ml-kem = { version = "=0.0.10", default-features = false, features = ["mlkem768"] }
 # Blind RSA (profile BR1): constant-time Montgomery exponentiation and safegcd
 # inversion for blinding and finalizing on every target.
-crypto-bigint = { version = "=0.7.5", default-features = false, features = ["zeroize"] }
+crypto-bigint = { version = "=0.7.11", default-features = false, features = ["zeroize"] }
 # Hostname-based auto-identity for generic Docker/container deployments.
 hostname = "0.4"
 libc = "0.2"
