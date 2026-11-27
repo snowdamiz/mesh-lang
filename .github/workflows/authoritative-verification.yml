@@ -96,7 +96,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # The pull request merge commit has the trusted base as a parent.
+          # The pull request merge commit usually has the trusted base as a parent.
           fetch-depth: 2
 
       - name: Cache LLVM
@@ -170,6 +170,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          fi
           git cat-file -e "$BASE_SHA^{commit}"
           changed=()
           for policy in compiler/meshc/tests/fixtures/laws compiler/meshc/tests/fixtures/proofs/sort; do
