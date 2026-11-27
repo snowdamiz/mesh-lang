@@ -677,8 +677,8 @@ if [[ "$LAST_STATUS" != "409" ]]; then
   fail_phase "duplicate" "duplicate publish returned HTTP ${LAST_STATUS}, expected 409" "$LAST_LOG_PATH"
 fi
 
-fetch_visibility_page visibility 13-detail-page "$DETAIL_PAGE_URL" "$PACKAGE_NAME" "v$PROOF_VERSION"
-fetch_visibility_page visibility 14-search-page "$SEARCH_PAGE_URL" "$PACKAGE_NAME" "v$PROOF_VERSION"
+fetch_visibility_page visibility 13-detail-page "$DETAIL_PAGE_URL" "$PACKAGE_NAME" "$PROOF_VERSION"
+fetch_visibility_page visibility 14-search-page "$SEARCH_PAGE_URL" "$PACKAGE_NAME" "$PROOF_VERSION"
 
 printf '%s\n' "$PACKAGE_NAME@$PROOF_VERSION" >"$RUN_DIR/package-version.txt"
 echo "verify-m034-s01: ok"
