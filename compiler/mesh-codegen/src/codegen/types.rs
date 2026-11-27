@@ -121,7 +121,9 @@ pub fn llvm_closure_fn_type<'ctx>(
 ///
 /// For sum types with pointer-sized payloads (Result, Option from runtime),
 /// the layout uses `{ i8, ptr }` which correctly aligns the pointer field.
-/// For other sum types, uses `{ i8, [N x i8] }` as a byte array.
+/// Other sum types use `{ i8, [A-1 x i8], [N x iA] }`, where `A` is the
+/// alignment of the most aligned variant overlay, or `{ i8, [N x i8] }` when
+/// `A` is 1. The layout has no padding, so a by-value copy keeps every byte.
 pub fn create_sum_type_layout<'ctx>(
     context: &'ctx Context,
     sum_type: &MirSumTypeDef,
@@ -157,24 +159,23 @@ pub fn create_sum_type_layout<'ctx>(
         }
     }
 
-    // Calculate max variant overlay size across all variants.
+    // Calculate max variant overlay size and alignment across all variants.
     // We use the full overlay type { i8 tag, field0, field1, ... } to account
     // for alignment padding between the tag and the first field.
-    let max_overlay_size = sum_type
+    let (max_overlay_size, max_align) = sum_type
         .variants
         .iter()
+        .filter(|v| !v.fields.is_empty())
         .map(|v| {
-            if v.fields.is_empty() {
-                // Just the tag byte
-                1u64
-            } else {
-                let overlay =
-                    variant_struct_type(context, &v.fields, struct_types, sum_type_layouts);
-                target_data.get_store_size(&overlay)
-            }
+            let overlay = variant_struct_type(context, &v.fields, struct_types, sum_type_layouts);
+            (
+                target_data.get_store_size(&overlay),
+                u64::from(target_data.get_abi_alignment(&overlay)),
+            )
         })
-        .max()
-        .unwrap_or(1);
+        .fold((1u64, 1u64), |(size, align), (s, a)| {
+            (size.max(s), align.max(a))
+        });
 
     if max_overlay_size <= 1 {
         // Enum with no payloads (all nullary variants) -- just the tag.
@@ -182,9 +183,25 @@ pub fn create_sum_type_layout<'ctx>(
     } else {
         // Allocate enough bytes for the largest variant overlay.
         // Subtract 1 for the tag byte we add explicitly.
-        let payload_bytes = max_overlay_size - 1;
-        let payload_type = context.i8_type().array_type(payload_bytes as u32);
-        context.struct_type(&[tag_type.into(), payload_type.into()], false)
+        if max_align == 1 {
+            let payload_type = context.i8_type().array_type((max_overlay_size - 1) as u32);
+            return context.struct_type(&[tag_type.into(), payload_type.into()], false);
+        }
+        // The layout keeps the alignment of its most aligned variant, so a
+        // tuple, struct field, or outer variant holding this sum by value
+        // places it where every pointer in the payload stays word-aligned.
+        // The conservative collector reads only aligned words; a pointer at
+        // an odd offset is invisible to it. Every byte belongs to a field:
+        // a by-value copy does not preserve padding, and variant overlays
+        // may store fields in the bytes right after the tag.
+        let head_type = context.i8_type().array_type((max_align - 1) as u32);
+        let unit = context.custom_width_int_type((max_align * 8) as u32);
+        let units = (max_overlay_size - max_align).div_ceil(max_align);
+        let payload_type = unit.array_type(units as u32);
+        context.struct_type(
+            &[tag_type.into(), head_type.into(), payload_type.into()],
+            false,
+        )
     }
 }
 
@@ -335,8 +352,14 @@ mod tests {
 
         let td = inkwell::targets::TargetData::create("");
         let layout = create_sum_type_layout(&context, &sum_def, &structs, &sums, &td);
-        // { i8 tag, [N x i8] payload }
-        assert_eq!(layout.count_fields(), 2);
+        // { i8 tag, [A-1 x i8] head, [N x iA] payload }: aligned like an Int.
+        assert_eq!(layout.count_fields(), 3);
+        let overlay = variant_struct_type(&context, &[MirType::Int], &structs, &sums);
+        assert_eq!(
+            td.get_abi_alignment(&layout),
+            td.get_abi_alignment(&overlay)
+        );
+        assert_eq!(td.get_store_size(&layout), td.get_store_size(&overlay));
     }
 
     #[test]
@@ -384,8 +407,9 @@ mod tests {
     /// in variant construction (see `codegen_construct_variant`), so they qualify
     /// as pointer-sized for the `all_single_ptr` check.
     ///
-    /// The byte-array path `{i8, [N x i8]}` is only used for sum types with
-    /// multi-field variants or primitive (non-pointer) payload types like Int/Bool.
+    /// Sum types with multi-field variants or primitive (non-pointer) payload
+    /// types like Int/Bool use `{i8, [A-1 x i8], [N x iA]}`, aligned to `A`,
+    /// the most aligned variant's alignment (`{i8, [N x i8]}` when `A` is 1).
     #[test]
     fn test_sum_type_layout_struct_payload() {
         let context = Context::create();
@@ -488,18 +512,19 @@ mod tests {
         };
 
         let int_layout = create_sum_type_layout(&context, &int_result, &structs, &sums, &td);
-        // Int is not pointer-sized, so all_single_ptr is false -> byte-array layout
+        // Int is not pointer-sized, so all_single_ptr is false -> an Int-aligned
+        // layout: tag, head bytes, then a word array for the payload.
         assert_eq!(
             int_layout.count_fields(),
-            2,
-            "Int-payload sum type should have 2 fields (tag + payload)"
+            3,
+            "Int-payload sum type should have 3 fields (tag + head + payload)"
         );
         assert!(
             int_layout
-                .get_field_type_at_index(1)
+                .get_field_type_at_index(2)
                 .unwrap()
                 .is_array_type(),
-            "Int-payload sum type field 1 should be byte array"
+            "Int-payload sum type field 2 should be the payload array"
         );
 
         // Case 4: The variant overlay for Ptr fields matches the {i8, ptr} layout.
@@ -532,5 +557,68 @@ mod tests {
         let ptr_layout_size = td.get_store_size(&generic_layout);
         let struct_overlay_size = td.get_store_size(&struct_overlay);
         assert_eq!(struct_overlay_size, ptr_layout_size);
+    }
+
+    #[test]
+    fn nested_sum_payloads_stay_word_aligned_and_unpadded() {
+        let context = Context::create();
+        let td = inkwell::targets::TargetData::create("e-m:o-i64:64-i128:128-n32:64-S128");
+        let structs = FxHashMap::default();
+        let mut sums = FxHashMap::default();
+
+        let value = MirSumTypeDef {
+            name: "FieldValue".to_string(),
+            variants: vec![
+                MirVariantDef {
+                    name: "S".to_string(),
+                    fields: vec![MirType::String],
+                    tag: 0,
+                },
+                MirVariantDef {
+                    name: "I".to_string(),
+                    fields: vec![MirType::Int],
+                    tag: 1,
+                },
+                MirVariantDef {
+                    name: "B".to_string(),
+                    fields: vec![MirType::Bool],
+                    tag: 2,
+                },
+            ],
+        };
+        let value_layout = create_sum_type_layout(&context, &value, &structs, &sums, &td);
+        sums.insert("FieldValue".to_string(), value_layout);
+        assert_eq!(td.get_abi_alignment(&value_layout), 8);
+        assert_eq!(td.get_store_size(&value_layout), 16);
+
+        let result = MirSumTypeDef {
+            name: "FieldResult".to_string(),
+            variants: vec![
+                MirVariantDef {
+                    name: "Parsed".to_string(),
+                    fields: vec![MirType::SumType("FieldValue".to_string())],
+                    tag: 0,
+                },
+                MirVariantDef {
+                    name: "Failed".to_string(),
+                    fields: vec![MirType::String],
+                    tag: 1,
+                },
+            ],
+        };
+        let overlay = variant_struct_type(&context, &result.variants[0].fields, &structs, &sums);
+        // The nested sum, and the string inside it, start on a word.
+        assert_eq!(td.offset_of_element(&overlay, 1), Some(8));
+        let result_layout = create_sum_type_layout(&context, &result, &structs, &sums, &td);
+        assert_eq!(td.get_abi_alignment(&result_layout), 8);
+        assert!(td.get_store_size(&result_layout) >= td.get_store_size(&overlay));
+
+        // No padding: a by-value copy keeps every payload byte.
+        for layout in [value_layout, result_layout] {
+            let fields: u64 = (0..layout.count_fields())
+                .map(|i| td.get_store_size(&layout.get_field_type_at_index(i).unwrap()))
+                .sum();
+            assert_eq!(fields, td.get_abi_size(&layout));
+        }
     }
 }
