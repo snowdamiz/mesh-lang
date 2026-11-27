@@ -399,10 +399,8 @@ fn build_link_command(object_path: &Path, output_path: &Path, plan: &LinkPlan) -
     }
 
     if plan.target.needs_security_framework() {
-        // The runtime's TLS stack uses Security and chrono's local-time
-        // support reaches CoreFoundation through iana-time-zone. Rust static
-        // libraries do not carry these native framework edges into this final
-        // non-Cargo link step, so Mesh must spell them out explicitly.
+        // Rust static libraries do not carry their native framework edges
+        // into this final non-Cargo link step.
         for framework in ["Security", "CoreFoundation"] {
             cmd.arg("-framework").arg(framework);
         }

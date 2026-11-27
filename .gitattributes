@@ -13,3 +13,7 @@ tools/skill/mesh/**/*.md text eol=lf
 # Benchmark evidence is byte-exact (patches, serial logs, checksummed files).
 # Never trim or flag its whitespace.
 tools/durable-jobs-bench/results/** -whitespace
+
+# Preserve the exact upstream crate sources used by the OpenRaft backport.
+third_party/openraft/** -whitespace
+third_party/openraft-macros/** -whitespace
