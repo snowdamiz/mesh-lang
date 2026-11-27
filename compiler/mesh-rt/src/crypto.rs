@@ -23,7 +23,7 @@ use self::provider::FixedProvider;
 use self::provider::{
     CryptoProvider, ProviderError, SystemProvider, MAX_ARGON2_ITERATIONS, MAX_ARGON2_MEMORY_KIB,
     MAX_ARGON2_OUTPUT_BYTES, MAX_ARGON2_PARALLELISM, MAX_ARGON2_SALT_BYTES,
-    MIN_ARGON2_OUTPUT_BYTES, MIN_ARGON2_SALT_BYTES,
+    MAX_HMAC_SHA256_TAG_MESSAGE_BYTES, MIN_ARGON2_OUTPUT_BYTES, MIN_ARGON2_SALT_BYTES,
 };
 use crate::actor::Process;
 use crate::bytes::{decode_base64, decode_hex, hex_string, mesh_bytes_new, MeshBytes};
@@ -402,20 +402,19 @@ fn hmac_sha256_tag_for_process(
     key: *const MeshSecretHandle,
     message: *const MeshBytes,
 ) -> Result<[u8; 32], CryptoFailure> {
-    let message = unsafe { required_bytes(message, MAX_INPUT_BYTES) }?;
+    let message = unsafe { required_bytes(message, MAX_HMAC_SHA256_TAG_MESSAGE_BYTES) }?;
     let mut output = [0u8; 32];
     with_owned_resource(process, key, ResourceKind::SecretBytes, |key| {
         provider
-            .hmac_sha256(key, message, &mut output)
+            .hmac_sha256_tag(key, message, &mut output)
             .map_err(provider_failure)
     })
     .map_err(resource_failure)??;
     Ok(output)
 }
 
-/// HMAC-SHA-256 under a borrowed secret key, returned as public `Bytes`: a
-/// MAC tag is not secret, so it needs no resource. Compare tags with
-/// `Bytes.secure_equals`.
+/// Return a public HMAC-SHA-256 tag under a borrowed secret key for a message
+/// up to 1 MiB. Compare tags with `Bytes.secure_equals`.
 #[no_mangle]
 pub extern "C" fn mesh_crypto_hmac_sha256_tag(
     key: *const MeshSecretHandle,
@@ -2607,12 +2606,30 @@ mod tests {
             Zeroizing::new(vec![1; 32].into_boxed_slice()),
         )
         .expect("insert signing key");
-        let message = mesh_bytes_new(b"m".as_ptr(), 1);
+        let large_message = vec![0x13; MAX_HMAC_SHA256_TAG_MESSAGE_BYTES];
+        let message = mesh_bytes_new(large_message.as_ptr(), large_message.len() as u64);
         let error = hmac_sha256_tag_for_process(&process, &SystemProvider, not_secret, message)
-            .err()
-            .expect("refused");
+            .expect_err("refuse a key of the wrong kind");
         assert_eq!(error.tag, CryptoErrorTag::InvalidKey);
-        destroy_owned(owner);
+
+        let key = insert_owned_resource(
+            &mut process,
+            ResourceKind::SecretBytes,
+            Zeroizing::new(vec![0x42; MAX_INPUT_BYTES].into_boxed_slice()),
+        )
+        .expect("insert the largest HMAC key");
+        hmac_sha256_tag_for_process(&process, &SystemProvider, key, message)
+            .expect("owner can use the key at both limits");
+
+        let other = Process::new(ProcessId(70_090), Priority::Normal);
+        let error = hmac_sha256_tag_for_process(&other, &SystemProvider, key, message)
+            .expect_err("refuse a key held by another actor");
+        assert_eq!(error.tag, CryptoErrorTag::SecretDestroyed);
+
+        assert_eq!(destroy_owned(owner), 5);
+        let error = hmac_sha256_tag_for_process(&process, &SystemProvider, key, message)
+            .expect_err("refuse a destroyed key");
+        assert_eq!(error.tag, CryptoErrorTag::SecretDestroyed);
     }
 
     #[test]
