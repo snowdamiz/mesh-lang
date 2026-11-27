@@ -51,5 +51,10 @@ grep -Fq 'openraft_upstream_audit' "${SCRIPT_PATH}" ||
   fail "release record does not name the upstream OpenRaft audit result"
 python3 "${ROOT_DIR}/scripts/verify-openraft-audit-coverage.py"
 python3 "${ROOT_DIR}/scripts/tests/verify-openraft-audit-coverage.test.py"
+grep -Fq 'cargo audit --deny warnings --json --file scripts/ureq-upstream-audit.lock' "${SCRIPT_PATH}" ||
+  fail "release evidence does not retain advisory coverage of vendored ureq"
+grep -Fq 'ureq_upstream_audit' "${SCRIPT_PATH}" ||
+  fail "release record does not name the upstream ureq audit result"
+python3 "${ROOT_DIR}/scripts/verify-ureq-audit-coverage.py"
 
 printf 'release evidence contract passed\n'

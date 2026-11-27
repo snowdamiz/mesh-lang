@@ -4637,6 +4637,12 @@ fn register_session(
 /// Uses ring's `EcdsaKeyPair::generate_pkcs8` for key generation and
 /// constructs a minimal X.509 v3 certificate programmatically.
 fn generate_ephemeral_cert() -> (CertificateDer<'static>, PrivateKeyDer<'static>) {
+    generate_ephemeral_cert_with_extensions(&[])
+}
+
+fn generate_ephemeral_cert_with_extensions(
+    extensions: &[u8],
+) -> (CertificateDer<'static>, PrivateKeyDer<'static>) {
     let rng = SystemRandom::new();
 
     // Generate ECDSA P-256 key pair in PKCS#8 format
@@ -4655,7 +4661,7 @@ fn generate_ephemeral_cert() -> (CertificateDer<'static>, PrivateKeyDer<'static>
     let public_key = key_pair.public_key().as_ref();
 
     // Build minimal self-signed X.509 v3 DER certificate
-    let tbs_cert = build_tbs_certificate(public_key);
+    let tbs_cert = build_tbs_certificate(public_key, extensions);
     let signature_bytes = key_pair
         .sign(&rng, &tbs_cert)
         .expect("ECDSA signing failed");
@@ -4679,7 +4685,7 @@ fn generate_ephemeral_cert() -> (CertificateDer<'static>, PrivateKeyDer<'static>
 /// - Validity: 2020-01-01 to 2099-12-31 (effectively forever)
 /// - Subject: CN=mesh-node
 /// - Subject Public Key Info: ECDSA P-256
-fn build_tbs_certificate(public_key: &[u8]) -> Vec<u8> {
+fn build_tbs_certificate(public_key: &[u8], extensions: &[u8]) -> Vec<u8> {
     // OID for ECDSA with SHA-256: 1.2.840.10045.4.3.2
     let oid_ecdsa_sha256: &[u8] = &[0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x02];
     // OID for EC public key: 1.2.840.10045.2.1
@@ -4724,6 +4730,7 @@ fn build_tbs_certificate(public_key: &[u8]) -> Vec<u8> {
     tbs.extend_from_slice(&validity);
     tbs.extend_from_slice(&subject);
     tbs.extend_from_slice(&spki);
+    tbs.extend_from_slice(extensions);
 
     der_sequence_from_bytes(&tbs)
 }
@@ -4872,6 +4879,18 @@ pub(crate) fn ws_test_tls_configs() -> (Arc<ServerConfig>, Arc<ClientConfig>) {
         build_node_server_config(certificate, key),
         build_node_client_config(),
     )
+}
+
+#[cfg(test)]
+pub(crate) fn http_loopback_test_tls_config() -> (CertificateDer<'static>, Arc<ServerConfig>) {
+    // Extensions [3], holding one subjectAltName extension with iPAddress 127.0.0.1.
+    let ip_san = [
+        0xa3, 19, 0x30, 17, 0x30, 15, 0x06, 3, 0x55, 0x1d, 0x11, 0x04, 8, 0x30, 6, 0x87, 4, 127, 0,
+        0, 1,
+    ];
+    let (cert, key) = generate_ephemeral_cert_with_extensions(&ip_san);
+    let server = build_node_server_config(cert.clone(), key);
+    (cert, server)
 }
 
 const TLS_CA_DER_B64_ENV: &str = "MESH_TLS_CA_DER_B64";

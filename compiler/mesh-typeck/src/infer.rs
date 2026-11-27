@@ -1662,6 +1662,13 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             Ty::result(http_resp_t.clone(), Ty::string()),
         )),
     );
+    http_client_mod.insert(
+        "send_bearer".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::secret_bytes()],
+            Ty::result(http_resp_t.clone(), Ty::string()),
+        )),
+    );
     // Http.stream(req, fn(String) -> String) -> Int (cancel handle)
     // Callback receives chunk as String, returns :continue or :stop (lowered to String)
     let stream_cb_t = Ty::fun(vec![Ty::string()], Ty::string());

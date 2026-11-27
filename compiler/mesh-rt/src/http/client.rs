@@ -7,19 +7,22 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
+use ureq::http::header::{HeaderValue, AUTHORIZATION, LOCATION};
 use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver};
 use ureq::unversioned::transport::{
-    Buffers, ConnectProxyConnector, ConnectionDetails, Connector, NextTimeout, RustlsConnector,
+    ConnectProxyConnector, ConnectionDetails, Connector, NextTimeout, RustlsConnector,
     TcpConnector, Transport,
 };
 use ureq::{Agent, Error as UreqError, RequestBuilder};
-use url::Url;
+use url::{Host, Url};
+use zeroize::Zeroizing;
 
 use crate::actor::{cooperative_channel, cooperative_recv_timeout, CooperativeSender};
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::map::{mesh_map_new_typed, mesh_map_put};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result};
+use crate::secret::{with_owned_resource, MeshSecretHandle, ResourceKind};
 use crate::string::{mesh_str, mesh_string_new, MeshString};
 
 const MAX_OPEN_HANDLES: usize = 4_096;
@@ -56,6 +59,7 @@ struct MeshRequestData {
     method: String,
     url: String,
     headers: Vec<(String, String)>,
+    bearer: Option<HeaderValue>,
     body: Option<Vec<u8>>,
     is_json: bool,
     query_params: Vec<(String, String)>,
@@ -71,6 +75,7 @@ impl MeshRequestData {
             method: method.to_ascii_lowercase(),
             url: url.to_string(),
             headers: Vec::new(),
+            bearer: None,
             body: None,
             is_json: false,
             query_params: Vec::new(),
@@ -106,7 +111,7 @@ struct ActiveRequestRegistration {
 impl Drop for ActiveRequestRegistration {
     fn drop(&mut self) {
         if let Some(active) = active_requests().lock().remove(&self.handle) {
-            // An unwound wait can leave its worker running in I/O.
+            // Actor unwind can leave the worker in I/O.
             active.cancel.store(true, Ordering::Release);
         }
     }
@@ -205,72 +210,35 @@ where
     In: Transport,
     C: Connector<In>,
 {
-    type Out = TimedTlsTransport<C::Out>;
+    type Out = C::Out;
 
     fn connect(
         &self,
         details: &ConnectionDetails,
         chained: Option<In>,
     ) -> Result<Option<Self::Out>, UreqError> {
-        let timed = details.needs_tls();
-        self.0.connect(details, chained).map(|transport| {
-            transport.map(|inner| TimedTlsTransport {
-                inner,
-                timed,
-                recorded: false,
-            })
-        })
-    }
-}
-
-#[derive(Debug)]
-struct TimedTlsTransport<T> {
-    inner: T,
-    timed: bool,
-    recorded: bool,
-}
-
-impl<T: Transport> Transport for TimedTlsTransport<T> {
-    fn buffers(&mut self) -> &mut dyn Buffers {
-        self.inner.buffers()
-    }
-
-    fn transmit_output(&mut self, amount: usize, timeout: NextTimeout) -> Result<(), UreqError> {
-        if !self.timed || self.recorded {
-            return self.inner.transmit_output(amount, timeout);
+        if !details.needs_tls() || chained.as_ref().is_some_and(Transport::is_tls) {
+            return self.0.connect(details, chained);
         }
         let started = Instant::now();
-        let result = self.inner.transmit_output(amount, timeout);
+        let result = self.0.connect(details, chained);
         metrics()
             .tls_micros
             .fetch_add(duration_micros(started).max(1), Ordering::Relaxed);
-        self.recorded = true;
         result
-    }
-
-    fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, UreqError> {
-        self.inner.await_input(timeout)
-    }
-
-    fn is_open(&mut self) -> bool {
-        self.inner.is_open()
-    }
-
-    fn is_tls(&self) -> bool {
-        self.inner.is_tls()
     }
 }
 
 fn http_agent() -> Agent {
+    http_agent_with_config(ureq::config::Config::default())
+}
+
+fn http_agent_with_config(config: ureq::config::Config) -> Agent {
     let connector =
         ().chain(ConnectProxyConnector::default())
             .chain(TimedConnector(TcpConnector::default()))
             .chain(TimedTlsConnector(RustlsConnector::default()));
-    Agent::with_parts(
-        ureq::config::Config::default(),
-        connector,
-        TimedResolver(DefaultResolver::default()),
-    )
+    Agent::with_parts(config, connector, TimedResolver(DefaultResolver::default()))
 }
 
 struct InFlight;
@@ -521,10 +489,71 @@ fn validate_request(request: &MeshRequestData) -> Result<(), String> {
     Ok(())
 }
 
+const INVALID_BEARER_SECRET: &str = "INVALID_REQUEST: unusable HTTP bearer secret";
+
+fn bearer_header(token: &[u8]) -> Result<HeaderValue, &'static str> {
+    // RFC 6750 b64token, including optional trailing padding.
+    let end = token
+        .iter()
+        .rposition(|&byte| byte != b'=')
+        .map_or(0, |i| i + 1);
+    let value = &token[..end];
+    if value.is_empty()
+        || !value
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-._~+/".contains(byte))
+    {
+        return Err(INVALID_BEARER_SECRET);
+    }
+    let mut bytes = Zeroizing::new(Vec::with_capacity(b"Bearer ".len() + token.len()));
+    bytes.extend_from_slice(b"Bearer ");
+    bytes.extend_from_slice(token);
+    let mut header = HeaderValue::from_maybe_shared(::bytes::Bytes::from_owner(bytes))
+        .map_err(|_| INVALID_BEARER_SECRET)?;
+    header.set_sensitive(true);
+    Ok(header)
+}
+
+fn prepare_bearer(
+    request: &mut MeshRequestData,
+    secret: *const MeshSecretHandle,
+) -> Result<(), &'static str> {
+    if request
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case(AUTHORIZATION.as_str()))
+    {
+        return Err("INVALID_REQUEST: HTTP bearer send already has an Authorization header");
+    }
+    let process = crate::actor::current_process().ok_or(INVALID_BEARER_SECRET)?;
+    let header = with_owned_resource(
+        &process.lock(),
+        secret,
+        ResourceKind::SecretBytes,
+        bearer_header,
+    )
+    .map_err(|_| INVALID_BEARER_SECRET)??;
+    request.bearer = Some(header);
+    Ok(())
+}
+
 fn request_url(request: &MeshRequestData) -> Result<String, String> {
     let mut url = Url::parse(&request.url).map_err(|error| format!("INVALID_URL: {error}"))?;
     if !matches!(url.scheme(), "http" | "https") {
         return Err("INVALID_URL: HTTP URL must use http:// or https://".to_string());
+    }
+    if request.bearer.is_some() {
+        let loopback = match url.host() {
+            Some(Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(Host::Ipv6(ip)) => ip.is_loopback(),
+            _ => false,
+        };
+        if url.scheme() != "https" && !loopback {
+            return Err("INVALID_URL: HTTP bearer send requires HTTPS or loopback".to_string());
+        }
+        if !url.username().is_empty() || url.password().is_some() {
+            return Err("INVALID_URL: HTTP bearer send forbids URL credentials".to_string());
+        }
     }
     if !request.query_params.is_empty() {
         let mut query = url.query_pairs_mut();
@@ -535,8 +564,12 @@ fn request_url(request: &MeshRequestData) -> Result<String, String> {
     Ok(url.into())
 }
 
-fn configure<T>(builder: RequestBuilder<T>, request: &MeshRequestData) -> RequestBuilder<T> {
-    let config = builder
+fn configure<T>(
+    builder: RequestBuilder<T>,
+    request: &MeshRequestData,
+    url: &str,
+) -> RequestBuilder<T> {
+    let mut config = builder
         .config()
         .http_status_as_error(false)
         .timeout_global(Some(request.timeouts.global))
@@ -546,6 +579,14 @@ fn configure<T>(builder: RequestBuilder<T>, request: &MeshRequestData) -> Reques
         .timeout_send_body(Some(request.timeouts.send))
         .timeout_recv_response(Some(request.timeouts.first_byte))
         .timeout_recv_body(Some(request.timeouts.body));
+    if request.bearer.is_some() {
+        config = config.max_redirects(0);
+        // The only plaintext bearer destination is a literal loopback IP.
+        if url.starts_with("http://") {
+            config = config.proxy(None);
+        }
+        return config.build();
+    }
     match request.max_redirects {
         Some(max_redirects) => config.max_redirects(max_redirects).build(),
         None => config.build(),
@@ -559,6 +600,9 @@ fn apply_headers<T>(
     for (name, value) in &request.headers {
         builder = builder.header(name, value);
     }
+    if let Some(bearer) = &request.bearer {
+        builder = builder.header(AUTHORIZATION, bearer.clone());
+    }
     builder
 }
 
@@ -568,14 +612,14 @@ fn dispatch(
     url: &str,
 ) -> Result<ureq::http::Response<ureq::Body>, UreqError> {
     let with_body = |builder: RequestBuilder<ureq::typestate::WithBody>| {
-        let mut builder = apply_headers(configure(builder, request), request);
+        let mut builder = apply_headers(configure(builder, request, url), request);
         if request.is_json {
             builder = builder.header("Content-Type", "application/json");
         }
         builder.send(request.body.as_deref().unwrap_or_default())
     };
     let without_body = |builder: RequestBuilder<ureq::typestate::WithoutBody>| {
-        apply_headers(configure(builder, request), request).call()
+        apply_headers(configure(builder, request, url), request).call()
     };
     match request.method.as_str() {
         "post" => with_body(agent.post(url)),
@@ -632,6 +676,17 @@ fn timeout_prefix(timeout: ureq::Timeout) -> &'static str {
     }
 }
 
+fn is_connect_error(error: &std::io::Error) -> bool {
+    matches!(
+        error.kind(),
+        std::io::ErrorKind::ConnectionRefused
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::NotConnected
+            | std::io::ErrorKind::AddrNotAvailable
+    )
+}
+
 fn format_error(error: &UreqError) -> String {
     match error {
         UreqError::Timeout(stage) => format!("{}: {error}", timeout_prefix(*stage)),
@@ -644,16 +699,7 @@ fn format_error(error: &UreqError) -> String {
             format!("RESPONSE_TOO_LARGE: limit is {limit} bytes")
         }
         UreqError::BadUri(_) | UreqError::Http(_) => format!("INVALID_REQUEST: {error}"),
-        UreqError::Io(reason)
-            if matches!(
-                reason.kind(),
-                std::io::ErrorKind::ConnectionRefused
-                    | std::io::ErrorKind::ConnectionReset
-                    | std::io::ErrorKind::ConnectionAborted
-                    | std::io::ErrorKind::NotConnected
-                    | std::io::ErrorKind::AddrNotAvailable
-            ) =>
-        {
+        UreqError::Io(reason) if is_connect_error(reason) => {
             metrics().connect_failures.fetch_add(1, Ordering::Relaxed);
             format!("CONNECT_FAILURE: {error}")
         }
@@ -665,9 +711,53 @@ fn format_error(error: &UreqError) -> String {
     }
 }
 
+fn request_error(error: &UreqError, protected: bool) -> String {
+    if !protected {
+        return format_error(error);
+    }
+    let class = match error {
+        UreqError::Timeout(stage) => timeout_prefix(*stage),
+        UreqError::HostNotFound => "DNS_FAILURE",
+        UreqError::ConnectionFailed | UreqError::ConnectProxyFailed(_) => "CONNECT_FAILURE",
+        UreqError::Tls(_) | UreqError::TlsRequired => "TLS_ERROR",
+        UreqError::Rustls(_) => {
+            metrics().tls_failures.fetch_add(1, Ordering::Relaxed);
+            "TLS_ERROR"
+        }
+        UreqError::Io(reason) if is_connect_error(reason) => {
+            metrics().connect_failures.fetch_add(1, Ordering::Relaxed);
+            "CONNECT_FAILURE"
+        }
+        UreqError::Io(reason)
+            if reason
+                .get_ref()
+                .is_some_and(|error| error.is::<rustls::Error>()) =>
+        {
+            metrics().tls_failures.fetch_add(1, Ordering::Relaxed);
+            "TLS_ERROR"
+        }
+        UreqError::BadUri(_) | UreqError::Http(_) => "INVALID_REQUEST",
+        _ => "HTTP_ERROR",
+    };
+    format!("{class}: HTTP bearer request failed")
+}
+
 fn execute_request(
     agent: &Agent,
     request: MeshRequestData,
+    cancel: Option<&AtomicBool>,
+) -> Result<WorkerResponse, String> {
+    if request.bearer.is_some() {
+        // Keep the scope on the blocking worker through response body consumption.
+        ureq::unversioned::without_http_payload_logs(|| execute_exchange(agent, request, cancel))
+    } else {
+        execute_exchange(agent, request, cancel)
+    }
+}
+
+fn execute_exchange(
+    agent: &Agent,
+    mut request: MeshRequestData,
     cancel: Option<&AtomicBool>,
 ) -> Result<WorkerResponse, String> {
     validate_request(&request)?;
@@ -679,17 +769,25 @@ fn execute_request(
         return Err("CANCELLED: HTTP request".to_string());
     }
 
-    let mut response = match dispatch(agent, &request, &url) {
+    let protected = request.bearer.is_some();
+    let dispatched = dispatch(agent, &request, &url);
+    request.bearer = None;
+    let mut response = match dispatched {
         Ok(response) => response,
         Err(error) => {
             record_error(&error);
-            return Err(format_error(&error));
+            return Err(request_error(&error, protected));
         }
     };
     metrics()
         .first_byte_micros
         .fetch_add(duration_micros(started), Ordering::Relaxed);
     let status = response.status().as_u16() as i64;
+    // The Mesh header map keeps one value per name. Preserve the caller's
+    // ability to validate a redirect before handing its Location elsewhere.
+    if protected && response.headers().get_all(LOCATION).iter().nth(1).is_some() {
+        return Err("INVALID_RESPONSE: HTTP bearer response has multiple Location headers".into());
+    }
     let headers = response
         .headers()
         .iter()
@@ -700,21 +798,18 @@ fn execute_request(
             )
         })
         .collect();
-    // A reader limited to one byte past the maximum refuses the byte that
-    // would reach it: a body of up to the maximum is read, a longer one is
-    // refused.
     let maximum = request.max_response_bytes;
     let body = response
         .body_mut()
         .with_config()
-        .limit(maximum as u64 + 1)
+        .limit(maximum as u64)
         .read_to_vec()
         .map_err(|error| {
             record_error(&error);
             if matches!(error, UreqError::BodyExceedsLimit(_)) {
                 format!("RESPONSE_TOO_LARGE: limit is {maximum} bytes")
             } else {
-                format_error(&error)
+                request_error(&error, protected)
             }
         })?;
     if cancel.is_some_and(|flag| flag.load(Ordering::Acquire)) {
@@ -757,14 +852,23 @@ fn mesh_response(response: WorkerResponse) -> *mut u8 {
     }
 }
 
-fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
+fn send_cooperatively(
+    agent: Agent,
+    handle: u64,
+    bearer: Option<*const MeshSecretHandle>,
+) -> *mut u8 {
     let (sender, receiver) = cooperative_channel();
     let cancel = Arc::new(AtomicBool::new(false));
-    let (request, _registration) =
+    let (mut request, _registration) =
         match activate_request(handle, Arc::clone(&cancel), sender.clone()) {
             Ok(activated) => activated,
             Err(error) => return mesh_error(error),
         };
+    if let Some(secret) = bearer {
+        if let Err(error) = prepare_bearer(&mut request, secret) {
+            return mesh_error(error);
+        }
+    }
     let wait = request
         .timeouts
         .global
@@ -794,7 +898,17 @@ fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
 
 #[no_mangle]
 pub extern "C-unwind" fn mesh_http_send(handle: u64) -> *mut u8 {
-    send_cooperatively(http_agent(), handle)
+    send_cooperatively(http_agent(), handle, None)
+}
+
+/// Send a bounded request with Authorization from an actor-owned borrow.
+/// A redirect is returned to the caller without following its Location.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_http_send_bearer(
+    handle: u64,
+    secret: *const MeshSecretHandle,
+) -> *mut u8 {
+    send_cooperatively(http_agent(), handle, Some(secret))
 }
 
 #[no_mangle]
@@ -818,7 +932,7 @@ pub extern "C-unwind" fn mesh_http_send_with(client_handle: u64, request_handle:
     let Some(agent) = clients().lock().get(&client_handle).cloned() else {
         return mesh_error("closed or unknown HTTP client handle");
     };
-    send_cooperatively(agent, request_handle)
+    send_cooperatively(agent, request_handle, None)
 }
 
 fn is_stop(result: *mut u8) -> bool {
@@ -1073,7 +1187,7 @@ mod tests {
 
     /// A whole request as a test server receives it: its head, and the
     /// body its Content-Length gives, however the client's writes split.
-    fn read_request(stream: &mut std::net::TcpStream) -> String {
+    fn read_request(stream: &mut impl Read) -> String {
         let mut request = Vec::new();
         let mut chunk = [0u8; 4096];
         loop {
@@ -1406,20 +1520,41 @@ mod tests {
 
     #[test]
     fn killing_a_waiting_http_actor_reclaims_its_request() {
+        kill_waiting_http_actor(false);
+    }
+
+    #[test]
+    fn killing_a_waiting_bearer_actor_reclaims_its_request_and_secret() {
+        kill_waiting_http_actor(true);
+    }
+
+    fn kill_waiting_http_actor(protected: bool) {
+        use crate::actor::{current_process, ExitReason, ProcessId, ProcessState};
         use crate::actor::{
             global_scheduler, mesh_actor_exit, mesh_actor_spawn, mesh_rt_init_actor,
         };
-        use crate::actor::{ExitReason, ProcessId, ProcessState};
+        use crate::secret::{insert_owned_resource, owned_secret_count_for_test};
         use std::sync::mpsc;
 
         struct SendRequest {
             handle: u64,
+            protected: bool,
             returned: mpsc::Sender<()>,
         }
 
         extern "C-unwind" fn send(args: *const u8) {
             let args = unsafe { Box::from_raw(args.cast_mut().cast::<SendRequest>()) };
-            mesh_http_send(args.handle);
+            if args.protected {
+                let secret = insert_owned_resource(
+                    &mut current_process().unwrap().lock(),
+                    ResourceKind::SecretBytes,
+                    Zeroizing::new(b"fixture-held-token".to_vec().into_boxed_slice()),
+                )
+                .unwrap();
+                mesh_http_send_bearer(args.handle, secret);
+            } else {
+                mesh_http_send(args.handle);
+            }
             let _ = args.returned.send(());
         }
 
@@ -1439,10 +1574,13 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}/held", listener.local_addr().unwrap());
         let request = built("get", &url);
+        mesh_http_timeout(request, 15_000);
+        mesh_http_stage_timeout(request, mesh_str("first_byte"), 15_000);
         mesh_rt_init_actor(1);
         let (returned, result) = mpsc::channel();
         let args = Box::into_raw(Box::new(SendRequest {
             handle: request,
+            protected,
             returned,
         }));
         let pid = mesh_actor_spawn(send as *const u8, args.cast(), 0, 1);
@@ -1456,11 +1594,22 @@ mod tests {
         });
         peer.set_nonblocking(false).unwrap();
         peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-        assert!(read_request(&mut peer).starts_with("GET /held HTTP/1.1\r\n"));
+        let received = read_request(&mut peer);
+        assert!(received.starts_with("GET /held HTTP/1.1\r\n"));
+        assert_eq!(
+            received
+                .lines()
+                .any(|line| line.eq_ignore_ascii_case("authorization: Bearer fixture-held-token")),
+            protected
+        );
         wait_for("actor never waited for its HTTP response", || {
             matches!(actor.lock().state, ProcessState::Waiting).then_some(())
         });
         let cancel = Arc::clone(&active_requests().lock()[&request].cancel);
+        assert_eq!(
+            owned_secret_count_for_test(ProcessId(pid)),
+            usize::from(protected)
+        );
 
         mesh_actor_exit(pid, ExitReason::Killed.tag());
         assert_eq!(
@@ -1475,6 +1624,7 @@ mod tests {
                 .then_some(())
         });
 
+        assert_eq!(owned_secret_count_for_test(ProcessId(pid)), 0);
         let still_registered = active_requests().lock().contains_key(&request);
         let signalled = cancel.load(Ordering::Acquire);
         let remaining_owners = 1 + usize::from(still_registered);
@@ -1525,6 +1675,252 @@ mod tests {
         match result.tag {
             0 => Ok(result.value),
             _ => Err(unsafe { (*(result.value as *const MeshString)).as_str().to_string() }),
+        }
+    }
+
+    #[test]
+    fn bearer_send_rejects_foreign_destroyed_and_invalid_secrets_before_io() {
+        use crate::actor::{stack, Priority, Process, ProcessId};
+        use crate::secret::{insert_owned_resource, mesh_secret_destroy};
+
+        let _api = API.lock();
+        let target = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = target.local_addr().unwrap();
+        let url = format!("http://{address}/");
+        let pid = ProcessId(70_120);
+        let owner = Arc::new(Mutex::new(Process::new(pid, Priority::Normal)));
+        let insert = |value: &[u8]| {
+            insert_owned_resource(
+                &mut owner.lock(),
+                ResourceKind::SecretBytes,
+                Zeroizing::new(value.to_vec().into_boxed_slice()),
+            )
+            .unwrap()
+        };
+        let secret = insert(b"fixture-token");
+        let malformed = insert(b"fixture\r\nheader");
+        let deny = |secret| {
+            let request = built("get", &url);
+            assert_eq!(
+                outcome(mesh_http_send_bearer(request, secret)).unwrap_err(),
+                INVALID_BEARER_SECRET
+            );
+            assert!(take_request(request).is_err());
+            assert!(!active_requests().lock().contains_key(&request));
+        };
+
+        let other_pid = ProcessId(70_121);
+        let other = Arc::new(Mutex::new(Process::new(other_pid, Priority::Normal)));
+        stack::set_current_process(other_pid, &other);
+        deny(secret);
+
+        stack::set_current_process(pid, &owner);
+        deny(malformed);
+        let duplicate = built("get", &url);
+        mesh_http_header(duplicate, mesh_str("aUtHoRiZaTiOn"), mesh_str("unused"));
+        assert_eq!(
+            outcome(mesh_http_send_bearer(duplicate, secret)).unwrap_err(),
+            "INVALID_REQUEST: HTTP bearer send already has an Authorization header"
+        );
+        assert!(!active_requests().lock().contains_key(&duplicate));
+        for (url, error) in [
+            (
+                format!("http://localhost:{}/", address.port()),
+                "INVALID_URL: HTTP bearer send requires HTTPS or loopback",
+            ),
+            (
+                format!("http://user@{address}/"),
+                "INVALID_URL: HTTP bearer send forbids URL credentials",
+            ),
+        ] {
+            assert_eq!(
+                outcome(mesh_http_send_bearer(built("get", &url), secret)).unwrap_err(),
+                error
+            );
+        }
+        mesh_secret_destroy(malformed);
+        mesh_secret_destroy(secret);
+        deny(secret);
+        stack::clear_current_pid();
+
+        target.set_nonblocking(true).unwrap();
+        assert_eq!(
+            target.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+    }
+
+    #[test]
+    fn bearer_send_keeps_wire_bytes_out_of_verified_tls_diagnostics() {
+        use std::cell::RefCell;
+        use ureq::tls::{Certificate, RootCerts, TlsConfig};
+
+        type Record = (log::Level, String, String);
+        thread_local! {
+            static RECORDS: RefCell<Vec<Record>> = const { RefCell::new(Vec::new()) };
+        }
+
+        struct HttpLogger;
+        impl log::Log for HttpLogger {
+            fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+                true
+            }
+
+            fn log(&self, record: &log::Record<'_>) {
+                if std::thread::current().name().is_some_and(|name| {
+                    name.ends_with("bearer_send_keeps_wire_bytes_out_of_verified_tls_diagnostics")
+                }) {
+                    RECORDS.with_borrow_mut(|records| {
+                        records.push((
+                            record.level(),
+                            record.target().into(),
+                            record.args().to_string(),
+                        ));
+                    });
+                }
+            }
+
+            fn flush(&self) {}
+        }
+
+        const MARKER: &str = "fixture-reflection";
+        const REPLY: &[u8] = b"HTTP/1.1 200 OK\r\nServer: fixture-reflection\r\nContent-Encoding: fixture-reflection\r\nContent-Length: 18\r\nConnection: close\r\n\r\nfixture-reflection";
+        let _api = API.lock();
+        let (cert, server_config) = crate::dist::node::http_loopback_test_tls_config();
+        let roots = RootCerts::new_with_certs(&[Certificate::from_der(cert.as_ref()).to_owned()]);
+        let agent = http_agent_with_config(
+            ureq::config::Config::builder()
+                .proxy(None)
+                .tls_config(TlsConfig::builder().root_certs(roots).build())
+                .build(),
+        );
+        static LOGGER: HttpLogger = HttpLogger;
+        log::set_logger(&LOGGER).unwrap();
+        let previous = log::max_level();
+        log::set_max_level(log::LevelFilter::Trace);
+
+        for protected in [false, true, false] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("https://{}/fixture", listener.local_addr().unwrap());
+            let server_config = Arc::clone(&server_config);
+            let server = std::thread::spawn(move || {
+                let (tcp, _) = listener.accept().unwrap();
+                tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut tls = rustls::StreamOwned::new(
+                    rustls::ServerConnection::new(server_config).unwrap(),
+                    tcp,
+                );
+                let received = read_request(&mut tls);
+                assert_eq!(
+                    received
+                        .lines()
+                        .filter(|line| line
+                            .eq_ignore_ascii_case("authorization: Bearer fixture-reflection"))
+                        .count(),
+                    usize::from(protected)
+                );
+                tls.write_all(REPLY).unwrap();
+                tls.conn.send_close_notify();
+                tls.flush().unwrap();
+            });
+
+            let mut request = MeshRequestData::new("get", &url);
+            request.timeouts.global = Duration::from_secs(5);
+            if protected {
+                request.bearer = Some(bearer_header(MARKER.as_bytes()).unwrap());
+            }
+            let response = execute_request(&agent, request, None).unwrap();
+            assert_eq!(response.status, 200);
+            assert!(response.body == MARKER.as_bytes());
+            server.join().unwrap();
+
+            let records = RECORDS.with_borrow_mut(std::mem::take);
+            let has_wire_trace = records.iter().any(|(level, target, _)| {
+                *level == log::Level::Trace && target == "ureq_proto::util"
+            });
+            let log_contains =
+                |text: &str| records.iter().any(|(_, _, message)| message.contains(text));
+            assert_eq!(has_wire_trace, !protected, "wire trace scope");
+            assert_eq!(
+                log_contains("Response {"),
+                !protected,
+                "response debug scope"
+            );
+            assert_eq!(
+                log_contains("Unknown content-encoding: fixture-reflection"),
+                !protected,
+                "body decoder log scope"
+            );
+            assert_eq!(log_contains(MARKER), !protected, "fixture reflection scope");
+            assert!(
+                records.iter().any(|(level, target, _)| {
+                    *level == log::Level::Debug && target == "ureq::tls::rustls"
+                }),
+                "safe TLS diagnostics disappeared"
+            );
+        }
+
+        ureq::unversioned::without_http_payload_logs(|| {
+            log::debug!("unrelated debug control");
+            log::trace!("unrelated trace control");
+        });
+        let records = RECORDS.with_borrow_mut(std::mem::take);
+        log::set_max_level(previous);
+        assert!(records.iter().any(|(level, _, message)| {
+            *level == log::Level::Debug && message == "unrelated debug control"
+        }));
+        assert!(records.iter().any(|(level, _, message)| {
+            *level == log::Level::Trace && message == "unrelated trace control"
+        }));
+    }
+
+    #[test]
+    fn bearer_transport_preserves_first_byte_body_and_total_deadlines() {
+        use std::sync::mpsc;
+
+        let _api = API.lock();
+        for (reply, total_ms, first_byte_ms, body_ms, expected) in [
+            (
+                "",
+                1500,
+                100,
+                1500,
+                "TIMEOUT_FIRST_BYTE: HTTP bearer request failed",
+            ),
+            (
+                "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nx",
+                1500,
+                1500,
+                100,
+                "TIMEOUT_BODY: HTTP bearer request failed",
+            ),
+            (
+                "HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nx",
+                100,
+                1500,
+                1500,
+                "TIMEOUT_TOTAL: HTTP bearer request failed",
+            ),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}/held", listener.local_addr().unwrap());
+            let (release, hold) = mpsc::channel();
+            let server = std::thread::spawn(move || {
+                let (mut peer, _) = listener.accept().unwrap();
+                peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+                assert!(read_request(&mut peer).starts_with("GET /held HTTP/1.1\r\n"));
+                peer.write_all(reply.as_bytes()).unwrap();
+                assert_eq!(hold.recv_timeout(Duration::from_secs(3)), Ok(()));
+            });
+            let mut request = MeshRequestData::new("get", &url);
+            request.bearer = Some(bearer_header(b"fixture-token").unwrap());
+            request.timeouts.global = Duration::from_millis(total_ms);
+            request.timeouts.first_byte = Duration::from_millis(first_byte_ms);
+            request.timeouts.body = Duration::from_millis(body_ms);
+            let result = execute_request(&http_agent(), request, None);
+            release.send(()).unwrap();
+            server.join().unwrap();
+            assert_eq!(result.unwrap_err(), expected);
         }
     }
 
@@ -1792,32 +2188,62 @@ mod tests {
         server.join().unwrap();
     }
 
+    #[test]
+    fn bearer_redirect_requires_an_unambiguous_location() {
+        let (port, server) = serve_once(
+            b"HTTP/1.1 302 Found\r\nLocation: /fixture-handoff\r\nContent-Length: 0\r\n\r\n",
+        );
+        let mut request = MeshRequestData::new("get", &format!("http://127.0.0.1:{port}/"));
+        request.bearer = Some(bearer_header(b"fixture-token").unwrap());
+        let response = execute_request(&http_agent(), request, None).unwrap();
+        assert_eq!(response.status, 302);
+        assert!(response
+            .headers
+            .contains(&("location".into(), "/fixture-handoff".into())));
+        assert!(server.join().unwrap().starts_with("GET / HTTP/1.1\r\n"));
+
+        let (port, server) = serve_once(b"HTTP/1.1 302 Found\r\nLocation: /fixture-handoff\r\nlocation: /fixture-handoff\r\nContent-Length: 0\r\n\r\n");
+        let mut request = MeshRequestData::new("get", &format!("http://127.0.0.1:{port}/"));
+        request.bearer = Some(bearer_header(b"fixture-token").unwrap());
+        let error = execute_request(&http_agent(), request, None).unwrap_err();
+        assert_eq!(
+            error,
+            "INVALID_RESPONSE: HTTP bearer response has multiple Location headers"
+        );
+        assert!(server.join().unwrap().starts_with("GET / HTTP/1.1\r\n"));
+    }
+
     /// An https request is timed through its TLS handshake, and a server
     /// the web roots do not vouch for is a TLS error.
     #[test]
     fn https_requests_are_timed_and_verified() {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        let (server_config, _) = crate::dist::node::ws_test_tls_configs();
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let server = std::thread::spawn(move || {
-            let (tcp, _) = listener.accept().unwrap();
-            let mut tls = rustls::StreamOwned::new(
-                rustls::ServerConnection::new(server_config).unwrap(),
-                tcp,
-            );
-            let _ = std::io::Read::read(&mut tls, &mut [0u8; 1]);
-        });
-        let tls_before = metrics().tls_micros.load(Ordering::Relaxed);
-        let error = execute_request(
-            &http_agent(),
-            MeshRequestData::new("get", &format!("https://127.0.0.1:{port}/")),
-            None,
-        )
-        .unwrap_err();
-        assert!(error.starts_with("TLS_ERROR: "), "{error}");
-        assert!(metrics().tls_micros.load(Ordering::Relaxed) > tls_before);
-        server.join().unwrap();
+        for protected in [false, true] {
+            let (server_config, _) = crate::dist::node::ws_test_tls_configs();
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let server = std::thread::spawn(move || {
+                let (tcp, _) = listener.accept().unwrap();
+                tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+                let mut tls = rustls::StreamOwned::new(
+                    rustls::ServerConnection::new(server_config).unwrap(),
+                    tcp,
+                );
+                assert!(!matches!(tls.read(&mut [0u8; 1]), Ok(1)));
+            });
+            let tls_before = metrics().tls_micros.load(Ordering::Relaxed);
+            let mut request = MeshRequestData::new("get", &format!("https://127.0.0.1:{port}/"));
+            if protected {
+                request.bearer = Some(bearer_header(b"fixture-token").unwrap());
+            }
+            let error = execute_request(&http_agent(), request, None).unwrap_err();
+            assert!(error.starts_with("TLS_ERROR: "), "{error}");
+            if protected {
+                assert_eq!(error, "TLS_ERROR: HTTP bearer request failed");
+            }
+            assert!(metrics().tls_micros.load(Ordering::Relaxed) > tls_before);
+            server.join().unwrap();
+        }
     }
 
     struct Collected {
@@ -2025,7 +2451,7 @@ mod tests {
         let request = built("get", "http://stalled.test/");
         mesh_http_timeout(request, 1);
         assert_eq!(
-            outcome(send_cooperatively(agent, request)).unwrap_err(),
+            outcome(send_cooperatively(agent, request, None)).unwrap_err(),
             "TIMEOUT_TOTAL: HTTP worker exceeded global timeout"
         );
         drop(release);

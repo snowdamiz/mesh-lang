@@ -1566,6 +1566,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    let send_bearer_ty = ptr_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
+    module.add_function(
+        "mesh_http_send_bearer",
+        send_bearer_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── Http streaming + cancel + keep-alive (Phase 137 Plan 02) ──────────
 
     // mesh_http_stream(req: i64, fn_ptr: ptr, env_ptr: ptr) -> i64 (cancel handle)

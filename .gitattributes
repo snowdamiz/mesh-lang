@@ -17,3 +17,7 @@ tools/durable-jobs-bench/results/** -whitespace
 # Preserve the exact upstream crate sources used by the OpenRaft backport.
 third_party/openraft/** -whitespace
 third_party/openraft-macros/** -whitespace
+
+# Preserve upstream whitespace in the vendored HTTP transport.
+third_party/ureq/** -whitespace
+third_party/ureq-proto/** -whitespace
