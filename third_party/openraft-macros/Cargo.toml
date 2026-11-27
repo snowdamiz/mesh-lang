@@ -55,9 +55,6 @@ path = "tests/test_expand.rs"
 name = "test_since"
 path = "tests/test_since.rs"
 
-[dependencies.chrono]
-version = "0.4"
-
 [dependencies.proc-macro2]
 version = "1.0"
 
