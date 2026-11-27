@@ -99,6 +99,19 @@ struct ActiveRequest {
     sender: CooperativeSender<WorkerEvent>,
 }
 
+struct ActiveRequestRegistration {
+    handle: u64,
+}
+
+impl Drop for ActiveRequestRegistration {
+    fn drop(&mut self) {
+        if let Some(active) = active_requests().lock().remove(&self.handle) {
+            // An unwound wait can leave its worker running in I/O.
+            active.cancel.store(true, Ordering::Release);
+        }
+    }
+}
+
 #[repr(C)]
 pub struct MeshClientResponse {
     pub status: i64,
@@ -476,7 +489,7 @@ fn activate_request(
     handle: u64,
     cancel: Arc<AtomicBool>,
     sender: CooperativeSender<WorkerEvent>,
-) -> Result<MeshRequestData, String> {
+) -> Result<(MeshRequestData, ActiveRequestRegistration), String> {
     let mut requests = requests().lock();
     let request = requests
         .remove(&handle)
@@ -486,7 +499,7 @@ fn activate_request(
         return Err("too many active HTTP requests".to_string());
     }
     active.insert(handle, ActiveRequest { cancel, sender });
-    Ok(request)
+    Ok((request, ActiveRequestRegistration { handle }))
 }
 
 fn validate_request(request: &MeshRequestData) -> Result<(), String> {
@@ -747,10 +760,11 @@ fn mesh_response(response: WorkerResponse) -> *mut u8 {
 fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
     let (sender, receiver) = cooperative_channel();
     let cancel = Arc::new(AtomicBool::new(false));
-    let request = match activate_request(handle, Arc::clone(&cancel), sender.clone()) {
-        Ok(request) => request,
-        Err(error) => return mesh_error(error),
-    };
+    let (request, _registration) =
+        match activate_request(handle, Arc::clone(&cancel), sender.clone()) {
+            Ok(activated) => activated,
+            Err(error) => return mesh_error(error),
+        };
     let wait = request
         .timeouts
         .global
@@ -771,13 +785,11 @@ fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
             "TIMEOUT_TOTAL: HTTP worker exceeded global timeout".to_string()
         ))
     });
-    let result = match event {
+    match event {
         WorkerEvent::Complete(Ok(response)) => mesh_response(response),
         WorkerEvent::Complete(Err(error)) => mesh_error(error),
         WorkerEvent::Cancelled => mesh_error("CANCELLED: HTTP request"),
-    };
-    active_requests().lock().remove(&handle);
-    result
+    }
 }
 
 #[no_mangle]
@@ -1390,6 +1402,98 @@ mod tests {
         assert_eq!(unsafe { error.as_str() }, "CANCELLED: HTTP request");
         assert!(started.elapsed() < Duration::from_millis(500));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn killing_a_waiting_http_actor_reclaims_its_request() {
+        use crate::actor::{
+            global_scheduler, mesh_actor_exit, mesh_actor_spawn, mesh_rt_init_actor,
+        };
+        use crate::actor::{ExitReason, ProcessId, ProcessState};
+        use std::sync::mpsc;
+
+        struct SendRequest {
+            handle: u64,
+            returned: mpsc::Sender<()>,
+        }
+
+        extern "C-unwind" fn send(args: *const u8) {
+            let args = unsafe { Box::from_raw(args.cast_mut().cast::<SendRequest>()) };
+            mesh_http_send(args.handle);
+            let _ = args.returned.send(());
+        }
+
+        fn wait_for<T>(what: &str, mut probe: impl FnMut() -> Option<T>) -> T {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                if let Some(value) = probe() {
+                    return value;
+                }
+                assert!(Instant::now() < deadline, "{what}");
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+
+        let _api = API.lock();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let url = format!("http://{}/held", listener.local_addr().unwrap());
+        let request = built("get", &url);
+        mesh_rt_init_actor(1);
+        let (returned, result) = mpsc::channel();
+        let args = Box::into_raw(Box::new(SendRequest {
+            handle: request,
+            returned,
+        }));
+        let pid = mesh_actor_spawn(send as *const u8, args.cast(), 0, 1);
+        let scheduler = global_scheduler();
+        let actor = scheduler.get_process(ProcessId(pid)).unwrap();
+
+        let mut peer = wait_for("HTTP worker never connected", || match listener.accept() {
+            Ok((peer, _)) => Some(peer),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => None,
+            Err(error) => panic!("accept failed: {error}"),
+        });
+        peer.set_nonblocking(false).unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        assert!(read_request(&mut peer).starts_with("GET /held HTTP/1.1\r\n"));
+        wait_for("actor never waited for its HTTP response", || {
+            matches!(actor.lock().state, ProcessState::Waiting).then_some(())
+        });
+        let cancel = Arc::clone(&active_requests().lock()[&request].cancel);
+
+        mesh_actor_exit(pid, ExitReason::Killed.tag());
+        assert_eq!(
+            result.recv_timeout(Duration::from_secs(5)),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        );
+        assert_eq!(actor.lock().state, ProcessState::Exited(ExitReason::Killed));
+        wait_for("killed actor remained in the process table", || {
+            scheduler
+                .get_process(ProcessId(pid))
+                .is_none()
+                .then_some(())
+        });
+
+        let still_registered = active_requests().lock().contains_key(&request);
+        let signalled = cancel.load(Ordering::Acquire);
+        let remaining_owners = 1 + usize::from(still_registered);
+        assert_eq!(Arc::strong_count(&cancel), remaining_owners + 1);
+        peer.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        wait_for("HTTP worker did not finish after peer release", || {
+            (Arc::strong_count(&cancel) == remaining_owners).then_some(())
+        });
+
+        let before = metrics().cancellations.load(Ordering::Relaxed);
+        mesh_http_cancel(request);
+        let late_cancellations = metrics().cancellations.load(Ordering::Relaxed) - before;
+        assert!(
+            !still_registered,
+            "actor exit left an active request registered; late Http.cancel counted {late_cancellations}"
+        );
+        assert!(signalled);
+        assert_eq!(late_cancellations, 0);
     }
 
     /// Held by the tests that use the runtime API's registries, which are
