@@ -2973,6 +2973,51 @@ end
 }
 
 #[test]
+fn struct_literals_store_runtime_options_by_value() {
+    let source = r##"
+struct Input do
+  revision :: Option<Int>
+end
+
+fn show(input :: Input) -> String do
+  case input.revision do
+    Some(revision) -> "#{revision}"
+    None -> "none"
+  end
+end
+
+fn main() do
+  println(show(Input { revision: String.to_int("1") }))
+  println(show(Input { revision: String.to_int("") }))
+end
+"##;
+    assert_eq!(run(source), "1\nnone\n");
+}
+
+#[test]
+fn struct_updates_store_runtime_results_by_value() {
+    let source = r##"
+struct Input do
+  revision :: Result<U64, String>
+end
+
+fn show(input :: Input) -> String do
+  case input.revision do
+    Ok(revision) -> U64.to_string(revision)
+    Err(_) -> "invalid"
+  end
+end
+
+fn main() do
+  let input = Input { revision: Err("unset") }
+  println(show(%{input | revision: U64.parse("5")}))
+  println(show(%{input | revision: U64.parse("bad")}))
+end
+"##;
+    assert_eq!(run(source), "5\ninvalid\n");
+}
+
+#[test]
 fn a_struct_literal_must_name_a_struct() {
     // A name no type has is an unknown type; a type that is not a struct is
     // not a struct.

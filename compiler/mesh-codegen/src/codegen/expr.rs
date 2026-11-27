@@ -2048,6 +2048,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .iter()
                 .position(|(declared_name, _)| declared_name == field_name)
                 .expect("the type checker admits only a struct's own fields");
+            let val = self.coerce_value_to_type(val, self.llvm_type(&declared[index].1))?;
             let field_ptr = self
                 .builder
                 .build_struct_gep(struct_ty, alloca, index as u32, "field_ptr")
@@ -2089,13 +2090,14 @@ impl<'ctx> CodeGen<'ctx> {
         let (_, field_defs) = self.struct_layout(ty);
         let base_val = self.codegen_expr(base)?.into_struct_value();
         let mut updated = base_val;
-        for (index, (field_name, _)) in field_defs.iter().enumerate() {
+        for (index, (field_name, field_ty)) in field_defs.iter().enumerate() {
             let Some((_, replacement)) = overrides.iter().find(|(name, _)| name == field_name)
             else {
                 continue;
             };
             let index = index as u32;
             let replacement = self.codegen_expr(replacement)?;
+            let replacement = self.coerce_value_to_type(replacement, self.llvm_type(field_ty))?;
             if let Some(resource) = resource_overrides.iter().find(|r| r.index == index) {
                 let old_value = self
                     .builder
